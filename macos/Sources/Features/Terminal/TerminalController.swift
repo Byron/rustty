@@ -61,6 +61,8 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
     /// The notification cancellable for focused surface property changes.
     private var surfaceAppearanceCancellables: Set<AnyCancellable> = []
 
+    private var workingDirectoryCancellable: AnyCancellable?
+
     init(_ ghostty: Ghostty.App,
          withBaseConfig base: Ghostty.SurfaceConfiguration? = nil,
          withSurfaceTree tree: SplitTree<Ghostty.SurfaceView>? = nil,
@@ -77,6 +79,11 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         self.derivedConfig = DerivedConfig(ghostty.config)
 
         super.init(ghostty, baseConfig: base, surfaceTree: tree)
+
+        // Watch every pane, including panes detached from the window by zoom.
+        workingDirectoryCancellable = surfaceValuesPublisher(valueKeyPath: \.pwd, publisherKeyPath: \.$pwd)
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.invalidateRestorableState() }
 
         // Setup our notifications for behaviors
         let center = NotificationCenter.default
@@ -177,7 +184,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
 
         // Update our zoom state
         if let window = window as? TerminalWindow {
-            window.surfaceIsZoomed = to.zoomed != nil
+            window.surfaceZoomState = .from(to)
         }
 
         // If our surface tree is now nil then we close our window.
@@ -563,6 +570,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         if notification.object == nil {
             // Update our derived config
             self.derivedConfig = DerivedConfig(config)
+            (window as? TerminalWindow)?.updateZoomedTabTintsForTabGroup()
 
             // If we have no surfaces in our window (is that possible?) then we update
             // our window appearance based on the root config. If we have surfaces, we
@@ -603,6 +611,8 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
                 }
             }
         }
+
+        (window as? TerminalWindow)?.updateZoomedTabTintsForTabGroup()
     }
 
     private func fixTabBar() {
@@ -644,7 +654,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         guard let window = window as? TerminalWindow else { return }
 
         // Sync our zoom state for splits
-        window.surfaceIsZoomed = surfaceTree.zoomed != nil
+        window.surfaceZoomState = .from(surfaceTree)
 
         // Set the font for the window and tab titles.
         if let titleFontName = surfaceConfig.windowTitleFontFamily {

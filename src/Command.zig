@@ -529,7 +529,7 @@ pub fn wait(self: Command, block: bool) !Exit {
 
 /// Wrapper for the raw waitpid syscall. Status is only initialized on success;
 /// interrupted waits are retried and all other errors are propagated.
-fn waitPid(
+pub fn waitPid(
     pid: posix.pid_t,
     status: *if (builtin.link_libc) c_int else u32,
     flags: u32,

@@ -35,6 +35,15 @@ protocol TerminalViewModel: ObservableObject {
 
     /// The update overlay should be visible.
     var updateOverlayIsVisible: Bool { get }
+
+    /// Whether keyboard-driven quadrant peek is active.
+    var quadrantSwitchIsActive: Bool { get }
+
+    /// Whether quadrant peek should dim terminal content.
+    var quadrantPeekShowsOverlay: Bool { get }
+
+    /// The color assigned to this terminal's native tab.
+    var tabColor: TerminalTabColor { get }
 }
 
 /// The main terminal view. This terminal view supports splits.
@@ -81,6 +90,8 @@ struct TerminalView<ViewModel: TerminalViewModel>: View {
 
                     TerminalSplitTreeView(
                         tree: viewModel.surfaceTree,
+                        isQuadrantPeek: viewModel.quadrantSwitchIsActive,
+                        showsQuadrantPeekOverlay: viewModel.quadrantPeekShowsOverlay,
                         action: { delegate?.performSplitAction($0) })
                         .environmentObject(ghostty)
                         .ghosttyLastFocusedSurface(lastFocusedSurface)
@@ -119,15 +130,18 @@ struct TerminalView<ViewModel: TerminalViewModel>: View {
 
                 // Show update information above all else.
                 if viewModel.updateOverlayIsVisible {
-                    UpdateOverlay()
+                    UpdateOverlay(tabColor: viewModel.tabColor)
                 }
             }
             .frame(maxWidth: .greatestFiniteMagnitude, maxHeight: .greatestFiniteMagnitude)
+            .ghosttyAccentColor(Color(nsColor: viewModel.tabColor.accentColor))
         }
     }
 }
 
 private struct UpdateOverlay: View {
+    let tabColor: TerminalTabColor
+
     var body: some View {
         if let appDelegate = NSApp.delegate as? AppDelegate {
             VStack {
@@ -135,7 +149,9 @@ private struct UpdateOverlay: View {
 
                 HStack {
                     Spacer()
-                    UpdatePill(model: appDelegate.updateViewModel)
+                    UpdatePill(
+                        model: appDelegate.updateViewModel,
+                        tabColor: tabColor)
                         .padding(.bottom, 9)
                         .padding(.trailing, 9)
                 }

@@ -161,7 +161,7 @@ function __ghostty_setup --on-event fish_prompt -d "Setup ghostty integration"
         if status --is-command-substitution || set -q INSIDE_EMACS
             return
         end
-        printf \e\]7\;file://%s%s\a $hostname (string escape --style=url $PWD)
+        printf \e\]7\;file://%s%s\a (command hostname) (string escape --style=url $PWD)
     end
 
     # Enable fish to handle reflow because Ghostty clears the prompt on resize.

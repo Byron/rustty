@@ -283,6 +283,15 @@ class QuickTerminalController: BaseTerminalController {
         }
     }
 
+    override func syncSurfaceTreeOcclusionState() {
+        guard visible else {
+            setSurfaceTreeOcclusionState(false)
+            return
+        }
+
+        super.syncSurfaceTreeOcclusionState()
+    }
+
     override func closeSurface(
         _ node: SplitTree<Ghostty.SurfaceView>.Node,
         withConfirmation: Bool = true
@@ -396,6 +405,7 @@ class QuickTerminalController: BaseTerminalController {
         // Set our visibility state
         guard visible else { return }
         visible = false
+        setSurfaceTreeOcclusionState(false)
 
         // Notify the change
         NotificationCenter.default.post(
@@ -443,6 +453,9 @@ class QuickTerminalController: BaseTerminalController {
         // Move it to the visible position since animation requires this
         DispatchQueue.main.async {
             window.makeKeyAndOrderFront(nil)
+            DispatchQueue.main.async {
+                self.syncSurfaceTreeOcclusionState()
+            }
         }
 
         // If our dock position would conflict with our target location then

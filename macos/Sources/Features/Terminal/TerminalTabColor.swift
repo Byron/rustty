@@ -67,6 +67,17 @@ enum TerminalTabColor: Int, CaseIterable, Codable {
         }
     }
 
+    /// The accent color for UI owned by this tab. Tabs without an assigned
+    /// color continue to use the user's macOS accent color.
+    var accentColor: NSColor {
+        displayColor ?? .controlAccentColor
+    }
+
+    /// A readable foreground for controls filled with ``accentColor``.
+    var accentForegroundColor: NSColor {
+        accentColor.isLightColor ? .black : .white
+    }
+
     func swatchImage(selected: Bool) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         return NSImage(size: size, flipped: false) { rect in

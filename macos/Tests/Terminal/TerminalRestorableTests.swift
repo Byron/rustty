@@ -4,6 +4,68 @@ import AppKit
 
 @Suite
 struct TerminalRestorableTests {
+    // ponytail: retain test surfaces until the test host exits; remove this
+    // when surface disposal stops callbacks before releasing the view's userdata.
+    @MainActor private static var retainedSurfaces: [Ghostty.SurfaceView] = []
+
+    @MainActor
+    @Test func surfaceStateKeepsInitialWorkingDirectory() throws {
+        let app = try #require((NSApp.delegate as? AppDelegate)?.ghostty.app)
+        var config = Ghostty.SurfaceConfiguration()
+        config.command = "/usr/bin/true"
+        config.waitAfterCommand = true
+        config.workingDirectory = "/tmp"
+        let surface = Ghostty.SurfaceView(app, baseConfig: config)
+        Self.retainedSurfaces.append(surface)
+
+        // Saving can happen before the shell sends its first directory report.
+        let initial = try JSONEncoder().encode(surface)
+        let initialState = try #require(JSONSerialization.jsonObject(with: initial) as? [String: Any])
+        #expect(initialState["pwd"] as? String == config.workingDirectory)
+
+        surface.pwd = "/tmp/foo.worktree"
+        let updated = try JSONEncoder().encode(surface)
+        let updatedState = try #require(JSONSerialization.jsonObject(with: updated) as? [String: Any])
+        #expect(updatedState["pwd"] as? String == "/tmp/foo.worktree")
+    }
+
+    @MainActor
+    @Test func directoryChangesInvalidateStateForEveryPane() throws {
+        let ghostty = try #require(NSApp.delegate as? AppDelegate).ghostty
+        let app = try #require(ghostty.app)
+        var config = Ghostty.SurfaceConfiguration()
+        config.command = "/usr/bin/true"
+        config.waitAfterCommand = true
+        let surfaces = (0..<4).map { _ in Ghostty.SurfaceView(app, baseConfig: config) }
+        Self.retainedSurfaces.append(contentsOf: surfaces)
+        let tree = try SplitTree(view: surfaces[0]).inserting(view: surfaces[1], at: surfaces[0], direction: .right)
+        let controller = RestorableStateController(ghostty, withSurfaceTree: tree)
+        let other = RestorableStateController(ghostty, withSurfaceTree: .init(view: surfaces[2]))
+        defer {
+            controller.window = nil
+            other.window = nil
+        }
+        controller.invalidationCount = 0
+        other.invalidationCount = 0
+
+        // A pane hidden by zoom can report a directory without an attached window.
+        #expect(surfaces[1].window == nil)
+        surfaces[1].pwd = "/tmp"
+        #expect(controller.invalidationCount == 1)
+        #expect(other.invalidationCount == 0)
+
+        surfaces[1].pwd = "/tmp"
+        #expect(controller.invalidationCount == 1)
+
+        // Replacing the tree must subscribe to new panes and forget removed ones.
+        controller.surfaceTree = .init(view: surfaces[3])
+        controller.invalidationCount = 0
+        surfaces[1].pwd = "/"
+        #expect(controller.invalidationCount == 0)
+        surfaces[3].pwd = "/tmp"
+        #expect(controller.invalidationCount == 1)
+    }
+
     @Test
     func areYouForgettingToAddMigrationTests() {
         #expect(TerminalRestorableState.version == 7)
@@ -108,6 +170,16 @@ struct TerminalRestorableTests {
         #expect(v7Generic.titleOverride == "tip")
         #expect(v7Generic.surfaceTree.contains(where: { $0.id.uuidString == "953CE952-D91D-4D36-AC72-9D0F1F6BCE73" }))
         #expect(v7Generic.surfaceTree.contains(where: { $0.id.uuidString == "D3223569-2E01-4BC5-9DB2-DBFC3AFF46D1" }))
+    }
+}
+
+private final class RestorableStateController: TerminalController {
+    var invalidationCount = 0
+
+    override func loadWindow() {}
+
+    override func invalidateRestorableState() {
+        invalidationCount += 1
     }
 }
 

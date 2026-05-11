@@ -299,9 +299,24 @@ fn processExit(
     _: *xev.Completion,
     r: xev.Process.WaitError!u32,
 ) xev.CallbackAction {
-    const exit_code = r catch unreachable;
-    processExitCommon(td_.?, exit_code);
+    const td = td_.?;
+    const exit_code = processExitStatus(td.backend.exec.process.?, r) catch unreachable;
+    processExitCommon(td, exit_code);
     return .disarm;
+}
+
+fn processExitStatus(process: xev.Process, r: xev.Process.WaitError!u32) !u32 {
+    return r catch |err| {
+        if (comptime !builtin.os.tag.isDarwin()) return err;
+        if (err != error.NoSuchProcess) return err;
+
+        // A child can exit before kqueue registers its process watcher.
+        // libxev reports ESRCH without reaping it, so recover its raw wait
+        // status instead of treating the registration race as fatal.
+        var status: c_int = undefined;
+        _ = try Command.waitPid(process.pid, &status, 0);
+        return @bitCast(status);
+    };
 }
 
 fn flatpakExit(
@@ -2061,6 +2076,29 @@ fn appendEnvAlways(
 /// not available on a particular platform.
 pub fn getProcessInfo(self: *Exec, comptime info: ProcessInfo) ?ProcessInfo.Type(info) {
     return self.subprocess.getProcessInfo(info);
+}
+
+test "processExitStatus recovers a short-lived child" {
+    if (comptime !builtin.os.tag.isDarwin()) return error.SkipZigTest;
+    const testing = std.testing;
+
+    const pid = posix.system.fork();
+    if (pid < 0) return error.SystemResources;
+    if (pid == 0) posix.system.exit(42);
+    var status: c_int = undefined;
+    defer _ = Command.waitPid(pid, &status, 0) catch 0;
+
+    var process = try xev.Process.init(pid);
+    defer process.deinit();
+
+    // Successful watcher results are already reaped; other errors stay errors.
+    try testing.expectEqual(@as(u32, 19 << 8), try processExitStatus(process, 19 << 8));
+    try testing.expectError(error.Unexpected, processExitStatus(process, error.Unexpected));
+
+    // Inject the registration race so this test does not depend on scheduling.
+    // Recover the real raw wait status and verify that the child was reaped.
+    try testing.expectEqual(@as(u32, 42 << 8), try processExitStatus(process, error.NoSuchProcess));
+    try testing.expectError(error.NoChildProcess, Command.waitPid(pid, &status, 0));
 }
 
 test "execCommand darwin: shell command" {

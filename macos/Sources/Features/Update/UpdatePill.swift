@@ -5,6 +5,9 @@ struct UpdatePill: View {
     /// The update view model that provides the current state and information
     @ObservedObject var model: UpdateViewModel
 
+    /// The current tab's color, used by the update-available state.
+    var tabColor: TerminalTabColor = .none
+
     /// Whether the update popover is currently visible
     @State private var showPopover = false
 
@@ -64,12 +67,18 @@ struct UpdatePill: View {
                 Capsule()
                     .fill(model.backgroundColor)
             )
-            .foregroundColor(model.foregroundColor)
+            .foregroundColor(foregroundColor)
             .contentShape(Capsule())
         })
+        .accentColor(Color(nsColor: tabColor.accentColor))
         .buttonStyle(.plain)
         .help(model.text)
         .accessibilityLabel(model.text)
+    }
+
+    private var foregroundColor: Color {
+        guard case .updateAvailable = model.state else { return model.foregroundColor }
+        return Color(nsColor: tabColor.accentForegroundColor)
     }
 
     /// Calculated width for the text to prevent resizing during progress updates

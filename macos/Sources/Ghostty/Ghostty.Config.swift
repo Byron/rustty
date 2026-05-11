@@ -121,6 +121,26 @@ extension Ghostty {
             return ghostty_config_trigger(config, action, UInt(action.lengthOfBytes(using: .utf8)))
         }
 
+        @MainActor var quadrantNavigationModifierFlags: [NSEvent.ModifierFlags] {
+            let bindingModifiers: NSEvent.ModifierFlags = [.shift, .control, .option, .command]
+            let actions = [
+                "goto_split:quadrant_up",
+                "goto_split:quadrant_down",
+                "goto_split:quadrant_left",
+                "goto_split:quadrant_right",
+            ]
+            var seen: Set<UInt> = []
+
+            return actions.compactMap { action in
+                guard let shortcut = keyboardShortcut(for: action) else { return nil }
+                let modifiers = NSEvent.ModifierFlags(swiftUIFlags: shortcut.modifiers)
+                    .intersection(bindingModifiers)
+                guard modifiers.rawValue.nonzeroBitCount >= 2,
+                      seen.insert(modifiers.rawValue).inserted else { return nil }
+                return modifiers
+            }
+        }
+
         // MARK: - Configuration Values
 
         /// For all of the configuration values below, see the associated Ghostty documentation for
@@ -498,6 +518,14 @@ extension Ghostty {
             return 1 - opacity
         }
 
+        var quadrantPeekOpacity: Double {
+            guard let config = self.config else { return 0.5 }
+            var opacity: Double = 0.5
+            let key = "quadrant-peek-opacity"
+            _ = ghostty_config_get(config, &opacity, key, UInt(key.lengthOfBytes(using: .utf8)))
+            return opacity
+        }
+
         var unfocusedSplitFill: Color {
             guard let config = self.config else { return .white }
 
@@ -546,13 +574,13 @@ extension Ghostty {
         }
 
         var quickTerminalScreen: QuickTerminalScreen {
-            guard let config = self.config else { return .main }
+            guard let config = self.config else { return .mouse }
             var v: UnsafePointer<Int8>?
             let key = "quick-terminal-screen"
-            guard ghostty_config_get(config, &v, key, UInt(key.lengthOfBytes(using: .utf8))) else { return .main }
-            guard let ptr = v else { return .main }
+            guard ghostty_config_get(config, &v, key, UInt(key.lengthOfBytes(using: .utf8))) else { return .mouse }
+            guard let ptr = v else { return .mouse }
             let str = String(cString: ptr)
-            return QuickTerminalScreen(fromGhosttyConfig: str) ?? .main
+            return QuickTerminalScreen(fromGhosttyConfig: str) ?? .mouse
         }
 
         var quickTerminalAnimationDuration: Double {

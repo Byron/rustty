@@ -125,6 +125,16 @@ extension Ghostty {
     /// An enum that is used for the directions that a split focus event can change.
     enum SplitFocusDirection {
         case previous, next, up, down, left, right
+        case quadrantUp, quadrantDown, quadrantLeft, quadrantRight
+
+        var targetsQuadrant: Bool {
+            switch self {
+            case .quadrantUp, .quadrantDown, .quadrantLeft, .quadrantRight:
+                true
+            default:
+                false
+            }
+        }
 
         /// Initialize from a Ghostty API enum.
         static func from(direction: ghostty_action_goto_split_e) -> Self? {
@@ -146,6 +156,18 @@ extension Ghostty {
 
             case GHOSTTY_GOTO_SPLIT_RIGHT:
                 return .right
+
+            case GHOSTTY_GOTO_SPLIT_QUADRANT_UP:
+                return .quadrantUp
+
+            case GHOSTTY_GOTO_SPLIT_QUADRANT_DOWN:
+                return .quadrantDown
+
+            case GHOSTTY_GOTO_SPLIT_QUADRANT_LEFT:
+                return .quadrantLeft
+
+            case GHOSTTY_GOTO_SPLIT_QUADRANT_RIGHT:
+                return .quadrantRight
 
             default:
                 return nil
@@ -171,6 +193,18 @@ extension Ghostty {
 
             case .right:
                 return GHOSTTY_GOTO_SPLIT_RIGHT
+
+            case .quadrantUp:
+                return GHOSTTY_GOTO_SPLIT_QUADRANT_UP
+
+            case .quadrantDown:
+                return GHOSTTY_GOTO_SPLIT_QUADRANT_DOWN
+
+            case .quadrantLeft:
+                return GHOSTTY_GOTO_SPLIT_QUADRANT_LEFT
+
+            case .quadrantRight:
+                return GHOSTTY_GOTO_SPLIT_QUADRANT_RIGHT
             }
         }
     }
@@ -221,16 +255,16 @@ extension Ghostty.SplitFocusDirection {
         case .next:
             return .next
 
-        case .up:
+        case .up, .quadrantUp:
             return .spatial(.up)
 
-        case .down:
+        case .down, .quadrantDown:
             return .spatial(.down)
 
-        case .left:
+        case .left, .quadrantLeft:
             return .spatial(.left)
 
-        case .right:
+        case .right, .quadrantRight:
             return .spatial(.right)
         }
     }
@@ -352,6 +386,7 @@ extension Ghostty.Notification {
     /// Focus previous/next split. Has a SplitFocusDirection in the userinfo.
     static let ghosttyFocusSplit = Notification.Name("com.mitchellh.ghostty.focusSplit")
     static let SplitDirectionKey = ghosttyFocusSplit.rawValue
+    static let SplitModifierFlagsKey = ghosttyFocusSplit.rawValue + ".modifierFlags"
 
     /// Goto tab. Has tab index in the userinfo.
     static let ghosttyGotoTab = Notification.Name("com.mitchellh.ghostty.gotoTab")
@@ -372,6 +407,9 @@ extension Ghostty.Notification {
 
     /// Notification sent to toggle split maximize/unmaximize.
     static let didToggleSplitZoom = Notification.Name("com.mitchellh.ghostty.didToggleSplitZoom")
+
+    /// Notification sent to toggle quadrant maximize/unmaximize.
+    static let didToggleQuadrantZoom = Notification.Name("com.mitchellh.ghostty.didToggleQuadrantZoom")
 
     /// Notification
     static let didReceiveInitialWindowFrame = Notification.Name("com.mitchellh.ghostty.didReceiveInitialWindowFrame")

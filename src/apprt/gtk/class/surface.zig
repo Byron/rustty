@@ -61,6 +61,23 @@ pub const Surface = extern struct {
     pub const Tree = datastruct.SplitTree(Self);
 
     pub const properties = struct {
+        pub const @"command-running" = struct {
+            pub const name = "command-running";
+            const impl = gobject.ext.defineProperty(
+                name,
+                Self,
+                bool,
+                .{
+                    .default = false,
+                    .accessor = gobject.ext.typedAccessor(
+                        Self,
+                        bool,
+                        .{ .getter = getCommandRunning },
+                    ),
+                },
+            );
+        };
+
         /// This property is set to true when the bell is ringing. Note that
         /// this property will only emit a changed signal when there is a
         /// full state change. If a bell is ringing and another bell event
@@ -668,6 +685,9 @@ pub const Surface = extern struct {
         /// True when the child has exited.
         child_exited: bool = false,
 
+        /// True while shell integration reports a command is running.
+        command_running: bool = false,
+
         // Progress bar
         progress_bar_timer: ?c_uint = null,
 
@@ -1162,6 +1182,8 @@ pub const Surface = extern struct {
         const alloc = app.allocator();
         const priv: *Private = self.private();
 
+        self.setCommandRunning(false);
+
         const notify_next_command_finish = notify: {
             const simple_action_group = priv.action_group orelse break :notify false;
             const action_group = simple_action_group.as(gio.ActionGroup);
@@ -1215,6 +1237,11 @@ pub const Surface = extern struct {
             self.sendDesktopNotification(title, body);
         }
 
+        return true;
+    }
+
+    pub fn commandStarted(self: *Self) bool {
+        self.setCommandRunning(true);
         return true;
     }
 
@@ -1530,6 +1557,7 @@ pub const Surface = extern struct {
         // Even if we don't support the overlay, we still keep our property
         // up to date for anyone listening.
         const priv = self.private();
+        self.setCommandRunning(false);
         priv.child_exited = true;
         self.as(gobject.Object).notifyByPspec(
             properties.@"child-exited".impl.param_spec,
@@ -2081,6 +2109,17 @@ pub const Surface = extern struct {
     /// Returns the title property without a copy.
     pub fn getTitle(self: *Self) ?[:0]const u8 {
         return self.private().title;
+    }
+
+    pub fn getCommandRunning(self: *Self) bool {
+        return self.private().command_running;
+    }
+
+    fn setCommandRunning(self: *Self, value: bool) void {
+        const priv = self.private();
+        if (priv.command_running == value) return;
+        priv.command_running = value;
+        self.as(gobject.Object).notifyByPspec(properties.@"command-running".impl.param_spec);
     }
 
     /// Returns the effective title: the user-overridden title if set,
@@ -3947,6 +3986,7 @@ pub const Surface = extern struct {
             // Properties
             gobject.ext.registerProperties(class, &.{
                 properties.@"bell-ringing".impl,
+                properties.@"command-running".impl,
                 properties.config.impl,
                 properties.@"child-exited".impl,
                 properties.@"default-size".impl,

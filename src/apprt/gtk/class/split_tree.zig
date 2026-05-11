@@ -55,6 +55,23 @@ pub const SplitTree = extern struct {
             );
         };
 
+        /// Changes whenever the inputs to the tab title change.
+        pub const @"title-generation" = struct {
+            pub const name = "title-generation";
+            const impl = gobject.ext.defineProperty(
+                name,
+                Self,
+                u64,
+                .{
+                    .accessor = gobject.ext.typedAccessor(
+                        Self,
+                        u64,
+                        .{ .getter = getTitleGeneration },
+                    ),
+                },
+            );
+        };
+
         pub const @"has-surfaces" = struct {
             pub const name = "has-surfaces";
             const impl = gobject.ext.defineProperty(
@@ -169,6 +186,8 @@ pub const SplitTree = extern struct {
         /// close dialog.
         pending_close: ?Surface.Tree.Node.Handle,
 
+        title_generation: u64 = 0,
+
         pub var offset: c_int = 0;
     };
 
@@ -194,6 +213,7 @@ pub const SplitTree = extern struct {
             .init("equalize", actionEqualize, null),
             .init("zoom", actionZoom, null),
             .init("close-split", actionCloseSplit, null),
+            .init("zoom-quadrant", actionZoomQuadrant, null),
         };
 
         _ = ext.actions.addAsGroup(Self, self, "split-tree", &actions);
@@ -332,17 +352,51 @@ pub const SplitTree = extern struct {
     pub fn goto(self: *Self, to: Surface.Tree.Goto) bool {
         const tree = self.getTree() orelse return false;
         const active = self.getActiveSurfaceHandle() orelse return false;
-        const target = if (tree.goto(
-            Application.default().allocator(),
-            active,
-            to,
-        )) |handle_|
-            handle_ orelse return false
-        else |err| switch (err) {
-            // Nothing we can do in this scenario. This is highly unlikely
-            // since split trees don't use that much memory. The application
-            // is probably about to crash in other ways.
-            error.OutOfMemory => return false,
+        const active_surface = tree.nodes[active.idx()].leaf;
+        const alloc = Application.default().allocator();
+        const targets_quadrant = switch (to) {
+            .quadrant => true,
+            else => false,
+        };
+
+        const target = target: {
+            if (!targets_quadrant) {
+                if (tree.quadrant_zoomed) |quadrant| {
+                    if (active != quadrant and tree.quadrant(active) != quadrant) {
+                        tree.zoom(null);
+                        self.as(gobject.Object).notifyByPspec(properties.tree.impl.param_spec);
+                        self.as(gobject.Object).notifyByPspec(properties.@"is-zoomed".impl.param_spec);
+                        return false;
+                    }
+
+                    const handle = tree.gotoBounded(
+                        alloc,
+                        quadrant,
+                        active,
+                        to,
+                    ) catch |err| switch (err) {
+                        error.OutOfMemory => return false,
+                    } orelse {
+                        active_surface.setBellRinging(true);
+                        return true;
+                    };
+
+                    break :target handle;
+                }
+            }
+
+            break :target if (tree.goto(
+                alloc,
+                active,
+                to,
+            )) |handle_|
+                handle_ orelse return false
+            else |err| switch (err) {
+                // Nothing we can do in this scenario. This is highly unlikely
+                // since split trees don't use that much memory. The application
+                // is probably about to crash in other ways.
+                error.OutOfMemory => return false,
+            };
         };
 
         // If we aren't changing targets then we did nothing.
@@ -362,15 +416,21 @@ pub const SplitTree = extern struct {
         errdefer self.private().last_focused.set(old_last_focused);
 
         if (tree.zoomed != null) {
-            const app = Application.default();
-            const config_obj = app.getConfig();
-            defer config_obj.unref();
-            const config = config_obj.get();
-
-            if (!config.@"split-preserve-zoom".navigation) {
-                tree.zoomed = null;
+            if (targets_quadrant) {
+                tree.zoom(null);
             } else {
-                tree.zoom(target);
+                const app = Application.default();
+                const config_obj = app.getConfig();
+                defer config_obj.unref();
+                const config = config_obj.get();
+
+                if (tree.quadrant_zoomed) |quadrant| {
+                    tree.zoomed = quadrant;
+                } else if (!config.@"split-preserve-zoom".navigation) {
+                    tree.zoom(null);
+                } else {
+                    tree.zoom(target);
+                }
             }
 
             // When the zoom state changes our tree state changes and
@@ -498,6 +558,27 @@ pub const SplitTree = extern struct {
                 self,
                 .{ .detail = "mapped" },
             );
+            _ = gobject.Object.signals.notify.connect(
+                surface,
+                *Self,
+                propSurfaceTitle,
+                self,
+                .{ .detail = "command-running" },
+            );
+            _ = gobject.Object.signals.notify.connect(
+                surface,
+                *Self,
+                propSurfaceTitle,
+                self,
+                .{ .detail = "title" },
+            );
+            _ = gobject.Object.signals.notify.connect(
+                surface,
+                *Self,
+                propSurfaceTitle,
+                self,
+                .{ .detail = "title-override" },
+            );
         }
     }
 
@@ -526,6 +607,15 @@ pub const SplitTree = extern struct {
         const tree = self.getTree() orelse return null;
         const handle = self.getActiveSurfaceHandle() orelse return null;
         return tree.nodes[handle.idx()].leaf;
+    }
+
+    pub fn getTitleGeneration(self: *Self) u64 {
+        return self.private().title_generation;
+    }
+
+    fn titleChanged(self: *Self) void {
+        self.private().title_generation +%= 1;
+        self.as(gobject.Object).notifyByPspec(properties.@"title-generation".impl.param_spec);
     }
 
     fn getActiveSurfaceHandle(self: *Self) ?Surface.Tree.Node.Handle {
@@ -741,15 +831,24 @@ pub const SplitTree = extern struct {
         self: *Self,
     ) callconv(.c) void {
         const tree = self.getTree() orelse return;
-        if (tree.zoomed != null) {
-            tree.zoomed = null;
-        } else {
-            const active = self.getActiveSurfaceHandle() orelse return;
-            if (tree.zoomed == active) return;
-            tree.zoom(active);
-        }
+        const active = self.getActiveSurfaceHandle() orelse return;
+        tree.toggleSplitZoom(active);
 
         self.as(gobject.Object).notifyByPspec(properties.tree.impl.param_spec);
+        self.as(gobject.Object).notifyByPspec(properties.@"is-zoomed".impl.param_spec);
+    }
+
+    pub fn actionZoomQuadrant(
+        _: *gio.SimpleAction,
+        _: ?*glib.Variant,
+        self: *Self,
+    ) callconv(.c) void {
+        const tree = self.getTree() orelse return;
+        const active = self.getActiveSurfaceHandle() orelse return;
+        if (!tree.toggleQuadrantZoom(active)) return;
+
+        self.as(gobject.Object).notifyByPspec(properties.tree.impl.param_spec);
+        self.as(gobject.Object).notifyByPspec(properties.@"is-zoomed".impl.param_spec);
     }
 
     pub fn actionCloseSplit(
@@ -812,6 +911,17 @@ pub const SplitTree = extern struct {
         const old_tree = self.getTree() orelse return;
         const next_focus: ?*Surface = next_focus: {
             const alloc = Application.default().allocator();
+            if (old_tree.quadrant_zoomed) |quadrant| {
+                if (handle == quadrant or old_tree.quadrant(handle) == quadrant) {
+                    const next_handle: ?Surface.Tree.Node.Handle =
+                        (old_tree.gotoBounded(alloc, quadrant, handle, .previous) catch null) orelse
+                        (old_tree.gotoBounded(alloc, quadrant, handle, .next) catch null);
+                    if (next_handle) |next| {
+                        if (next != handle) break :next_focus old_tree.nodes[next.idx()].leaf;
+                    }
+                }
+            }
+
             const next_handle: Surface.Tree.Node.Handle =
                 (old_tree.goto(alloc, handle, .previous) catch null) orelse
                 (old_tree.goto(alloc, handle, .next) catch null) orelse
@@ -853,6 +963,15 @@ pub const SplitTree = extern struct {
 
         // Our active surface probably changed
         self.as(gobject.Object).notifyByPspec(properties.@"active-surface".impl.param_spec);
+        self.titleChanged();
+    }
+
+    fn propSurfaceTitle(
+        _: *Surface,
+        _: *gobject.ParamSpec,
+        self: *Self,
+    ) callconv(.c) void {
+        self.titleChanged();
     }
 
     fn propSurfaceMapped(
@@ -885,6 +1004,7 @@ pub const SplitTree = extern struct {
         defer self.as(gobject.Object).thawNotify();
         self.as(gobject.Object).notifyByPspec(properties.@"has-surfaces".impl.param_spec);
         self.as(gobject.Object).notifyByPspec(properties.@"is-zoomed".impl.param_spec);
+        self.titleChanged();
 
         // If we were planning a rebuild or focus restore, always remove
         // that so we can start from a clean slate.
@@ -951,6 +1071,7 @@ pub const SplitTree = extern struct {
 
         // Our active surface may have changed
         self.as(gobject.Object).notifyByPspec(properties.@"active-surface".impl.param_spec);
+        self.titleChanged();
 
         return 0;
     }
@@ -1119,6 +1240,7 @@ pub const SplitTree = extern struct {
             // Properties
             gobject.ext.registerProperties(class, &.{
                 properties.@"active-surface".impl,
+                properties.@"title-generation".impl,
                 properties.@"has-surfaces".impl,
                 properties.@"is-zoomed".impl,
                 properties.tree.impl,

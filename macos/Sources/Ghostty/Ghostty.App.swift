@@ -223,6 +223,13 @@ extension Ghostty {
             }
         }
 
+        func splitToggleQuadrantZoom(surface: ghostty_surface_t) {
+            let action = "toggle_quadrant_zoom"
+            if !ghostty_surface_binding_action(surface, action, UInt(action.lengthOfBytes(using: .utf8))) {
+                logger.warning("action failed action=\(action)")
+            }
+        }
+
         func toggleFullscreen(surface: ghostty_surface_t) {
             let action = "toggle_fullscreen"
             if !ghostty_surface_binding_action(surface, action, UInt(action.lengthOfBytes(using: .utf8))) {
@@ -639,6 +646,9 @@ extension Ghostty {
             case GHOSTTY_ACTION_TOGGLE_SPLIT_ZOOM:
                 return toggleSplitZoom(app, target: target)
 
+            case GHOSTTY_ACTION_TOGGLE_QUADRANT_ZOOM:
+                return toggleQuadrantZoom(app, target: target)
+
             case GHOSTTY_ACTION_INSPECTOR:
                 controlInspector(app, target: target, mode: action.action.inspector)
 
@@ -767,6 +777,9 @@ extension Ghostty {
 
             case GHOSTTY_ACTION_COMMAND_FINISHED:
                 commandFinished(app, target: target, v: action.action.command_finished)
+
+            case GHOSTTY_ACTION_COMMAND_STARTED:
+                commandStarted(app, target: target)
 
             case GHOSTTY_ACTION_PRESENT_TERMINAL:
                 return presentTerminal(app, target: target)
@@ -1324,33 +1337,35 @@ extension Ghostty {
                     guard let surfaceView = self.surfaceView(from: surface) else { return false }
                     guard let controller = surfaceView.window?.windowController as? BaseTerminalController else { return false }
 
-                    // If the window has no splits, the action is not performable
-                    guard controller.surfaceTree.isSplit else { return false }
-
                     // Convert the C API direction to our Swift type
                     guard let splitDirection = SplitFocusDirection.from(direction: direction) else { return false }
 
-                    // Find the current node in the tree
-                    guard let targetNode = controller.surfaceTree.root?.node(view: surfaceView) else { return false }
+                    guard controller.surfaceTree.contains(surfaceView) else { return false }
 
-                    // Check if a split actually exists in the target direction before
-                    // returning true. This ensures performable keybinds only consume
-                    // the key event when we actually perform navigation.
-                    let focusDirection: SplitTree<Ghostty.SurfaceView>.FocusDirection = splitDirection.toSplitTreeFocusDirection()
-                    guard controller.surfaceTree.focusTarget(for: focusDirection, from: targetNode) != nil else {
-                        return false
+                    let modifierFlags: NSEvent.ModifierFlags = if let event = NSApp.currentEvent,
+                                                                  event.type == .keyDown {
+                        event.modifierFlags.intersection([.shift, .control, .option, .command])
+                    } else {
+                        []
                     }
 
-                    // We have a valid target, post the notification to perform the navigation
+                    // Post even when navigation is blocked so the controller can provide
+                    // feedback. The return value still preserves performable keybinds.
+                    let performable = controller.isSplitFocusPerformable(
+                        from: surfaceView,
+                        direction: splitDirection,
+                        modifiers: modifierFlags)
+
                     NotificationCenter.default.post(
                         name: Notification.ghosttyFocusSplit,
                         object: surfaceView,
                         userInfo: [
                             Notification.SplitDirectionKey: splitDirection as Any,
+                            Notification.SplitModifierFlagsKey: modifierFlags,
                         ]
                     )
 
-                    return true
+                    return performable
 
                 default:
                     assertionFailure()
@@ -1499,6 +1514,36 @@ extension Ghostty {
             }
         }
 
+        private static func toggleQuadrantZoom(
+            _ app: ghostty_app_t,
+            target: ghostty_target_s) -> Bool {
+            switch target.tag {
+            case GHOSTTY_TARGET_APP:
+                Ghostty.logger.warning("toggle quadrant zoom does nothing with an app target")
+                return false
+
+            case GHOSTTY_TARGET_SURFACE:
+                guard let surface = target.target.surface else { return false }
+                guard let surfaceView = self.surfaceView(from: surface) else { return false }
+                guard let controller = surfaceView.window?.windowController as? BaseTerminalController else { return false }
+
+                // If the window has no splits, the action is not performable
+                guard controller.surfaceTree.isSplit else { return false }
+                guard let targetNode = controller.surfaceTree.root?.node(view: surfaceView) else { return false }
+                guard controller.surfaceTree.quadrant(containing: targetNode) != nil else { return false }
+
+                NotificationCenter.default.post(
+                    name: Notification.didToggleQuadrantZoom,
+                    object: surfaceView
+                )
+                return true
+
+            default:
+                assertionFailure()
+                return false
+            }
+        }
+
         private static func controlInspector(
             _ app: ghostty_app_t,
             target: ghostty_target_s,
@@ -1571,6 +1616,9 @@ extension Ghostty {
                 guard let surfaceView = self.surfaceView(from: surface) else { return }
                 guard let title = String(cString: n.title!, encoding: .utf8) else { return }
                 guard let body = String(cString: n.body!, encoding: .utf8) else { return }
+                #if os(macOS)
+                surfaceView.requestNotificationAttention(isFocused: surfaceView.focused)
+                #endif
                 showDesktopNotification(surfaceView, title: title, body: body)
 
             default:
@@ -1613,6 +1661,8 @@ extension Ghostty {
             case GHOSTTY_TARGET_SURFACE:
                 guard let surface = target.target.surface else { return }
                 guard let surfaceView = self.surfaceView(from: surface) else { return }
+
+                surfaceView.commandDidFinish()
 
                 // Determine if we even care about command finish notifications
                 guard let config = (NSApplication.shared.delegate as? AppDelegate)?.ghostty.config else { return }
@@ -1672,6 +1722,21 @@ extension Ghostty {
                     )
                 }
 
+            default:
+                assertionFailure()
+            }
+        }
+
+        private static func commandStarted(
+            _ app: ghostty_app_t,
+            target: ghostty_target_s
+        ) {
+            switch target.tag {
+            case GHOSTTY_TARGET_APP:
+                Ghostty.logger.warning("command started does nothing with an app target")
+            case GHOSTTY_TARGET_SURFACE:
+                guard let surface = target.target.surface else { return }
+                self.surfaceView(from: surface)?.commandDidStart()
             default:
                 assertionFailure()
             }
@@ -1790,7 +1855,7 @@ extension Ghostty {
                 guard let surface = target.target.surface else { return }
                 guard let surfaceView = self.surfaceView(from: surface) else { return }
                 guard let title = String(cString: v.title!, encoding: .utf8) else { return }
-                surfaceView.setTitle(title)
+                surfaceView.terminalTitleDidChange(title)
 
             default:
                 assertionFailure()
@@ -1833,6 +1898,7 @@ extension Ghostty {
             case GHOSTTY_TARGET_SURFACE:
                 guard let surface = target.target.surface else { return false }
                 guard let surfaceView = self.surfaceView(from: surface) else { return false }
+                surfaceView.commandDidFinish()
                 // We handle this when the window is visible and timetime_ms is greater than 0,
                 // which will rule out exit codes on launch
                 guard surfaceView.window != nil, v.timetime_ms > 0 else { return false }

@@ -22,6 +22,9 @@ extension Ghostty {
         // The progress report (if any)
         override var progressReport: Action.ProgressReport? {
             didSet {
+                reportedActivityState.progress = progressReport?.state
+                updateReportedActivity()
+
                 // Cancel any existing timer
                 progressReportTimer?.invalidate()
                 progressReportTimer = nil
@@ -97,7 +100,7 @@ extension Ghostty {
         ///
         /// We track this to restore surface occlusion state
         /// after this surface is dragged to another window
-        var isWindowVisible = false
+        @Published var isWindowVisible: Bool?
 
         /// The configuration derived from the Ghostty config so we don't need to rely on references.
         @Published private(set) var derivedConfig: DerivedConfig
@@ -114,6 +117,65 @@ extension Ghostty {
             didSet {
                 pendingClipboardConfirmationDidChange(from: oldValue)
             }
+        }
+
+        /// True while shell integration reports a command is running.
+        @Published private(set) var commandRunning: Bool = false
+
+        /// True while the terminal explicitly reports work, excluding agents waiting for input.
+        @Published private(set) var reportedActivity: Bool = false
+        private var reportedActivityState = ReportedActivity()
+
+        func commandDidStart() {
+            reportedActivityState = .init()
+            updateReportedActivity()
+            commandRunning = true
+        }
+
+        func commandDidFinish() {
+            reportedActivityState = .init()
+            updateReportedActivity()
+            commandRunning = false
+        }
+
+        private func updateReportedActivity() {
+            let active = reportedActivityState.isActive
+            if reportedActivity != active { reportedActivity = active }
+        }
+
+        struct ReportedActivity {
+            enum Title {
+                case idle, working, waiting
+
+                init(_ title: String) {
+                    // ponytail: follows Codex's leading title markers; replace with
+                    // structured progress reporting when Codex provides it.
+                    let waitingPrefixes = ["[ ! ] Action Required", "[ . ] Action Required"]
+                    if waitingPrefixes.contains(where: { title == $0 || title.hasPrefix($0 + " | ") }) {
+                        self = .waiting
+                    } else if let first = title.first,
+                              "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏".contains(first),
+                              title.dropFirst().first?.isWhitespace ?? true {
+                        self = .working
+                    } else {
+                        self = .idle
+                    }
+                }
+            }
+
+            var title: Title = .idle
+            var progress: Action.ProgressReport.State?
+
+            var isActive: Bool {
+                title != .waiting && (title == .working || progress == .set || progress == .indeterminate)
+            }
+        }
+
+        var activityPublisher: AnyPublisher<Bool, Never> {
+            Publishers.CombineLatest($commandRunning, $progressReport)
+                .map { $0 || $1 != nil }
+                .removeDuplicates()
+                .eraseToAnyPublisher()
         }
 
         // An initial size to request for a window. This will only affect
@@ -188,6 +250,36 @@ extension Ghostty {
         /// of the SwiftUI view hierarchy, for example when changing splits
         var scrollbar: Ghostty.Action.Scrollbar?
 
+        /// The working-directory badge position on the visible terminal cursor row.
+        func workingDirectoryLabelPosition(labelWidth: CGFloat) -> CGPoint? {
+            guard let surface, let scrollbar, cellSize.width > 0 else { return nil }
+
+            // The terminal cursor is outside the viewport while viewing scrollback.
+            let bottomOffset = scrollbar.total - min(scrollbar.total, scrollbar.len)
+            guard scrollbar.offset >= bottomOffset else { return nil }
+
+            var x: Double = 0
+            var y: Double = 0
+            var width: Double = 0
+            var height: Double = 0
+            ghostty_surface_ime_point(surface, &x, &y, &width, &height)
+
+            let centerY = CGFloat(y - height / 2)
+            guard centerY.isFinite, centerY >= 0, centerY <= bounds.height else { return nil }
+
+            guard let centerX = WorkingDirectoryBadge.cursorAdjacentX(
+                containerWidth: bounds.width,
+                cursorCenterX: CGFloat(x),
+                labelWidth: labelWidth,
+                cellWidth: cellSize.width
+            ) else { return nil }
+
+            return CGPoint(
+                x: centerX,
+                y: centerY
+            )
+        }
+
         // Notification identifiers associated with this surface
         var notificationIdentifiers: Set<String> = []
 
@@ -249,6 +341,9 @@ extension Ghostty {
             // is non-zero so that our layer bounds are non-zero so that our renderer
             // can do SOMETHING.
             super.init(id: uuid, frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+
+            // State can be saved before the shell sends its first directory report.
+            self.pwd = baseConfig?.workingDirectory
 
             // Our cache of screen data
             cachedScreenContents = .init(duration: .milliseconds(500)) { [weak self] in
@@ -452,6 +547,7 @@ extension Ghostty {
             // sent to stop things like mouse selection.
             if !focused {
                 suppressNextLeftMouseUp = false
+                clearNavigationWarning()
             }
 
             // Notify libghostty
@@ -468,6 +564,7 @@ extension Ghostty {
 
                 // We unset our bell state if we gained focus
                 bell = false
+                clearNotificationAttention()
 
                 // Remove any notifications for this surface once we gain focus.
                 if !notificationIdentifiers.isEmpty {
@@ -621,7 +718,14 @@ extension Ghostty {
             }
         }
 
-        func setTitle(_ title: String) {
+        func terminalTitleDidChange(_ title: String) {
+            // Track live reports before debouncing or applying a user-set display title.
+            reportedActivityState.title = .init(title)
+            updateReportedActivity()
+            setTitle(title)
+        }
+
+        private func setTitle(_ title: String) {
             // This fixes an issue where very quick changes to the title could
             // cause an unpleasant flickering. We set a timer so that we can
             // coalesce rapid changes. The timer is short enough that it still
@@ -631,12 +735,14 @@ extension Ghostty {
                 withTimeInterval: 0.075,
                 repeats: false
             ) { [weak self] _ in
+                guard let self else { return }
+
                 // Set the title if it wasn't manually set.
-                guard self?.titleFromTerminal == nil else {
-                    self?.titleFromTerminal = title
+                guard titleFromTerminal == nil else {
+                    titleFromTerminal = title
                     return
                 }
-                self?.title = title
+                self.title = title
             }
         }
 
@@ -1822,8 +1928,9 @@ extension Ghostty {
             let id = notification.request.identifier
             guard self.notificationIdentifiers.remove(id) != nil else { return }
             if focus {
-                self.window?.makeKeyAndOrderFront(self)
-                Ghostty.moveFocus(to: self)
+                NotificationCenter.default.post(
+                    name: Ghostty.Notification.ghosttyPresentTerminal,
+                    object: self)
             }
         }
 

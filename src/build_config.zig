@@ -47,8 +47,8 @@ pub const i18n: bool = config.i18n;
 /// hardcoded here. We could make this configurable in the future if there
 /// is a reason to do so.
 ///
-/// On macOS, this must match the App bundle ID. We can get that dynamically
-/// via an API but I don't want to pay the cost of that at runtime.
+/// On macOS, packaged app data paths use the runtime App bundle ID. This
+/// value remains the fallback for command-line or non-bundled execution.
 ///
 /// On GTK, this should match the various folders with resources.
 ///

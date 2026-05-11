@@ -107,14 +107,17 @@ class QuickTerminalScreenStateCache {
 
         /// Returns true if this entry is still valid for the given screen.
         ///
-        /// An entry is only valid for the exact screen geometry it was captured on: both the
-        /// backing scale factor and the frame size must match. A saved frame is meaningless once
+        /// An entry is only valid if its frame fits the exact screen geometry it was captured on:
+        /// both the backing scale factor and the frame size must match. A saved frame is meaningless once
         /// the display's resolution changes, which commonly happens when an external display is
         /// disconnected and later reconnected at a different resolution (e.g. after travel). In
         /// that case we drop the entry and fall back to the configured `quick-terminal-size`,
         /// rather than restoring a stale frame that no longer fills the screen as expected.
         func isValid(for screen: NSScreen) -> Bool {
-            scale == screen.backingScaleFactor && screenSize == screen.frame.size
+            scale == screen.backingScaleFactor &&
+                screenSize == screen.frame.size &&
+                frame.width <= screen.frame.width &&
+                frame.height <= screen.frame.height
         }
     }
 }

@@ -61,6 +61,11 @@ pub fn SplitTree(comptime V: type) type {
         /// operations may unzoom (e.g. resize).
         zoomed: ?Node.Handle,
 
+        /// The handle of the zoomed quadrant node, if any. This is the
+        /// lower zoom layer beneath `zoomed`; `zoomed` remains the effective
+        /// node that renderers should show.
+        quadrant_zoomed: ?Node.Handle,
+
         /// An empty tree.
         pub const empty: Self = .{
             // Arena can be undefined because we have zero allocated nodes.
@@ -69,6 +74,7 @@ pub fn SplitTree(comptime V: type) type {
             .arena = undefined,
             .nodes = &.{},
             .zoomed = null,
+            .quadrant_zoomed = null,
         };
 
         pub const Node = union(enum) {
@@ -122,6 +128,7 @@ pub fn SplitTree(comptime V: type) type {
                 .arena = arena,
                 .nodes = nodes,
                 .zoomed = null,
+                .quadrant_zoomed = null,
             };
         }
 
@@ -161,6 +168,7 @@ pub fn SplitTree(comptime V: type) type {
                 .arena = arena,
                 .nodes = nodes,
                 .zoomed = self.zoomed,
+                .quadrant_zoomed = self.quadrant_zoomed,
             };
         }
 
@@ -234,7 +242,95 @@ pub fn SplitTree(comptime V: type) type {
                 assert(@intFromEnum(v) >= 0);
                 assert(@intFromEnum(v) < self.nodes.len);
             }
+            if (handle == null) self.quadrant_zoomed = null;
             self.zoomed = handle;
+        }
+
+        /// Toggle zoom for the focused leaf. If a quadrant zoom is active,
+        /// toggling an already-zoomed leaf restores the quadrant zoom.
+        pub fn toggleSplitZoom(self: *Self, handle: Node.Handle) void {
+            assert(handle.idx() < self.nodes.len);
+
+            if (self.zoomed == handle) {
+                self.zoomed = self.quadrant_zoomed;
+                return;
+            }
+
+            self.zoomed = handle;
+        }
+
+        /// Toggle zoom for the quadrant containing the focused node. Returns
+        /// false when the focused node is not inside a real 2x2 quadrant.
+        pub fn toggleQuadrantZoom(self: *Self, handle: Node.Handle) bool {
+            assert(handle.idx() < self.nodes.len);
+
+            const target = self.quadrant(handle) orelse return false;
+
+            if (self.zoomed != null or self.quadrant_zoomed != null) {
+                self.zoomed = null;
+                self.quadrant_zoomed = null;
+                return true;
+            }
+
+            self.zoomed = target;
+            self.quadrant_zoomed = target;
+            return true;
+        }
+
+        /// Returns the 2x2 quadrant cell containing a node. The quadrant is
+        /// the subtree reached as soon as the path from the root has crossed
+        /// both a horizontal and a vertical split.
+        pub fn quadrant(self: *const Self, handle: Node.Handle) ?Node.Handle {
+            if (self.isEmpty()) return null;
+            return self.quadrantInner(handle, .root, false, false);
+        }
+
+        fn quadrantInner(
+            self: *const Self,
+            target: Node.Handle,
+            current: Node.Handle,
+            seen_horizontal: bool,
+            seen_vertical: bool,
+        ) ?Node.Handle {
+            return switch (self.nodes[current.idx()]) {
+                .leaf => null,
+                .split => |s| {
+                    const child = if (self.containsHandle(s.left, target))
+                        s.left
+                    else if (self.containsHandle(s.right, target))
+                        s.right
+                    else
+                        return null;
+
+                    const new_seen_horizontal = seen_horizontal or s.layout == .horizontal;
+                    const new_seen_vertical = seen_vertical or s.layout == .vertical;
+                    if (new_seen_horizontal and new_seen_vertical and
+                        !(seen_horizontal and seen_vertical))
+                    {
+                        return child;
+                    }
+
+                    return self.quadrantInner(
+                        target,
+                        child,
+                        new_seen_horizontal,
+                        new_seen_vertical,
+                    );
+                },
+            };
+        }
+
+        fn containsHandle(
+            self: *const Self,
+            current: Node.Handle,
+            target: Node.Handle,
+        ) bool {
+            if (current == target) return true;
+            return switch (self.nodes[current.idx()]) {
+                .leaf => false,
+                .split => |s| self.containsHandle(s.left, target) or
+                    self.containsHandle(s.right, target),
+            };
         }
 
         pub const Goto = union(enum) {
@@ -256,7 +352,60 @@ pub fn SplitTree(comptime V: type) type {
             /// based on the nearest surface in the given direction visually
             /// as the surfaces are laid out on a 2D grid.
             spatial: Spatial.Direction,
+
+            /// Move to the nearest surface in the adjacent quadrant.
+            quadrant: Spatial.Direction,
         };
+
+        /// Returns the nearest leaf in the adjacent quadrant. Panes within
+        /// the current quadrant are skipped entirely.
+        pub fn gotoQuadrant(
+            self: *const Self,
+            alloc: Allocator,
+            from: Node.Handle,
+            direction: Spatial.Direction,
+        ) Allocator.Error!?Node.Handle {
+            const source_quadrant = self.quadrant(from) orelse return null;
+
+            var sp = try self.spatial(alloc);
+            defer sp.deinit(alloc);
+
+            const source = sp.slots[source_quadrant.idx()];
+            var target: ?struct {
+                handle: Node.Handle,
+                distance: f16,
+            } = null;
+
+            for (sp.slots, 0..) |slot, idx| {
+                const handle: Node.Handle = @enumFromInt(idx);
+                const candidate_quadrant = self.quadrant(handle) orelse continue;
+                if (candidate_quadrant != handle) continue;
+
+                if (!switch (direction) {
+                    .left => slot.maxX() <= source.x,
+                    .right => slot.x >= source.maxX(),
+                    .up => slot.maxY() <= source.y,
+                    .down => slot.y >= source.maxY(),
+                }) continue;
+
+                const dx = slot.x - source.x;
+                const dy = slot.y - source.y;
+                const distance = @sqrt(dx * dx + dy * dy);
+                if (target) |current| {
+                    if (distance >= current.distance) continue;
+                }
+                target = .{ .handle = handle, .distance = distance };
+            }
+
+            const target_quadrant = (target orelse return null).handle;
+            return self.nearest(
+                sp,
+                target_quadrant,
+                from,
+                direction,
+                sp.slots[from.idx()],
+            );
+        }
 
         /// Goto a view from a certain point in the split tree. Returns null
         /// if the direction results in no visitable view.
@@ -279,6 +428,34 @@ pub fn SplitTree(comptime V: type) type {
                     defer sp.deinit(alloc);
                     break :spatial self.nearestWrapped(sp, from, d);
                 },
+                .quadrant => |d| self.gotoQuadrant(alloc, from, d),
+            };
+        }
+
+        /// Goto a view from a certain point, constrained to a subtree. Returns
+        /// null if the direction results in no visitable view within the
+        /// subtree.
+        pub fn gotoBounded(
+            self: *const Self,
+            alloc: Allocator,
+            root: Node.Handle,
+            from: Node.Handle,
+            to: Goto,
+        ) Allocator.Error!?Node.Handle {
+            assert(self.containsHandle(root, from));
+
+            return switch (to) {
+                .previous => self.previousBounded(root, from),
+                .next => self.nextBounded(root, from),
+                .previous_wrapped => self.previousBounded(root, from) orelse self.deepest(.right, root),
+                .next_wrapped => self.nextBounded(root, from) orelse self.deepest(.left, root),
+                .spatial => |d| spatial: {
+                    // Get our spatial representation.
+                    var sp = try self.spatial(alloc);
+                    defer sp.deinit(alloc);
+                    break :spatial self.nearest(sp, root, from, d, sp.slots[from.idx()]);
+                },
+                .quadrant => null,
             };
         }
 
@@ -313,7 +490,15 @@ pub fn SplitTree(comptime V: type) type {
         /// may want to change this to something that better matches a
         /// spatial view of the tree later.
         fn previous(self: *const Self, from: Node.Handle) ?Node.Handle {
-            return switch (self.previousBacktrack(from, .root)) {
+            return self.previousBounded(.root, from);
+        }
+
+        fn previousBounded(
+            self: *const Self,
+            root: Node.Handle,
+            from: Node.Handle,
+        ) ?Node.Handle {
+            return switch (self.previousBacktrack(from, root)) {
                 .result => |v| v,
                 .backtrack, .deadend => null,
             };
@@ -321,7 +506,15 @@ pub fn SplitTree(comptime V: type) type {
 
         /// Same as `previous`, but returns the next view instead.
         fn next(self: *const Self, from: Node.Handle) ?Node.Handle {
-            return switch (self.nextBacktrack(from, .root)) {
+            return self.nextBounded(.root, from);
+        }
+
+        fn nextBounded(
+            self: *const Self,
+            root: Node.Handle,
+            from: Node.Handle,
+        ) ?Node.Handle {
+            return switch (self.nextBacktrack(from, root)) {
                 .result => |v| v,
                 .backtrack, .deadend => null,
             };
@@ -402,6 +595,7 @@ pub fn SplitTree(comptime V: type) type {
         fn nearest(
             self: *const Self,
             sp: Spatial,
+            root: Node.Handle,
             from: Node.Handle,
             direction: Spatial.Direction,
             target: Spatial.Slot,
@@ -413,6 +607,7 @@ pub fn SplitTree(comptime V: type) type {
             for (sp.slots, 0..) |slot, handle| {
                 // Never match ourself
                 if (handle == from.idx()) continue;
+                if (!self.containsHandle(root, @enumFromInt(handle))) continue;
 
                 // Only match leaves
                 switch (self.nodes[handle]) {
@@ -458,6 +653,7 @@ pub fn SplitTree(comptime V: type) type {
             var target = sp.slots[from.idx()];
             if (self.nearest(
                 sp,
+                .root,
                 from,
                 direction,
                 target,
@@ -479,6 +675,7 @@ pub fn SplitTree(comptime V: type) type {
 
             return self.nearest(
                 sp,
+                .root,
                 from,
                 direction,
                 target,
@@ -572,11 +769,17 @@ pub fn SplitTree(comptime V: type) type {
             // We need to increase the reference count of all the nodes.
             try refNodes(gpa, nodes);
 
+            const zoomed, const quadrant_zoomed = zoom: {
+                const quadrant_handle = self.quadrant_zoomed orelse break :zoom .{ null, null };
+                if (!self.containsHandle(quadrant_handle, at)) break :zoom .{ null, null };
+                break :zoom .{ quadrant_handle, quadrant_handle };
+            };
+
             return .{
                 .arena = arena,
                 .nodes = nodes,
-                // Splitting always resets zoom state.
-                .zoomed = null,
+                .zoomed = zoomed,
+                .quadrant_zoomed = quadrant_zoomed,
             };
         }
 
@@ -608,6 +811,7 @@ pub fn SplitTree(comptime V: type) type {
                 .arena = arena,
                 .nodes = nodes,
                 .zoomed = null,
+                .quadrant_zoomed = null,
             };
 
             // Traverse the tree and copy all our nodes into place.
@@ -617,6 +821,8 @@ pub fn SplitTree(comptime V: type) type {
                 .root,
                 at,
             ) != 0);
+
+            if (result.quadrant_zoomed) |quadrant_handle| result.zoomed = quadrant_handle;
 
             // Increase the reference count of all the nodes.
             try refNodes(gpa, nodes);
@@ -638,6 +844,12 @@ pub fn SplitTree(comptime V: type) type {
                 if (v == current) {
                     assert(new.zoomed == null);
                     new.zoomed = @enumFromInt(new_offset);
+                }
+            }
+            if (old.quadrant_zoomed) |v| {
+                if (v == current) {
+                    assert(new.quadrant_zoomed == null);
+                    new.quadrant_zoomed = @enumFromInt(new_offset);
                 }
             }
 
@@ -803,6 +1015,7 @@ pub fn SplitTree(comptime V: type) type {
                 .arena = arena,
                 .nodes = nodes,
                 .zoomed = self.zoomed,
+                .quadrant_zoomed = self.quadrant_zoomed,
             };
         }
 
@@ -1391,6 +1604,15 @@ const TestView = struct {
         return self.label;
     }
 };
+
+fn testHandleForLabel(tree: *const TestTree, label: []const u8) !TestTree.Node.Handle {
+    var it = tree.iterator();
+    while (it.next()) |entry| {
+        if (std.mem.eql(u8, entry.view.label, label)) return entry.handle;
+    }
+
+    return error.NotFound;
+}
 
 test "SplitTree: isSplit" {
     const testing = std.testing;
@@ -2449,6 +2671,269 @@ test "SplitTree: split resets zoom" {
             \\
         );
     }
+}
+
+test "SplitTree: quadrant zoom" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var v1: TestTree.View = .{ .label = "A" };
+    var t1: TestTree = try .init(alloc, &v1);
+    defer t1.deinit();
+    var v2: TestTree.View = .{ .label = "B" };
+    var t2: TestTree = try .init(alloc, &v2);
+    defer t2.deinit();
+    var v3: TestTree.View = .{ .label = "C" };
+    var t3: TestTree = try .init(alloc, &v3);
+    defer t3.deinit();
+    var v4: TestTree.View = .{ .label = "D" };
+    var t4: TestTree = try .init(alloc, &v4);
+    defer t4.deinit();
+    var v5: TestTree.View = .{ .label = "E" };
+    var t5: TestTree = try .init(alloc, &v5);
+    defer t5.deinit();
+
+    var ab = try t1.split(alloc, .root, .right, 0.5, &t2);
+    defer ab.deinit();
+    var abc = try ab.split(alloc, try testHandleForLabel(&ab, "A"), .down, 0.5, &t3);
+    defer abc.deinit();
+    var abcd = try abc.split(alloc, try testHandleForLabel(&abc, "B"), .down, 0.5, &t4);
+    defer abcd.deinit();
+    var tree = try abcd.split(alloc, try testHandleForLabel(&abcd, "A"), .right, 0.5, &t5);
+    defer tree.deinit();
+
+    const a = try testHandleForLabel(&tree, "A");
+    const quadrant = tree.quadrant(a) orelse return error.NotFound;
+    try testing.expectEqual(quadrant, tree.quadrant(try testHandleForLabel(&tree, "E")).?);
+    try testing.expect(quadrant != a);
+
+    try testing.expect(tree.toggleQuadrantZoom(a));
+    try testing.expectEqual(quadrant, tree.zoomed.?);
+    try testing.expectEqual(quadrant, tree.quadrant_zoomed.?);
+
+    var clone = try tree.clone(alloc);
+    defer clone.deinit();
+    try testing.expectEqual(quadrant, clone.zoomed.?);
+    try testing.expectEqual(quadrant, clone.quadrant_zoomed.?);
+
+    tree.toggleSplitZoom(a);
+    try testing.expectEqual(a, tree.zoomed.?);
+    try testing.expectEqual(quadrant, tree.quadrant_zoomed.?);
+
+    tree.toggleSplitZoom(a);
+    try testing.expectEqual(quadrant, tree.zoomed.?);
+    try testing.expectEqual(quadrant, tree.quadrant_zoomed.?);
+
+    try testing.expect(tree.toggleQuadrantZoom(a));
+    try testing.expect(tree.zoomed == null);
+    try testing.expect(tree.quadrant_zoomed == null);
+}
+
+test "SplitTree: split inside quadrant zoom keeps quadrant zoom" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var v1: TestTree.View = .{ .label = "A" };
+    var t1: TestTree = try .init(alloc, &v1);
+    defer t1.deinit();
+    var v2: TestTree.View = .{ .label = "B" };
+    var t2: TestTree = try .init(alloc, &v2);
+    defer t2.deinit();
+    var v3: TestTree.View = .{ .label = "C" };
+    var t3: TestTree = try .init(alloc, &v3);
+    defer t3.deinit();
+    var v4: TestTree.View = .{ .label = "D" };
+    var t4: TestTree = try .init(alloc, &v4);
+    defer t4.deinit();
+    var v5: TestTree.View = .{ .label = "E" };
+    var t5: TestTree = try .init(alloc, &v5);
+    defer t5.deinit();
+    var v6: TestTree.View = .{ .label = "F" };
+    var t6: TestTree = try .init(alloc, &v6);
+    defer t6.deinit();
+
+    var ab = try t1.split(alloc, .root, .right, 0.5, &t2);
+    defer ab.deinit();
+    var abc = try ab.split(alloc, try testHandleForLabel(&ab, "A"), .down, 0.5, &t3);
+    defer abc.deinit();
+    var abcd = try abc.split(alloc, try testHandleForLabel(&abc, "B"), .down, 0.5, &t4);
+    defer abcd.deinit();
+    var tree = try abcd.split(alloc, try testHandleForLabel(&abcd, "A"), .right, 0.5, &t5);
+    defer tree.deinit();
+
+    const a = try testHandleForLabel(&tree, "A");
+    try testing.expect(tree.toggleQuadrantZoom(a));
+    tree.toggleSplitZoom(a);
+    try testing.expectEqual(a, tree.zoomed.?);
+
+    var split = try tree.split(alloc, a, .down, 0.5, &t6);
+    defer split.deinit();
+
+    const new_a = try testHandleForLabel(&split, "A");
+    const new_quadrant = split.quadrant(new_a) orelse return error.NotFound;
+    try testing.expectEqual(new_quadrant, split.zoomed.?);
+    try testing.expectEqual(new_quadrant, split.quadrant_zoomed.?);
+    try testing.expectEqual(new_quadrant, split.quadrant(try testHandleForLabel(&split, "F")).?);
+}
+
+test "SplitTree: remove inside quadrant zoom keeps remaining pane until last pane closes" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var v1: TestTree.View = .{ .label = "A" };
+    var t1: TestTree = try .init(alloc, &v1);
+    defer t1.deinit();
+    var v2: TestTree.View = .{ .label = "B" };
+    var t2: TestTree = try .init(alloc, &v2);
+    defer t2.deinit();
+    var v3: TestTree.View = .{ .label = "C" };
+    var t3: TestTree = try .init(alloc, &v3);
+    defer t3.deinit();
+    var v4: TestTree.View = .{ .label = "D" };
+    var t4: TestTree = try .init(alloc, &v4);
+    defer t4.deinit();
+    var v5: TestTree.View = .{ .label = "E" };
+    var t5: TestTree = try .init(alloc, &v5);
+    defer t5.deinit();
+
+    var ab = try t1.split(alloc, .root, .right, 0.5, &t2);
+    defer ab.deinit();
+    var abc = try ab.split(alloc, try testHandleForLabel(&ab, "A"), .down, 0.5, &t3);
+    defer abc.deinit();
+    var abcd = try abc.split(alloc, try testHandleForLabel(&abc, "B"), .down, 0.5, &t4);
+    defer abcd.deinit();
+    var tree = try abcd.split(alloc, try testHandleForLabel(&abcd, "A"), .right, 0.5, &t5);
+    defer tree.deinit();
+
+    const a = try testHandleForLabel(&tree, "A");
+    try testing.expect(tree.toggleQuadrantZoom(a));
+
+    var removed = try tree.remove(alloc, a);
+    defer removed.deinit();
+    const e = try testHandleForLabel(&removed, "E");
+    try testing.expectEqual(e, removed.zoomed.?);
+    try testing.expectEqual(e, removed.quadrant_zoomed.?);
+
+    var unzoomed = try removed.remove(alloc, e);
+    defer unzoomed.deinit();
+    try testing.expect(unzoomed.zoomed == null);
+    try testing.expect(unzoomed.quadrant_zoomed == null);
+}
+
+test "SplitTree: quadrant bounded goto" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var v1: TestTree.View = .{ .label = "A" };
+    var t1: TestTree = try .init(alloc, &v1);
+    defer t1.deinit();
+    var v2: TestTree.View = .{ .label = "B" };
+    var t2: TestTree = try .init(alloc, &v2);
+    defer t2.deinit();
+    var v3: TestTree.View = .{ .label = "C" };
+    var t3: TestTree = try .init(alloc, &v3);
+    defer t3.deinit();
+    var v4: TestTree.View = .{ .label = "D" };
+    var t4: TestTree = try .init(alloc, &v4);
+    defer t4.deinit();
+    var v5: TestTree.View = .{ .label = "E" };
+    var t5: TestTree = try .init(alloc, &v5);
+    defer t5.deinit();
+
+    var ab = try t1.split(alloc, .root, .right, 0.5, &t2);
+    defer ab.deinit();
+    var abc = try ab.split(alloc, try testHandleForLabel(&ab, "A"), .down, 0.5, &t3);
+    defer abc.deinit();
+    var abcd = try abc.split(alloc, try testHandleForLabel(&abc, "B"), .down, 0.5, &t4);
+    defer abcd.deinit();
+    var tree = try abcd.split(alloc, try testHandleForLabel(&abcd, "A"), .right, 0.5, &t5);
+    defer tree.deinit();
+
+    const a = try testHandleForLabel(&tree, "A");
+    const e = try testHandleForLabel(&tree, "E");
+    const quadrant = tree.quadrant(a) orelse return error.NotFound;
+
+    try testing.expectEqual(e, (try tree.gotoBounded(
+        alloc,
+        quadrant,
+        a,
+        .{ .spatial = .right },
+    )).?);
+    try testing.expect(try tree.gotoBounded(
+        alloc,
+        quadrant,
+        a,
+        .{ .spatial = .down },
+    ) == null);
+    try testing.expectEqual(a, (try tree.gotoBounded(
+        alloc,
+        quadrant,
+        e,
+        .next_wrapped,
+    )).?);
+}
+
+test "SplitTree: quadrant goto skips nested panes" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var v1: TestTree.View = .{ .label = "A" };
+    var t1: TestTree = try .init(alloc, &v1);
+    defer t1.deinit();
+    var v2: TestTree.View = .{ .label = "B" };
+    var t2: TestTree = try .init(alloc, &v2);
+    defer t2.deinit();
+    var v3: TestTree.View = .{ .label = "C" };
+    var t3: TestTree = try .init(alloc, &v3);
+    defer t3.deinit();
+    var v4: TestTree.View = .{ .label = "D" };
+    var t4: TestTree = try .init(alloc, &v4);
+    defer t4.deinit();
+    var v5: TestTree.View = .{ .label = "E" };
+    var t5: TestTree = try .init(alloc, &v5);
+    defer t5.deinit();
+
+    var ab = try t1.split(alloc, .root, .right, 0.5, &t2);
+    defer ab.deinit();
+    var abc = try ab.split(alloc, try testHandleForLabel(&ab, "A"), .down, 0.5, &t3);
+    defer abc.deinit();
+    var abcd = try abc.split(alloc, try testHandleForLabel(&abc, "B"), .down, 0.5, &t4);
+    defer abcd.deinit();
+    var tree = try abcd.split(alloc, try testHandleForLabel(&abcd, "A"), .right, 0.5, &t5);
+    defer tree.deinit();
+
+    const a = try testHandleForLabel(&tree, "A");
+    const b = try testHandleForLabel(&tree, "B");
+    const c = try testHandleForLabel(&tree, "C");
+    const e = try testHandleForLabel(&tree, "E");
+
+    try testing.expectEqual(e, (try tree.goto(alloc, a, .{ .spatial = .right })).?);
+    try testing.expectEqual(b, (try tree.goto(alloc, a, .{ .quadrant = .right })).?);
+    try testing.expectEqual(e, (try tree.goto(alloc, b, .{ .quadrant = .left })).?);
+    try testing.expectEqual(c, (try tree.goto(alloc, a, .{ .quadrant = .down })).?);
+    try testing.expectEqual(a, (try tree.goto(alloc, c, .{ .quadrant = .up })).?);
+    try testing.expect(try tree.goto(alloc, b, .{ .quadrant = .right }) == null);
+}
+
+test "SplitTree: quadrant zoom requires two axes" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var v1: TestTree.View = .{ .label = "A" };
+    var t1: TestTree = try .init(alloc, &v1);
+    defer t1.deinit();
+    var v2: TestTree.View = .{ .label = "B" };
+    var t2: TestTree = try .init(alloc, &v2);
+    defer t2.deinit();
+
+    var tree = try t1.split(alloc, .root, .right, 0.5, &t2);
+    defer tree.deinit();
+
+    const a = try testHandleForLabel(&tree, "A");
+    try testing.expect(!tree.toggleQuadrantZoom(a));
+    try testing.expect(tree.zoomed == null);
+    try testing.expect(tree.quadrant_zoomed == null);
+    try testing.expect(try tree.goto(alloc, a, .{ .quadrant = .right }) == null);
 }
 
 test "SplitTree: remove and zoom" {

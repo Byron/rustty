@@ -525,6 +525,26 @@ fn actionCommands(action: Action.Key) []const Command {
                 .title = i18n.N_("Focus Split: Down"),
                 .description = i18n.N_("Focus the split below, if it exists."),
             },
+            .{
+                .action = .{ .goto_split = .quadrant_left },
+                .title = "Focus Quadrant: Left",
+                .description = "Focus the nearest split in the quadrant to the left, if it exists.",
+            },
+            .{
+                .action = .{ .goto_split = .quadrant_right },
+                .title = "Focus Quadrant: Right",
+                .description = "Focus the nearest split in the quadrant to the right, if it exists.",
+            },
+            .{
+                .action = .{ .goto_split = .quadrant_up },
+                .title = "Focus Quadrant: Up",
+                .description = "Focus the nearest split in the quadrant above, if it exists.",
+            },
+            .{
+                .action = .{ .goto_split = .quadrant_down },
+                .title = "Focus Quadrant: Down",
+                .description = "Focus the nearest split in the quadrant below, if it exists.",
+            },
         },
 
         .goto_window => comptime &.{
@@ -544,6 +564,12 @@ fn actionCommands(action: Action.Key) []const Command {
             .action = .toggle_split_zoom,
             .title = i18n.N_("Toggle Split Zoom"),
             .description = i18n.N_("Toggle the zoom state of the current split."),
+        }},
+
+        .toggle_quadrant_zoom => comptime &.{.{
+            .action = .toggle_quadrant_zoom,
+            .title = "Toggle Quadrant Zoom",
+            .description = "Toggle the zoom state of the current quadrant.",
         }},
 
         .toggle_readonly => comptime &.{.{

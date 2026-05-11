@@ -163,6 +163,17 @@ struct ConfigTests {
         #expect(config.backgroundOpacity == 0.5)
     }
 
+    @Test(arguments: [
+        ("", 0.5),
+        ("quadrant-peek-opacity = 0.25", 0.25),
+        ("quadrant-peek-opacity = -1", 0),
+        ("quadrant-peek-opacity = 2", 1),
+    ])
+    func quadrantPeekOpacity(configSource: String, expected: Double) throws {
+        let config = try TemporaryConfig(configSource)
+        #expect(config.quadrantPeekOpacity == expected)
+    }
+
     @Test func windowPositionDefaultsToNil() throws {
         let config = try TemporaryConfig("")
         #expect(config.windowPositionX == nil)
@@ -245,5 +256,29 @@ struct ConfigTests {
         #expect(newWindow == .init("n", modifiers: [.command]))
         let gotoToNextSplit = try #require(config.keyboardShortcut(for: "goto_split:next"))
         #expect(gotoToNextSplit == .init("]", modifiers: [.command]))
+    }
+
+    @MainActor @Test func quadrantNavigationModifiersRequireTwoKeys() throws {
+        let config = try TemporaryConfig("""
+        keybind=cmd+ctrl+h=goto_split:quadrant_left
+        keybind=cmd+j=goto_split:quadrant_down
+        keybind=cmd+ctrl+k=goto_split:quadrant_up
+        """)
+
+        let modifiers = config.quadrantNavigationModifierFlags
+        #expect(modifiers.count == 1)
+        #expect(modifiers.allSatisfy { $0 == [.command, .control] })
+    }
+
+    @MainActor @Test func quadrantNavigationModifiersReloadWithConfig() throws {
+        let config = try TemporaryConfig("""
+        keybind=cmd+ctrl+h=goto_split:quadrant_left
+        """)
+        #expect(config.quadrantNavigationModifierFlags.contains([.command, .control]))
+
+        try config.reload("""
+        keybind=cmd+option+h=goto_split:quadrant_left
+        """)
+        #expect(config.quadrantNavigationModifierFlags == [[.command, .option]])
     }
 }

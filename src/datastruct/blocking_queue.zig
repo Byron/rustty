@@ -46,7 +46,7 @@ pub fn BlockingQueue(
             /// Fail instantly (non-blocking).
             instant: void,
 
-            /// Run forever or until interrupted
+            /// Wait until space is available.
             forever: void,
 
             /// Nanoseconds
@@ -103,7 +103,6 @@ pub fn BlockingQueue(
             self.mutex.lockUncancelable(io);
             defer self.mutex.unlock(io);
 
-            // The
             if (self.full()) {
                 switch (timeout) {
                     // If we're not waiting, then we failed to write.
@@ -112,7 +111,11 @@ pub fn BlockingQueue(
                     .forever => {
                         self.not_full_waiters += 1;
                         defer self.not_full_waiters -= 1;
-                        self.cond_not_full.waitUncancelable(io, &self.mutex);
+                        // Another producer can take the freed slot before
+                        // we reacquire the mutex. Keep waiting in that case.
+                        while (self.full()) {
+                            self.cond_not_full.waitUncancelable(io, &self.mutex);
+                        }
                     },
 
                     .ns => |ns| {
@@ -258,4 +261,38 @@ test "timed push" {
 
     // Timed push should fail
     try testing.expectEqual(@as(Q.Size, 0), q.push(io, 2, .{ .ns = 1000 }));
+}
+
+test "blocking push retries when another producer takes the freed slot" {
+    const testing = std.testing;
+    const Q = BlockingQueue(u64, 1);
+    const Waiter = struct {
+        queue: *Q,
+        waits: usize = 0,
+
+        fn wait(userdata: ?*anyopaque, ptr: *const u32, _: u32) void {
+            const self: *@This() = @ptrCast(@alignCast(userdata.?));
+            std.debug.assert(ptr == &self.queue.cond_not_full.epoch.raw);
+            self.waits += 1;
+
+            // The condition has released the mutex. Free a slot and notify
+            // the writer, but let a competing producer fill it the first time.
+            std.debug.assert(self.queue.pop(testing.io).? == self.waits);
+            if (self.waits == 1) {
+                std.debug.assert(self.queue.push(testing.io, 2, .instant) == 1);
+            }
+        }
+    };
+
+    var queue: Q = .{};
+    var waiter: Waiter = .{ .queue = &queue };
+    var vtable = std.Io.failing.vtable.*;
+    vtable.futexWaitUncancelable = Waiter.wait;
+    const io: std.Io = .{ .userdata = &waiter, .vtable = &vtable };
+
+    try testing.expectEqual(@as(Q.Size, 1), queue.push(testing.io, 1, .instant));
+    try testing.expectEqual(@as(Q.Size, 1), queue.push(io, 3, .forever));
+    try testing.expectEqual(@as(usize, 2), waiter.waits);
+    try testing.expectEqual(@as(?u64, 3), queue.pop(testing.io));
+    try testing.expectEqual(@as(usize, 0), queue.not_full_waiters);
 }

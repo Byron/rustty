@@ -55,6 +55,7 @@ class AppDelegate: NSObject,
     @IBOutlet private var menuToggleFullScreen: NSMenuItem?
     @IBOutlet private var menuBringAllToFront: NSMenuItem?
     @IBOutlet private var menuZoomSplit: NSMenuItem?
+    @IBOutlet private var menuZoomQuadrant: NSMenuItem?
     @IBOutlet private var menuPreviousSplit: NSMenuItem?
     @IBOutlet private var menuNextSplit: NSMenuItem?
     @IBOutlet private var menuSelectSplitAbove: NSMenuItem?
@@ -921,13 +922,7 @@ class AppDelegate: NSObject,
     // MARK: - GhosttyAppDelegate
 
     func findSurface(forUUID uuid: UUID) -> Ghostty.SurfaceView? {
-        for c in TerminalController.all {
-            for view in c.surfaceTree where view.id == uuid {
-                return view
-            }
-        }
-
-        return nil
+        ghosttySurface(id: uuid)
     }
 
     // MARK: - Global State
@@ -1138,6 +1133,7 @@ extension AppDelegate {
         self.menuToggleFullScreen?.setImageIfDesired(systemSymbolName: "square.arrowtriangle.4.outward")
         self.menuToggleVisibility?.setImageIfDesired(systemSymbolName: "eye")
         self.menuZoomSplit?.setImageIfDesired(systemSymbolName: "arrow.up.left.and.arrow.down.right")
+        self.menuZoomQuadrant?.setImageIfDesired(systemSymbolName: "inset.filled.topleft.topright.bottomleft.bottomright.rectangle")
         self.menuPreviousSplit?.setImageIfDesired(systemSymbolName: "chevron.backward.2")
         self.menuNextSplit?.setImageIfDesired(systemSymbolName: "chevron.forward.2")
         self.menuEqualizeSplits?.setImageIfDesired(systemSymbolName: "inset.filled.topleft.topright.bottomleft.bottomright.rectangle")
@@ -1189,6 +1185,7 @@ extension AppDelegate {
         syncMenuShortcut(config, action: "navigate_search:previous", menuItem: self.menuFindPrevious)
 
         syncMenuShortcut(config, action: "toggle_split_zoom", menuItem: self.menuZoomSplit)
+        syncMenuShortcut(config, action: "toggle_quadrant_zoom", menuItem: self.menuZoomQuadrant)
         syncMenuShortcut(config, action: "goto_split:previous", menuItem: self.menuPreviousSplit)
         syncMenuShortcut(config, action: "goto_split:next", menuItem: self.menuNextSplit)
         syncMenuShortcut(config, action: "goto_split:up", menuItem: self.menuSelectSplitAbove)

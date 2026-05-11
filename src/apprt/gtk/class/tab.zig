@@ -19,6 +19,23 @@ const TitleDialog = @import("title_dialog.zig").TitleDialog;
 
 const log = std.log.scoped(.gtk_ghostty_window);
 
+fn writeTitle(
+    writer: *std.Io.Writer,
+    tab_override: ?[]const u8,
+    terminal_title: []const u8,
+) !void {
+    if (tab_override) |tab| {
+        try writer.writeAll(tab);
+        if (terminal_title.len > 0) {
+            try writer.writeAll(" - ");
+            try writer.writeAll(terminal_title);
+        }
+        return;
+    }
+
+    try writer.writeAll(terminal_title);
+}
+
 pub const Tab = extern struct {
     const Self = @This();
     parent_instance: Parent,
@@ -482,8 +499,8 @@ pub const Tab = extern struct {
     fn closureComputedTitle(
         _: *Self,
         config_: ?*Config,
-        terminal_: ?[*:0]const u8,
-        surface_override_: ?[*:0]const u8,
+        split_tree: *SplitTree,
+        _: u64,
         tab_override_: ?[*:0]const u8,
         zoomed_: c_int,
         bell_ringing_: c_int,
@@ -492,23 +509,7 @@ pub const Tab = extern struct {
         const zoomed = zoomed_ != 0;
         const bell_ringing = bell_ringing_ != 0;
 
-        // Our plain title is the manually tab overridden title if it exists,
-        // otherwise the overridden title if it exists, otherwise
-        // the terminal title if it exists, otherwise a default string.
-        const plain = plain: {
-            const default = "Ghostty";
-            const config_title: ?[*:0]const u8 = title: {
-                const config = config_ orelse break :title null;
-                break :title config.get().title orelse null;
-            };
-
-            const plain = tab_override_ orelse
-                surface_override_ orelse
-                terminal_ orelse
-                config_title orelse
-                break :plain default;
-            break :plain std.mem.span(plain);
-        };
+        const tab_override: ?[]const u8 = if (tab_override_) |v| std.mem.span(v) else null;
 
         // We don't need a config in every case, but if we don't have a config
         // let's just assume something went terribly wrong and use our
@@ -516,7 +517,7 @@ pub const Tab = extern struct {
         // in every case for something so unlikely.
         const config = if (config_) |v| v.get() else {
             log.warn("config unavailable for computed title, likely bug", .{});
-            return glib.ext.dupeZ(u8, plain);
+            return glib.ext.dupeZ(u8, "Ghostty");
         };
 
         // Use an allocator to build up our string as we write it.
@@ -533,7 +534,32 @@ pub const Tab = extern struct {
             buf.writer.writeAll("🔍 ") catch {};
         }
 
-        buf.writer.writeAll(plain) catch return glib.ext.dupeZ(u8, plain);
+        var titles: std.Io.Writer.Allocating = .init(Application.default().allocator());
+        defer titles.deinit();
+        const active = split_tree.getActiveSurface();
+        var count: usize = 0;
+        if (active) |surface| if (surface.getCommandRunning()) {
+            titles.writer.writeAll(surface.getEffectiveTitle() orelse config.title orelse "Ghostty") catch {};
+            count += 1;
+        };
+        if (split_tree.getTree()) |tree| {
+            var it = tree.iterator();
+            while (it.next()) |entry| {
+                const surface = entry.view;
+                if (surface == active or !surface.getCommandRunning()) continue;
+                if (count > 0) titles.writer.writeAll(", ") catch {};
+                titles.writer.writeAll(surface.getEffectiveTitle() orelse config.title orelse "Ghostty") catch {};
+                count += 1;
+            }
+        }
+        if (count == 0) {
+            titles.writer.writeAll(if (active) |surface|
+                surface.getEffectiveTitle() orelse config.title orelse "Ghostty"
+            else
+                config.title orelse "Ghostty") catch {};
+        }
+
+        writeTitle(&buf.writer, tab_override, titles.written()) catch return glib.ext.dupeZ(u8, titles.written());
         return glib.ext.dupeZ(u8, buf.written());
     }
 
@@ -592,3 +618,27 @@ pub const Tab = extern struct {
         pub const bindTemplateCallback = C.Class.bindTemplateCallback;
     };
 };
+
+test "writeTitle composes tab override with terminal title" {
+    var buf: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer buf.deinit();
+
+    try writeTitle(&buf.writer, "Tab", "Terminal");
+    try std.testing.expectEqualStrings("Tab - Terminal", buf.written());
+}
+
+test "writeTitle uses tab override when terminal title is empty" {
+    var buf: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer buf.deinit();
+
+    try writeTitle(&buf.writer, "Tab", "");
+    try std.testing.expectEqualStrings("Tab", buf.written());
+}
+
+test "writeTitle uses terminal title without tab override" {
+    var buf: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer buf.deinit();
+
+    try writeTitle(&buf.writer, null, "Terminal");
+    try std.testing.expectEqualStrings("Terminal", buf.written());
+}

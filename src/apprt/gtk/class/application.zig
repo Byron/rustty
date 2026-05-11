@@ -785,7 +785,9 @@ pub const Application = extern struct {
             .toggle_window_decorations => return Action.toggleWindowDecorations(target),
             .toggle_command_palette => return Action.toggleCommandPalette(target),
             .toggle_split_zoom => return Action.toggleSplitZoom(target),
+            .toggle_quadrant_zoom => return Action.toggleQuadrantZoom(target),
             .show_on_screen_keyboard => return Action.showOnScreenKeyboard(target),
+            .command_started => return Action.commandStarted(target),
             .command_finished => return Action.commandFinished(target, value),
             .readonly => return Action.setReadonly(target, value),
 
@@ -2442,6 +2444,10 @@ const Action = struct {
                     .down => .{ .spatial = .down },
                     .left => .{ .spatial = .left },
                     .right => .{ .spatial = .right },
+                    .quadrant_up => .{ .quadrant = .up },
+                    .quadrant_down => .{ .quadrant = .down },
+                    .quadrant_left => .{ .quadrant = .left },
+                    .quadrant_right => .{ .quadrant = .right },
                 });
             },
         }
@@ -3222,6 +3228,40 @@ const Action = struct {
         }
     }
 
+    pub fn toggleQuadrantZoom(target: apprt.Target) bool {
+        switch (target) {
+            .app => {
+                log.warn("toggle_quadrant_zoom to app is unexpected", .{});
+                return false;
+            },
+
+            .surface => |core| {
+                const surface = core.rt_surface.surface;
+                const tree = ext.getAncestor(
+                    SplitTree,
+                    surface.as(gtk.Widget),
+                ) orelse {
+                    log.warn("surface is not in a split tree, ignoring toggle_quadrant_zoom", .{});
+                    return false;
+                };
+
+                if (!tree.getIsSplit()) return false;
+                const tree_data = tree.getTree() orelse return false;
+                const active = active: {
+                    var it = tree_data.iterator();
+                    while (it.next()) |entry| {
+                        if (entry.view == surface) break :active entry.handle;
+                    }
+
+                    return false;
+                };
+                if (tree_data.quadrant(active) == null) return false;
+
+                return surface.as(gtk.Widget).activateAction("split-tree.zoom-quadrant", null) != 0;
+            },
+        }
+    }
+
     pub fn showOnScreenKeyboard(target: apprt.Target) bool {
         switch (target) {
             .app => {
@@ -3326,6 +3366,13 @@ const Action = struct {
             .surface => |surface| {
                 return surface.rt_surface.gobj().commandFinished(value);
             },
+        }
+    }
+
+    pub fn commandStarted(target: apprt.Target) bool {
+        switch (target) {
+            .app => return false,
+            .surface => |surface| return surface.rt_surface.gobj().commandStarted(),
         }
     }
 

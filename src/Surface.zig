@@ -1145,6 +1145,13 @@ pub fn handleMessage(self: *Surface, msg: Message) !void {
 
         .start_command => {
             self.command_timer = .now(global.io(), .awake);
+            _ = self.rt_app.performAction(
+                .{ .surface = self },
+                .command_started,
+                {},
+            ) catch |err| {
+                log.warn("apprt failed to notify command start={}", .{err});
+            };
         },
 
         .stop_command => |v| timer: {
@@ -5400,6 +5407,12 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
         .toggle_split_zoom => return try self.rt_app.performAction(
             .{ .surface = self },
             .toggle_split_zoom,
+            {},
+        ),
+
+        .toggle_quadrant_zoom => return try self.rt_app.performAction(
+            .{ .surface = self },
+            .toggle_quadrant_zoom,
             {},
         ),
 

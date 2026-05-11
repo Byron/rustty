@@ -37,6 +37,85 @@ class BaseTerminalController: NSWindowController,
     private static let surfaceControllers =
         NSMapTable<Ghostty.SurfaceView, BaseTerminalController>.weakToWeakObjects()
 
+    struct ActivityTransition {
+        private var wasActive: Bool?
+
+        mutating func stopped(_ isActive: Bool) -> Bool {
+            defer { wasActive = isActive }
+            return wasActive == true && !isActive
+        }
+    }
+
+    struct QuadrantSwitch<T> {
+        let modifiers: NSEvent.ModifierFlags
+        private(set) var target: T
+        let fullZoomTarget: T?
+        private var navigationKeysUsed = false
+
+        var showsContrastOverlay: Bool { !navigationKeysUsed }
+
+        init(
+            modifiers: NSEvent.ModifierFlags,
+            target: T,
+            fullZoomTarget: T? = nil
+        ) {
+            self.modifiers = modifiers
+            self.target = target
+            self.fullZoomTarget = fullZoomTarget
+        }
+
+        mutating func updateTarget(_ target: T?) {
+            if let target { self.target = target }
+        }
+
+        mutating func markNavigationKeyUsed() {
+            navigationKeysUsed = true
+        }
+    }
+
+    static func shouldCommitQuadrantSwitch(
+        initiating: NSEvent.ModifierFlags,
+        current: NSEvent.ModifierFlags
+    ) -> Bool {
+        !current.isSuperset(of: initiating)
+    }
+
+    static func shouldHandleBlockedQuadrantNavigation(
+        hasQuadrantZoom: Bool,
+        isSwitching: Bool,
+        modifiers: NSEvent.ModifierFlags
+    ) -> Bool {
+        !modifiers.isEmpty && (hasQuadrantZoom || isSwitching)
+    }
+
+    static func shouldUnzoomAfterBlockedPanelNavigation<ViewType>(
+        _ tree: SplitTree<ViewType>
+    ) -> Bool where ViewType: NSView & Codable & Identifiable {
+        guard let zoomed = tree.zoomed else { return false }
+        guard zoomed == tree.quadrantZoomed else { return true }
+
+        if case .leaf = zoomed { return true }
+        return false
+    }
+
+    static func shouldBeginQuadrantPeek(
+        modifiers: NSEvent.ModifierFlags,
+        configured: [NSEvent.ModifierFlags],
+        hasQuadrantZoom: Bool
+    ) -> Bool {
+        hasQuadrantZoom && configured.contains(modifiers)
+    }
+
+    static func quadrantActivationTarget<ViewType>(
+        in node: SplitTree<ViewType>.Node,
+        remembered: ViewType?
+    ) -> ViewType where ViewType: NSView & Codable & Identifiable {
+        guard let remembered, node.node(view: remembered) != nil else {
+            return node.leftmostLeaf()
+        }
+        return remembered
+    }
+
     /// The app instance that this terminal view will represent.
     let ghostty: Ghostty.App
 
@@ -79,6 +158,22 @@ class BaseTerminalController: NSWindowController,
     /// Event monitor (see individual events for why)
     private var eventMonitor: Any?
 
+    /// Active keyboard-driven quadrant switch, committed on modifier release.
+    @Published private var quadrantSwitch: QuadrantSwitch<Ghostty.SurfaceView>?
+
+    var quadrantSwitchIsActive: Bool { quadrantSwitch != nil }
+    var quadrantPeekShowsOverlay: Bool { quadrantSwitch?.showsContrastOverlay ?? false }
+
+    /// The color assigned to this controller's native tab, when it has one.
+    var tabColor: TerminalTabColor {
+        (window as? TerminalWindow)?.tabColor ?? .none
+    }
+
+    /// The last focused surface in each spatial quadrant.
+    private var quadrantFocus: [
+        SplitTree<Ghostty.SurfaceView>.QuadrantPosition: Weak<Ghostty.SurfaceView>
+    ] = [:]
+
     /// The previous frame information from the window
     private var savedFrame: SavedFrame?
 
@@ -100,14 +195,32 @@ class BaseTerminalController: NSWindowController,
     /// Cancellable for clipboard confirmation requests from surfaces in this controller.
     private var clipboardConfirmationCancellable: AnyCancellable?
 
+    /// Cancellable for title and command state across all surfaces in this controller.
+    private var titleStateCancellable: AnyCancellable?
+
+    /// Cancellable for aggregate command and progress activity across all surfaces.
+    private var activityStateCancellable: AnyCancellable?
+
+    private var reportedActivityCancellable: AnyCancellable?
+
+    /// Cancellable for aggregate OSC notification attention across all surfaces.
+    private var notificationAttentionCancellable: AnyCancellable?
+
     /// An override title for the tab/window set by the user via prompt_tab_title.
-    /// When set, this takes precedence over the computed title from the terminal.
+    /// When set, this is shown alongside the computed title from the terminal.
     var titleOverride: String? {
         didSet { applyTitleToWindow() }
     }
 
-    /// The last computed title from the focused surface (without the override).
-    private var lastComputedTitle: String = "👻"
+    /// The last title from the focused surface, before applying tab overrides
+    /// or bell indicators.
+    private var lastSurfaceTitle: String = "👻"
+
+    /// Last focused surface, retained for transient nil focus during view updates.
+    private weak var lastFocusedSurface: Ghostty.SurfaceView?
+
+    /// Whether the last title source had an active bell.
+    private var lastTitleBell: Bool = false
 
     /// The time that undo/redo operations that contain running ptys are valid for.
     var undoExpiration: Duration {
@@ -156,6 +269,9 @@ class BaseTerminalController: NSWindowController,
         // Setup our bell state for the window
         setupBellNotificationPublisher()
         setupClipboardConfirmationPublisher()
+        setupTitlePublisher()
+        setupActivityPublisher()
+        setupNotificationAttentionPublisher()
 
         // Setup our notifications for behaviors
         let center = NotificationCenter.default
@@ -179,7 +295,6 @@ class BaseTerminalController: NSWindowController,
             selector: #selector(ghosttyMaximizeDidToggle(_:)),
             name: .ghosttyMaximizeDidToggle,
             object: nil)
-
         // Splits
         center.addObserver(
             self,
@@ -205,6 +320,11 @@ class BaseTerminalController: NSWindowController,
             self,
             selector: #selector(ghosttyDidToggleSplitZoom(_:)),
             name: Ghostty.Notification.didToggleSplitZoom,
+            object: nil)
+        center.addObserver(
+            self,
+            selector: #selector(ghosttyDidToggleQuadrantZoom(_:)),
+            name: Ghostty.Notification.didToggleQuadrantZoom,
             object: nil)
         center.addObserver(
             self,
@@ -320,13 +440,13 @@ class BaseTerminalController: NSWindowController,
         // Check if target surface is in our tree
         guard surfaceTree.contains(view) else { return }
 
-        // Move focus to the target surface and activate the window/app
-        DispatchQueue.main.async {
-            Ghostty.moveFocus(to: view)
-            view.window?.makeKeyAndOrderFront(nil)
-            if !NSApp.isActive {
-                NSApp.activate(ignoringOtherApps: true)
-            }
+        // Select the owning window before notification handling returns, so app
+        // activation can use the target tab. moveFocus already defers pane focus
+        // until zoom changes have had a chance to attach the view.
+        Ghostty.moveFocus(to: view)
+        window?.makeKeyAndOrderFront(nil)
+        if !NSApp.isActive {
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 
@@ -334,15 +454,38 @@ class BaseTerminalController: NSWindowController,
     ///
     /// Subclasses should call super first.
     func surfaceTreeDidChange(from: SplitTree<Ghostty.SurfaceView>, to: SplitTree<Ghostty.SurfaceView>) {
-        for surfaceView in from where !to.contains(surfaceView) {
-            cancelPendingClipboardConfirmation(for: surfaceView)
+        var membershipChanged = false
+
+        // Removed surfaces can remain alive for undo, so explicitly stop their
+        // rendering before they leave the controller's synchronization paths.
+        for view in from where !to.contains(view) {
+            membershipChanged = true
+            cancelPendingClipboardConfirmation(for: view)
+            view.focusDidChange(false)
+            setSurfaceOcclusionState(false, for: view)
+        }
+
+        // New surfaces aren't focused until AppKit installs them as the first
+        // responder. This also corrects their initially-focused default.
+        for view in to where !from.contains(view) {
+            membershipChanged = true
+            view.focusDidChange(false)
         }
 
         // If our surface tree becomes empty then we have no focused surface.
         if to.isEmpty {
             focusedSurface = nil
         }
+
         syncSurfaceTreeOcclusionState()
+
+        if membershipChanged {
+            // SwiftUI may temporarily detach the first responder while rebuilding
+            // the split tree, so reconcile existing surfaces after it settles.
+            DispatchQueue.main.async {
+                self.syncFocusToSurfaceTree()
+            }
+        }
     }
 
     /// Update all surfaces with the focus state. This ensures that libghostty has an accurate view about
@@ -500,6 +643,19 @@ class BaseTerminalController: NSWindowController,
     /// Goes to previous split unless we're the leftmost leaf, then goes to next.
     private func findNextFocusTargetAfterClosing(node: SplitTree<Ghostty.SurfaceView>.Node) -> Ghostty.SurfaceView? {
         guard let root = surfaceTree.root else { return nil }
+
+        if let quadrantZoomed = surfaceTree.quadrantZoomed,
+           quadrantZoomed.contains(node) {
+            if quadrantZoomed.leftmostLeaf() == node.leftmostLeaf() {
+                if let target = surfaceTree.focusTarget(for: .next, from: node, within: quadrantZoomed),
+                   target !== node.leftmostLeaf() {
+                    return target
+                }
+            } else if let target = surfaceTree.focusTarget(for: .previous, from: node, within: quadrantZoomed),
+                      target !== node.leftmostLeaf() {
+                return target
+            }
+        }
 
         // If we're the leftmost, then we move to the next surface after closing.
         // Otherwise, we move to the previous.
@@ -697,6 +853,80 @@ class BaseTerminalController: NSWindowController,
         surfaceTree = surfaceTree.equalized()
     }
 
+    private func quadrantFocusTarget(
+        for direction: SplitTree<Ghostty.SurfaceView>.FocusDirection,
+        from source: SplitTree<Ghostty.SurfaceView>.Node
+    ) -> Ghostty.SurfaceView? {
+        guard let fallback = surfaceTree.quadrantFocusTarget(
+            for: direction,
+            from: source
+        ) else { return nil }
+        guard let root = surfaceTree.root,
+            let fallbackNode = root.node(view: fallback),
+            let quadrant = surfaceTree.quadrant(containing: fallbackNode),
+            let position = surfaceTree.quadrantPosition(containing: fallbackNode),
+            let remembered = quadrantFocus[position]?.value,
+            let rememberedNode = root.node(view: remembered),
+            quadrant.contains(rememberedNode)
+        else { return fallback }
+
+        return remembered
+    }
+
+    func splitFocusTarget(
+        for direction: Ghostty.SplitFocusDirection,
+        from source: Ghostty.SurfaceView
+    ) -> Ghostty.SurfaceView? {
+        guard let sourceNode = surfaceTree.root?.node(view: source) else { return nil }
+
+        let focusDirection: SplitTree<Ghostty.SurfaceView>.FocusDirection =
+            direction.toSplitTreeFocusDirection()
+        if direction.targetsQuadrant {
+            return quadrantFocusTarget(for: focusDirection, from: sourceNode)
+        }
+
+        return surfaceTree.focusTarget(
+            for: focusDirection,
+            from: sourceNode,
+            within: surfaceTree.quadrantZoomed)
+    }
+
+    func isSplitFocusPerformable(
+        from source: Ghostty.SurfaceView,
+        direction: Ghostty.SplitFocusDirection,
+        modifiers: NSEvent.ModifierFlags
+    ) -> Bool {
+        if let target = splitFocusTarget(for: direction, from: source), target !== source {
+            return true
+        }
+        if !direction.targetsQuadrant,
+           Self.shouldUnzoomAfterBlockedPanelNavigation(surfaceTree) {
+            return true
+        }
+
+        return direction.targetsQuadrant && Self.shouldHandleBlockedQuadrantNavigation(
+            hasQuadrantZoom: surfaceTree.quadrantZoomed != nil,
+            isSwitching: quadrantSwitchIsActive,
+            modifiers: modifiers)
+    }
+
+    private func beginQuadrantSwitch(
+        modifiers: NSEvent.ModifierFlags,
+        target: Ghostty.SurfaceView
+    ) {
+        let fullZoomTarget: Ghostty.SurfaceView?
+        if surfaceTree.zoomed != surfaceTree.quadrantZoomed {
+            fullZoomTarget = surfaceTree.zoomed?.leftmostLeaf()
+        } else {
+            fullZoomTarget = nil
+        }
+
+        quadrantSwitch = .init(
+            modifiers: modifiers,
+            target: target,
+            fullZoomTarget: fullZoomTarget)
+    }
+
     @objc private func ghosttyDidFocusSplit(_ notification: Notification) {
         // The target must be within our tree
         guard let target = notification.object as? Ghostty.SurfaceView else { return }
@@ -706,27 +936,71 @@ class BaseTerminalController: NSWindowController,
         guard let directionAny = notification.userInfo?[Ghostty.Notification.SplitDirectionKey] else { return }
         guard let direction = directionAny as? Ghostty.SplitFocusDirection else { return }
 
-        // Find the node for the target surface
-        guard let targetNode = surfaceTree.root?.node(view: target) else { return }
+        let startsQuadrantSwitch = direction.targetsQuadrant && surfaceTree.quadrantZoomed != nil
 
         // Find the next surface to focus
-        guard let nextSurface = surfaceTree.focusTarget(for: direction.toSplitTreeFocusDirection(), from: targetNode) else {
-            return
-        }
+        let nextSurface = splitFocusTarget(for: direction, from: target)
+        let movesFocus = nextSurface.map { $0 !== target } ?? false
 
-        if surfaceTree.zoomed != nil {
-            if derivedConfig.splitPreserveZoom.contains(.navigation) {
+        if direction.targetsQuadrant {
+            if self.quadrantSwitch != nil {
+                self.quadrantSwitch?.updateTarget(nextSurface)
+            } else if startsQuadrantSwitch,
+                      let modifiers = notification.userInfo?[Ghostty.Notification.SplitModifierFlagsKey]
+                        as? NSEvent.ModifierFlags,
+                      !modifiers.isEmpty {
+                beginQuadrantSwitch(
+                    modifiers: modifiers,
+                    target: nextSurface ?? target)
+            } else if !movesFocus {
+                target.showNavigationWarning(.panel)
+                return
+            }
+            self.quadrantSwitch?.markNavigationKeyUsed()
+
+            surfaceTree = SplitTree(root: surfaceTree.root, zoomed: nil, quadrantZoomed: nil)
+            guard movesFocus else {
+                (quadrantSwitch?.target ?? target).showNavigationWarning(.quadrant)
+                return
+            }
+        } else if !movesFocus {
+            guard Self.shouldUnzoomAfterBlockedPanelNavigation(surfaceTree) else {
+                target.showNavigationWarning(.panel)
+                return
+            }
+
+            target.clearNavigationWarning()
+            surfaceTree = surfaceTree.unzoomedOneLevel()
+            DispatchQueue.main.async {
+                Ghostty.moveFocus(to: target)
+                target.highlightFocus()
+            }
+            return
+        } else if surfaceTree.zoomed != nil {
+            if let zoomedQuadrant = surfaceTree.quadrantZoomed {
                 surfaceTree = SplitTree(
                     root: surfaceTree.root,
-                    zoomed: surfaceTree.root?.node(view: nextSurface))
+                    zoomed: zoomedQuadrant,
+                    quadrantZoomed: zoomedQuadrant)
+            } else if derivedConfig.splitPreserveZoom.contains(.navigation) {
+                let nextNode = nextSurface.flatMap { surfaceTree.root?.node(view: $0) }
+                surfaceTree = SplitTree(
+                    root: surfaceTree.root,
+                    zoomed: nextNode,
+                    quadrantZoomed: nil)
             } else {
-                surfaceTree = SplitTree(root: surfaceTree.root, zoomed: nil)
+                surfaceTree = SplitTree(root: surfaceTree.root, zoomed: nil, quadrantZoomed: nil)
             }
         }
 
         // Move focus to the next surface
+        guard let nextSurface else { return }
+        target.clearNavigationWarning()
+        nextSurface.clearNavigationWarning()
+        let highlightsFocus = quadrantSwitch == nil
         DispatchQueue.main.async {
             Ghostty.moveFocus(to: nextSurface, from: target)
+            if highlightsFocus { nextSurface.highlightFocus() }
         }
     }
 
@@ -737,15 +1011,23 @@ class BaseTerminalController: NSWindowController,
 
         // Toggle the zoomed state
         if surfaceTree.zoomed == targetNode {
-            // Already zoomed, unzoom it
-            surfaceTree = SplitTree(root: surfaceTree.root, zoomed: nil)
+            // Already zoomed; restore the quadrant layer if one exists.
+            surfaceTree = SplitTree(
+                root: surfaceTree.root,
+                zoomed: surfaceTree.quadrantZoomed,
+                quadrantZoomed: surfaceTree.quadrantZoomed)
         } else {
             // We require that the split tree have splits
             guard surfaceTree.isSplit else { return }
 
             // Not zoomed or different node zoomed, zoom this node
-            surfaceTree = SplitTree(root: surfaceTree.root, zoomed: targetNode)
+            surfaceTree = SplitTree(
+                root: surfaceTree.root,
+                zoomed: targetNode,
+                quadrantZoomed: surfaceTree.quadrantZoomed)
         }
+
+        let shouldHighlight = !surfaceTree.isExclusivelyShowing(targetNode)
 
         // Move focus to our window. Importantly this ensures that if we click the
         // reset zoom button in a tab bar of an unfocused tab that we become focused.
@@ -755,6 +1037,35 @@ class BaseTerminalController: NSWindowController,
         // this so we need to grab it again.
         DispatchQueue.main.async {
             Ghostty.moveFocus(to: target)
+            if shouldHighlight { target.highlightZoom() }
+        }
+    }
+
+    @objc private func ghosttyDidToggleQuadrantZoom(_ notification: Notification) {
+        // The target must be within our tree
+        guard let target = notification.object as? Ghostty.SurfaceView else { return }
+        guard let targetNode = surfaceTree.root?.node(view: target) else { return }
+
+        // We require that the split tree have splits
+        guard surfaceTree.isSplit else { return }
+        guard let quadrantNode = surfaceTree.quadrant(containing: targetNode) else { return }
+
+        if surfaceTree.zoomed != nil || surfaceTree.quadrantZoomed != nil {
+            surfaceTree = SplitTree(root: surfaceTree.root, zoomed: nil, quadrantZoomed: nil)
+        } else {
+            surfaceTree = SplitTree(
+                root: surfaceTree.root,
+                zoomed: quadrantNode,
+                quadrantZoomed: quadrantNode)
+        }
+
+        let shouldHighlight = !surfaceTree.isExclusivelyShowing(targetNode)
+
+        window?.makeKeyAndOrderFront(nil)
+
+        DispatchQueue.main.async {
+            Ghostty.moveFocus(to: target)
+            if shouldHighlight { target.highlightZoom() }
         }
     }
 
@@ -794,12 +1105,19 @@ class BaseTerminalController: NSWindowController,
         guard let target = notification.object as? Ghostty.SurfaceView else { return }
         guard surfaceTree.contains(target) else { return }
 
-        // Bring the window to front and focus the surface.
-        window?.makeKeyAndOrderFront(nil)
+        // Start presentation before changing the tree so a hidden Quick Terminal
+        // uses its animation path. Focus is deferred until after the reveal below.
+        focusSurface(target)
+
+        let revealedTree = surfaceTree.revealing(
+            target,
+            preservingZoom: derivedConfig.splitPreserveZoom.contains(.navigation))
+        if revealedTree.zoomed != surfaceTree.zoomed || revealedTree.quadrantZoomed != surfaceTree.quadrantZoomed {
+            surfaceTree = revealedTree
+        }
 
         // We use a small delay to ensure this runs after any UI cleanup
         // (e.g., command palette restoring focus to its original surface).
-        Ghostty.moveFocus(to: target)
         Ghostty.moveFocus(to: target, delay: 0.1)
 
         // Show a brief highlight to help the user locate the presented terminal.
@@ -856,6 +1174,53 @@ class BaseTerminalController: NSWindowController,
     }
 
     private func localEventFlagsChanged(_ event: NSEvent) -> NSEvent? {
+        let modifiers = event.modifierFlags.intersection([.shift, .control, .option, .command])
+
+        if let quadrantSwitch {
+            if Self.shouldCommitQuadrantSwitch(
+                initiating: quadrantSwitch.modifiers,
+                current: modifiers
+            ) {
+                self.quadrantSwitch = nil
+
+                if NSApp.mainWindow == window,
+                   surfaceTree.zoomed == nil,
+                   surfaceTree.quadrantZoomed == nil,
+                   surfaceTree.contains(quadrantSwitch.target) {
+                    if let fullZoomTarget = quadrantSwitch.fullZoomTarget,
+                       let root = surfaceTree.root,
+                       let fullZoomNode = root.node(view: fullZoomTarget),
+                       let targetNode = root.node(view: quadrantSwitch.target),
+                       let fullZoomQuadrant = surfaceTree.quadrant(containing: fullZoomNode),
+                       let fullZoomPosition = surfaceTree.quadrantPosition(containing: fullZoomNode),
+                       let targetPosition = surfaceTree.quadrantPosition(containing: targetNode),
+                       fullZoomPosition == targetPosition {
+                        surfaceTree = SplitTree(
+                            root: root,
+                            zoomed: fullZoomNode,
+                            quadrantZoomed: fullZoomQuadrant)
+                        DispatchQueue.main.async {
+                            Ghostty.moveFocus(to: fullZoomTarget)
+                        }
+                    } else {
+                        NotificationCenter.default.post(
+                            name: Ghostty.Notification.didToggleQuadrantZoom,
+                            object: quadrantSwitch.target)
+                    }
+                }
+            }
+        } else if Self.shouldBeginQuadrantPeek(
+            modifiers: modifiers,
+            configured: derivedConfig.quadrantNavigationModifierFlags,
+            hasQuadrantZoom: surfaceTree.quadrantZoomed != nil
+        ),
+            NSApp.mainWindow == window,
+            let target = focusedSurface,
+            surfaceTree.contains(target) {
+            beginQuadrantSwitch(modifiers: modifiers, target: target)
+            surfaceTree = SplitTree(root: surfaceTree.root, zoomed: nil, quadrantZoomed: nil)
+        }
+
         var surfaces: [Ghostty.SurfaceView] = surfaceTree.map { $0 }
 
         // If we're the main window receiving key input, then we want to avoid
@@ -875,28 +1240,54 @@ class BaseTerminalController: NSWindowController,
     // MARK: TerminalViewDelegate
 
     func focusedSurfaceDidChange(to: Ghostty.SurfaceView?) {
-        let lastFocusedSurface = focusedSurface
+        if let focusedSurface { lastFocusedSurface = focusedSurface }
         focusedSurface = to
+
+        if let to,
+           let node = surfaceTree.root?.node(view: to),
+           let position = surfaceTree.quadrantPosition(containing: node) {
+            quadrantFocus[position] = .init(to)
+        }
 
         // Important to cancel any prior subscriptions
         focusedSurfaceCancellables = []
 
-        // Setup our title listener. If we have a focused surface we always use that.
-        // Otherwise, we try to use our last focused surface. In either case, we only
-        // want to care if the surface is in the tree so we don't listen to titles of
-        // closed surfaces.
-        if let titleSurface = focusedSurface ?? lastFocusedSurface,
-           surfaceTree.contains(titleSurface) {
-            // If we have a surface, we want to listen for title changes.
-            titleSurface.$title
-                .combineLatest(titleSurface.$bell)
-                .map { [weak self] in self?.computeTitle(title: $0, bell: $1) ?? "" }
-                .sink { [weak self] in self?.titleDidChange(to: $0) }
+        // Bell state remains tied to focus even when the title comes from a busy pane.
+        if let bellSurface = focusedSurface ?? lastFocusedSurface,
+           surfaceTree.contains(bellSurface) {
+            lastTitleBell = bellSurface.bell
+            bellSurface.$bell
+                .sink { [weak self] bell in
+                    self?.lastTitleBell = bell
+                    self?.applyTitleToWindow()
+                }
                 .store(in: &focusedSurfaceCancellables)
         } else {
-            // There is no surface to listen to titles for.
-            titleDidChange(to: "👻")
+            lastTitleBell = false
         }
+
+        updateTitleSource()
+    }
+
+    static func selectTitleSurfaces<Surface: AnyObject>(
+        active: Surface?,
+        ordered: [Surface],
+        isRunning: (Surface) -> Bool
+    ) -> [Surface] {
+        let running = ordered.filter(isRunning)
+        guard !running.isEmpty else { return active.map { [$0] } ?? [] }
+        guard let active, isRunning(active) else { return running }
+        return [active] + running.filter { $0 !== active }
+    }
+
+    static func composeTitle(tabOverride: String?, terminalTitle: String) -> String {
+        guard let tabOverride else { return terminalTitle }
+        guard !terminalTitle.isEmpty else { return tabOverride }
+        return "\(tabOverride) - \(terminalTitle)"
+    }
+
+    static func combineTitles(_ titles: [String]) -> String {
+        titles.joined(separator: ", ")
     }
 
     private func computeTitle(title: String, bell: Bool) -> String {
@@ -908,22 +1299,30 @@ class BaseTerminalController: NSWindowController,
         return result
     }
 
-    private func titleDidChange(to: String) {
-        lastComputedTitle = to
+    private func updateTitleSource() {
+        let surfaces = Array(surfaceTree)
+        let active = (focusedSurface ?? lastFocusedSurface)
+            .flatMap { surfaces.contains($0) ? $0 : nil }
+        let sources = Self.selectTitleSurfaces(
+            active: active,
+            ordered: surfaces,
+            isRunning: \.commandRunning)
+        lastSurfaceTitle = sources.isEmpty
+            ? "👻"
+            : Self.combineTitles(sources.map(\.title))
         applyTitleToWindow()
     }
 
     private func applyTitleToWindow() {
         guard let window else { return }
 
-        if let titleOverride {
-            window.title = computeTitle(
-                title: titleOverride,
-                bell: focusedSurface?.bell ?? false)
-            return
-        }
-
-        window.title = lastComputedTitle
+        let title = computeTitle(
+            title: Self.composeTitle(
+                tabOverride: titleOverride,
+                terminalTitle: lastSurfaceTitle),
+            bell: lastTitleBell)
+        guard window.title != title else { return }
+        window.title = title
     }
 
     func pwdDidChange(to: URL?) {
@@ -952,6 +1351,25 @@ class BaseTerminalController: NSWindowController,
             splitDidResize(node: resize.node, to: resize.ratio)
         case .drop(let drop):
             splitDidDrop(source: drop.payload, destination: drop.destination, zone: drop.zone)
+        case .activateQuadrant(let node):
+            splitDidActivateQuadrant(node)
+        }
+    }
+
+    private func splitDidActivateQuadrant(_ node: SplitTree<Ghostty.SurfaceView>.Node) {
+        guard quadrantSwitch != nil,
+              surfaceTree.contains(node),
+              let position = surfaceTree.quadrantPosition(containing: node)
+        else { return }
+
+        let target = Self.quadrantActivationTarget(
+            in: node,
+            remembered: quadrantFocus[position]?.value)
+        quadrantSwitch?.updateTarget(target)
+
+        let source = focusedSurface
+        DispatchQueue.main.async {
+            Ghostty.moveFocus(to: target, from: source)
         }
     }
 
@@ -1160,6 +1578,9 @@ class BaseTerminalController: NSWindowController,
         // Everything beyond here is setting up the window
         guard let window else { return }
 
+        syncFocusToSurfaceTree()
+        syncSurfaceTreeOcclusionState()
+
         // We always initialize our fullscreen style to native if we can because
         // initialization sets up some state (i.e. observers). If its set already
         // somehow we don't do this.
@@ -1170,6 +1591,15 @@ class BaseTerminalController: NSWindowController,
 
         // Set our update overlay state
         updateOverlayIsVisible = defaultUpdateOverlayVisibility()
+    }
+
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+
+        // AppKit settles presentation and native-tab visibility asynchronously.
+        DispatchQueue.main.async {
+            self.syncSurfaceTreeOcclusionState()
+        }
     }
 
     func defaultUpdateOverlayVisibility() -> Bool {
@@ -1231,9 +1661,13 @@ class BaseTerminalController: NSWindowController,
     func windowWillClose(_ notification: Notification) {
         guard let window else { return }
 
-        for surfaceView in surfaceTree {
-            cancelPendingClipboardConfirmation(for: surfaceView)
+        // The surface tree can be retained for undo without being emptied.
+        // Stop all rendering before this controller leaves the window lifecycle.
+        for view in surfaceTree {
+            cancelPendingClipboardConfirmation(for: view)
+            view.focusDidChange(false)
         }
+        setSurfaceTreeOcclusionState(false)
 
         // Emit a final bell-state transition so any observers can clear state
         // without separately tracking NSWindow lifecycle events.
@@ -1269,26 +1703,43 @@ class BaseTerminalController: NSWindowController,
         // Sync on the next runloop so split focus has settled first.
         DispatchQueue.main.async {
             self.syncFocusToSurfaceTree()
+            self.syncSurfaceTreeOcclusionState()
+            self.focusedSurface?.highlightZoom()
         }
     }
 
     func windowDidResignKey(_ notification: Notification) {
+        quadrantSwitch = nil
+
         // Becoming/losing key means we have to notify our surface(s) that we have focus
         // so things like cursors blink, pty events are sent, etc.
         self.syncFocusToSurfaceTree()
+
+        // Native tab selection updates occlusion after the key-window change.
+        DispatchQueue.main.async {
+            self.syncSurfaceTreeOcclusionState()
+        }
     }
 
     func windowDidChangeOcclusionState(_ notification: Notification) {
         syncSurfaceTreeOcclusionState()
     }
 
-    private func syncSurfaceTreeOcclusionState() {
+    func syncSurfaceTreeOcclusionState() {
         let visible = self.window?.occlusionState.contains(.visible) ?? false
+        setSurfaceTreeOcclusionState(visible)
+    }
+
+    func setSurfaceTreeOcclusionState(_ visible: Bool) {
         for view in surfaceTree {
-            if let surface = view.surface, view.isWindowVisible != visible {
-                ghostty_surface_set_occlusion(surface, visible)
-                view.isWindowVisible = visible
-            }
+            setSurfaceOcclusionState(visible, for: view)
+        }
+    }
+
+    private func setSurfaceOcclusionState(_ visible: Bool, for view: Ghostty.SurfaceView) {
+        if let surface = view.surface, view.isWindowVisible != visible {
+            ghostty_surface_set_occlusion(surface, visible)
+            view.isWindowVisible = visible
         }
     }
 
@@ -1355,6 +1806,11 @@ class BaseTerminalController: NSWindowController,
     @IBAction func splitZoom(_ sender: Any) {
         guard let surface = focusedSurface?.surface else { return }
         ghostty.splitToggleZoom(surface: surface)
+    }
+
+    @IBAction func quadrantZoom(_ sender: Any) {
+        guard let surface = focusedSurface?.surface else { return }
+        ghostty.splitToggleQuadrantZoom(surface: surface)
     }
 
     @IBAction func splitMoveFocusPrevious(_ sender: Any) {
@@ -1479,19 +1935,22 @@ class BaseTerminalController: NSWindowController,
         let windowStepResize: Bool
         let focusFollowsMouse: Bool
         let splitPreserveZoom: Ghostty.Config.SplitPreserveZoom
+        let quadrantNavigationModifierFlags: [NSEvent.ModifierFlags]
 
         init() {
             self.macosTitlebarProxyIcon = .visible
             self.windowStepResize = false
             self.focusFollowsMouse = false
             self.splitPreserveZoom = .init()
+            self.quadrantNavigationModifierFlags = []
         }
 
-        init(_ config: Ghostty.Config) {
+        @MainActor init(_ config: Ghostty.Config) {
             self.macosTitlebarProxyIcon = config.macosTitlebarProxyIcon
             self.windowStepResize = config.windowStepResize
             self.focusFollowsMouse = config.focusFollowsMouse
             self.splitPreserveZoom = config.splitPreserveZoom
+            self.quadrantNavigationModifierFlags = config.quadrantNavigationModifierFlags
         }
     }
 }
@@ -1689,6 +2148,95 @@ extension BaseTerminalController {
 // MARK: Combine Methods
 
 extension BaseTerminalController {
+    static func aggregateActivityPublisher(
+        for surfaces: [Ghostty.SurfaceView]
+    ) -> AnyPublisher<(isActive: Bool, stopped: Bool), Never> {
+        guard !surfaces.isEmpty else {
+            return Just((isActive: false, stopped: false)).eraseToAnyPublisher()
+        }
+
+        let initial = Dictionary(uniqueKeysWithValues: surfaces.map {
+            ($0.id, $0.commandRunning || $0.progressReport != nil)
+        })
+        let updates = Publishers.MergeMany(surfaces.map { surface in
+            surface.activityPublisher
+                .scan((
+                    transition: ActivityTransition(),
+                    isActive: false,
+                    stopped: false
+                )) { state, isActive in
+                    var transition = state.transition
+                    let stopped = transition.stopped(isActive)
+                    return (transition, isActive, stopped)
+                }
+                .map { (id: surface.id, isActive: $0.isActive, stopped: $0.stopped) }
+                .eraseToAnyPublisher()
+        })
+
+        return updates
+            .scan((activity: initial, stopped: false)) { state, update in
+                var activity = state.activity
+                activity[update.id] = update.isActive
+                return (activity, update.stopped)
+            }
+            .prepend((activity: initial, stopped: false))
+            .map {
+                (isActive: $0.activity.values.contains(true), stopped: $0.stopped)
+            }
+            .eraseToAnyPublisher()
+    }
+
+    private func setupNotificationAttentionPublisher() {
+        notificationAttentionCancellable = surfaceValuesPublisher(
+            valueKeyPath: \.notificationAttention,
+            publisherKeyPath: \.$notificationAttention)
+            .map { $0.values.contains(true) }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                (self?.window as? TerminalWindow)?.setNotificationAttention($0)
+            }
+    }
+
+    private func setupActivityPublisher() {
+        reportedActivityCancellable = surfaceValuesPublisher(
+            valueKeyPath: \.reportedActivity,
+            publisherKeyPath: \.$reportedActivity)
+            .map { $0.values.filter { $0 }.count }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] count in
+                (self?.window as? TerminalWindow)?.setTabActiveCount(count)
+            }
+
+        activityStateCancellable = $surfaceTree
+            .map { tree in
+                Self.aggregateActivityPublisher(for: Array(tree))
+            }
+            .switchToLatest()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                guard let window = self?.window as? TerminalWindow else { return }
+                window.setTabActivity(state.isActive)
+                if state.stopped {
+                    window.flashActivityStopped()
+                }
+            }
+    }
+
+    private func setupTitlePublisher() {
+        let titleChanges = surfaceValuesPublisher(valueKeyPath: \.title, publisherKeyPath: \.$title)
+            .map { _ in () }
+        let commandChanges = surfaceValuesPublisher(
+            valueKeyPath: \.commandRunning,
+            publisherKeyPath: \.$commandRunning)
+            .map { _ in () }
+
+        titleStateCancellable = Publishers.Merge(titleChanges, commandChanges)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.updateTitleSource() }
+    }
+
     /// Publishes an app-wide notification whenever this terminal window's aggregate
     /// bell state changes.
     private func setupBellNotificationPublisher() {
@@ -1738,4 +2286,5 @@ extension Notification.Name {
     /// Terminal window aggregate bell state changed.
     static let terminalWindowBellDidChangeNotification = Notification.Name("com.mitchellh.ghostty.terminalWindowBellDidChange")
     static let terminalWindowHasBellKey = terminalWindowBellDidChangeNotification.rawValue + ".hasBell"
+
 }

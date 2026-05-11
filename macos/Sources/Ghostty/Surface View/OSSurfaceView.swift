@@ -6,6 +6,36 @@ extension Ghostty {
     class OSSurfaceView: NSView, ObservableObject {
         typealias ID = UUID
 
+        enum FiniteHighlight: Equatable {
+            case focus
+            case zoom
+
+            var lineWidth: CGFloat {
+                switch self {
+                case .focus: 1.5
+                case .zoom: 3
+                }
+            }
+        }
+
+        struct NavigationWarning: Equatable, Sendable {
+            enum Scope: Equatable, Sendable {
+                case panel
+                case quadrant
+            }
+
+            static let duration: Duration = .milliseconds(400)
+
+            let scope: Scope
+            let startedAt: Date
+
+            func isVisible(at date: Date, reduceMotion: Bool) -> Bool {
+                let elapsed = date.timeIntervalSince(startedAt)
+                guard elapsed >= 0, elapsed < Self.duration.timeInterval else { return false }
+                return reduceMotion || elapsed < 0.15 || elapsed >= 0.25
+            }
+        }
+
         /// Unique ID per surface
         let id: UUID
 
@@ -52,6 +82,19 @@ extension Ghostty {
         /// True when the surface should show a highlight effect (e.g., when presented via goto_split).
         @Published private(set) var highlighted: Bool = false
 
+        /// Briefly identifies this surface after focus or zoom changes.
+        @Published private(set) var finiteHighlight: FiniteHighlight?
+
+        private var finiteHighlightTask: Task<Void, Never>?
+
+        /// Briefly warns that a focus navigation action had no destination.
+        @Published private(set) var navigationWarning: NavigationWarning?
+
+        private var navigationWarningTask: Task<Void, Never>?
+
+        /// True while an OSC desktop notification from this surface needs attention.
+        @Published private(set) var notificationAttention = false
+
         /// A message sent from `ghostty_surface_t` when a child process exited
         @Published private(set) var childExitedMessage: ChildExitedMessage?
 
@@ -94,6 +137,56 @@ extension Ghostty {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
                 self?.highlighted = false
             }
+        }
+
+        /// Briefly identifies this surface after a multi-pane zoom change.
+        func highlightZoom() {
+            highlightFinite(.zoom)
+        }
+
+        /// Briefly identifies this surface after keyboard focus navigation.
+        func highlightFocus() {
+            highlightFinite(.focus)
+        }
+
+        private func highlightFinite(_ highlight: FiniteHighlight) {
+            clearNavigationWarning()
+            finiteHighlightTask?.cancel()
+            finiteHighlight = highlight
+            finiteHighlightTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled else { return }
+                self?.finiteHighlight = nil
+            }
+        }
+
+        func showNavigationWarning(_ scope: NavigationWarning.Scope) {
+            finiteHighlightTask?.cancel()
+            finiteHighlight = nil
+            navigationWarningTask?.cancel()
+
+            let warning = NavigationWarning(scope: scope, startedAt: Date())
+            navigationWarning = warning
+            navigationWarningTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: NavigationWarning.duration)
+                guard !Task.isCancelled, self?.navigationWarning == warning else { return }
+                self?.navigationWarning = nil
+            }
+        }
+
+        func clearNavigationWarning() {
+            navigationWarningTask?.cancel()
+            navigationWarningTask = nil
+            navigationWarning = nil
+        }
+
+        func requestNotificationAttention(isFocused: Bool) {
+            guard !isFocused else { return }
+            notificationAttention = true
+        }
+
+        func clearNotificationAttention() {
+            notificationAttention = false
         }
 
         func setChildExitedMessage(_ message: ChildExitedMessage) {

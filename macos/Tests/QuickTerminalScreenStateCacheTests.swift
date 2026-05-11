@@ -39,6 +39,13 @@ struct QuickTerminalScreenStateCacheTests {
         let screen = MockSizedScreen(frame: .init(x: 0, y: 0, width: 1920, height: 1080), scale: 2)
         #expect(!entry.isValid(for: screen))
     }
+
+    @Test func invalidWhenCachedFrameBelongsToWiderScreen() {
+        var entry = entry(screenSize: .init(width: 1080, height: 1920), scale: 2)
+        entry.frame.size.width = 1512
+        let screen = MockSizedScreen(frame: .init(x: 0, y: 0, width: 1080, height: 1920), scale: 2)
+        #expect(!entry.isValid(for: screen))
+    }
 }
 
 /// Mock NSScreen exposing a fixed frame and backing scale factor.

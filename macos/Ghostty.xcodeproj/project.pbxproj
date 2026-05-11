@@ -10,7 +10,6 @@
 		29C15B1D2CDC3B2900520DD4 /* bat in Resources */ = {isa = PBXBuildFile; fileRef = 29C15B1C2CDC3B2000520DD4 /* bat */; };
 		55154BE02B33911F001622DC /* ghostty in Resources */ = {isa = PBXBuildFile; fileRef = 55154BDF2B33911F001622DC /* ghostty */; };
 		552964E62B34A9B400030505 /* vim in Resources */ = {isa = PBXBuildFile; fileRef = 552964E52B34A9B400030505 /* vim */; };
-		819324582F24E78800A9ED8F /* DockTilePlugin.plugin in Copy DockTilePlugin */ = {isa = PBXBuildFile; fileRef = 8193244D2F24E6C000A9ED8F /* DockTilePlugin.plugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		819324642F24FF2100A9ED8F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A5B30538299BEAAB0047F10C /* Assets.xcassets */; };
 		8F3A9B4C2FA6B88000A18D13 /* Ghostty.sdef in Resources */ = {isa = PBXBuildFile; fileRef = 8F3A9B4B2FA6B88000A18D13 /* Ghostty.sdef */; };
 		9351BE8E3D22937F003B3499 /* nvim in Resources */ = {isa = PBXBuildFile; fileRef = 9351BE8E2D22937F003B3499 /* nvim */; };
@@ -35,13 +34,6 @@
 			remoteGlobalIDString = A5B30530299BEAAA0047F10C;
 			remoteInfo = Ghostty;
 		};
-		819324672F2502FB00A9ED8F /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = A5B30529299BEAAA0047F10C /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 8193244C2F24E6C000A9ED8F;
-			remoteInfo = DockTilePlugin;
-		};
 		A54F45F72E1F047A0046BD5C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A5B30529299BEAAA0047F10C /* Project object */;
@@ -52,17 +44,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		819324572F24E74E00A9ED8F /* Copy DockTilePlugin */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				819324582F24E78800A9ED8F /* DockTilePlugin.plugin in Copy DockTilePlugin */,
-			);
-			name = "Copy DockTilePlugin";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -290,12 +271,10 @@
 				A5B3052D299BEAAA0047F10C /* Sources */,
 				A5B3052E299BEAAA0047F10C /* Frameworks */,
 				A5B3052F299BEAAA0047F10C /* Resources */,
-				819324572F24E74E00A9ED8F /* Copy DockTilePlugin */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				819324682F2502FB00A9ED8F /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				81F82BC72E82815D001EDFA7 /* Sources */,
@@ -464,11 +443,6 @@
 			target = A5B30530299BEAAA0047F10C /* Ghostty */;
 			targetProxy = 810ACCA52E9D3302004F8F92 /* PBXContainerItemProxy */;
 		};
-		819324682F2502FB00A9ED8F /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 8193244C2F24E6C000A9ED8F /* DockTilePlugin */;
-			targetProxy = 819324672F2502FB00A9ED8F /* PBXContainerItemProxy */;
-		};
 		A54F45F82E1F047A0046BD5C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = A5B30530299BEAAA0047F10C /* Ghostty */;
@@ -552,7 +526,7 @@
 				GCC_OPTIMIZATION_LEVEL = fast;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Ghostty-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = Ghostty;
+				INFOPLIST_KEY_CFBundleDisplayName = "Ghostty Local";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "A program running within Ghostty would like to use AppleScript.";
 				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "A program running within Ghostty would like to access your system's audio.";
@@ -579,8 +553,9 @@
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = 0.1;
 				"OTHER_LDFLAGS[arch=*]" = "-lstdc++";
-				PRODUCT_BUNDLE_IDENTIFIER = com.mitchellh.ghostty;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.mitchellh.ghostty.local;
+				PRODUCT_MODULE_NAME = Ghostty;
+				PRODUCT_NAME = "Ghostty Local";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "Sources/App/ghostty-bridging-header.h";
 				SWIFT_VERSION = 5.0;
@@ -731,7 +706,7 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.mitchellh.ghostty-dock-tile";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.mitchellh.ghostty.local-dock-tile";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
@@ -809,7 +784,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Ghostty.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ghostty";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Ghostty Local.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ghostty";
 			};
 			name = ReleaseLocal;
 		};

@@ -254,6 +254,319 @@ struct SplitTreeTests {
         }
     }
 
+    @Test func encodingAndDecodingPreservesQuadrantZoomedPath() throws {
+        let (tree, view1, view5) = try makeQuadrantTree()
+        guard let root = tree.root,
+              let targetNode = root.node(view: view1),
+              let quadrant = tree.quadrant(containing: targetNode) else {
+            Issue.record("missing quadrant")
+            return
+        }
+
+        let treeWithZoomed = SplitTree<MockView>(
+            root: tree.root,
+            zoomed: .leaf(view: view1),
+            quadrantZoomed: quadrant)
+
+        let data = try JSONEncoder().encode(treeWithZoomed)
+        let decoded = try JSONDecoder().decode(SplitTree<MockView>.self, from: data)
+
+        #expect(decoded.zoomed != nil)
+        #expect(decoded.quadrantZoomed != nil)
+        if case .split(let split) = decoded.quadrantZoomed! {
+            #expect(split.left.leftmostLeaf().id == view1.id)
+            #expect(split.right.rightmostLeaf().id == view5.id)
+        } else {
+            Issue.record("unexpected node type")
+        }
+    }
+
+    // MARK: - Quadrant Zoom
+
+    @Test func unzoomingOneLevelPreservesThenExitsQuadrantZoom() throws {
+        let (tree, view1, _) = try makeQuadrantTree()
+        let target = try #require(tree.root?.node(view: view1))
+        let quadrant = try #require(tree.quadrant(containing: target))
+
+        let panelZoom = SplitTree(
+            root: tree.root,
+            zoomed: target,
+            quadrantZoomed: quadrant)
+        let quadrantZoom = panelZoom.unzoomedOneLevel()
+        #expect(quadrantZoom.zoomed == quadrant)
+        #expect(quadrantZoom.quadrantZoomed == quadrant)
+
+        let unzoomed = quadrantZoom.unzoomedOneLevel()
+        #expect(unzoomed.zoomed == nil)
+        #expect(unzoomed.quadrantZoomed == nil)
+
+        let ordinaryPanelZoom = SplitTree(root: tree.root, zoomed: target)
+        #expect(ordinaryPanelZoom.unzoomedOneLevel().zoomed == nil)
+    }
+
+    @Test func revealingVisibleOrMissingViewPreservesZoom() throws {
+        let (tree, view1, view5) = try makeQuadrantTree()
+        let target = try #require(tree.root?.node(view: view1))
+        let quadrant = try #require(tree.quadrant(containing: target))
+        let zoomedTree = SplitTree(
+            root: tree.root,
+            zoomed: quadrant,
+            quadrantZoomed: quadrant)
+
+        for revealed in [
+            zoomedTree.revealing(view5),
+            zoomedTree.revealing(MockView()),
+        ] {
+            #expect(revealed.root == tree.root)
+            #expect(revealed.zoomed == quadrant)
+            #expect(revealed.quadrantZoomed == quadrant)
+        }
+
+        let unzoomed = tree.revealing(view5)
+        #expect(unzoomed.root == tree.root)
+        #expect(unzoomed.zoomed == nil)
+        #expect(unzoomed.quadrantZoomed == nil)
+    }
+
+    @Test func revealingHiddenViewPreservesZoomIntent() throws {
+        let (tree, view1, view5) = try makeQuadrantTree()
+        let root = try #require(tree.root)
+        let target = try #require(root.node(view: view5))
+        let targetQuadrant = try #require(tree.quadrant(containing: target))
+        let outsideView = try #require(tree.first { view in
+            root.node(view: view).map { !targetQuadrant.contains($0) } ?? false
+        })
+        let outside = try #require(root.node(view: outsideView))
+        let outsideQuadrant = try #require(tree.quadrant(containing: outside))
+
+        #expect(targetQuadrant.leftmostLeaf() === view1)
+        #expect(targetQuadrant.leftmostLeaf() !== view5)
+
+        for revealed in [
+            SplitTree(root: root, zoomed: outsideQuadrant, quadrantZoomed: outsideQuadrant)
+                .revealing(view5),
+            SplitTree(root: root, zoomed: outside, quadrantZoomed: outsideQuadrant)
+                .revealing(view5),
+            SplitTree(root: root, zoomed: .leaf(view: view1), quadrantZoomed: targetQuadrant)
+                .revealing(view5),
+        ] {
+            #expect(revealed.root == tree.root)
+            #expect(revealed.zoomed == targetQuadrant)
+            #expect(revealed.quadrantZoomed == targetQuadrant)
+            #expect(revealed.contains(view1))
+            #expect(revealed.contains(view5))
+        }
+
+        let ordinaryZoom = SplitTree(root: root, zoomed: .leaf(view: view1))
+        let ordinaryReveal = ordinaryZoom.revealing(view5)
+        #expect(ordinaryReveal.root == tree.root)
+        #expect(ordinaryReveal.zoomed == nil)
+        #expect(ordinaryReveal.quadrantZoomed == nil)
+        let preservedReveal = ordinaryZoom.revealing(view5, preservingZoom: true)
+        #expect(preservedReveal.zoomed == target)
+        #expect(preservedReveal.quadrantZoomed == nil)
+
+        let (horizontalTree, horizontalView1, horizontalView2) = try makeHorizontalSplit()
+        let extraView = MockView()
+        let asymmetricTree = try horizontalTree.inserting(
+            view: extraView,
+            at: horizontalView1,
+            direction: .down)
+        let asymmetricRoot = try #require(asymmetricTree.root)
+        let source = try #require(asymmetricRoot.node(view: horizontalView1))
+        let sourceQuadrant = try #require(asymmetricTree.quadrant(containing: source))
+        let fallbackTarget = try #require(asymmetricRoot.node(view: horizontalView2))
+        let asymmetricZoom = SplitTree(
+            root: asymmetricRoot,
+            zoomed: sourceQuadrant,
+            quadrantZoomed: sourceQuadrant)
+        let fallback = asymmetricZoom.revealing(horizontalView2)
+
+        #expect(fallback.root == asymmetricTree.root)
+        #expect(fallback.zoomed == nil)
+        #expect(fallback.quadrantZoomed == nil)
+        #expect(fallback.count == asymmetricTree.count)
+        #expect(fallback.contains(horizontalView1))
+        #expect(fallback.contains(horizontalView2))
+        #expect(fallback.contains(extraView))
+        let preservedFallback = asymmetricZoom.revealing(horizontalView2, preservingZoom: true)
+        #expect(preservedFallback.zoomed == fallbackTarget)
+        #expect(preservedFallback.quadrantZoomed == nil)
+    }
+
+    @Test func quadrantFindsCellAfterTwoAxes() throws {
+        let (tree, view1, view5) = try makeQuadrantTree()
+        guard let root = tree.root,
+              let targetNode = root.node(view: view1),
+              let quadrant = tree.quadrant(containing: targetNode) else {
+            Issue.record("missing quadrant")
+            return
+        }
+
+        if case .split(let split) = quadrant {
+            #expect(split.left.leftmostLeaf() === view1)
+            #expect(split.right.rightmostLeaf() === view5)
+        } else {
+            Issue.record("unexpected node type")
+        }
+    }
+
+    @Test func quadrantRequiresTwoAxes() throws {
+        let (tree, view1, _) = try makeHorizontalSplit()
+        let targetNode = tree.root?.node(view: view1)
+        #expect(targetNode != nil)
+        #expect(tree.quadrant(containing: targetNode!) == nil)
+    }
+
+    @Test func quadrantSeparatorsExcludePaneSplits() throws {
+        let (tree, view1, _) = try makeQuadrantTree()
+        let root = try #require(tree.root)
+        guard case .split(let rootSplit) = root else {
+            Issue.record("missing root split")
+            return
+        }
+
+        #expect(tree.separatesQuadrants(root))
+        #expect(tree.separatesQuadrants(rootSplit.left))
+        #expect(tree.separatesQuadrants(rootSplit.right))
+
+        let quadrant = try #require(tree.quadrant(containing: .leaf(view: view1)))
+        #expect(!tree.separatesQuadrants(quadrant))
+
+        let (ordinaryTree, _, _) = try makeHorizontalSplit()
+        let ordinaryRoot = try #require(ordinaryTree.root)
+        #expect(!ordinaryTree.separatesQuadrants(ordinaryRoot))
+    }
+
+    @Test func quadrantPositionsAreStableSpatialCells() throws {
+        let topLeft = MockView()
+        let topRight = MockView()
+        let bottomLeft = MockView()
+        let bottomRight = MockView()
+        var tree = SplitTree<MockView>(view: topLeft)
+        tree = try tree.inserting(view: topRight, at: topLeft, direction: .right)
+        tree = try tree.inserting(view: bottomLeft, at: topLeft, direction: .down)
+        tree = try tree.inserting(view: bottomRight, at: topRight, direction: .down)
+
+        #expect(tree.quadrantPosition(containing: .leaf(view: topLeft)) == .topLeft)
+        #expect(tree.quadrantPosition(containing: .leaf(view: topRight)) == .topRight)
+        #expect(tree.quadrantPosition(containing: .leaf(view: bottomLeft)) == .bottomLeft)
+        #expect(tree.quadrantPosition(containing: .leaf(view: bottomRight)) == .bottomRight)
+    }
+
+    @Test func focusTargetCanBeConstrainedToQuadrant() throws {
+        let (tree, view1, view5) = try makeQuadrantTree()
+        guard let root = tree.root,
+              let targetNode = root.node(view: view1),
+              let quadrant = tree.quadrant(containing: targetNode) else {
+            Issue.record("missing quadrant")
+            return
+        }
+
+        #expect(tree.focusTarget(for: .spatial(.right), from: targetNode, within: quadrant) === view5)
+        #expect(tree.focusTarget(for: .spatial(.down), from: targetNode, within: quadrant) == nil)
+    }
+
+    @Test func quadrantFocusSkipsNestedPanes() throws {
+        let view1 = MockView()
+        let view2 = MockView()
+        let view3 = MockView()
+        let view4 = MockView()
+        let view5 = MockView()
+        var tree = SplitTree<MockView>(view: view1)
+        tree = try tree.inserting(view: view2, at: view1, direction: .right)
+        tree = try tree.inserting(view: view3, at: view1, direction: .down)
+        tree = try tree.inserting(view: view4, at: view2, direction: .down)
+        tree = try tree.inserting(view: view5, at: view1, direction: .right)
+
+        let node1 = try #require(tree.root?.node(view: view1))
+        let node2 = try #require(tree.root?.node(view: view2))
+        let node3 = try #require(tree.root?.node(view: view3))
+
+        #expect(tree.focusTarget(for: .spatial(.right), from: node1) === view5)
+        #expect(tree.quadrantFocusTarget(for: .spatial(.right), from: node1) === view2)
+        #expect(tree.quadrantFocusTarget(for: .spatial(.left), from: node2) === view5)
+        #expect(tree.quadrantFocusTarget(for: .spatial(.down), from: node1) === view3)
+        #expect(tree.quadrantFocusTarget(for: .spatial(.up), from: node3) === view1)
+        #expect(tree.quadrantFocusTarget(for: .spatial(.right), from: node2) == nil)
+    }
+
+    @Test func quadrantFocusRequiresQuadrants() throws {
+        let (tree, view1, _) = try makeHorizontalSplit()
+        let node = try #require(tree.root?.node(view: view1))
+        #expect(tree.quadrantFocusTarget(for: .spatial(.right), from: node) == nil)
+    }
+
+    @Test func insertingInsideQuadrantZoomKeepsQuadrantZoom() throws {
+        let (tree, view1, _) = try makeQuadrantTree()
+        guard let root = tree.root,
+              let targetNode = root.node(view: view1),
+              let quadrant = tree.quadrant(containing: targetNode) else {
+            Issue.record("missing quadrant")
+            return
+        }
+
+        let zoomedTree = SplitTree(
+            root: root,
+            zoomed: targetNode,
+            quadrantZoomed: quadrant)
+        let view6 = MockView()
+        let splitTree = try zoomedTree.inserting(view: view6, at: view1, direction: .down)
+
+        guard let newRoot = splitTree.root,
+              let newTargetNode = newRoot.node(view: view1),
+              let newViewNode = newRoot.node(view: view6),
+              let newQuadrant = splitTree.quadrant(containing: newTargetNode) else {
+            Issue.record("missing inserted quadrant")
+            return
+        }
+
+        #expect(splitTree.zoomed == newQuadrant)
+        #expect(splitTree.quadrantZoomed == newQuadrant)
+        #expect(newQuadrant.contains(newViewNode))
+    }
+
+    @Test func removingFromQuadrantZoomKeepsRemainingQuadrantPane() throws {
+        let (tree, view1, view5) = try makeQuadrantTree()
+        guard let root = tree.root,
+              let targetNode = root.node(view: view1),
+              let quadrant = tree.quadrant(containing: targetNode) else {
+            Issue.record("missing quadrant")
+            return
+        }
+
+        let zoomedTree = SplitTree(
+            root: root,
+            zoomed: quadrant,
+            quadrantZoomed: quadrant)
+        let removedTree = zoomedTree.removing(targetNode)
+
+        #expect(removedTree.zoomed == .leaf(view: view5))
+        #expect(removedTree.quadrantZoomed == .leaf(view: view5))
+    }
+
+    @Test func removingLastQuadrantZoomPaneExitsZoom() throws {
+        let (tree, view1, view5) = try makeQuadrantTree()
+        guard let root = tree.root,
+              let targetNode = root.node(view: view1),
+              let quadrant = tree.quadrant(containing: targetNode) else {
+            Issue.record("missing quadrant")
+            return
+        }
+
+        let zoomedTree = SplitTree(
+            root: root,
+            zoomed: quadrant,
+            quadrantZoomed: quadrant)
+        let removedTree = zoomedTree
+            .removing(targetNode)
+            .removing(.leaf(view: view5))
+
+        #expect(removedTree.zoomed == nil)
+        #expect(removedTree.quadrantZoomed == nil)
+        #expect(!removedTree.contains(view5))
+    }
+
     // MARK: - Collection Conformance
 
     @Test func treeIteratesLeavesInOrder() throws {
@@ -277,6 +590,20 @@ struct SplitTreeTests {
             ids.append(view.id)
         }
         #expect(ids == [view1.id, view2.id, view3.id])
+    }
+
+    private func makeQuadrantTree() throws -> (SplitTree<MockView>, MockView, MockView) {
+        let view1 = MockView()
+        let view2 = MockView()
+        let view3 = MockView()
+        let view4 = MockView()
+        let view5 = MockView()
+        var tree = SplitTree<MockView>(view: view1)
+        tree = try tree.inserting(view: view2, at: view1, direction: .right)
+        tree = try tree.inserting(view: view3, at: view1, direction: .down)
+        tree = try tree.inserting(view: view4, at: view2, direction: .down)
+        tree = try tree.inserting(view: view5, at: view1, direction: .right)
+        return (tree, view1, view5)
     }
 
     @Test func emptyTreeCollectionProperties() {

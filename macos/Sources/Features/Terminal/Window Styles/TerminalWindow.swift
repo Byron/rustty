@@ -1,6 +1,104 @@
 import AppKit
+import QuartzCore
 import SwiftUI
 import GhosttyKit
+
+struct ZoomedTabTint {
+    static let tabColorBlendFraction: CGFloat = 0.35
+
+    let color: NSColor
+    let indicatorColor: NSColor
+    let opacity: CGFloat
+
+    var cgColor: CGColor {
+        color.withAlphaComponent(opacity).cgColor
+    }
+
+    static func make(
+        iconColor: NSColor,
+        tabColor: TerminalTabColor,
+        opacity: Double,
+        appearance: NSAppearance? = nil
+    ) -> ZoomedTabTint {
+        let iconColor = resolved(iconColor, appearance: appearance)
+        let color: NSColor
+
+        if let tabColor = tabColor.displayColor {
+            let tabColor = resolved(tabColor, appearance: appearance)
+            color = blend(iconColor, with: tabColor)
+        } else {
+            color = iconColor
+        }
+
+        return .init(
+            color: color,
+            indicatorColor: contrastColor(for: color),
+            opacity: min(max(CGFloat(opacity), 0), 1))
+    }
+
+    private static func resolved(_ color: NSColor, appearance: NSAppearance?) -> NSColor {
+        guard let appearance else {
+            return color.usingColorSpace(NSColorSpace.sRGB) ?? color
+        }
+
+        var resolved = color
+        appearance.performAsCurrentDrawingAppearance {
+            resolved = color.usingColorSpace(NSColorSpace.sRGB) ?? color
+        }
+        return resolved
+    }
+
+    private static func blend(_ iconColor: NSColor, with tabColor: NSColor) -> NSColor {
+        var iconRed: CGFloat = 0
+        var iconGreen: CGFloat = 0
+        var iconBlue: CGFloat = 0
+        var iconAlpha: CGFloat = 0
+        var tabRed: CGFloat = 0
+        var tabGreen: CGFloat = 0
+        var tabBlue: CGFloat = 0
+        var tabAlpha: CGFloat = 0
+
+        iconColor.getRed(&iconRed, green: &iconGreen, blue: &iconBlue, alpha: &iconAlpha)
+        tabColor.getRed(&tabRed, green: &tabGreen, blue: &tabBlue, alpha: &tabAlpha)
+
+        let iconFraction = 1 - tabColorBlendFraction
+        return NSColor(
+            red: iconRed * iconFraction + tabRed * tabColorBlendFraction,
+            green: iconGreen * iconFraction + tabGreen * tabColorBlendFraction,
+            blue: iconBlue * iconFraction + tabBlue * tabColorBlendFraction,
+            alpha: 1)
+    }
+
+    private static func contrastColor(for color: NSColor) -> NSColor {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+
+        let luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+        return luminance > 0.42 ? .black : .white
+    }
+}
+
+enum SurfaceZoomState {
+    case none
+    case panel
+    case quadrant
+    case panelInQuadrant
+
+    var isZoomed: Bool {
+        self != .none
+    }
+
+    static func from<ViewType>(
+        _ tree: SplitTree<ViewType>
+    ) -> SurfaceZoomState where ViewType: NSView & Codable & Identifiable {
+        guard let zoomed = tree.zoomed else { return .none }
+        guard let quadrantZoomed = tree.quadrantZoomed else { return .panel }
+        return zoomed == quadrantZoomed ? .quadrant : .panelInQuadrant
+    }
+}
 
 /// The base class for all standalone, "normal" terminal windows. This sets the basic
 /// style and configuration of the window based on the app configuration.
@@ -30,6 +128,12 @@ class TerminalWindow: NSWindow {
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
+
+    /// Whether any surface in this tab is active.
+    private var tabActivity = false
+
+    /// Whether any surface in this tab has an unseen OSC notification.
+    private var notificationAttention = false
 
     /// The configuration derived from the Ghostty config so we don't need to rely on references.
     private(set) var derivedConfig: DerivedConfig = .init()
@@ -64,6 +168,10 @@ class TerminalWindow: NSWindow {
         didSet {
             guard tabColor != oldValue else { return }
             tabColorIndicator.rootView = TabColorIndicatorView(tabColor: tabColor)
+            updateTabAccentColor()
+            updateZoomedTabTintsForTabGroup()
+            updateNotificationAttention()
+            terminalController?.objectWillChange.send()
             invalidateRestorableState()
         }
     }
@@ -166,6 +274,7 @@ class TerminalWindow: NSWindow {
         stackView.spacing = 4
         stackView.alignment = .centerY
         stackView.addArrangedSubview(tabColorIndicator)
+        stackView.addArrangedSubview(tabActivityCountLabel)
         stackView.addArrangedSubview(keyEquivalentLabel)
         stackView.addArrangedSubview(resetZoomTabButton)
         tab.accessoryView = stackView
@@ -199,12 +308,17 @@ class TerminalWindow: NSWindow {
 
     override func becomeKey() {
         super.becomeKey()
-        resetZoomTabButton.contentTintColor = .controlAccentColor
+        cancelActivityStoppedFlash()
+        updateTabActivityIndicator()
+        resetZoomTabButton.contentTintColor = tabColor.accentColor
+        updateZoomedTabTintsForTabGroup()
     }
 
     override func resignKey() {
         super.resignKey()
+        updateTabActivityIndicator()
         resetZoomTabButton.contentTintColor = .secondaryLabelColor
+        updateZoomedTabTintsForTabGroup()
         tabTitleEditor.finishEditing(commit: true)
     }
 
@@ -219,11 +333,13 @@ class TerminalWindow: NSWindow {
             tabBarDidDisappear()
         }
         viewModel.isMainWindow = true
+        updateZoomedTabTintsForTabGroup()
     }
 
     override func resignMain() {
         super.resignMain()
         viewModel.isMainWindow = false
+        updateZoomedTabTintsForTabGroup()
     }
 
     @discardableResult
@@ -317,6 +433,10 @@ class TerminalWindow: NSWindow {
 
         // We don't need to do this with the update accessory. I don't know why but
         // everything works fine.
+        DispatchQueue.main.async {
+            self.updateZoomedTabTintsForTabGroup()
+            self.updateNotificationAttention()
+        }
     }
 
     private func tabBarDidDisappear() {
@@ -334,6 +454,7 @@ class TerminalWindow: NSWindow {
             // When our key equivalent is set, we must update the tab label.
             guard let keyEquivalent else {
                 keyEquivalentLabel.attributedStringValue = NSAttributedString()
+                updateZoomedTabTintsForTabGroup()
                 return
             }
 
@@ -343,6 +464,7 @@ class TerminalWindow: NSWindow {
                     .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
                     .foregroundColor: isKeyWindow ? NSColor.labelColor : NSColor.secondaryLabelColor,
                 ])
+            updateZoomedTabTintsForTabGroup()
         }
     }
 
@@ -354,17 +476,28 @@ class TerminalWindow: NSWindow {
         return label
     }()
 
+    private lazy var tabActivityCountLabel: NSTextField = {
+        let label = NSTextField(labelWithString: "")
+        label.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
+        label.textColor = .labelColor
+        label.isHidden = true
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        label.setAccessibilityIdentifier("TabActivityCount")
+        return label
+    }()
+
     // MARK: Surface Zoom
 
-    /// Set to true if a surface is currently zoomed to show the reset zoom button.
-    var surfaceIsZoomed: Bool = false {
+    /// The current zoom state used to show and style the reset zoom button/tab.
+    var surfaceZoomState: SurfaceZoomState = .none {
         didSet {
             // Show/hide our reset zoom button depending on if we're zoomed.
             // We want to show it if we are zoomed.
-            resetZoomTabButton.isHidden = !surfaceIsZoomed
+            resetZoomTabButton.isHidden = !surfaceZoomState.isZoomed
+            updateZoomedTabTintsForTabGroup()
 
             DispatchQueue.main.async {
-                self.viewModel.isSurfaceZoomed = self.surfaceIsZoomed
+                self.viewModel.isSurfaceZoomed = self.surfaceZoomState.isZoomed
             }
         }
     }
@@ -379,7 +512,7 @@ class TerminalWindow: NSWindow {
         button.isBordered = false
         button.allowsExpansionToolTips = true
         button.toolTip = "Reset Zoom"
-        button.contentTintColor = isMainWindow ? .controlAccentColor : .secondaryLabelColor
+        button.contentTintColor = isMainWindow ? tabColor.accentColor : .secondaryLabelColor
         button.state = .on
         button.image = NSImage(named: "ResetZoom")
         button.frame = NSRect(x: 0, y: 0, width: 20, height: 20)
@@ -389,7 +522,111 @@ class TerminalWindow: NSWindow {
         return button
     }
 
+    /// Update tab-owned controls which live outside the terminal SwiftUI tree.
+    func updateTabAccentColor() {
+        viewModel.tabColor = tabColor
+        if isKeyWindow {
+            resetZoomTabButton.contentTintColor = tabColor.accentColor
+        }
+    }
+
+    func updateZoomedTabTintsForTabGroup() {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in
+                self?.updateZoomedTabTintsForTabGroup()
+            }
+            return
+        }
+
+        let tabBarOwner = tabGroup?.selectedWindow ?? self
+        let tabButtons = tabBarOwner.tabButtonsInVisualOrder()
+        guard !tabButtons.isEmpty else { return }
+
+        let windows = (tabBarOwner.tabbedWindows ?? tabBarOwner.tabGroup?.windows ?? [tabBarOwner])
+            .compactMap { $0 as? TerminalWindow }
+
+        for (index, tabButton) in tabButtons.enumerated() {
+            guard let window = windows[safe: index] else {
+                ZoomedTabTintView.remove(from: tabButton)
+                continue
+            }
+
+            window.updateZoomedTabTint(on: tabButton)
+        }
+    }
+
+    private func updateZoomedTabTint(on tabButton: NSView) {
+        let opacity = terminalController?.ghostty.config.unfocusedSplitOpacity ?? 0
+        guard surfaceZoomState.isZoomed, opacity > 0 else {
+            ZoomedTabTintView.remove(from: tabButton)
+            return
+        }
+
+        let iconColor: NSColor = isKeyWindow ? .controlAccentColor : .secondaryLabelColor
+        let tint = ZoomedTabTint.make(
+            iconColor: iconColor,
+            tabColor: tabColor,
+            opacity: opacity,
+            appearance: tabButton.effectiveAppearance)
+
+        ZoomedTabTintView.install(in: tabButton).apply(tint, state: surfaceZoomState)
+    }
+
     // MARK: Title Text
+
+    func setTabActiveCount(_ count: Int) {
+        tabActivityCountLabel.stringValue = "▶ \(count)"
+        tabActivityCountLabel.isHidden = count == 0
+        let description = count == 1 ? "1 active pane" : "\(count) active panes"
+        tabActivityCountLabel.toolTip = description
+        tabActivityCountLabel.setAccessibilityLabel(description)
+    }
+
+    func setTabActivity(_ isActive: Bool) {
+        guard tabActivity != isActive else { return }
+        tabActivity = isActive
+        updateTabActivityIndicator()
+    }
+
+    private func updateTabActivityIndicator() {
+        tab.attributedTitle = attributedTitle
+    }
+
+    func flashActivityStopped() {
+        guard let selectedWindow = tabGroup?.selectedWindow, selectedWindow !== self else { return }
+        guard let tabButton = nativeTabButton else { return }
+
+        TabActivityStoppedFlashView.install(in: tabButton)
+            .flash(color: tabColor.accentColor)
+    }
+
+    private func cancelActivityStoppedFlash() {
+        guard let tabButton = nativeTabButton else { return }
+        TabActivityStoppedFlashView.remove(from: tabButton)
+    }
+
+    private var nativeTabButton: NSView? {
+        let tabBarOwner = tabGroup?.selectedWindow ?? self
+        let windows = tabBarOwner.tabbedWindows ?? tabBarOwner.tabGroup?.windows ?? [tabBarOwner]
+        guard let index = windows.firstIndex(of: self) else { return nil }
+        return tabBarOwner.tabButtonsInVisualOrder()[safe: index]
+    }
+
+    func setNotificationAttention(_ active: Bool) {
+        notificationAttention = active
+        updateNotificationAttention()
+    }
+
+    private func updateNotificationAttention() {
+        guard let tabButton = nativeTabButton else { return }
+        guard notificationAttention else {
+            TabNotificationPulseView.remove(from: tabButton)
+            return
+        }
+
+        TabNotificationPulseView.install(in: tabButton)
+            .pulse(color: tabColor.accentColor)
+    }
 
     override var title: String {
         didSet {
@@ -430,12 +667,15 @@ class TerminalWindow: NSWindow {
 
     // Return a styled representation of our title property.
     var attributedTitle: NSAttributedString? {
-        guard let titlebarFont = titlebarFont else { return nil }
-
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: titlebarFont,
-            .foregroundColor: isKeyWindow ? NSColor.labelColor : NSColor.secondaryLabelColor,
-        ]
+        var attributes: [NSAttributedString.Key: Any] = [:]
+        if let titlebarFont {
+            attributes[.font] = titlebarFont
+            attributes[.foregroundColor] = isKeyWindow ? NSColor.labelColor : NSColor.secondaryLabelColor
+        }
+        if tabActivity && (tabGroup?.selectedWindow ?? self) !== self {
+            attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+        }
+        guard !attributes.isEmpty else { return nil }
         return NSAttributedString(string: title, attributes: attributes)
     }
 
@@ -628,6 +868,7 @@ extension TerminalWindow {
         @Published var isSurfaceZoomed: Bool = false
         @Published var hasToolbar: Bool = false
         @Published var isMainWindow: Bool = true
+        @Published var tabColor: TerminalTabColor = .none
 
         /// Calculates the top padding based on toolbar visibility and macOS version
         fileprivate var accessoryTopPadding: CGFloat {
@@ -660,6 +901,7 @@ extension TerminalWindow {
                 .padding(.top, viewModel.accessoryTopPadding)
                 // We always need space at the end of the titlebar
                 .padding(.trailing, 10)
+                .accentColor(Color(nsColor: viewModel.tabColor.accentColor))
             }
         }
     }
@@ -671,7 +913,7 @@ extension TerminalWindow {
 
         var body: some View {
             // We use the same top/trailing padding so that it hugs the same.
-            UpdatePill(model: model)
+            UpdatePill(model: model, tabColor: viewModel.tabColor)
                 .padding(.top, viewModel.accessoryTopPadding)
                 .padding(.trailing, viewModel.accessoryTopPadding)
         }
@@ -696,6 +938,286 @@ private struct TabColorIndicatorView: View {
                 .frame(width: 6, height: 6)
                 .hidden()
         }
+    }
+}
+
+private final class TabActivityStoppedFlashView: NSView {
+    private static let duration: TimeInterval = 1.2
+    private static let viewIdentifier = NSUserInterfaceItemIdentifier(
+        "com.mitchellh.ghostty.activityStoppedFlash")
+    private static let tabBackgroundIdentifier = NSUserInterfaceItemIdentifier("_backgroundView")
+
+    static func install(in tabButton: NSView) -> TabActivityStoppedFlashView {
+        if let view = existing(in: tabButton) {
+            view.frame = tabButton.bounds
+            return view
+        }
+
+        let view = TabActivityStoppedFlashView(frame: tabButton.bounds)
+        view.identifier = viewIdentifier
+        view.autoresizingMask = [.width, .height]
+
+        let relativeView = tabButton.subviews.first { $0 is ZoomedTabTintView }
+            ?? tabButton.subviews.first { $0.identifier == tabBackgroundIdentifier }
+        tabButton.addSubview(
+            view,
+            positioned: relativeView == nil ? .below : .above,
+            relativeTo: relativeView)
+        return view
+    }
+
+    static func remove(from tabButton: NSView) {
+        existing(in: tabButton)?.removeFromSuperview()
+    }
+
+    private static func existing(in tabButton: NSView) -> TabActivityStoppedFlashView? {
+        tabButton.subviews.first { $0.identifier == viewIdentifier } as? TabActivityStoppedFlashView
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        layer?.masksToBounds = true
+        layer?.opacity = 0
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    func flash(color: NSColor) {
+        layer?.backgroundColor = color.cgColor
+
+        let animation = CAKeyframeAnimation(keyPath: "opacity")
+        animation.values = [0, 0.45, 0]
+        animation.keyTimes = [0, NSNumber(value: 1.0 / 6.0), 1]
+        animation.timingFunctions = [
+            CAMediaTimingFunction(name: .easeOut),
+            CAMediaTimingFunction(name: .easeInEaseOut),
+        ]
+        animation.duration = Self.duration
+        layer?.add(animation, forKey: "activityStoppedFlash")
+    }
+}
+
+private final class TabNotificationPulseView: NSView {
+    private static let viewIdentifier = NSUserInterfaceItemIdentifier(
+        "com.mitchellh.ghostty.notificationPulse")
+    private static let tabBackgroundIdentifier = NSUserInterfaceItemIdentifier("_backgroundView")
+
+    static func install(in tabButton: NSView) -> TabNotificationPulseView {
+        if let view = existing(in: tabButton) {
+            view.frame = tabButton.bounds
+            return view
+        }
+
+        let view = TabNotificationPulseView(frame: tabButton.bounds)
+        view.identifier = viewIdentifier
+        view.autoresizingMask = [.width, .height]
+
+        let relativeView = tabButton.subviews.first { $0 is ZoomedTabTintView }
+            ?? tabButton.subviews.first { $0.identifier == tabBackgroundIdentifier }
+        tabButton.addSubview(
+            view,
+            positioned: relativeView == nil ? .below : .above,
+            relativeTo: relativeView)
+        return view
+    }
+
+    static func remove(from tabButton: NSView) {
+        existing(in: tabButton)?.removeFromSuperview()
+    }
+
+    private static func existing(in tabButton: NSView) -> TabNotificationPulseView? {
+        tabButton.subviews.first { $0.identifier == viewIdentifier } as? TabNotificationPulseView
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        layer?.masksToBounds = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    func pulse(color: NSColor) {
+        layer?.backgroundColor = color.cgColor
+        layer?.opacity = 0.3
+    }
+}
+
+private final class ZoomedTabTintView: NSView {
+    private static let viewIdentifier = NSUserInterfaceItemIdentifier(
+        "com.mitchellh.ghostty.zoomedTabTint")
+    private static let tabBackgroundIdentifier = NSUserInterfaceItemIdentifier("_backgroundView")
+    private var tint: ZoomedTabTint?
+    private weak var indicatorView: ZoomedTabIndicatorView?
+
+    static func install(in tabButton: NSView) -> ZoomedTabTintView {
+        let view: ZoomedTabTintView
+        if let existingView = existing(in: tabButton) {
+            existingView.frame = tabButton.bounds
+            view = existingView
+        } else {
+            view = ZoomedTabTintView(frame: tabButton.bounds)
+            view.identifier = viewIdentifier
+            view.autoresizingMask = [.width, .height]
+
+            if let backgroundView = tabButton.subviews.first(where: { $0.identifier == tabBackgroundIdentifier }) {
+                tabButton.addSubview(view, positioned: .above, relativeTo: backgroundView)
+            } else {
+                tabButton.addSubview(view, positioned: .below, relativeTo: nil)
+            }
+        }
+
+        if let indicatorView = ZoomedTabIndicatorView.install(in: tabButton) {
+            view.indicatorView = indicatorView
+            indicatorView.frame = tabButton.bounds
+        }
+
+        return view
+    }
+
+    static func remove(from tabButton: NSView) {
+        existing(in: tabButton)?.removeFromSuperview()
+        ZoomedTabIndicatorView.remove(from: tabButton)
+    }
+
+    private static func existing(in tabButton: NSView) -> ZoomedTabTintView? {
+        tabButton.subviews.first { $0.identifier == viewIdentifier } as? ZoomedTabTintView
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = false
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let tint else { return }
+
+        let rect = bounds.insetBy(dx: 2, dy: 2)
+        let path = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
+        tint.color.withAlphaComponent(tint.opacity).setFill()
+        path.fill()
+    }
+
+    func apply(_ tint: ZoomedTabTint, state: SurfaceZoomState) {
+        self.tint = tint
+        indicatorView?.apply(tint, state: state)
+        needsDisplay = true
+    }
+}
+
+private final class ZoomedTabIndicatorView: NSView {
+    private static let viewIdentifier = NSUserInterfaceItemIdentifier(
+        "com.mitchellh.ghostty.zoomedTabIndicator")
+    private var tint: ZoomedTabTint?
+    private var state: SurfaceZoomState = .none
+
+    static func install(in tabButton: NSView) -> ZoomedTabIndicatorView? {
+        if let view = existing(in: tabButton) {
+            view.frame = tabButton.bounds
+            return view
+        }
+
+        let view = ZoomedTabIndicatorView(frame: tabButton.bounds)
+        view.identifier = viewIdentifier
+        view.autoresizingMask = [.width, .height]
+        tabButton.addSubview(view, positioned: .above, relativeTo: nil)
+
+        return view
+    }
+
+    static func remove(from tabButton: NSView) {
+        existing(in: tabButton)?.removeFromSuperview()
+    }
+
+    private static func existing(in tabButton: NSView) -> ZoomedTabIndicatorView? {
+        tabButton.subviews.first { $0.identifier == viewIdentifier } as? ZoomedTabIndicatorView
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = false
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let tint else { return }
+
+        let rect = bounds.insetBy(dx: 2, dy: 2)
+        switch state {
+        case .none, .panel:
+            break
+
+        case .quadrant:
+            drawQuadrantRail(in: rect, color: tint.indicatorColor)
+
+        case .panelInQuadrant:
+            drawQuadrantRail(in: rect, color: tint.indicatorColor)
+            drawPanelUnderline(in: rect, color: tint.color)
+        }
+    }
+
+    func apply(_ tint: ZoomedTabTint, state: SurfaceZoomState) {
+        self.tint = tint
+        self.state = state
+        needsDisplay = true
+    }
+
+    private func drawQuadrantRail(in rect: NSRect, color: NSColor) {
+        let opacity = tint?.opacity ?? 0
+        color.withAlphaComponent(max(min(opacity * 1.1, 0.55), 0.36)).setFill()
+
+        let railRect = NSRect(
+            x: rect.minX + 5,
+            y: rect.minY + 5,
+            width: 3,
+            height: rect.height - 10)
+        let rail = NSBezierPath(roundedRect: railRect, xRadius: 1.5, yRadius: 1.5)
+        rail.fill()
+    }
+
+    private func drawPanelUnderline(in rect: NSRect, color: NSColor) {
+        color.withAlphaComponent(max(tint?.opacity ?? 0, 0.35)).setStroke()
+
+        let underline = NSBezierPath()
+        underline.move(to: NSPoint(x: rect.minX + 5, y: rect.minY + 2.5))
+        underline.line(to: NSPoint(x: rect.maxX - 5, y: rect.minY + 2.5))
+        underline.lineCapStyle = .round
+        underline.lineWidth = 2
+        underline.stroke()
     }
 }
 
