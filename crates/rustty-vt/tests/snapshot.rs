@@ -1,4 +1,4 @@
-use rustty_vt::snapshot::{DecodeOptions, Decoder, decode, encode_to_vec};
+use rustty_vt::snapshot::{DecodeOptions, Decoder, decode, decode_exact, encode_to_vec};
 use rustty_vt::{
     Color, CursorShape, HyperlinkId, Row, Screen, ScrollbackLimits, SemanticContent, Terminal,
     default_palette,
@@ -77,6 +77,170 @@ fn frame(records: &[(u16, Vec<u8>)]) -> Vec<u8> {
         bytes.extend_from_slice(payload);
     }
     bytes
+}
+
+#[test]
+fn unknown_cursor_default_flags_preserve_host_cursor_preferences() {
+    for (flag, expected) in [
+        (0, CursorShape::Block),
+        (1, CursorShape::Bar),
+        (2, CursorShape::Bar),
+        (255, CursorShape::Bar),
+    ] {
+        let mut parts = records(&encode_to_vec(&Terminal::new(8, 3, 0)).unwrap());
+        parts[0].1[29] = flag;
+        let mut terminal = decode(frame(&parts).as_slice(), DecodeOptions::default()).unwrap();
+        terminal.set_default_cursor(CursorShape::Bar, Some(true));
+        assert_eq!(terminal.screen().cursor.shape, expected, "flag={flag}");
+        let encoded = records(&encode_to_vec(&terminal).unwrap());
+        assert_eq!(encoded[0].1[29], u8::from(flag != 0));
+    }
+}
+
+#[test]
+fn repeated_nul_prints_empty_cells_with_the_current_pen() {
+    for restored in [false, true] {
+        let mut terminal = Terminal::new(8, 3, 0);
+        terminal.feed(b"abc\x1b[31m\x1b]8;;https://example.org\x07");
+        if restored {
+            let mut parts = records(&encode_to_vec(&terminal).unwrap());
+            parts[0].1[25..29].copy_from_slice(&0u32.to_le_bytes());
+            terminal = decode(frame(&parts).as_slice(), DecodeOptions::default()).unwrap();
+            terminal.feed(b"\x1b[3b");
+        } else {
+            terminal.print('\0');
+            terminal.feed(b"\x1b[2b");
+        }
+        assert_eq!(terminal.screen().cursor.col, 6, "restored={restored}");
+        for cell in &terminal.screen().rows[0].cells[3..6] {
+            assert!(cell.text.is_empty(), "restored={restored}");
+            assert_eq!(cell.width, 1);
+            assert_eq!(cell.style.foreground, Color::Indexed(1));
+            assert_eq!(cell.hyperlink.as_deref(), Some("https://example.org"));
+        }
+    }
+}
+
+#[test]
+fn snapshot_propagates_io_failures_at_record_boundaries() {
+    use std::io::{Error, ErrorKind, Write};
+
+    struct FailingReader<'a> {
+        source: &'a [u8],
+        remaining: usize,
+    }
+    impl Read for FailingReader<'_> {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            if self.remaining == 0 {
+                return Err(Error::from(ErrorKind::ConnectionReset));
+            }
+            let count = buffer.len().min(self.remaining).min(self.source.len());
+            buffer[..count].copy_from_slice(&self.source[..count]);
+            self.source = &self.source[count..];
+            self.remaining -= count;
+            Ok(count)
+        }
+    }
+    struct FailingWriter {
+        bytes: Vec<u8>,
+        remaining: usize,
+    }
+    impl Write for FailingWriter {
+        fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+            if self.remaining == 0 {
+                return Err(Error::from(ErrorKind::BrokenPipe));
+            }
+            let count = buffer.len().min(self.remaining);
+            self.bytes.extend_from_slice(&buffer[..count]);
+            self.remaining -= count;
+            Ok(count)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let terminal = decode(fixture().as_slice(), DecodeOptions::default()).unwrap();
+    let bytes = encode_to_vec(&terminal).unwrap();
+    let mut cuts = vec![0, 1, 9, 10];
+    let mut offset = 10;
+    for (_, payload) in records(&bytes) {
+        cuts.extend([
+            offset,
+            offset + 1,
+            offset + 6,
+            offset + 9,
+            offset + 10,
+            offset + 10 + payload.len() / 2,
+            offset + 10 + payload.len(),
+        ]);
+        offset += 10 + payload.len();
+    }
+    cuts.sort_unstable();
+    cuts.dedup();
+    for cut in cuts.into_iter().filter(|&cut| cut < bytes.len()) {
+        let reader = FailingReader {
+            source: &bytes,
+            remaining: cut,
+        };
+        assert_eq!(
+            decode(reader, DecodeOptions::default()).unwrap_err().kind(),
+            ErrorKind::ConnectionReset,
+            "read cut={cut}"
+        );
+        let mut writer = FailingWriter {
+            bytes: Vec::new(),
+            remaining: cut,
+        };
+        assert_eq!(
+            rustty_vt::snapshot::encode(&terminal, &mut writer)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::BrokenPipe,
+            "write cut={cut}"
+        );
+        assert_eq!(writer.bytes, bytes[..cut], "write cut={cut}");
+    }
+}
+
+#[test]
+fn decode_continuation_budget_does_not_limit_later_capture() {
+    for prefix in [b"".as_slice(), b"\x1b"] {
+        let mut original = Terminal::new(8, 3, 0);
+        original.feed(prefix);
+        let encoded = encode_to_vec(&original).unwrap();
+        let options = DecodeOptions {
+            max_continuation_bytes: prefix.len(),
+            ..Default::default()
+        };
+        let mut terminal = decode(encoded.as_slice(), options).unwrap();
+        terminal.feed(b"\x1b]2;longer title");
+        let encoded = encode_to_vec(&terminal).unwrap();
+        let mut resumed = decode(encoded.as_slice(), DecodeOptions::default()).unwrap();
+        resumed.feed(b"\x07");
+        assert_eq!(resumed.title, "longer title");
+        assert!(decode(encoded.as_slice(), options).is_err());
+    }
+}
+
+#[test]
+fn raised_decode_budget_keeps_the_normal_capture_limit() {
+    let mut parts = records(&encode_to_vec(&Terminal::new(8, 3, 0)).unwrap());
+    let continuation = &mut parts.iter_mut().find(|(tag, _)| *tag == 7).unwrap().1;
+    continuation.extend_from_slice(b"\x1bPq");
+    continuation.resize(rustty_parser::MAX_OSC_BYTES + 1, b'x');
+    let options = DecodeOptions {
+        max_record_bytes: continuation.len(),
+        max_continuation_bytes: continuation.len(),
+        ..Default::default()
+    };
+    let encoded = frame(&parts);
+    let mut terminal = decode(encoded.as_slice(), options).unwrap();
+    assert!(matches!(encode_to_vec(&terminal), Err(error)
+        if error.kind() == std::io::ErrorKind::InvalidData));
+    terminal.feed(b"\x1b\\\x1b]2;recovered\x07");
+    assert_eq!(terminal.title, "recovered");
+    assert!(encode_to_vec(&terminal).is_ok());
 }
 
 fn text<'a>(rows: impl IntoIterator<Item = &'a Row>) -> Vec<String> {
@@ -228,6 +392,51 @@ fn corrupt_truncated_and_excessive_snapshots_are_rejected() {
 }
 
 #[test]
+fn exact_snapshot_decode_checks_eof_without_consuming_transport_bytes() {
+    let bytes = fixture();
+    assert!(decode_exact(bytes.as_slice(), DecodeOptions::default()).is_ok());
+    let mut source = Cursor::new([bytes.as_slice(), b"tail"].concat());
+    let error = decode_exact(&mut source, DecodeOptions::default()).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    assert_eq!(source.position(), bytes.len() as u64);
+    let mut tail = String::new();
+    source.read_to_string(&mut tail).unwrap();
+    assert_eq!(tail, "tail");
+
+    // Peek may fill the reader's buffer past FINISH, but must not consume
+    // any exposed trailing bytes, including a complete following snapshot.
+    for capacity in [1, 7, 1024, bytes.len() * 3] {
+        let data = [bytes.as_slice(), bytes.as_slice()].concat();
+        let mut source = std::io::BufReader::with_capacity(capacity, Cursor::new(data));
+        let error = decode_exact(&mut source, DecodeOptions::default()).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(
+            std::io::Seek::stream_position(&mut source).unwrap(),
+            bytes.len() as u64
+        );
+        // Decoding again begins at the second snapshot's magic, not one byte
+        // after it. The same reader retains any bytes read ahead internally.
+        assert!(decode_exact(&mut source, DecodeOptions::default()).is_ok());
+    }
+
+    struct BrokenTail;
+    impl Read for BrokenTail {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            Err(std::io::ErrorKind::ConnectionReset.into())
+        }
+    }
+    impl std::io::BufRead for BrokenTail {
+        fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+            Err(std::io::ErrorKind::ConnectionReset.into())
+        }
+        fn consume(&mut self, _: usize) {}
+    }
+    let source = Cursor::new(bytes).chain(BrokenTail);
+    let error = decode_exact(source, DecodeOptions::default()).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::ConnectionReset);
+}
+
+#[test]
 fn streaming_restore_uses_the_minimum_scrollback_budget() {
     for (limits, expected) in [
         (
@@ -276,6 +485,42 @@ fn streaming_restore_obeys_page_budget_and_discards_history_after_resize() {
         let expected = if resize { vec![] } else { vec!["B", ""] };
         assert_eq!(rows, expected.len());
         assert_eq!(text(&terminal.primary_screen().history), expected);
+    }
+}
+
+#[test]
+fn streaming_history_checks_width_when_each_page_arrives() {
+    for before in 0..=1 {
+        for consume_while_narrow in [false, true] {
+            let bytes = fixture();
+            let mut decoder = Decoder::new(bytes.as_slice(), DecodeOptions::default());
+            let mut terminal = decoder.ready().unwrap();
+            for _ in 0..before {
+                assert_eq!(
+                    decoder.next_history(&mut terminal).unwrap().unwrap().rows,
+                    2
+                );
+            }
+            terminal.resize(3, 3);
+            if consume_while_narrow {
+                assert_eq!(
+                    decoder.next_history(&mut terminal).unwrap().unwrap().rows,
+                    0
+                );
+            }
+            terminal.resize(2, 3);
+            while let Some(progress) = decoder.next_history(&mut terminal).unwrap() {
+                assert_eq!(progress.rows, if consume_while_narrow { 0 } else { 2 });
+            }
+            let expected = if !consume_while_narrow {
+                vec!["A", "", "B", ""]
+            } else if before == 1 {
+                vec!["B", ""]
+            } else {
+                vec![]
+            };
+            assert_eq!(text(&terminal.primary_screen().history), expected);
+        }
     }
 }
 
@@ -404,7 +649,31 @@ fn kitty_keyboard_ring_overflows_pops_and_resumes_after_restore() {
 }
 
 #[test]
-fn mixed_physical_widths_survive_safe_edits_and_grow_at_the_access_boundary() {
+fn snapshot_clamps_cursor_to_logical_and_physical_widths() {
+    for (physical, logical, x, expected, pending) in
+        [(4, 8, 3, 3, true), (8, 4, 7, 3, true), (8, 4, 0, 0, false)]
+    {
+        let mut source = Terminal::new(physical, 1, 10);
+        source.feed(&b"ABCDEFGH"[..usize::from(physical)]);
+        let mut stream = records(&encode_to_vec(&source).unwrap());
+        stream[0].1[..2].copy_from_slice(&u16::to_le_bytes(logical));
+        stream[0].1[18..20].copy_from_slice(&u16::to_le_bytes(logical - 1));
+        stream[1].1[12..14].copy_from_slice(&u16::to_le_bytes(x));
+        let mut terminal = decode(frame(&stream).as_slice(), DecodeOptions::default()).unwrap();
+        assert_eq!(terminal.screen().cursor.col, expected);
+        assert_eq!(terminal.screen().cursor.pending_wrap, pending);
+        assert_eq!(terminal.screen().rows[0].cells.len(), usize::from(physical));
+        terminal.feed(b"\x1b[C");
+        assert_eq!(
+            terminal.screen().cursor.col,
+            (expected + 1).min(usize::from(logical) - 1)
+        );
+        assert!(terminal.screen().cursor.col < terminal.screen().rows[0].cells.len());
+    }
+}
+
+#[test]
+fn mixed_physical_widths_survive_observation_and_grow_before_mutation() {
     let mut source = Terminal::new(4, 1, 10);
     source.feed(b"abcd");
     let narrow_page = records(&encode_to_vec(&source).unwrap())[2].clone();
@@ -431,7 +700,7 @@ fn mixed_physical_widths_survive_safe_edits_and_grow_at_the_access_boundary() {
     terminal.feed(b"");
     assert_eq!(terminal.screen().rows[0].cells.len(), 4);
     terminal.feed(b"mX");
-    assert_eq!(terminal.screen().rows[0].cells.len(), 4);
+    assert_eq!(terminal.screen().rows[0].cells.len(), 8);
     assert_eq!(text(&terminal.screen().rows), ["abcd", "X"]);
     assert!(!terminal.screen().rows[0].wrapped);
     assert_eq!(
@@ -490,6 +759,52 @@ fn mixed_physical_widths_survive_safe_edits_and_grow_at_the_access_boundary() {
 }
 
 #[test]
+fn narrow_restored_pages_support_direct_cursor_and_row_edits() {
+    let mut stream = records(&encode_to_vec(&Terminal::new(8, 2, 10)).unwrap());
+    let mut pages = Vec::new();
+    for value in [b"ABCD", b"EFGH"] {
+        let mut source = Terminal::new(4, 1, 10);
+        source.feed(value);
+        pages.push(records(&encode_to_vec(&source).unwrap())[2].clone());
+    }
+    stream.splice(2..3, pages);
+    stream[1].1[2..4].copy_from_slice(&2u16.to_le_bytes());
+    let bytes = frame(&stream);
+    for (input, expected) in [
+        (b"\x1b[8X".as_slice(), ["", "EFGH"]),
+        (b"\x1b[2K", ["", "EFGH"]),
+        (b"\x1b[L", ["", "ABCD"]),
+        (b"\x1b[M", ["EFGH", ""]),
+        (b"12345678Z", ["12345678", "ZFGH"]),
+    ] {
+        let mut terminal = decode(bytes.as_slice(), DecodeOptions::default()).unwrap();
+        assert_eq!(terminal.screen().rows[0].cells.len(), 4);
+        terminal.feed(input);
+        assert_eq!(text(&terminal.screen().rows), expected);
+        assert_eq!(terminal.screen().rows[0].cells.len(), 8);
+        let restored = decode(
+            encode_to_vec(&terminal).unwrap().as_slice(),
+            DecodeOptions::default(),
+        )
+        .unwrap();
+        same_terminal(&terminal, &restored);
+    }
+    let mut terminal = decode(bytes.as_slice(), DecodeOptions::default()).unwrap();
+    terminal.feed(b"\x1b[1;7H\x1b[B");
+    assert_eq!(
+        (terminal.screen().cursor.row, terminal.screen().cursor.col),
+        (1, 6)
+    );
+    assert!(
+        terminal
+            .screen()
+            .rows
+            .iter()
+            .all(|row| row.cells.len() == 8)
+    );
+}
+
+#[test]
 fn multirow_page_snapshots_keep_all_owned_resources() {
     let mut styles = Terminal::new(64, 4, 10);
     for index in 0..256 {
@@ -536,6 +851,104 @@ fn snapshot_rejects_empty_link_strings_before_resource_admission() {
         assert_eq!(
             encode_to_vec(&terminal).unwrap_err().kind(),
             std::io::ErrorKind::InvalidData
+        );
+    }
+}
+
+#[test]
+fn index_scroll_widens_mixed_pages_before_moving_rows() {
+    for (widths, expected) in [
+        (
+            [8, 4, 8],
+            ["AAAAAAAA", "CCCC", "DDDD", "EEEEEEEE", "FFFFFFFF", ""],
+        ),
+        (
+            [4, 8, 4],
+            ["AAAA", "CCCCCCCC", "DDDDDDDD", "EEEE", "FFFF", ""],
+        ),
+    ] {
+        let mut stream = records(&encode_to_vec(&Terminal::new(8, 6, 10)).unwrap());
+        let mut pages = Vec::new();
+        for (page, columns) in widths.into_iter().enumerate() {
+            let mut source = Terminal::new(columns, 2, 10);
+            for (row, contents) in source.screen_mut().rows.iter_mut().enumerate() {
+                let value = char::from(b'A' + (page * 2 + row) as u8);
+                for cell in &mut contents.cells {
+                    cell.text = value.to_string();
+                }
+                contents.wrapped = row == 0;
+            }
+            pages.push(records(&encode_to_vec(&source).unwrap())[2].clone());
+        }
+        stream.splice(2..3, pages);
+        stream[1].1[2..4].copy_from_slice(&3u16.to_le_bytes());
+        let mut terminal = decode(frame(&stream).as_slice(), DecodeOptions::default()).unwrap();
+        let mut history = terminal.clone();
+        terminal.set_limits(ScrollbackLimits::NONE);
+        let wide_pin = (widths[1] == 8).then(|| {
+            let point = terminal.screen().point(2, 6).unwrap();
+            terminal.screen_mut().track(point)
+        });
+        terminal.feed(b"\x1b[2;6r\x1b[6;2H\x1bD");
+        assert_eq!(text(&terminal.screen().rows), expected);
+        assert_eq!(terminal.screen().rows[1].wrapped, widths[0] < widths[1]);
+        assert_eq!(
+            terminal
+                .screen()
+                .rows
+                .iter()
+                .map(|row| row.cells.len())
+                .collect::<Vec<_>>(),
+            [8; 6]
+        );
+        assert!(!terminal.screen().rows[5].wrapped);
+        if let Some(pin) = wide_pin {
+            // The formerly narrow destination can now represent the tracked
+            // logical column without leaving the pin outside physical storage.
+            let point = terminal.screen().resolve(pin).unwrap();
+            assert_eq!(point.row, terminal.screen().rows[1].id);
+            assert_eq!(point.col, 6);
+            assert!(
+                terminal
+                    .screen()
+                    .row_by_id(point.row)
+                    .unwrap()
+                    .cells
+                    .get(point.col)
+                    .is_some()
+            );
+        }
+
+        let point = history.screen().point(3, 1).unwrap();
+        let pin = history.screen_mut().track(point);
+        history.feed(b"\x1b[1;3r\x1b[3;2H\x1bD");
+        assert_eq!(
+            text(&history.screen().rows),
+            if widths[0] == 8 {
+                ["BBBBBBBB", "CCCC", "", "DDDD", "EEEEEEEE", "FFFFFFFF"]
+            } else {
+                ["BBBB", "CCCCCCCC", "", "DDDDDDDD", "EEEE", "FFFF"]
+            }
+        );
+        assert_eq!(history.screen().history.len(), 1);
+        assert_eq!(history.screen().resolve(pin), history.screen().point(3, 1));
+        history.feed(b"\x1b[2;6r\x1b[6;2H\x1bD");
+        assert_eq!(
+            text(&history.screen().rows),
+            if widths[0] == 8 {
+                ["BBBBBBBB", "", "DDDD", "EEEEEEEE", "FFFFFFFF", ""]
+            } else {
+                ["BBBB", "", "DDDDDDDD", "EEEE", "FFFF", ""]
+            }
+        );
+        assert_eq!(
+            history
+                .screen()
+                .rows
+                .iter()
+                .map(|row| row.cells.len())
+                .collect::<Vec<_>>(),
+            [8; 6]
         );
     }
 }

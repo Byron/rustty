@@ -18,16 +18,26 @@ available to development sessions. Ordinary Cargo builds do not require Zig.
 
 Rustty loads its own configuration when present, otherwise Ghostty Local settings,
 then stable Ghostty settings. `rustty --config-info` reports the selected files.
-Own settings can be stored in `~/.config/rustty/config.rustty` or
-`~/Library/Application Support/com.rustty.app/config.rustty`; an empty own file
+Own settings can be stored in `~/.config/rustty/rustty.txt` or
+`~/Library/Application Support/com.rustty.app/rustty.txt`. Legacy `config` and
+`config.rustty` files remain supported; an empty own file
 intentionally disables Ghostty fallback. No Ghostty file is modified.
 Configuration diagnostics appear in the app. The native menu provides reload and
-open-configuration actions. Light/dark theme pairs follow macOS appearance, and
+open-configuration actions. Settings opens the selected configuration file,
+including Ghostty's file while using fallback, so opening it does not create an
+empty Rustty override. Settings always uses the default text editor, including
+for existing files with an unregistered extension. Light/dark theme pairs follow macOS appearance, and
 reload keeps the original command-line overrides. Terminal appearance and visibility
 queries reflect the OS scheme and whether the pane is currently shown.
 Tabs, splits, zoom, quadrant navigation, clipboard and
 search use the configured Ghostty keybindings. Window layouts and pane directories
 are saved separately under `com.rustty.app`.
+
+File → Open Saved Layout lists the last saved layouts from Ghostty Local,
+Ghostty and Rustty, and can browse for another Rustty workspace JSON or Ghostty
+saved-state folder. Imported tabs and panes open in new windows with fresh shells
+in their saved directories. Existing sessions and the source files stay intact;
+the imported layout participates in Rustty's normal saving and undo history.
 
 Tab colors apply to tab controls, split focus outlines and completion flashes;
 unassigned tabs use the macOS system accent. Inactive tabs and directory labels
@@ -36,6 +46,11 @@ through a leading activity spinner or progress report. Waiting-for-input titles
 do not count as active work. Each pane can trigger a short completion flash even
 while another pane remains busy. Quadrants share one directory label when every
 pane has the same basename; differing or missing directories keep individual labels.
+
+OSC 9;4 progress reports show a thin bar at the top of their pane, with percentages,
+red errors, orange pauses and animated indeterminate progress. Reports disappear
+when removed or after 15 seconds without an update. Ghostty's `progress-style = false`
+setting disables them. Determinate bars do not schedule animation frames.
 
 The terminal port is still undergoing differential compatibility work. A passing
 smoke test does not establish full libghostty-vt parity. The exhaustive coverage

@@ -79,6 +79,58 @@ fn no_config_returns_defaults_without_creating_any_settings() {
     assert!(loaded.diagnostics.is_empty());
     assert!(!home.loader.home.exists());
     assert!(!loaded.own_config_path.exists());
+    assert_eq!(loaded.edit_config_path, loaded.own_config_path);
+    assert_eq!(loaded.own_config_path.file_name().unwrap(), "rustty.txt");
+}
+
+#[test]
+fn rustty_text_settings_take_precedence_with_legacy_paths_still_supported() {
+    let home = TestHome::new();
+    home.local("font-size=30\n");
+    home.write(".config/rustty/config.rustty", "font-size=11\n");
+    let text = home.write(".config/rustty/rustty.txt", "font-size=12\n");
+    let loaded = home.loader.load();
+    assert_eq!(loaded.family, ConfigFamily::Rustty);
+    assert_eq!(loaded.own_config_path, text);
+    assert_eq!(loaded.edit_config_path, text);
+    assert_eq!(loaded.config.font_size, 12.0);
+    home.own("font-size=13\n");
+    assert_eq!(home.loader.load().config.font_size, 13.0);
+    let text = home.write(
+        "Library/Application Support/com.rustty.app/rustty.txt",
+        "font-size=14\n",
+    );
+    let loaded = home.loader.load();
+    assert_eq!(loaded.edit_config_path, text);
+    assert_eq!(loaded.config.font_size, 14.0);
+}
+
+#[test]
+fn settings_edits_the_active_root_without_creating_a_fallback_override() {
+    let home = TestHome::new();
+    let stable = home.stable("font-size=14\n");
+    assert_eq!(home.loader.load().edit_config_path, stable);
+    home.write(".config/ghostty/config", "font-size=15\n");
+    let local = home.local("config-file=extra.ghostty\n");
+    home.write(
+        "Library/Application Support/com.mitchellh.ghostty.local/extra.ghostty",
+        "keybind=super+h=goto_split:left\nkeybind=super+shift+f=toggle_quadrant_zoom\n",
+    );
+    let loaded = home.loader.load();
+    assert_eq!(loaded.edit_config_path, local);
+    assert!(!loaded.own_config_path.exists());
+    assert_eq!(
+        action(&loaded.config, "super+h"),
+        Some(Action::GotoSplit(Direction::Left))
+    );
+    assert_eq!(
+        action(&loaded.config, "super+shift+f"),
+        Some(Action::ToggleQuadrantZoom)
+    );
+    let own = home.own("");
+    let loaded = home.loader.load();
+    assert_eq!(loaded.edit_config_path, own);
+    assert_eq!(loaded.family, ConfigFamily::Rustty);
 }
 
 #[test]
@@ -524,6 +576,7 @@ fn current_local_workflow_settings_and_actions_are_supported() {
     home.local(
         r#"
 bell-features = no-system,no-audio,attention
+progress-style = false
 notify-on-command-finish-action = notify
 window-save-state = always
 copy-on-select = clipboard
@@ -569,6 +622,7 @@ keybind = cmd+shift+f=toggle_quadrant_zoom
     assert_eq!(config.quadrant_peek_opacity, 0.6);
     assert!(config.bell_features.attention && config.notify_on_command_finish_action.notify);
     assert!(!config.bell_features.audio && !config.bell_features.system);
+    assert!(!config.progress_style);
     assert_eq!(action(&config, "ctrl+tab"), None);
     assert_eq!(
         action(&config, "super+j"),

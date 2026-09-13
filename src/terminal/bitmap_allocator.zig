@@ -319,6 +319,7 @@ fn findFreeChunks(bitmaps: []u64, n: usize) ?usize {
 
             // If the number of available chunks at the start of this bitmap
             // is less than the remaining required, we have to try again.
+            if (i >= bitmaps.len) return null;
             if (@ctz(bitmaps[i]) < rem) continue;
 
             const suffix = (n - prefix) % 64;
@@ -482,6 +483,27 @@ test "findFreeChunks larger than 64 chunks exact" {
         bitmaps[1],
     );
     try testing.expectEqual(@as(usize, 0), idx);
+}
+
+test "findFreeChunks rejects spans beyond the last bitmap without changes" {
+    const testing = std.testing;
+
+    for (0..4) |word_count| {
+        for ([_]usize{ 1, 64, 65 }) |extra| {
+            var bitmaps = [_]u64{ 0, 0, 0 };
+            const original = bitmaps;
+            try testing.expectEqual(null, findFreeChunks(bitmaps[0..word_count], word_count * 64 + extra));
+            try testing.expectEqualSlices(u64, &original, &bitmaps);
+        }
+    }
+
+    // Aggregate free space is sufficient, but the final contiguous run is not.
+    var fragmented = [_]u64{ 0, std.math.maxInt(u64), 0 };
+    const original = fragmented;
+    try testing.expectEqual(null, findFreeChunks(&fragmented, 65));
+    try testing.expectEqualSlices(u64, &original, &fragmented);
+    try testing.expectEqual(@as(?usize, 0), findFreeChunks(&fragmented, 64));
+    try testing.expectEqual(@as(?usize, 128), findFreeChunks(&fragmented, 64));
 }
 
 test "BitmapAllocator layout" {

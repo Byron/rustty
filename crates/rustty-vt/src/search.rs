@@ -1,8 +1,11 @@
 //! Literal terminal search and regex matching with byte-to-cell coordinates.
-use crate::{GridPoint, Row, Screen};
+use crate::{GridPoint, PageCapacity, Row, Screen};
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
+
+mod terminal;
+pub use terminal::{Direction, SelectScroll, Status, TerminalSearch, Tick};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Match {
@@ -19,6 +22,152 @@ pub struct Match {
 pub struct LiteralMatch {
     pub start: GridPoint,
     pub end: GridPoint,
+}
+
+/// Cached literal matches on the pages covering the viewport.
+///
+/// Feed while the screen is safe to read, then read the owned matches without
+/// accessing the terminal. Matches can extend beyond visible rows because the
+/// native search formats whole pages and includes soft-wrapped overlap.
+#[derive(Default)]
+pub struct ViewportSearch {
+    needle: Vec<u8>,
+    list_identity: Option<u64>,
+    fingerprint: Vec<(u64, u64, PageCapacity)>,
+    matches: Vec<LiteralMatch>,
+}
+
+impl ViewportSearch {
+    pub fn new(needle: &[u8]) -> Self {
+        Self {
+            needle: needle.to_vec(),
+            ..Self::default()
+        }
+    }
+
+    pub fn needle(&self) -> &[u8] {
+        &self.needle
+    }
+
+    /// Replace the needle, clearing cached results until the next feed. An
+    /// ASCII-case-equivalent needle preserves both results and original bytes.
+    /// An empty needle leaves the search idle. Returns whether it changed.
+    pub fn set_needle(&mut self, needle: &[u8]) -> bool {
+        if self.needle.eq_ignore_ascii_case(needle) {
+            return false;
+        }
+        self.needle.clear();
+        self.needle.extend_from_slice(needle);
+        self.reset();
+        true
+    }
+
+    /// Clear the cache while retaining the needle; the next feed re-searches.
+    pub fn reset(&mut self) {
+        self.list_identity = None;
+        self.fingerprint.clear();
+        self.matches.clear();
+    }
+
+    /// Owned endpoints from the last feed. Feed again after layout changes
+    /// before resolving these points against a live screen.
+    pub fn matches(&self) -> &[LiteralMatch] {
+        &self.matches
+    }
+
+    /// Refresh the viewport cache. Pass true when the active area may have
+    /// changed, or when the caller does not track such changes. A historical
+    /// viewport is searched again only when its covering pages change.
+    /// Returns whether the cache was refreshed.
+    pub fn feed(&mut self, screen: &Screen, active_dirty: bool) -> bool {
+        if self.needle.is_empty() {
+            return false;
+        }
+        let pages = &screen.pages;
+        let top = screen.history.len().saturating_sub(screen.viewport_offset);
+        let first = pages.page_index(top);
+        let last = pages.page_index(top + screen.rows.len() - 1);
+        let entries = || {
+            pages
+                .pages
+                .range(first..=last)
+                .map(|page| (page.serial, page.layout_generation, page.capacity))
+        };
+        let unchanged = self.list_identity == Some(pages.identity())
+            && self.fingerprint.iter().copied().eq(entries());
+        if unchanged {
+            let active_first = pages.page_index(screen.history.len());
+            let active_last = pages.pages.len() - 1;
+            if !active_dirty
+                || !((first..=last).contains(&active_first)
+                    || (first..=last).contains(&active_last))
+            {
+                return false;
+            }
+        }
+        self.list_identity = Some(pages.identity());
+        self.fingerprint.clear();
+        self.fingerprint.extend(entries());
+
+        let first_row: usize = pages
+            .pages
+            .iter()
+            .take(first)
+            .map(|page| usize::from(page.rows))
+            .sum();
+        let row = |y: usize| {
+            if y < screen.history.len() {
+                &screen.history[y]
+            } else {
+                &screen.rows[y - screen.history.len()]
+            }
+        };
+        let row_count = |index: usize| usize::from(pages.pages[index].rows);
+        let wrapped = |index: usize, start: usize| row(start + row_count(index) - 1).wrapped;
+        let page_text = |index: usize, start: usize| {
+            literal_text(
+                &(start..start + row_count(index))
+                    .map(row)
+                    .collect::<Vec<_>>(),
+            )
+        };
+        let overlap = self.needle.len() - 1;
+        let mut window = Line::default();
+        let mut added = 0;
+        let mut offset = first_row;
+        // Native appends preceding wrapped pages in reverse physical order.
+        for index in (0..first).rev() {
+            offset -= row_count(index);
+            if !wrapped(index, offset) {
+                break;
+            }
+            let text = page_text(index, offset);
+            added += text.text.len();
+            window.append(&text);
+            if added >= overlap {
+                break;
+            }
+        }
+        offset = first_row;
+        for index in first..=last {
+            window.append(&page_text(index, offset));
+            offset += row_count(index);
+        }
+        if row(offset - 1).wrapped {
+            added = 0;
+            for index in last + 1..pages.pages.len() {
+                let text = page_text(index, offset);
+                added += text.text.len();
+                window.append(&text);
+                if added >= overlap || !wrapped(index, offset) {
+                    break;
+                }
+                offset += row_count(index);
+            }
+        }
+        self.matches = window.literal_matches(&self.needle);
+        true
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -428,6 +577,78 @@ impl Default for LinkMatcher {
 mod tests {
     use super::*;
     use crate::Terminal;
+    #[test]
+    fn viewport_cache_is_owned_and_needle_changes_restart_it() {
+        let mut terminal = Terminal::new(20, 3, 100);
+        terminal.feed(b"cat CAT cat");
+        let mut search = ViewportSearch::new(b"cat");
+        assert!(search.matches().is_empty());
+        assert!(search.feed(terminal.screen(), false));
+        let original = search.matches().to_vec();
+        assert_eq!(original.len(), 3);
+        assert!(!search.feed(terminal.screen(), false));
+        assert!(!search.set_needle(b"CAT"));
+        assert_eq!(search.needle(), b"cat");
+        terminal.feed(b"\x1b[Hdog");
+        assert_eq!(search.matches(), original);
+        assert!(!search.feed(terminal.screen(), false));
+        assert_eq!(search.matches(), original);
+        assert!(search.feed(terminal.screen(), true));
+        assert_eq!(search.matches().len(), 2);
+        search.reset();
+        assert!(search.matches().is_empty());
+        assert_eq!(search.needle(), b"cat");
+        assert!(search.feed(terminal.screen(), false));
+        assert!(search.set_needle(b"dog"));
+        assert!(search.matches().is_empty());
+        assert!(search.feed(terminal.screen(), false));
+        assert_eq!(search.matches().len(), 1);
+        assert!(search.set_needle(b""));
+        assert!(!search.feed(terminal.screen(), true));
+        assert!(search.matches().is_empty());
+    }
+
+    #[test]
+    fn viewport_cache_distinguishes_replaced_and_cloned_page_lists() {
+        let mut terminal = Terminal::new(8, 3, 100);
+        terminal.feed(b"AA");
+        let mut search = ViewportSearch::new(b"A");
+        assert!(search.feed(terminal.screen(), false));
+        let copy = terminal.screen().clone();
+        assert_ne!(copy.pages.identity(), terminal.screen().pages.identity());
+        assert!(search.feed(&copy, false));
+        let restored: Screen = serde_json::from_slice(&serde_json::to_vec(&copy).unwrap()).unwrap();
+        assert_ne!(copy.pages.identity(), restored.pages.identity());
+        assert!(search.feed(&restored, false));
+        assert!(search.feed(terminal.screen(), false));
+        terminal.reset();
+        assert!(search.feed(terminal.screen(), false));
+        assert!(search.matches().is_empty());
+        terminal.feed(b"A\x1b[?47h");
+        assert!(search.feed(terminal.screen(), false));
+        assert!(search.matches().is_empty());
+        terminal.feed(b"\x1b[?47l");
+        assert!(search.feed(terminal.screen(), false));
+        assert_eq!(search.matches().len(), 1);
+    }
+
+    #[test]
+    fn viewport_dirty_tracking_observes_page_layout_changes() {
+        let mut terminal = Terminal::new(8, 4, 100);
+        terminal.feed(b"A B\r\nC A\r\nA D\r\nE A");
+        let mut search = ViewportSearch::new(b"A");
+        search.feed(terminal.screen(), true);
+        terminal.feed(b"\x1b[2;1H\x1b[M");
+        assert!(search.feed(terminal.screen(), false));
+        assert_eq!(search.matches().len(), 3);
+        // Moving within a page changes which rows are visible, but native
+        // searches the entire page and keeps its cached results.
+        terminal.feed(b"\r\nA\r\nB\r\nC");
+        search.feed(terminal.screen(), true);
+        terminal.screen_mut().scroll_viewport(1);
+        assert!(!search.feed(terminal.screen(), false));
+    }
+
     #[test]
     fn search_starts_with_the_latest_match_including_history_and_soft_wraps() {
         let mut terminal = Terminal::new(8, 2, 100);

@@ -293,7 +293,7 @@ pub const SlidingWindow = struct {
 
         // Our data offset now moves to needle.len - 1 from the end so
         // that we can handle the overlap case.
-        self.data_offset = self.data.len() - self.needle.len + 1;
+        self.data_offset = self.data.len() - (self.needle.len - 1);
 
         self.assertIntegrity();
         return null;
@@ -1192,6 +1192,44 @@ test "SlidingWindow two pages no match keeps both pages" {
 
     // No pruning because both pages are needed to fit needle.
     try testing.expectEqual(2, w.meta.len());
+}
+
+test "SlidingWindow no match retains exactly the overlap" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var s = try Screen.init(testing.io, alloc, .{
+        .cols = 1,
+        .rows = 3,
+        .max_scrollback_bytes = 0,
+    });
+    defer s.deinit();
+    try s.testWriteString("XYZ");
+    try s.pages.split(s.pages.pin(.{ .active = .{ .y = 1 } }).?);
+    try s.pages.split(s.pages.pin(.{ .active = .{ .y = 2 } }).?);
+    s.cursorReload();
+
+    inline for (.{ .forward, .reverse }) |direction| {
+        var w: SlidingWindow = try .init(alloc, direction, if (direction == .forward) "YZ" else "XY");
+        defer w.deinit();
+
+        const first = s.pages.pages.first.?;
+        const last = s.pages.pages.last.?;
+        _ = try w.append(if (direction == .forward) first else last);
+        _ = try w.append(first.next.?);
+        try testing.expectEqual(null, w.next());
+        try testing.expectEqual(1, w.meta.len());
+        try testing.expectEqual(1, w.data.len());
+        try testing.expectEqual(0, w.data_offset);
+
+        // The retained byte must still participate in the next page's match.
+        _ = try w.append(if (direction == .forward) last else first);
+        const sel = w.next().?.untracked();
+        const y: size.CellCountInt = if (direction == .forward) 1 else 0;
+        try testing.expectEqual(point.Point{ .active = .{ .y = y } }, s.pages.pointFromPin(.active, sel.start));
+        try testing.expectEqual(point.Point{ .active = .{ .y = y + 1 } }, s.pages.pointFromPin(.active, sel.end));
+        try testing.expectEqual(null, w.next());
+    }
 }
 
 test "SlidingWindow single append across circular buffer boundary" {

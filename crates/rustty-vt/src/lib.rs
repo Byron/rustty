@@ -2,6 +2,8 @@
 
 pub mod clipboard;
 pub mod color;
+pub mod dnd;
+pub mod formatter;
 pub mod glyph;
 pub mod graphics;
 pub mod input;
@@ -13,6 +15,8 @@ pub mod paste;
 pub mod query;
 pub mod screen;
 pub mod search;
+pub mod selection;
+pub mod selection_gesture;
 pub mod snapshot;
 mod terminal;
 mod terminfo;

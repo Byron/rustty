@@ -264,10 +264,11 @@ impl Parser {
         }
     }
 
-    /// Limit retained OSC bytes. A lower limit also discards any oversized
-    /// capture already in flight; subsequent bytes are consumed until exit.
+    /// Limit retained raw OSC bytes, including the numeric command prefix.
+    /// A lower limit also discards any oversized capture already in flight;
+    /// subsequent bytes are consumed until exit. Snapshot replay has its own limit.
     pub fn set_osc_limit(&mut self, limit: usize) {
-        self.osc_limit = limit.min(MAX_OSC_BYTES);
+        self.osc_limit = limit;
         if self.osc.len() > self.osc_limit {
             self.osc.clear();
             self.osc_overflow = true;
@@ -521,6 +522,34 @@ mod tests {
         parser.advance(b"\x1b]2;too long\x07ok", |e| result.push(format!("{e:?}")));
         assert_eq!(result, ["OscOverflow", "Print('o')", "Print('k')"]);
         assert!(parser.is_ground());
+    }
+
+    #[test]
+    fn raw_osc_budget_is_configurable_and_survives_reset() {
+        let data = vec![b'x'; MAX_OSC_BYTES + 1];
+        for limit in [MAX_OSC_BYTES, MAX_OSC_BYTES + 5] {
+            let mut parser = Parser::new();
+            if limit != MAX_OSC_BYTES {
+                parser.set_osc_limit(limit);
+            }
+            parser.reset();
+            parser.advance(b"\x1b]", |_| panic!("unfinished OSC emitted an event"));
+            parser.advance(&data, |_| panic!("unfinished OSC emitted an event"));
+            let mut emitted = false;
+            parser.advance(b"\x07", |event| {
+                emitted = true;
+                match event {
+                    Event::Osc { data, .. } => {
+                        assert!(limit > MAX_OSC_BYTES);
+                        assert_eq!(data.len(), MAX_OSC_BYTES + 1);
+                    }
+                    Event::OscOverflow => assert_eq!(limit, MAX_OSC_BYTES),
+                    event => panic!("unexpected event: {event:?}"),
+                }
+            });
+            assert!(emitted);
+            assert!(parser.is_ground());
+        }
     }
 
     #[test]

@@ -15,11 +15,16 @@ import protocols
 import kitty_clipboard
 import paste_requests
 import graphics_requests
+import placement_requests
+import placeholder_requests
+import relative_placement_requests
 import semantic_prompts
 import prompt_redraw
 import charsets
 import grid_requests
 import search_pages
+import viewport_search
+import terminal_search
 import page_layout_requests
 import page_lifecycle_requests
 import host_queries
@@ -28,10 +33,17 @@ import color_protocols
 import osc_strings
 import glyph_requests
 import reset_stream
+import dnd_requests
+import style_lifecycle_requests
+import selection_requests
+import selection_adjust_requests
+import selection_format_requests
+import selection_gesture_requests
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 ARTIFACTS = ROOT / "target/parity"
+MAX_REQUEST = 32 * 1024 * 1024
 MAX_RESPONSE = 128 * 1024 * 1024
 
 
@@ -56,7 +68,10 @@ class Peer:
             self.queue.put(error)
 
     def request(self, request):
-        self.process.stdin.write(json.dumps(request, separators=(",", ":")).encode() + b"\n")
+        data = json.dumps(request, separators=(",", ":")).encode()
+        if len(data) > MAX_REQUEST:
+            raise RuntimeError(f"{self.name}: request exceeded {MAX_REQUEST} bytes")
+        self.process.stdin.write(data + b"\n")
         self.process.stdin.flush()
         try:
             response = self.queue.get(timeout=self.timeout)
@@ -125,8 +140,11 @@ def variants(request, exhaustive=False):
                 data = bytes.fromhex(operation["data"])
                 pos = 0
                 index = 0
+                # Large capture-limit cases must fit the bounded JSON transport.
+                # Scalar delivery still exercises every individual input byte.
+                sizes = [2, 4096, 1, 16384, 7] if len(data) > 4096 else chunks
                 while pos < len(data):
-                    size = chunks[index % len(chunks)]
+                    size = sizes[index % len(sizes)]
                     operations.append({"op": "write", "data": data[pos:pos + size].hex()})
                     pos += size
                     index += 1
@@ -326,7 +344,7 @@ def save_failure(request, left, right, reason):
     for name, value in (("request", request), ("zig", left), ("rust", right)):
         (directory / f"{name}.json").write_text(json.dumps(value, indent=2) + "\n")
     (directory / "difference.txt").write_text(reason + "\n")
-    return directory.relative_to(ROOT)
+    return directory.relative_to(ROOT) if directory.is_relative_to(ROOT) else directory
 
 
 def compare(peers, request):
@@ -471,13 +489,33 @@ def main():
                 requests.extend((request, covers) for request, covers in parser_requests()
                                 if not args.case or args.case in request["id"])
             if args.grid or args.thorough:
+                requests.extend((request, covers) for request, covers in terminal_search.requests()
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in viewport_search.requests()
+                                if not args.case or args.case in request["id"])
                 requests.extend((request, covers) for request, covers in grid_requests.requests()
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in selection_requests.requests()
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in selection_requests.snapshot_requests(peers[0])
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in selection_gesture_requests.requests()
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in selection_adjust_requests.requests()
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in selection_adjust_requests.snapshot_requests(peers[0])
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in selection_format_requests.requests()
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in selection_format_requests.snapshot_requests(peers[0])
                                 if not args.case or args.case in request["id"])
             if args.page_layout or args.thorough:
                 requests.extend((request, covers) for request, covers in page_layout_requests.requests()
                                 if not args.case or args.case in request["id"])
             if args.pages or args.thorough:
                 requests.extend((request, covers) for request, covers in page_lifecycle_requests.requests(peers[0])
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in style_lifecycle_requests.requests(peers[0])
                                 if not args.case or args.case in request["id"])
             if args.thorough:
                 requests.extend((request, covers) for request, covers in search_pages.requests()
@@ -496,6 +534,11 @@ def main():
                 requests.extend((request, covers) for request, covers in snapshots.wire_requests(ROOT, peers[0])
                                 if not args.case or args.case in request["id"])
             if args.protocols or args.thorough:
+                requests.extend((request, covers) for request, covers in dnd_requests.requests()
+                                if not args.case or args.case in request["id"])
+                if not args.case or args.case in "protocol/dnd/snapshot/" or "protocol/dnd/snapshot" in args.case:
+                    requests.extend((request, covers) for request, covers in dnd_requests.snapshot_requests(peers)
+                                    if not args.case or args.case in request["id"])
                 requests.extend((request, covers) for request, covers in protocols.requests(ROOT)
                                 if not args.case or args.case in request["id"])
                 requests.extend((request, covers) for request, covers in protocols.effect_requests()
@@ -507,6 +550,12 @@ def main():
                 requests.extend((request, covers) for request, covers in paste_requests.requests()
                                 if not args.case or args.case in request["id"])
                 requests.extend((request, covers) for request, covers in graphics_requests.requests()
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in placement_requests.requests()
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in relative_placement_requests.requests()
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in placeholder_requests.requests()
                                 if not args.case or args.case in request["id"])
                 requests.extend((request, covers) for request, covers in glyph_requests.requests()
                                 if not args.case or args.case in request["id"])
@@ -528,6 +577,7 @@ def main():
                                 if not args.case or args.case in request["id"])
                 requests.extend((request, covers) for request, covers in osc_strings.requests()
                                 if not args.case or args.case in request["id"])
+                requests.extend(osc_strings.allocating_requests(args.case))
             if args.thorough:
                 requests.extend((request, []) for request in corpus_requests())
             requests.extend((request, []) for request in generated_requests(args.seed, args.generated or (100 if args.thorough else 0)))

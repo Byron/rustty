@@ -1,6 +1,28 @@
 use rustty_vt::{Terminal, snapshot};
 
 #[test]
+fn erasing_a_wrapped_row_disconnects_the_following_row() {
+    for setup in ["abcdX", "abc界"] {
+        for command in [b"\x1b[X".as_slice(), b"\x1b[K", b"\x1b[2K", b"\x1b[P"] {
+            let mut terminal = Terminal::new(4, 3, 10);
+            terminal.feed(setup.as_bytes());
+            assert!(terminal.screen().rows[0].wrapped);
+            assert!(terminal.screen().rows[1].wrap_continuation);
+            terminal.feed(b"\x1b[H");
+            terminal.feed(command);
+            assert!(!terminal.screen().rows[0].wrapped);
+            assert!(!terminal.screen().rows[1].wrap_continuation);
+            assert!(
+                terminal.screen().rows[0]
+                    .cells
+                    .iter()
+                    .all(|cell| !cell.spacer_head)
+            );
+        }
+    }
+}
+
+#[test]
 fn inserting_or_deleting_zero_lines_keeps_all_terminal_state() {
     for setup in [
         b"".as_slice(),

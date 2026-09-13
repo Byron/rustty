@@ -130,6 +130,54 @@ def requests():
                     yield case(f"tracked/row-shift/{alternate}/{margin}/{command}/{count}",
                                operations, ["terminal.tracked", "terminal.selection"])
 
+    yield case("index/corpus-wrap", [b"\x1b[5W\x1b[4r\x1b[\t33BhD"],
+               ["terminal.cells"], cols=80, rows=24)
+    for mode, prefix in (("primary", []), ("no-history", [grid("limits", bytes=0)]),
+                         ("alternate", [b"\x1b[?47h"])):
+        yield case(f"index/single-row/{mode}", [*prefix, b"abc", grid("track", id=1, point=point(2)),
+                   grid("select", start=point(1), end=point(2)), b"\n", observe],
+                   ["terminal.cells", "terminal.tracked", "terminal.selection"], rows=1)
+    for mode in ("primary", "no-history", "alternate", "no-history-retained"):
+        initial = [grid("limits", bytes=0)] if mode.startswith("no-history") else []
+        if mode == "alternate":
+            initial.append(b"\x1b[?47h")
+        elif mode == "no-history-retained":
+            initial.append(b"A\x1b[22J")
+        for top, bottom, horizontal in ((0, 3, False), (1, 3, False),
+                                         (0, 2, False), (1, 3, True)):
+            margins = f"\x1b[{top + 1};{bottom + 1}r".encode()
+            if horizontal:
+                margins += b"\x1b[?69h\x1b[3;6s"
+            for name, command in (("lf", b"\n"), ("ind", b"\x1bD"),
+                                  ("wrap", b"XY")):
+                col = (6 if horizontal else 8) if name == "wrap" else 3
+                operations = [*initial, b"abcdefghijklmnopqrstuvwxy", margins,
+                              f"\x1b[{bottom + 1};{col}H\x1b[44m".encode()]
+                operations.extend(grid("track", id=y, point=point(2, y)) for y in range(4))
+                operations.extend([grid("select", start=point(2, top), end=point(3, bottom)),
+                                   command, observe, {"op": "pages"}])
+                yield case(f"index/{mode}/{top}/{bottom}/{horizontal}/{name}", operations,
+                           ["terminal.cells", "terminal.tracked", "terminal.selection", "terminal.pages"])
+
+    # 1024 columns put the native page boundary inside this active screen.
+    # Include a region beginning exactly at that boundary on macOS ARM64.
+    for mode in ("primary", "no-history", "alternate"):
+        initial = [grid("limits", bytes=0)] if mode == "no-history" else []
+        if mode == "alternate":
+            initial.append(b"\x1b[?47h")
+        for top, bottom in ((0, 47), (45, 47), (46, 47)):
+            operations = [*initial, b"\r\n".join(f"{row:02}".encode() for row in range(48))]
+            operations.extend(grid("track", id=y, point=point(1, y))
+                              for y in sorted({0, max(0, top - 1), top, top + 1, 45, 46, 47}))
+            operations.extend([
+                grid("select", start=point(1, top), end=point(1, bottom)),
+                f"\x1b[{top + 1};{bottom + 1}r\x1b[{bottom + 1};3H\x1b[44m\x1bD".encode(),
+                observe, {"op": "pages"},
+            ])
+            yield case(f"index/pages/{mode}/{top}/{bottom}", operations,
+                       ["terminal.tracked", "terminal.selection", "terminal.pages"],
+                       kind="input", cols=1024, rows=48)
+
     search_texts = [b"one two one", b"abcabcabc", b"abababa", b"abcdefghijklmnopqr",
                     b"one\r\none\r\none\r\none\r\none", b"a  b", "a界e\u0301🙂界".encode()]
     needles = [b"", b"one", b"abc", b"aba", b"hij", b" ", b"a.b", "界".encode(), "\u0301".encode()]

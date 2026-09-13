@@ -6,6 +6,9 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
+mod saved_layout;
+pub use saved_layout::{SavedLayout, load_layout, saved_layouts};
+
 pub type Id = u64;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -371,6 +374,10 @@ impl Tree {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SavedPane {
     pub working_directory: PathBuf,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub title_override: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -409,6 +416,7 @@ impl Tab {
                 pane,
                 SavedPane {
                     working_directory: directory,
+                    ..SavedPane::default()
                 },
             )]
             .into(),
@@ -594,6 +602,7 @@ impl Tab {
             new_pane,
             SavedPane {
                 working_directory: directory,
+                ..SavedPane::default()
             },
         );
         self.focus(new_pane);
@@ -665,6 +674,66 @@ impl Default for Workspace {
 }
 
 impl Workspace {
+    /// Open saved windows alongside live sessions, assigning fresh identifiers.
+    /// Validation and remapping finish before the current workspace changes.
+    pub fn append_layout(&mut self, mut layout: Self) -> io::Result<Vec<Id>> {
+        layout.validate()?;
+        let mut next_id = self.next_id;
+        let mut remap = BTreeMap::new();
+        for window in &layout.windows {
+            let mut old_ids = vec![window.id];
+            for tab in &window.tabs {
+                old_ids.push(tab.id);
+                tab.root.visit(&mut |node| old_ids.push(node.id));
+            }
+            for old in old_ids {
+                let id = next_id;
+                next_id = next_id
+                    .checked_add(1)
+                    .ok_or_else(|| invalid("workspace ID space exhausted"))?;
+                remap.insert(old, id);
+            }
+        }
+        fn remap_tree(tree: &mut Tree, remap: &BTreeMap<Id, Id>) {
+            tree.id = remap[&tree.id];
+            match &mut tree.kind {
+                Node::Pane(pane) => *pane = remap[pane],
+                Node::Split { first, second, .. } => {
+                    remap_tree(first, remap);
+                    remap_tree(second, remap);
+                }
+            }
+        }
+        for window in &mut layout.windows {
+            window.id = remap[&window.id];
+            // Imported quick terminals open as ordinary windows; a workspace
+            // can only have one live quick terminal controlled by the hotkey.
+            window.quick = false;
+            for tab in &mut window.tabs {
+                tab.id = remap[&tab.id];
+                tab.focused = remap[&tab.focused];
+                tab.zoom = tab.zoom.map(|id| remap[&id]);
+                tab.quadrant_zoom = tab.quadrant_zoom.map(|id| remap[&id]);
+                tab.remembered = std::mem::take(&mut tab.remembered)
+                    .into_iter()
+                    .filter_map(|(node, pane)| Some((*remap.get(&node)?, *remap.get(&pane)?)))
+                    .collect();
+                tab.panes = std::mem::take(&mut tab.panes)
+                    .into_iter()
+                    .map(|(id, pane)| (remap[&id], pane))
+                    .collect();
+                remap_tree(&mut tab.root, &remap);
+            }
+        }
+        let windows = layout.windows.iter().map(|window| window.id).collect();
+        let mut merged = self.clone();
+        merged.next_id = next_id;
+        merged.windows.extend(layout.windows);
+        merged.validate()?;
+        *self = merged;
+        Ok(windows)
+    }
+
     /// Restoring a layout must not reuse IDs issued after that snapshot.
     pub fn restore(&mut self, mut previous: Self) -> Self {
         previous.next_id = previous.next_id.max(self.next_id);

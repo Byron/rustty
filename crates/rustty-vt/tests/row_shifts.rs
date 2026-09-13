@@ -1,4 +1,111 @@
-use rustty_vt::Terminal;
+use rustty_vt::{ScrollbackLimits, Selection, Terminal};
+
+#[test]
+fn index_scrolling_preserves_complete_row_metadata() {
+    let mut corpus = Terminal::new(80, 24, 10);
+    corpus.feed(b"\x1b[5W\x1b[4r\x1b[\t33BhD");
+    assert!(corpus.screen().rows[22].wrapped);
+
+    for mode in ["primary", "no-history", "alternate"] {
+        for command in [b"\n".as_slice(), b"\x1bD", b"\x1bE"] {
+            let mut terminal = Terminal::new(8, 4, 10);
+            if mode == "no-history" {
+                terminal.set_limits(ScrollbackLimits::NONE);
+            } else if mode == "alternate" {
+                terminal.feed(b"\x1b[?47h");
+            }
+            terminal.feed(b"abcdefghijklmnopqrstuvwxy\x1b[2;4r\x1b[4;3H\x1b[44m");
+            let before = terminal.screen().rows.clone();
+            terminal.feed(command);
+            let after = &terminal.screen().rows;
+            for row in 1..3 {
+                assert_eq!(after[row].cells, before[row + 1].cells, "{mode}");
+                assert_eq!(after[row].wrapped, before[row + 1].wrapped, "{mode}");
+                assert_eq!(
+                    after[row].wrap_continuation,
+                    before[row + 1].wrap_continuation,
+                    "{mode}"
+                );
+            }
+            assert!(!after[3].wrapped && !after[3].wrap_continuation);
+            assert!(after[3].cells.iter().all(|cell| cell.text.is_empty()
+                && cell.style.background == rustty_vt::screen::Color::Indexed(4)));
+        }
+    }
+}
+
+#[test]
+fn index_scrolling_moves_pins_and_clamps_erased_page_start() {
+    for (cols, rows, top, bottom, history) in [
+        (8, 1, 0, 0, false),
+        (8, 4, 0, 3, false),
+        (8, 4, 1, 3, false),
+        (8, 4, 0, 3, true),
+        (1024, 48, 0, 47, false),
+        (1024, 48, 45, 47, false),
+        (1024, 48, 46, 47, false),
+    ] {
+        let mut terminal = Terminal::with_limits(cols, rows, ScrollbackLimits::NONE);
+        if history {
+            terminal.feed(b"A\x1b[22J");
+        }
+        let offset = terminal.screen().history.len();
+        let original = (0..usize::from(rows))
+            .map(|row| terminal.screen().point(offset + row, 2).unwrap())
+            .collect::<Vec<_>>();
+        let pins = original
+            .iter()
+            .map(|&point| terminal.screen_mut().track(point))
+            .collect::<Vec<_>>();
+        terminal.screen_mut().selection = Some(Selection {
+            start: original[top],
+            end: original[bottom],
+            rectangular: false,
+        });
+        let page_start = terminal
+            .screen()
+            .page_allocations()
+            .scan(0, |start, page| {
+                let range = *start..*start + usize::from(page.rows);
+                *start = range.end;
+                Some(range)
+            })
+            .find(|range| range.contains(&(offset + top)))
+            .unwrap()
+            .start;
+        terminal.feed(
+            format!(
+                "\x1b[{};{}r\x1b[{};3H\x1bD",
+                top + 1,
+                bottom + 1,
+                bottom + 1
+            )
+            .as_bytes(),
+        );
+        let screen = terminal.screen();
+        for (row, pin) in pins.iter().enumerate() {
+            let expected = if rows == 1 {
+                screen.point(offset + row, 2)
+            } else if row == top {
+                if offset + top == page_start {
+                    screen.point(offset + top, 0)
+                } else {
+                    screen.point(offset + top - 1, 2)
+                }
+            } else {
+                screen.point(offset + row - usize::from(row > top && row <= bottom), 2)
+            };
+            assert_eq!(
+                screen.resolve(*pin),
+                expected,
+                "{cols}/{top}/{row}/{history}"
+            );
+        }
+        let selection = screen.selection.unwrap();
+        assert_eq!(Some(selection.start), screen.resolve(pins[top]));
+        assert_eq!(Some(selection.end), screen.resolve(pins[bottom]));
+    }
+}
 
 #[test]
 fn full_width_line_shifts_detach_wrapped_rows() {

@@ -922,5 +922,26 @@
       "terminal.cells",
       "terminal.cursor"
     ]
+  },
+  {
+    "request": {
+      "id": "terminal/resize/wrap-continuation-at-active-boundary",
+      "cols": 4,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "414243444546474849"
+        },
+        {
+          "op": "resize",
+          "cols": 2,
+          "rows": 4
+        }
+      ]
+    },
+    "covers": [
+      "terminal.resize"
+    ]
   }
 ]

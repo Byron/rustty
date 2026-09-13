@@ -64,7 +64,6 @@ def native_hash(identifier, uri):
 
 def requests(reference):
     templates = {}
-    reference_limits = []
 
     def case(name, entries, references, table=192, strings=2048, columns=80, raw=None):
         if columns not in templates:
@@ -97,14 +96,9 @@ def requests(reference):
                 name = f"strings/{strings}/{length}/{type(identifier).__name__}"
                 request, covers = case(name, [link(1, b"x" * length, identifier), link(2, b"last", 2)],
                                        [1, 2], strings=strings)
-                if 0 < strings <= 2048 and length > 2048:
-                    # The native large-span scan reads a second bitmap word
-                    # when this page has only one. Keep the abort visible,
-                    # after the returning cases so they can still be checked.
-                    request["id"] = "snapshot/reference-limit/hyperlinks/" + name
-                    reference_limits.append((request, covers))
-                else:
-                    yield request, covers
+                # Oversized strings retain the regression for the native
+                # large-span scan previously reading past its final bitmap.
+                yield request, covers
     for table in (144, 192, 240, 384, 768):
         yield case(f"cell-map/{table}", [link(1)], [1] * 512, table=table, columns=512)
         yield case(f"cell-map-sparse/{table}", [link(1)], [0, 1, 999, 1] * 128,
@@ -156,4 +150,3 @@ def requests(reference):
         request, covers = case(f"invalid-kind/{kind}", [link(0)], [], raw=struct.pack("<HB", 0, kind))
         request["expected_error"] = "InvalidSnapshot"
         yield request, covers
-    yield from reference_limits

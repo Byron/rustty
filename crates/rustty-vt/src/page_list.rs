@@ -4,7 +4,30 @@ use std::collections::VecDeque;
 use serde::{Deserialize, Serialize};
 
 use crate::page_layout::PageCapacity;
+use crate::page_resources::StyleAdmission;
 use crate::screen::ScrollbackLimits;
+
+/// A live list differs from its clones and replacements even when page serials
+/// repeat. This is transient; STYLE ownership still uses local page serials.
+#[derive(Debug)]
+struct ListIdentity(u64);
+
+impl Default for ListIdentity {
+    fn default() -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        Self(
+            NEXT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+                .expect("page list identities exhausted"),
+        )
+    }
+}
+
+impl Clone for ListIdentity {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
 
 /// A live page's physical dimensions and charged native allocation.
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -22,6 +45,9 @@ pub(crate) struct Page {
     pub columns: u16,
     pub rows: u16,
     pub serial: u64,
+    #[serde(skip)]
+    pub layout_generation: u64,
+    pub styles: StyleAdmission,
 }
 
 impl Page {
@@ -56,9 +82,15 @@ impl Page {
 pub(crate) struct PageList {
     pub pages: VecDeque<Page>,
     next_serial: u64,
+    #[serde(skip)]
+    identity: ListIdentity,
 }
 
 impl PageList {
+    pub fn identity(&self) -> u64 {
+        self.identity.0
+    }
+
     pub fn new(columns: u16, rows: usize) -> Self {
         let capacity = PageCapacity::initial(columns).expect("validated screen dimensions");
         let mut result = Self::default();
@@ -93,6 +125,25 @@ impl PageList {
         panic!("row is outside the page list");
     }
 
+    pub fn page_index(&self, mut row: usize) -> usize {
+        for (index, page) in self.pages.iter().enumerate() {
+            if row < usize::from(page.rows) {
+                return index;
+            }
+            row -= usize::from(page.rows);
+        }
+        panic!("row is outside the page list");
+    }
+
+    /// Renew cached-coordinate generations without changing STYLE owners.
+    pub fn invalidate_layout(&mut self, first: usize, last: usize) {
+        let start = self.page_index(first);
+        let end = self.page_index(last);
+        for page in self.pages.range_mut(start..=end) {
+            page.layout_generation = page.layout_generation.wrapping_add(1);
+        }
+    }
+
     pub fn append(&mut self, capacity: PageCapacity, rows: u16) {
         assert!(rows <= capacity.rows);
         self.pages.push_back(Page {
@@ -100,6 +151,8 @@ impl PageList {
             columns: capacity.cols,
             rows,
             serial: self.next_serial,
+            layout_generation: 0,
+            styles: StyleAdmission::new(capacity.metadata().unwrap().styles_layout),
         });
         self.next_serial = self.next_serial.wrapping_add(1);
     }
@@ -111,8 +164,31 @@ impl PageList {
             columns: capacity.cols,
             rows,
             serial: self.next_serial,
+            layout_generation: 0,
+            styles: StyleAdmission::new(capacity.metadata().unwrap().styles_layout),
         });
         self.next_serial = self.next_serial.wrapping_add(1);
+    }
+
+    pub fn split(&mut self, index: usize, row: u16) -> bool {
+        let source = &self.pages[index];
+        if source.rows <= 1 {
+            return false;
+        }
+        if row == 0 {
+            return true;
+        }
+        assert!(row < source.rows);
+        let columns = source.columns;
+        let count = source.rows - row;
+        let capacity = source.capacity;
+        self.append(capacity, count);
+        let mut target = self.pages.pop_back().unwrap();
+        target.columns = columns;
+        self.pages[index].rows = row;
+        self.pages[index].layout_generation = self.pages[index].layout_generation.wrapping_add(1);
+        self.pages.insert(index + 1, target);
+        true
     }
 
     pub fn effective_limits(
@@ -203,8 +279,7 @@ impl PageList {
                 count -= usize::from(self.pages.pop_front().unwrap().rows);
             } else {
                 page.rows -= count as u16;
-                page.serial = self.next_serial;
-                self.next_serial = self.next_serial.wrapping_add(1);
+                page.layout_generation = page.layout_generation.wrapping_add(1);
                 count = 0;
             }
         }
@@ -219,14 +294,14 @@ impl PageList {
                 remove -= usize::from(self.pages.pop_back().unwrap().rows);
             } else {
                 page.rows -= remove as u16;
-                page.serial = self.next_serial;
-                self.next_serial = self.next_serial.wrapping_add(1);
+                page.layout_generation = page.layout_generation.wrapping_add(1);
                 remove = 0;
             }
         }
     }
 
-    /// Copy a contiguous range using its existing page boundaries.
+    /// Copy allocation metadata for a detached viewport, preserving its page
+    /// boundaries without allocating the live page's resource tables.
     pub fn clone_range(&self, start: usize, rows: usize) -> Self {
         let mut result = Self::default();
         let mut offset = 0;
@@ -234,8 +309,15 @@ impl PageList {
             let end = offset + usize::from(page.rows);
             let count = end.min(start + rows).saturating_sub(offset.max(start));
             if count > 0 {
-                result.append(page.capacity, count as u16);
-                result.pages.back_mut().unwrap().columns = page.columns;
+                result.pages.push_back(Page {
+                    capacity: page.capacity,
+                    columns: page.columns,
+                    rows: count as u16,
+                    serial: result.next_serial,
+                    layout_generation: 0,
+                    styles: StyleAdmission::default(),
+                });
+                result.next_serial = result.next_serial.wrapping_add(1);
             }
             offset = end;
         }
@@ -280,7 +362,12 @@ impl PageList {
     }
 
     /// Safely widen a restored narrow page when an edit reaches outside it.
-    pub fn extend_page(&mut self, row: usize, columns: u16) -> std::ops::Range<usize> {
+    pub fn extend_page(
+        &mut self,
+        row: usize,
+        columns: u16,
+        spacer_head: bool,
+    ) -> std::ops::Range<usize> {
         let mut start = 0;
         let index = self
             .pages
@@ -301,8 +388,9 @@ impl PageList {
             let mut expanded = Self {
                 pages: [page].into(),
                 next_serial: self.next_serial,
+                identity: ListIdentity::default(),
             };
-            expanded.resize_columns(columns, &[true]);
+            expanded.resize_columns(columns, &[spacer_head]);
             self.next_serial = expanded.next_serial;
             for page in expanded.pages.into_iter().rev() {
                 self.pages.insert(index, page);

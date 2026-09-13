@@ -2,31 +2,65 @@
 use crate::page_layout::{BitmapLayout, SetLayout};
 use crate::screen::Style;
 
-/// Admission into a native PAGE reference-counted set.
-///
-/// Every accepted wire ID retains its reference until all styles and cells
-/// have been decoded. Rejected LINK wire IDs can leave a dead final entry,
-/// reclaimed before the next admission. Reference counts decide ties when
-/// Robin Hood insertion displaces an existing item.
+/// Native PAGE set bookkeeping, shared by snapshot admission and live styles.
+/// Dead IDs retain their buckets until admission reclaims them or the page is
+/// cloned. In particular, releasing a reference does not rehash the table.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SetAdmission<T> {
     table: Vec<u16>,
     entries: Vec<SetEntry<T>>,
     capacity: usize,
     max_psl: u8,
+    psl_stats: [u16; 32],
+    living: usize,
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 struct SetEntry<T> {
-    value: T,
+    value: Option<T>,
     references: u16,
     psl: u8,
+    bucket: Option<usize>,
+}
+
+impl<T> Default for SetEntry<T> {
+    fn default() -> Self {
+        Self {
+            value: None,
+            references: 0,
+            psl: 0,
+            bucket: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SetFull {
+    NeedsRehash,
+    OutOfMemory,
 }
 
 pub(crate) type StyleAdmission = SetAdmission<Style>;
 
 impl StyleAdmission {
-    /// Default styles need no resource; existing styles take another reference.
     pub fn admit(&mut self, value: Style) -> bool {
-        value == Style::default() || self.admit_hashed(value, value.native_hash())
+        self.acquire(value).is_ok()
+    }
+
+    pub fn acquire(&mut self, value: Style) -> Result<u16, SetFull> {
+        if value == Style::default() {
+            Ok(0)
+        } else {
+            self.add_hashed(value, value.native_hash())
+        }
+    }
+
+    pub fn acquire_with_id(&mut self, value: Style, id: u16) -> Result<u16, SetFull> {
+        if value == Style::default() {
+            Ok(0)
+        } else {
+            self.add_with_id_hashed(value, value.native_hash(), id)
+        }
     }
 }
 
@@ -37,7 +71,37 @@ impl<T: Eq> SetAdmission<T> {
             entries: Vec::new(),
             capacity: layout.cap,
             max_psl: 0,
+            psl_stats: [0; 32],
+            living: 0,
         }
+    }
+
+    pub fn count(&self) -> usize {
+        self.living
+    }
+
+    #[cfg(test)]
+    pub fn reference_count(&self, id: u16) -> u16 {
+        self.entries[usize::from(id) - 1].references
+    }
+
+    #[cfg(test)]
+    pub fn allocated_buckets(&self) -> usize {
+        self.table.capacity()
+    }
+
+    pub fn get(&self, id: u16) -> &T {
+        let entry = &self.entries[usize::from(id) - 1];
+        assert!(entry.references > 0);
+        entry.value.as_ref().unwrap()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (u16, &T)> {
+        self.entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.references > 0)
+            .map(|(index, entry)| ((index + 1) as u16, entry.value.as_ref().unwrap()))
     }
 
     pub fn admit_hashed(&mut self, value: T, hash: u64) -> bool {
@@ -45,98 +109,205 @@ impl<T: Eq> SetAdmission<T> {
     }
 
     fn acquire_hashed(&mut self, value: T, hash: u64) -> Option<u16> {
-        let hash = hash as usize;
-        let mask = self.table.len().saturating_sub(1);
-        if !self.table.is_empty() {
-            for psl in 0..=self.max_psl {
-                let id = self.table[hash.wrapping_add(usize::from(psl)) & mask];
-                if id == 0 {
-                    break;
-                }
-                let entry = &mut self.entries[usize::from(id) - 1];
-                if entry.psl < psl {
-                    break;
-                }
-                if entry.psl == psl && entry.value == value {
-                    assert!(entry.references > 0, "reclaim discarded LINK entries first");
-                    entry.references += 1;
-                    return Some(id);
-                }
-            }
-        }
-        // ID zero is reserved. Reclaiming the dead tail recomputes max_psl,
-        // so this is equivalent to native's nonempty psl_stats[31] check.
-        if self.max_psl == 31 || self.entries.len() + 1 >= self.capacity {
+        self.add_hashed(value, hash).ok()
+    }
+
+    pub fn lookup_hashed(&self, value: &T, hash: u64) -> Option<u16> {
+        if self.table.is_empty() {
             return None;
         }
-
-        let new_id = u16::try_from(self.entries.len() + 1).unwrap();
-        self.entries.push(SetEntry {
-            value,
-            references: 0,
-            psl: 0,
-        });
-        let mut held_id = new_id;
-        for distance in 0..self.table.len() - 1 {
-            let bucket = hash.wrapping_add(distance) & mask;
-            let id = self.table[bucket];
-            let held = &self.entries[usize::from(held_id) - 1];
+        let mask = self.table.len() - 1;
+        for psl in 0..=self.max_psl {
+            let id = self.table[(hash as usize).wrapping_add(usize::from(psl)) & mask];
             if id == 0 {
-                self.table[bucket] = held_id;
-                self.max_psl = self.max_psl.max(held.psl);
                 break;
             }
-            let resident = &self.entries[usize::from(id) - 1];
-            if resident.psl < held.psl
-                || (resident.psl == held.psl && resident.references < held.references)
-            {
+            let entry = &self.entries[usize::from(id) - 1];
+            if entry.psl < psl {
+                break;
+            }
+            if entry.psl == psl && entry.references > 0 && entry.value.as_ref() == Some(value) {
+                return Some(id);
+            }
+        }
+        None
+    }
+
+    pub fn add_hashed(&mut self, value: T, hash: u64) -> Result<u16, SetFull> {
+        while self
+            .entries
+            .last()
+            .is_some_and(|entry| entry.references == 0)
+        {
+            self.delete_item(self.entries.len() as u16);
+            self.entries.pop();
+        }
+        if let Some(id) = self.lookup_hashed(&value, hash) {
+            self.retain(id);
+            return Ok(id);
+        }
+        if self.psl_stats[31] != 0 {
+            return Err(SetFull::OutOfMemory);
+        }
+        if self.entries.len() + 1 >= self.capacity {
+            // Match the native floating-point conversion of cap * 0.9.
+            return Err(if self.living < (self.capacity as f64 * 0.9) as usize {
+                SetFull::NeedsRehash
+            } else {
+                SetFull::OutOfMemory
+            });
+        }
+        let next = (self.entries.len() + 1) as u16;
+        Ok(self.insert(value, hash, next))
+    }
+
+    fn add_with_id_hashed(&mut self, value: T, hash: u64, id: u16) -> Result<u16, SetFull> {
+        assert!(id != 0);
+        if usize::from(id) <= self.entries.len() {
+            let entry = &self.entries[usize::from(id) - 1];
+            if entry.references == 0 {
+                if let Some(existing) = self.lookup_hashed(&value, hash) {
+                    self.retain(existing);
+                    return Ok(existing);
+                }
+                if self.psl_stats[31] != 0 {
+                    return Err(SetFull::OutOfMemory);
+                }
+                self.delete_item(id);
+                return Ok(self.insert(value, hash, id));
+            } else if entry.value.as_ref() == Some(&value) {
+                self.retain(id);
+                return Ok(id);
+            }
+        }
+        self.add_hashed(value, hash)
+    }
+
+    fn insert(&mut self, value: T, hash: u64, new_id: u16) -> u16 {
+        let appended = usize::from(new_id) > self.entries.len();
+        if appended {
+            self.entries.push(SetEntry::default());
+        }
+        self.entries[usize::from(new_id) - 1] = SetEntry {
+            value: Some(value),
+            references: 0,
+            psl: 0,
+            bucket: None,
+        };
+        let mut held_id = new_id;
+        let mut chosen_id = new_id;
+        let mask = self.table.len() - 1;
+        for distance in 0..self.table.len() - 1 {
+            let bucket = (hash as usize).wrapping_add(distance) & mask;
+            let id = self.table[bucket];
+            let held_psl = self.entries[usize::from(held_id) - 1].psl;
+            if id == 0 || self.entries[usize::from(id) - 1].references == 0 {
+                if id != 0 {
+                    let dead = &mut self.entries[usize::from(id) - 1];
+                    self.psl_stats[usize::from(dead.psl)] -= 1;
+                    *dead = SetEntry::default();
+                    if id < new_id {
+                        chosen_id = id;
+                    }
+                }
                 self.table[bucket] = held_id;
-                self.max_psl = self.max_psl.max(held.psl);
+                self.entries[usize::from(held_id) - 1].bucket = Some(bucket);
+                self.psl_stats[usize::from(held_psl)] += 1;
+                self.max_psl = self.max_psl.max(held_psl);
+                break;
+            }
+            let held_refs = self.entries[usize::from(held_id) - 1].references;
+            let resident = &self.entries[usize::from(id) - 1];
+            if resident.psl < held_psl
+                || (resident.psl == held_psl && resident.references < held_refs)
+            {
+                self.psl_stats[usize::from(resident.psl)] -= 1;
+                self.table[bucket] = held_id;
+                self.entries[usize::from(held_id) - 1].bucket = Some(bucket);
+                self.psl_stats[usize::from(held_psl)] += 1;
+                self.max_psl = self.max_psl.max(held_psl);
                 held_id = id;
             }
             self.entries[usize::from(held_id) - 1].psl += 1;
         }
-        self.entries[usize::from(new_id) - 1].references = 1;
-        Some(new_id)
+        if chosen_id != new_id {
+            let entry = std::mem::take(&mut self.entries[usize::from(new_id) - 1]);
+            self.table[entry.bucket.unwrap()] = chosen_id;
+            self.entries[usize::from(chosen_id) - 1] = entry;
+            if appended {
+                self.entries.pop();
+            }
+        }
+        self.entries[usize::from(chosen_id) - 1].references = 1;
+        self.living += 1;
+        chosen_id
     }
 
-    fn release(&mut self, id: u16) {
-        let index = usize::from(id) - 1;
-        let entry = &mut self.entries[index];
+    pub fn retain(&mut self, id: u16) {
+        if id == 0 {
+            return;
+        }
+        let entry = &mut self.entries[usize::from(id) - 1];
+        assert!(entry.references > 0);
+        entry.references = entry
+            .references
+            .checked_add(1)
+            .expect("native style reference overflow");
+    }
+
+    pub fn release(&mut self, id: u16) {
+        if id == 0 {
+            return;
+        }
+        let entry = &mut self.entries[usize::from(id) - 1];
         assert!(entry.references > 0);
         entry.references -= 1;
-        // Accepted wire IDs remain referenced until grid decoding ends. Only
-        // a newly created, immediately discarded LINK can become dead here.
-        assert!(entry.references > 0 || index + 1 == self.entries.len());
+        if entry.references == 0 {
+            self.living -= 1;
+        }
     }
 
-    fn pop_unused(&mut self) -> Option<T> {
-        if self.entries.last()?.references != 0 {
-            return None;
-        }
-        let id = u16::try_from(self.entries.len()).unwrap();
-        let mut hole = self.table.iter().position(|&entry| entry == id).unwrap();
+    fn delete_item(&mut self, id: u16) -> Option<T> {
+        let entry = std::mem::take(&mut self.entries[usize::from(id) - 1]);
+        let Some(mut hole) = entry.bucket else {
+            return entry.value;
+        };
+        self.psl_stats[usize::from(entry.psl)] -= 1;
         let mask = self.table.len() - 1;
         let mut next = (hole + 1) & mask;
         while self.table[next] != 0 {
-            let entry = &mut self.entries[usize::from(self.table[next]) - 1];
-            if entry.psl == 0 {
+            let moved = &mut self.entries[usize::from(self.table[next]) - 1];
+            if moved.psl == 0 {
                 break;
             }
-            entry.psl -= 1;
+            self.psl_stats[usize::from(moved.psl)] -= 1;
+            moved.psl -= 1;
+            moved.bucket = Some(hole);
+            self.psl_stats[usize::from(moved.psl)] += 1;
             self.table[hole] = self.table[next];
             hole = next;
             next = (next + 1) & mask;
         }
         self.table[hole] = 0;
-        let entry = self.entries.pop().unwrap();
-        self.max_psl = self
+        while self.max_psl > 0 && self.psl_stats[usize::from(self.max_psl)] == 0 {
+            self.max_psl -= 1;
+        }
+        entry.value
+    }
+
+    fn pop_unused(&mut self) -> Option<T> {
+        while self
             .entries
-            .iter()
-            .map(|entry| entry.psl)
-            .max()
-            .unwrap_or(0);
-        Some(entry.value)
+            .last()
+            .is_some_and(|entry| entry.references == 0)
+        {
+            let value = self.delete_item(self.entries.len() as u16);
+            self.entries.pop();
+            if value.is_some() {
+                return value;
+            }
+        }
+        None
     }
 }
 
@@ -613,6 +784,48 @@ mod tests {
         }
     }
 
+    #[test]
+    fn live_set_reuses_dead_ids_and_trims_before_duplicate_lookup() {
+        let layout = PageCapacity {
+            styles: 16,
+            ..PageCapacity::STANDARD
+        }
+        .metadata()
+        .unwrap()
+        .styles_layout;
+        let mut set = SetAdmission::new(layout);
+        assert_eq!(set.add_hashed(11, 0), Ok(1));
+        assert_eq!(set.add_hashed(22, 1), Ok(2));
+        assert_eq!(set.add_hashed(33, 2), Ok(3));
+        set.release(2);
+        assert_eq!(set.add_with_id_hashed(11, 0, 2), Ok(1));
+        assert_eq!(set.count(), 2);
+        assert_eq!(set.add_with_id_hashed(44, 1, 2), Ok(2));
+        set.release(3);
+        assert_eq!(set.add_hashed(11, 0), Ok(1));
+        assert_eq!(set.entries.len(), 2);
+        set.release(2);
+        assert_eq!(set.add_hashed(55, 1), Ok(2));
+        assert_eq!(set.count(), 2);
+    }
+
+    #[test]
+    fn live_set_rehash_threshold_counts_living_entries() {
+        for (released, expected) in [(10, SetFull::OutOfMemory), (11, SetFull::NeedsRehash)] {
+            let layout = PageCapacity::STANDARD.metadata().unwrap().styles_layout;
+            let mut set = SetAdmission::new(layout);
+            for value in 0..103 {
+                assert!(set.add_hashed(value, value).is_ok());
+            }
+            for id in 1..=released {
+                set.release(id);
+            }
+            assert_eq!(set.add_hashed(1000, 127), Err(expected));
+            // A live duplicate still succeeds without requiring free IDs.
+            assert_eq!(set.add_hashed(102, 102), Ok(103));
+        }
+    }
+
     fn styles_in_bucket(mask: u64, bucket: u64, count: usize) -> Vec<Style> {
         (0..0x1000000)
             .map(numbered_style)
@@ -643,7 +856,7 @@ mod tests {
             assert!(!styles.admit(rejected));
             assert_eq!(styles.entries.len(), live_capacity);
             if let Some(entry) = styles.entries.first() {
-                let value = entry.value;
+                let value = entry.value.unwrap();
                 assert!(styles.admit(value));
                 assert_eq!(styles.entries[0].references, 3);
             }
