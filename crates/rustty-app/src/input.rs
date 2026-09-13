@@ -9,6 +9,37 @@ use winit::{
     platform::modifier_supplement::KeyEventExtModifierSupplement,
 };
 
+/// Selection begins on pointer movement, including movement within one cell.
+pub struct SelectionDrag {
+    anchor: vt::GridPoint,
+    position: egui::Pos2,
+}
+
+impl SelectionDrag {
+    pub fn new(anchor: vt::GridPoint, position: egui::Pos2) -> Self {
+        Self { anchor, position }
+    }
+
+    pub fn update(
+        &mut self,
+        position: egui::Pos2,
+        end: vt::GridPoint,
+        rectangular: bool,
+    ) -> Option<vt::Selection> {
+        // AppKit/Winit repeats the pointer position before button release.
+        // That update alone must not turn a click into a one-cell selection.
+        if self.position == position {
+            return None;
+        }
+        self.position = position;
+        Some(vt::Selection {
+            start: self.anchor,
+            end,
+            rectangular,
+        })
+    }
+}
+
 /// Terminal keyboard and IME events are already handled by the native event loop.
 pub fn filter_egui_events(raw: &mut egui::RawInput, ui_input: bool) {
     if !ui_input {
@@ -402,6 +433,41 @@ pub fn chord_held(chord: config::Modifiers, current: config::Modifiers) -> bool 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selection_requires_pointer_movement_and_can_select_one_cell() {
+        let anchor = vt::GridPoint { row: 1, col: 2 };
+        let press = egui::pos2(20.0, 10.0);
+        let mut drag = SelectionDrag::new(anchor, press);
+        // Winit's repeated mouseUp position is a click, without a drag.
+        assert_eq!(drag.update(press, anchor, false), None);
+        let within_cell = egui::pos2(21.0, 10.0);
+        assert_eq!(
+            drag.update(within_cell, anchor, false),
+            Some(vt::Selection {
+                start: anchor,
+                end: anchor,
+                rectangular: false
+            })
+        );
+        assert_eq!(drag.update(within_cell, anchor, false), None);
+        let other = vt::GridPoint { row: 1, col: 5 };
+        assert_eq!(
+            drag.update(egui::pos2(50.0, 10.0), other, true)
+                .unwrap()
+                .end,
+            other
+        );
+        // Returning to the press position after a drag selects the anchor cell.
+        assert_eq!(
+            drag.update(press, anchor, true),
+            Some(vt::Selection {
+                start: anchor,
+                end: anchor,
+                rectangular: true
+            })
+        );
+    }
 
     #[test]
     fn dismissing_ui_consumes_held_key_repeats_and_releases_before_terminal_input_resumes() {
