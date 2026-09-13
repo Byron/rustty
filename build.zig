@@ -78,6 +78,19 @@ pub fn build(b: *std.Build) !void {
         "test-lib-vt-schema",
         "Validate the libghostty-vt ABI type manifest",
     );
+    // A process-based test oracle for the Rust port. It is deliberately absent
+    // from normal library/application builds and is never linked into Rustty.
+    const vt_oracle_step = b.step("vt-oracle", "Build the Rustty differential VT test oracle");
+    const vt_oracle = b.addExecutable(.{
+        .name = "vt-oracle",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("test/rustty/zig-oracle.zig"),
+            .target = config.target,
+            .optimize = .Debug,
+            .imports = &.{.{ .name = "ghostty-vt", .module = mod.vt }},
+        }),
+    });
+    vt_oracle_step.dependOn(&b.addInstallArtifact(vt_oracle, .{}).step);
     const test_valgrind_step = b.step(
         "test-valgrind",
         "Run tests under valgrind",

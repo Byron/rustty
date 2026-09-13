@@ -1,0 +1,39 @@
+[package]
+name = "rustty-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "The Rustty desktop terminal application."
+
+[[bin]]
+name = "rustty"
+path = "src/main.rs"
+
+[dependencies]
+rustty = { workspace = true, features = ["sessions"] }
+rustty-font.workspace = true
+rustty-render.workspace = true
+rustty-render-wgpu.workspace = true
+egui.workspace = true
+egui-winit.workspace = true
+egui-wgpu.workspace = true
+winit.workspace = true
+wgpu.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+pollster = "0.4"
+base64.workspace = true
+regex.workspace = true
+png.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2.workspace = true
+objc2-foundation.workspace = true
+objc2-app-kit.workspace = true
+objc2-user-notifications.workspace = true
+objc2-core-foundation.workspace = true
+objc2-core-graphics.workspace = true
+block2 = "0.6"
+muda = "0.19"

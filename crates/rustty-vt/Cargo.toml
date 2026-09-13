@@ -1,0 +1,23 @@
+[package]
+name = "rustty-vt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Headless terminal state and protocol handling."
+
+[dependencies]
+rustty-parser.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+regex.workspace = true
+base64.workspace = true
+png.workspace = true
+flate2.workspace = true
+lz4_flex.workspace = true
+crc32c.workspace = true
+
+[[example]]
+name = "parity"
+path = "../../test/rustty/rust-oracle.rs"
