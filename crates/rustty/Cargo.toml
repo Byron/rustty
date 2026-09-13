@@ -1,0 +1,17 @@
+[package]
+name = "rustty"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Public Rustty API, configuration, and terminal sessions."
+
+[features]
+default = []
+sessions = ["dep:portable-pty"]
+
+[dependencies]
+rustty-parser.workspace = true
+rustty-vt.workspace = true
+portable-pty = { workspace = true, optional = true }

@@ -1,0 +1,175 @@
+{
+  "schema": 1,
+  "scope": "Full libghostty-vt compatibility; native app/font/GPU validation is separate.",
+  "rules": [
+    "Thorough may pass only when every requirement is complete, exported by both adapters and exercised by passing cases.",
+    "A smoke pass is not a full-parity claim. Snapshot comparison alone is insufficient."
+  ],
+  "requirements": [
+    {
+      "id": "terminal.write",
+      "status": "partial",
+      "remaining": "Control-sequence cases and upstream fuzz corpus have not all been ported."
+    },
+    {
+      "id": "terminal.resize",
+      "status": "partial",
+      "remaining": "Reflow, height changes, scrollback pruning and tracked references need complete cases."
+    },
+    {
+      "id": "terminal.reset",
+      "status": "partial",
+      "remaining": "Default settings and all reset modes need full coverage."
+    },
+    {
+      "id": "terminal.observe",
+      "status": "partial",
+      "remaining": "Saved cursor, mode stacks, palette, viewport and internal continuation are not yet compared."
+    },
+    {
+      "id": "terminal.cells",
+      "status": "partial",
+      "remaining": "Cell comparison exists; complete grapheme, protection, wide-cell and semantic cases remain."
+    },
+    {
+      "id": "terminal.styles",
+      "status": "partial",
+      "remaining": "Style comparison exists; all SGR/state transitions remain to be exercised."
+    },
+    {
+      "id": "terminal.screens",
+      "status": "partial",
+      "remaining": "Both screens/history are observed; complete screen-switch behavior remains."
+    },
+    {
+      "id": "terminal.cursor",
+      "status": "partial",
+      "remaining": "Cursor is observed; visible/blink state, saved cursor and all motion cases remain."
+    },
+    {
+      "id": "effects.pty",
+      "status": "partial",
+      "remaining": "Host-supplied device attributes, color scheme, size and version callbacks remain."
+    },
+    {
+      "id": "effects.title",
+      "status": "partial",
+      "remaining": "Title callback is observed; complete OSC cases remain."
+    },
+    {
+      "id": "effects.pwd",
+      "status": "partial",
+      "remaining": "PWD callback is observed; complete URI handling cases remain."
+    },
+    {
+      "id": "effects.bell",
+      "status": "partial",
+      "remaining": "BEL callback is observed; parser contexts and notification interaction remain."
+    },
+    {
+      "id": "unicode.width",
+      "status": "partial",
+      "remaining": "Selected codepoints covered; exhaustive Unicode scalar comparison remains."
+    },
+    {
+      "id": "parser.raw-events",
+      "status": "partial",
+      "remaining": "Raw parser/UTF-8 events and inherited parser corpora are compared; exhaustive transition/boundary combinations and capture-limit behavior remain. Raw OSC observation does not validate command semantics."
+    },
+    {
+      "id": "parser.events",
+      "status": "pending",
+      "remaining": "Validated OSC semantics, command-specific limits and malformed command behavior still require terminal/protocol comparisons."
+    },
+    {
+      "id": "terminal.modes",
+      "status": "pending",
+      "remaining": "All ANSI/DEC modes, stacks, private requests and saved state."
+    },
+    {
+      "id": "terminal.colors",
+      "status": "pending",
+      "remaining": "Palette/default color changes and exact query replies."
+    },
+    {
+      "id": "terminal.selection",
+      "status": "pending",
+      "remaining": "Selection extraction, rectangular/wide/grapheme bounds and viewport."
+    },
+    {
+      "id": "terminal.search",
+      "status": "pending",
+      "remaining": "Regex/literal search across wraps/history and tracked results."
+    },
+    {
+      "id": "terminal.tracked",
+      "status": "pending",
+      "remaining": "Tracked references through reflow, erasure and pruning."
+    },
+    {
+      "id": "graphics.kitty",
+      "status": "pending",
+      "remaining": "Image pixels, placement, virtual placement, animation with deterministic clocks."
+    },
+    {
+      "id": "graphics.png",
+      "status": "pending",
+      "remaining": "Install real PNG decoding in the Zig oracle and compare decoded pixels."
+    },
+    {
+      "id": "graphics.glyphs",
+      "status": "pending",
+      "remaining": "Custom glyph uploads, rendering state and resource limits."
+    },
+    {
+      "id": "clipboard",
+      "status": "pending",
+      "remaining": "OSC 52/5522 reads, writes, host decisions, grants and paste events."
+    },
+    {
+      "id": "drag-and-drop",
+      "status": "pending",
+      "remaining": "Host and terminal directions of Kitty drag/drop state."
+    },
+    {
+      "id": "input.key",
+      "status": "partial",
+      "remaining": "Legacy and Kitty matrix passes for current Rust keys, modifiers, text consumption and IME; remaining named/right-side keys and macOS Option policy require complete coverage."
+    },
+    {
+      "id": "input.mouse",
+      "status": "partial",
+      "remaining": "All mouse modes/formats, buttons and viewport/pixel cases pass; retained motion deduplication, renderer padding and full coordinate-limit cases remain."
+    },
+    {
+      "id": "input.focus-paste",
+      "status": "partial",
+      "remaining": "Focus and text paste encodings pass; binary paste, safety options and Kitty paste event/clipboard integration remain."
+    },
+    {
+      "id": "effects.host",
+      "status": "pending",
+      "remaining": "Notifications, progress and explicit host query decisions."
+    },
+    {
+      "id": "snapshot.cross-decode",
+      "status": "pending",
+      "remaining": "Zig-to-Rust and Rust-to-Zig continuation and full semantic comparison."
+    },
+    {
+      "id": "snapshot.streaming",
+      "status": "pending",
+      "remaining": "READY/history/FINISH checkpoints, incomplete continuation and failure handling."
+    },
+    {
+      "id": "snapshot.fixtures",
+      "status": "pending",
+      "remaining": "Decode all existing snapshot wire fixtures and exercise corrupt/truncated input."
+    },
+    {
+      "id": "fuzz.resource-limits",
+      "status": "pending",
+      "remaining": "All inherited corpora, deterministic mixed operations, invariants and minimized regressions."
+    }
+  ]
+}
