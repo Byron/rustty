@@ -298,3 +298,163 @@ fn invalid_utf8_metadata_and_links_survive_without_loss() {
         Some(b"https://x/\xfd".as_slice())
     );
 }
+
+#[test]
+fn kitty_keyboard_ring_overflows_pops_and_resumes_after_restore() {
+    let mut terminal = Terminal::new(5, 3, 10);
+    for flag in 1..=10 {
+        terminal.feed(format!("\x1b[>{flag}u").as_bytes());
+    }
+    let mut restored = decode(
+        encode_to_vec(&terminal).unwrap().as_slice(),
+        DecodeOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        terminal.screen().kitty_keyboard,
+        restored.screen().kitty_keyboard
+    );
+    for (sequence, expected) in [
+        (b"\x1b[<2u".as_slice(), 8),
+        (b"\x1b[<1u", 7),
+        (b"\x1b[=16;2u", 23),
+        (b"\x1b[=3;3u", 20),
+        (b"\x1b[<8u", 0),
+        (b"\x1b[>5u", 5),
+        (b"\x1b[<65535u", 0),
+    ] {
+        terminal.feed(sequence);
+        restored.feed(sequence);
+        assert_eq!(restored.screen().kitty_keyboard.current(), expected);
+        assert_eq!(
+            terminal.screen().kitty_keyboard,
+            restored.screen().kitty_keyboard
+        );
+    }
+}
+
+#[test]
+fn mixed_physical_widths_survive_safe_edits_and_grow_at_the_access_boundary() {
+    let mut source = Terminal::new(4, 1, 10);
+    source.feed(b"abcd");
+    let narrow_page = records(&encode_to_vec(&source).unwrap())[2].clone();
+    let mut logical = Terminal::new(8, 2, 10);
+    logical.feed(b"\x1b[31");
+    let mut stream = records(&encode_to_vec(&logical).unwrap());
+    stream[2] = narrow_page;
+    stream[1].1[12..14].copy_from_slice(&3u16.to_le_bytes());
+    stream[1].1[17] = 1; // pending wrap at the physical edge, x=3
+    let mut terminal = decode(frame(&stream).as_slice(), DecodeOptions::default()).unwrap();
+    assert_eq!(terminal.screen().columns, 8);
+    assert_eq!(terminal.screen().rows[0].cells.len(), 4);
+    assert_eq!(terminal.screen().cursor.col, 3);
+    assert!(terminal.screen().cursor.pending_wrap);
+    let restored = decode(
+        encode_to_vec(&terminal).unwrap().as_slice(),
+        DecodeOptions::default(),
+    )
+    .unwrap();
+    same_terminal(&terminal, &restored);
+    terminal.feed(b"");
+    assert_eq!(terminal.screen().rows[0].cells.len(), 4);
+    terminal.feed(b"mX");
+    assert_eq!(terminal.screen().rows[0].cells.len(), 4);
+    assert_eq!(text(&terminal.screen().rows), ["abcd", "X"]);
+    assert!(!terminal.screen().rows[0].wrapped);
+    assert_eq!(
+        terminal.screen().rows[1].cells[0].style.foreground,
+        Color::Indexed(1)
+    );
+
+    let mut query = decode(frame(&stream).as_slice(), DecodeOptions::default()).unwrap();
+    query.feed(b"m\x1b[6n\x1b[?7$p\x1bP$qm\x1b\\");
+    assert_eq!(query.screen().rows[0].cells.len(), 4);
+    assert_eq!(query.screen().cursor.col, 3);
+    query.feed(b"\x1b[1;8H!");
+    assert_eq!(query.screen().rows[0].cells.len(), 8);
+    assert_eq!(query.screen().rows[0].cells[7].text, "!");
+
+    // Wider physical rows preserve their hidden suffix through safe edits.
+    let mut source = Terminal::new(8, 1, 10);
+    source.feed(b"abcdef");
+    let wide_page = records(&encode_to_vec(&source).unwrap())[2].clone();
+    let mut stream = records(&encode_to_vec(&Terminal::new(4, 2, 10)).unwrap());
+    stream[2] = wide_page;
+    let bytes = frame(&stream);
+    for input in [
+        b"X".as_slice(),
+        b"\x1b[8;8H!",
+        b"\x1b[?69h\x1b[2;3s\x1b[2S",
+        b"\x1b[3J",
+        b"\x1b[?1049hY\x1b[?1049lZ",
+    ] {
+        let mut terminal = decode(bytes.as_slice(), DecodeOptions::default()).unwrap();
+        assert_eq!(terminal.screen().rows[0].text(), "abcdef");
+        terminal.feed(input);
+        assert!(terminal.screen().all_rows().all(|row| row.cells.len() >= 4));
+        assert!(terminal.screen().cursor.col < 4);
+        assert!(terminal.screen().cursor.row < 2);
+        terminal.resize(5, 2);
+        assert!(terminal.screen().all_rows().all(|row| row.cells.len() == 5));
+    }
+    let mut terminal = decode(bytes.as_slice(), DecodeOptions::default()).unwrap();
+    terminal.feed(b"X");
+    assert_eq!(terminal.screen().rows[0].cells.len(), 8);
+    assert_eq!(terminal.screen().rows[0].text(), "Xbcdef");
+    terminal.feed(b"\x1b[2J");
+    assert_eq!(terminal.screen().rows[0].cells.len(), 8);
+    assert_eq!(terminal.screen().rows[0].text(), "");
+}
+
+#[test]
+fn history_restore_preserves_mixed_physical_rows_while_live_input_arrives() {
+    let mut stream = records(&fixture());
+    let narrow_page = records(&encode_to_vec(&Terminal::new(1, 1, 10)).unwrap())[2].clone();
+    let first_history_page = stream.iter().position(|(tag, _)| *tag == 4).unwrap() + 1;
+    stream[first_history_page] = narrow_page;
+    let bytes = frame(&stream);
+    let mut decoder = Decoder::new(bytes.as_slice(), DecodeOptions::default());
+    let mut terminal = decoder.ready().unwrap();
+    assert_eq!(
+        decoder.next_history(&mut terminal).unwrap().unwrap().rows,
+        1
+    );
+    assert_eq!(terminal.primary_screen().history[0].cells.len(), 1);
+    terminal.feed(b"X");
+    assert_eq!(
+        decoder.next_history(&mut terminal).unwrap().unwrap().rows,
+        2
+    );
+    assert!(decoder.next_history(&mut terminal).unwrap().is_none());
+    assert_eq!(
+        terminal
+            .primary_screen()
+            .history
+            .iter()
+            .map(|row| row.cells.len())
+            .collect::<Vec<_>>(),
+        [2, 2, 1]
+    );
+}
+
+#[test]
+fn terminal_reset_keeps_the_primary_history_restore_destination() {
+    for ready_pages in [0, 1] {
+        let bytes = fixture();
+        let mut decoder = Decoder::new(bytes.as_slice(), DecodeOptions::default());
+        let mut terminal = decoder.ready().unwrap();
+        if ready_pages == 1 {
+            decoder.next_history(&mut terminal).unwrap();
+        }
+        terminal.feed(b"\x1bc");
+        assert!(terminal.primary_screen().history.is_empty());
+        while decoder.next_history(&mut terminal).unwrap().is_some() {}
+        let expected = if ready_pages == 0 {
+            vec!["A", "", "B", ""]
+        } else {
+            vec!["A", ""]
+        };
+        assert_eq!(text(&terminal.primary_screen().history), expected);
+        assert!(terminal.alternate_screen().is_none());
+    }
+}

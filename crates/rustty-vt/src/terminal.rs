@@ -16,8 +16,8 @@ pub enum Effect {
         data: Option<Vec<u8>>,
     },
     Notification {
-        title: String,
-        body: String,
+        title: Vec<u8>,
+        body: Vec<u8>,
     },
     CommandStart,
     CommandEnd {
@@ -25,7 +25,7 @@ pub enum Effect {
     },
     Progress {
         state: u8,
-        value: u8,
+        value: Option<u8>,
     },
     UnknownSequence(String),
 }
@@ -51,6 +51,9 @@ pub struct Terminal {
     pub foreground: [u8; 3],
     pub background: [u8; 3],
     pub cursor_color: Option<[u8; 3]>,
+    /// Host's actual TERM name, used for XTGETTCAP TN. Unset or names longer
+    /// than 128 bytes leave TN unanswered. This host setting is not persisted.
+    pub terminfo_name: Option<String>,
     pub title: String,
     pub working_directory: String,
     pub generation: u64,
@@ -104,6 +107,7 @@ impl Terminal {
             foreground: [255; 3],
             background: [0; 3],
             cursor_color: None,
+            terminfo_name: None,
             title: String::new(),
             working_directory: String::new(),
             generation: 0,
@@ -167,6 +171,26 @@ impl Terminal {
         effects
     }
 
+    fn ensure_row_cells(&mut self, row: usize, end: usize) {
+        let columns = usize::from(self.cols);
+        let cells = &mut self.screen_mut().rows[row].cells;
+        if cells.len() < end.min(columns) {
+            // A partial reflow can leave a physical row narrower than the
+            // logical screen. Keep it intact until an edit reaches past it.
+            cells.resize(columns, Cell::default());
+        }
+    }
+
+    fn clamp_cursor(&mut self) {
+        let columns = usize::from(self.cols);
+        let screen = self.screen_mut();
+        screen.cursor.col = screen
+            .cursor
+            .col
+            .min(columns - 1)
+            .min(screen.rows[screen.cursor.row].cells.len() - 1);
+    }
+
     pub fn limits(&self) -> ScrollbackLimits {
         self.primary.limits
     }
@@ -206,6 +230,9 @@ impl Terminal {
 
     pub fn reset(&mut self) {
         let limits = self.primary.limits;
+        let primary_identity = self.primary.metadata.identity;
+        let reflow_generation = self.primary.metadata.reflow_generation;
+        let terminfo_name = self.terminfo_name.take();
         let (foreground, background, cursor, palette) = (
             self.foreground,
             self.background,
@@ -223,6 +250,11 @@ impl Terminal {
         let mut modes = self.modes.clone();
         modes.reset();
         *self = Self::with_limits(self.cols, self.rows, limits);
+        // RIS resets the existing primary screen. A streaming restore may
+        // still deliver older history into that same screen afterward.
+        self.primary.metadata.identity = primary_identity;
+        self.primary.metadata.reflow_generation = reflow_generation;
+        self.terminfo_name = terminfo_name;
         self.width_px = width_px;
         self.height_px = height_px;
         self.metadata = metadata;
@@ -374,7 +406,12 @@ impl Terminal {
                 self.dcs_header = (intermediates.to_vec(), params.to_vec(), final_byte);
             }
             Event::DcsPut(byte) => {
-                if self.dcs.len() < 8192 {
+                let limit = if self.dcs_header.0 == b"$" && self.dcs_header.2 == b'q' {
+                    2
+                } else {
+                    1024 * 1024
+                };
+                if self.dcs.len() < limit {
                     self.dcs.push(byte);
                 } else {
                     self.string_overflow = true;
@@ -407,6 +444,7 @@ impl Terminal {
     }
 
     pub fn print(&mut self, mut cp: char) {
+        self.clamp_cursor();
         if self.status_display {
             return;
         }
@@ -515,6 +553,7 @@ impl Terminal {
             self.put_cell(cp.to_string(), width, false);
         }
         let x = self.screen().cursor.col;
+        self.ensure_row_cells(self.screen().cursor.row, x + usize::from(width) + 1);
         self.screen_mut().cursor.pending_wrap = x + width as usize > right;
         self.screen_mut().cursor.col = (x + width as usize).min(right);
         self.changed();
@@ -522,6 +561,7 @@ impl Terminal {
 
     fn append_grapheme(&mut self, mut col: usize, cp: char, width: u8, right: usize) {
         let cursor = self.screen().cursor.clone();
+        self.ensure_row_cells(cursor.row, col + usize::from(width));
         let old_width = self.screen().rows[cursor.row].cells[col].width;
         if self.screen().rows[cursor.row].cells[col]
             .text
@@ -566,6 +606,7 @@ impl Terminal {
 
     fn put_cell(&mut self, text: String, width: u8, spacer_head: bool) {
         let cursor = self.screen().cursor.clone();
+        self.ensure_row_cells(cursor.row, cursor.col + usize::from(width));
         let old_width = self.screen().rows[cursor.row].cells[cursor.col].width;
         if cursor.row > 0 && cursor.col <= 1 && old_width != width && old_width != 1 {
             let previous = &mut self.screen_mut().rows[cursor.row - 1];
@@ -603,15 +644,17 @@ impl Terminal {
 
     fn print_wrap(&mut self) {
         let y = self.screen().cursor.row;
-        if self.margins.left == 0 && self.margins.right == self.cols as usize - 1 {
+        let mark_wrap = self.screen().cursor.col == usize::from(self.cols) - 1;
+        if mark_wrap {
             self.screen_mut().rows[y].wrapped = true;
         }
         self.index();
-        if self.margins.left == 0 && self.margins.right == self.cols as usize - 1 {
+        if mark_wrap {
             let y = self.screen().cursor.row;
             self.screen_mut().rows[y].wrap_continuation = true;
         }
         self.screen_mut().cursor.col = self.margins.left;
+        self.ensure_row_cells(self.screen().cursor.row, self.margins.left + 1);
         self.screen_mut().cursor.pending_wrap = false;
     }
 
@@ -621,6 +664,7 @@ impl Terminal {
         } else {
             0
         };
+        self.ensure_row_cells(self.screen().cursor.row, col + 1);
         self.screen_mut().cursor.col = col;
         self.screen_mut().cursor.pending_wrap = false;
         self.changed();
@@ -637,9 +681,12 @@ impl Terminal {
         } else {
             (0, 0, self.rows as usize - 1, self.cols as usize - 1)
         };
+        let row = top.saturating_add(row.max(1) - 1).min(bottom);
+        let col = left.saturating_add(col.max(1) - 1).min(right);
+        self.ensure_row_cells(row, col + 1);
         let cursor = &mut self.screen_mut().cursor;
-        cursor.row = top.saturating_add(row.max(1) - 1).min(bottom);
-        cursor.col = left.saturating_add(col.max(1) - 1).min(right);
+        cursor.row = row;
+        cursor.col = col;
         cursor.pending_wrap = false;
         self.changed();
     }
@@ -662,6 +709,7 @@ impl Terminal {
             y.saturating_sub(amount.max(1)).max(top)
         };
         self.screen_mut().cursor.row = target;
+        self.clamp_cursor();
         self.screen_mut().cursor.pending_wrap = false;
         self.changed();
     }
@@ -673,7 +721,9 @@ impl Terminal {
         } else {
             self.cols as usize - 1
         };
-        self.screen_mut().cursor.col = x.saturating_add(amount.max(1)).min(right);
+        let col = x.saturating_add(amount.max(1)).min(right);
+        self.ensure_row_cells(self.screen().cursor.row, col + 1);
+        self.screen_mut().cursor.col = col;
         self.screen_mut().cursor.pending_wrap = false;
         self.changed();
     }
@@ -715,6 +765,7 @@ impl Terminal {
                     self.screen_mut().cursor.row -= 1;
                 }
                 self.screen_mut().cursor.col = self.margins.right;
+                self.ensure_row_cells(self.screen().cursor.row, self.margins.right + 1);
                 remaining -= 1;
             }
         }
@@ -731,6 +782,7 @@ impl Terminal {
         } else if y + 1 < self.rows as usize {
             self.screen_mut().cursor.row += 1;
         }
+        self.clamp_cursor();
         self.screen_mut().cursor.pending_wrap = false;
         self.changed();
     }
@@ -741,6 +793,7 @@ impl Terminal {
         } else {
             self.screen_mut().cursor.row = self.screen().cursor.row.saturating_sub(1);
         }
+        self.clamp_cursor();
         self.screen_mut().cursor.pending_wrap = false;
         self.changed();
     }
@@ -763,13 +816,12 @@ impl Terminal {
                 self.screen_mut().rows.insert(m.bottom, blank);
             } else {
                 for y in m.top..m.bottom {
-                    let cells = self.screen().rows[y + 1].cells[m.left..=m.right].to_vec();
-                    self.screen_mut().rows[y].cells[m.left..=m.right].clone_from_slice(&cells);
-                    self.screen_mut().rows[y].repair_wide(bg);
+                    self.copy_row_region(y + 1, y, m.left, m.right + 1, bg);
                 }
                 self.screen_mut().rows[m.bottom].erase(m.left, m.right + 1, bg, false);
             }
         }
+        self.clamp_cursor();
         self.changed();
     }
 
@@ -786,14 +838,39 @@ impl Terminal {
                 self.screen_mut().rows.insert(m.top, blank);
             } else {
                 for y in (m.top + 1..=m.bottom).rev() {
-                    let cells = self.screen().rows[y - 1].cells[m.left..=m.right].to_vec();
-                    self.screen_mut().rows[y].cells[m.left..=m.right].clone_from_slice(&cells);
-                    self.screen_mut().rows[y].repair_wide(bg);
+                    self.copy_row_region(y - 1, y, m.left, m.right + 1, bg);
                 }
                 self.screen_mut().rows[m.top].erase(m.left, m.right + 1, bg, false);
             }
         }
+        self.clamp_cursor();
         self.changed();
+    }
+
+    fn copy_row_region(
+        &mut self,
+        source: usize,
+        destination: usize,
+        start: usize,
+        end: usize,
+        background: Color,
+    ) {
+        let end = end.min(self.screen().rows[destination].cells.len());
+        if start >= end {
+            return;
+        }
+        let source = &self.screen().rows[source].cells;
+        let cells: Vec<_> = (start..end)
+            .map(|col| {
+                source
+                    .get(col)
+                    .cloned()
+                    .unwrap_or_else(|| Cell::blank(background))
+            })
+            .collect();
+        let destination = &mut self.screen_mut().rows[destination];
+        destination.cells[start..end].clone_from_slice(&cells);
+        destination.repair_wide(background);
     }
 
     fn tab(&mut self, count: usize, backward: bool) {
@@ -807,6 +884,7 @@ impl Terminal {
                     .unwrap_or(self.cols as usize - 1)
             };
             self.screen_mut().cursor.col = next;
+            self.ensure_row_cells(self.screen().cursor.row, next + 1);
         }
         self.screen_mut().cursor.pending_wrap = false;
         self.changed();
@@ -818,7 +896,7 @@ impl Terminal {
         if cur.col < self.margins.left || cur.col > self.margins.right {
             return;
         }
-        let end = self.margins.right + 1;
+        let end = (self.margins.right + 1).min(self.screen().rows[cur.row].cells.len());
         let count = count.max(1).min(end - cur.col);
         let row = &mut self.screen_mut().rows[cur.row];
         row.cells[cur.col..end].rotate_right(count);
@@ -832,7 +910,7 @@ impl Terminal {
         if cur.col < self.margins.left || cur.col > self.margins.right {
             return;
         }
-        let end = self.margins.right + 1;
+        let end = (self.margins.right + 1).min(self.screen().rows[cur.row].cells.len());
         let count = count.max(1).min(end - cur.col);
         self.screen_mut().split_cell_boundary(cur.col);
         self.screen_mut().split_cell_boundary(cur.col + count);
@@ -867,7 +945,6 @@ impl Terminal {
 
     pub fn erase_display(&mut self, mode: u16, protected: bool) {
         let cursor = self.screen().cursor.clone();
-        let cols = self.cols as usize;
         let rows = self.rows as usize;
         let protected = protected || self.screen().iso_protection;
         let (start, end) = match mode {
@@ -898,7 +975,7 @@ impl Terminal {
             _ => return,
         };
         for row in &mut self.screen_mut().rows[start..end] {
-            row.erase(0, cols, cursor.style.background, protected);
+            row.erase(0, row.cells.len(), cursor.style.background, protected);
             row.wrapped = false;
         }
         self.screen_mut().cursor.pending_wrap = false;
@@ -929,6 +1006,7 @@ impl Terminal {
         self.screen_mut().cursor.visible = visible;
         self.screen_mut().cursor.blink = blink;
         self.screen_mut().cursor.col = self.screen().cursor.col.min(self.cols as usize - 1);
+        self.ensure_row_cells(self.screen().cursor.row, self.screen().cursor.col + 1);
         self.screen_mut().cursor.row = self.screen().cursor.row.min(self.rows as usize - 1);
         self.screen_mut().charset = saved.charset;
         self.modes.set(true, 6, saved.origin);
@@ -1009,6 +1087,7 @@ impl Terminal {
         if mode == 1049 && !enabled {
             self.restore_cursor();
         }
+        self.ensure_row_cells(self.screen().cursor.row, self.screen().cursor.col + 1);
     }
 
     fn esc(&mut self, intermediates: &[u8], final_byte: u8, effects: &mut Vec<Effect>) {
@@ -1025,7 +1104,13 @@ impl Terminal {
                 let col = self.screen().cursor.col;
                 self.tabstops[col] = true;
             }
-            ([], b'c') => self.reset(),
+            ([], b'c') => {
+                self.reset();
+                effects.push(Effect::Progress {
+                    state: 0,
+                    value: None,
+                });
+            }
             ([], b'=') => self.set_mode(true, 66, true),
             ([], b'>') => self.set_mode(true, 66, false),
             ([], b'N') => self.screen_mut().charset.single = Some(2),
@@ -1261,36 +1346,16 @@ impl Terminal {
             ([b'='], b'c') => effects.push(Effect::Write(b"\x1bP!|00000000\x1b\\".to_vec())),
             ([b'>'], b'q') => effects.push(Effect::Write(b"\x1bP>|rustty 0.1.0\x1b\\".to_vec())),
             ([b'?'], b'u') => effects.push(Effect::Write(
-                format!(
-                    "\x1b[?{}u",
-                    self.screen().kitty_keyboard.last().copied().unwrap_or(0)
-                )
-                .into_bytes(),
+                format!("\x1b[?{}u", self.screen().kitty_keyboard.current()).into_bytes(),
             )),
             ([b'>'], b'u') => {
-                let flags = (n & 31) as u8;
-                let stack = &mut self.screen_mut().kitty_keyboard;
-                if stack.len() == 16 {
-                    stack.remove(0);
-                }
-                stack.push(flags);
+                self.screen_mut().kitty_keyboard.push((n & 31) as u8);
             }
             ([b'<'], b'u') => {
-                let stack = &mut self.screen_mut().kitty_keyboard;
-                stack.truncate(stack.len().saturating_sub(count));
+                self.screen_mut().kitty_keyboard.pop(count);
             }
             ([b'='], b'u') => {
-                let stack = &mut self.screen_mut().kitty_keyboard;
-                if stack.is_empty() {
-                    stack.push(0);
-                }
-                let flags = stack.last_mut().unwrap();
-                match second {
-                    0 | 1 => *flags = (n & 31) as u8,
-                    2 => *flags |= (n & 31) as u8,
-                    3 => *flags &= !(n as u8),
-                    _ => {}
-                }
+                self.screen_mut().kitty_keyboard.set((n & 31) as u8, second);
             }
             ([b'$'], b'}') => self.status_display = n == 1,
             ([b'$'], b'~') => {}
@@ -1369,25 +1434,33 @@ impl Terminal {
                 }
             }
             9 => {
-                if let Some(progress) = text.strip_prefix("4;") {
-                    let mut p = progress.split(';');
-                    effects.push(Effect::Progress {
-                        state: p.next().and_then(|v| v.parse().ok()).unwrap_or(0),
-                        value: p.next().and_then(|v| v.parse().ok()).unwrap_or(0),
-                    });
+                if let Some(progress) = data.strip_prefix(b"4;")
+                    && let Some(&state @ b'0'..=b'4') = progress.first()
+                {
+                    let state = state - b'0';
+                    let value = match state {
+                        0 | 3 => None,
+                        _ if progress.get(1) == Some(&b';') => {
+                            parse_unsigned(&progress[2..]).map(|v| v.min(100) as u8)
+                        }
+                        1 => Some(0),
+                        _ => None,
+                    };
+                    effects.push(Effect::Progress { state, value });
                 } else {
                     effects.push(Effect::Notification {
-                        title: String::new(),
-                        body: text.into_owned(),
+                        title: Vec::new(),
+                        body: data.to_vec(),
                     });
                 }
             }
             777 => {
-                if let Some(notification) = text.strip_prefix("notify;") {
-                    let (title, body) = notification.split_once(';').unwrap_or((notification, ""));
+                if let Some(notification) = data.strip_prefix(b"notify;")
+                    && let Some(split) = notification.iter().position(|&b| b == b';')
+                {
                     effects.push(Effect::Notification {
-                        title: title.into(),
-                        body: body.into(),
+                        title: notification[..split].to_vec(),
+                        body: notification[split + 1..].to_vec(),
                     });
                 }
             }
@@ -1515,13 +1588,13 @@ impl Terminal {
         }
         if self.dcs_header.0 == b"$" && self.dcs_header.2 == b'q' {
             let value = match self.dcs.as_slice() {
-                b"m" => Some("0m".to_owned()),
+                b"m" => Some(sgr_report(self.screen().cursor.style)),
                 b"r" => Some(format!(
                     "{};{}r",
                     self.margins.top + 1,
                     self.margins.bottom + 1
                 )),
-                b"s" => Some(format!(
+                b"s" if self.modes.dec(69) => Some(format!(
                     "{};{}s",
                     self.margins.left + 1,
                     self.margins.right + 1
@@ -1535,18 +1608,113 @@ impl Terminal {
                     };
                     Some(format!("{} q", shape - u8::from(cursor.blink)))
                 }
-                b"\"q" => Some(format!("{}\"q", u8::from(self.screen().cursor.protected))),
                 _ => None,
             };
             effects.push(Effect::Write(match value {
                 Some(value) => format!("\x1bP1$r{value}\x1b\\").into_bytes(),
                 None => b"\x1bP0$r\x1b\\".to_vec(),
             }));
+        } else if self.dcs_header.0 == b"+" && self.dcs_header.2 == b'q' {
+            let queries = String::from_utf8_lossy(&self.dcs).to_ascii_uppercase();
+            for key in queries.split(';') {
+                let value = if key == "544E" {
+                    let Some(name) = self
+                        .terminfo_name
+                        .as_ref()
+                        .filter(|name| !name.is_empty() && name.len() <= 128)
+                    else {
+                        continue;
+                    };
+                    name.as_bytes()
+                        .iter()
+                        .map(|byte| format!("{byte:02X}"))
+                        .collect::<String>()
+                } else {
+                    let table = crate::terminfo::CAPABILITIES;
+                    let Ok(index) = table.binary_search_by_key(&key, |(name, _)| *name) else {
+                        continue;
+                    };
+                    table[index].1.to_owned()
+                };
+                effects.push(Effect::Write(
+                    if value.is_empty() {
+                        format!("\x1bP1+r{key}\x1b\\")
+                    } else {
+                        format!("\x1bP1+r{key}={value}\x1b\\")
+                    }
+                    .into_bytes(),
+                ));
+            }
         } else {
             effects.push(Effect::UnknownSequence("DCS".into()));
         }
         self.dcs.clear();
     }
+}
+
+/// Match Zig's decimal unsigned parser, including internal underscore separators.
+fn parse_unsigned(bytes: &[u8]) -> Option<usize> {
+    if !bytes.first()?.is_ascii_digit() || !bytes.last()?.is_ascii_digit() {
+        return None;
+    }
+    bytes
+        .iter()
+        .filter(|&&byte| byte != b'_')
+        .try_fold(0usize, |value, &byte| {
+            if !byte.is_ascii_digit() {
+                return None;
+            }
+            value.checked_mul(10)?.checked_add(usize::from(byte - b'0'))
+        })
+}
+
+fn sgr_report(style: Style) -> String {
+    let mut result = String::from("0");
+    for (enabled, code) in [(style.bold, 1), (style.faint, 2), (style.italic, 3)] {
+        if enabled {
+            result.push_str(&format!(";{code}"));
+        }
+    }
+    match style.underline {
+        Underline::None => {}
+        Underline::Single => result.push_str(";4"),
+        underline => result.push_str(&format!(
+            ";4:{}",
+            match underline {
+                Underline::Double => 2,
+                Underline::Curly => 3,
+                Underline::Dotted => 4,
+                Underline::Dashed => 5,
+                _ => unreachable!(),
+            }
+        )),
+    }
+    for (enabled, code) in [
+        (style.overline, 53),
+        (style.blink, 5),
+        (style.inverse, 7),
+        (style.invisible, 8),
+        (style.strikethrough, 9),
+    ] {
+        if enabled {
+            result.push_str(&format!(";{code}"));
+        }
+    }
+    for (color, base) in [(style.foreground, 30), (style.background, 40)] {
+        match color {
+            Color::Default => {}
+            Color::Indexed(index) if index < 8 => {
+                result.push_str(&format!(";{}", base + u16::from(index)))
+            }
+            Color::Indexed(index) if index < 16 => {
+                result.push_str(&format!(";{}", base + 60 + u16::from(index) - 8))
+            }
+            Color::Indexed(index) => result.push_str(&format!(";{}:5:{index}", base + 8)),
+            Color::Rgb(r, g, b) => result.push_str(&format!(";{}:2::{r}:{g}:{b}", base + 8)),
+        }
+    }
+    result.push('m');
+    result
 }
 
 fn map_charset(cp: char, set: Charset) -> char {

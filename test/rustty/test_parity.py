@@ -29,11 +29,11 @@ class HarnessTests(unittest.TestCase):
 
     def test_delivery_variants_preserve_bytes_and_barriers(self):
         data = "aé界\x1b[31m".encode()
-        original = {"id": "delivery", "operations": [
+        original = {"id": "delivery", "kind": "snapshot", "operations": [
             {"op": "write", "data": data.hex()}, {"op": "observe"},
             {"op": "resize", "cols": 5, "rows": 2},
             {"op": "write", "data": "ff"},
-        ]}
+        ], "after": [{"op": "write", "data": data.hex()}, {"op": "reset"}]}
 
         def collapse(operations):
             result = []
@@ -50,7 +50,8 @@ class HarnessTests(unittest.TestCase):
         self.assertTrue(variants[1]["scalar"])
         self.assertGreater(len(variants), 3)
         for variant in variants:
-            self.assertEqual(collapse(original["operations"]), collapse(variant["operations"]))
+            for field in ("operations", "after"):
+                self.assertEqual(collapse(original[field]), collapse(variant[field]))
 
     def test_generated_cases_are_reproducible(self):
         self.assertEqual(list(parity.generated_requests(42, 3)), list(parity.generated_requests(42, 3)))
@@ -70,6 +71,51 @@ class HarnessTests(unittest.TestCase):
         for request in requests:
             for variant in parity.variants(request, exhaustive=True):
                 self.assertEqual(data, b"".join(bytes.fromhex(op["data"]) for op in variant["operations"]))
+
+    def test_snapshot_checks_uninterrupted_state_and_decoder_errors(self):
+        class Peer:
+            def __init__(self, name, loses_state=False, fails=False):
+                self.name = name
+                self.loses_state = loses_state
+                self.fails = fails
+
+            def request(self, request):
+                operations = {op["op"] for op in request["operations"]}
+                encoding = "snapshot" in operations
+                failed = self.fails and not encoding
+                state = ["A"] if encoding else ["A", "AB"]
+                if self.loses_state and "restore" in operations:
+                    state = ["", "B"]
+                return {"id": request["id"], "ok": not failed,
+                        "err": "InvalidSnapshot" if failed else None,
+                        "observations": [] if failed else state,
+                        "snapshots": [self.name] if encoding else []}
+
+        request = {"id": "roundtrip", "kind": "snapshot", "operations": [], "after": []}
+        # Different wire encodings are acceptable when every restored state agrees.
+        self.assertIsNone(parity.compare([Peer("zig"), Peer("rust")], request)[2])
+        # Both decoders losing the same state must not hide behind cross-agreement.
+        reason = parity.compare([Peer("zig", True), Peer("rust", True)], request)[2]
+        self.assertIn("restore-zig", reason)
+        self.assertIsNotNone(parity.compare([Peer("zig", fails=True), Peer("rust", fails=True)], request)[2])
+
+    def test_expected_snapshot_rejections_cannot_hide_other_failures(self):
+        class Peer:
+            def __init__(self, error):
+                self.error = error
+
+            def request(self, request):
+                self_request = {"id": request["id"], "ok": self.error is None,
+                                "err": self.error, "capabilities": []}
+                if "expected_error" in request:
+                    raise AssertionError("harness-only expectation was sent to native adapter")
+                return self_request
+
+        request = {"id": "bad-wire", "expected_error": "InvalidSnapshot", "operations": []}
+        self.assertIsNone(parity.compare([Peer("InvalidSnapshot")] * 2, request)[2])
+        self.assertIsNotNone(parity.compare([Peer("UnsupportedOperation")] * 2, request)[2])
+        self.assertIsNotNone(parity.compare([Peer(None)] * 2, request)[2])
+        self.assertEqual([request], list(parity.variants(request, exhaustive=True)))
 
 
 if __name__ == "__main__":

@@ -147,24 +147,29 @@
       "remaining": "Focus and text paste encodings pass; binary paste, safety options and Kitty paste event/clipboard integration remain."
     },
     {
+      "id": "protocol.dcs",
+      "status": "partial",
+      "remaining": "Current source terminfo capabilities and DECRQSS styles/margins/cursor replies pass; host-specified terminfo names, all control contexts and resource limits remain."
+    },
+    {
       "id": "effects.host",
-      "status": "pending",
-      "remaining": "Notifications, progress and explicit host query decisions."
+      "status": "partial",
+      "remaining": "OSC 9/777 notification bytes and ConEmu progress callbacks are observed, including malformed fields and RIS removal; Kitty notifications and explicit host query decisions remain."
     },
     {
       "id": "snapshot.cross-decode",
-      "status": "pending",
-      "remaining": "Zig-to-Rust and Rust-to-Zig continuation and full semantic comparison."
+      "status": "partial",
+      "remaining": "Both encodings are decoded in both peers and compared to uninterrupted continuation; complete metadata, lazy mixed-width PAGEs and all state transitions still need coverage."
     },
     {
       "id": "snapshot.streaming",
-      "status": "pending",
-      "remaining": "READY/history/FINISH checkpoints, incomplete continuation and failure handling."
+      "status": "partial",
+      "remaining": "READY/history/FINISH state and source offsets are compared with live mutations and transport tails; complete reset-generation behavior, continuation replay, I/O failures and limits remain."
     },
     {
       "id": "snapshot.fixtures",
-      "status": "pending",
-      "remaining": "Decode all existing snapshot wire fixtures and exercise corrupt/truncated input."
+      "status": "partial",
+      "remaining": "Complete-v1, every truncation and selected corruptions are compared; remaining component fixtures and mixed PAGE behavior need coverage. Original Zig asserts on some mixed-width cursor states; reference-limit cases remain in thorough runs."
     },
     {
       "id": "fuzz.resource-limits",

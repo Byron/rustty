@@ -153,7 +153,7 @@ impl Terminal {
         if self.modes.get(false, 2) {
             return Vec::new();
         }
-        let flags = self.screen().kitty_keyboard.last().copied().unwrap_or(0);
+        let flags = self.screen().kitty_keyboard.current();
         if flags != 0 {
             return kitty_key(event, flags);
         }
