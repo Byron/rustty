@@ -1,0 +1,53 @@
+# Rustty for macOS
+
+Rustty is a private Rust workspace implementing a terminal, CoreText font services,
+a portable frame renderer and a WGPU desktop application. All seven crates are
+`publish = false`. WGPU uses Metal on macOS; Windows and Linux desktop integration
+and a direct Metal renderer are deferred.
+
+Build a native app from the repository root:
+
+```sh
+nu crates/rustty-app/build.nu --release
+open target/release/Rustty.app
+```
+
+For development, use `cargo run -p rustty-app --bin rustty`. Build the debug bundle
+first (`nu crates/rustty-app/build.nu`) to make themes, terminfo and shell integration
+available to development sessions. Ordinary Cargo builds do not require Zig.
+
+Rustty loads its own configuration when present, otherwise Ghostty Local settings,
+then stable Ghostty settings. `rustty --config-info` reports the selected files.
+Own settings can be stored in `~/.config/rustty/config.rustty` or
+`~/Library/Application Support/com.rustty.app/config.rustty`; an empty own file
+intentionally disables Ghostty fallback. No Ghostty file is modified.
+Configuration diagnostics appear in the app. The native menu provides reload and
+open-configuration actions. Tabs, splits, zoom, quadrant navigation, clipboard and
+search use the configured Ghostty keybindings. Window layouts and pane directories
+are saved separately under `com.rustty.app`.
+
+The terminal port is still undergoing differential compatibility work. A passing
+smoke test does not establish full libghostty-vt parity. The exhaustive coverage
+gate in `test/rustty/coverage.json` records unfinished protocol and snapshot work;
+see [the compatibility checks](../../test/rustty/README.md). Native global shortcuts
+need macOS Accessibility permission. Notifications are available in the bundled
+app; permissions remain under macOS control.
+
+Validation:
+
+```sh
+cargo test --workspace --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+python3 test/rustty/parity.py
+RUSTTY_SMOKE_DIR=/tmp/rustty-native-smoke target/debug/Rustty.app/Contents/MacOS/rustty
+```
+
+The opt-in native smoke check starts disposable `/bin/sh` sessions, checks input,
+four split panes, tabs, quadrant focus and zoom, URI directory reports, restoration
+and idle rendering. It writes `result.json`, `workspace.json` and a WGPU readback
+`window.png` into the specified directory and exits. It uses the selected display
+configuration but does not restore or overwrite the regular app workspace.
+
+On a locked or headless Mac, set `RUSTTY_SMOKE_OFFSCREEN=1` for an offscreen
+Metal capture of the same host primitives. The report labels this mode; it does
+not verify that macOS presents the window on a physical display.

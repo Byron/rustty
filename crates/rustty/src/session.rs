@@ -1,0 +1,594 @@
+//! PTY ownership and background IO. No windowing or GPU dependency.
+use crate::config::{Command, Config, CursorStyle, ShellIntegration, TerminalColor};
+use portable_pty::{ChildKiller, CommandBuilder, PtySize, native_pty_system};
+use rustty_vt::{CursorShape, Effect, Screen, ScrollbackLimits, Terminal};
+use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, mpsc};
+use std::thread;
+
+const MAX_PENDING_INPUT: usize = 16 * 1024 * 1024;
+
+#[derive(Clone, Debug)]
+pub struct SessionOptions {
+    pub cols: u16,
+    pub rows: u16,
+    pub working_directory: Option<PathBuf>,
+    pub command: Option<Command>,
+    pub resources: Option<PathBuf>,
+}
+
+impl Default for SessionOptions {
+    fn default() -> Self {
+        Self {
+            cols: 80,
+            rows: 24,
+            working_directory: None,
+            command: None,
+            resources: None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum SessionEvent {
+    Effect(Effect),
+    Exited { code: u32, signal: Option<String> },
+    OutputClosed,
+    Error(String),
+}
+
+enum IoCommand {
+    Write(Vec<u8>),
+    Resize(PtySize),
+    Close,
+}
+
+/// A viewport snapshot owns only visible rows, so font shaping never holds a
+/// terminal lock or copies the scrollback history.
+#[derive(Clone, Debug)]
+pub struct Snapshot {
+    pub screen: Screen,
+    pub cols: u16,
+    pub rows: u16,
+    pub generation: u64,
+    pub foreground: [u8; 3],
+    pub background: [u8; 3],
+    pub palette: Vec<[u8; 3]>,
+    pub cursor_color: Option<[u8; 3]>,
+    pub title: String,
+    pub working_directory: String,
+}
+
+pub struct Session {
+    terminal: Arc<Mutex<Terminal>>,
+    input: mpsc::Sender<IoCommand>,
+    events: mpsc::Receiver<SessionEvent>,
+    pending_input: Arc<PendingInput>,
+    exited: Arc<AtomicBool>,
+    killer: Box<dyn ChildKiller + Send + Sync>,
+}
+
+fn error(error: impl std::fmt::Display) -> io::Error {
+    io::Error::other(error.to_string())
+}
+
+impl Session {
+    pub fn spawn(
+        config: &Config,
+        options: SessionOptions,
+        wake: Arc<dyn Fn() + Send + Sync>,
+    ) -> io::Result<Self> {
+        let cols = options.cols.max(1);
+        let rows = options.rows.max(1);
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                cols,
+                rows,
+                ..PtySize::default()
+            })
+            .map_err(error)?;
+        let command = command(config, &options)?;
+        let mut child = pair.slave.spawn_command(command).map_err(error)?;
+        drop(pair.slave);
+        let mut killer = child.clone_killer();
+        let mut reader = pair.master.try_clone_reader().map_err(|e| {
+            let _ = killer.kill();
+            error(e)
+        })?;
+        let mut writer = pair.master.take_writer().map_err(|e| {
+            let _ = killer.kill();
+            error(e)
+        })?;
+
+        let mut terminal = Terminal::with_limits(cols, rows, scrollback_limits(config));
+        apply_appearance(&mut terminal, config);
+        terminal.working_directory = options
+            .working_directory
+            .as_ref()
+            .or(config.working_directory.as_ref())
+            .map_or_else(
+                || std::env::var("HOME").unwrap_or_default(),
+                |path| path.to_string_lossy().into_owned(),
+            );
+        let terminal = Arc::new(Mutex::new(terminal));
+        let (input, input_rx) = mpsc::channel();
+        let (events_tx, events) = mpsc::sync_channel(256);
+        let pending_input = Arc::new(PendingInput::default());
+        let exited = Arc::new(AtomicBool::new(false));
+
+        let writer_events = events_tx.clone();
+        let writer_wake = wake.clone();
+        let writer_pending = pending_input.clone();
+        thread::Builder::new()
+            .name("rustty-pty-write".into())
+            .spawn(move || {
+                let master = pair.master;
+                while let Ok(command) = input_rx.recv() {
+                    let result = match command {
+                        IoCommand::Write(bytes) => {
+                            let result = writer.write_all(&bytes);
+                            writer_pending.release(bytes.len());
+                            result
+                        }
+                        IoCommand::Resize(size) => master.resize(size).map_err(error),
+                        IoCommand::Close => break,
+                    };
+                    if let Err(e) = result {
+                        writer_wake();
+                        let _ = writer_events.send(SessionEvent::Error(e.to_string()));
+                        writer_wake();
+                        break;
+                    }
+                    writer_wake();
+                }
+                writer_pending.close();
+            })?;
+
+        let read_terminal = terminal.clone();
+        let read_input = input.clone();
+        let read_events = events_tx.clone();
+        let read_pending = pending_input.clone();
+        let read_wake = wake.clone();
+        thread::Builder::new()
+            .name("rustty-pty-read".into())
+            .spawn(move || {
+                let mut buffer = [0; 32 * 1024];
+                loop {
+                    let length = match reader.read(&mut buffer) {
+                        Ok(0) => break,
+                        Ok(length) => length,
+                        Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                        Err(e) => {
+                            read_wake();
+                            let _ = read_events.send(SessionEvent::Error(e.to_string()));
+                            break;
+                        }
+                    };
+                    let effects = match read_terminal.lock() {
+                        Ok(mut terminal) => terminal.feed(&buffer[..length]),
+                        Err(_) => break,
+                    };
+                    for effect in effects {
+                        match effect {
+                            Effect::Write(bytes) => {
+                                // Replies use the same bounded byte budget as user
+                                // input. Backpressure cannot silently drop a reply.
+                                if let Err(e) = enqueue(&read_input, &read_pending, bytes, true) {
+                                    read_wake();
+                                    let _ = read_events.send(SessionEvent::Error(e.to_string()));
+                                }
+                            }
+                            Effect::Title(_) | Effect::WorkingDirectory(_) => {}
+                            effect => {
+                                read_wake();
+                                if read_events.send(SessionEvent::Effect(effect)).is_err() {
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    read_wake();
+                }
+                read_wake();
+                let _ = read_events.send(SessionEvent::OutputClosed);
+                read_wake();
+            })?;
+
+        let wait_exited = exited.clone();
+        thread::Builder::new()
+            .name("rustty-pty-wait".into())
+            .spawn(move || {
+                let event = match child.wait() {
+                    Ok(status) => SessionEvent::Exited {
+                        code: status.exit_code(),
+                        signal: status.signal().map(str::to_owned),
+                    },
+                    Err(e) => SessionEvent::Error(e.to_string()),
+                };
+                wait_exited.store(true, Ordering::Release);
+                wake();
+                let _ = events_tx.send(event);
+                wake();
+            })?;
+
+        Ok(Self {
+            terminal,
+            input,
+            events,
+            pending_input,
+            exited,
+            killer,
+        })
+    }
+
+    pub fn terminal(&self) -> io::Result<MutexGuard<'_, Terminal>> {
+        self.terminal
+            .lock()
+            .map_err(|_| error("terminal worker panicked"))
+    }
+
+    /// Queues the entire input or returns an error without sending any prefix.
+    pub fn write(&self, bytes: &[u8]) -> io::Result<()> {
+        if self.exited.load(Ordering::Acquire) {
+            return Err(io::ErrorKind::BrokenPipe.into());
+        }
+        if bytes.len() > MAX_PENDING_INPUT {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "input exceeds the terminal queue budget",
+            ));
+        }
+        enqueue(&self.input, &self.pending_input, bytes.to_owned(), false)
+    }
+
+    pub fn resize(&self, cols: u16, rows: u16, width_px: u16, height_px: u16) -> io::Result<()> {
+        let cols = cols.max(1);
+        let rows = rows.max(1);
+        let mut terminal = self.terminal()?;
+        if terminal.cols == cols
+            && terminal.rows == rows
+            && terminal.width_px == u32::from(width_px)
+            && terminal.height_px == u32::from(height_px)
+        {
+            return Ok(());
+        }
+        self.input
+            .send(IoCommand::Resize(PtySize {
+                cols,
+                rows,
+                pixel_width: width_px,
+                pixel_height: height_px,
+            }))
+            .map_err(error)?;
+        terminal.resize(cols, rows);
+        terminal.set_pixel_size(width_px.into(), height_px.into());
+        Ok(())
+    }
+
+    pub fn snapshot(&self) -> io::Result<Snapshot> {
+        let terminal = self.terminal()?;
+        Ok(Snapshot {
+            screen: terminal.screen().snapshot_viewport(),
+            cols: terminal.cols,
+            rows: terminal.rows,
+            generation: terminal.generation,
+            foreground: terminal.foreground,
+            background: terminal.background,
+            palette: terminal.palette.clone(),
+            cursor_color: terminal.cursor_color,
+            title: terminal.title.clone(),
+            working_directory: terminal.working_directory.clone(),
+        })
+    }
+
+    pub fn events(&self) -> impl Iterator<Item = SessionEvent> + '_ {
+        self.events.try_iter()
+    }
+    pub fn has_exited(&self) -> bool {
+        self.exited.load(Ordering::Acquire)
+    }
+    pub fn apply_config(&self, config: &Config) -> io::Result<()> {
+        let mut terminal = self.terminal()?;
+        terminal.set_limits(scrollback_limits(config));
+        apply_appearance(&mut terminal, config);
+        Ok(())
+    }
+}
+
+fn scrollback_limits(config: &Config) -> ScrollbackLimits {
+    ScrollbackLimits {
+        bytes: config.scrollback_limit_bytes,
+        lines: config.scrollback_limit_lines,
+    }
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        self.pending_input.close();
+        let _ = self.input.send(IoCommand::Close);
+        if !self.has_exited() {
+            let _ = self.killer.kill();
+        }
+    }
+}
+
+struct PendingInput {
+    used: Mutex<Option<usize>>,
+    available: Condvar,
+}
+impl Default for PendingInput {
+    fn default() -> Self {
+        Self {
+            used: Mutex::new(Some(0)),
+            available: Condvar::new(),
+        }
+    }
+}
+impl PendingInput {
+    fn reserve(&self, length: usize, wait: bool) -> io::Result<()> {
+        if length > MAX_PENDING_INPUT {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "input exceeds the terminal queue budget",
+            ));
+        }
+        let mut used = self.used.lock().map_err(error)?;
+        loop {
+            let current = used.ok_or(io::ErrorKind::BrokenPipe)?;
+            if current <= MAX_PENDING_INPUT - length {
+                *used = Some(current + length);
+                return Ok(());
+            }
+            if !wait {
+                return Err(io::Error::new(
+                    io::ErrorKind::WouldBlock,
+                    "terminal input queue is full",
+                ));
+            }
+            used = self.available.wait(used).map_err(error)?;
+        }
+    }
+    fn release(&self, length: usize) {
+        if let Ok(mut used) = self.used.lock()
+            && let Some(current) = used.as_mut()
+        {
+            *current -= length;
+        }
+        self.available.notify_all();
+    }
+    fn close(&self) {
+        if let Ok(mut used) = self.used.lock() {
+            *used = None;
+        }
+        self.available.notify_all();
+    }
+}
+
+fn enqueue(
+    input: &mpsc::Sender<IoCommand>,
+    pending: &PendingInput,
+    bytes: Vec<u8>,
+    wait: bool,
+) -> io::Result<()> {
+    if bytes.is_empty() {
+        return Ok(());
+    }
+    let length = bytes.len();
+    pending.reserve(length, wait)?;
+    if let Err(e) = input.send(IoCommand::Write(bytes)) {
+        pending.release(length);
+        return Err(error(e));
+    }
+    Ok(())
+}
+
+fn apply_appearance(terminal: &mut Terminal, config: &Config) {
+    let palette: Vec<_> = config
+        .palette
+        .iter()
+        .map(|color| color.to_array())
+        .collect();
+    let cursor_color = config.cursor_color.and_then(|color| match color {
+        TerminalColor::Rgb(color) => Some(color.to_array()),
+        _ => None,
+    });
+    terminal.set_default_colors(
+        config.foreground.to_array(),
+        config.background.to_array(),
+        cursor_color,
+        &palette,
+    );
+    let shape = match config.cursor_style {
+        CursorStyle::Bar => CursorShape::Bar,
+        CursorStyle::Underline => CursorShape::Underline,
+        CursorStyle::BlockHollow => CursorShape::HollowBlock,
+        _ => CursorShape::Block,
+    };
+    terminal.set_default_cursor(shape, config.cursor_style_blink);
+}
+
+fn command(config: &Config, options: &SessionOptions) -> io::Result<CommandBuilder> {
+    let selected = options.command.as_ref().or(config.command.as_ref());
+    let mut cmd = match selected {
+        Some(Command::Direct(args)) => {
+            let Some(program) = args.first() else {
+                return Err(error("command is empty"));
+            };
+            let mut cmd = CommandBuilder::new(program);
+            cmd.args(&args[1..]);
+            cmd
+        }
+        Some(Command::Shell(text)) => {
+            let mut cmd = CommandBuilder::new("/bin/sh");
+            cmd.args(["-c", text]);
+            cmd
+        }
+        None => CommandBuilder::new_default_prog(),
+    };
+    for (key, value) in &config.env {
+        cmd.env(key, value);
+    }
+    if let Some(path) = options
+        .working_directory
+        .as_ref()
+        .or(config.working_directory.as_ref())
+    {
+        cmd.cwd(path);
+    } else if let Some(home) = std::env::var_os("HOME") {
+        cmd.cwd(home);
+    }
+    cmd.env("TERM_PROGRAM", "rustty");
+    cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
+    cmd.env("COLORTERM", "truecolor");
+    cmd.env("TERM", "xterm-256color");
+    cmd.env_remove("GHOSTTY_SURFACE_ID");
+    if let Some(resources) = &options.resources {
+        cmd.env("RUSTTY_RESOURCES_DIR", resources);
+        cmd.env("GHOSTTY_RESOURCES_DIR", resources);
+        let terminfo = resources.join("terminfo");
+        if terminfo.is_dir() {
+            cmd.env("TERMINFO", terminfo);
+            cmd.env("TERM", "xterm-ghostty");
+        }
+        if config.shell_integration != ShellIntegration::None && selected.is_none() {
+            let shell = cmd.get_shell();
+            let shell_name = Path::new(&shell)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
+            cmd.get_argv_mut().push(shell.clone().into());
+            cmd.arg("-l");
+            let scripts = resources.join("shell-integration");
+            cmd.env("GHOSTTY_SHELL_FEATURES", "cursor:steady,path,title");
+            if let Ok(exe) = std::env::current_exe()
+                && let Some(parent) = exe.parent()
+            {
+                cmd.env("GHOSTTY_BIN_DIR", parent);
+            }
+            match shell_name {
+                "zsh" if scripts.join("zsh").is_dir() => {
+                    if let Some(old) = cmd.get_env("ZDOTDIR").map(ToOwned::to_owned) {
+                        cmd.env("GHOSTTY_ZSH_ZDOTDIR", old);
+                    }
+                    cmd.env("ZDOTDIR", scripts.join("zsh"));
+                }
+                "fish" | "nu" | "elvish" => {
+                    let old = cmd
+                        .get_env("XDG_DATA_DIRS")
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "/usr/local/share:/usr/share".into());
+                    cmd.env("XDG_DATA_DIRS", format!("{}:{old}", scripts.display()));
+                    cmd.env("GHOSTTY_SHELL_INTEGRATION_XDG_DIR", &scripts);
+                    if shell_name == "nu" {
+                        cmd.args(["--execute", "use ghostty *"]);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(cmd)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn short_lived_child_is_reaped_and_final_output_drained() {
+        let mut config = Config::default();
+        config.scrollback_limit_bytes = None;
+        config.scrollback_limit_lines = Some(4);
+        let session = Session::spawn(
+            &config,
+            SessionOptions {
+                command: Some(Command::Direct(vec![
+                    "/bin/sh".into(),
+                    "-c".into(),
+                    "printf 'rustty-ready'; exit 7".into(),
+                ])),
+                ..SessionOptions::default()
+            },
+            Arc::new(|| {}),
+        )
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let (mut exited, mut eof) = (false, false);
+        while !(exited && eof) {
+            assert!(
+                Instant::now() < deadline,
+                "child did not exit and close its output"
+            );
+            for event in session.events() {
+                match event {
+                    SessionEvent::Exited { code, .. } => {
+                        assert_eq!(code, 7);
+                        exited = true;
+                    }
+                    SessionEvent::OutputClosed => eof = true,
+                    SessionEvent::Error(e) => panic!("{e}"),
+                    _ => {}
+                }
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            session
+                .terminal()
+                .unwrap()
+                .plain_text()
+                .contains("rustty-ready")
+        );
+        session
+            .terminal()
+            .unwrap()
+            .feed("\r\nline".repeat(40).as_bytes());
+        assert_eq!(session.terminal().unwrap().screen().history.len(), 4);
+        config.scrollback_limit_lines = Some(1);
+        session.apply_config(&config).unwrap();
+        assert_eq!(session.terminal().unwrap().screen().history.len(), 1);
+        config.scrollback_limit_bytes = Some(0);
+        session.apply_config(&config).unwrap();
+        assert!(session.terminal().unwrap().screen().history.is_empty());
+    }
+
+    #[test]
+    fn backpressure_rejects_an_entire_write_without_partial_delivery() {
+        let (sender, receiver) = mpsc::channel();
+        let pending = PendingInput {
+            used: Mutex::new(Some(MAX_PENDING_INPUT - 1)),
+            available: Condvar::new(),
+        };
+        assert_eq!(
+            enqueue(&sender, &pending, b"ab".to_vec(), false)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::WouldBlock
+        );
+        assert!(receiver.try_recv().is_err());
+        assert_eq!(*pending.used.lock().unwrap(), Some(MAX_PENDING_INPUT - 1));
+        enqueue(&sender, &pending, b"x".to_vec(), false).unwrap();
+        assert!(matches!(receiver.try_recv(), Ok(IoCommand::Write(bytes)) if bytes == b"x"));
+    }
+
+    #[test]
+    fn protocol_reply_waits_for_budget_instead_of_being_dropped() {
+        let (sender, receiver) = mpsc::channel();
+        let pending = Arc::new(PendingInput {
+            used: Mutex::new(Some(MAX_PENDING_INPUT)),
+            available: Condvar::new(),
+        });
+        let producer_pending = pending.clone();
+        let producer =
+            thread::spawn(move || enqueue(&sender, &producer_pending, b"reply".to_vec(), true));
+        assert!(receiver.recv_timeout(Duration::from_millis(20)).is_err());
+        pending.release(5);
+        assert!(
+            matches!(receiver.recv_timeout(Duration::from_secs(2)), Ok(IoCommand::Write(bytes)) if bytes == b"reply")
+        );
+        producer.join().unwrap().unwrap();
+    }
+}

@@ -1,0 +1,8 @@
+[package]
+name = "rustty-parser"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Streaming UTF-8 and VT escape parsing."

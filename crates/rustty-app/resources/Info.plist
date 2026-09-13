@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>rustty</string>
+    <key>CFBundleIdentifier</key>
+    <string>app.rustty.Rustty</string>
+    <key>CFBundleName</key>
+    <string>Rustty</string>
+    <key>CFBundleDisplayName</key>
+    <string>Rustty</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>@VERSION@</string>
+    <key>CFBundleVersion</key>
+    <string>@VERSION@</string>
+    <key>CFBundleIconFile</key>
+    <string>Rustty.icns</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>Rustty contributors. Based on Ghostty, copyright 2024 Mitchell Hashimoto and Ghostty contributors.</string>
+</dict>
+</plist>
