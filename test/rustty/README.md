@@ -35,6 +35,9 @@ Use deterministic generated cases and saved failures to diagnose differences:
 python3 test/rustty/parity.py --no-build --generated 100 --seed 0
 python3 test/rustty/parity.py --no-build --input
 python3 test/rustty/parity.py --no-build --parser
+python3 test/rustty/parity.py --no-build --snapshots
+python3 test/rustty/parity.py --no-build --snapshot-wire
+python3 test/rustty/parity.py --no-build --protocols
 python3 test/rustty/parity.py --no-build --replay target/parity/failures/ID/request.json
 python3 test/rustty/parity.py --no-build --replay target/parity/failures/ID/request.json --minimize
 python3 -m unittest discover -s test/rustty -p 'test_*.py'
@@ -55,6 +58,37 @@ boundary because Zig exposes validated commands while Rust exposes raw OSC
 payloads. This comparison therefore does **not** validate OSC command parsing,
 effects or command-specific limits; those need terminal/protocol cases.
 
+`--snapshots` exports one snapshot from each implementation, restores each
+encoding in both implementations, and resumes terminal input. It compares
+the restored state and effects with uninterrupted execution as well as with
+the other implementation. Both wire encodings are retained in failure
+artifacts; their bytes may differ because PAGE grouping is not prescribed.
+Cases include all cuts through representative UTF-8, ESC, CSI, OSC, DCS and
+APC sequences, plus styles, hyperlinks, screens, history, saved cursors and
+reflow.
+
+`--snapshot-wire` compares the complete version-one wire fixture, every
+truncation and selected corruptions. It observes READY, each history PAGE and
+FINISH, including source offsets and live writes, resets, screen switches and
+resizes between pages. Following transport bytes must remain unread. It also
+constructs PAGEs whose physical width differs from the terminal width. These
+advanced cases currently expose differences and original Zig assertions;
+`snapshot/reference-limit/` cases retain those failures explicitly. Use
+`--case snapshot/streaming` or `--case snapshot/invalid` for isolated checks.
+An expected rejection must be `InvalidSnapshot`; an unrelated adapter error
+or an unexpected successful decode still fails the case.
+
+`--protocols` compares terminal-level DCS replies and host notifications.
+Capability names are read
+from the original Zig terminfo source; the Rust table is not used to select
+the test cases. It checks every advertised capability, the extra Co/RGB/TN
+keys, malformed and multiple keys, and DECRQSS style, cursor and margin
+queries. The current adapters leave the host terminfo name unset. Notification
+callbacks retain the original bytes, including invalid UTF-8. OSC 9/777 and
+ConEmu progress cases cover terminators, optional percentages, malformed fields
+and notification fallbacks. Enabling the real progress callback also checks
+the progress removal effect emitted by RIS.
+
 Each failure saves its request, both full responses and the first difference
 under `target/parity/failures/`. Minimization removes operations and bytes
 while retaining a successful state comparison with the same mismatching field;
@@ -63,7 +97,7 @@ An oracle crash, invalid response, unsupported operation or timeout fails the
 run. Requests are limited to 16 MiB and responses to 128 MiB. Graphics file,
 temporary-file and shared-memory transports are disabled in the Zig oracle.
 
-`--thorough` additionally exercises input and parser cases, all split points
+`--thorough` additionally exercises input, parser, protocol and both snapshot suites, all split points
 for short writes, the inherited stream corpus and generated operations. The
 stream corpus's first byte is its original delivery selector, so it is removed
 from the terminal input.

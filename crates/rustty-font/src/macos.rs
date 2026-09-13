@@ -1,14 +1,14 @@
 use crate::{
-    BitmapFormat, FontConfig, FontError, FontFeature, FontId, FontMetrics, FontStyle, GlyphBitmap,
-    ShapedGlyph,
+    BitmapFormat, FontConfig, FontError, FontFeature, FontId, FontMetrics, FontStyle,
+    FontStyleRequest, GlyphBitmap, ShapedGlyph,
 };
 use objc2_core_foundation::{
-    CFArray, CFAttributedString, CFData, CFDictionary, CFNumber, CFRange, CFRetained, CFString,
-    CFType, CGPoint, CGSize,
+    CFArray, CFAttributedString, CFData, CFDictionary, CFMutableAttributedString, CFNumber,
+    CFRange, CFRetained, CFString, CFType, CGPoint, CGSize,
 };
 use objc2_core_graphics::{
     CGBitmapContextCreate, CGColorSpace, CGContext, CGImageAlphaInfo, CGImageByteOrderInfo,
-    kCGColorSpaceSRGB,
+    CGTextDrawingMode, kCGColorSpaceLinearGray, kCGColorSpaceSRGB,
 };
 use objc2_core_text::*;
 use std::collections::HashSet;
@@ -23,6 +23,8 @@ const SYMBOLS: &[u8] = include_bytes!("../resources/SymbolsNerdFont-Regular.ttf"
 pub struct FontSystem {
     config: FontConfig,
     fonts: Vec<CFRetained<CTFont>>,
+    bold_strokes: Vec<f64>,
+    mappings: Vec<Option<FontId>>,
     styles: [FontId; 4],
     metrics: FontMetrics,
     warnings: Vec<String>,
@@ -37,12 +39,18 @@ impl FontSystem {
             ));
         }
         if config.features.iter().any(|f| !f.tag.is_ascii())
-            || config
-                .variations
-                .iter()
-                .any(|v| !v.tag.is_ascii() || !v.value.is_finite())
+            || (0..4)
+                .flat_map(|style| config.style_variations(style))
+                .any(|v| !v.value.is_finite())
         {
             return Err(error("invalid font feature or variation"));
+        }
+        if config
+            .codepoint_map
+            .iter()
+            .any(|m| m.start > m.end || m.end > 0x10ffff)
+        {
+            return Err(error("invalid font codepoint mapping"));
         }
 
         let mut fonts = Vec::new();
@@ -81,13 +89,29 @@ impl FontSystem {
         {
             let mut requested = Vec::new();
             for family in families {
-                if known_names.contains(&family.to_lowercase()) {
-                    let base = unsafe {
-                        CTFont::with_name(&CFString::from_str(family), pixels, ptr::null())
+                if let Some(base) = load_family(family, pixels, &known_names)? {
+                    let font = match &config.style_requests[index] {
+                        FontStyleRequest::Named(name) => {
+                            named_style(&base, name).unwrap_or_else(|| {
+                                let warning = format!("{family} ({name})");
+                                if !warnings.contains(&warning) {
+                                    warnings.push(warning);
+                                }
+                                styled(base, index)
+                            })
+                        }
+                        _ => styled(base, index),
                     };
-                    requested.push(styled(base, index));
+                    requested.push(font);
                 } else if !warnings.iter().any(|w| w == family) {
                     warnings.push(family.clone());
+                }
+            }
+            if requested.is_empty() && index > 0 {
+                for family in &config.families {
+                    if let Some(font) = load_family(family, pixels, &known_names)? {
+                        requested.push(styled(font, index));
+                    }
                 }
             }
             let mut builtin = embedded(if index >= 2 { ITALIC } else { REGULAR }, pixels)?;
@@ -97,10 +121,12 @@ impl FontSystem {
             requested.push(builtin);
             requested.push(symbols.clone());
             requested.push(emoji.clone());
-            let mut base = requested.remove(0);
-            for variation in &config.variations {
-                base = with_variation(&base, variation.tag, variation.value);
+            for font in &mut requested {
+                for variation in config.style_variations(index) {
+                    *font = with_variation(font, variation.tag, variation.value);
+                }
             }
+            let mut base = requested.remove(0);
             let cascade: Vec<_> = requested
                 .iter()
                 .map(|font| unsafe { font.font_descriptor() })
@@ -141,10 +167,40 @@ impl FontSystem {
             styles[index] = FontId(fonts.len());
             fonts.push(base);
         }
-        let metrics = metrics(&fonts[0]);
+        let mut mappings = Vec::new();
+        for mapping in &config.codepoint_map {
+            if let Some(mut font) = load_family(&mapping.family, pixels, &known_names)? {
+                if let Some(features) =
+                    unsafe { fonts[styles[0].0].attribute(kCTFontFeatureSettingsAttribute) }
+                {
+                    let attributes = unsafe {
+                        CFDictionary::<CFString, CFType>::from_slices(
+                            &[kCTFontFeatureSettingsAttribute],
+                            &[&features],
+                        )
+                    };
+                    let descriptor =
+                        unsafe { CTFontDescriptor::with_attributes(attributes.as_opaque()) };
+                    font =
+                        unsafe { font.copy_with_attributes(0.0, ptr::null(), Some(&descriptor)) };
+                }
+                let id = FontId(fonts.len());
+                fonts.push(font);
+                mappings.push(Some(id));
+            } else {
+                if !mapping.family.is_empty() && !warnings.contains(&mapping.family) {
+                    warnings.push(mapping.family.clone());
+                }
+                mappings.push(None);
+            }
+        }
+        let bold_strokes = vec![0.0; fonts.len()];
+        let metrics = metrics(&fonts[styles[0].0]);
         Ok(Self {
             config,
             fonts,
+            bold_strokes,
+            mappings,
             styles,
             metrics,
             warnings,
@@ -166,11 +222,53 @@ impl FontSystem {
             .map(|font| unsafe { font.post_script_name().to_string() })
     }
 
+    /// An installed override with this glyph takes priority over procedural sprites.
+    pub fn has_codepoint_override(&self, cp: char) -> bool {
+        self.mapped_font(cp).is_some()
+    }
+
+    fn mapped_font(&self, cp: char) -> Option<FontId> {
+        let index = self
+            .config
+            .codepoint_map
+            .iter()
+            .rposition(|m| (m.start..=m.end).contains(&(cp as u32)))?;
+        let id = self.mappings[index]?;
+        let mut units = [0; 2];
+        let length = cp.encode_utf16(&mut units).len();
+        let mut glyphs = [0; 2];
+        unsafe {
+            self.fonts[id.0].glyphs_for_characters(
+                NonNull::from(&mut units[0]),
+                NonNull::from(&mut glyphs[0]),
+                length as isize,
+            )
+        }
+        .then_some(id)
+    }
+
     pub fn shape(&mut self, text: &str, style: FontStyle) -> Result<Vec<ShapedGlyph>, FontError> {
+        self.shape_with_carets(text, style, &[])
+            .map(|(glyphs, _)| glyphs)
+    }
+
+    /// Shape a run and resolve UTF-8 caret offsets through the native shaper.
+    /// This preserves caret positions inside ligatures and combining clusters.
+    pub fn shape_with_carets(
+        &mut self,
+        text: &str,
+        style: FontStyle,
+        offsets: &[usize],
+    ) -> Result<(Vec<ShapedGlyph>, Vec<f32>), FontError> {
         if text.is_empty() {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), vec![0.0; offsets.len()]));
         }
         let string = CFString::from_str(text);
+        let style = if self.config.style_requests[style as usize] == FontStyleRequest::Disabled {
+            FontStyle::Regular
+        } else {
+            style
+        };
         let base = &self.fonts[self.styles[style as usize].0];
         // Font features/fallback live on the font descriptor, keeping one attributed
         // run available to the shaper for ligatures and combining marks.
@@ -180,6 +278,37 @@ impl FontSystem {
         let attributed =
             unsafe { CFAttributedString::new(None, Some(&string), Some(attrs.as_opaque())) }
                 .ok_or_else(|| error("cannot create attributed text"))?;
+        let map = utf16_to_utf8(text);
+        let mut override_ranges = Vec::new();
+        let attributed = if self.mappings.iter().any(Option::is_some) {
+            let mutable = CFMutableAttributedString::new_copy(None, 0, Some(&attributed))
+                .ok_or_else(|| error("cannot create mapped text"))?;
+            let mut offset = 0;
+            while offset < map.len() - 1 {
+                let range =
+                    unsafe { string.range_of_composed_characters_at_index(offset as isize) };
+                let cp = text[map[offset]..]
+                    .chars()
+                    .next()
+                    .expect("valid mapped UTF-16 offset");
+                if let Some(id) = self.mapped_font(cp) {
+                    unsafe {
+                        CFMutableAttributedString::set_attribute(
+                            Some(&mutable),
+                            range,
+                            Some(kCTFontAttributeName),
+                            Some(&self.fonts[id.0]),
+                        );
+                    }
+                    override_ranges.push(range);
+                }
+                offset = (range.location + range.length) as usize;
+            }
+            // Mutable attributed strings are a documented subclass of immutable ones.
+            unsafe { CFRetained::cast_unchecked::<CFAttributedString>(mutable) }
+        } else {
+            attributed
+        };
         // Terminal cells are already in display order. Disabling bidi here matches
         // Ghostty and prevents a trailing space in RTL text from moving to its start.
         let level = CFNumber::new_i32(0);
@@ -190,13 +319,23 @@ impl FontSystem {
             CTTypesetter::with_attributed_string_and_options(&attributed, Some(options.as_opaque()))
         }
         .ok_or_else(|| error("cannot create terminal typesetter"))?;
-        let map = utf16_to_utf8(text);
         let line = unsafe {
             typesetter.line(CFRange {
                 location: 0,
                 length: (map.len() - 1) as isize,
             })
         };
+        let carets = offsets
+            .iter()
+            .map(|byte| {
+                let mut byte = (*byte).min(text.len());
+                while !text.is_char_boundary(byte) {
+                    byte -= 1;
+                }
+                let index = map.partition_point(|offset| *offset < byte);
+                unsafe { line.offset_for_string_index(index as isize, ptr::null_mut()) as f32 }
+            })
+            .collect();
         // CTLine guarantees that the returned array contains CoreText run objects.
         let runs = unsafe { CFRetained::cast_unchecked::<CFArray<CFType>>(line.glyph_runs()) };
         let mut result = Vec::new();
@@ -211,15 +350,46 @@ impl FontSystem {
             let attrs = unsafe {
                 CFRetained::cast_unchecked::<CFDictionary<CFString, CFType>>(run.attributes())
             };
-            let font = attrs
+            let mut font = attrs
                 .get(unsafe { kCTFontAttributeName })
                 .and_then(|v| v.downcast::<CTFont>().ok())
                 .ok_or_else(|| error("glyph run has no font"))?;
-            let font_id = if let Some(index) = self.fonts.iter().position(|known| known == &font) {
+            let start = unsafe { run.string_range() }.location;
+            let mapped = override_ranges
+                .iter()
+                .any(|r| start >= r.location && start < r.location + r.length);
+            let mut stroke = 0.0;
+            let traits = unsafe { font.symbolic_traits() };
+            if !mapped
+                && !traits.contains(CTFontSymbolicTraits::TraitColorGlyphs)
+                && style != FontStyle::Regular
+                && self.config.synthetic_styles[style as usize - 1]
+                && self.config.style_requests[style as usize] == FontStyleRequest::Default
+            {
+                if matches!(style, FontStyle::Bold | FontStyle::BoldItalic)
+                    && !traits.contains(CTFontSymbolicTraits::TraitBold)
+                {
+                    stroke = unsafe { font.size() } * 0.025;
+                }
+                if matches!(style, FontStyle::Italic | FontStyle::BoldItalic)
+                    && !traits.contains(CTFontSymbolicTraits::TraitItalic)
+                {
+                    let mut matrix = unsafe { font.matrix() };
+                    matrix.c += 0.2;
+                    font = unsafe { font.copy_with_attributes(0.0, &matrix, None) };
+                }
+            }
+            let font_id = if let Some(index) = self
+                .fonts
+                .iter()
+                .enumerate()
+                .position(|(i, known)| known == &font && self.bold_strokes[i] == stroke)
+            {
                 FontId(index)
             } else {
                 let index = self.fonts.len();
                 self.fonts.push(font);
+                self.bold_strokes.push(stroke);
                 FontId(index)
             };
             let mut glyphs = vec![0u16; count];
@@ -253,7 +423,7 @@ impl FontSystem {
                 });
             }
         }
-        Ok(result)
+        Ok((result, carets))
     }
 
     pub fn rasterize(&self, glyph: &ShapedGlyph) -> Result<GlyphBitmap, FontError> {
@@ -287,11 +457,12 @@ impl FontSystem {
                 pixels: Vec::new(),
             });
         }
-        let padding = if self.config.thicken && !color {
+        let stroke = self.bold_strokes[glyph.font.0];
+        let padding = if (self.config.thicken || stroke > 0.0) && !color {
             1.0
         } else {
             0.0
-        };
+        } + stroke.ceil();
         let left = rect.origin.x.floor() - padding;
         let bottom = rect.origin.y.floor() - padding;
         let width = (rect.origin.x + rect.size.width).ceil() + padding - left;
@@ -312,7 +483,7 @@ impl FontSystem {
         let space = if color {
             CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB }))
         } else {
-            None
+            CGColorSpace::with_name(Some(unsafe { kCGColorSpaceLinearGray }))
         };
         let flags = if color {
             CGImageAlphaInfo::PremultipliedLast.0 | CGImageByteOrderInfo::Order32Big.0
@@ -342,7 +513,17 @@ impl FontSystem {
         if color {
             CGContext::set_rgb_fill_color(Some(&context), 1.0, 1.0, 1.0, 1.0);
         } else {
-            CGContext::set_gray_fill_color(Some(&context), 1.0, 1.0);
+            let strength = if self.config.thicken {
+                f64::from(self.config.thicken_strength) / 255.0
+            } else {
+                1.0
+            };
+            CGContext::set_gray_fill_color(Some(&context), strength, 1.0);
+            CGContext::set_gray_stroke_color(Some(&context), strength, 1.0);
+            if stroke > 0.0 {
+                CGContext::set_text_drawing_mode(Some(&context), CGTextDrawingMode::FillStroke);
+                CGContext::set_line_width(Some(&context), stroke);
+            }
         }
         let mut position = CGPoint {
             x: -left,
@@ -379,7 +560,101 @@ fn embedded(bytes: &'static [u8], pixels: f64) -> Result<CFRetained<CTFont>, Fon
     Ok(unsafe { CTFont::with_font_descriptor(&descriptor, pixels, ptr::null()) })
 }
 
+fn load_family(
+    name: &str,
+    pixels: f64,
+    known: &HashSet<String>,
+) -> Result<Option<CFRetained<CTFont>>, FontError> {
+    let name_lower = name.to_lowercase();
+    if matches!(
+        name_lower.as_str(),
+        "jetbrains mono" | "jetbrainsmono-regular"
+    ) {
+        return embedded(REGULAR, pixels).map(Some);
+    }
+    if matches!(
+        name_lower.as_str(),
+        "symbols nerd font" | "symbols nerd font mono" | "symbolsnerdfont-regular"
+    ) {
+        return embedded(SYMBOLS, pixels).map(Some);
+    }
+    Ok(known
+        .contains(&name_lower)
+        .then(|| unsafe { CTFont::with_name(&CFString::from_str(name), pixels, ptr::null()) }))
+}
+
+fn named_style(font: &CTFont, name: &str) -> Option<CFRetained<CTFont>> {
+    let family = unsafe { font.family_name() };
+    if family.to_string().eq_ignore_ascii_case("JetBrains Mono") {
+        let name = name.to_lowercase().replace([' ', '-'], "");
+        let italic = name.ends_with("italic");
+        let weight = match name.trim_end_matches("italic") {
+            "thin" => 100.0,
+            "extralight" => 200.0,
+            "light" => 300.0,
+            "" | "regular" => 400.0,
+            "medium" => 500.0,
+            "semibold" => 600.0,
+            "bold" => 700.0,
+            "extrabold" => 800.0,
+            _ => return None,
+        };
+        let base = embedded(if italic { ITALIC } else { REGULAR }, unsafe {
+            font.size()
+        })
+        .ok()?;
+        return Some(with_variation(&base, *b"wght", weight));
+    }
+    let style = CFString::from_str(name);
+    let attrs = unsafe {
+        CFDictionary::<CFString, CFType>::from_slices(
+            &[kCTFontFamilyNameAttribute, kCTFontStyleNameAttribute],
+            &[&family, &style],
+        )
+    };
+    let descriptor = unsafe { CTFontDescriptor::with_attributes(attrs.as_opaque()) };
+    let matched = unsafe { descriptor.matching_font_descriptor(None) }?;
+    let matched_family = unsafe { matched.attribute(kCTFontFamilyNameAttribute) }?
+        .downcast::<CFString>()
+        .ok()?;
+    if !matched_family
+        .to_string()
+        .eq_ignore_ascii_case(&family.to_string())
+    {
+        return None;
+    }
+    let actual = unsafe { matched.attribute(kCTFontStyleNameAttribute) }?
+        .downcast::<CFString>()
+        .ok()?;
+    if !actual.to_string().eq_ignore_ascii_case(name) {
+        return None;
+    }
+    Some(unsafe { CTFont::with_font_descriptor(&matched, font.size(), ptr::null()) })
+}
+
 fn with_variation(font: &CTFont, tag: [u8; 4], value: f64) -> CFRetained<CTFont> {
+    // CoreText otherwise clamps invalid requests, while Ghostty ignores them.
+    let supported = unsafe { font.variation_axes() }.is_some_and(|axes| {
+        let axes = unsafe {
+            CFRetained::cast_unchecked::<CFArray<CFDictionary<CFString, CFNumber>>>(axes)
+        };
+        axes.iter().any(|axis| unsafe {
+            axis.get(kCTFontVariationAxisIdentifierKey)
+                .and_then(|n| n.as_i64())
+                == Some(i64::from(u32::from_be_bytes(tag)))
+                && axis
+                    .get(kCTFontVariationAxisMinimumValueKey)
+                    .and_then(|n| n.as_f64())
+                    .is_some_and(|min| value >= min)
+                && axis
+                    .get(kCTFontVariationAxisMaximumValueKey)
+                    .and_then(|n| n.as_f64())
+                    .is_some_and(|max| value <= max)
+        })
+    });
+    if !supported {
+        return unsafe { CFRetained::retain(NonNull::from(font)) };
+    }
     let axis = CFNumber::new_i64(i64::from(u32::from_be_bytes(tag)));
     unsafe {
         let descriptor = font.font_descriptor().copy_with_variation(&axis, value);
@@ -459,6 +734,142 @@ fn utf16_to_utf8(text: &str) -> Vec<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{CodepointMap, FontVariation};
+
+    fn coverage(fonts: &mut FontSystem, text: &str, style: FontStyle) -> u64 {
+        let glyphs = fonts.shape(text, style).unwrap();
+        glyphs
+            .iter()
+            .map(|g| {
+                fonts
+                    .rasterize(g)
+                    .unwrap()
+                    .pixels
+                    .iter()
+                    .map(|p| u64::from(*p))
+                    .sum::<u64>()
+            })
+            .sum()
+    }
+
+    #[test]
+    fn style_axes_named_styles_and_disabled_styles_reach_native_glyphs() {
+        let mut fonts = FontSystem::new(FontConfig {
+            variations: vec![FontVariation {
+                tag: *b"wght",
+                value: 100.0,
+            }],
+            bold_variations: vec![FontVariation {
+                tag: *b"wght",
+                value: 800.0,
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+        let thin = coverage(&mut fonts, "M", FontStyle::Regular);
+        assert!(coverage(&mut fonts, "M", FontStyle::Bold) > thin * 2);
+        let mut named = FontSystem::new(FontConfig {
+            families: vec!["JetBrains Mono".into()],
+            style_requests: [
+                FontStyleRequest::Named("Thin".into()),
+                FontStyleRequest::Disabled,
+                FontStyleRequest::Default,
+                FontStyleRequest::Default,
+            ],
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(coverage(&mut named, "M", FontStyle::Regular), thin);
+        assert_eq!(
+            named.shape("M", FontStyle::Regular).unwrap(),
+            named.shape("M", FontStyle::Bold).unwrap()
+        );
+        assert!(named.missing_families().is_empty());
+        let mut invalid = FontSystem::new(FontConfig {
+            variations: vec![FontVariation {
+                tag: *b"wght",
+                value: 9999.0,
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+        let mut baseline = FontSystem::new(FontConfig::default()).unwrap();
+        assert_eq!(
+            coverage(&mut invalid, "M", FontStyle::Regular),
+            coverage(&mut baseline, "M", FontStyle::Regular)
+        );
+    }
+
+    #[test]
+    fn codepoint_overrides_preserve_graphemes_utf16_offsets_and_last_mapping() {
+        let mut fonts = FontSystem::new(FontConfig {
+            codepoint_map: vec![
+                CodepointMap {
+                    start: 'A' as u32,
+                    end: 'z' as u32,
+                    family: "Menlo".into(),
+                },
+                CodepointMap {
+                    start: 'B' as u32,
+                    end: 'B' as u32,
+                    family: "Helvetica".into(),
+                },
+            ],
+            ..Default::default()
+        })
+        .unwrap();
+        let text = "A🙂e\u{301}B";
+        let glyphs = fonts.shape(text, FontStyle::Bold).unwrap();
+        for (byte, expected) in [(0, "Menlo"), (5, "Menlo"), (8, "Helvetica")] {
+            let glyph = glyphs.iter().find(|g| g.cluster == byte).unwrap();
+            assert!(fonts.font_name(glyph.font).unwrap().starts_with(expected));
+            assert_eq!(fonts.bold_strokes[glyph.font.0], 0.0);
+        }
+        assert!(glyphs.iter().all(|g| text.is_char_boundary(g.cluster)));
+        assert!(fonts.has_codepoint_override('A'));
+        assert!(!fonts.has_codepoint_override('🙂'));
+    }
+
+    #[test]
+    fn synthetic_styles_and_zero_thickening_strength_still_draw() {
+        let mut fonts = FontSystem::new(FontConfig {
+            families: vec!["Symbols Nerd Font".into()],
+            ..Default::default()
+        })
+        .unwrap();
+        let regular = coverage(&mut fonts, "\u{e0a0}", FontStyle::Regular);
+        let bold = coverage(&mut fonts, "\u{e0a0}", FontStyle::Bold);
+        assert!(regular > 0 && bold > regular);
+        let regular_glyph = fonts
+            .shape("\u{e0a0}", FontStyle::Regular)
+            .unwrap()
+            .remove(0);
+        let italic_glyph = fonts
+            .shape("\u{e0a0}", FontStyle::Italic)
+            .unwrap()
+            .remove(0);
+        assert_ne!(
+            fonts.rasterize(&regular_glyph).unwrap(),
+            fonts.rasterize(&italic_glyph).unwrap()
+        );
+        let mut disabled = FontSystem::new(FontConfig {
+            families: vec!["Symbols Nerd Font".into()],
+            synthetic_styles: [false; 3],
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(
+            coverage(&mut disabled, "\u{e0a0}", FontStyle::Regular),
+            coverage(&mut disabled, "\u{e0a0}", FontStyle::Bold)
+        );
+        let mut thicken = FontSystem::new(FontConfig {
+            thicken: true,
+            thicken_strength: 0,
+            ..Default::default()
+        })
+        .unwrap();
+        assert!(coverage(&mut thicken, "M", FontStyle::Regular) > 0);
+    }
 
     #[test]
     fn utf16_offsets_are_translated_to_utf8_boundaries() {

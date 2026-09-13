@@ -7,9 +7,10 @@ use rustty::{
     vt,
 };
 use rustty_app::{
+    accessibility::TerminalText,
     input,
     platform::{Platform, PlatformEvent},
-    workspace::{Id, Rect, Tab, WindowState, Workspace},
+    workspace::{Axis, Id, Peek, Rect, Tab, WindowState, Workspace},
 };
 use rustty_font::{FontConfig, FontFeature};
 use rustty_render::{Frame, RenderOptions};
@@ -30,7 +31,7 @@ use winit::{
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
     keyboard::ModifiersState,
     platform::macos::WindowAttributesExtMacOS,
-    window::{Fullscreen, Window, WindowId},
+    window::{CursorIcon, Fullscreen, Window, WindowId},
 };
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -60,6 +61,8 @@ struct Pane {
     running: Option<Instant>,
     unseen: bool,
     exited: bool,
+    started: Instant,
+    exit_message: Option<String>,
 }
 impl Pane {
     fn write(&mut self, bytes: Vec<u8>) -> std::io::Result<()> {
@@ -100,11 +103,6 @@ impl Pane {
     }
 }
 
-#[derive(Clone, Copy)]
-struct Peek {
-    chord: config::Modifiers,
-    target: Id,
-}
 struct Host {
     id: Id,
     viewport: ViewportId,
@@ -112,12 +110,17 @@ struct Host {
     egui: egui_winit::State,
     fonts: rustty_render::Renderer,
     rects: BTreeMap<Id, egui::Rect>,
+    accessibility: BTreeMap<Id, TerminalText>,
+    content: Rect,
+    divider_drag: Option<(Id, Axis, Rect)>,
     modifiers: ModifiersState,
     sequence: Vec<usize>,
     sequence_len: usize,
     composing: bool,
     preedit: String,
+    preedit_selection: Option<(usize, usize)>,
     peek: Option<Peek>,
+    navigation_warning: Option<(Id, Instant)>,
     mouse: Pos2,
     mouse_button: Option<vt::MouseButton>,
     selection_anchor: Option<vt::GridPoint>,
@@ -198,6 +201,8 @@ struct App {
     state_path: PathBuf,
     resources: Option<PathBuf>,
     panes: HashMap<Id, Pane>,
+    failed_panes: BTreeMap<Id, String>,
+    closing: Vec<Session>,
     windows: HashMap<WindowId, Host>,
     platform: Option<Platform>,
     context: egui::Context,
@@ -207,9 +212,9 @@ struct App {
     started: Instant,
     save_at: Option<Instant>,
     errors: Vec<String>,
-    history: Vec<Workspace>,
-    redo: Vec<Workspace>,
-    initial_command_used: bool,
+    history: Vec<(Instant, Workspace)>,
+    redo: Vec<(Instant, Workspace)>,
+    initial_command_pane: Option<Id>,
     close_at: Option<Instant>,
     smoke: Option<smoke::Smoke>,
     smoke_error: Option<String>,
@@ -305,6 +310,8 @@ pub fn run() -> Result<()> {
         state_path,
         resources,
         panes: HashMap::new(),
+        failed_panes: BTreeMap::new(),
+        closing: Vec::new(),
         windows: HashMap::new(),
         platform: None,
         context,
@@ -316,13 +323,15 @@ pub fn run() -> Result<()> {
         errors,
         history: Vec::new(),
         redo: Vec::new(),
-        initial_command_used: false,
+        initial_command_pane: None,
         close_at,
         smoke,
         smoke_error: None,
         primary_selection: None,
     };
-    event_loop.run_app(&mut app)?;
+    let result = event_loop.run_app(&mut app);
+    app.shutdown();
+    result?;
     if let Some(error) = app.smoke_error {
         return Err(error.into());
     }
@@ -341,6 +350,15 @@ fn resource_dir() -> Option<PathBuf> {
 }
 
 fn font_config(config: &Config, scale: f32) -> FontConfig {
+    let variations = |values: &[config::FontVariation]| {
+        values
+            .iter()
+            .map(|v| rustty_font::FontVariation {
+                tag: v.tag,
+                value: v.value,
+            })
+            .collect()
+    };
     FontConfig {
         families: config.font_family.clone(),
         bold_families: config.font_family_bold.clone(),
@@ -348,6 +366,35 @@ fn font_config(config: &Config, scale: f32) -> FontConfig {
         bold_italic_families: config.font_family_bold_italic.clone(),
         size_points: config.font_size,
         scale_factor: scale,
+        variations: variations(&config.font_variation),
+        bold_variations: variations(&config.font_variation_bold),
+        italic_variations: variations(&config.font_variation_italic),
+        bold_italic_variations: variations(&config.font_variation_bold_italic),
+        style_requests: [
+            &config.font_style,
+            &config.font_style_bold,
+            &config.font_style_italic,
+            &config.font_style_bold_italic,
+        ]
+        .map(|style| match style {
+            config::FontStyleRequest::Default => rustty_font::FontStyleRequest::Default,
+            config::FontStyleRequest::Disabled => rustty_font::FontStyleRequest::Disabled,
+            config::FontStyleRequest::Named(name) => {
+                rustty_font::FontStyleRequest::Named(name.clone())
+            }
+        }),
+        codepoint_map: config
+            .font_codepoint_map
+            .iter()
+            .map(|m| rustty_font::CodepointMap {
+                start: m.start,
+                end: m.end,
+                family: m.family.clone(),
+            })
+            .collect(),
+        synthetic_styles: config.font_synthetic_style,
+        thicken: config.font_thicken,
+        thicken_strength: config.font_thicken_strength,
         features: config
             .font_feature
             .iter()
@@ -364,7 +411,6 @@ fn font_config(config: &Config, scale: f32) -> FontConfig {
                 })
             })
             .collect(),
-        ..Default::default()
     }
 }
 
@@ -394,7 +440,12 @@ impl App {
         self.save_at = Some(Instant::now() + Duration::from_millis(500));
     }
     fn remember(&mut self) {
-        self.history.push(self.workspace.clone());
+        if !self.config().undo_timeout.is_zero() {
+            self.history.push((
+                Instant::now() + self.config().undo_timeout,
+                self.workspace.clone(),
+            ));
+        }
         if self.history.len() > 50 {
             self.history.remove(0);
         }
@@ -424,7 +475,7 @@ impl App {
         id
     }
     fn spawn_pane(&mut self, id: Id, directory: PathBuf) -> Result<()> {
-        if self.panes.contains_key(&id) {
+        if self.panes.contains_key(&id) || self.failed_panes.contains_key(&id) {
             return Ok(());
         }
         let directory = directory_from_osc(&directory.to_string_lossy())
@@ -445,13 +496,12 @@ impl App {
                 let _ = proxy.send_event(Event::Output(id));
             }
         });
-        let command = if self.initial_command_used {
-            None
-        } else {
-            self.initial_command_used = true;
-            self.config().initial_command.clone()
-        };
-        let session = Session::spawn(
+        let initial = *self.initial_command_pane.get_or_insert(id);
+        let command = (id == initial)
+            .then(|| self.config().initial_command.clone())
+            .flatten();
+        let started = Instant::now();
+        let session = match Session::spawn(
             self.config(),
             SessionOptions {
                 working_directory: Some(directory.clone()),
@@ -460,7 +510,13 @@ impl App {
                 ..Default::default()
             },
             wake,
-        )?;
+        ) {
+            Ok(session) => session,
+            Err(error) => {
+                self.failed_panes.insert(id, error.to_string());
+                return Err(error.into());
+            }
+        };
         self.panes.insert(
             id,
             Pane {
@@ -473,6 +529,8 @@ impl App {
                 running: None,
                 unseen: false,
                 exited: false,
+                started,
+                exit_message: None,
             },
         );
         Ok(())
@@ -484,37 +542,17 @@ impl App {
         let state = self.workspace.windows[self.index(id).ok_or("missing window")?].clone();
         let quick = state.quick;
         let mut frame = state.frame;
-        if quick {
-            let monitor = event_loop
-                .primary_monitor()
-                .or_else(|| event_loop.available_monitors().next());
-            if let Some(monitor) = monitor {
-                let size = monitor.size().to_logical::<f64>(monitor.scale_factor());
-                let origin = monitor.position().to_logical::<f64>(monitor.scale_factor());
-                frame = [origin.x, origin.y, size.width, size.height * 0.5];
-                match self.config().quick_terminal_position {
-                    config::QuickTerminalPosition::Bottom => frame[1] += size.height * 0.5,
-                    config::QuickTerminalPosition::Left => {
-                        frame[2] *= 0.5;
-                        frame[3] = size.height;
-                    }
-                    config::QuickTerminalPosition::Right => {
-                        frame[0] += size.width * 0.5;
-                        frame[2] *= 0.5;
-                        frame[3] = size.height;
-                    }
-                    config::QuickTerminalPosition::Center => {
-                        frame[0] += size.width * 0.1;
-                        frame[1] += size.height * 0.15;
-                        frame[2] *= 0.8;
-                        frame[3] = size.height * 0.7;
-                    }
-                    _ => {}
-                }
-            }
+        if quick
+            && let Some(bounds) = self
+                .platform
+                .as_ref()
+                .and_then(|platform| platform.quick_terminal_frame(self.config()))
+        {
+            frame = bounds;
         }
         let attributes = Window::default_attributes()
             .with_title("Rustty")
+            .with_decorations(!quick)
             .with_visible(false)
             .with_inner_size(LogicalSize::new(frame[2].max(320.0), frame[3].max(180.0)))
             .with_position(LogicalPosition::new(frame[0], frame[1]))
@@ -561,12 +599,17 @@ impl App {
             egui,
             fonts,
             rects: BTreeMap::new(),
+            accessibility: BTreeMap::new(),
+            content: Rect::UNIT,
+            divider_drag: None,
             modifiers: ModifiersState::empty(),
             sequence: Vec::new(),
             sequence_len: 0,
             composing: false,
             preedit: String::new(),
+            preedit_selection: None,
             peek: None,
+            navigation_warning: None,
             mouse: Pos2::ZERO,
             mouse_button: None,
             selection_anchor: None,
@@ -590,6 +633,24 @@ impl App {
         }
         window.request_redraw();
         Ok(())
+    }
+    fn quick_visible(&mut self, host: &mut Host, visible: bool, restore_focus: bool) {
+        let result = if let Some(platform) = &self.platform {
+            if visible {
+                platform.show_quick(&host.window, self.config())
+            } else {
+                platform.hide_quick(&host.window, restore_focus)
+            }
+        } else {
+            Err("macOS window services are unavailable".into())
+        };
+        match result {
+            Ok(()) => {
+                host.visible = visible;
+                host.repaint();
+            }
+            Err(error) => self.errors.push(error),
+        }
     }
     fn save(&mut self) {
         self.save_at = None;
@@ -636,6 +697,12 @@ impl App {
         self.changed();
     }
     fn drain(&mut self, id: Id) {
+        let live = self
+            .workspace
+            .windows
+            .iter()
+            .any(|window| window.tabs.iter().any(|tab| tab.panes.contains_key(&id)));
+        let mut close = false;
         let focused = self
             .windows
             .values()
@@ -673,7 +740,8 @@ impl App {
                                 && !focused)
                     {
                         pane.unseen = !focused;
-                        if config.notify_on_command_finish_action.notify
+                        if live
+                            && config.notify_on_command_finish_action.notify
                             && let Some(platform) = &self.platform
                         {
                             let body = format!(
@@ -689,8 +757,13 @@ impl App {
                 }
                 SessionEvent::Effect(vt::Effect::Notification { title, body }) => {
                     pane.unseen = !focused;
-                    if let Some(platform) = &self.platform
-                        && let Err(error) = platform.notify(id, &title, &body)
+                    if live
+                        && let Some(platform) = &self.platform
+                        && let Err(error) = platform.notify(
+                            id,
+                            &String::from_utf8_lossy(&title),
+                            &String::from_utf8_lossy(&body),
+                        )
                     {
                         self.errors.push(error);
                     }
@@ -730,19 +803,30 @@ impl App {
                         }
                     }
                 }
-                SessionEvent::Exited { code, signal } => {
+                SessionEvent::Exited {
+                    code,
+                    signal,
+                    runtime,
+                } => {
                     pane.exited = true;
                     pane.running = None;
                     pane.title = format!(
                         "Exited {code}{}",
                         signal.map(|s| format!(" ({s})")).unwrap_or_default()
                     );
+                    pane.exit_message = Some(format!("{} — press any key to close", pane.title));
+                    close = live && !hold_after_exit(&config, runtime);
                 }
                 SessionEvent::Error(error) => self.errors.push(error),
                 _ => {}
             }
         }
         let cwd = pane.cwd.clone();
+        if close {
+            self.remember();
+            self.workspace.close_pane(id);
+            self.changed();
+        }
         let mut changed = false;
         for window in &mut self.workspace.windows {
             for tab in &mut window.tabs {
@@ -758,7 +842,15 @@ impl App {
             self.changed();
         }
         if let Some(platform) = &self.platform {
-            platform.set_badge(self.panes.values().filter(|pane| pane.unseen).count());
+            platform.set_badge(
+                self.workspace
+                    .windows
+                    .iter()
+                    .flat_map(|window| &window.tabs)
+                    .flat_map(|tab| tab.panes.keys())
+                    .filter(|id| self.panes.get(id).is_some_and(|pane| pane.unseen))
+                    .count(),
+            );
         }
         for host in self.windows.values() {
             if self
@@ -816,7 +908,13 @@ impl App {
                             .collect()
                     })
                     .unwrap_or_default(),
-                _ => self.panes.keys().copied().collect(),
+                _ => self
+                    .workspace
+                    .windows
+                    .iter()
+                    .flat_map(|window| &window.tabs)
+                    .flat_map(|tab| tab.panes.keys().copied())
+                    .collect(),
             };
             let needs_confirmation = candidates.iter().any(|id| {
                 self.panes.get(id).is_some_and(|p| {
@@ -875,26 +973,64 @@ impl App {
                 }
             }
             Action::GotoSplit(direction) => {
-                let from = host.peek.map(|p| p.target).or(focused);
-                let target = from.and_then(|from| self.tab(host.id)?.target(from, direction));
-                let Some(mut target) = target else {
-                    return false;
-                };
-                if matches!(
+                let from = focused;
+                let quadrant = matches!(
                     direction,
                     Direction::QuadrantLeft
                         | Direction::QuadrantRight
                         | Direction::QuadrantUp
                         | Direction::QuadrantDown
-                ) && let Some(tab) = self.tab(host.id)
-                    && let Some(quadrant) = tab.root.quadrant(target)
-                    && let Some(remembered) = tab.remembered.get(&quadrant)
-                {
-                    target = *remembered;
+                );
+                let target = from.and_then(|from| self.tab(host.id)?.target(from, direction));
+                let target = target.map(|pane| {
+                    if quadrant {
+                        self.tab(host.id)
+                            .and_then(|tab| tab.remembered_for(pane))
+                            .unwrap_or(pane)
+                    } else {
+                        pane
+                    }
+                });
+                let moved = target.is_some() && target != from;
+                if quadrant {
+                    if host.peek.is_none()
+                        && let Some(tab) = self.tab_mut(host.id)
+                    {
+                        host.peek = tab.begin_peek(input::modifiers(host.modifiers));
+                    }
+                    if let Some(peek) = &mut host.peek {
+                        peek.navigation_used = true;
+                        if let Some(target) = target {
+                            peek.target = target;
+                        }
+                    }
+                    if (moved || host.peek.is_some())
+                        && let Some(tab) = self.tab_mut(host.id)
+                    {
+                        tab.zoom = None;
+                        tab.quadrant_zoom = None;
+                    }
                 }
-                if let Some(peek) = &mut host.peek {
-                    peek.target = target;
-                } else {
+                if !moved {
+                    if !quadrant
+                        && let Some(tab) = self.tab_mut(host.id)
+                        && tab.unzoom_after_blocked_navigation()
+                    {
+                        host.navigation_warning = None;
+                    } else if let Some(from) = from {
+                        host.navigation_warning =
+                            Some((from, Instant::now() + Duration::from_millis(500)));
+                        host.repaint();
+                        return quadrant && host.peek.is_some();
+                    } else {
+                        return false;
+                    }
+                } else if let Some(target) = target {
+                    if !quadrant && let Some(tab) = self.tab_mut(host.id) {
+                        // Ordinary navigation reveals the quadrant layer below full zoom.
+                        tab.zoom = tab.quadrant_zoom;
+                    }
+                    host.navigation_warning = None;
                     self.focus_pane(host.id, target);
                 }
             }
@@ -910,9 +1046,14 @@ impl App {
             }
             Action::ResizeSplit { direction, amount } => {
                 self.remember();
-                if let Some(tab) = self.tab_mut(host.id) {
-                    tab.root
-                        .resize(tab.focused, direction, f32::from(amount) / 100.0);
+                if let Some(tab) = self.tab_mut(host.id)
+                    && tab
+                        .root
+                        .resize(tab.focused, direction, f32::from(amount), host.content)
+                {
+                    tab.zoom = None;
+                    tab.quadrant_zoom = None;
+                    host.peek = None;
                 }
             }
             Action::EqualizeSplits => {
@@ -985,11 +1126,7 @@ impl App {
                     .index(host.id)
                     .is_some_and(|i| self.workspace.windows[i].quick)
                 {
-                    host.visible = !host.visible;
-                    host.window.set_visible(host.visible);
-                    if host.visible {
-                        host.window.focus_window();
-                    }
+                    self.quick_visible(host, !host.visible, true);
                 } else {
                     let id = self
                         .workspace
@@ -1001,12 +1138,17 @@ impl App {
                     if let Err(error) = self.open_window(event_loop, id) {
                         self.errors.push(error.to_string());
                     }
-                    if let Some(quick) = self.windows.values_mut().find(|h| h.id == id) {
-                        quick.visible = !quick.visible;
-                        quick.window.set_visible(quick.visible);
-                        if quick.visible {
-                            quick.window.focus_window();
-                        }
+                    let key = self
+                        .windows
+                        .iter()
+                        .find(|(_, h)| h.id == id)
+                        .map(|(key, _)| *key);
+                    if let Some(key) = key
+                        && let Some(mut quick) = self.windows.remove(&key)
+                    {
+                        let visible = !quick.visible;
+                        self.quick_visible(&mut quick, visible, true);
+                        self.windows.insert(key, quick);
                     }
                 }
             }
@@ -1174,6 +1316,7 @@ impl App {
                 Ok(loaded) => {
                     self.errors = loaded.diagnostics.iter().map(ToString::to_string).collect();
                     self.loaded = loaded;
+                    self.failed_panes.clear();
                     if let Some(platform) = &mut self.platform
                         && let Err(error) = platform.update_config(&self.loaded.config)
                     {
@@ -1185,6 +1328,20 @@ impl App {
                         }
                     }
                     self.update_fonts(host);
+                    if let Some(platform) = &self.platform {
+                        for window in std::iter::once(&*host).chain(self.windows.values()) {
+                            let quick = self
+                                .workspace
+                                .windows
+                                .iter()
+                                .any(|state| state.id == window.id && state.quick);
+                            if let Err(error) =
+                                platform.configure_window(&window.window, quick, self.config())
+                            {
+                                self.errors.push(error);
+                            }
+                        }
+                    }
                 }
                 Err(error) => self.errors.push(error.to_string()),
             },
@@ -1203,24 +1360,35 @@ impl App {
                 }
             }
             Action::Undo | Action::Redo => {
-                let previous = if action == Action::Undo {
-                    self.history.pop()
-                } else {
-                    self.redo.pop()
-                };
-                let Some(previous) = previous else {
+                if !self.undo_layout(action == Action::Redo) {
                     return false;
-                };
-                let current = std::mem::replace(&mut self.workspace, previous);
-                if action == Action::Undo {
-                    self.redo.push(current);
-                } else {
-                    self.history.push(current);
                 }
             }
         }
         self.changed();
         host.repaint();
+        true
+    }
+    fn undo_layout(&mut self, redo: bool) -> bool {
+        let now = Instant::now();
+        self.history.retain(|(expires, _)| *expires > now);
+        self.redo.retain(|(expires, _)| *expires > now);
+        let previous = if redo {
+            self.redo.pop()
+        } else {
+            self.history.pop()
+        };
+        let Some((_, previous)) = previous else {
+            return false;
+        };
+        let current = self.workspace.restore(previous);
+        let record = (now + self.config().undo_timeout, current);
+        if redo {
+            self.history.push(record);
+        } else {
+            self.redo.push(record);
+        }
+        self.changed();
         true
     }
     fn update_fonts(&mut self, host: &mut Host) {
@@ -1293,11 +1461,45 @@ impl App {
             .flat_map(|t| &t.panes)
             .map(|(&id, s)| (id, s.working_directory.clone()))
             .collect::<BTreeMap<_, _>>();
-        self.panes.retain(|id, _| required.contains_key(id));
+        let mut retained = required
+            .keys()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+        for (_, state) in self.history.iter().chain(&self.redo) {
+            retained.extend(
+                state
+                    .windows
+                    .iter()
+                    .flat_map(|window| &window.tabs)
+                    .flat_map(|tab| tab.panes.keys().copied()),
+            );
+        }
+        for (_, pane) in self.panes.extract_if(|id, _| !retained.contains(id)) {
+            pane.session.close();
+            self.closing.push(pane.session);
+        }
+        self.closing.retain(|session| !session.has_exited());
+        self.failed_panes.retain(|id, _| retained.contains(id));
         for (id, directory) in required {
             if let Err(error) = self.spawn_pane(id, directory) {
                 self.errors.push(error.to_string());
             }
+        }
+        let mut directories_changed = false;
+        for window in &mut self.workspace.windows {
+            for tab in &mut window.tabs {
+                for (id, saved) in &mut tab.panes {
+                    if let Some(pane) = self.panes.get(id)
+                        && saved.working_directory != pane.cwd
+                    {
+                        saved.working_directory = pane.cwd.clone();
+                        directories_changed = true;
+                    }
+                }
+            }
+        }
+        if directories_changed {
+            self.changed();
         }
         for id in self
             .workspace
@@ -1355,7 +1557,14 @@ impl App {
                     if binding.flags.all
                         && let Action::Text(bytes) = action
                     {
-                        for id in self.panes.keys().copied().collect::<Vec<_>>() {
+                        for id in self
+                            .workspace
+                            .windows
+                            .iter()
+                            .flat_map(|window| &window.tabs)
+                            .flat_map(|tab| tab.panes.keys().copied())
+                            .collect::<Vec<_>>()
+                        {
                             self.write(id, bytes.clone());
                         }
                         performed = true;
@@ -1441,6 +1650,7 @@ impl App {
         let context = self.context.clone();
         let mut commands = Vec::new();
         let mut tab_selection = None;
+        let mut retry_pane = None;
         let mut render_error = None;
         let format = self
             .painter
@@ -1450,6 +1660,13 @@ impl App {
         let blink_on = (self.started.elapsed().as_millis() / BLINK.as_millis()).is_multiple_of(2);
         let mut needs_blink = false;
         let mut graphics_deadline: Option<Instant> = None;
+        if host
+            .navigation_warning
+            .is_some_and(|(_, until)| until <= Instant::now())
+        {
+            host.navigation_warning = None;
+        }
+
         let title = self
             .panes
             .get(&focused)
@@ -1462,6 +1679,7 @@ impl App {
             })
             .unwrap_or_else(|| "Rustty".into());
         host.window.set_title(&format!("{title} — Rustty"));
+        host.accessibility.clear();
         let mut output = context.run_ui(raw, |root_ui| {
             let ctx = &context;
             egui::Panel::top("tabs")
@@ -1565,12 +1783,15 @@ impl App {
                 .frame(egui::Frame::NONE)
                 .show(root_ui, |ui| {
                     let content = ui.max_rect();
-                    let layout = active.visible_tree(host.peek.is_some()).layout(Rect {
+                    host.content = Rect {
                         x: content.left(),
                         y: content.top(),
                         width: content.width(),
                         height: content.height(),
-                    });
+                    };
+                    let layout = active
+                        .visible_tree(host.peek.is_some())
+                        .layout(host.content);
                     host.rects = layout
                         .iter()
                         .map(|(id, r)| {
@@ -1649,6 +1870,7 @@ impl App {
                             };
                             let is_focused = host.focused && id == focused && host.peek.is_none();
                             needs_blink |= is_focused
+                                && !pane.exited
                                 && snapshot.screen.cursor.visible
                                 && snapshot.screen.cursor.blink;
                             let cursor_color = snapshot.cursor_color.unwrap_or(snapshot.foreground);
@@ -1678,12 +1900,20 @@ impl App {
                                     .try_into()
                                     .unwrap_or([[0; 3]; 256]),
                                 focused: is_focused,
-                                cursor_visible: !host.composing,
+                                cursor_visible: !pane.exited && (id != focused || !host.composing),
                                 blink_visible: blink_on || !is_focused,
                                 background_opacity: config.background_opacity,
+                                preedit: (is_focused && !host.preedit.is_empty()).then(|| {
+                                    rustty_render::Preedit {
+                                        text: host.preedit.clone(),
+                                        selection: host.preedit_selection,
+                                    }
+                                }),
                             };
+                            let mut ime_cursor = None;
                             match host.fonts.prepare(&snapshot.screen, &options) {
                                 Ok(frame) => {
+                                    ime_cursor = frame.ime_cursor;
                                     if composed
                                         .append_clipped(
                                             &frame,
@@ -1717,40 +1947,36 @@ impl App {
                                         .opacity(1.0 - config.unfocused_split_opacity),
                                 ));
                             }
-                            let text = snapshot
-                                .screen
-                                .rows
-                                .iter()
-                                .map(|row| {
-                                    row.cells
-                                        .iter()
-                                        .filter(|c| c.width != 0)
-                                        .map(|c| if c.text.is_empty() { " " } else { &c.text })
-                                        .collect::<String>()
-                                        .trim_end()
-                                        .to_owned()
-                                })
-                                .collect::<Vec<_>>()
-                                .join("\n");
-                            accessible.push((id, rect, text));
-                            if id == focused {
-                                let cursor = &snapshot.screen.cursor;
-                                let pos = Pos2::new(
-                                    rect.left()
-                                        + (padding[0]
-                                            + cursor.col as f32 * metrics.cell_width as f32)
-                                            / scale,
-                                    rect.top()
-                                        + (padding[1]
-                                            + cursor.row as f32 * metrics.cell_height as f32)
-                                            / scale,
-                                );
-                                host.window.set_ime_cursor_area(
-                                    LogicalPosition::new(pos.x, pos.y),
-                                    LogicalSize::new(
+                            host.accessibility.insert(
+                                id,
+                                TerminalText::new(
+                                    id,
+                                    &snapshot.screen,
+                                    [
+                                        rect.left() + padding[0] / scale,
+                                        rect.top() + padding[1] / scale,
+                                    ],
+                                    [
                                         metrics.cell_width as f32 / scale,
                                         metrics.cell_height as f32 / scale,
+                                    ],
+                                ),
+                            );
+                            accessible.push((id, rect));
+                            if id == focused {
+                                let cursor = &snapshot.screen.cursor;
+                                let [x, y, width, height] = ime_cursor.unwrap_or([
+                                    padding[0] + cursor.col as f32 * metrics.cell_width as f32,
+                                    padding[1] + cursor.row as f32 * metrics.cell_height as f32,
+                                    metrics.cell_width as f32,
+                                    metrics.cell_height as f32,
+                                ]);
+                                host.window.set_ime_cursor_area(
+                                    LogicalPosition::new(
+                                        rect.left() + x / scale,
+                                        rect.top() + y / scale,
                                     ),
+                                    LogicalSize::new(width / scale, height / scale),
                                 );
                             }
                         }
@@ -1774,7 +2000,7 @@ impl App {
                             format,
                         },
                     ));
-                    for (id, rect, text) in accessible {
+                    for (id, rect) in accessible {
                         let response = ui.interact(
                             rect,
                             egui::Id::new(("terminal", id)),
@@ -1791,13 +2017,20 @@ impl App {
                                     .map(|p| p.title.as_str())
                                     .unwrap_or("Terminal"),
                             );
-                            node.set_value(text);
                             node.add_action(egui::accesskit::Action::Focus);
                             node.add_action(egui::accesskit::Action::ScrollUp);
                             node.add_action(egui::accesskit::Action::ScrollDown);
                         });
                         if id == focused && host.focused && !host.ui_input() {
                             response.request_focus();
+                        }
+                        if host.navigation_warning.is_some_and(|(pane, _)| pane == id) {
+                            ui.painter().rect_stroke(
+                                rect.shrink(2.0),
+                                0.0,
+                                egui::Stroke::new(3.0, Color32::from_rgb(230, 125, 65)),
+                                egui::StrokeKind::Inside,
+                            );
                         }
                         if active.root.panes().len() > 1 {
                             let selected = host
@@ -1818,7 +2051,9 @@ impl App {
                                 egui::Stroke::new(if selected { 1.5 } else { 0.5 }, color),
                                 egui::StrokeKind::Inside,
                             );
-                            if let Some(pane) = self.panes.get(&id) {
+                            if host.peek.is_none()
+                                && let Some(pane) = self.panes.get(&id)
+                            {
                                 let directory = pane
                                     .cwd
                                     .file_name()
@@ -1856,14 +2091,92 @@ impl App {
                                 ui.painter().galley(label_pos, galley, Color32::WHITE);
                             }
                         }
-                        if id == focused && !host.preedit.is_empty() {
-                            ui.painter().text(
-                                rect.left_bottom() - Vec2::new(-8.0, 8.0),
-                                egui::Align2::LEFT_BOTTOM,
-                                &host.preedit,
-                                egui::FontId::monospace(config.font_size),
-                                rgb(config.foreground),
+                    }
+                    for (&id, &rect) in &host.rects {
+                        if let Some(error) = self.failed_panes.get(&id) {
+                            ui.scope_builder(
+                                egui::UiBuilder::new().max_rect(rect.shrink(20.0)),
+                                |ui| {
+                                    ui.label(format!("Could not start terminal: {error}"));
+                                    if ui.button("Retry").clicked() {
+                                        retry_pane = Some(id);
+                                    }
+                                },
                             );
+                        } else if let Some(message) = self
+                            .panes
+                            .get(&id)
+                            .and_then(|pane| pane.exit_message.as_ref())
+                        {
+                            let galley = ui.painter().layout_no_wrap(
+                                message.clone(),
+                                egui::FontId::proportional(13.0),
+                                Color32::WHITE,
+                            );
+                            let bounds = egui::Rect::from_center_size(
+                                rect.center_bottom() - Vec2::new(0.0, 20.0),
+                                galley.size(),
+                            );
+                            ui.painter().rect_filled(
+                                bounds.expand(5.0),
+                                3.0,
+                                Color32::from_black_alpha(230),
+                            );
+                            ui.painter().galley(bounds.min, galley, Color32::WHITE);
+                        }
+                    }
+                    if let Some(peek) = host.peek {
+                        let mut quadrants = BTreeMap::<Id, egui::Rect>::new();
+                        for (&pane, &rect) in &host.rects {
+                            if let Some(quadrant) = active.root.quadrant(pane) {
+                                quadrants
+                                    .entry(quadrant)
+                                    .and_modify(|bounds| *bounds = bounds.union(rect))
+                                    .or_insert(rect);
+                            }
+                        }
+                        let selected = active.root.quadrant(peek.target);
+                        for (id, bounds) in quadrants {
+                            if !peek.navigation_used && Some(id) != selected {
+                                ui.painter().rect_filled(
+                                    bounds,
+                                    0.0,
+                                    Color32::from_black_alpha(
+                                        (config.quadrant_peek_opacity * 255.0) as u8,
+                                    ),
+                                );
+                            }
+                            if Some(id) == selected {
+                                ui.painter().rect_stroke(
+                                    bounds,
+                                    0.0,
+                                    egui::Stroke::new(2.0, Color32::from_rgb(112, 165, 245)),
+                                    egui::StrokeKind::Inside,
+                                );
+                            }
+                            let pane =
+                                active.activate_quadrant(active.root.node(id).unwrap().panes()[0]);
+                            if let Some(pane) = pane.and_then(|id| self.panes.get(&id)) {
+                                let label = pane
+                                    .cwd
+                                    .file_name()
+                                    .unwrap_or(pane.cwd.as_os_str())
+                                    .to_string_lossy();
+                                let galley = ui.painter().layout_no_wrap(
+                                    label.into_owned(),
+                                    egui::FontId::proportional(18.0),
+                                    Color32::WHITE,
+                                );
+                                let label_bounds =
+                                    egui::Rect::from_center_size(bounds.center(), galley.size());
+                                ui.painter().rect_filled(
+                                    label_bounds.expand(7.0),
+                                    5.0,
+                                    Color32::from_black_alpha(220),
+                                );
+                                ui.painter()
+                                    .galley(label_bounds.min, galley, Color32::WHITE);
+                            }
                         }
                     }
                 });
@@ -1968,8 +2281,16 @@ impl App {
             host.peek = None;
             host.repaint();
         }
+        if let Some(id) = retry_pane {
+            self.failed_panes.remove(&id);
+        }
         for action in commands {
             self.action(event_loop, host, action, false);
+        }
+        if let Some(update) = &mut output.platform_output.accesskit_update {
+            for text in host.accessibility.values() {
+                text.append_to(update);
+            }
         }
         host.egui.handle_platform_output_with_event_loop(
             &host.window,
@@ -2009,6 +2330,9 @@ impl App {
         );
         host.frames += 1;
         host.deadline = graphics_deadline;
+        if let Some((_, deadline)) = host.navigation_warning {
+            host.deadline = Some(host.deadline.map_or(deadline, |old| old.min(deadline)));
+        }
         if needs_blink {
             let elapsed = self.started.elapsed().as_millis();
             let deadline = Instant::now()
@@ -2018,6 +2342,47 @@ impl App {
         Ok(())
     }
     fn mouse(&mut self, host: &mut Host, action: vt::MouseAction, button: Option<vt::MouseButton>) {
+        if let Some((id, axis, bounds)) = host.divider_drag {
+            if action == vt::MouseAction::Release {
+                host.divider_drag = None;
+            } else if action == vt::MouseAction::Move {
+                let ratio = match axis {
+                    Axis::Horizontal => (host.mouse.x - bounds.x) / bounds.width,
+                    Axis::Vertical => (host.mouse.y - bounds.y) / bounds.height,
+                };
+                if let Some(tab) = self.tab_mut(host.id) {
+                    tab.root.set_ratio(id, ratio);
+                }
+                self.changed();
+            }
+            host.repaint();
+            return;
+        }
+        if self
+            .context
+            .layer_id_at(host.mouse)
+            .is_some_and(|layer| layer.order != egui::Order::Background)
+        {
+            return;
+        }
+        if !host.ui_input() && host.peek.is_none() {
+            let divider = self.tab(host.id).and_then(|tab| {
+                tab.visible_tree(false)
+                    .divider_at(host.content, [host.mouse.x, host.mouse.y], 3.0)
+            });
+            host.window.set_cursor(match divider {
+                Some((_, Axis::Horizontal, _)) => CursorIcon::ColResize,
+                Some((_, Axis::Vertical, _)) => CursorIcon::RowResize,
+                None => CursorIcon::Default,
+            });
+            if let Some(divider) = divider {
+                if action == vt::MouseAction::Press && button == Some(vt::MouseButton::Left) {
+                    self.remember();
+                    host.divider_drag = Some(divider);
+                }
+                return;
+            }
+        }
         let hit = host
             .rects
             .iter()
@@ -2031,6 +2396,17 @@ impl App {
             .layer_id_at(host.mouse)
             .is_some_and(|layer| layer.order != egui::Order::Background)
         {
+            return;
+        }
+        if let Some(peek) = &mut host.peek {
+            if action == vt::MouseAction::Press
+                && button == Some(vt::MouseButton::Left)
+                && let Some(target) = hit.and_then(|id| self.tab(host.id)?.activate_quadrant(id))
+            {
+                peek.target = target;
+                self.focus_pane(host.id, target);
+                host.repaint();
+            }
             return;
         }
         if action == vt::MouseAction::Press
@@ -2178,7 +2554,10 @@ impl ApplicationHandler<Event> for App {
     }
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
         match event {
-            Event::Output(id) => self.drain(id),
+            Event::Output(id) => {
+                self.drain(id);
+                self.reconcile(event_loop);
+            }
             Event::Repaint(viewport, delay) => {
                 if let Some(host) = self
                     .windows
@@ -2228,10 +2607,25 @@ impl ApplicationHandler<Event> for App {
                         self.action(event_loop, &mut host, action, false);
                         self.windows.insert(key, host);
                         self.reconcile(event_loop);
-                    } else if matches!(
-                        action,
-                        Action::NewWindow | Action::NewTab | Action::ToggleQuickTerminal
-                    ) {
+                    } else if matches!(action, Action::Undo | Action::Redo) {
+                        if self.undo_layout(action == Action::Redo) {
+                            self.reconcile(event_loop);
+                        }
+                    } else if action == Action::ToggleQuickTerminal {
+                        let id = self.add_window(true);
+                        self.reconcile(event_loop);
+                        let key = self
+                            .windows
+                            .iter()
+                            .find(|(_, host)| host.id == id)
+                            .map(|(key, _)| *key);
+                        if let Some(key) = key
+                            && let Some(mut host) = self.windows.remove(&key)
+                        {
+                            self.quick_visible(&mut host, true, true);
+                            self.windows.insert(key, host);
+                        }
+                    } else if matches!(action, Action::NewWindow | Action::NewTab) {
                         self.add_window(false);
                         self.reconcile(event_loop);
                     } else if action == Action::Quit {
@@ -2242,15 +2636,71 @@ impl ApplicationHandler<Event> for App {
             }
             Event::Access(event) => {
                 use egui_winit::accesskit_winit::WindowEvent as AccessEvent;
-                if let Some(host) = self.windows.get_mut(&event.window_id) {
+                if let Some(mut host) = self.windows.remove(&event.window_id) {
                     match event.window_event {
                         AccessEvent::ActionRequested(request) => {
-                            host.egui.on_accesskit_action_request(request)
+                            let pane = host
+                                .accessibility
+                                .iter()
+                                .find(|(_, text)| text.contains(request.target_node))
+                                .map(|(&id, _)| id);
+                            let mut handled = false;
+                            if let Some(id) = pane {
+                                use egui::accesskit::{Action as AccessAction, ActionData};
+                                match request.action {
+                                    AccessAction::Focus => {
+                                        self.focus_pane(host.id, id);
+                                        host.window.focus_window();
+                                        handled = true;
+                                    }
+                                    AccessAction::ScrollUp | AccessAction::ScrollDown => {
+                                        if let Some(pane) = self.panes.get(&id)
+                                            && let Ok(mut terminal) = pane.session.terminal()
+                                        {
+                                            let amount = (terminal.rows as isize).max(1);
+                                            terminal.screen_mut().scroll_viewport(
+                                                if request.action == AccessAction::ScrollUp {
+                                                    amount
+                                                } else {
+                                                    -amount
+                                                },
+                                            );
+                                        }
+                                        handled = true;
+                                    }
+                                    AccessAction::SetTextSelection => {
+                                        if let Some(ActionData::SetTextSelection(range)) =
+                                            &request.data
+                                            && let Some(selection) =
+                                                host.accessibility[&id].selection(*range)
+                                            && let Some(pane) = self.panes.get(&id)
+                                            && let Ok(mut terminal) = pane.session.terminal()
+                                        {
+                                            // Ignore a row that was pruned between painting and the native callback.
+                                            if selection.is_none_or(|s| {
+                                                terminal.screen().row_by_id(s.start.row).is_some()
+                                                    && terminal
+                                                        .screen()
+                                                        .row_by_id(s.end.row)
+                                                        .is_some()
+                                            }) {
+                                                terminal.screen_mut().selection = selection;
+                                            }
+                                        }
+                                        handled = true;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            if !handled {
+                                host.egui.on_accesskit_action_request(request);
+                            }
                         }
                         AccessEvent::InitialTreeRequested => self.context.enable_accesskit(),
                         AccessEvent::AccessibilityDeactivated => {}
                     }
                     host.repaint();
+                    self.windows.insert(event.window_id, host);
                 }
             }
         }
@@ -2312,8 +2762,10 @@ impl ApplicationHandler<Event> for App {
                 } else {
                     host.peek = None;
                     host.modifiers = ModifiersState::empty();
+                    host.divider_drag = None;
                     host.composing = false;
                     host.preedit.clear();
+                    host.preedit_selection = None;
                     host.sequence.clear();
                     host.sequence_len = 0;
                     if let Some(pane) = self.focused(host.id).and_then(|id| self.panes.get_mut(&id))
@@ -2330,11 +2782,15 @@ impl ApplicationHandler<Event> for App {
                     if self
                         .index(host.id)
                         .is_some_and(|i| self.workspace.windows[i].quick)
-                        && self.config().quick_terminal_autohide
-                        && !host.ui_input()
                     {
-                        host.visible = false;
-                        host.window.set_visible(false);
+                        if let Some(platform) = &self.platform
+                            && let Err(error) = platform.quick_resigned_focus(&host.window)
+                        {
+                            self.errors.push(error);
+                        }
+                        if self.config().quick_terminal_autohide && !host.ui_input() {
+                            self.quick_visible(&mut host, false, false);
+                        }
                     }
                 }
                 host.repaint();
@@ -2354,10 +2810,15 @@ impl ApplicationHandler<Event> for App {
                     && !input::chord_held(peek.chord, current)
                 {
                     host.peek = None;
-                    self.focus_pane(host.id, peek.target);
+                    if let Some(tab) = self.tab_mut(host.id) {
+                        let target = tab.finish_peek(peek);
+                        self.focus_pane(host.id, target);
+                    }
                 } else if host.peek.is_none()
                     && !host.ui_input()
-                    && self.tab(host.id).is_some_and(|tab| tab.zoom.is_some())
+                    && self
+                        .tab(host.id)
+                        .is_some_and(|tab| tab.quadrant_zoom.is_some())
                 {
                     let trigger = self
                         .config()
@@ -2379,13 +2840,11 @@ impl ApplicationHandler<Event> for App {
                                     )
                                 })
                         });
-                    if let Some(binding) = trigger
-                        && let Some(target) = self.focused(host.id)
+                    let chord = trigger.map(|binding| binding.trigger[0].modifiers);
+                    if let Some(chord) = chord
+                        && let Some(tab) = self.tab_mut(host.id)
                     {
-                        host.peek = Some(Peek {
-                            chord: binding.trigger[0].modifiers,
-                            target,
-                        });
+                        host.peek = tab.begin_peek(chord);
                     }
                 }
                 host.repaint();
@@ -2397,13 +2856,15 @@ impl ApplicationHandler<Event> for App {
             } => self.keyboard(event_loop, &mut host, &event),
             WindowEvent::Ime(ime) if !host.ui_input() => {
                 match ime {
-                    Ime::Preedit(text, _) => {
+                    Ime::Preedit(text, selection) => {
                         host.composing = !text.is_empty();
                         host.preedit = text;
+                        host.preedit_selection = selection;
                     }
                     Ime::Commit(text) => {
                         host.composing = false;
                         host.preedit.clear();
+                        host.preedit_selection = None;
                         if let Some(pane) = self.focused(host.id) {
                             self.write(pane, text.into_bytes());
                         }
@@ -2411,6 +2872,7 @@ impl ApplicationHandler<Event> for App {
                     Ime::Disabled => {
                         host.composing = false;
                         host.preedit.clear();
+                        host.preedit_selection = None;
                     }
                     Ime::Enabled => {}
                 }
@@ -2515,6 +2977,12 @@ impl ApplicationHandler<Event> for App {
             }
         }
         let now = Instant::now();
+        let count = self.history.len() + self.redo.len();
+        self.history.retain(|(expires, _)| *expires > now);
+        self.redo.retain(|(expires, _)| *expires > now);
+        if count != self.history.len() + self.redo.len() || !self.closing.is_empty() {
+            self.reconcile(event_loop);
+        }
         if self.close_at.is_some_and(|at| at <= now) {
             self.save();
             event_loop.exit();
@@ -2527,6 +2995,13 @@ impl ApplicationHandler<Event> for App {
             .save_at
             .into_iter()
             .chain(self.close_at)
+            .chain((!self.closing.is_empty()).then_some(now + Duration::from_millis(20)))
+            .chain(
+                self.history
+                    .iter()
+                    .chain(&self.redo)
+                    .map(|(expires, _)| *expires),
+            )
             .chain(self.smoke.as_ref().map(|_| now + Duration::from_millis(50)))
             .min();
         for host in self.windows.values_mut() {
@@ -2543,8 +3018,59 @@ impl ApplicationHandler<Event> for App {
     }
     fn exiting(&mut self, _: &ActiveEventLoop) {
         self.save();
-        self.panes.clear();
+        for session in self
+            .panes
+            .values()
+            .map(|pane| &pane.session)
+            .chain(&self.closing)
+        {
+            session.close();
+        }
     }
+}
+
+impl App {
+    fn shutdown(&mut self) {
+        for host in self.windows.values() {
+            host.window.set_visible(false);
+        }
+        for session in self
+            .panes
+            .values()
+            .map(|pane| &pane.session)
+            .chain(&self.closing)
+        {
+            session.close();
+        }
+        // Window callbacks are finished. Give the child-owner workers a bounded
+        // interval for HUP/SIGKILL escalation and reaping before main returns.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline
+            && self
+                .panes
+                .values()
+                .map(|pane| &pane.session)
+                .chain(&self.closing)
+                .any(|session| !session.has_exited())
+        {
+            for session in self
+                .panes
+                .values()
+                .map(|pane| &pane.session)
+                .chain(&self.closing)
+            {
+                session.events().for_each(drop);
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        self.panes.clear();
+        self.closing.clear();
+    }
+}
+
+fn hold_after_exit(config: &Config, runtime: Duration) -> bool {
+    config.wait_after_command
+        || runtime.as_millis() <= u128::from(config.abnormal_command_exit_runtime)
 }
 
 fn directory_from_osc(value: &str) -> Option<PathBuf> {
@@ -2593,6 +3119,17 @@ fn ui_theme(config: &Config) -> egui::ThemePreference {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shell_exit_policy_holds_fast_failures_and_respects_wait_setting() {
+        let mut config = Config::default();
+        assert!(hold_after_exit(&config, Duration::from_millis(250)));
+        assert!(!hold_after_exit(&config, Duration::from_secs(1)));
+        config.wait_after_command = true;
+        assert!(hold_after_exit(&config, Duration::from_secs(100)));
+        config.wait_after_command = false;
+        config.abnormal_command_exit_runtime = 0;
+        assert!(!hold_after_exit(&config, Duration::from_millis(1)));
+    }
     #[test]
     fn cwd_reports_become_absolute_paths_before_restoration() {
         assert_eq!(

@@ -244,6 +244,46 @@ pub struct Cursor {
     pub semantic: SemanticContent,
 }
 
+/// Kitty's eight-entry cyclic keyboard flag stack. Overflow evicts the oldest
+/// entry, while popping a full turn resets the stack to its disabled state.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KittyKeyboard {
+    pub(crate) flags: [u8; 8],
+    pub(crate) index: u8,
+}
+
+impl KittyKeyboard {
+    pub fn current(&self) -> u8 {
+        self.flags[usize::from(self.index)]
+    }
+
+    pub fn push(&mut self, flags: u8) {
+        self.index = (self.index + 1) % 8;
+        self.flags[usize::from(self.index)] = flags & 31;
+    }
+
+    pub fn pop(&mut self, count: usize) {
+        if count >= self.flags.len() {
+            *self = Self::default();
+            return;
+        }
+        for _ in 0..count {
+            self.flags[usize::from(self.index)] = 0;
+            self.index = self.index.wrapping_sub(1) % 8;
+        }
+    }
+
+    pub fn set(&mut self, flags: u8, mode: u16) {
+        let current = &mut self.flags[usize::from(self.index)];
+        match mode {
+            0 | 1 => *current = flags & 31,
+            2 => *current |= flags & 31,
+            3 => *current &= !(flags & 31),
+            _ => {}
+        }
+    }
+}
+
 impl Default for Cursor {
     fn default() -> Self {
         Self {
@@ -310,12 +350,15 @@ pub struct Screen {
     pub(crate) metadata: crate::snapshot::ScreenMetadata,
     #[serde(skip)]
     pub graphics: crate::graphics::Graphics,
+    /// Logical width. Restored physical rows retain their own width until a
+    /// column resize reflows them or an edit needs additional cells.
+    pub columns: usize,
     pub rows: Vec<Row>,
     pub history: VecDeque<Row>,
     pub cursor: Cursor,
     pub selection: Option<Selection>,
     pub viewport_offset: usize,
-    pub kitty_keyboard: Vec<u8>,
+    pub kitty_keyboard: KittyKeyboard,
     pub(crate) saved_cursor: Option<SavedCursor>,
     pub(crate) charset: CharsetState,
     pub(crate) iso_protection: bool,
@@ -333,6 +376,7 @@ impl Screen {
         Self {
             metadata: crate::snapshot::ScreenMetadata::default(),
             graphics: crate::graphics::Graphics::default(),
+            columns: cols,
             rows: (0..rows)
                 .map(|i| Row::new(i as u64, cols, Color::Default))
                 .collect(),
@@ -340,7 +384,7 @@ impl Screen {
             cursor: Cursor::default(),
             selection: None,
             viewport_offset: 0,
-            kitty_keyboard: Vec::new(),
+            kitty_keyboard: KittyKeyboard::default(),
             saved_cursor: None,
             charset: CharsetState::default(),
             iso_protection: false,
@@ -370,6 +414,7 @@ impl Screen {
         Self {
             metadata: self.metadata.clone(),
             graphics: self.graphics.snapshot(self),
+            columns: self.columns,
             rows: self.viewport().cloned().collect(),
             history: VecDeque::new(),
             cursor,
@@ -481,8 +526,8 @@ impl Screen {
         let y = self.cursor.row;
         let cols = self.rows[y].cells.len();
         let background = self.cursor.style.background;
-        if col == cols {
-            if self.rows[y].wrapped && self.rows[y].cells[cols - 1].spacer_head {
+        if col >= cols {
+            if col == cols && self.rows[y].wrapped && self.rows[y].cells[cols - 1].spacer_head {
                 self.rows[y].erase(cols - 1, cols, background, false);
             }
             return;
@@ -496,10 +541,11 @@ impl Screen {
             };
             if let Some(previous) = previous
                 && previous.wrapped
-                && previous.cells[cols - 1].spacer_head
+                && previous.cells.last().is_some_and(|cell| cell.spacer_head)
             {
                 let before = previous.storage_bytes();
-                previous.erase(cols - 1, cols, background, false);
+                let width = previous.cells.len();
+                previous.erase(width - 1, width, background, false);
                 if y == 0 {
                     self.history_bytes = self
                         .history_bytes
@@ -590,7 +636,12 @@ impl Screen {
     }
 
     pub(crate) fn resize(&mut self, cols: usize, rows: usize, reflow: bool) {
-        let old_cols = self.rows[0].cells.len();
+        let old_cols = self.columns;
+        let columns_changed = cols != old_cols;
+        if columns_changed {
+            self.metadata.reflow_generation = self.metadata.reflow_generation.wrapping_add(1);
+        }
+        self.columns = cols;
         let old_rows = self.rows.len();
         let cursor_y = self.cursor.row;
         let old_cursor = GridPoint {
@@ -623,7 +674,7 @@ impl Screen {
             );
         }
         let mut mapped_cursor = old_cursor;
-        if cols != old_cols && reflow {
+        if columns_changed && reflow {
             let height = if height_first { rows } else { old_rows };
             let active_start = contents.len().saturating_sub(height);
             let old_wrapped = contents
@@ -807,7 +858,7 @@ impl Screen {
             }
             contents = output;
             self.graphics.reflow(&map);
-        } else if cols != old_cols {
+        } else if columns_changed {
             for row in &mut contents {
                 row.cells.resize(cols, Cell::default());
                 row.repair_wide(Color::Default);
@@ -860,6 +911,10 @@ impl Screen {
             }
         }
         self.rows = contents.split_off(start);
+        self.cursor.col = self
+            .cursor
+            .col
+            .min(self.rows[self.cursor.row].cells.len() - 1);
         for row in contents {
             self.push_history(row);
         }

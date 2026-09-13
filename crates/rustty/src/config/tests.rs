@@ -82,6 +82,147 @@ fn no_config_returns_defaults_without_creating_any_settings() {
 }
 
 #[test]
+fn font_settings_preserve_style_specific_axes_and_ordered_ranges() {
+    let home = TestHome::new();
+    home.own("font-style=Book\nfont-style-bold=false\nfont-style-italic=default\nfont-style-bold-italic=Heavy Italic\nfont-variation=wght=400\nfont-variation=slnt = -1.5\nfont-variation-bold=wght=650\nfont-variation-italic=ital=1\nfont-variation-bold-italic=wght=700\nfont-codepoint-map=U+2500 - U+257F, U+E000=Symbols\nfont-codepoint-map=U+E000=Override\nfont-synthetic-style=no-bold,no-italic\nfont-thicken=true\nfont-thicken-strength=0\n");
+    let loaded = home
+        .loader
+        .load_with_args(&args(&["--font-variation=wdth=95"]));
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    let config = loaded.config;
+    assert_eq!(config.font_style, FontStyleRequest::Named("Book".into()));
+    assert_eq!(config.font_style_bold, FontStyleRequest::Disabled);
+    assert_eq!(config.font_style_italic, FontStyleRequest::Default);
+    assert_eq!(
+        config.font_style_bold_italic,
+        FontStyleRequest::Named("Heavy Italic".into())
+    );
+    assert_eq!(
+        config.font_variation,
+        [
+            FontVariation {
+                tag: *b"wght",
+                value: 400.0
+            },
+            FontVariation {
+                tag: *b"slnt",
+                value: -1.5
+            },
+            FontVariation {
+                tag: *b"wdth",
+                value: 95.0
+            },
+        ]
+    );
+    assert_eq!(
+        config.font_variation_bold,
+        [FontVariation {
+            tag: *b"wght",
+            value: 650.0
+        }]
+    );
+    assert_eq!(
+        config.font_variation_italic,
+        [FontVariation {
+            tag: *b"ital",
+            value: 1.0
+        }]
+    );
+    assert_eq!(
+        config.font_variation_bold_italic,
+        [FontVariation {
+            tag: *b"wght",
+            value: 700.0
+        }]
+    );
+    assert_eq!(
+        config.font_codepoint_map,
+        [
+            CodepointMap {
+                start: 0x2500,
+                end: 0x257f,
+                family: "Symbols".into()
+            },
+            CodepointMap {
+                start: 0xe000,
+                end: 0xe000,
+                family: "Symbols".into()
+            },
+            CodepointMap {
+                start: 0xe000,
+                end: 0xe000,
+                family: "Override".into()
+            },
+        ]
+    );
+    assert_eq!(config.font_synthetic_style, [false, false, true]);
+    assert!(config.font_thicken);
+    assert_eq!(config.font_thicken_strength, 0);
+}
+
+#[test]
+fn empty_font_settings_reset_and_flag_lists_start_from_defaults() {
+    let home = TestHome::new();
+    home.own("font-style-bold=false\nfont-style-bold=\nfont-variation=wght=600\nfont-variation=\nfont-variation=wdth=90\nfont-variation-bold=wght=700\nfont-codepoint-map=U+E000=Old\nfont-codepoint-map=\nfont-codepoint-map=U+0041=New\nfont-synthetic-style=false\nfont-synthetic-style=no-italic\nfont-thicken=true\nfont-thicken=\nfont-thicken-strength=0\nfont-thicken-strength=\n");
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    let config = loaded.config;
+    assert_eq!(config.font_style_bold, FontStyleRequest::Default);
+    assert_eq!(
+        config.font_variation,
+        [FontVariation {
+            tag: *b"wdth",
+            value: 90.0
+        }]
+    );
+    assert_eq!(config.font_variation_bold.len(), 1);
+    assert_eq!(
+        config.font_codepoint_map,
+        [CodepointMap {
+            start: 65,
+            end: 65,
+            family: "New".into()
+        }]
+    );
+    assert_eq!(config.font_synthetic_style, [true, false, true]);
+    assert!(!config.font_thicken);
+    assert_eq!(config.font_thicken_strength, 255);
+}
+
+#[test]
+fn invalid_font_settings_leave_previous_values_without_exposing_contents() {
+    let home = TestHome::new();
+    home.own("font-variation=wght=300\nfont-variation=abc=2\nfont-variation=wdth=NaN\nfont-variation=slnt=SECRET\nfont-codepoint-map=U+E000=Keep\nfont-codepoint-map=U+0041,U+0043-U+0042=Bad\nfont-codepoint-map=U+200000=Bad\nfont-codepoint-map=U++41=Bad\nfont-synthetic-style=false\nfont-synthetic-style=no-bold,unknown\nfont-thicken-strength=0xA\nfont-thicken-strength=256\nfont-style-bold=Book\nfont-style-bold=private\0value\n");
+    let loaded = home.loader.load();
+    assert_eq!(loaded.diagnostics.len(), 9, "{:?}", loaded.diagnostics);
+    let diagnostics = format!("{:?}", loaded.diagnostics);
+    assert!(!diagnostics.contains("SECRET"));
+    assert!(!diagnostics.contains("private"));
+    let config = loaded.config;
+    assert_eq!(
+        config.font_variation,
+        [FontVariation {
+            tag: *b"wght",
+            value: 300.0
+        }]
+    );
+    assert_eq!(
+        config.font_codepoint_map,
+        [CodepointMap {
+            start: 0xe000,
+            end: 0xe000,
+            family: "Keep".into()
+        }]
+    );
+    assert_eq!(config.font_synthetic_style, [false; 3]);
+    assert_eq!(config.font_thicken_strength, 10);
+    assert_eq!(
+        config.font_style_bold,
+        FontStyleRequest::Named("Book".into())
+    );
+}
+
+#[test]
 fn ghostty_loads_xdg_before_local_and_does_not_combine_stable_settings() {
     let home = TestHome::new();
     home.write(".config/ghostty/config", "font-size=9\nfont-family=First\n");
@@ -318,6 +459,36 @@ fn bom_crlf_comments_quotes_and_hash_colors() {
 }
 
 #[test]
+fn quick_terminal_space_behavior_validates_and_resets() {
+    let home = TestHome::new();
+    assert_eq!(
+        home.loader.load().config.quick_terminal_space_behavior,
+        QuickTerminalSpaceBehavior::Move
+    );
+    home.own("quick-terminal-space-behavior = remain\n");
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty());
+    assert_eq!(
+        loaded.config.quick_terminal_space_behavior,
+        QuickTerminalSpaceBehavior::Remain
+    );
+    home.own("quick-terminal-space-behavior = remain\nquick-terminal-space-behavior =\n");
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty());
+    assert_eq!(
+        loaded.config.quick_terminal_space_behavior,
+        QuickTerminalSpaceBehavior::Move
+    );
+    home.own("quick-terminal-space-behavior = elsewhere\n");
+    let loaded = home.loader.load();
+    assert_eq!(loaded.diagnostics.len(), 1);
+    assert_eq!(
+        loaded.config.quick_terminal_space_behavior,
+        QuickTerminalSpaceBehavior::Move
+    );
+}
+
+#[test]
 fn current_local_workflow_settings_and_actions_are_supported() {
     let home = TestHome::new();
     home.local(
@@ -484,4 +655,25 @@ fn symlink_cycles_and_invalid_utf8_are_reported_without_fallback() {
     assert_eq!(loaded.family, ConfigFamily::Rustty);
     assert_eq!(loaded.config.font_size, 13.0);
     assert_eq!(loaded.diagnostics.len(), 1);
+}
+
+#[test]
+fn command_exit_and_undo_settings_keep_ghostty_defaults_and_units() {
+    let defaults = Config::default();
+    assert!(!defaults.wait_after_command);
+    assert_eq!(defaults.abnormal_command_exit_runtime, 250);
+    assert_eq!(defaults.undo_timeout, Duration::from_secs(5));
+    let home = TestHome::new();
+    home.own("wait-after-command=true\nabnormal-command-exit-runtime=20\nundo-timeout=1m 5s\n");
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert!(loaded.config.wait_after_command);
+    assert_eq!(loaded.config.abnormal_command_exit_runtime, 20);
+    assert_eq!(loaded.config.undo_timeout, Duration::from_secs(65));
+    home.own("undo-timeout=1m\nundo-timeout=\n");
+    let reset = home.loader.load();
+    assert!(reset.diagnostics.is_empty());
+    assert_eq!(reset.config.undo_timeout, Duration::from_secs(5));
+    home.own("wait-after-command=perhaps\nabnormal-command-exit-runtime=-1\nundo-timeout=-2s\n");
+    assert_eq!(home.loader.load().diagnostics.len(), 3);
 }

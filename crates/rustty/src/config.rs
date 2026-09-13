@@ -12,8 +12,11 @@ use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
+#[path = "config/font.rs"]
+mod font;
 #[path = "config/keybinding.rs"]
 mod keybinding;
+pub use font::{CodepointMap, FontStyleRequest, FontVariation};
 pub use keybinding::{
     Action, BindingFlags, Direction, KeyBinding, KeyTrigger, Modifiers, parse_escaped_bytes,
 };
@@ -135,6 +138,7 @@ config_enum!(WindowTheme { Auto => "auto", System => "system", Light => "light",
 config_enum!(ShellIntegration { None => "none", Detect => "detect", Bash => "bash", Zsh => "zsh", Fish => "fish", Elvish => "elvish", Nushell => "nushell" });
 config_enum!(QuickTerminalPosition { Top => "top", Bottom => "bottom", Left => "left", Right => "right", Center => "center" });
 config_enum!(QuickTerminalScreen { Main => "main", Mouse => "mouse", MacosMenuBar => "macos-menu-bar" });
+config_enum!(QuickTerminalSpaceBehavior { Move => "move", Remain => "remain" });
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Padding {
@@ -264,6 +268,20 @@ pub struct Config {
     pub font_family_bold_italic: Vec<String>,
     pub font_feature: Vec<String>,
     pub font_size: f32,
+    pub font_style: FontStyleRequest,
+    pub font_style_bold: FontStyleRequest,
+    pub font_style_italic: FontStyleRequest,
+    pub font_style_bold_italic: FontStyleRequest,
+    pub font_variation: Vec<FontVariation>,
+    pub font_variation_bold: Vec<FontVariation>,
+    pub font_variation_italic: Vec<FontVariation>,
+    pub font_variation_bold_italic: Vec<FontVariation>,
+    pub font_codepoint_map: Vec<CodepointMap>,
+    /// Synthetic bold, italic and bold-italic are controlled independently.
+    pub font_synthetic_style: [bool; 3],
+    pub font_thicken: bool,
+    /// Zero is the lightest thickening; `font_thicken` controls whether it is used.
+    pub font_thicken_strength: u8,
     pub background: Rgb,
     pub foreground: Rgb,
     pub palette: [Rgb; 256],
@@ -290,6 +308,9 @@ pub struct Config {
     pub clipboard_read: ClipboardAccess,
     pub clipboard_write: ClipboardAccess,
     pub confirm_close_surface: ConfirmCloseSurface,
+    pub wait_after_command: bool,
+    pub abnormal_command_exit_runtime: u32,
+    pub undo_timeout: Duration,
     pub quit_after_last_window_closed: bool,
     pub bell_features: BellFeatures,
     pub notify_on_command_finish: NotifyOnCommandFinish,
@@ -298,6 +319,7 @@ pub struct Config {
     pub quick_terminal_animation_duration: Duration,
     pub quick_terminal_position: QuickTerminalPosition,
     pub quick_terminal_screen: QuickTerminalScreen,
+    pub quick_terminal_space_behavior: QuickTerminalSpaceBehavior,
     pub quick_terminal_autohide: bool,
     pub shell_integration: ShellIntegration,
     pub scrollback_limit_bytes: Option<usize>,
@@ -323,6 +345,18 @@ impl Default for Config {
             font_family_bold_italic: vec![],
             font_feature: vec![],
             font_size: 13.0,
+            font_style: FontStyleRequest::Default,
+            font_style_bold: FontStyleRequest::Default,
+            font_style_italic: FontStyleRequest::Default,
+            font_style_bold_italic: FontStyleRequest::Default,
+            font_variation: vec![],
+            font_variation_bold: vec![],
+            font_variation_italic: vec![],
+            font_variation_bold_italic: vec![],
+            font_codepoint_map: vec![],
+            font_synthetic_style: [true; 3],
+            font_thicken: false,
+            font_thicken_strength: 255,
             background: Rgb::new(0x28, 0x2c, 0x34),
             foreground: Rgb::new(255, 255, 255),
             palette: default_palette(),
@@ -354,6 +388,9 @@ impl Default for Config {
             clipboard_read: ClipboardAccess::Ask,
             clipboard_write: ClipboardAccess::Allow,
             confirm_close_surface: ConfirmCloseSurface::True,
+            wait_after_command: false,
+            abnormal_command_exit_runtime: 250,
+            undo_timeout: Duration::from_secs(5),
             quit_after_last_window_closed: false,
             bell_features: BellFeatures::default(),
             notify_on_command_finish: NotifyOnCommandFinish::Never,
@@ -362,6 +399,7 @@ impl Default for Config {
             quick_terminal_animation_duration: Duration::from_millis(200),
             quick_terminal_position: QuickTerminalPosition::Top,
             quick_terminal_screen: QuickTerminalScreen::Mouse,
+            quick_terminal_space_behavior: QuickTerminalSpaceBehavior::Move,
             quick_terminal_autohide: true,
             shell_integration: ShellIntegration::Detect,
             scrollback_limit_bytes: Some(50_000_000),
@@ -415,6 +453,35 @@ impl Config {
             "font-family-bold-italic" => append_or_clear(&mut self.font_family_bold_italic, value),
             "font-feature" => append_or_clear(&mut self.font_feature, value),
             "font-size" => set!(font_size, parse_positive(value)?),
+            "font-style" => set!(font_style, FontStyleRequest::parse(value)?),
+            "font-style-bold" => set!(font_style_bold, FontStyleRequest::parse(value)?),
+            "font-style-italic" => set!(font_style_italic, FontStyleRequest::parse(value)?),
+            "font-style-bold-italic" => {
+                set!(font_style_bold_italic, FontStyleRequest::parse(value)?)
+            }
+            "font-variation" => font::append_variation(&mut self.font_variation, value)?,
+            "font-variation-bold" => font::append_variation(&mut self.font_variation_bold, value)?,
+            "font-variation-italic" => {
+                font::append_variation(&mut self.font_variation_italic, value)?
+            }
+            "font-variation-bold-italic" => {
+                font::append_variation(&mut self.font_variation_bold_italic, value)?
+            }
+            "font-codepoint-map" => {
+                if value.is_empty() {
+                    self.font_codepoint_map.clear();
+                } else {
+                    self.font_codepoint_map.extend(CodepointMap::parse(value)?);
+                }
+            }
+            "font-synthetic-style" => set!(font_synthetic_style, font::synthetic_styles(value)?),
+            "font-thicken" => set!(font_thicken, parse_bool(value)?),
+            "font-thicken-strength" => set!(
+                font_thicken_strength,
+                parse_usize(value)?
+                    .try_into()
+                    .map_err(|_| "font thickening strength must be 0 through 255")?
+            ),
             "foreground" => set!(foreground, Rgb::parse(value)?),
             "background" => set!(background, Rgb::parse(value)?),
             "palette" => {
@@ -465,6 +532,20 @@ impl Config {
             "confirm-close-surface" => {
                 set!(confirm_close_surface, ConfirmCloseSurface::parse(value)?)
             }
+            "wait-after-command" => set!(wait_after_command, parse_bool(value)?),
+            "abnormal-command-exit-runtime" => set!(
+                abnormal_command_exit_runtime,
+                value
+                    .parse()
+                    .map_err(|_| "invalid abnormal command exit runtime")?
+            ),
+            "undo-timeout" => set!(undo_timeout, {
+                let timeout = parse_duration(value)?;
+                if std::time::Instant::now().checked_add(timeout).is_none() {
+                    return Err("undo timeout is too large");
+                }
+                timeout
+            }),
             "quit-after-last-window-closed" => {
                 set!(quit_after_last_window_closed, parse_bool(value)?)
             }
@@ -494,6 +575,10 @@ impl Config {
             "quick-terminal-screen" => {
                 set!(quick_terminal_screen, QuickTerminalScreen::parse(value)?)
             }
+            "quick-terminal-space-behavior" => set!(
+                quick_terminal_space_behavior,
+                QuickTerminalSpaceBehavior::parse(value)?
+            ),
             "quick-terminal-autohide" => set!(quick_terminal_autohide, parse_bool(value)?),
             "shell-integration" => set!(shell_integration, ShellIntegration::parse(value)?),
             "scrollback-limit" | "scrollback-limit-bytes" => set!(

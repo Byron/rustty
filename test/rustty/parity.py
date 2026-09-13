@@ -10,6 +10,8 @@ import re
 import subprocess
 import sys
 import threading
+import snapshots
+import protocols
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -84,36 +86,44 @@ def difference(left, right, path="response"):
 def variants(request, exhaustive=False):
     """Delivery boundaries change; operation/observation ordering never changes."""
     yield request
-    if request.get("kind", "terminal") not in ("terminal", "input", "parser"):
+    if request.get("expected_error"):
+        return
+    if request.get("kind", "terminal") not in ("terminal", "input", "parser", "snapshot"):
         return
     for name, chunks in (("scalar", [1]), ("chunks", [2, 7, 1, 13, 4])):
-        operations = []
-        for operation in request.get("operations", []):
-            if operation["op"] != "write":
-                operations.append(operation)
+        variant = dict(request, id=f"{request['id']}/{name}", scalar=name == "scalar")
+        for field in ("operations", "after"):
+            if field not in request:
                 continue
-            data = bytes.fromhex(operation["data"])
-            pos = 0
-            index = 0
-            while pos < len(data):
-                size = chunks[index % len(chunks)]
-                operations.append({"op": "write", "data": data[pos:pos + size].hex()})
-                pos += size
-                index += 1
-        yield dict(request, id=f"{request['id']}/{name}", scalar=name == "scalar", operations=operations)
+            operations = []
+            for operation in request[field]:
+                if operation["op"] != "write":
+                    operations.append(operation)
+                    continue
+                data = bytes.fromhex(operation["data"])
+                pos = 0
+                index = 0
+                while pos < len(data):
+                    size = chunks[index % len(chunks)]
+                    operations.append({"op": "write", "data": data[pos:pos + size].hex()})
+                    pos += size
+                    index += 1
+            variant[field] = operations
+        yield variant
     if exhaustive:
-        for index, operation in enumerate(request.get("operations", [])):
-            if operation["op"] != "write":
-                continue
-            data = bytes.fromhex(operation["data"])
-            if len(data) > 64:
-                continue
-            for split in range(1, len(data)):
-                operations = request["operations"][:index] + [
-                    {"op": "write", "data": data[:split].hex()},
-                    {"op": "write", "data": data[split:].hex()},
-                ] + request["operations"][index + 1:]
-                yield dict(request, id=f"{request['id']}/split-{index}-{split}", operations=operations)
+        for field in ("operations", "after"):
+            for index, operation in enumerate(request.get(field, [])):
+                if operation["op"] != "write":
+                    continue
+                data = bytes.fromhex(operation["data"])
+                if len(data) > 64:
+                    continue
+                for split in range(1, len(data)):
+                    operations = request[field][:index] + [
+                        {"op": "write", "data": data[:split].hex()},
+                        {"op": "write", "data": data[split:].hex()},
+                    ] + request[field][index + 1:]
+                    yield dict(request, id=f"{request['id']}/split-{field}-{index}-{split}", **{field: operations})
 
 
 def corpus_requests():
@@ -246,11 +256,18 @@ def save_failure(request, left, right, reason):
 
 
 def compare(peers, request):
-    left, right = [peer.request(request) for peer in peers]
+    if request.get("kind") == "snapshot":
+        return snapshots.compare(peers, request, difference)
+    expected_error = request.get("expected_error")
+    sent = {k: v for k, v in request.items() if k != "expected_error"}
+    left, right = [peer.request(sent) for peer in peers]
     # Capabilities are checked independently of observed behavior.
     comparable = [{k: v for k, v in response.items() if k != "capabilities"} for response in (left, right)]
     reason = difference(*comparable)
-    if not left["ok"] or not right["ok"]:
+    if expected_error:
+        if any(response["ok"] or response["err"] != expected_error for response in (left, right)):
+            reason = reason or f"expected decoder rejection: {expected_error}"
+    elif not left["ok"] or not right["ok"]:
         reason = reason or f"request failed: {left.get('err')} / {right.get('err')}"
     return left, right, reason
 
@@ -331,6 +348,9 @@ def main():
     parser.add_argument("--generated", type=int, default=0)
     parser.add_argument("--input", action="store_true", help="compare keyboard, mouse, focus and paste encoding")
     parser.add_argument("--parser", action="store_true", help="compare raw parser events and inherited parser corpus")
+    parser.add_argument("--snapshots", action="store_true", help="cross-decode both snapshot encodings and resume terminal input")
+    parser.add_argument("--snapshot-wire", action="store_true", help="compare snapshot fixtures, streaming, malformed input and mixed PAGE widths")
+    parser.add_argument("--protocols", action="store_true", help="compare terminal protocol queries and host effects")
     parser.add_argument("--max-failures", type=int, default=20)
     parser.add_argument("--artifacts", type=Path, default=ARTIFACTS, help="isolated output directory for concurrent suites")
     parser.add_argument("--zig-bin", type=Path, default=ROOT / "zig-out/bin/vt-oracle")
@@ -369,6 +389,21 @@ def main():
             if args.parser or args.thorough:
                 requests.extend((request, covers) for request, covers in parser_requests()
                                 if not args.case or args.case in request["id"])
+            if args.snapshots or args.thorough:
+                requests.extend((request, covers) for request, covers in snapshots.requests()
+                                if not args.case or args.case in request["id"])
+            if args.snapshot_wire or args.thorough:
+                requests.extend((request, covers) for request, covers in snapshots.streaming_requests(ROOT)
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in snapshots.invalid_requests(ROOT)
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in snapshots.wire_requests(ROOT, peers[0])
+                                if not args.case or args.case in request["id"])
+            if args.protocols or args.thorough:
+                requests.extend((request, covers) for request, covers in protocols.requests(ROOT)
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in protocols.effect_requests()
+                                if not args.case or args.case in request["id"])
             if args.thorough:
                 requests.extend((request, []) for request in corpus_requests())
             requests.extend((request, []) for request in generated_requests(args.seed, args.generated or (100 if args.thorough else 0)))
@@ -379,7 +414,7 @@ def main():
                 left = right = None
                 try:
                     left, right, reason = compare(peers, request)
-                    normalized = [{k: v for k, v in value.items() if k not in ("id", "capabilities")}
+                    normalized = [{k: v for k, v in value.items() if k not in ("id", "capabilities", "encodings")}
                                   for value in (left, right)]
                     if baseline is None:
                         baseline = normalized

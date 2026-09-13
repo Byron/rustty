@@ -1,12 +1,13 @@
 //! PTY ownership and background IO. No windowing or GPU dependency.
 use crate::config::{Command, Config, CursorStyle, ShellIntegration, TerminalColor};
-use portable_pty::{ChildKiller, CommandBuilder, PtySize, native_pty_system};
+use portable_pty::{Child, CommandBuilder, ExitStatus, PtySize, native_pty_system};
 use rustty_vt::{CursorShape, Effect, Screen, ScrollbackLimits, Terminal};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, mpsc};
 use std::thread;
+use std::time::{Duration, Instant};
 
 const MAX_PENDING_INPUT: usize = 16 * 1024 * 1024;
 
@@ -34,7 +35,12 @@ impl Default for SessionOptions {
 #[derive(Debug)]
 pub enum SessionEvent {
     Effect(Effect),
-    Exited { code: u32, signal: Option<String> },
+    Exited {
+        code: u32,
+        signal: Option<String>,
+        /// Wall time observed by the child owner, independent of event delivery.
+        runtime: Duration,
+    },
     OutputClosed,
     Error(String),
 }
@@ -67,7 +73,7 @@ pub struct Session {
     events: mpsc::Receiver<SessionEvent>,
     pending_input: Arc<PendingInput>,
     exited: Arc<AtomicBool>,
-    killer: Box<dyn ChildKiller + Send + Sync>,
+    close_child: mpsc::Sender<()>,
 }
 
 fn error(error: impl std::fmt::Display) -> io::Error {
@@ -90,19 +96,17 @@ impl Session {
             })
             .map_err(error)?;
         let command = command(config, &options)?;
-        let mut child = pair.slave.spawn_command(command).map_err(error)?;
-        drop(pair.slave);
-        let mut killer = child.clone_killer();
-        let mut reader = pair.master.try_clone_reader().map_err(|e| {
-            let _ = killer.kill();
-            error(e)
-        })?;
-        let mut writer = pair.master.take_writer().map_err(|e| {
-            let _ = killer.kill();
-            error(e)
-        })?;
+        let terminfo_name = command
+            .get_env("TERM")
+            .map(|name| name.to_string_lossy().into_owned());
+        // Prepare handles before launching a child: any failure here has no
+        // process to kill or reap. Retaining the slave keeps the reader from
+        // seeing EOF while the workers are starting.
+        let mut reader = pair.master.try_clone_reader().map_err(error)?;
+        let mut writer = pair.master.take_writer().map_err(error)?;
 
         let mut terminal = Terminal::with_limits(cols, rows, scrollback_limits(config));
+        terminal.terminfo_name = terminfo_name;
         apply_appearance(&mut terminal, config);
         terminal.working_directory = options
             .working_directory
@@ -117,6 +121,8 @@ impl Session {
         let (events_tx, events) = mpsc::sync_channel(256);
         let pending_input = Arc::new(PendingInput::default());
         let exited = Arc::new(AtomicBool::new(false));
+        let (close_child, child_closed) = mpsc::channel();
+        let (started_tx, started) = mpsc::sync_channel(1);
 
         let writer_events = events_tx.clone();
         let writer_wake = wake.clone();
@@ -197,13 +203,29 @@ impl Session {
             })?;
 
         let wait_exited = exited.clone();
+        // Spawn the process only after all three workers exist. Its owner never
+        // crosses a fallible thread-spawn boundary and always performs the wait.
         thread::Builder::new()
             .name("rustty-pty-wait".into())
             .spawn(move || {
-                let event = match child.wait() {
+                let started = Instant::now();
+                let child = pair.slave.spawn_command(command).map_err(error);
+                drop(pair.slave);
+                let child = match child {
+                    Ok(child) => child,
+                    Err(error) => {
+                        let _ = started_tx.send(Err(error));
+                        return;
+                    }
+                };
+                // If the caller timed out or unwound, its close channel is also
+                // disconnected; the child owner still terminates and reaps it.
+                let _ = started_tx.send(Ok(()));
+                let event = match wait_for_child(child, child_closed) {
                     Ok(status) => SessionEvent::Exited {
                         code: status.exit_code(),
                         signal: status.signal().map(str::to_owned),
+                        runtime: started.elapsed(),
                     },
                     Err(e) => SessionEvent::Error(e.to_string()),
                 };
@@ -213,13 +235,23 @@ impl Session {
                 wake();
             })?;
 
+        started
+            .recv_timeout(Duration::from_secs(5))
+            .map_err(|e| match e {
+                mpsc::RecvTimeoutError::Timeout => io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "timed out starting terminal process",
+                ),
+                mpsc::RecvTimeoutError::Disconnected => error("terminal process worker stopped"),
+            })??;
+
         Ok(Self {
             terminal,
             input,
             events,
             pending_input,
             exited,
-            killer,
+            close_child,
         })
     }
 
@@ -289,6 +321,13 @@ impl Session {
     pub fn has_exited(&self) -> bool {
         self.exited.load(Ordering::Acquire)
     }
+    /// Request asynchronous termination. The host can close all sessions, then
+    /// give their `has_exited` flags a bounded drain period before process exit.
+    pub fn close(&self) {
+        self.pending_input.close();
+        let _ = self.input.send(IoCommand::Close);
+        let _ = self.close_child.send(());
+    }
     pub fn apply_config(&self, config: &Config) -> io::Result<()> {
         let mut terminal = self.terminal()?;
         terminal.set_limits(scrollback_limits(config));
@@ -306,10 +345,36 @@ fn scrollback_limits(config: &Config) -> ScrollbackLimits {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        self.pending_input.close();
-        let _ = self.input.send(IoCommand::Close);
-        if !self.has_exited() {
-            let _ = self.killer.kill();
+        self.close();
+    }
+}
+
+fn wait_for_child(
+    mut child: Box<dyn Child + Send + Sync>,
+    closed: mpsc::Receiver<()>,
+) -> io::Result<ExitStatus> {
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) => {}
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            // Even a failed status query must not discard an owned child.
+            Err(_) => break,
+        }
+        // ponytail: one owner polls at 50 ms to receive close requests; use native
+        // process notifications if very large session counts need fewer wakeups.
+        match closed.recv_timeout(Duration::from_millis(50)) {
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    // Unlike clone_killer(), the owned portable-pty child escalates SIGHUP to
+    // SIGKILL on Unix. Both its grace period and wait stay off the UI thread.
+    let _ = child.kill();
+    loop {
+        match child.wait() {
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            result => return result,
         }
     }
 }
@@ -498,10 +563,98 @@ mod tests {
     use std::time::{Duration, Instant};
 
     #[test]
+    fn exec_failure_is_reported_by_spawn() {
+        let result = Session::spawn(
+            &Config::default(),
+            SessionOptions {
+                command: Some(Command::Direct(vec![
+                    "/rustty-test-does-not-exist/executable".into(),
+                ])),
+                ..SessionOptions::default()
+            },
+            Arc::new(|| {}),
+        );
+        assert!(
+            result.is_err(),
+            "exec failure must not return a live session"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn closing_or_dropping_session_reaps_a_child_that_ignores_hangup() {
+        for explicit_close in [false, true] {
+            let session = Session::spawn(
+                &Config::default(),
+                SessionOptions {
+                    command: Some(Command::Direct(vec![
+                        "/bin/sh".into(),
+                        "-c".into(),
+                        "trap '' HUP; printf 'ready:%s:done\\n' \"$$\"; exec /bin/sleep 30".into(),
+                    ])),
+                    ..SessionOptions::default()
+                },
+                Arc::new(|| {}),
+            )
+            .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let pid = loop {
+                let text = session.terminal().unwrap().plain_text();
+                if let Some(pid) = text
+                    .lines()
+                    .find_map(|line| line.strip_prefix("ready:"))
+                    .and_then(|pid| pid.trim().strip_suffix(":done"))
+                    .and_then(|pid| pid.parse::<u32>().ok())
+                {
+                    break pid;
+                }
+                assert!(Instant::now() < deadline, "child did not become ready");
+                thread::sleep(Duration::from_millis(5));
+            };
+            let exited = session.exited.clone();
+            let before_drop = Instant::now();
+            let retained = if explicit_close {
+                session.close();
+                Some(session)
+            } else {
+                drop(session);
+                None
+            };
+            assert!(before_drop.elapsed() < Duration::from_secs(1));
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while !exited.load(Ordering::Acquire) && Instant::now() < deadline {
+                if let Some(session) = &retained {
+                    assert!(session.terminal().unwrap().plain_text().contains("ready:"));
+                    session.snapshot().unwrap();
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
+            let reaped = exited.load(Ordering::Acquire);
+            if !reaped {
+                // Clean up even if the regression returns; the PID came from this
+                // exact child, which is still owned by the session's waiter.
+                let _ = std::process::Command::new("/bin/kill")
+                    .args(["-KILL", &pid.to_string()])
+                    .status();
+            }
+            assert!(
+                reaped,
+                "closing the session did not terminate and reap its child"
+            );
+            if let Some(session) = retained {
+                assert!(session.has_exited());
+                assert!(session.terminal().unwrap().plain_text().contains("ready:"));
+                session.snapshot().unwrap();
+            }
+        }
+    }
+
+    #[test]
     fn short_lived_child_is_reaped_and_final_output_drained() {
         let mut config = Config::default();
         config.scrollback_limit_bytes = None;
         config.scrollback_limit_lines = Some(4);
+        let before_spawn = Instant::now();
         let session = Session::spawn(
             &config,
             SessionOptions {
@@ -516,6 +669,13 @@ mod tests {
         )
         .unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
+        while !session.has_exited() {
+            assert!(Instant::now() < deadline, "child did not exit");
+            thread::sleep(Duration::from_millis(5));
+        }
+        let maximum_runtime = before_spawn.elapsed();
+        // Simulate an app occupied with other work after the process has exited.
+        thread::sleep(Duration::from_millis(300));
         let (mut exited, mut eof) = (false, false);
         while !(exited && eof) {
             assert!(
@@ -524,8 +684,9 @@ mod tests {
             );
             for event in session.events() {
                 match event {
-                    SessionEvent::Exited { code, .. } => {
+                    SessionEvent::Exited { code, runtime, .. } => {
                         assert_eq!(code, 7);
+                        assert!(runtime <= maximum_runtime);
                         exited = true;
                     }
                     SessionEvent::OutputClosed => eof = true,
