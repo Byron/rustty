@@ -1,8 +1,11 @@
 //! Route input to the active editor and keep physical keys separate from composed text.
 use rustty::{config, vt};
+use std::collections::HashSet;
 use winit::{
-    event::{ElementState, KeyEvent},
-    keyboard::{Key, KeyCode, ModifiersState, NamedKey, PhysicalKey},
+    event::{ElementState, KeyEvent, Modifiers},
+    keyboard::{
+        Key, KeyCode, KeyLocation, ModifiersKeyState, ModifiersState, NamedKey, PhysicalKey,
+    },
     platform::modifier_supplement::KeyEventExtModifierSupplement,
 };
 
@@ -21,6 +24,68 @@ pub fn filter_egui_events(raw: &mut egui::RawInput, ui_input: bool) {
             )
         });
     }
+}
+
+/// Keep UI and shortcut presses out of the terminal through their physical release.
+pub fn key_is_consumed(
+    consumed: &mut HashSet<PhysicalKey>,
+    key: PhysicalKey,
+    state: ElementState,
+    ui_input: bool,
+) -> bool {
+    if state == ElementState::Released {
+        consumed.remove(&key) || ui_input
+    } else if ui_input {
+        consumed.insert(key);
+        true
+    } else {
+        consumed.contains(&key)
+    }
+}
+
+/// Native menu shortcuts bypass keyboard events, so feed the owning UI explicitly.
+pub fn edit_menu_action(
+    raw: &mut egui::RawInput,
+    action: &config::Action,
+    ui_input: bool,
+    clipboard: Option<String>,
+) -> bool {
+    if !ui_input {
+        return false;
+    }
+    match action {
+        config::Action::CopyToClipboard => raw.events.push(egui::Event::Copy),
+        config::Action::PasteFromClipboard | config::Action::PasteFromSelection => {
+            if let Some(text) = clipboard {
+                raw.events.push(egui::Event::Paste(text));
+            }
+        }
+        config::Action::SelectAll | config::Action::Undo | config::Action::Redo => {
+            let key = if *action == config::Action::SelectAll {
+                egui::Key::A
+            } else {
+                egui::Key::Z
+            };
+            // A menu click has no real key release to clear egui's held-key state.
+            for pressed in [true, false] {
+                raw.events.push(egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed,
+                    repeat: false,
+                    modifiers: egui::Modifiers {
+                        command: true,
+                        mac_cmd: cfg!(target_os = "macos"),
+                        ctrl: !cfg!(target_os = "macos"),
+                        shift: *action == config::Action::Redo,
+                        ..Default::default()
+                    },
+                });
+            }
+        }
+        _ => return false,
+    }
+    true
 }
 
 /// Focus a newly opened editor before it emits this frame's IME output.
@@ -79,44 +144,27 @@ pub fn terminal_modifiers(m: ModifiersState) -> vt::Modifiers {
 
 pub fn terminal_key(
     event: &KeyEvent,
-    mods: ModifiersState,
+    modifiers: Modifiers,
     composing: bool,
+    options: vt::KeyEncodeOptions,
 ) -> Option<vt::KeyEvent> {
     let unmodified = event.key_without_modifiers();
-    let key = match &unmodified {
-        Key::Character(text) => vt::Key::Char(text.chars().next()?),
-        Key::Named(key) => terminal_named_key(*key)?,
-        _ => return None,
+    // Num Lock can turn a numpad digit into a navigation key.
+    let logical = if event.location == KeyLocation::Numpad {
+        &event.logical_key
+    } else {
+        &unmodified
     };
-    let key = match event.physical_key {
-        PhysicalKey::Code(KeyCode::NumpadEnter) => vt::Key::KeypadEnter,
-        PhysicalKey::Code(KeyCode::NumpadDecimal) => vt::Key::KeypadDecimal,
-        PhysicalKey::Code(KeyCode::NumpadAdd) => vt::Key::KeypadAdd,
-        PhysicalKey::Code(KeyCode::NumpadSubtract) => vt::Key::KeypadSubtract,
-        PhysicalKey::Code(KeyCode::NumpadMultiply) => vt::Key::KeypadMultiply,
-        PhysicalKey::Code(KeyCode::NumpadDivide) => vt::Key::KeypadDivide,
-        PhysicalKey::Code(code)
-            if format!("{code:?}")
-                .strip_prefix("Numpad")
-                .is_some_and(|n| n.len() == 1 && n.as_bytes()[0].is_ascii_digit()) =>
-        {
-            vt::Key::Keypad(format!("{code:?}").as_bytes()[6] - b'0')
-        }
-        _ => key,
-    };
+    let key = terminal_key_code(logical, event.physical_key, event.location);
+    if key == vt::Key::Unidentified && event.text.as_ref().is_none_or(|text| text.is_empty()) {
+        return None;
+    }
+    let mods = key_modifiers(key, event.state, modifiers);
     Some(vt::KeyEvent {
         key,
         text: event.text.as_ref().map(|text| text.to_string()),
         modifiers: terminal_modifiers(mods),
-        consumed_modifiers: vt::Modifiers {
-            shift: mods.shift_key()
-                && event
-                    .text
-                    .as_ref()
-                    .is_some_and(|text| Some(text.as_str()) != unmodified.to_text()),
-            alt: mods.alt_key() && event.text.as_ref().is_some_and(|text| !text.is_ascii()),
-            ..Default::default()
-        },
+        consumed_modifiers: consumed_modifiers(&unmodified, event.text.as_deref(), mods, options),
         action: if event.state == ElementState::Released {
             vt::KeyAction::Release
         } else if event.repeat {
@@ -127,6 +175,127 @@ pub fn terminal_key(
         unshifted: unmodified.to_text().and_then(|text| text.chars().next()),
         composing,
     })
+}
+
+fn key_modifiers(key: vt::Key, state: ElementState, modifiers: Modifiers) -> ModifiersState {
+    let mods = modifiers.state();
+    if !cfg!(target_os = "macos") {
+        return mods;
+    }
+    // Winit emits macOS modifier key events before ModifiersChanged. Update
+    // that key's bit without losing an independently held opposite modifier.
+    let (flag, opposite) = match key {
+        vt::Key::Shift => (ModifiersState::SHIFT, modifiers.rshift_state()),
+        vt::Key::ShiftRight => (ModifiersState::SHIFT, modifiers.lshift_state()),
+        vt::Key::Control => (ModifiersState::CONTROL, modifiers.rcontrol_state()),
+        vt::Key::ControlRight => (ModifiersState::CONTROL, modifiers.lcontrol_state()),
+        vt::Key::Alt => (ModifiersState::ALT, modifiers.ralt_state()),
+        vt::Key::AltRight => (ModifiersState::ALT, modifiers.lalt_state()),
+        vt::Key::Super => (ModifiersState::SUPER, modifiers.rsuper_state()),
+        vt::Key::SuperRight => (ModifiersState::SUPER, modifiers.lsuper_state()),
+        _ => return mods,
+    };
+    let mut mods = mods;
+    mods.set(
+        flag,
+        state == ElementState::Pressed || opposite == ModifiersKeyState::Pressed,
+    );
+    mods
+}
+
+pub fn option_as_alt(
+    mode: config::OptionAsAlt,
+    left: ModifiersKeyState,
+    right: ModifiersKeyState,
+) -> bool {
+    match mode {
+        config::OptionAsAlt::False => false,
+        config::OptionAsAlt::True => true,
+        config::OptionAsAlt::Left => left == ModifiersKeyState::Pressed,
+        config::OptionAsAlt::Right => right == ModifiersKeyState::Pressed,
+    }
+}
+
+fn consumed_modifiers(
+    unmodified: &Key,
+    text: Option<&str>,
+    mods: ModifiersState,
+    options: vt::KeyEncodeOptions,
+) -> vt::Modifiers {
+    let text = text.filter(|text| !text.is_empty());
+    // Winit exposes no consumed-modifier mask. Match AppKit's text translation:
+    // Shift and composing Option contribute; Control and Command never do.
+    vt::Modifiers {
+        shift: mods.shift_key()
+            && text.is_some_and(|text| {
+                cfg!(target_os = "macos") || Some(text) != unmodified.to_text()
+            }),
+        alt: mods.alt_key()
+            && text.is_some_and(|text| {
+                if cfg!(target_os = "macos") {
+                    !options.macos_option_as_alt
+                } else {
+                    !text.is_ascii() && Some(text) != unmodified.to_text()
+                }
+            }),
+        ..Default::default()
+    }
+}
+
+fn terminal_key_code(logical: &Key, physical: PhysicalKey, location: KeyLocation) -> vt::Key {
+    let key = match logical {
+        Key::Character(text) => text.chars().next().map(vt::Key::Char),
+        Key::Named(key) => terminal_named_key(*key),
+        _ => None,
+    }
+    .unwrap_or(vt::Key::Unidentified);
+    match (location, logical, key) {
+        (KeyLocation::Right, _, vt::Key::Shift) => return vt::Key::ShiftRight,
+        (KeyLocation::Right, _, vt::Key::Control) => return vt::Key::ControlRight,
+        (KeyLocation::Right, _, vt::Key::Alt) => return vt::Key::AltRight,
+        (KeyLocation::Right, _, vt::Key::Super) => return vt::Key::SuperRight,
+        (KeyLocation::Numpad, _, vt::Key::Left) => return vt::Key::KeypadLeft,
+        (KeyLocation::Numpad, _, vt::Key::Right) => return vt::Key::KeypadRight,
+        (KeyLocation::Numpad, _, vt::Key::Up) => return vt::Key::KeypadUp,
+        (KeyLocation::Numpad, _, vt::Key::Down) => return vt::Key::KeypadDown,
+        (KeyLocation::Numpad, _, vt::Key::PageUp) => return vt::Key::KeypadPageUp,
+        (KeyLocation::Numpad, _, vt::Key::PageDown) => return vt::Key::KeypadPageDown,
+        (KeyLocation::Numpad, _, vt::Key::Home) => return vt::Key::KeypadHome,
+        (KeyLocation::Numpad, _, vt::Key::End) => return vt::Key::KeypadEnd,
+        (KeyLocation::Numpad, _, vt::Key::Insert) => return vt::Key::KeypadInsert,
+        (KeyLocation::Numpad, _, vt::Key::Delete) => return vt::Key::KeypadDelete,
+        (KeyLocation::Numpad, Key::Named(NamedKey::Clear), _) => return vt::Key::KeypadBegin,
+        (KeyLocation::Numpad, _, vt::Key::Enter) => return vt::Key::KeypadEnter,
+        (KeyLocation::Numpad, _, vt::Key::Char(n @ '0'..='9')) => {
+            return vt::Key::Keypad(n as u8 - b'0');
+        }
+        _ => {}
+    }
+    match physical {
+        PhysicalKey::Code(KeyCode::ShiftRight) => vt::Key::ShiftRight,
+        PhysicalKey::Code(KeyCode::ControlRight) => vt::Key::ControlRight,
+        PhysicalKey::Code(KeyCode::AltRight) => vt::Key::AltRight,
+        PhysicalKey::Code(KeyCode::SuperRight) => vt::Key::SuperRight,
+        PhysicalKey::Code(KeyCode::NumpadEnter) => vt::Key::KeypadEnter,
+        PhysicalKey::Code(KeyCode::NumpadDecimal) => vt::Key::KeypadDecimal,
+        PhysicalKey::Code(KeyCode::NumpadAdd) => vt::Key::KeypadAdd,
+        PhysicalKey::Code(KeyCode::NumpadSubtract) => vt::Key::KeypadSubtract,
+        PhysicalKey::Code(KeyCode::NumpadMultiply) => vt::Key::KeypadMultiply,
+        PhysicalKey::Code(KeyCode::NumpadDivide) => vt::Key::KeypadDivide,
+        PhysicalKey::Code(KeyCode::NumpadEqual) => vt::Key::KeypadEqual,
+        PhysicalKey::Code(KeyCode::NumpadComma) => vt::Key::KeypadSeparator,
+        PhysicalKey::Code(KeyCode::Numpad0) => vt::Key::Keypad(0),
+        PhysicalKey::Code(KeyCode::Numpad1) => vt::Key::Keypad(1),
+        PhysicalKey::Code(KeyCode::Numpad2) => vt::Key::Keypad(2),
+        PhysicalKey::Code(KeyCode::Numpad3) => vt::Key::Keypad(3),
+        PhysicalKey::Code(KeyCode::Numpad4) => vt::Key::Keypad(4),
+        PhysicalKey::Code(KeyCode::Numpad5) => vt::Key::Keypad(5),
+        PhysicalKey::Code(KeyCode::Numpad6) => vt::Key::Keypad(6),
+        PhysicalKey::Code(KeyCode::Numpad7) => vt::Key::Keypad(7),
+        PhysicalKey::Code(KeyCode::Numpad8) => vt::Key::Keypad(8),
+        PhysicalKey::Code(KeyCode::Numpad9) => vt::Key::Keypad(9),
+        _ => key,
+    }
 }
 
 fn terminal_named_key(key: NamedKey) -> Option<vt::Key> {
@@ -146,6 +315,13 @@ fn terminal_named_key(key: NamedKey) -> Option<vt::Key> {
         NamedKey::PageDown => vt::Key::PageDown,
         NamedKey::Insert => vt::Key::Insert,
         NamedKey::Delete => vt::Key::Delete,
+        NamedKey::Help => vt::Key::Help,
+        NamedKey::ContextMenu => vt::Key::ContextMenu,
+        NamedKey::CapsLock => vt::Key::CapsLock,
+        NamedKey::NumLock => vt::Key::NumLock,
+        NamedKey::ScrollLock => vt::Key::ScrollLock,
+        NamedKey::PrintScreen => vt::Key::PrintScreen,
+        NamedKey::Pause => vt::Key::Pause,
         NamedKey::Shift => vt::Key::Shift,
         NamedKey::Control => vt::Key::Control,
         NamedKey::Alt => vt::Key::Alt,
@@ -227,10 +403,78 @@ pub fn chord_held(chord: config::Modifiers, current: config::Modifiers) -> bool 
 mod tests {
     use super::*;
 
-    #[derive(Clone, Copy, PartialEq)]
+    #[test]
+    fn dismissing_ui_consumes_held_key_repeats_and_releases_before_terminal_input_resumes() {
+        let mut terminal = vt::Terminal::new(20, 2, 0);
+        terminal.feed(b"\x1b[>11u");
+        for (physical, key) in [
+            (KeyCode::Escape, vt::Key::Escape),
+            (KeyCode::Enter, vt::Key::Enter),
+            (KeyCode::Space, vt::Key::Char(' ')),
+        ] {
+            let mut consumed = HashSet::new();
+            assert!(key_is_consumed(
+                &mut consumed,
+                physical.into(),
+                ElementState::Pressed,
+                true
+            ));
+            // Escape dismisses a dialog; Enter/Space activates its focused button.
+            // That frame closes the UI before the next native keyboard event.
+            for action in [vt::KeyAction::Repeat, vt::KeyAction::Release] {
+                let mut event = vt::KeyEvent::new(key);
+                event.action = action;
+                let state = if action == vt::KeyAction::Release {
+                    ElementState::Released
+                } else {
+                    ElementState::Pressed
+                };
+                // Kitty would report these orphan events if they reached the encoder.
+                assert!(!terminal.encode_key(&event).is_empty());
+                assert!(key_is_consumed(
+                    &mut consumed,
+                    physical.into(),
+                    state,
+                    false
+                ));
+            }
+            assert!(consumed.is_empty());
+            assert!(!key_is_consumed(
+                &mut consumed,
+                physical.into(),
+                ElementState::Pressed,
+                false
+            ));
+            assert!(!terminal.encode_key(&vt::KeyEvent::new(key)).is_empty());
+        }
+        // The shortcut that opened an editor stays consumed after the editor closes.
+        let mut consumed = HashSet::from([PhysicalKey::Code(KeyCode::KeyV)]);
+        assert!(key_is_consumed(
+            &mut consumed,
+            KeyCode::KeyV.into(),
+            ElementState::Pressed,
+            false
+        ));
+        assert!(!key_is_consumed(
+            &mut consumed,
+            KeyCode::KeyA.into(),
+            ElementState::Pressed,
+            false
+        ));
+        assert!(key_is_consumed(
+            &mut consumed,
+            KeyCode::KeyV.into(),
+            ElementState::Released,
+            false
+        ));
+        assert!(consumed.is_empty());
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq)]
     enum Editor {
         Terminal,
         Search,
+        Palette,
         TabTitle,
     }
 
@@ -239,6 +483,7 @@ mod tests {
         context: egui::Context,
         text: String,
         popup_open: bool,
+        time: f64,
     }
 
     impl InputFrame {
@@ -252,16 +497,19 @@ mod tests {
             focus_editor: bool,
             events: Vec<egui::Event>,
         ) -> egui::PlatformOutput {
+            self.time += 0.1;
             let mut raw = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
                     egui::vec2(600.0, 400.0),
                 )),
                 focused: true,
+                time: Some(self.time),
                 events,
                 ..Default::default()
             };
-            filter_egui_events(&mut raw, editor == Editor::Search || self.popup_open);
+            let input_panel = matches!(editor, Editor::Search | Editor::Palette);
+            filter_egui_events(&mut raw, input_panel || self.popup_open);
             let mut output = self.context.run_ui(raw, |root| {
                 egui::Panel::top("tabs").show(root, |ui| {
                     let tab = ui.button("Terminal");
@@ -291,9 +539,14 @@ mod tests {
                     terminal_input(
                         &response,
                         Some(Self::cursor_rect()),
-                        editor == Editor::Search || self.popup_open,
+                        input_panel || self.popup_open,
                     );
                 });
+                if editor == Editor::Palette {
+                    egui::Window::new("Command palette").show(&self.context, |ui| {
+                        text_edit(ui, &mut self.text, egui::Id::new("palette"), focus_editor);
+                    });
+                }
             });
             output.textures_delta.clear();
             output.platform_output
@@ -409,6 +662,100 @@ mod tests {
     }
 
     #[test]
+    fn native_edit_actions_reach_the_focused_editor_and_leave_terminal_routing_intact() {
+        for editor in [Editor::Search, Editor::Palette, Editor::TabTitle] {
+            let mut frame = InputFrame::default();
+            frame.draw(Editor::Terminal, false, vec![]);
+            frame.draw(editor, false, vec![]);
+            frame.draw(editor, true, vec![]);
+            frame.draw(editor, false, vec![egui::Event::Text("work 日誌".into())]);
+            assert_eq!(frame.text, "work 日誌", "{editor:?}");
+
+            let mut raw = egui::RawInput::default();
+            assert!(edit_menu_action(
+                &mut raw,
+                &config::Action::SelectAll,
+                true,
+                None
+            ));
+            frame.draw(editor, false, raw.events);
+            assert!(!frame.context.input(|input| input.key_down(egui::Key::A)));
+
+            let mut raw = egui::RawInput::default();
+            assert!(edit_menu_action(
+                &mut raw,
+                &config::Action::CopyToClipboard,
+                true,
+                None
+            ));
+            let output = frame.draw(editor, false, raw.events);
+            assert!(
+                output
+                    .commands
+                    .contains(&egui::OutputCommand::CopyText("work 日誌".into()))
+            );
+
+            // Let egui establish an undo point before replacing the selection.
+            frame.time += 2.0;
+            frame.draw(editor, false, vec![]);
+
+            let mut raw = egui::RawInput::default();
+            assert!(edit_menu_action(
+                &mut raw,
+                &config::Action::PasteFromClipboard,
+                true,
+                Some("replacement".into()),
+            ));
+            frame.draw(editor, false, raw.events);
+            assert_eq!(frame.text, "replacement", "{editor:?}");
+
+            for (action, expected) in [
+                (config::Action::Undo, "work 日誌"),
+                (config::Action::Redo, "replacement"),
+            ] {
+                let mut raw = egui::RawInput::default();
+                assert!(edit_menu_action(&mut raw, &action, true, None));
+                frame.draw(editor, false, raw.events);
+                assert_eq!(frame.text, expected, "{editor:?} {action:?}");
+                assert!(!frame.context.input(|input| input.key_down(egui::Key::Z)));
+            }
+
+            // Another window's focused editor must not redirect terminal actions.
+            assert!(frame.context.text_edit_focused());
+            for action in [
+                config::Action::CopyToClipboard,
+                config::Action::PasteFromClipboard,
+                config::Action::SelectAll,
+                config::Action::Undo,
+                config::Action::Redo,
+            ] {
+                let mut raw = egui::RawInput::default();
+                assert!(!edit_menu_action(
+                    &mut raw,
+                    &action,
+                    false,
+                    Some("terminal".into())
+                ));
+                assert!(raw.events.is_empty());
+            }
+        }
+        let mut raw = egui::RawInput::default();
+        assert!(edit_menu_action(
+            &mut raw,
+            &config::Action::PasteFromClipboard,
+            true,
+            None
+        ));
+        assert!(raw.events.is_empty());
+        assert!(!edit_menu_action(
+            &mut raw,
+            &config::Action::NewTab,
+            true,
+            None
+        ));
+    }
+
+    #[test]
     fn spacebar_reaches_legacy_and_kitty_terminal_encoders() {
         let key = terminal_named_key(NamedKey::Space).expect("spacebar is printable input");
         let mut event = vt::KeyEvent::new(key);
@@ -424,6 +771,276 @@ mod tests {
         terminal.feed(b"\x1b[>1u");
         assert_eq!(terminal.encode_key(&event), b"\x1b[32;5u");
     }
+
+    #[test]
+    fn named_keys_and_right_modifiers_keep_their_terminal_identity() {
+        let unknown = PhysicalKey::Unidentified(winit::keyboard::NativeKeyCode::Unidentified);
+        let mut terminal = vt::Terminal::new(20, 2, 0);
+        for (named, expected, encoded) in [
+            (NamedKey::Help, vt::Key::Help, b"\x1b[28~".as_slice()),
+            (NamedKey::ContextMenu, vt::Key::ContextMenu, b"\x1b[29~"),
+        ] {
+            let key = terminal_key_code(&Key::Named(named), unknown, KeyLocation::Standard);
+            assert_eq!(key, expected);
+            assert_eq!(terminal.encode_key(&vt::KeyEvent::new(key)), encoded);
+        }
+        terminal.feed(b"\x1b[>11u");
+        for (named, location, physical, expected, code) in [
+            (
+                NamedKey::Shift,
+                KeyLocation::Right,
+                KeyCode::ShiftRight,
+                vt::Key::ShiftRight,
+                57447,
+            ),
+            (
+                NamedKey::Control,
+                KeyLocation::Right,
+                KeyCode::ControlRight,
+                vt::Key::ControlRight,
+                57448,
+            ),
+            (
+                NamedKey::Alt,
+                KeyLocation::Right,
+                KeyCode::AltRight,
+                vt::Key::AltRight,
+                57449,
+            ),
+            (
+                NamedKey::Super,
+                KeyLocation::Right,
+                KeyCode::SuperRight,
+                vt::Key::SuperRight,
+                57450,
+            ),
+            (
+                NamedKey::CapsLock,
+                KeyLocation::Standard,
+                KeyCode::CapsLock,
+                vt::Key::CapsLock,
+                57358,
+            ),
+            (
+                NamedKey::ScrollLock,
+                KeyLocation::Standard,
+                KeyCode::ScrollLock,
+                vt::Key::ScrollLock,
+                57359,
+            ),
+            (
+                NamedKey::NumLock,
+                KeyLocation::Numpad,
+                KeyCode::NumLock,
+                vt::Key::NumLock,
+                57360,
+            ),
+            (
+                NamedKey::PrintScreen,
+                KeyLocation::Standard,
+                KeyCode::PrintScreen,
+                vt::Key::PrintScreen,
+                57361,
+            ),
+            (
+                NamedKey::Pause,
+                KeyLocation::Standard,
+                KeyCode::Pause,
+                vt::Key::Pause,
+                57362,
+            ),
+        ] {
+            let key = terminal_key_code(&Key::Named(named), physical.into(), location);
+            assert_eq!(key, expected);
+            assert_eq!(
+                terminal_key_code(&Key::Named(named), unknown, location),
+                expected
+            );
+            let mut event = vt::KeyEvent::new(key);
+            assert_eq!(
+                terminal.encode_key(&event),
+                format!("\x1b[{code}u").as_bytes()
+            );
+            event.action = vt::KeyAction::Release;
+            assert_eq!(
+                terminal.encode_key(&event),
+                format!("\x1b[{code};1:3u").as_bytes()
+            );
+        }
+    }
+
+    #[test]
+    fn numpad_navigation_and_extra_keys_survive_physical_digit_mapping() {
+        let mut terminal = vt::Terminal::new(20, 2, 0);
+        terminal.feed(b"\x1b[>8u");
+        for (named, physical, code) in [
+            (NamedKey::ArrowLeft, KeyCode::Numpad4, 57417),
+            (NamedKey::ArrowRight, KeyCode::Numpad6, 57418),
+            (NamedKey::ArrowUp, KeyCode::Numpad8, 57419),
+            (NamedKey::ArrowDown, KeyCode::Numpad2, 57420),
+            (NamedKey::PageUp, KeyCode::Numpad9, 57421),
+            (NamedKey::PageDown, KeyCode::Numpad3, 57422),
+            (NamedKey::Home, KeyCode::Numpad7, 57423),
+            (NamedKey::End, KeyCode::Numpad1, 57424),
+            (NamedKey::Insert, KeyCode::Numpad0, 57425),
+            (NamedKey::Delete, KeyCode::NumpadDecimal, 57426),
+            (NamedKey::Clear, KeyCode::Numpad5, 57427),
+        ] {
+            let key = terminal_key_code(&Key::Named(named), physical.into(), KeyLocation::Numpad);
+            assert_eq!(
+                terminal.encode_key(&vt::KeyEvent::new(key)),
+                format!("\x1b[{code}u").as_bytes()
+            );
+        }
+        for (logical, physical, expected) in [
+            (
+                Key::Character("5".into()),
+                KeyCode::Numpad5,
+                vt::Key::Keypad(5),
+            ),
+            (
+                Key::Character("=".into()),
+                KeyCode::NumpadEqual,
+                vt::Key::KeypadEqual,
+            ),
+            (
+                Key::Character(",".into()),
+                KeyCode::NumpadComma,
+                vt::Key::KeypadSeparator,
+            ),
+            (
+                Key::Named(NamedKey::Enter),
+                KeyCode::NumpadEnter,
+                vt::Key::KeypadEnter,
+            ),
+        ] {
+            assert_eq!(
+                terminal_key_code(&logical, physical.into(), KeyLocation::Numpad),
+                expected
+            );
+        }
+        let unknown = Key::Unidentified(winit::keyboard::NativeKey::Unidentified);
+        let physical = PhysicalKey::Unidentified(winit::keyboard::NativeKeyCode::Unidentified);
+        let mut event =
+            vt::KeyEvent::new(terminal_key_code(&unknown, physical, KeyLocation::Standard));
+        assert_eq!(event.key, vt::Key::Unidentified);
+        event.text = Some("é日誌".into());
+        assert_eq!(terminal.encode_key(&event), "é日誌".as_bytes());
+    }
+
+    #[test]
+    fn option_policy_uses_native_modifier_sides() {
+        use ModifiersKeyState::{Pressed, Unknown};
+        use config::OptionAsAlt::{False, Left, Right, True};
+        for (left, right, expected) in [
+            (Unknown, Unknown, [false, true, false, false]),
+            (Pressed, Unknown, [false, true, true, false]),
+            (Unknown, Pressed, [false, true, false, true]),
+            (Pressed, Pressed, [false, true, true, true]),
+        ] {
+            assert_eq!(
+                [False, True, Left, Right].map(|mode| option_as_alt(mode, left, right)),
+                expected
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn modifier_key_events_apply_before_winit_updates_modifier_state() {
+        for (key, flag) in [
+            (vt::Key::Shift, ModifiersState::SHIFT),
+            (vt::Key::ShiftRight, ModifiersState::SHIFT),
+            (vt::Key::Control, ModifiersState::CONTROL),
+            (vt::Key::ControlRight, ModifiersState::CONTROL),
+            (vt::Key::Alt, ModifiersState::ALT),
+            (vt::Key::AltRight, ModifiersState::ALT),
+            (vt::Key::Super, ModifiersState::SUPER),
+            (vt::Key::SuperRight, ModifiersState::SUPER),
+        ] {
+            let other = ModifiersState::all() - flag;
+            assert_eq!(
+                key_modifiers(key, ElementState::Pressed, other.into()),
+                ModifiersState::all()
+            );
+            assert_eq!(
+                key_modifiers(key, ElementState::Released, ModifiersState::all().into()),
+                other
+            );
+        }
+        let held = ModifiersState::SHIFT | ModifiersState::ALT;
+        assert_eq!(
+            key_modifiers(vt::Key::Char('x'), ElementState::Released, held.into()),
+            held
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn option_translation_consumes_ascii_and_unicode_without_consuming_terminal_alt() {
+        for (base, composed) in [('8', "{"), ('e', "é")] {
+            for alt in [false, true] {
+                let options = vt::KeyEncodeOptions {
+                    macos_option_as_alt: alt,
+                };
+                let unmodified = Key::Character(base.to_string().into());
+                // Winit's OptionAsAlt setting already chooses which text to produce.
+                let text = if alt {
+                    base.to_string()
+                } else {
+                    composed.into()
+                };
+                let mut event = vt::KeyEvent::new(vt::Key::Char(base));
+                event.text = Some(text.clone());
+                event.modifiers = terminal_modifiers(ModifiersState::ALT);
+                event.consumed_modifiers =
+                    consumed_modifiers(&unmodified, Some(&text), ModifiersState::ALT, options);
+                assert_eq!(event.consumed_modifiers.alt, !alt);
+                let mut terminal = vt::Terminal::new(20, 2, 0);
+                assert_eq!(
+                    terminal.encode_key_with_options(&event, options),
+                    if alt {
+                        format!("\x1b{base}")
+                    } else {
+                        text.clone()
+                    }
+                    .as_bytes()
+                );
+                terminal.feed(b"\x1b[>24u");
+                let expected = if alt {
+                    format!("\x1b[{};3u", base as u32)
+                } else {
+                    format!(
+                        "\x1b[{};3;{}u",
+                        base as u32,
+                        text.chars().next().unwrap() as u32
+                    )
+                };
+                assert_eq!(
+                    terminal.encode_key_with_options(&event, options),
+                    expected.as_bytes()
+                );
+            }
+        }
+        let consumed = consumed_modifiers(
+            &Key::Named(NamedKey::Space),
+            Some(" "),
+            ModifiersState::SHIFT | ModifiersState::CONTROL | ModifiersState::SUPER,
+            vt::KeyEncodeOptions::default(),
+        );
+        assert!(consumed.shift);
+        assert!(!consumed.control && !consumed.super_key);
+        assert_eq!(
+            consumed_modifiers(
+                &Key::Named(NamedKey::Space),
+                None,
+                ModifiersState::SHIFT | ModifiersState::ALT,
+                vt::KeyEncodeOptions::default()
+            ),
+            vt::Modifiers::default()
+        );
+    }
+
     #[test]
     fn aliases_and_modifier_release_preserve_peek_chord() {
         assert_eq!(normalize_name("key_a"), "a");

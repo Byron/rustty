@@ -36,6 +36,8 @@ impl Modifiers {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
+    /// A host key without a terminal-specific identity; text and layout data still apply.
+    Unidentified,
     Char(char),
     Enter,
     Backspace,
@@ -51,6 +53,13 @@ pub enum Key {
     PageDown,
     Insert,
     Delete,
+    Help,
+    ContextMenu,
+    CapsLock,
+    NumLock,
+    ScrollLock,
+    PrintScreen,
+    Pause,
     Function(u8),
     Keypad(u8),
     KeypadEnter,
@@ -59,10 +68,27 @@ pub enum Key {
     KeypadSubtract,
     KeypadMultiply,
     KeypadDivide,
+    KeypadEqual,
+    KeypadSeparator,
+    KeypadLeft,
+    KeypadRight,
+    KeypadUp,
+    KeypadDown,
+    KeypadPageUp,
+    KeypadPageDown,
+    KeypadHome,
+    KeypadEnd,
+    KeypadInsert,
+    KeypadDelete,
+    KeypadBegin,
     Shift,
     Control,
     Alt,
     Super,
+    ShiftRight,
+    ControlRight,
+    AltRight,
+    SuperRight,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -85,6 +111,13 @@ pub struct KeyEvent {
     /// Logical unshifted Unicode key. `key` retains the physical/base-layout key.
     pub unshifted: Option<char>,
     pub composing: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct KeyEncodeOptions {
+    /// Whether the held macOS Option key acts as terminal Alt. The host resolves
+    /// left/right configuration using native modifier-side information.
+    pub macos_option_as_alt: bool,
 }
 
 impl KeyEvent {
@@ -149,13 +182,23 @@ pub struct MouseEvent {
 }
 
 impl Terminal {
+    /// Encode an event whose Alt modifier already denotes terminal Alt.
     pub fn encode_key(&self, event: &KeyEvent) -> Vec<u8> {
+        self.encode_key_with_options(
+            event,
+            KeyEncodeOptions {
+                macos_option_as_alt: true,
+            },
+        )
+    }
+
+    pub fn encode_key_with_options(&self, event: &KeyEvent, options: KeyEncodeOptions) -> Vec<u8> {
         if self.modes.get(false, 2) {
             return Vec::new();
         }
         let flags = self.screen().kitty_keyboard.current();
         if flags != 0 {
-            return kitty_key(event, flags);
+            return kitty_key(event, flags, options);
         }
         if event.action == KeyAction::Release || event.composing {
             return Vec::new();
@@ -194,7 +237,7 @@ impl Terminal {
             };
         }
         if text.is_empty() {
-            return alt_prefix(self, event).unwrap_or_default();
+            return alt_prefix(self, event, options).unwrap_or_default();
         }
         if mods.control
             && let Some(mut cp) = single_char(text)
@@ -209,7 +252,7 @@ impl Terminal {
             }
             return format!("\x1b[{};{}u", cp as u32, sequence_mods.number()).into_bytes();
         }
-        if let Some(output) = alt_prefix(self, event) {
+        if let Some(output) = alt_prefix(self, event, options) {
             return output;
         }
         if cfg!(target_os = "macos") && mods.super_key {
@@ -230,19 +273,20 @@ impl Terminal {
         }
     }
 
-    /// Reports whether the app should request confirmation before a clipboard paste.
-    pub fn paste_is_safe(&self, text: &str) -> bool {
-        !text.contains("\x1b[201~") && (self.modes.dec(2004) || !text.contains('\n'))
+    /// Reports whether a clipboard paste is safe in the current terminal mode.
+    pub fn paste_is_safe(&self, text: impl AsRef<[u8]>) -> bool {
+        paste_is_safe(text, self.modes.dec(2004))
     }
 
     /// Low-level text insertion; callers enforce their clipboard confirmation policy.
-    pub fn encode_paste(&self, text: &str) -> Vec<u8> {
+    pub fn encode_paste(&self, text: impl AsRef<[u8]>) -> Vec<u8> {
+        let text = text.as_ref();
         let bracketed = self.modes.dec(2004);
         let mut output = Vec::with_capacity(text.len() + 12);
         if bracketed {
             output.extend_from_slice(b"\x1b[200~");
         }
-        for byte in text.bytes() {
+        for &byte in text {
             output.push(match byte {
                 0x00 | 0x08 | 0x05 | 0x04 | 0x1b | 0x7f | 0x03 | 0x1c | 0x15 | 0x1a | 0x11
                 | 0x13 | 0x17 | 0x16 | 0x12 | 0x0f => b' ',
@@ -341,6 +385,13 @@ impl Terminal {
     }
 }
 
+/// Check clipboard bytes before encoding. Pass `false` to reject newlines
+/// regardless of terminal state, or the active bracketed-paste mode otherwise.
+pub fn paste_is_safe(text: impl AsRef<[u8]>, bracketed: bool) -> bool {
+    let text = text.as_ref();
+    (bracketed || !text.contains(&b'\n')) && !text.windows(6).any(|part| part == b"\x1b[201~")
+}
+
 fn single_char(text: &str) -> Option<char> {
     let mut chars = text.chars();
     let cp = chars.next()?;
@@ -357,13 +408,17 @@ fn is_control_text(text: &str) -> bool {
 fn physical_codepoint(key: Key) -> Option<char> {
     match key {
         Key::Char(cp) => Some(cp),
+        Key::KeypadEqual => Some('='),
         Key::KeypadEnter => None,
         key => keypad(key).map(|(_, plain)| plain),
     }
 }
 
-fn alt_prefix(terminal: &Terminal, event: &KeyEvent) -> Option<Vec<u8>> {
-    if !event.effective_modifiers().alt || !terminal.modes.dec(1036) {
+fn alt_prefix(terminal: &Terminal, event: &KeyEvent, options: KeyEncodeOptions) -> Option<Vec<u8>> {
+    if !event.effective_modifiers().alt
+        || !terminal.modes.dec(1036)
+        || cfg!(target_os = "macos") && !options.macos_option_as_alt
+    {
         return None;
     }
     let text = event.text.as_deref().unwrap_or("");
@@ -428,12 +483,13 @@ fn control_sequence(event: &KeyEvent) -> Option<u8> {
 fn pc_key(t: &Terminal, key: Key, mods: Modifiers) -> Option<Vec<u8>> {
     let number = mods.number();
     if let Some(final_byte) = match key {
-        Key::Up => Some('A'),
-        Key::Down => Some('B'),
-        Key::Right => Some('C'),
-        Key::Left => Some('D'),
-        Key::Home => Some('H'),
-        Key::End => Some('F'),
+        Key::Up | Key::KeypadUp => Some('A'),
+        Key::Down | Key::KeypadDown => Some('B'),
+        Key::Right | Key::KeypadRight => Some('C'),
+        Key::Left | Key::KeypadLeft => Some('D'),
+        Key::KeypadBegin => Some('E'),
+        Key::Home | Key::KeypadHome => Some('H'),
+        Key::End | Key::KeypadEnd => Some('F'),
         _ => None,
     } {
         return Some(
@@ -506,10 +562,12 @@ fn pc_key(t: &Terminal, key: Key, mods: Modifiers) -> Option<Vec<u8>> {
 
 fn functional(key: Key) -> Option<(u32, char)> {
     Some(match key {
-        Key::Insert => (2, '~'),
-        Key::Delete => (3, '~'),
-        Key::PageUp => (5, '~'),
-        Key::PageDown => (6, '~'),
+        Key::Insert | Key::KeypadInsert => (2, '~'),
+        Key::Delete | Key::KeypadDelete => (3, '~'),
+        Key::PageUp | Key::KeypadPageUp => (5, '~'),
+        Key::PageDown | Key::KeypadPageDown => (6, '~'),
+        Key::Help => (28, '~'),
+        Key::ContextMenu => (29, '~'),
         Key::Function(1) => (1, 'P'),
         Key::Function(2) => (1, 'Q'),
         Key::Function(3) => (13, '~'),
@@ -537,10 +595,22 @@ fn keypad(key: Key) -> Option<(char, char)> {
     })
 }
 
-fn kitty_key(event: &KeyEvent, flags: u8) -> Vec<u8> {
+fn kitty_key(event: &KeyEvent, flags: u8, options: KeyEncodeOptions) -> Vec<u8> {
     let all = flags & 8 != 0;
     let report_events = flags & 2 != 0;
-    let modifier_key = matches!(event.key, Key::Shift | Key::Control | Key::Alt | Key::Super);
+    let modifier_key = matches!(
+        event.key,
+        Key::Shift
+            | Key::Control
+            | Key::Alt
+            | Key::Super
+            | Key::ShiftRight
+            | Key::ControlRight
+            | Key::AltRight
+            | Key::SuperRight
+            | Key::CapsLock
+            | Key::NumLock
+    );
     if event.action == KeyAction::Release
         && (!report_events || !all && matches!(event.key, Key::Enter | Key::Tab | Key::Backspace))
         || event.composing && !modifier_key
@@ -576,7 +646,6 @@ fn kitty_key(event: &KeyEvent, flags: u8) -> Vec<u8> {
         return Vec::new();
     }
     let code = match event.key {
-        Key::Char(_) => event.unshifted.map(|cp| (cp as u32, 'u')),
         Key::Enter => Some((13, 'u')),
         Key::Tab => Some((9, 'u')),
         Key::Backspace => Some((127, 'u')),
@@ -587,6 +656,11 @@ fn kitty_key(event: &KeyEvent, flags: u8) -> Vec<u8> {
         Key::Left => Some((1, 'D')),
         Key::Home => Some((1, 'H')),
         Key::End => Some((1, 'F')),
+        Key::CapsLock => Some((57358, 'u')),
+        Key::ScrollLock => Some((57359, 'u')),
+        Key::NumLock => Some((57360, 'u')),
+        Key::PrintScreen => Some((57361, 'u')),
+        Key::Pause => Some((57362, 'u')),
         Key::Function(f @ 13..=25) => Some((57376 + u32::from(f - 13), 'u')),
         Key::Keypad(n @ 0..=9) => Some((57399 + u32::from(n), 'u')),
         Key::KeypadDecimal => Some((57409, 'u')),
@@ -595,11 +669,34 @@ fn kitty_key(event: &KeyEvent, flags: u8) -> Vec<u8> {
         Key::KeypadSubtract => Some((57412, 'u')),
         Key::KeypadAdd => Some((57413, 'u')),
         Key::KeypadEnter => Some((57414, 'u')),
+        Key::KeypadEqual => Some((57415, 'u')),
+        Key::KeypadSeparator => Some((57416, 'u')),
+        Key::KeypadLeft => Some((57417, 'u')),
+        Key::KeypadRight => Some((57418, 'u')),
+        Key::KeypadUp => Some((57419, 'u')),
+        Key::KeypadDown => Some((57420, 'u')),
+        Key::KeypadPageUp => Some((57421, 'u')),
+        Key::KeypadPageDown => Some((57422, 'u')),
+        Key::KeypadHome => Some((57423, 'u')),
+        Key::KeypadEnd => Some((57424, 'u')),
+        Key::KeypadInsert => Some((57425, 'u')),
+        Key::KeypadDelete => Some((57426, 'u')),
+        Key::KeypadBegin => Some((57427, 'u')),
         Key::Shift => Some((57441, 'u')),
         Key::Control => Some((57442, 'u')),
         Key::Alt => Some((57443, 'u')),
         Key::Super => Some((57444, 'u')),
-        _ => functional(event.key),
+        Key::ShiftRight => Some((57447, 'u')),
+        Key::ControlRight => Some((57448, 'u')),
+        Key::AltRight => Some((57449, 'u')),
+        Key::SuperRight => Some((57450, 'u')),
+        Key::Insert | Key::Delete | Key::PageUp | Key::PageDown | Key::Function(1..=12) => {
+            functional(event.key)
+        }
+        _ => event
+            .unshifted
+            .filter(|&cp| cp != '\0')
+            .map(|cp| (cp as u32, 'u')),
     };
     let Some((code, final_byte)) = code else {
         return if event.action == KeyAction::Release {
@@ -653,7 +750,7 @@ fn kitty_key(event: &KeyEvent, flags: u8) -> Vec<u8> {
     if flags & 16 != 0
         && event.action != KeyAction::Release
         && !event.modifiers.control
-        && !event.modifiers.alt
+        && !(event.modifiers.alt && (!cfg!(target_os = "macos") || options.macos_option_as_alt))
         && !event.modifiers.super_key
     {
         let mut chars = text.chars().filter(|&cp| !is_control(cp)).peekable();
@@ -677,6 +774,40 @@ fn kitty_key(event: &KeyEvent, flags: u8) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn paste_preserves_binary_text_and_checks_safety_before_encoding() {
+        let mut terminal = Terminal::new(80, 24, 0);
+        let bytes = b"\xff\n\0\xfe";
+        assert!(!terminal.paste_is_safe(bytes));
+        assert_eq!(terminal.encode_paste(bytes), b"\xff\r \xfe");
+        terminal.feed(b"\x1b[?2004h");
+        assert!(terminal.paste_is_safe(bytes));
+        assert!(!paste_is_safe(bytes, false));
+        assert!(!terminal.paste_is_safe(b"\xff\x1b[201~\xfe"));
+        assert_eq!(
+            terminal.encode_paste(bytes),
+            b"\x1b[200~\xff\n \xfe\x1b[201~"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn option_text_and_terminal_alt_have_distinct_legacy_and_kitty_output() {
+        let mut terminal = Terminal::new(80, 24, 0);
+        let mut event = KeyEvent::new(Key::Char('['));
+        event.text = Some("{".into());
+        event.modifiers.alt = true;
+        let option = KeyEncodeOptions::default();
+        assert_eq!(terminal.encode_key_with_options(&event, option), b"{");
+        assert_eq!(terminal.encode_key(&event), b"\x1b{");
+        terminal.feed(b"\x1b[>24u");
+        assert_eq!(
+            terminal.encode_key_with_options(&event, option),
+            b"\x1b[91;3;123u"
+        );
+        assert_eq!(terminal.encode_key(&event), b"\x1b[91;3u");
+    }
+
     #[test]
     fn key_modes_and_ime() {
         let mut t = Terminal::new(80, 24, 10);

@@ -58,14 +58,7 @@ impl Smoke {
                 Err(error) => return Err(error.into()),
             }
         }
-        let command = config::Command::Direct(vec!["/bin/sh".into(),"-c".into(),r"printf '\033[2J\033[H\033[1;36mRustty native smoke\033[0m\n\033]7;file://localhost/tmp\007'; exec /bin/sh -i".into()]);
-        loaded.config.command = Some(command.clone());
-        loaded.config.initial_command = Some(command);
-        loaded.config.working_directory = Some(PathBuf::from("/tmp"));
-        loaded.config.window_save_state = config::WindowSaveState::Always;
-        loaded.config.cursor_style_blink = Some(false);
-        loaded.config.undo_timeout = Duration::from_secs(5);
-        loaded.config.keybinds.retain(|b| !b.flags.global);
+        Self::configure(loaded);
         Ok(Some(Self {
             directory,
             offscreen: std::env::var_os("RUSTTY_SMOKE_OFFSCREEN").is_some(),
@@ -79,6 +72,16 @@ impl Smoke {
             idle_frames: 0,
             events: BTreeMap::new(),
         }))
+    }
+    pub(super) fn configure(loaded: &mut LoadedConfig) {
+        let command = config::Command::Direct(vec!["/bin/sh".into(),"-c".into(),r"printf '\033[2J\033[H\033[1;36mRustty native smoke\033[0m\n\033]7;file://localhost/tmp\007'; exec /bin/sh -i".into()]);
+        loaded.config.command = Some(command.clone());
+        loaded.config.initial_command = Some(command);
+        loaded.config.working_directory = Some(PathBuf::from("/tmp"));
+        loaded.config.window_save_state = config::WindowSaveState::Always;
+        loaded.config.cursor_style_blink = Some(false);
+        loaded.config.undo_timeout = Duration::from_secs(5);
+        loaded.config.keybinds.retain(|b| !b.flags.global);
     }
     pub fn record(&mut self, event: &'static str) {
         if self.stage == 4 {
@@ -101,9 +104,14 @@ impl Smoke {
     }
     pub fn step(&mut self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
         if Instant::now() > self.deadline {
+            let windows: Vec<_> = app
+                .windows
+                .values()
+                .map(|host| Platform::window_diagnostics(&host.window))
+                .collect();
             return Err(format!(
-                "native smoke timed out at stage {}: {:?}",
-                self.stage, app.errors
+                "native smoke timed out at stage {}: {:?}; windows: {:?}",
+                self.stage, app.errors, windows
             )
             .into());
         }

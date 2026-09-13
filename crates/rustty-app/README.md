@@ -22,7 +22,10 @@ Own settings can be stored in `~/.config/rustty/config.rustty` or
 `~/Library/Application Support/com.rustty.app/config.rustty`; an empty own file
 intentionally disables Ghostty fallback. No Ghostty file is modified.
 Configuration diagnostics appear in the app. The native menu provides reload and
-open-configuration actions. Tabs, splits, zoom, quadrant navigation, clipboard and
+open-configuration actions. Light/dark theme pairs follow macOS appearance, and
+reload keeps the original command-line overrides. Terminal appearance and visibility
+queries reflect the OS scheme and whether the pane is currently shown.
+Tabs, splits, zoom, quadrant navigation, clipboard and
 search use the configured Ghostty keybindings. Window layouts and pane directories
 are saved separately under `com.rustty.app`.
 

@@ -489,6 +489,36 @@ fn quick_terminal_space_behavior_validates_and_resets() {
 }
 
 #[test]
+fn clipboard_paste_protection_defaults_validate_and_reset() {
+    let home = TestHome::new();
+    let config = home.loader.load().config;
+    assert!(config.clipboard_paste_protection && config.clipboard_paste_bracketed_safe);
+    home.own("clipboard-paste-protection = false\nclipboard-paste-bracketed-safe = false\n");
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty());
+    assert!(!loaded.config.clipboard_paste_protection);
+    assert!(!loaded.config.clipboard_paste_bracketed_safe);
+    let overridden = home
+        .loader
+        .load_with_args(&args(&["--clipboard-paste-protection=true"]));
+    assert!(overridden.diagnostics.is_empty());
+    assert!(overridden.config.clipboard_paste_protection);
+    assert!(!overridden.config.clipboard_paste_bracketed_safe);
+    home.own("clipboard-paste-protection = false\nclipboard-paste-protection =\nclipboard-paste-bracketed-safe = false\nclipboard-paste-bracketed-safe =\n");
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty());
+    assert!(
+        loaded.config.clipboard_paste_protection && loaded.config.clipboard_paste_bracketed_safe
+    );
+    home.own("clipboard-paste-protection = maybe\nclipboard-paste-bracketed-safe = never\n");
+    let loaded = home.loader.load();
+    assert_eq!(loaded.diagnostics.len(), 2);
+    assert!(
+        loaded.config.clipboard_paste_protection && loaded.config.clipboard_paste_bracketed_safe
+    );
+}
+
+#[test]
 fn current_local_workflow_settings_and_actions_are_supported() {
     let home = TestHome::new();
     home.local(

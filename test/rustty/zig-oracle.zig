@@ -4,6 +4,8 @@ const std = @import("std");
 const vt = @import("ghostty-vt");
 const input_adapter = @import("zig-input.zig");
 const parser_adapter = @import("zig-parser.zig");
+const paste_adapter = @import("zig-paste.zig");
+const semantic_adapter = @import("zig-semantic.zig");
 const Allocator = std.mem.Allocator;
 // libghostty-vt exposes this type through the callback without re-exporting
 // the implementation module. Use that public signature as the source of truth.
@@ -46,6 +48,7 @@ const Operation = struct {
     cols: u16 = 0,
     rows: u16 = 0,
     input: ?input_adapter.Event = null,
+    paste: ?paste_adapter.Options = null,
     clipboard_read_enabled: ?bool = null,
     clipboard_write_enabled: ?bool = null,
     clipboard_write_limit: ?usize = null,
@@ -74,6 +77,7 @@ const Request = struct {
     observe_modes: []const ModeTag = &.{},
     observe_mode_effects: bool = false,
     observe_colors: bool = false,
+    observe_semantic: bool = false,
     color_inputs: []const []const u8 = &.{},
 };
 const ColorDefaults = struct {
@@ -185,12 +189,17 @@ const Style = struct {
     overline: bool,
     underline: []const u8,
 };
+const Hyperlink = struct {
+    uri: []const u8,
+    explicit: ?[]const u8 = null,
+    implicit: ?u32 = null,
+};
 const Cell = struct {
     text: []const u21,
     width: u8,
     spacer_head: bool,
     style: Style,
-    hyperlink: ?[]const u8,
+    hyperlink: ?Hyperlink,
     protected: bool,
     semantic: []const u8,
 };
@@ -201,6 +210,7 @@ const Cursor = struct {
     pending_wrap: bool,
     shape: []const u8,
     style: Style,
+    hyperlink: ?Hyperlink,
     protected: bool,
     semantic: []const u8,
 };
@@ -217,6 +227,7 @@ const Observation = struct {
     modes: []const Mode,
     mode_effects: ?ModeEffects,
     colors: ?Colors,
+    semantic: ?semantic_adapter.State,
 };
 const Notification = struct { title: []const u8, body: []const u8 };
 const Progress = struct { state: u8, value: ?u8 };
@@ -564,6 +575,8 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
             try observations.append(alloc, try observe(alloc, &t, request));
         } else if (std.mem.eql(u8, op.op, "input")) {
             Context.append("input", try input_adapter.encode(alloc, &t, op.input orelse return error.MissingInput));
+        } else if (std.mem.eql(u8, op.op, "paste")) {
+            try paste_adapter.run(alloc, &stream.handler, op.paste orelse return error.MissingPaste, Context.append);
         } else if (std.mem.eql(u8, op.op, "checkpoint")) {
             observations.clearRetainingCapacity();
             ctx.events.clearRetainingCapacity();
@@ -707,6 +720,7 @@ fn observe(alloc: Allocator, t: *vt.Terminal, request: Request) !Observation {
             },
         } else null,
         .colors = if (request.observe_colors) observeColors(&t.colors) else null,
+        .semantic = if (request.observe_semantic) try semantic_adapter.observe(alloc, t) else null,
     };
 }
 
@@ -755,10 +769,20 @@ fn observeScreen(alloc: Allocator, screen: *vt.Screen) !Screen {
                 else => {},
             }
             const page = pin.node.page();
-            const link: ?[]const u8 = if (page.lookupHyperlink(cell)) |id|
-                try alloc.dupe(u8, page.hyperlink_set.get(page.memory, id).uri.slice(page.memory))
-            else
-                null;
+            const link: ?Hyperlink = if (page.lookupHyperlink(cell)) |id| link: {
+                const entry = page.hyperlink_set.get(page.memory, id);
+                break :link .{
+                    .uri = try hexEncode(alloc, entry.uri.slice(page.memory)),
+                    .explicit = switch (entry.id) {
+                        .explicit => |value| try hexEncode(alloc, value.slice(page.memory)),
+                        .implicit => null,
+                    },
+                    .implicit = switch (entry.id) {
+                        .explicit => null,
+                        .implicit => |value| value,
+                    },
+                };
+            } else null;
             out.* = .{
                 .text = cps.items,
                 .width = if (cell.wide == .spacer_tail) 0 else if (cell.wide == .wide) 2 else 1,
@@ -780,6 +804,17 @@ fn observeScreen(alloc: Allocator, screen: *vt.Screen) !Screen {
             .pending_wrap = cursor.pending_wrap,
             .shape = @tagName(cursor.cursor_style),
             .style = try observeStyle(alloc, cursor.style),
+            .hyperlink = if (cursor.hyperlink) |link| .{
+                .uri = try hexEncode(alloc, link.uri),
+                .explicit = switch (link.id) {
+                    .explicit => |value| try hexEncode(alloc, value),
+                    .implicit => null,
+                },
+                .implicit = switch (link.id) {
+                    .explicit => null,
+                    .implicit => |value| value,
+                },
+            } else null,
             .protected = cursor.protected,
             .semantic = @tagName(cursor.semantic_content),
         },

@@ -267,6 +267,8 @@ pub struct Config {
     pub clipboard_read: ClipboardAccess,
     pub clipboard_write: ClipboardAccess,
     pub clipboard_write_limit_bytes: Option<usize>,
+    pub clipboard_paste_protection: bool,
+    pub clipboard_paste_bracketed_safe: bool,
     pub confirm_close_surface: ConfirmCloseSurface,
     pub wait_after_command: bool,
     pub abnormal_command_exit_runtime: u32,
@@ -348,6 +350,8 @@ impl Default for Config {
             clipboard_read: ClipboardAccess::Ask,
             clipboard_write: ClipboardAccess::Allow,
             clipboard_write_limit_bytes: Some(64 * 1024 * 1024),
+            clipboard_paste_protection: true,
+            clipboard_paste_bracketed_safe: true,
             confirm_close_surface: ConfirmCloseSurface::True,
             wait_after_command: false,
             abnormal_command_exit_runtime: 250,
@@ -494,6 +498,10 @@ impl Config {
                 clipboard_write_limit_bytes,
                 parse_limit(value, Some(64 * 1024 * 1024))?
             ),
+            "clipboard-paste-protection" => set!(clipboard_paste_protection, parse_bool(value)?),
+            "clipboard-paste-bracketed-safe" => {
+                set!(clipboard_paste_bracketed_safe, parse_bool(value)?)
+            }
             "confirm-close-surface" => {
                 set!(confirm_close_surface, ConfirmCloseSurface::parse(value)?)
             }

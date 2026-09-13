@@ -113,6 +113,7 @@ impl Session {
 
         let mut terminal = Terminal::with_limits(cols, rows, scrollback_limits(config));
         terminal.terminfo_name = terminfo_name;
+        terminal.shell_command_events = true;
         terminal.query_defaults.color_scheme = options.color_scheme;
         terminal.visible = options.visible;
         apply_appearance(&mut terminal, config);

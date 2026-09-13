@@ -198,6 +198,7 @@ fn insertion_preserves_soft_wrap_and_edits_remove_stale_wide_padding() {
 #[test]
 fn effects_and_terminal_replies_are_ordered() {
     let mut t = Terminal::new(80, 24, 100);
+    t.shell_command_events = true;
     let e = t.feed(
         b"\x1b]2;test\x07\x1b[4;3H\x1b[6n\x07\x1b]133;C\x07\x1b]133;D;2\x07\x1b]52;c;aGVsbG8=\x07",
     );

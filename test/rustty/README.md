@@ -4,7 +4,9 @@ This directory compares the Rust implementation with the current Ghostty Zig
 terminal in separate processes. Rustty's application and libraries never link
 the Zig oracle. Both adapters accept one JSON request per line and return one
 JSON response per line. Terminal input, outgoing bytes, title and PWD are hexadecimal;
-cell text is an array of Unicode scalar values. Adjacent PTY write callbacks
+cell text is an array of Unicode scalar values. Cell and cursor hyperlinks contain
+hexadecimal URI and explicit-ID bytes, or a numeric implicit ID. This preserves
+invalid UTF-8 without replacing it with display text. Adjacent PTY write callbacks
 are coalesced because callback batching is not part of the terminal protocol.
 Colors, styles, both screens, scrollback, cell widths and cursor state are
 compared directly; snapshots are not used as a substitute for observable state.
@@ -51,6 +53,13 @@ result even when it is empty; a dropped key cannot disappear from the event
 list. Mouse coordinates use 8-by-16-pixel cells. `--artifacts`, `--zig-bin` and
 `--rust-bin` select isolated output and adapter paths for concurrent work.
 
+`--protocols --case protocol/paste` exercises the state-aware paste entry point:
+text versus clipboard sources, bracketed and Kitty modes, MIME selection and
+listing limits, lazy reader failures, deterministic secure-entropy callbacks,
+and one-time read grants. Read and entropy calls are observed alongside output
+and results; event pastes must not load clipboard data. Production hosts supply
+OS randomness. The deterministic entropy source exists only in the test adapters.
+
 `--parser` compares raw UTF-8/ANSI events, parser state and all inherited
 `parser-initial` and `parser-cmin` fixtures. Unlike stream fixtures, parser
 fixtures contain no delivery-selector byte. The Zig adapter uses the original
@@ -58,6 +67,31 @@ parser and UTF-8 decoder. For OSC it captures bytes at the parser's transition
 boundary because Zig exposes validated commands while Rust exposes raw OSC
 payloads. This comparison therefore does **not** validate OSC command parsing,
 effects or command-specific limits; those need terminal/protocol cases.
+
+The OSC hyperlink cases compare opaque URI/ID bytes in cells, the active cursor
+and restored snapshots. Duplicate IDs, malformed option traversal, invalid
+empty-URI endings and cursor restoration now match the native matrix. Complete
+control contexts and storage behavior still need coverage.
+
+`--protocols --case protocol/charsets` retains a bounded matrix of ASCII, UK
+and DEC graphics mappings through G0–G3, cell-write single shifts, repeat and
+snapshot continuation. Combining characters and wide-cell spacers exercise
+shift consumption separately from input-scalar dispatch. Smoke cases also keep
+minimized inherited failures with their original corpus source identifiers.
+
+Native libghostty-vt updates OSC 133 semantic state without command lifecycle
+callbacks. `Terminal::shell_command_events` explicitly enables Rustty's
+`CommandStart`/`CommandEnd` host extension and defaults to false; application
+sessions enable it. The oracle uses the native default and still rejects
+unexpected effects. VT and session tests verify the opted-in event ordering.
+
+`--protocols --case protocol/semantic` compares all native OSC 133 actions,
+prompt kinds, option precedence, capture limits, line transitions and screen
+clears. `observe_semantic` adds live redraw policy, click behavior, EOL-clear
+state and visible/history row markers to observations. Snapshot cases restore
+those values through both encodings, including `redraw=last` and `cl=w`.
+These observations read terminal state directly and remain optional for other
+protocol cases.
 
 `--snapshots` exports one snapshot from each implementation, restores each
 encoding in both implementations, and resumes terminal input. It compares

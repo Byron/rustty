@@ -13,6 +13,9 @@ import threading
 import snapshots
 import protocols
 import kitty_clipboard
+import paste_requests
+import semantic_prompts
+import charsets
 import host_queries
 import mode_defaults
 import color_protocols
@@ -185,11 +188,17 @@ def input_requests():
             "insert", "delete", "numpad_0", "numpad_9", "numpad_enter", "numpad_add", "numpad_decimal",
             "shift_left", "control_left", "alt_left", "meta_left"] + [f"f{i}" for i in range(1, 26)]
     keys += ["key_" + chr(cp) for cp in range(ord('a'), ord('z') + 1)] + [f"digit_{n}" for n in range(10)]
+    # Include every named key with native legacy or Kitty encoding, including
+    # distinct right-hand modifiers and keypad navigation identities.
+    native_keys = set(re.findall(r"\.\{\s*\.(\w+),", (ROOT / "src/input/kitty.zig").read_text()))
+    native_keys.update(re.findall(r"result\.set\(\.(\w+),", (ROOT / "src/input/function_keys.zig").read_text()))
+    keys += sorted(native_keys.difference(keys))
+    keys.append("unidentified")
     punctuation = dict(zip(("space", "backquote", "minus", "equal", "bracket_left", "bracket_right",
                             "backslash", "semicolon", "quote", "comma", "period", "slash"), " `-=[]\\;',./"))
     configurations = [("legacy", ""), ("cursor", "\x1b[?1h"), ("keypad", "\x1b[?66h"),
                       ("backarrow", "\x1b[?67h"), ("alt-prefix-off", "\x1b[?1036l"),
-                      ("modify-other", "\x1b[>4;2m")]
+                      ("modify-other", "\x1b[>4;2m"), ("keypad-application", "\x1b[?1035l\x1b[?66h")]
     configurations += [(f"kitty-{flags}", f"\x1b[>{flags}u") for flags in (1, 2, 3, 4, 8, 16, 31)]
     for mode, setup in configurations:
         for key in keys:
@@ -213,9 +222,33 @@ def input_requests():
             ("ime-enter", {"key": "enter", "data": "e697a5e69cac"}),
             ("ime-backspace", {"key": "backspace", "data": "e697a5e69cac"}),
             ("composing", {"key": "key_a", "data": "61", "composing": True, "unshifted": 97}),
+            ("unidentified-layout", {"key": "unidentified", "data": "d090", "modifiers": 1, "unshifted": 0x430}),
+            ("unidentified-text", {"key": "unidentified", "data": "e697a5e69cac"}),
+            ("unidentified-control", {"key": "unidentified", "data": "63", "modifiers": 2, "unshifted": 99}),
+            ("keypad-equal-text", {"key": "numpad_equal", "data": "3d", "unshifted": 61}),
+            ("keypad-equal-alternate", {"key": "numpad_equal", "data": "2b", "modifiers": 1, "unshifted": 61}),
+            ("help-text", {"key": "help", "data": "61", "unshifted": 97}),
+            ("menu-text", {"key": "context_menu", "data": "61", "unshifted": 97}),
+            ("composing-right-shift", {"key": "shift_right", "modifiers": 1, "composing": True}),
+            ("composing-lock", {"key": "caps_lock", "modifiers": 16, "composing": True}),
         ):
             yield request(f"key/text-{flags}/{name}", f"\x1b[>{flags}u" if flags else "",
                           [dict(event, kind="key")], ["input.key"])
+    for flags in (0, 1, 3, 8, 24, 31):
+        for option in ("false", "true", "left", "right"):
+            for sides in range(16):
+                events = [
+                    {"kind": "key", "key": "key_e", "data": text.encode().hex(),
+                     "unshifted": 101, "modifiers": modifiers | sides << 6,
+                     "consumed_modifiers": consumed, "action": action,
+                     "macos_option_as_alt": option}
+                    for modifiers in (4, 5, 6, 12, 20, 36, 0xFC04)
+                    for consumed in (0, 4)
+                    for text in ("", "e", "é", "€", "èe")
+                    for action in ("press", "repeat", "release")
+                ]
+                yield request(f"option/{flags}/{option}/{sides}", f"\x1b[>{flags}u" if flags else "",
+                              events, ["input.key"])
     for mode in (9, 1000, 1002, 1003):
         for encoding in (0, 1005, 1006, 1015, 1016):
             setup = f"\x1b[?{mode}h" + (f"\x1b[?{encoding}h" if encoding else "")
@@ -232,6 +265,16 @@ def input_requests():
                       [{"kind": "paste", "data": text.encode().hex()} for text in
                        ("", "hello", "é界👩🏽‍💻", "a\nb\r\nc", "\x00\x08\x05\x04\x1b\x7f\x03\x1c\x15\x1a\x11\x13\x17\x16\x12\x0f")],
                       ["input.focus-paste"])
+        binary = [bytes([byte]) for byte in range(256)]
+        binary += [bytes(range(256)), b"\xc0\xaf\xe0\xa0\xed\xa0\x80\xf4\x90\x80\x80",
+                   b"before\x1b[201~after", b"\x9b201~", b"\xff\n\xfe", b"\r\n\r", b""]
+        binary += [b"\xff" * offset + b"\x1b[201~" + b"\xfe" * (6 - offset) for offset in range(7)]
+        for name, data in enumerate(binary):
+            yield request(f"paste-bytes/{enabled}/{name}", "\x1b[?2004h" if enabled else "",
+                          [{"kind": "paste", "data": data.hex()},
+                           {"kind": "paste_safe", "data": data.hex()},
+                           {"kind": "paste_safe", "data": data.hex(), "conservative": True}],
+                          ["input.focus-paste"])
 
 
 def parser_requests():
@@ -428,6 +471,12 @@ def main():
                 requests.extend((request, covers) for request, covers in protocols.clipboard_requests()
                                 if not args.case or args.case in request["id"])
                 requests.extend((request, covers) for request, covers in kitty_clipboard.requests()
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in paste_requests.requests()
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in semantic_prompts.requests()
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in charsets.requests()
                                 if not args.case or args.case in request["id"])
                 requests.extend((request, covers) for request, covers in host_queries.requests()
                                 if not args.case or args.case in request["id"])

@@ -30,11 +30,11 @@ use std::{
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalPosition, LogicalSize},
-    event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent},
+    event::{ElementState, Ime, Modifiers, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
-    keyboard::ModifiersState,
+    keyboard::PhysicalKey,
     platform::macos::WindowAttributesExtMacOS,
-    window::{CursorIcon, Fullscreen, Window, WindowId},
+    window::{CursorIcon, Fullscreen, Theme, Window, WindowId},
 };
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -56,6 +56,7 @@ impl From<egui_winit::accesskit_winit::Event> for Event {
 
 struct Pane {
     session: Session,
+    host_state: (bool, vt::query::ColorScheme),
     wake_pending: Arc<AtomicBool>,
     input: VecDeque<Vec<u8>>,
     input_bytes: usize,
@@ -71,24 +72,12 @@ struct Pane {
 }
 impl Pane {
     fn write(&mut self, bytes: Vec<u8>) -> std::io::Result<()> {
-        if bytes.is_empty() {
-            return Ok(());
+        QueuedInput {
+            session: &self.session,
+            queue: &mut self.input,
+            bytes: &mut self.input_bytes,
         }
-        if self.input.is_empty() {
-            match self.session.write(&bytes) {
-                Ok(()) => return Ok(()),
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
-                Err(error) => return Err(error),
-            }
-        }
-        if self.input_bytes.saturating_add(bytes.len()) > INPUT_BUDGET {
-            return Err(std::io::Error::other(
-                "Input queue is full. Wait for the command to read its input.",
-            ));
-        }
-        self.input_bytes += bytes.len();
-        self.input.push_back(bytes);
-        Ok(())
+        .enqueue(bytes)
     }
     fn flush(&mut self) -> std::io::Result<()> {
         while let Some(bytes) = self.input.front() {
@@ -108,6 +97,54 @@ impl Pane {
     }
 }
 
+/// A successful write means the complete packet is accepted by the pane's ordered queue.
+struct QueuedInput<'a> {
+    session: &'a Session,
+    queue: &'a mut VecDeque<Vec<u8>>,
+    bytes: &'a mut usize,
+}
+impl QueuedInput<'_> {
+    fn enqueue(&mut self, bytes: Vec<u8>) -> std::io::Result<()> {
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        if self.queue.is_empty() {
+            match self.session.write(&bytes) {
+                Ok(()) => return Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(error) => return Err(error),
+            }
+        }
+        if self.bytes.saturating_add(bytes.len()) > INPUT_BUDGET {
+            return Err(std::io::Error::other(
+                "Input queue is full. Wait for the command to read its input.",
+            ));
+        }
+        *self.bytes += bytes.len();
+        self.queue.push_back(bytes);
+        Ok(())
+    }
+}
+impl std::io::Write for QueuedInput<'_> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.enqueue(bytes.to_vec())?;
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+struct PendingPaste {
+    pane: Id,
+    data: Vec<u8>,
+}
+
+enum Confirmation {
+    Close(Action),
+    Paste(PendingPaste),
+}
+
 struct Host {
     id: Id,
     viewport: ViewportId,
@@ -118,7 +155,8 @@ struct Host {
     accessibility: BTreeMap<Id, TerminalText>,
     content: Rect,
     divider_drag: Option<(Id, Axis, Rect)>,
-    modifiers: ModifiersState,
+    modifiers: Modifiers,
+    consumed_keys: HashSet<PhysicalKey>,
     sequence: Vec<usize>,
     sequence_len: usize,
     composing: bool,
@@ -139,7 +177,7 @@ struct Host {
     popup_open: bool,
     palette: bool,
     palette_query: String,
-    confirm: Option<Action>,
+    confirm: Option<Confirmation>,
     clipboard_request: VecDeque<(Id, vt::Effect)>,
     capture: bool,
     frames: u64,
@@ -282,6 +320,8 @@ impl egui_wgpu::CallbackTrait for TerminalPaint {
 
 struct App {
     loaded: LoadedConfig,
+    config_loader: config::ConfigLoader,
+    config_args: Vec<String>,
     workspace: Workspace,
     state_path: PathBuf,
     resources: Option<PathBuf>,
@@ -316,7 +356,11 @@ pub fn run() -> Result<()> {
     }
     let show_config = args.iter().any(|arg| arg == "--config-info");
     args.retain(|arg| arg != "--config-info");
-    let mut loaded = Config::load_with_args(&args)?;
+    let event_loop = EventLoop::<Event>::with_user_event().build()?;
+    let resources = resource_dir();
+    let mut config_loader = config::ConfigLoader::from_env()?;
+    config_loader.resources_dir = resources.clone().or(config_loader.resources_dir);
+    let mut loaded = load_config(&mut config_loader, &args, Platform::system_theme());
     if show_config {
         println!(
             "Configuration: {:?}\nOwn settings: {}",
@@ -357,8 +401,6 @@ pub fn run() -> Result<()> {
     } else {
         Workspace::default()
     };
-    let resources = resource_dir();
-    let event_loop = EventLoop::<Event>::with_user_event().build()?;
     let proxy = event_loop.create_proxy();
     let context = egui::Context::default();
     context.enable_accesskit();
@@ -393,6 +435,8 @@ pub fn run() -> Result<()> {
         .map(|s| now + Duration::from_secs(s));
     let mut app = App {
         loaded,
+        config_loader,
+        config_args: args,
         workspace,
         state_path,
         resources,
@@ -523,6 +567,33 @@ impl App {
     fn focused(&self, id: Id) -> Option<Id> {
         self.tab(id).map(|tab| tab.focused)
     }
+    fn visible_panes(&self) -> HashSet<Id> {
+        let mut visible = HashSet::new();
+        for host in self.windows.values() {
+            if let Some(index) = self.index(host.id) {
+                visible.extend(window_visible_panes(
+                    &self.workspace.windows[index],
+                    host.visible,
+                    host.occluded,
+                    host.peek.is_some(),
+                ));
+            }
+        }
+        visible
+    }
+    fn sync_host_state(&mut self) {
+        let visible = self.visible_panes();
+        let scheme = color_scheme(self.config_loader.dark_mode);
+        for (&id, pane) in &mut self.panes {
+            let state = (visible.contains(&id), scheme);
+            if !pane.exited && pane.host_state != state {
+                match pane.session.set_host_state(state.0, state.1) {
+                    Ok(()) => pane.host_state = state,
+                    Err(error) => self.errors.push(error.to_string()),
+                }
+            }
+        }
+    }
     fn changed(&mut self) {
         self.save_at = Some(Instant::now() + Duration::from_millis(500));
     }
@@ -561,7 +632,7 @@ impl App {
         self.changed();
         id
     }
-    fn spawn_pane(&mut self, id: Id, directory: PathBuf) -> Result<()> {
+    fn spawn_pane(&mut self, id: Id, directory: PathBuf, host: Option<&Host>) -> Result<()> {
         if self.panes.contains_key(&id) || self.failed_panes.contains_key(&id) {
             return Ok(());
         }
@@ -588,12 +659,25 @@ impl App {
             .then(|| self.config().initial_command.clone())
             .flatten();
         let started = Instant::now();
+        let visible = self.workspace.windows.iter().any(|window| {
+            let native = host
+                .filter(|host| host.id == window.id)
+                .or_else(|| self.windows.values().find(|host| host.id == window.id));
+            initial_visible_panes(
+                window,
+                native.map(|host| (host.visible, host.occluded, host.peek.is_some())),
+            )
+            .contains(&id)
+        });
+        let host_state = (visible, color_scheme(self.config_loader.dark_mode));
         let session = match Session::spawn(
             self.config(),
             SessionOptions {
                 working_directory: Some(directory.clone()),
                 command,
                 resources: self.resources.clone(),
+                color_scheme: Some(host_state.1),
+                visible: host_state.0,
                 ..Default::default()
             },
             wake,
@@ -608,6 +692,7 @@ impl App {
             id,
             Pane {
                 session,
+                host_state,
                 wake_pending,
                 input: VecDeque::new(),
                 input_bytes: 0,
@@ -642,6 +727,7 @@ impl App {
         let attributes = Window::default_attributes()
             .with_title("Rustty")
             .with_decorations(!quick)
+            .with_nonactivating_panel(quick)
             .with_visible(false)
             .with_inner_size(LogicalSize::new(frame[2].max(320.0), frame[3].max(180.0)))
             .with_position(LogicalPosition::new(frame[0], frame[1]))
@@ -676,7 +762,7 @@ impl App {
         egui.init_accesskit(event_loop, &window, self.proxy.clone());
         for tab in &state.tabs {
             for (&pane, saved) in &tab.panes {
-                self.spawn_pane(pane, saved.working_directory.clone())?;
+                self.spawn_pane(pane, saved.working_directory.clone(), None)?;
             }
         }
         window.set_visible(!quick);
@@ -690,7 +776,8 @@ impl App {
             accessibility: BTreeMap::new(),
             content: Rect::UNIT,
             divider_drag: None,
-            modifiers: ModifiersState::empty(),
+            modifiers: Modifiers::default(),
+            consumed_keys: HashSet::new(),
             sequence: Vec::new(),
             sequence_len: 0,
             composing: false,
@@ -756,6 +843,90 @@ impl App {
         {
             self.errors.push(error.to_string());
         }
+    }
+    fn paste_target_exists(&self, window: Id, pane: Id) -> bool {
+        self.index(window)
+            .is_some_and(|index| window_contains_pane(&self.workspace.windows[index], pane))
+            && self
+                .panes
+                .get(&pane)
+                .is_some_and(|pane| !pane.exited && !pane.session.has_exited())
+    }
+    fn paste(&mut self, host: &mut Host, paste: PendingPaste, approved: bool) {
+        if paste.data.is_empty() || !self.paste_target_exists(host.id, paste.pane) {
+            return;
+        }
+        let Some(pane) = self.panes.get(&paste.pane) else {
+            return;
+        };
+        let Ok(mut terminal) = pane.session.terminal() else {
+            return;
+        };
+        if !approved && paste_needs_confirmation(self.config(), &terminal, &paste.data) {
+            host.confirm = Some(Confirmation::Paste(paste));
+            host.repaint();
+            return;
+        }
+        // Encode the captured data with the destination's current paste mode.
+        let bytes = terminal.encode_paste(&paste.data);
+        terminal.screen_mut().viewport_offset = 0;
+        terminal.screen_mut().selection = None;
+        drop(terminal);
+        self.write(paste.pane, bytes);
+        host.repaint();
+    }
+    fn paste_event(
+        &mut self,
+        window: Id,
+        pane: Id,
+        location: vt::clipboard::Location,
+    ) -> std::result::Result<bool, String> {
+        if !self.paste_target_exists(window, pane) {
+            return Ok(true);
+        }
+        let Some(platform) = &self.platform else {
+            return Ok(false);
+        };
+        if !self.panes[&pane]
+            .session
+            .terminal()
+            .map_err(|error| error.to_string())?
+            .modes
+            .dec(5522)
+        {
+            return Ok(false);
+        }
+        // Query only native types, outside the terminal lock. Lazy pasteboard
+        // providers must not be asked for payload bytes to announce a paste.
+        let request = paste_listing_request(location);
+        let vt::clipboard::ReadResult::Success(listing) = platform.clipboard_read(&request) else {
+            return Err("Could not list the clipboard's available formats.".into());
+        };
+        let Pane {
+            session,
+            input,
+            input_bytes,
+            ..
+        } = self.panes.get_mut(&pane).unwrap();
+        let mut terminal = session.terminal().map_err(|error| error.to_string())?;
+        let mut output = QueuedInput {
+            session,
+            queue: input,
+            bytes: input_bytes,
+        };
+        let emitted = emit_paste_event(
+            &mut terminal,
+            location,
+            &listing.available,
+            &mut Platform::secure_random,
+            &mut output,
+        )
+        .map_err(|error| error.to_string())?;
+        if emitted {
+            terminal.screen_mut().viewport_offset = 0;
+            terminal.screen_mut().selection = None;
+        }
+        Ok(emitted)
     }
     fn focus_pane(&mut self, window: Id, pane: Id) {
         let previous = self.focused(window);
@@ -1147,6 +1318,20 @@ impl App {
         action: Action,
         approved: bool,
     ) -> bool {
+        let ui_input = host.ui_input();
+        let clipboard = if ui_input {
+            match action {
+                Action::PasteFromClipboard => host.egui.clipboard_text(),
+                Action::PasteFromSelection => self.selection_text(),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        if input::edit_menu_action(host.egui.egui_input_mut(), &action, ui_input, clipboard) {
+            host.repaint();
+            return true;
+        }
         let focused = self.focused(host.id);
         if !approved
             && matches!(
@@ -1195,7 +1380,7 @@ impl App {
                 })
             });
             if needs_confirmation {
-                host.confirm = Some(action);
+                host.confirm = Some(Confirmation::Close(action));
                 host.repaint();
                 return true;
             }
@@ -1222,7 +1407,7 @@ impl App {
                     window.tabs.push(Tab::new(tab, pane, directory.clone()));
                     window.active_tab = window.tabs.len() - 1;
                 }
-                if let Err(error) = self.spawn_pane(pane, directory) {
+                if let Err(error) = self.spawn_pane(pane, directory, Some(host)) {
                     self.errors.push(error.to_string());
                 }
             }
@@ -1234,7 +1419,7 @@ impl App {
                 if let Some(tab) = self.tab_mut(host.id) {
                     tab.split(pane, split, direction, directory.clone());
                 }
-                if let Err(error) = self.spawn_pane(pane, directory) {
+                if let Err(error) = self.spawn_pane(pane, directory, Some(host)) {
                     self.errors.push(error.to_string());
                 }
             }
@@ -1262,7 +1447,7 @@ impl App {
                     if host.peek.is_none()
                         && let Some(tab) = self.tab_mut(host.id)
                     {
-                        host.peek = tab.begin_peek(input::modifiers(host.modifiers));
+                        host.peek = tab.begin_peek(input::modifiers(host.modifiers.state()));
                     }
                     if let Some(peek) = &mut host.peek {
                         peek.navigation_used = true;
@@ -1447,17 +1632,32 @@ impl App {
                 host.egui.set_clipboard_text(text);
             }
             Action::PasteFromClipboard | Action::PasteFromSelection => {
-                let text = if action == Action::PasteFromSelection {
-                    self.selection_text()
-                } else {
-                    host.egui.clipboard_text()
-                };
-                if let (Some(id), Some(text)) = (focused, text) {
-                    let bytes = self.panes.get(&id).and_then(|pane| {
-                        pane.session.terminal().ok().map(|t| t.encode_paste(&text))
-                    });
-                    if let Some(bytes) = bytes {
-                        self.write(id, bytes);
+                if let Some(id) = focused {
+                    let location = if action == Action::PasteFromSelection {
+                        vt::clipboard::Location::Selection
+                    } else {
+                        vt::clipboard::Location::Standard
+                    };
+                    match self.paste_event(host.id, id, location) {
+                        Ok(true) => {}
+                        Err(error) => self.errors.push(error),
+                        Ok(false) => {
+                            let text = if action == Action::PasteFromSelection {
+                                self.selection_text()
+                            } else {
+                                host.egui.clipboard_text()
+                            };
+                            if let Some(text) = text {
+                                self.paste(
+                                    host,
+                                    PendingPaste {
+                                        pane: id,
+                                        data: text.into_bytes(),
+                                    },
+                                    false,
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -1580,52 +1780,24 @@ impl App {
                     self.errors.push(error);
                 }
             }
-            Action::ReloadConfig => match Config::load() {
-                Ok(loaded) => {
-                    self.errors = loaded.diagnostics.iter().map(ToString::to_string).collect();
-                    self.loaded = loaded;
-                    self.failed_panes.clear();
-                    if let Some(platform) = &mut self.platform
-                        && let Err(error) = platform.update_config(&self.loaded.config)
-                    {
-                        self.errors.push(error);
-                    }
-                    for pane in self.panes.values() {
-                        if let Err(error) = pane.session.apply_config(&self.loaded.config) {
-                            self.errors.push(error.to_string());
-                        }
-                    }
-                    self.update_fonts(host);
-                    if let Some(platform) = &self.platform {
-                        for window in std::iter::once(&*host).chain(self.windows.values()) {
-                            let quick = self
-                                .workspace
-                                .windows
-                                .iter()
-                                .any(|state| state.id == window.id && state.quick);
-                            if let Err(error) =
-                                platform.configure_window(&window.window, quick, self.config())
-                            {
-                                self.errors.push(error);
-                            }
-                        }
-                    }
+            Action::ReloadConfig => {
+                if let Some(theme) = event_loop.system_theme() {
+                    self.config_loader.dark_mode = theme == Theme::Dark;
                 }
-                Err(error) => self.errors.push(error.to_string()),
-            },
+                self.reload_config(Some(host));
+            }
             Action::IncreaseFontSize(amount) => {
                 self.loaded.config.font_size = (self.config().font_size + amount).clamp(4.0, 200.0);
-                self.update_fonts(host);
+                self.update_fonts(Some(host));
             }
             Action::DecreaseFontSize(amount) => {
                 self.loaded.config.font_size = (self.config().font_size - amount).clamp(4.0, 200.0);
-                self.update_fonts(host);
+                self.update_fonts(Some(host));
             }
             Action::ResetFontSize => {
-                if let Ok(loaded) = Config::load() {
-                    self.loaded.config.font_size = loaded.config.font_size;
-                    self.update_fonts(host);
-                }
+                let loaded = self.config_loader.load_with_args(&self.config_args);
+                self.loaded.config.font_size = loaded.config.font_size;
+                self.update_fonts(Some(host));
             }
             Action::Undo | Action::Redo => {
                 if !self.undo_layout(action == Action::Redo) {
@@ -1659,8 +1831,55 @@ impl App {
         self.changed();
         true
     }
-    fn update_fonts(&mut self, host: &mut Host) {
-        for current in std::iter::once(host).chain(self.windows.values_mut()) {
+    fn update_system_theme(&mut self, theme: Option<Theme>, host: Option<&mut Host>) {
+        if let Some(theme) = theme
+            && self.config_loader.dark_mode != (theme == Theme::Dark)
+        {
+            self.config_loader.dark_mode = theme == Theme::Dark;
+            self.reload_config(host);
+        }
+    }
+    fn reload_config(&mut self, mut host: Option<&mut Host>) {
+        self.loaded = load_config(&mut self.config_loader, &self.config_args, None);
+        if self.smoke.is_some() {
+            smoke::Smoke::configure(&mut self.loaded);
+        }
+        self.errors = self
+            .loaded
+            .diagnostics
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        self.failed_panes.clear();
+        self.context.set_theme(ui_theme(&self.loaded.config));
+        if let Some(platform) = &mut self.platform
+            && let Err(error) = platform.update_config(&self.loaded.config)
+        {
+            self.errors.push(error);
+        }
+        for pane in self.panes.values() {
+            if let Err(error) = pane.session.apply_config(&self.loaded.config) {
+                self.errors.push(error.to_string());
+            }
+        }
+        self.update_fonts(host.as_deref_mut());
+        if let Some(platform) = &self.platform {
+            for window in host.into_iter().chain(self.windows.values_mut()) {
+                let quick = self
+                    .workspace
+                    .windows
+                    .iter()
+                    .any(|state| state.id == window.id && state.quick);
+                if let Err(error) =
+                    platform.configure_window(&window.window, quick, &self.loaded.config)
+                {
+                    self.errors.push(error);
+                }
+            }
+        }
+    }
+    fn update_fonts(&mut self, host: Option<&mut Host>) {
+        for current in host.into_iter().chain(self.windows.values_mut()) {
             match rustty_render::Renderer::new(font_config(
                 &self.loaded.config,
                 current.window.scale_factor() as f32,
@@ -1700,6 +1919,11 @@ impl App {
         matches.len()
     }
     fn reconcile(&mut self, event_loop: &ActiveEventLoop) {
+        // With no native windows there is no ThemeChanged event to observe.
+        // Refresh before creating a session that could immediately query it.
+        if self.windows.is_empty() {
+            self.update_system_theme(event_loop.system_theme(), None);
+        }
         let removed = self
             .windows
             .iter()
@@ -1752,7 +1976,7 @@ impl App {
         self.closing.retain(|session| !session.has_exited());
         self.failed_panes.retain(|id, _| retained.contains(id));
         for (id, directory) in required {
-            if let Err(error) = self.spawn_pane(id, directory) {
+            if let Err(error) = self.spawn_pane(id, directory, None) {
                 self.errors.push(error.to_string());
             }
         }
@@ -1783,6 +2007,7 @@ impl App {
                 self.errors.push(error.to_string());
             }
         }
+        self.sync_host_state();
         if self.workspace.windows.is_empty() && self.config().quit_after_last_window_closed {
             self.save();
             event_loop.exit();
@@ -1794,7 +2019,13 @@ impl App {
         host: &mut Host,
         key: &winit::event::KeyEvent,
     ) {
-        if host.ui_input() {
+        let ui_input = host.ui_input();
+        if input::key_is_consumed(
+            &mut host.consumed_keys,
+            key.physical_key,
+            key.state,
+            ui_input,
+        ) {
             return;
         }
         if key.state == ElementState::Pressed && !host.composing {
@@ -1811,7 +2042,9 @@ impl App {
                         && binding
                             .trigger
                             .get(host.sequence_len)
-                            .is_some_and(|trigger| input::matches(trigger, key, host.modifiers))
+                            .is_some_and(|trigger| {
+                                input::matches(trigger, key, host.modifiers.state())
+                            })
                 })
                 .collect::<Vec<_>>();
             let complete = matched
@@ -1844,6 +2077,9 @@ impl App {
                     }
                 }
                 if binding.flags.consumed && (!binding.flags.performable || performed) {
+                    if host.ui_input() {
+                        host.consumed_keys.insert(key.physical_key);
+                    }
                     return;
                 }
             } else if !matched.is_empty() {
@@ -1859,17 +2095,25 @@ impl App {
             return;
         };
         if self.panes.get(&id).is_some_and(|p| p.exited) && key.state == ElementState::Pressed {
+            host.consumed_keys.insert(key.physical_key);
             self.action(event_loop, host, Action::CloseSurface, true);
             return;
         }
         let bytes = self.panes.get(&id).and_then(|pane| {
             let mut terminal = pane.session.terminal().ok()?;
-            let event = input::terminal_key(key, host.modifiers, host.composing)?;
+            let options = vt::KeyEncodeOptions {
+                macos_option_as_alt: input::option_as_alt(
+                    self.config().macos_option_as_alt,
+                    host.modifiers.lalt_state(),
+                    host.modifiers.ralt_state(),
+                ),
+            };
+            let event = input::terminal_key(key, host.modifiers, host.composing, options)?;
             if event.action != vt::KeyAction::Release {
                 terminal.screen_mut().viewport_offset = 0;
                 terminal.screen_mut().selection = None;
             }
-            Some(terminal.encode_key(&event))
+            Some(terminal.encode_key_with_options(&event, options))
         });
         if let Some(bytes) = bytes {
             self.write(id, bytes);
@@ -1895,6 +2139,11 @@ impl App {
         };
         let config = self.config().clone();
         let state = self.workspace.windows[index].clone();
+        if let Some(Confirmation::Paste(paste)) = &host.confirm
+            && !self.paste_target_exists(host.id, paste.pane)
+        {
+            host.confirm = None;
+        }
         let active = &state.tabs[state.active_tab];
         let focused = active.focused;
         let header_height = if active.panes.len() > 1 { 18.0 } else { 0.0 };
@@ -2563,23 +2812,73 @@ impl App {
                         }
                     });
             }
-            if let Some(action) = host.confirm.clone() {
-                egui::Window::new("Close running commands?")
-                    .collapsible(false)
-                    .resizable(false)
-                    .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                    .show(ctx, |ui| {
-                        ui.label("Closing this terminal will stop its running commands.");
-                        ui.horizontal(|ui| {
-                            if ui.button("Cancel").clicked() {
-                                host.confirm = None;
+            let mut confirmed = None;
+            if let Some(confirmation) = &host.confirm {
+                let is_paste = matches!(confirmation, Confirmation::Paste(_));
+                egui::Window::new(if is_paste {
+                    "Paste potentially unsafe text?"
+                } else {
+                    "Close running commands?"
+                })
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    match confirmation {
+                        Confirmation::Close(_) => {
+                            ui.label("Closing this terminal will stop its running commands.");
+                        }
+                        Confirmation::Paste(paste) => {
+                            if let Some(pane) = self.panes.get(&paste.pane) {
+                                ui.label(format!("Terminal: {}", pane.title));
                             }
-                            if ui.button("Close").clicked() {
-                                host.confirm = None;
-                                self.action(event_loop, host, action, true);
-                            }
-                        });
+                            ui.label(
+                                "This paste may run commands. Review the text before continuing.",
+                            );
+                            egui::ScrollArea::vertical()
+                                .max_height(160.0)
+                                .show(ui, |ui| {
+                                    let shown = paste.data.len().min(4096);
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(String::from_utf8_lossy(
+                                                &paste.data[..shown],
+                                            ))
+                                            .monospace(),
+                                        )
+                                        .wrap(),
+                                    );
+                                    if shown < paste.data.len() {
+                                        ui.label("… preview truncated");
+                                    }
+                                });
+                        }
+                    }
+                    ui.horizontal(|ui| {
+                        if ui.button("Cancel").clicked()
+                            || ui.input(|input| input.key_pressed(egui::Key::Escape))
+                        {
+                            confirmed = Some(false);
+                        }
+                        if ui
+                            .button(if is_paste { "Paste" } else { "Close" })
+                            .clicked()
+                        {
+                            confirmed = Some(true);
+                        }
                     });
+                });
+            }
+            if let Some(approved) = confirmed
+                && let Some(confirmation) = host.confirm.take()
+                && approved
+            {
+                match confirmation {
+                    Confirmation::Close(action) => {
+                        self.action(event_loop, host, action, true);
+                    }
+                    Confirmation::Paste(paste) => self.paste(host, paste, true),
+                }
             }
             if let Some((pane, request)) = host.clipboard_request.front() {
                 let write = matches!(request, vt::Effect::ClipboardWrite(_));
@@ -2833,9 +3132,9 @@ impl App {
             row,
             x: f64::from(position.x),
             y: f64::from(position.y),
-            modifiers: input::terminal_modifiers(host.modifiers),
+            modifiers: input::terminal_modifiers(host.modifiers.state()),
         };
-        if terminal.mouse_mode != 0 && !host.modifiers.shift_key() {
+        if terminal.mouse_mode != 0 && !host.modifiers.state().shift_key() {
             let bytes = terminal.encode_mouse(event);
             drop(terminal);
             self.write(id, bytes);
@@ -2849,7 +3148,7 @@ impl App {
             .map(|r| vt::GridPoint { row: r.id, col });
         if let Some(point) = point {
             if action == vt::MouseAction::Press && button == Some(vt::MouseButton::Left) {
-                if host.modifiers.super_key() && config.link_url {
+                if host.modifiers.state().super_key() && config.link_url {
                     let links = pane.links.links(&screen.snapshot_viewport());
                     if let Some(link) = links.iter().find(|link| link.contains(screen, point))
                         && let Some(platform) = &self.platform
@@ -2868,7 +3167,7 @@ impl App {
                     screen.selection = Some(vt::Selection {
                         start,
                         end: point,
-                        rectangular: host.modifiers.alt_key(),
+                        rectangular: host.modifiers.state().alt_key(),
                     });
                 }
             } else if action == vt::MouseAction::Release {
@@ -3034,6 +3333,7 @@ impl ApplicationHandler<Event> for App {
                         event_loop.exit();
                     }
                 }
+                self.sync_host_state();
             }
             Event::Access(event) => {
                 use egui_winit::accesskit_winit::WindowEvent as AccessEvent;
@@ -3102,6 +3402,7 @@ impl ApplicationHandler<Event> for App {
                     }
                     host.repaint();
                     self.windows.insert(event.window_id, host);
+                    self.sync_host_state();
                 }
             }
         }
@@ -3207,7 +3508,14 @@ impl ApplicationHandler<Event> for App {
                 }
             }
             WindowEvent::ScaleFactorChanged { .. } => {
-                self.update_fonts(&mut host);
+                self.update_fonts(Some(&mut host));
+                host.repaint();
+            }
+            WindowEvent::ThemeChanged(theme) => {
+                self.update_system_theme(
+                    event_loop.system_theme().or(Some(theme)),
+                    Some(&mut host),
+                );
                 host.repaint();
             }
             WindowEvent::Focused(focused) => {
@@ -3219,7 +3527,8 @@ impl ApplicationHandler<Event> for App {
                     }
                 } else {
                     host.peek = None;
-                    host.modifiers = ModifiersState::empty();
+                    host.modifiers = Modifiers::default();
+                    host.consumed_keys.clear();
                     host.divider_drag = None;
                     host.composing = false;
                     host.preedit.clear();
@@ -3262,8 +3571,8 @@ impl ApplicationHandler<Event> for App {
                 }
             }
             WindowEvent::ModifiersChanged(modifiers) => {
-                host.modifiers = modifiers.state();
-                let current = input::modifiers(host.modifiers);
+                host.modifiers = modifiers;
+                let current = input::modifiers(host.modifiers.state());
                 if let Some(peek) = host.peek
                     && !input::chord_held(peek.chord, current)
                 {
@@ -3380,7 +3689,7 @@ impl ApplicationHandler<Event> for App {
                         .get(&id)
                         .and_then(|p| p.session.terminal().ok().map(|t| t.mouse_mode != 0))
                         .unwrap_or(false);
-                    if mouse && !host.modifiers.shift_key() {
+                    if mouse && !host.modifiers.state().shift_key() {
                         for _ in 0..lines.abs().ceil().min(128.0) as usize {
                             self.mouse(
                                 &mut host,
@@ -3564,6 +3873,56 @@ fn clipboard_policy(config: &Config, request: &vt::Effect) -> config::ClipboardA
     }
 }
 
+fn window_contains_pane(window: &WindowState, pane: Id) -> bool {
+    window.tabs.iter().any(|tab| tab.panes.contains_key(&pane))
+}
+
+fn paste_needs_confirmation(config: &Config, terminal: &vt::Terminal, data: &[u8]) -> bool {
+    config.clipboard_paste_protection
+        && !vt::input::paste_is_safe(
+            data,
+            config.clipboard_paste_bracketed_safe && terminal.modes.dec(2004),
+        )
+}
+
+fn paste_listing_request(location: vt::clipboard::Location) -> vt::clipboard::Read {
+    let mut request = vt::clipboard::Read::osc52(location, vt::clipboard::Terminator::St);
+    request.mimes.clear();
+    request.list = true;
+    request
+}
+
+fn emit_paste_event(
+    terminal: &mut vt::Terminal,
+    location: vt::clipboard::Location,
+    mimes: &[Vec<u8>],
+    random: &mut vt::paste::SecureRandom<'_>,
+    output: &mut dyn std::io::Write,
+) -> std::result::Result<bool, vt::paste::Error> {
+    // Mode can change while native formats are queried. Return to text capture
+    // instead of reading a native payload while holding the terminal lock.
+    if !terminal.modes.dec(5522) {
+        return Ok(false);
+    }
+    let mut read = |_: &[u8]| {
+        Err(std::io::Error::other(
+            "paste events must not read clipboard payloads",
+        ))
+    };
+    terminal.paste(
+        vt::paste::Request {
+            source: vt::paste::Source::Clipboard(location),
+            contents: vt::paste::Contents::Reader {
+                mimes,
+                read: &mut read,
+            },
+            allow_unsafe: false,
+        },
+        Some(random),
+        output,
+    )
+}
+
 fn hold_after_exit(config: &Config, runtime: Duration) -> bool {
     config.wait_after_command
         || runtime.as_millis() <= u128::from(config.abnormal_command_exit_runtime)
@@ -3600,6 +3959,46 @@ fn repaint_is_current(requested_pass: u64, current_pass: u64) -> bool {
     current_pass == requested_pass || requested_pass.checked_add(1) == Some(current_pass)
 }
 
+fn load_config(
+    loader: &mut config::ConfigLoader,
+    args: &[String],
+    theme: Option<Theme>,
+) -> LoadedConfig {
+    if let Some(theme) = theme {
+        loader.dark_mode = theme == Theme::Dark;
+    }
+    loader.load_with_args(args)
+}
+
+fn color_scheme(dark_mode: bool) -> vt::query::ColorScheme {
+    if dark_mode {
+        vt::query::ColorScheme::Dark
+    } else {
+        vt::query::ColorScheme::Light
+    }
+}
+
+fn window_visible_panes(
+    window: &WindowState,
+    visible: bool,
+    occluded: bool,
+    peek: bool,
+) -> Vec<Id> {
+    if !visible || occluded {
+        return Vec::new();
+    }
+    window
+        .tabs
+        .get(window.active_tab)
+        .map_or_else(Vec::new, |tab| tab.visible_tree(peek).panes())
+}
+
+fn initial_visible_panes(window: &WindowState, native: Option<(bool, bool, bool)>) -> Vec<Id> {
+    // Normal windows are shown during creation; quick windows start hidden.
+    let (visible, occluded, peek) = native.unwrap_or((!window.quick, false, false));
+    window_visible_panes(window, visible, occluded, peek)
+}
+
 fn ui_theme(config: &Config) -> egui::ThemePreference {
     match config.window_theme {
         config::WindowTheme::System => egui::ThemePreference::System,
@@ -3621,6 +4020,98 @@ fn ui_theme(config: &Config) -> egui::ThemePreference {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn appearance_selects_dual_themes_and_reload_preserves_cli_overrides() {
+        let directory = std::env::temp_dir().join(format!(
+            "rustty-theme-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let own = directory.join("config/rustty");
+        std::fs::create_dir_all(own.join("themes")).unwrap();
+        let source = "theme = light:Day,dark:Night\nfont-size = 12\n";
+        std::fs::write(own.join("config.rustty"), source).unwrap();
+        std::fs::write(own.join("themes/Day"), "background = ffffff\n").unwrap();
+        std::fs::write(own.join("themes/Night"), "background = 101010\n").unwrap();
+        let mut loader = config::ConfigLoader {
+            home: directory.clone(),
+            xdg_config_home: directory.join("config"),
+            resources_dir: None,
+            dark_mode: true,
+            working_directory: directory.clone(),
+        };
+        let args = [
+            "--font-size=19",
+            "--window-theme=light",
+            "-e",
+            "/bin/echo",
+            "two words",
+        ]
+        .map(str::to_owned);
+        let light = load_config(&mut loader, &args, Some(Theme::Light));
+        assert!(light.diagnostics.is_empty(), "{:?}", light.diagnostics);
+        assert_eq!(light.config.background, config::Rgb::new(255, 255, 255));
+        assert_eq!(
+            color_scheme(loader.dark_mode),
+            vt::query::ColorScheme::Light
+        );
+        let dark = load_config(&mut loader, &args, Some(Theme::Dark));
+        assert_eq!(dark.config.background, config::Rgb::new(16, 16, 16));
+        assert_eq!(color_scheme(loader.dark_mode), vt::query::ColorScheme::Dark);
+        let reloaded = load_config(&mut loader, &args, None);
+        assert_eq!(reloaded.config.background, dark.config.background);
+        assert_eq!(reloaded.config.font_size, 19.0);
+        assert_eq!(ui_theme(&reloaded.config), egui::ThemePreference::Light);
+        assert_eq!(
+            reloaded.config.initial_command,
+            Some(config::Command::Direct(vec![
+                "/bin/echo".into(),
+                "two words".into()
+            ]))
+        );
+        assert_eq!(
+            std::fs::read_to_string(own.join("config.rustty")).unwrap(),
+            source
+        );
+        assert!(!directory.join("Library").exists());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn visibility_follows_native_window_active_tab_zoom_and_peek() {
+        let mut first = Tab::new(10, 1, PathBuf::from("/tmp"));
+        first.root.split(1, 2, 3, Direction::Right);
+        let mut window = WindowState {
+            id: 100,
+            tabs: vec![first, Tab::new(20, 4, PathBuf::from("/tmp"))],
+            active_tab: 0,
+            frame: [0.0, 0.0, 800.0, 600.0],
+            quick: false,
+        };
+        assert_eq!(window_visible_panes(&window, true, false, false), [1, 2]);
+        assert_eq!(initial_visible_panes(&window, None), [1, 2]);
+        window.active_tab = 1;
+        assert_eq!(window_visible_panes(&window, true, false, false), [4]);
+        window.active_tab = 0;
+        window.tabs[0].zoom = Some(1);
+        assert_eq!(window_visible_panes(&window, true, false, false), [1]);
+        assert_eq!(initial_visible_panes(&window, None), [1]);
+        assert_eq!(window_visible_panes(&window, true, false, true), [1, 2]);
+        assert!(window_visible_panes(&window, true, true, true).is_empty());
+        assert!(initial_visible_panes(&window, Some((true, true, false))).is_empty());
+        window.quick = true;
+        assert!(window_visible_panes(&window, false, false, true).is_empty());
+        assert!(initial_visible_panes(&window, None).is_empty());
+        assert_eq!(
+            initial_visible_panes(&window, Some((true, false, true))),
+            [1, 2]
+        );
+    }
+
     #[test]
     fn repaint_callbacks_only_survive_their_own_pass_and_its_follow_up() {
         let context = egui::Context::default();
@@ -3689,6 +4180,141 @@ mod tests {
             clipboard_policy(&config, &vt::Effect::ClipboardWrite(write)),
             Deny
         );
+    }
+
+    #[test]
+    fn paste_confirmation_follows_protection_bracketed_trust_and_payload() {
+        for bracketed in [false, true] {
+            let mut terminal = vt::Terminal::new(20, 2, 0);
+            if bracketed {
+                terminal.feed(b"\x1b[?2004h");
+            }
+            for protection in [false, true] {
+                for trust_brackets in [false, true] {
+                    let mut config = Config::default();
+                    config.clipboard_paste_protection = protection;
+                    config.clipboard_paste_bracketed_safe = trust_brackets;
+                    for data in [
+                        b"".as_slice(),
+                        b"plain text",
+                        b"one\rtwo",
+                        "日誌".as_bytes(),
+                    ] {
+                        assert!(!paste_needs_confirmation(&config, &terminal, data));
+                    }
+                    assert_eq!(
+                        paste_needs_confirmation(&config, &terminal, b"one\ntwo"),
+                        protection && !(bracketed && trust_brackets)
+                    );
+                    assert_eq!(
+                        paste_needs_confirmation(&config, &terminal, b"one\x1b[201~two"),
+                        protection
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn kitty_paste_lists_without_payload_reads_and_grants_still_respect_explicit_denial() {
+        use base64::Engine;
+        for location in [
+            vt::clipboard::Location::Standard,
+            vt::clipboard::Location::Selection,
+        ] {
+            let request = paste_listing_request(location);
+            assert!(request.list && request.mimes.is_empty());
+            assert_eq!(request.location, location);
+            let mimes = [b"text/plain".to_vec(), b"image/png".to_vec()];
+            let mut terminal = vt::Terminal::new(20, 2, 0);
+            let mut output = Vec::new();
+            assert!(
+                !emit_paste_event(
+                    &mut terminal,
+                    location,
+                    &mimes,
+                    &mut |_| panic!("text fallback must not generate a grant"),
+                    &mut output
+                )
+                .unwrap()
+            );
+            assert!(output.is_empty());
+            terminal.feed(b"\x1b[?5522;2004h");
+            let mut random = |bytes: &mut [u8]| {
+                bytes.fill(0);
+                Ok(())
+            };
+            // The host's event reader fails if called: success requires MIME-only handling.
+            assert!(
+                emit_paste_event(&mut terminal, location, &mimes, &mut random, &mut output)
+                    .unwrap()
+            );
+            let event = String::from_utf8(output).unwrap();
+            assert!(event.starts_with("\x1b]5522;type=read:status=OK"));
+            assert_eq!(
+                event.contains(":loc=primary"),
+                location == vt::clipboard::Location::Selection
+            );
+            let password = base64::engine::general_purpose::STANDARD.encode([b'2'; 22]);
+            let request =
+                format!("\x1b]5522;type=read:name=cHJvZ3JhbQ==:pw={password};dGV4dC9wbGFpbg==\x07");
+            let read = terminal
+                .feed(request.as_bytes())
+                .into_iter()
+                .find_map(|effect| match effect {
+                    vt::Effect::ClipboardRead(read) => Some(read),
+                    _ => None,
+                })
+                .expect("follow-up clipboard read");
+            assert!(read.granted);
+            let mut config = Config::default();
+            let effect = vt::Effect::ClipboardRead(read);
+            assert_eq!(
+                clipboard_policy(&config, &effect),
+                config::ClipboardAccess::Allow
+            );
+            config.clipboard_read = config::ClipboardAccess::Deny;
+            assert_eq!(
+                clipboard_policy(&config, &effect),
+                config::ClipboardAccess::Deny
+            );
+            terminal.feed(b"\x1b[?5522l");
+            let mut output = Vec::new();
+            assert!(
+                !emit_paste_event(
+                    &mut terminal,
+                    location,
+                    &mimes,
+                    &mut |_| panic!("mode changed while native types were listed"),
+                    &mut output
+                )
+                .unwrap()
+            );
+            assert!(output.is_empty());
+        }
+    }
+
+    #[test]
+    fn pending_paste_keeps_its_destination_when_tabs_change_and_rejects_closed_panes() {
+        let paste = PendingPaste {
+            pane: 1,
+            data: b"one\ntwo".to_vec(),
+        };
+        let mut window = WindowState {
+            id: 100,
+            tabs: vec![
+                Tab::new(10, 1, PathBuf::from("/tmp")),
+                Tab::new(20, 2, PathBuf::from("/tmp")),
+            ],
+            active_tab: 0,
+            frame: [0.0, 0.0, 800.0, 600.0],
+            quick: false,
+        };
+        assert!(window_contains_pane(&window, paste.pane));
+        window.active_tab = 1;
+        assert!(window_contains_pane(&window, paste.pane));
+        window.tabs.remove(0);
+        assert!(!window_contains_pane(&window, paste.pane));
     }
     #[test]
     fn shell_exit_policy_holds_fast_failures_and_respects_wait_setting() {

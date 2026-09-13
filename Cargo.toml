@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/*"]
+exclude = ["vendor/winit"]
 resolver = "3"
 
 [workspace.package]
@@ -36,6 +37,9 @@ objc2-core-foundation = "0.3.2"
 objc2-foundation = "0.3.2"
 objc2-app-kit = "0.3.2"
 objc2-user-notifications = "0.3.2"
+
+[patch.crates-io]
+winit = { path = "vendor/winit" }
 
 [profile.release]
 lto = "thin"

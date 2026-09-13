@@ -11,6 +11,8 @@ pub const Event = struct {
     consumed_modifiers: u16 = 0,
     unshifted: u21 = 0,
     composing: bool = false,
+    macos_option_as_alt: []const u8 = "true",
+    conservative: bool = false,
     focused: bool = true,
     button: ?[]const u8 = null,
     x: f32 = 0,
@@ -24,8 +26,7 @@ pub fn encode(alloc: std.mem.Allocator, terminal: *vt.Terminal, event: Event) ![
         const bytes = try unhex(alloc, event.data);
         if (!std.unicode.utf8ValidateSlice(bytes)) return error.InvalidText;
         var options: vt.input.KeyEncodeOptions = .fromTerminal(terminal);
-        // This harness supplies terminal Alt events, not platform Option text.
-        options.macos_option_as_alt = .true;
+        options.macos_option_as_alt = std.meta.stringToEnum(@TypeOf(options.macos_option_as_alt), event.macos_option_as_alt) orelse return error.InvalidOptionAsAlt;
         try vt.input.encodeKey(&writer.writer, .{
             .key = std.meta.stringToEnum(vt.input.Key, event.key) orelse return error.InvalidKey,
             .action = std.meta.stringToEnum(vt.input.KeyAction, event.action) orelse return error.InvalidAction,
@@ -52,6 +53,10 @@ pub fn encode(alloc: std.mem.Allocator, terminal: *vt.Terminal, event: Event) ![
         if (terminal.modes.get(.focus_event)) try vt.input.encodeFocus(&writer.writer, if (event.focused) .gained else .lost);
     } else if (std.mem.eql(u8, event.kind, "paste")) {
         try vt.input.encodePasteWriter(&writer.writer, try unhex(alloc, event.data), .fromTerminal(terminal));
+    } else if (std.mem.eql(u8, event.kind, "paste_safe")) {
+        const bytes = try unhex(alloc, event.data);
+        const safe = if (event.conservative) vt.input.isSafePaste(bytes) else vt.input.isSafePasteWith(bytes, .fromTerminal(terminal));
+        try writer.writer.writeByte(@intFromBool(safe));
     } else return error.UnsupportedInput;
     return writer.written();
 }

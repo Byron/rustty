@@ -11,6 +11,11 @@ description = "The Rustty desktop terminal application."
 name = "rustty"
 path = "src/main.rs"
 
+[[test]]
+name = "native_panel"
+path = "tests/native_panel.rs"
+harness = false
+
 [dependencies]
 rustty = { workspace = true, features = ["sessions"] }
 rustty-font.workspace = true

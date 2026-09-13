@@ -400,5 +400,338 @@
     "covers": [
       "unicode.width"
     ]
+  },
+  {
+    "request": {
+      "id": "corpus/c1-reverse-index",
+      "cols": 4,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "0a1b8d"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.write",
+      "terminal.cursor"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_000349,time_0,execs_0,orig_id_000792,src_000000,time_6222,execs_36037,op_havoc,rep_4"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/c1-start-protected-area",
+      "cols": 2,
+      "rows": 1,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b96"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.write",
+      "terminal.cursor"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_000251,time_0,execs_0,orig_id_000643,src_000000,time_3824,execs_21884,op_havoc,rep_4",
+      "stream-cmin/id_000221,time_0,execs_0,orig_id_000594,src_000000,time_3206,execs_18299,op_havoc,rep_2"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/csi-extra-ed-parameters",
+      "cols": 4,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "441b5b313b334a"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_000429,time_0,execs_0,orig_id_000884,src_000000,time_7937,execs_45948,op_havoc,rep_7,+cov"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/csi-extra-cnl-parameters",
+      "cols": 4,
+      "rows": 3,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b3b3345"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cursor"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_000219,time_0,execs_0,orig_id_000591,src_000000,time_3168,execs_18145,op_havoc,rep_8,+cov"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/csi-extra-vpa-parameters",
+      "cols": 4,
+      "rows": 6,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b343b3064"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cursor"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_000475,time_0,execs_0,orig_id_000937,src_000000,time_9272,execs_53815,op_havoc,rep_8"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/csi-zero-vpr",
+      "cols": 4,
+      "rows": 3,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b3b65"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cursor"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_000411,time_0,execs_0,orig_id_000865,src_000000,time_7600,execs_44042,op_havoc,rep_7"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/csi-zero-scroll-up",
+      "cols": 4,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "671b5b3053"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.screens"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_000820,src_000002,time_2743,execs_23483,op_havoc,rep_2,+cov"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/erase-empty-scroll-clear",
+      "cols": 4,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b32324a"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.screens"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_000537,time_0,execs_0,orig_id_001012,src_000003,time_10526,execs_59900,op_havoc,rep_3"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/sgr-indexed-overflow",
+      "cols": 4,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b33383b353b3936306d721b5b6d"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.styles"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_000855,src_000002,time_3365,execs_27742,op_havoc,rep_1,+cov",
+      "stream-cmin/id_000864,src_000002,time_3552,execs_28950,op_havoc,rep_2"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/sgr-mixed-separators",
+      "cols": 4,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b34383a323b3b3b306d671b5b6d"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.styles"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_000861,src_000002,time_3534,execs_28837,op_havoc,rep_2"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/sgr-incomplete-rgb",
+      "cols": 4,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b33383b353b316d1b5b34383b323b3b6d671b5b6d"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.styles"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_000761,src_000002,time_2155,execs_19700,op_havoc,rep_1,+cov",
+      "stream-cmin/id_000860,src_000002,time_3517,execs_28704,op_havoc,rep_1"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/zero-horizontal-tab",
+      "cols": 4,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b3049"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cursor"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_000911,src_000002,time_4641,execs_36454,op_havoc,rep_1,+cov"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/uk-invalid-utf8",
+      "cols": 4,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b2841bb"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_001990,src_000476,time_50496,execs_229360,op_havoc,rep_1"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/osc8-opaque-uri",
+      "cols": 4,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5d383b3bff1b3b32"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_001656,src_000007,time_31637,execs_165603,op_havoc,rep_6,+cov"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/osc133-prompt-esc",
+      "cols": 4,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5d3133333b501b"
+        }
+      ],
+      "observe_semantic": true
+    },
+    "covers": [
+      "terminal.cursor"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_003569,src_000670,time_466333,execs_1101884,op_havoc,rep_5"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/osc133-fresh-command",
+      "cols": 4,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "b61b5d3133333b4e1b"
+        }
+      ],
+      "observe_semantic": true
+    },
+    "covers": [
+      "terminal.cursor"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_003546,src_003238,time_462709,execs_1078637,op_havoc,rep_2,+cov"
+    ]
+  },
+  {
+    "request": {
+      "id": "corpus/osc133-input-eol",
+      "cols": 4,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5d3133333b491a441b44"
+        }
+      ],
+      "observe_semantic": true
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_004442,src_004414,time_689012,execs_1984913,op_havoc,rep_4,+cov"
+    ]
   }
 ]
