@@ -49,7 +49,7 @@ impl State {
         }
     }
 
-    fn use_grant(&mut self, password: &[u8], read: bool) -> bool {
+    pub(crate) fn use_grant(&mut self, password: &[u8], read: bool) -> bool {
         let Some(index) = self.grants.iter().position(|g| g.password == password) else {
             return false;
         };
@@ -502,7 +502,7 @@ impl Streaming {
 }
 
 pub(crate) fn response(op: &str, status: &str, id: &[u8], terminator: Terminator) -> Vec<u8> {
-    let mut output = packet(op, status, false, id, None, &[]);
+    let mut output = packet(op, status, false, id, None, None, &[]);
     output.extend_from_slice(terminator.as_bytes());
     output
 }
@@ -513,6 +513,7 @@ fn packet(
     primary: bool,
     id: &[u8],
     mime: Option<&[u8]>,
+    password: Option<&[u8]>,
     payload: &[u8],
 ) -> Vec<u8> {
     let mut output = format!("\x1b]5522;type={op}:status={status}").into_bytes();
@@ -526,6 +527,10 @@ fn packet(
     if let Some(mime) = mime {
         output.extend_from_slice(b":mime=");
         output.extend_from_slice(BASE64.encode(mime).as_bytes());
+    }
+    if let Some(password) = password {
+        output.extend_from_slice(b":pw=");
+        output.extend_from_slice(BASE64.encode(password).as_bytes());
     }
     if !payload.is_empty() {
         output.push(b';');
@@ -554,34 +559,84 @@ pub(crate) fn read_reply(request: &Read, id: &[u8], result: ReadResult) -> Vec<u
         request.location == Location::Primary,
         id,
         None,
+        None,
         &[],
     );
     output.extend_from_slice(request.terminator.as_bytes());
     if request.list {
-        let mut listing = Vec::new();
-        if !success.available.is_empty() {
-            for (index, mime) in success.available.iter().enumerate() {
-                if listing.len() + usize::from(index > 0) + mime.len() + 1 > 4096 {
-                    break;
-                }
-                if index > 0 {
-                    listing.push(b' ');
-                }
-                listing.extend_from_slice(mime);
-            }
-            listing.push(b'\n');
-        }
-        output.extend(packet("read", "DATA", false, id, Some(b"."), &listing));
+        let listing = listing(success.available.iter().map(Vec::as_slice));
+        output.extend(packet(
+            "read",
+            "DATA",
+            false,
+            id,
+            Some(b"."),
+            None,
+            &listing,
+        ));
         output.extend_from_slice(request.terminator.as_bytes());
     }
     for mime in &request.mimes {
         if let Some(content) = success.contents.iter().find(|c| &c.mime == mime) {
             for chunk in content.data.chunks(4096) {
-                output.extend(packet("read", "DATA", false, id, Some(mime), chunk));
+                output.extend(packet("read", "DATA", false, id, Some(mime), None, chunk));
                 output.extend_from_slice(request.terminator.as_bytes());
             }
         }
     }
     output.extend(response("read", "DONE", id, request.terminator));
+    output
+}
+
+fn listing<'a>(available: impl Iterator<Item = &'a [u8]>) -> Vec<u8> {
+    let mut listing = Vec::new();
+    let mut any = false;
+    for (index, mime) in available.enumerate() {
+        any = true;
+        if listing.len() + usize::from(index > 0) + mime.len() + 1 > 4096 {
+            break;
+        }
+        if index > 0 {
+            listing.push(b' ');
+        }
+        listing.extend_from_slice(mime);
+    }
+    if any {
+        listing.push(b'\n');
+    }
+    listing
+}
+
+pub(crate) fn paste_event(location: Location, password: &[u8], available: &[&[u8]]) -> Vec<u8> {
+    let mut output = packet(
+        "read",
+        "OK",
+        location != Location::Standard,
+        &[],
+        None,
+        Some(password),
+        &[],
+    );
+    output.extend_from_slice(Terminator::St.as_bytes());
+    output.extend(packet(
+        "read",
+        "DATA",
+        false,
+        &[],
+        Some(b"."),
+        Some(password),
+        &listing(available.iter().copied()),
+    ));
+    output.extend_from_slice(Terminator::St.as_bytes());
+    output.extend(packet(
+        "read",
+        "DONE",
+        false,
+        &[],
+        None,
+        Some(password),
+        &[],
+    ));
+    output.extend_from_slice(Terminator::St.as_bytes());
     output
 }

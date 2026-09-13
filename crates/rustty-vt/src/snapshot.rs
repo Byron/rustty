@@ -832,7 +832,7 @@ impl<R: Read> Decoder<R> {
             },
             cursor_default_blink: decode_bool(r.u8()?),
             shell_redraw: match r.u8()? {
-                v @ 0..=1 => v,
+                v @ 0..=2 => v,
                 _ => 0,
             },
             ..TerminalMetadata::default()
@@ -1015,7 +1015,7 @@ impl<R: Read> Decoder<R> {
             index,
         };
         let click = r.array::<2>()?;
-        m.semantic_click = if matches!(click, [0, 0] | [1, 0..=1] | [2, 0..=2]) {
+        m.semantic_click = if matches!(click, [0, 0] | [1, 0..=1] | [2, 0..=3]) {
             click
         } else {
             [0, 0]

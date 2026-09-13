@@ -124,7 +124,7 @@
     {
       "id": "clipboard",
       "status": "partial",
-      "remaining": "OSC 52/5522 metadata, binary reads/writes, MIME filtering, streamed base64, aliases, statuses, callback absence, configured limits and session grants are compared; OSC 1337, one-time paste grants, allocation failures and complete capture/size limits remain."
+      "remaining": "OSC 52/5522 metadata, binary reads/writes, MIME filtering, streamed base64, aliases, statuses, callback absence, configured limits, session grants and one-time paste grants are compared; OSC 1337, allocation failures and complete capture/size limits remain."
     },
     {
       "id": "drag-and-drop",
@@ -134,7 +134,7 @@
     {
       "id": "input.key",
       "status": "partial",
-      "remaining": "Legacy and Kitty matrix passes for current Rust keys, modifiers, text consumption and IME; remaining named/right-side keys and macOS Option policy require complete coverage."
+      "remaining": "All named keys in the native legacy/Kitty tables, text fallback, IME, modifier-side bits and macOS Option policies are compared; host event mapping and complete text/control combinations remain."
     },
     {
       "id": "input.mouse",
@@ -144,7 +144,7 @@
     {
       "id": "input.focus-paste",
       "status": "partial",
-      "remaining": "Focus and text paste encodings pass; binary paste, safety options and Kitty paste event/clipboard integration remain."
+      "remaining": "Focus, binary paste encodings, safety checks, mode precedence, Kitty paste events, one-time grants, lazy readers and entropy/read errors are compared; disabled output callbacks, allocation failures and complete control contexts remain."
     },
     {
       "id": "protocol.dcs",

@@ -1,12 +1,12 @@
-"""OSC title/PWD bytes, framing, capture bounds and command prefixes."""
+"""OSC title/PWD/hyperlink bytes, framing, capture bounds and command prefixes."""
 import base64
 
 
 def requests():
-    def case(name, operations, **options):
+    def case(name, operations, covers=None, **options):
         return ({"id": "protocol/osc/" + name, "host": {"title_report": True},
                  "operations": [op if isinstance(op, dict) else {"op": "write", "data": op.hex()} for op in operations],
-                 **options}, ["effects.title", "effects.pwd", "effects.host", "parser.events", "effects.pty"])
+                 **options}, covers or ["effects.title", "effects.pwd", "effects.host", "parser.events", "effects.pty"])
 
     def osc(number, body, end=b"\x07"):
         return b"\x1b]" + str(number).encode() + b";" + body + end
@@ -96,3 +96,47 @@ def requests():
             prefix = b"\x1b]" + str(number).encode() + b";" + b"x" * length
             yield case(f"snapshot/capture/{number}/{length}", [initial, prefix], kind="snapshot",
                        after=[{"op": "write", "data": (b"\x07" + query).hex()}])
+
+    # URI and explicit-ID bytes are opaque, including invalid UTF-8. Observe
+    # both the active pen and printed cells, then restore both wire encodings.
+    for uri in (b"https://example.org", "https://例え.test/é".encode(), b"\xff\x80"):
+        for option in (b"", b"id=stable", b"id=\xff\x80"):
+            body = option + b";" + uri
+            covers = ["terminal.cells", "terminal.cursor", "parser.events"]
+            for end in (b"\x07", b"\x1b\\"):
+                yield case(f"hyperlink/bytes/{body.hex()}/{end.hex()}",
+                           [osc(8, body, end), observe, b"X", observe, osc(8, b";"), b"Y"], covers=covers)
+            yield case(f"hyperlink/snapshot/{body.hex()}", [osc(8, body), b"X"], covers=covers,
+                       kind="snapshot", after=[{"op": "write", "data": (b"Y" + osc(8, b";") + b"Z").hex()}])
+
+    # OSC 8 uses the last nonempty ID; a malformed option stops traversal.
+    # An empty URI plus a recognized nonempty ID leaves the old link active.
+    previous = osc(8, b"id=previous;https://example.org/previous")
+    covers = ["terminal.cells", "terminal.cursor", "parser.events"]
+    for options in (b"id=first:id=last", b"id=one:id=", b"bad:id=x", b":id=x",
+                    b"id=x:bad:id=y", b"=value:id=foo", b"id=active", b"id="):
+        for uri in (b"https://example.org/next", b""):
+            for end in (b"\x07", b"\x1b\\"):
+                body = options + b";" + uri
+                yield case(f"hyperlink/options/{body.hex()}/{end.hex()}",
+                           [previous, b"A", osc(8, body, end), observe, b"B", observe,
+                            osc(8, b";"), b"C"], covers=covers, cols=8, rows=3)
+
+    # Native cursor restoration owns cursor position/style, while the live
+    # hyperlink belongs to the current screen and is not restored with it.
+    for name, save, restore in (("esc", b"\x1b7", b"\x1b8"),
+                                ("csi", b"\x1b[s", b"\x1b[u"),
+                                ("1048", b"\x1b[?1048h", b"\x1b[?1048l")):
+        for change_name, change in (("change", osc(8, b"id=next;https://example.org/next")),
+                                    ("end", osc(8, b";"))):
+            yield case(f"hyperlink/cursor/{name}/{change_name}",
+                       [previous, b"A", save, change, b"B", observe, restore, observe, b"C"],
+                       covers=covers, cols=8, rows=3)
+            yield case(f"hyperlink/cursor-snapshot/{name}/{change_name}",
+                       [previous, b"A", save, change, b"B"], covers=covers, cols=8, rows=3,
+                       kind="snapshot", after=[{"op": "write", "data": (restore + b"C").hex()}])
+        yield case(f"hyperlink/cursor/{name}/no-save", [previous, b"A", restore, observe, b"B"],
+                   covers=covers, cols=8, rows=3)
+    yield case("hyperlink/cursor/1049", [previous, b"A", b"\x1b[?1049h", observe,
+               osc(8, b"id=alternate;https://example.org/alternate"), b"B", b"\x1b[?1049l", observe, b"C"],
+               covers=covers, cols=8, rows=3)

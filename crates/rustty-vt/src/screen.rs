@@ -69,6 +69,31 @@ pub enum SemanticContent {
     Input,
 }
 
+/// Which prompt lines the shell can redraw after a resize.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PromptRedraw {
+    All,
+    None,
+    Last,
+}
+
+/// Cursor movement supported by the shell's OSC 133 `cl` option.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClickMotion {
+    Line,
+    Multiple,
+    ConservativeVertical,
+    SmartVertical,
+}
+
+/// How the shell handles clicks inside its prompt and input area.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SemanticClick {
+    None,
+    Events { relative: bool },
+    CursorKeys { motion: ClickMotion },
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Cell {
     /// Empty for unwritten cells and the continuation of a wide glyph.
@@ -124,6 +149,8 @@ pub struct Row {
     pub cells: Vec<Cell>,
     pub wrapped: bool,
     pub wrap_continuation: bool,
+    /// Row prompt marker: Output is unmarked, Prompt begins a prompt, and
+    /// Input denotes a prompt continuation. Cells keep their own content kind.
     pub semantic: SemanticContent,
     pub dirty: bool,
 }
@@ -372,6 +399,29 @@ pub struct Screen {
 }
 
 impl Screen {
+    /// Whether explicit line feeds end the current OSC 133 input region.
+    /// Soft wrapping preserves this region until an explicit line feed.
+    pub fn input_clears_at_eol(&self) -> bool {
+        self.metadata.cursor_clear_eol
+    }
+
+    pub fn semantic_click(&self) -> SemanticClick {
+        match self.metadata.semantic_click {
+            [1, relative @ 0..=1] => SemanticClick::Events {
+                relative: relative != 0,
+            },
+            [2, value @ 0..=3] => SemanticClick::CursorKeys {
+                motion: match value {
+                    0 => ClickMotion::Line,
+                    1 => ClickMotion::Multiple,
+                    2 => ClickMotion::ConservativeVertical,
+                    _ => ClickMotion::SmartVertical,
+                },
+            },
+            _ => SemanticClick::None,
+        }
+    }
+
     pub(crate) fn new(cols: usize, rows: usize, limits: ScrollbackLimits) -> Self {
         Self {
             metadata: crate::snapshot::ScreenMetadata::default(),
