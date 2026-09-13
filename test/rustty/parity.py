@@ -14,12 +14,20 @@ import snapshots
 import protocols
 import kitty_clipboard
 import paste_requests
+import graphics_requests
 import semantic_prompts
+import prompt_redraw
 import charsets
+import grid_requests
+import search_pages
+import page_layout_requests
+import page_lifecycle_requests
 import host_queries
 import mode_defaults
 import color_protocols
 import osc_strings
+import glyph_requests
+import reset_stream
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -100,6 +108,12 @@ def variants(request, exhaustive=False):
         return
     for name, chunks in (("scalar", [1]), ("chunks", [2, 7, 1, 13, 4])):
         variant = dict(request, id=f"{request['id']}/{name}", scalar=name == "scalar")
+        if name == "scalar":
+            # Both adapters feed one byte at a time when scalar is true.
+            # Expanding each byte into a JSON operation changes no delivery
+            # behavior and can exceed the transport's request-size limit.
+            yield variant
+            continue
         for field in ("operations", "after"):
             if field not in request:
                 continue
@@ -412,6 +426,9 @@ def main():
     parser.add_argument("--snapshots", action="store_true", help="cross-decode both snapshot encodings and resume terminal input")
     parser.add_argument("--snapshot-wire", action="store_true", help="compare snapshot fixtures, streaming, malformed input and mixed PAGE widths")
     parser.add_argument("--protocols", action="store_true", help="compare terminal protocol queries and host effects")
+    parser.add_argument("--grid", action="store_true", help="compare selection, literal search and tracked grid references")
+    parser.add_argument("--page-layout", action="store_true", help="compare native page/resource layout arithmetic without backing allocations")
+    parser.add_argument("--pages", action="store_true", help="compare native page lifetimes, boundaries and allocation charges")
     parser.add_argument("--max-failures", type=int, default=20)
     parser.add_argument("--artifacts", type=Path, default=ARTIFACTS, help="isolated output directory for concurrent suites")
     parser.add_argument("--zig-bin", type=Path, default=ROOT / "zig-out/bin/vt-oracle")
@@ -423,7 +440,10 @@ def main():
     ARTIFACTS = args.artifacts.resolve()
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     if not args.no_build:
-        subprocess.run(["zig", "build", "vt-oracle", "-Demit-lib-vt=true", "-Demit-macos-app=false"], cwd=ROOT, check=True)
+        zig_build = ["zig", "build", "vt-oracle", "-Demit-lib-vt=true", "-Demit-macos-app=false"]
+        if args.pages or args.thorough:
+            zig_build.append("-Doptimize=ReleaseSafe")
+        subprocess.run(zig_build, cwd=ROOT, check=True)
         subprocess.run(["cargo", "build", "--offline", "-p", "rustty-vt", "--example", "parity"], cwd=ROOT, check=True)
     peers = []
     failures = 0
@@ -450,6 +470,18 @@ def main():
             if args.parser or args.thorough:
                 requests.extend((request, covers) for request, covers in parser_requests()
                                 if not args.case or args.case in request["id"])
+            if args.grid or args.thorough:
+                requests.extend((request, covers) for request, covers in grid_requests.requests()
+                                if not args.case or args.case in request["id"])
+            if args.page_layout or args.thorough:
+                requests.extend((request, covers) for request, covers in page_layout_requests.requests()
+                                if not args.case or args.case in request["id"])
+            if args.pages or args.thorough:
+                requests.extend((request, covers) for request, covers in page_lifecycle_requests.requests(peers[0])
+                                if not args.case or args.case in request["id"])
+            if args.thorough:
+                requests.extend((request, covers) for request, covers in search_pages.requests()
+                                if not args.case or args.case in request["id"])
             if args.unicode or args.thorough:
                 requests.extend((request, covers) for request, covers in unicode_requests()
                                 if not args.case or args.case in request["id"])
@@ -474,7 +506,17 @@ def main():
                                 if not args.case or args.case in request["id"])
                 requests.extend((request, covers) for request, covers in paste_requests.requests()
                                 if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in graphics_requests.requests()
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in glyph_requests.requests()
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in reset_stream.requests()
+                                if not args.case or args.case in request["id"])
+                if not args.case or args.case in "protocol/glyph/snapshot/committed-registrations-omitted":
+                    requests.extend(glyph_requests.snapshot_wire_requests(peers[0]))
                 requests.extend((request, covers) for request, covers in semantic_prompts.requests()
+                                if not args.case or args.case in request["id"])
+                requests.extend((request, covers) for request, covers in prompt_redraw.requests()
                                 if not args.case or args.case in request["id"])
                 requests.extend((request, covers) for request, covers in charsets.requests()
                                 if not args.case or args.case in request["id"])

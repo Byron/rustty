@@ -7,8 +7,18 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::io::{self, BufRead, Read, Write};
 
+#[path = "rust-glyph.rs"]
+mod glyph_adapter;
+#[path = "rust-graphics.rs"]
+mod graphics_adapter;
+#[path = "rust-grid.rs"]
+mod grid_adapter;
 #[path = "rust-input.rs"]
 mod input;
+#[path = "rust-page-layout.rs"]
+mod page_layout_adapter;
+#[path = "rust-pages.rs"]
+mod pages_adapter;
 #[path = "rust-parser.rs"]
 mod parser;
 #[path = "rust-paste.rs"]
@@ -17,6 +27,14 @@ mod paste;
 mod semantic_adapter;
 
 const CAPABILITIES: &[&str] = &[
+    "terminal.pages",
+    "graphics.glyphs",
+    "terminal.page-layout",
+    "terminal.selection",
+    "terminal.search",
+    "terminal.tracked",
+    "graphics.kitty",
+    "graphics.png",
     "terminal.write",
     "terminal.resize",
     "terminal.reset",
@@ -64,7 +82,9 @@ struct Request {
     observe_mode_effects: bool,
     observe_colors: bool,
     observe_semantic: bool,
+    observe_graphics: bool,
     color_inputs: Vec<String>,
+    page_layout: Option<page_layout_adapter::Request>,
 }
 
 impl Default for Request {
@@ -86,7 +106,9 @@ impl Default for Request {
             observe_mode_effects: false,
             observe_colors: false,
             observe_semantic: false,
+            observe_graphics: false,
             color_inputs: Vec::new(),
+            page_layout: None,
         }
     }
 }
@@ -95,6 +117,8 @@ impl Default for Request {
 #[serde(deny_unknown_fields)]
 struct Operation {
     op: String,
+    #[serde(default)]
+    glyph_max_bytes: Option<usize>,
     #[serde(default)]
     data: String,
     #[serde(default)]
@@ -127,6 +151,8 @@ struct Operation {
     cursor_blink: Option<bool>,
     #[serde(default)]
     colors: Option<ColorDefaults>,
+    #[serde(default)]
+    grid: Option<grid_adapter::Operation>,
 }
 
 #[derive(Default, Deserialize)]
@@ -567,13 +593,22 @@ fn main() -> io::Result<()> {
 
 fn response(id: &str, error: Option<&str>) -> Value {
     json!({"id":id,"ok":error.is_none(),"err":error,"capabilities":CAPABILITIES,
-        "observations":[],"events":[],"widths":[],"parser":null,"snapshots":[],"snapshot_progress":[],"mode_results":[],"parsed_colors":[]})
+        "observations":[],"events":[],"widths":[],"parser":null,"snapshots":[],"snapshot_progress":[],"mode_results":[],"parsed_colors":[],"grid_results":[],"page_layout":null,"glyph_results":[],"page_results":[]})
 }
 
 fn execute(request: &Request) -> Result<Value, &'static str> {
     let mut result = response(&request.id, None);
     match request.kind.as_str() {
         "capabilities" => return Ok(result),
+        "page_layout" => {
+            result["page_layout"] = page_layout_adapter::run(
+                request
+                    .page_layout
+                    .as_ref()
+                    .unwrap_or(&page_layout_adapter::Request::default()),
+            )?;
+            return Ok(result);
+        }
         "parser" => {
             result["parser"] = parser::run(&request.operations)?;
             return Ok(result);
@@ -612,6 +647,10 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
     }
     let mut observations = Vec::new();
     let mut mode_results = Vec::new();
+    let mut grid = grid_adapter::Context::default();
+    let mut grid_results = Vec::new();
+    let mut glyph_results = Vec::new();
+    let mut page_results = Vec::new();
     let mut host = Host::new(request)?;
     host.host.configure(&mut terminal);
     let mut snapshots = Vec::new();
@@ -620,6 +659,7 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
     let snapshot_offset = std::rc::Rc::new(std::cell::Cell::new(0));
     for operation in &request.operations {
         match operation.op.as_str() {
+            "pages" => page_results.push(pages_adapter::observe(&terminal)),
             "write" => {
                 let bytes = unhex(&operation.data)?;
                 if request.scalar {
@@ -717,6 +757,14 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
             "observe" => {
                 observations.push(observe(&terminal, request));
             }
+            "glyph_observe" => glyph_results.push(glyph_adapter::observe(&terminal.glyphs)),
+            "glyph_enable" => terminal.glyphs.set_enabled(operation.value),
+            "glyph_limit" => terminal.glyphs.set_apc_limit(operation.glyph_max_bytes),
+            "glyph_clean" => terminal.glyphs.clear_dirty(),
+            "grid" => grid_results.push(grid.run(
+                &mut terminal,
+                operation.grid.as_ref().ok_or("MissingGridOperation")?,
+            )?),
             "input" => {
                 let bytes =
                     input::encode(&terminal, operation.input.as_ref().ok_or("MissingInput")?)?;
@@ -731,12 +779,18 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
                 observations.clear();
                 host.events.clear();
                 mode_results.clear();
+                grid_results.clear();
+                glyph_results.clear();
+                page_results.clear();
             }
             "snapshot" => {
                 snapshots.push(hex(&rustty_vt::snapshot::encode_to_vec(&terminal)
                     .map_err(|_| "SnapshotEncodeFailed")?));
             }
             "restore" => {
+                if grid.has_handles() {
+                    return Err("UnsupportedGridRestore");
+                }
                 terminal = rustty_vt::snapshot::decode(
                     &unhex(&operation.data)?[..],
                     rustty_vt::snapshot::DecodeOptions::default(),
@@ -747,6 +801,9 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
                 snapshot_decoder = None;
             }
             "restore_ready" => {
+                if grid.has_handles() {
+                    return Err("UnsupportedGridRestore");
+                }
                 snapshot_offset.set(0);
                 let mut decoder = rustty_vt::snapshot::Decoder::new(
                     SnapshotReader {
@@ -789,6 +846,9 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
     result["snapshots"] = json!(snapshots);
     result["snapshot_progress"] = json!(snapshot_progress);
     result["mode_results"] = json!(mode_results);
+    result["grid_results"] = json!(grid_results);
+    result["glyph_results"] = json!(glyph_results);
+    result["page_results"] = json!(page_results);
     Ok(result)
 }
 
@@ -849,7 +909,8 @@ fn observe(terminal: &Terminal, request: &Request) -> Value {
         "margins":[m.top,m.bottom,m.left,m.right],
         "title":hex(terminal.title_bytes()),"pwd":hex(terminal.working_directory_bytes()),
         "modes":modes,"mode_effects":mode_effects,"colors":colors,
-        "semantic":request.observe_semantic.then(|| semantic_adapter::observe(terminal))})
+        "semantic":request.observe_semantic.then(|| semantic_adapter::observe(terminal)),
+        "graphics":request.observe_graphics.then(|| graphics_adapter::observe(terminal))})
 }
 
 fn screen(screen: &Screen) -> Value {

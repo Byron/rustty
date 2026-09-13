@@ -48,6 +48,8 @@ class HarnessTests(unittest.TestCase):
 
         variants = list(parity.variants(original, exhaustive=True))
         self.assertTrue(variants[1]["scalar"])
+        self.assertEqual(original["operations"], variants[1]["operations"])
+        self.assertEqual(original["after"], variants[1]["after"])
         self.assertGreater(len(variants), 3)
         for variant in variants:
             for field in ("operations", "after"):

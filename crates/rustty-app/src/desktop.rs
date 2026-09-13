@@ -40,6 +40,7 @@ use winit::{
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const BLINK: Duration = Duration::from_millis(600);
 const INPUT_BUDGET: usize = 16 * 1024 * 1024;
+const MIN_WINDOW_SIZE: LogicalSize<f64> = LogicalSize::new(240.0, 120.0);
 
 #[derive(Debug)]
 enum Event {
@@ -166,7 +167,7 @@ struct Host {
     navigation_warning: Option<(Id, Instant)>,
     mouse: Pos2,
     mouse_button: Option<vt::MouseButton>,
-    selection_anchor: Option<vt::GridPoint>,
+    selection_drag: Option<input::SelectionDrag>,
     focused: bool,
     visible: bool,
     occluded: bool,
@@ -622,11 +623,19 @@ impl App {
         let id = self.workspace.id();
         let tab = self.workspace.id();
         let pane = self.workspace.id();
+        let frame = if quick {
+            self.platform
+                .as_ref()
+                .and_then(|platform| platform.quick_terminal_frame(self.config(), None))
+        } else {
+            None
+        }
+        .unwrap_or([100.0, 100.0, 1000.0, 680.0]);
         self.workspace.windows.push(WindowState {
             id,
             tabs: vec![Tab::new(tab, pane, directory)],
             active_tab: 0,
-            frame: [100.0, 100.0, 1000.0, 680.0],
+            frame,
             quick,
         });
         self.changed();
@@ -717,21 +726,25 @@ impl App {
         let quick = state.quick;
         let mut frame = state.frame;
         if quick
-            && let Some(bounds) = self
-                .platform
-                .as_ref()
-                .and_then(|platform| platform.quick_terminal_frame(self.config()))
+            && let Some(bounds) = self.platform.as_ref().and_then(|platform| {
+                platform.quick_terminal_frame(self.config(), Some([frame[2], frame[3]]))
+            })
         {
             frame = bounds;
         }
         let attributes = Window::default_attributes()
             .with_title("Rustty")
+            // AppKit consumes the activation click before any terminal/UI action.
+            .with_accepts_first_mouse(false)
             .with_decorations(!quick)
             .with_nonactivating_panel(quick)
             .with_visible(false)
-            .with_inner_size(LogicalSize::new(frame[2].max(320.0), frame[3].max(180.0)))
+            .with_inner_size(LogicalSize::new(
+                frame[2].max(MIN_WINDOW_SIZE.width),
+                frame[3].max(MIN_WINDOW_SIZE.height),
+            ))
             .with_position(LogicalPosition::new(frame[0], frame[1]))
-            .with_min_inner_size(LogicalSize::new(240.0, 120.0))
+            .with_min_inner_size(MIN_WINDOW_SIZE)
             .with_transparent(self.config().background_opacity < 1.0)
             .with_titlebar_transparent(true)
             .with_fullsize_content_view(true)
@@ -787,7 +800,7 @@ impl App {
             navigation_warning: None,
             mouse: Pos2::ZERO,
             mouse_button: None,
-            selection_anchor: None,
+            selection_drag: None,
             focused: false,
             visible: !quick,
             occluded: false,
@@ -816,7 +829,7 @@ impl App {
             if visible {
                 platform.show_quick(&host.window, self.config())
             } else {
-                platform.hide_quick(&host.window, restore_focus)
+                platform.hide_quick(&host.window, restore_focus, self.config())
             }
         } else {
             Err("macOS window services are unavailable".into())
@@ -824,11 +837,33 @@ impl App {
         match result {
             Ok(()) => {
                 host.visible = visible;
+                self.remember_quick_frame(host);
                 host.repaint();
             }
             Err(error) => self.errors.push(error),
         }
     }
+
+    fn remember_quick_frame(&mut self, host: &Host) -> bool {
+        let Some(index) = self
+            .index(host.id)
+            .filter(|&i| self.workspace.windows[i].quick)
+        else {
+            return false;
+        };
+        if let Some(platform) = &self.platform {
+            match platform.quick_terminal_saved_frame(&host.window) {
+                Ok(frame) if self.workspace.windows[index].frame != frame => {
+                    self.workspace.windows[index].frame = frame;
+                    self.changed();
+                }
+                Ok(_) => {}
+                Err(error) => self.errors.push(error),
+            }
+        }
+        true
+    }
+
     fn save(&mut self) {
         self.save_at = None;
         if self.config().window_save_state != config::WindowSaveState::Never
@@ -1900,10 +1935,7 @@ impl App {
         let Ok(mut terminal) = pane.session.terminal() else {
             return 0;
         };
-        let Ok(regex) = regex::Regex::new(&regex::escape(query)) else {
-            return 0;
-        };
-        let matches = terminal.screen().search(&regex);
+        let matches = terminal.screen().search_literal(query.as_bytes());
         if matches.is_empty() {
             return 0;
         }
@@ -1932,6 +1964,9 @@ impl App {
             .collect::<Vec<_>>();
         for id in removed {
             if let Some(host) = self.windows.remove(&id) {
+                if let Some(platform) = &self.platform {
+                    platform.forget_window(&host.window);
+                }
                 for (pane, request) in host.clipboard_request {
                     self.finish_clipboard(pane, request, false, false);
                 }
@@ -3157,21 +3192,19 @@ impl App {
                         self.errors.push(error);
                     }
                 } else {
-                    host.selection_anchor = Some(point);
+                    host.selection_drag = Some(input::SelectionDrag::new(point, host.mouse));
                     screen.selection = None;
                 }
             } else if action == vt::MouseAction::Move
                 && host.mouse_button == Some(vt::MouseButton::Left)
             {
-                if let Some(start) = host.selection_anchor {
-                    screen.selection = Some(vt::Selection {
-                        start,
-                        end: point,
-                        rectangular: host.modifiers.state().alt_key(),
-                    });
+                if let Some(drag) = &mut host.selection_drag
+                    && let Some(selection) =
+                        drag.update(host.mouse, point, host.modifiers.state().alt_key())
+                {
+                    screen.selection = Some(selection);
                 }
-            } else if action == vt::MouseAction::Release {
-                host.selection_anchor = None;
+            } else if action == vt::MouseAction::Release && host.selection_drag.take().is_some() {
                 let copy = config.copy_on_select;
                 let text = screen.selection_text();
                 drop(terminal);
@@ -3491,7 +3524,9 @@ impl ApplicationHandler<Event> for App {
                 {
                     self.painter.on_window_resized(host.viewport, width, height);
                 }
-                if let Some(index) = self.index(host.id) {
+                if !self.remember_quick_frame(&host)
+                    && let Some(index) = self.index(host.id)
+                {
                     let size = size.to_logical::<f64>(host.window.scale_factor());
                     self.workspace.windows[index].frame[2] = size.width.max(1.0);
                     self.workspace.windows[index].frame[3] = size.height.max(1.0);
@@ -3500,7 +3535,9 @@ impl ApplicationHandler<Event> for App {
                 host.repaint();
             }
             WindowEvent::Moved(position) => {
-                if let Some(index) = self.index(host.id) {
+                if !self.remember_quick_frame(&host)
+                    && let Some(index) = self.index(host.id)
+                {
                     let pos = position.to_logical::<f64>(host.window.scale_factor());
                     self.workspace.windows[index].frame[0] = pos.x;
                     self.workspace.windows[index].frame[1] = pos.y;
@@ -3519,6 +3556,7 @@ impl ApplicationHandler<Event> for App {
                 host.repaint();
             }
             WindowEvent::Focused(focused) => {
+                let was_focused = host.focused;
                 host.focused = focused;
                 if focused {
                     self.active = Some(host.id);
@@ -3530,6 +3568,8 @@ impl ApplicationHandler<Event> for App {
                     host.modifiers = Modifiers::default();
                     host.consumed_keys.clear();
                     host.divider_drag = None;
+                    host.mouse_button = None;
+                    host.selection_drag = None;
                     host.composing = false;
                     host.preedit.clear();
                     host.preedit_selection = None;
@@ -3550,12 +3590,17 @@ impl ApplicationHandler<Event> for App {
                         .index(host.id)
                         .is_some_and(|i| self.workspace.windows[i].quick)
                     {
-                        if let Some(platform) = &self.platform
-                            && let Err(error) = platform.quick_resigned_focus(&host.window)
-                        {
-                            self.errors.push(error);
-                        }
-                        if self.config().quick_terminal_autohide && !host.ui_input() {
+                        let lost = self.platform.as_ref().map_or(Ok(was_focused), |platform| {
+                            platform.quick_resigned_focus(&host.window, was_focused)
+                        });
+                        let lost = match lost {
+                            Ok(lost) => lost,
+                            Err(error) => {
+                                self.errors.push(error);
+                                false
+                            }
+                        };
+                        if lost && self.config().quick_terminal_autohide && !host.ui_input() {
                             self.quick_visible(&mut host, false, false);
                         }
                     }
@@ -3674,6 +3719,7 @@ impl ApplicationHandler<Event> for App {
                 );
                 if state == ElementState::Released {
                     host.mouse_button = None;
+                    host.selection_drag = None;
                 }
             }
             WindowEvent::MouseWheel { delta, .. } if !host.ui_input() => {

@@ -18,6 +18,42 @@ fn hex(text: &str) -> Vec<u8> {
         .collect()
 }
 
+#[test]
+fn snapshot_grapheme_capacity_drops_whole_clusters_and_limits_suffix_length() {
+    for (capacity, counts, expected) in [
+        (0u32, [1u16; 4], [1usize; 4]),
+        (16, [1; 4], [2, 1, 1, 1]),
+        (512, [64, 64, 8, 61], [65, 65, 9, 1]),
+        (8192, [65, 128, 0, 1], [65, 65, 1, 2]),
+    ] {
+        let mut parts = records(&encode_to_vec(&Terminal::new(4, 1, 0)).unwrap());
+        let page = &mut parts.iter_mut().find(|(tag, _)| *tag == 3).unwrap().1;
+        page.clear();
+        for value in [4u16, 1, 0, 0, 0, 0] {
+            page.extend_from_slice(&value.to_le_bytes());
+        }
+        page.extend_from_slice(&capacity.to_le_bytes());
+        page.extend_from_slice(&0u32.to_le_bytes());
+        page.extend_from_slice(&[0, 4, 0, b'A', b'B', b'C', b'D']);
+        page.extend_from_slice(&4u32.to_le_bytes());
+        for (col, count) in counts.into_iter().enumerate() {
+            for value in [0, col as u16, count] {
+                page.extend_from_slice(&value.to_le_bytes());
+            }
+            for _ in 0..count {
+                page.extend_from_slice(&0x301u32.to_le_bytes());
+            }
+        }
+        let terminal = decode(frame(&parts).as_slice(), DecodeOptions::default()).unwrap();
+        let actual = terminal.screen().rows[0]
+            .cells
+            .iter()
+            .map(|cell| cell.text.chars().count())
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected, "capacity={capacity}");
+    }
+}
+
 fn records(bytes: &[u8]) -> Vec<(u16, Vec<u8>)> {
     let mut data = &bytes[10..];
     let mut records = Vec::new();
@@ -192,7 +228,38 @@ fn corrupt_truncated_and_excessive_snapshots_are_rejected() {
 }
 
 #[test]
-fn streaming_restore_discards_history_after_limits_or_resize_change() {
+fn streaming_restore_uses_the_minimum_scrollback_budget() {
+    for (limits, expected) in [
+        (
+            ScrollbackLimits {
+                bytes: None,
+                lines: Some(0),
+            },
+            vec!["A", "", "B", ""],
+        ),
+        (
+            ScrollbackLimits {
+                bytes: Some(1),
+                lines: None,
+            },
+            vec!["B", ""],
+        ),
+    ] {
+        let bytes = fixture();
+        let mut decoder = Decoder::new(bytes.as_slice(), DecodeOptions::default());
+        let mut terminal = decoder.ready().unwrap();
+        terminal.set_limits(limits);
+        let mut rows = 0;
+        while let Some(progress) = decoder.next_history(&mut terminal).unwrap() {
+            rows += progress.rows;
+        }
+        assert_eq!(rows, expected.len());
+        assert_eq!(text(&terminal.primary_screen().history), expected);
+    }
+}
+
+#[test]
+fn streaming_restore_obeys_page_budget_and_discards_history_after_resize() {
     for resize in [false, true] {
         let bytes = fixture();
         let mut decoder = Decoder::new(bytes.as_slice(), DecodeOptions::default());
@@ -202,10 +269,13 @@ fn streaming_restore_discards_history_after_limits_or_resize_change() {
         } else {
             terminal.set_limits(ScrollbackLimits::NONE);
         }
+        let mut rows = 0;
         while let Some(progress) = decoder.next_history(&mut terminal).unwrap() {
-            assert_eq!(progress.rows, 0);
+            rows += progress.rows;
         }
-        assert!(terminal.primary_screen().history.is_empty());
+        let expected = if resize { vec![] } else { vec!["B", ""] };
+        assert_eq!(rows, expected.len());
+        assert_eq!(text(&terminal.primary_screen().history), expected);
     }
 }
 
@@ -216,7 +286,6 @@ fn ghostty_sparse_page_preserves_styles_links_graphemes_and_wide_cells() {
     stream[2].1 = hex(include_str!(
         "../../../src/terminal/snapshot/testdata/page-v1.hex"
     ));
-    stream.remove(3);
     let terminal = decode(frame(&stream).as_slice(), DecodeOptions::default()).unwrap();
     let rows = &terminal.screen().rows;
     let first = &rows[0].cells[0];
@@ -339,10 +408,13 @@ fn mixed_physical_widths_survive_safe_edits_and_grow_at_the_access_boundary() {
     let mut source = Terminal::new(4, 1, 10);
     source.feed(b"abcd");
     let narrow_page = records(&encode_to_vec(&source).unwrap())[2].clone();
+    let blank_wide_page = records(&encode_to_vec(&Terminal::new(8, 1, 10)).unwrap())[2].clone();
     let mut logical = Terminal::new(8, 2, 10);
     logical.feed(b"\x1b[31");
     let mut stream = records(&encode_to_vec(&logical).unwrap());
     stream[2] = narrow_page;
+    stream.insert(3, blank_wide_page);
+    stream[1].1[2..4].copy_from_slice(&2u16.to_le_bytes());
     stream[1].1[12..14].copy_from_slice(&3u16.to_le_bytes());
     stream[1].1[17] = 1; // pending wrap at the physical edge, x=3
     let mut terminal = decode(frame(&stream).as_slice(), DecodeOptions::default()).unwrap();
@@ -374,13 +446,23 @@ fn mixed_physical_widths_survive_safe_edits_and_grow_at_the_access_boundary() {
     query.feed(b"\x1b[1;8H!");
     assert_eq!(query.screen().rows[0].cells.len(), 8);
     assert_eq!(query.screen().rows[0].cells[7].text, "!");
+    assert_eq!(query.screen().page_allocations().next().unwrap().columns, 8);
+    let restored = decode(
+        encode_to_vec(&query).unwrap().as_slice(),
+        DecodeOptions::default(),
+    )
+    .unwrap();
+    same_terminal(&query, &restored);
 
     // Wider physical rows preserve their hidden suffix through safe edits.
     let mut source = Terminal::new(8, 1, 10);
     source.feed(b"abcdef");
     let wide_page = records(&encode_to_vec(&source).unwrap())[2].clone();
+    let blank_narrow_page = records(&encode_to_vec(&Terminal::new(4, 1, 10)).unwrap())[2].clone();
     let mut stream = records(&encode_to_vec(&Terminal::new(4, 2, 10)).unwrap());
     stream[2] = wide_page;
+    stream.insert(3, blank_narrow_page);
+    stream[1].1[2..4].copy_from_slice(&2u16.to_le_bytes());
     let bytes = frame(&stream);
     for input in [
         b"X".as_slice(),
@@ -405,6 +487,57 @@ fn mixed_physical_widths_survive_safe_edits_and_grow_at_the_access_boundary() {
     terminal.feed(b"\x1b[2J");
     assert_eq!(terminal.screen().rows[0].cells.len(), 8);
     assert_eq!(terminal.screen().rows[0].text(), "");
+}
+
+#[test]
+fn multirow_page_snapshots_keep_all_owned_resources() {
+    let mut styles = Terminal::new(64, 4, 10);
+    for index in 0..256 {
+        styles.feed(format!("\x1b[38;5;{index}mX").as_bytes());
+    }
+    let mut links = Terminal::new(80, 4, 10);
+    for index in 0..40 {
+        links.feed(
+            format!(
+                "\x1b]8;id={index};https://example.org/{index}/{}\x07XXXXX",
+                "x".repeat(128)
+            )
+            .as_bytes(),
+        );
+    }
+    let mut graphemes = Terminal::new(16, 4, 10);
+    graphemes.feed(
+        format!(
+            "\x1b[?2027h{}",
+            format!("A{}", "\u{301}".repeat(64)).repeat(64)
+        )
+        .as_bytes(),
+    );
+    for terminal in [styles, links, graphemes] {
+        let restored = decode(
+            encode_to_vec(&terminal).unwrap().as_slice(),
+            DecodeOptions::default(),
+        )
+        .unwrap();
+        same_terminal(&terminal, &restored);
+    }
+}
+
+#[test]
+fn snapshot_rejects_empty_link_strings_before_resource_admission() {
+    for (uri, id) in [
+        ("", HyperlinkId::Implicit(1)),
+        ("https://example.org", HyperlinkId::Explicit(Vec::new())),
+    ] {
+        let mut terminal = Terminal::new(2, 1, 10);
+        let cell = &mut terminal.screen_mut().rows[0].cells[0];
+        cell.hyperlink = Some(uri.into());
+        cell.hyperlink_id = Some(id);
+        assert_eq!(
+            encode_to_vec(&terminal).unwrap_err().kind(),
+            std::io::ErrorKind::InvalidData
+        );
+    }
 }
 
 #[test]

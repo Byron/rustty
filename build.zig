@@ -90,6 +90,9 @@ pub fn build(b: *std.Build) !void {
             .imports = &.{.{ .name = "ghostty-vt", .module = mod.vt }},
         }),
     });
+    if (mod.vt.import_table.get("wuffs")) |wuffs| {
+        vt_oracle.root_module.addImport("wuffs", wuffs);
+    }
     vt_oracle_step.dependOn(&b.addInstallArtifact(vt_oracle, .{}).step);
     const test_valgrind_step = b.step(
         "test-valgrind",

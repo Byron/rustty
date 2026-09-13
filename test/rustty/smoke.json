@@ -733,5 +733,194 @@
     "corpus_sources": [
       "stream-cmin/id_004442,src_004414,time_689012,execs_1984913,op_havoc,rep_4,+cov"
     ]
+  },
+  {
+    "request": {
+      "id": "terminal/reverse-index/left",
+      "cols": 8,
+      "rows": 5,
+      "operations": [
+        {
+          "op": "write",
+          "data": "746f700d0a696e736964650d0a62656c6f771b5b3f3639681b5b333b36731b5b323b34721b5b323b3148"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b4d"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "terminal/reverse-index/right",
+      "cols": 8,
+      "rows": 5,
+      "operations": [
+        {
+          "op": "write",
+          "data": "746f700d0a696e736964650d0a62656c6f771b5b3f3639681b5b333b36731b5b323b34721b5b323b3848"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b4d"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "terminal/reverse-index/pending-wrap",
+      "cols": 4,
+      "rows": 3,
+      "operations": [
+        {
+          "op": "write",
+          "data": "616263641b4d"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "58"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "terminal/combining-right-edge/legacy",
+      "cols": 2,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b3f376c6162d696"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_003609,src_003119,time_470959,execs_1125737,op_havoc,rep_15"
+    ]
+  },
+  {
+    "request": {
+      "id": "terminal/combining-right-edge/grapheme",
+      "cols": 2,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b3f376c1b5b3f32303237686162d696"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "terminal/combining-right-edge/column-zero",
+      "cols": 1,
+      "rows": 2,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b3f376c61d696"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "terminal/scroll-clear/alternate",
+      "cols": 8,
+      "rows": 3,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b3f3130343968"
+        },
+        {
+          "op": "write",
+          "data": "410d0a421b5b32324a"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "430d0a440d0a450d0a46"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor"
+    ],
+    "corpus_sources": [
+      "stream-cmin/id_005011,src_004732,time_1368401,execs_2543570,op_havoc,rep_6"
+    ]
+  },
+  {
+    "request": {
+      "id": "terminal/scroll-clear/disabled",
+      "cols": 8,
+      "rows": 3,
+      "operations": [
+        {
+          "op": "grid",
+          "grid": {
+            "action": "limits",
+            "bytes": 0,
+            "lines": null
+          }
+        },
+        {
+          "op": "write",
+          "data": "410d0a421b5b32324a"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "430d0a440d0a450d0a46"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor"
+    ]
   }
 ]

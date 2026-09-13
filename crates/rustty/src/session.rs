@@ -878,11 +878,15 @@ mod tests {
             .terminal()
             .unwrap()
             .feed("\r\nline".repeat(40).as_bytes());
-        assert_eq!(session.terminal().unwrap().screen().history.len(), 4);
+        // Nonzero limits retain at least an initial page. These 17 history
+        // rows fit in that page and survive both tiny configured line limits.
+        assert_eq!(session.terminal().unwrap().limits().lines, Some(4));
+        assert_eq!(session.terminal().unwrap().screen().history.len(), 17);
         config.scrollback_limit_lines = Some(1);
         config.clipboard_write_limit_bytes = Some(17);
         session.apply_config(&config).unwrap();
-        assert_eq!(session.terminal().unwrap().screen().history.len(), 1);
+        assert_eq!(session.terminal().unwrap().limits().lines, Some(1));
+        assert_eq!(session.terminal().unwrap().screen().history.len(), 17);
         assert_eq!(session.terminal().unwrap().clipboard_write_limit, 17);
         config.scrollback_limit_bytes = Some(0);
         session.apply_config(&config).unwrap();

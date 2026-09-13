@@ -53,6 +53,23 @@ test {
     refAllDeclsRecursive(@This());
 }
 
+test "decoders after an unaligned byte allocation" {
+    const alloc = std.testing.allocator;
+    const backing = try alloc.alignedAlloc(u8, .of(u64), 1024 * 1024);
+    defer alloc.free(backing);
+
+    inline for (.{ png, jpeg }, .{ "1x1#000000.png", "1x1#000000.jpg" }) |decoder, fixture| {
+        var fixed = std.heap.FixedBufferAllocator.init(backing);
+        const byte_alloc = fixed.allocator();
+        _ = try byte_alloc.alloc(u8, 1);
+        const image = try decoder.decode(byte_alloc, @embedFile(fixture));
+        defer byte_alloc.free(image.data);
+        try std.testing.expectEqual(1, image.width);
+        try std.testing.expectEqual(1, image.height);
+        try std.testing.expectEqualSlices(u8, &.{ 0, 0, 0, 255 }, image.data);
+    }
+}
+
 /// Copied from 0.15.2 stdlib (MIT license).
 fn refAllDeclsRecursive(comptime T: type) void {
     if (!builtin.is_test) return;

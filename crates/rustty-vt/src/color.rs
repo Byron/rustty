@@ -142,7 +142,7 @@ fn signed_index(value: &str) -> Option<u16> {
 
 // Match the native fraction parser's plain-decimal syntax and fifteen-digit
 // accumulation limit, including negative zero and ignored trailing precision.
-fn fraction(value: &str) -> Option<f64> {
+pub(crate) fn fraction(value: &str) -> Option<f64> {
     let (negative, value) = if let Some(value) = value.strip_prefix('-') {
         (true, value)
     } else {
