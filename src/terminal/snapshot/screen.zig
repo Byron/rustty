@@ -397,9 +397,10 @@ pub fn decode(
 
             // The active area can temporarily contain mixed-width pages after
             // a reflow. Locate the row at column zero, then clamp the encoded
-            // x coordinate to the width of that physical page.
+            // x coordinate to both the logical screen and physical page.
             const row_pin = pages.pin(.{ .active = .{ .y = y } }) orelse unreachable;
-            const x = @min(header.cursor_x, row_pin.node.cols() - 1);
+            const cursor_cols = @min(options.cols, row_pin.node.cols());
+            const x = @min(header.cursor_x, cursor_cols - 1);
             const pin = try pages.trackPin(.{
                 .node = row_pin.node,
                 .x = x,
@@ -412,7 +413,7 @@ pub fn decode(
                 .y = y,
                 .cursor_style = header.cursor_style,
                 .pending_wrap = header.cursor_flags.pending_wrap and
-                    x == row_pin.node.cols() - 1,
+                    x == cursor_cols - 1,
                 .protected = header.cursor_flags.protected,
                 .style = header.cursor_pen,
                 .hyperlink_implicit_id = header.hyperlink_implicit_id,
@@ -2111,56 +2112,66 @@ test "SCREEN restoration normalizes invalid cursor positions" {
     }
 }
 
-test "SCREEN validates pending wrap against a mixed-width cursor page" {
-    var screen = try TerminalScreen.init(
-        std.testing.io,
-        std.testing.allocator,
-        .{ .cols = 8, .rows = 1, .max_scrollback_bytes = 0 },
-    );
-    defer screen.deinit();
+test "SCREEN clamps cursor to mixed logical and physical widths" {
+    const Case = struct {
+        cols: u16,
+        physical_cols: u16,
+        x: u16,
+        expected_x: u16,
+        pending_wrap: bool,
+    };
+    for ([_]Case{
+        .{ .cols = 8, .physical_cols = 4, .x = 3, .expected_x = 3, .pending_wrap = true },
+        .{ .cols = 4, .physical_cols = 8, .x = 7, .expected_x = 3, .pending_wrap = true },
+        .{ .cols = 4, .physical_cols = 8, .x = 0, .expected_x = 0, .pending_wrap = false },
+    }) |case| {
+        var screen = try TerminalScreen.init(
+            std.testing.io,
+            std.testing.allocator,
+            .{ .cols = case.cols, .rows = 1, .max_scrollback_bytes = 0 },
+        );
+        defer screen.deinit();
 
-    // Model a lazily reflowed active page that is narrower than the terminal.
-    // Column three is its physical final column even though it is not column
-    // seven of the current terminal dimensions.
-    var narrow_page = try terminal_page.Page.init(.{ .cols = 4, .rows = 1 });
-    defer narrow_page.deinit();
+        var physical_page = try terminal_page.Page.init(.{ .cols = case.physical_cols, .rows = 1 });
+        defer physical_page.deinit();
 
-    var destination: std.Io.Writer.Allocating = .init(
-        std.testing.allocator,
-    );
-    defer destination.deinit();
-    var stream: record.Writer = .init(
-        std.testing.allocator,
-        &destination.writer,
-    );
-    defer stream.deinit();
+        var destination: std.Io.Writer.Allocating = .init(
+            std.testing.allocator,
+        );
+        defer destination.deinit();
+        var stream: record.Writer = .init(
+            std.testing.allocator,
+            &destination.writer,
+        );
+        defer stream.deinit();
 
-    var header = Header.init(&screen, .primary, 1);
-    header.cursor_x = 3;
-    header.cursor_y = 0;
-    header.cursor_flags.pending_wrap = true;
-    header.saved_cursor_present = false;
+        var header = Header.init(&screen, .primary, 1);
+        header.cursor_x = case.x;
+        header.cursor_y = 0;
+        header.cursor_flags.pending_wrap = true;
+        header.saved_cursor_present = false;
 
-    const screen_payload = stream.begin(.screen);
-    errdefer stream.cancel();
-    try header.encode(screen_payload);
-    try screen_payload.writeByte(0);
-    try stream.finish();
-    try page.encode(&narrow_page, &stream);
+        const screen_payload = stream.begin(.screen);
+        errdefer stream.cancel();
+        try header.encode(screen_payload);
+        try screen_payload.writeByte(0);
+        try stream.finish();
+        try page.encode(&physical_page, &stream);
 
-    var source: std.Io.Reader = .fixed(destination.written());
-    var decoded = try decode(
-        &source,
-        std.testing.io,
-        std.testing.allocator,
-        .{ .cols = 8, .rows = 1, .max_scrollback_bytes = 0 },
-    );
-    defer decoded.deinit();
+        var source: std.Io.Reader = .fixed(destination.written());
+        var decoded = try decode(
+            &source,
+            std.testing.io,
+            std.testing.allocator,
+            .{ .cols = case.cols, .rows = 1, .max_scrollback_bytes = 0 },
+        );
+        defer decoded.deinit();
 
-    try std.testing.expectEqual(@as(u16, 4), decoded.screen.cursor.page_pin.node.cols());
-    try std.testing.expectEqual(@as(u16, 3), decoded.screen.cursor.x);
-    try std.testing.expect(decoded.screen.cursor.pending_wrap);
-    decoded.screen.assertIntegrity();
+        try std.testing.expectEqual(case.physical_cols, decoded.screen.cursor.page_pin.node.cols());
+        try std.testing.expectEqual(case.expected_x, decoded.screen.cursor.x);
+        try std.testing.expectEqual(case.pending_wrap, decoded.screen.cursor.pending_wrap);
+        decoded.screen.assertIntegrity();
+    }
 }
 
 test "SCREEN clamps a decoded saved cursor to terminal dimensions" {

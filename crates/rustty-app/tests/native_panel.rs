@@ -18,9 +18,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(target_os = "macos")]
 mod macos {
+    use std::sync::Arc;
+
     use objc2::{ClassType, MainThreadMarker, rc::Retained};
-    use objc2_app_kit::{NSPanel, NSView, NSWindow, NSWindowStyleMask};
+    use objc2_app_kit::{NSPanel, NSView, NSWindow, NSWindowStyleMask, NSWindowTabbingMode};
     use objc2_foundation::NSObjectProtocol;
+    use rustty::config::Config;
+    use rustty_app::platform::Platform;
     use winit::{
         application::ApplicationHandler,
         dpi::{LogicalPosition, LogicalSize},
@@ -52,6 +56,9 @@ mod macos {
 
     impl ApplicationHandler for Check {
         fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+            let mut config = Config::default();
+            config.keybinds.clear();
+            let platform = Platform::new(Arc::new(|_| {}), &config).unwrap();
             for panel in [false, true] {
                 let window = event_loop
                     .create_window(
@@ -64,8 +71,10 @@ mod macos {
                             .with_inner_size(LogicalSize::new(320.0, 180.0)),
                     )
                     .unwrap();
+                platform.configure_window(&window, panel, &config).unwrap();
                 let id = window.id();
                 let native = check_window(&window, panel);
+                assert_eq!(native.tabbingMode(), NSWindowTabbingMode::Disallowed);
                 let view = native.contentView().unwrap();
 
                 // Exercise Winit's temporary zoom mask as well as ordinary edits.

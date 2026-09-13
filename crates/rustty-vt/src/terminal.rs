@@ -1,10 +1,10 @@
-use crate::clipboard;
 use crate::modes::Modes;
 use crate::query::{self, Query};
 use crate::screen::*;
 use crate::unicode::{self, properties};
+use crate::{clipboard, dnd};
 use base64::Engine;
-use rustty_parser::{Event, Parser};
+use rustty_parser::{Event, MAX_OSC_BYTES, Parser};
 
 /// Host actions are returned in input order. The terminal never accesses the OS.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -15,6 +15,8 @@ pub enum Effect {
     Bell,
     ClipboardRead(clipboard::Read),
     ClipboardWrite(clipboard::Write),
+    /// Drag target registration, acceptance, or drop completion changed.
+    DragAndDrop(dnd::Event),
     /// Serviced by built-in query defaults or the synchronous host callbacks.
     Query(Query),
     Notification {
@@ -39,6 +41,12 @@ pub enum Effect {
 /// twice. OSC 52 writes need no acknowledgement; unanswered reads return empty.
 pub trait EffectHandler {
     fn effect(&mut self, effect: Effect);
+
+    /// Observe DND state before the next parser event can change it.
+    /// The default forwards only the event, like deferred `Terminal::feed`.
+    fn drag_and_drop(&mut self, event: dnd::Event, _state: Option<&dnd::State>) {
+        self.effect(Effect::DragAndDrop(event));
+    }
 
     fn color_scheme(&mut self) -> Option<query::ColorScheme> {
         None
@@ -110,6 +118,8 @@ pub struct Terminal {
     /// A transfer retains the value that was configured when it began.
     pub clipboard_write_limit: usize,
     pub glyphs: crate::glyph::Glyphs,
+    /// OSC 72 state, allocated on registration and omitted from snapshots.
+    pub kitty_dnd: Option<dnd::State>,
     pub(crate) clipboard: clipboard::kitty::State,
     pub title: String,
     pub working_directory: String,
@@ -148,6 +158,10 @@ impl Terminal {
     pub fn with_limits(cols: u16, rows: u16, limits: ScrollbackLimits) -> Self {
         let cols = cols.max(1);
         let rows = rows.max(1);
+        let mut parser = Parser::new();
+        // Native capture starts after the command prefix. The raw parser also
+        // retains that prefix; OSC 5522 has the longest allocating one.
+        parser.set_osc_limit(MAX_OSC_BYTES + b"5522;".len());
         Self {
             metadata: crate::snapshot::TerminalMetadata::default(),
             cols,
@@ -172,6 +186,7 @@ impl Terminal {
             visible: true,
             clipboard_write_limit: 64 * 1024 * 1024,
             glyphs: crate::glyph::Glyphs::default(),
+            kitty_dnd: None,
             clipboard: clipboard::kitty::State::default(),
             title: String::new(),
             working_directory: String::new(),
@@ -182,7 +197,7 @@ impl Terminal {
             primary: Screen::new(cols.into(), rows.into(), limits),
             alternate: None,
             alternate_active: false,
-            parser: Parser::new(),
+            parser,
             tabstops: (0..cols).map(|i| i > 0 && i % 8 == 0).collect(),
             previous_char: None,
             grapheme_state: 0,
@@ -280,6 +295,8 @@ impl Terminal {
     /// Feed input with runtime `query_defaults` and return deferred host effects.
     /// Query replies use the current terminal geometry. For fully headless or
     /// readonly hosts, use `feed_with_handler` and opt into the needed callbacks.
+    /// DND effects carry event tags; use `feed_with_handler` to observe the state
+    /// at each event instead of the final state after the complete input batch.
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<Effect> {
         let mut effects = Vec::new();
         let mut pending = Vec::new();
@@ -301,8 +318,8 @@ impl Terminal {
         effects
     }
 
-    /// Feed bytes while servicing host queries and clipboard requests before
-    /// the next parser event. Replies are delivered through `handler.effect`.
+    /// Feed bytes while servicing host queries, clipboard requests, and DND
+    /// state callbacks before the next parser event. Replies go to `handler.effect`.
     /// Hosts that need deferred consent can use `feed` and `Read::reply` instead.
     pub fn feed_with_handler(&mut self, bytes: &[u8], handler: &mut impl EffectHandler) {
         let mut effects = Vec::new();
@@ -313,6 +330,9 @@ impl Terminal {
             self.handle(event, &mut effects, write_enabled, read_enabled);
             for effect in effects.drain(..) {
                 match effect {
+                    Effect::DragAndDrop(event) => {
+                        handler.drag_and_drop(event, self.kitty_dnd.as_ref());
+                    }
                     Effect::ClipboardRead(request) => {
                         let result = if read_enabled {
                             handler.clipboard_read(&request)
@@ -384,6 +404,13 @@ impl Terminal {
         }
     }
 
+    fn ensure_active_columns(&mut self) {
+        let columns = usize::from(self.cols);
+        for row in 0..usize::from(self.rows) {
+            self.ensure_row_cells(row, columns);
+        }
+    }
+
     fn clamp_cursor(&mut self) {
         let columns = usize::from(self.cols);
         let screen = self.screen_mut();
@@ -416,8 +443,10 @@ impl Terminal {
         self.primary
             .resize(cols.into(), rows.into(), self.modes.dec(7));
         self.primary.clear_prompt_for_redraw(prompt_redraw);
+        self.primary.sync_cursor_style();
         if let Some(alt) = &mut self.alternate {
             alt.resize(cols.into(), rows.into(), false);
+            alt.sync_cursor_style();
         }
         if cols != self.cols {
             self.tabstops = (0..cols).map(|i| i > 0 && i % 8 == 0).collect();
@@ -490,13 +519,17 @@ impl Terminal {
         );
         let limits = self.primary.limits;
         let primary_identity = self.primary.metadata.identity;
-        let reflow_generation = self.primary.metadata.reflow_generation;
         let terminfo_name = self.terminfo_name.take();
         let query_defaults = self.query_defaults.clone();
         let title_report = self.title_report;
         let shell_command_events = self.shell_command_events;
         let visible = self.visible;
         let clipboard = std::mem::take(&mut self.clipboard);
+        // RIS interrupts chunking while retaining the drag registration and data.
+        let mut kitty_dnd = self.kitty_dnd.take();
+        if let Some(state) = &mut kitty_dnd {
+            state.chunking = dnd::Chunking::default();
+        }
         let clipboard_write_limit = self.clipboard_write_limit;
         let mut glyphs = std::mem::take(&mut self.glyphs);
         glyphs.reset();
@@ -528,13 +561,13 @@ impl Terminal {
         // RIS resets the existing primary screen. A streaming restore may
         // still deliver older history into that same screen afterward.
         self.primary.metadata.identity = primary_identity;
-        self.primary.metadata.reflow_generation = reflow_generation;
         self.terminfo_name = terminfo_name;
         self.query_defaults = query_defaults;
         self.title_report = title_report;
         self.shell_command_events = shell_command_events;
         self.visible = visible;
         self.clipboard = clipboard;
+        self.kitty_dnd = kitty_dnd;
         self.clipboard_write_limit = clipboard_write_limit;
         self.glyphs = glyphs;
         self.width_px = width_px;
@@ -649,6 +682,7 @@ impl Terminal {
     }
 
     pub(crate) fn changed(&mut self) {
+        self.screen_mut().sync_cursor_style();
         self.generation = self.generation.wrapping_add(1);
     }
     fn reset_margins(&mut self) {
@@ -785,10 +819,11 @@ impl Terminal {
     }
 
     pub fn print(&mut self, cp: char) {
-        self.clamp_cursor();
         if self.status_display {
             return;
         }
+        self.ensure_row_cells(self.screen().cursor.row, usize::from(self.cols));
+        self.clamp_cursor();
         let current = self.screen().cursor.clone();
         let right = if current.col > self.margins.right {
             self.cols as usize - 1
@@ -931,16 +966,17 @@ impl Terminal {
                 // Widening writes a spacer tail, which consumes the shift.
                 self.screen_mut().charset.single = None;
             }
-            let row = &mut self.screen_mut().rows[cursor.row];
-            row.cells[col].width = width;
-            if col < right {
-                row.cells[col + 1] = Cell::blank(cursor.style.background);
-                if width == 2 {
-                    row.cells[col + 1] = row.cells[col].clone();
-                    row.cells[col + 1].text.clear();
-                    row.cells[col + 1].width = 0;
+            self.screen_mut().edit_row(cursor.row, |row| {
+                row.cells[col].width = width;
+                if col < right {
+                    row.cells[col + 1] = Cell::blank(cursor.style.background);
+                    if width == 2 {
+                        row.cells[col + 1] = row.cells[col].clone();
+                        row.cells[col + 1].text.clear();
+                        row.cells[col + 1].width = 0;
+                    }
                 }
-            }
+            });
         }
         let row = self.screen().cursor.row;
         self.screen_mut().rows[row].cells[col].text.push(cp);
@@ -960,7 +996,10 @@ impl Terminal {
         let slot = charset.single.take().unwrap_or(charset.gl);
         if let Some(cp) = text.chars().next() {
             let mapped = map_charset(cp, charset.slots[slot]);
-            if cp != mapped {
+            if mapped == '\0' {
+                // Native cells reserve codepoint zero for empty content.
+                text.clear();
+            } else if cp != mapped {
                 text.replace_range(..cp.len_utf8(), &mapped.to_string());
             }
         }
@@ -972,14 +1011,20 @@ impl Terminal {
             previous.cells.last_mut().unwrap().spacer_head = false;
             previous.dirty = true;
         }
-        let row = &mut self.screen_mut().rows[cursor.row];
-        row.erase(
+        self.screen_mut().erase_row_cells(
+            cursor.row,
             cursor.col,
             cursor.col + width as usize,
             cursor.style.background,
             false,
         );
+        let style_id = self.screen_mut().retain_cursor_style_for_cell();
+        if width == 2 {
+            self.screen_mut().retain_cursor_style_for_cell();
+        }
+        let row = &mut self.screen_mut().rows[cursor.row];
         let cell = Cell {
+            style_id,
             text,
             width,
             style: cursor.style,
@@ -1021,7 +1066,7 @@ impl Terminal {
             self.screen_mut().rows[y].wrap_continuation = true;
         }
         self.screen_mut().cursor.col = self.margins.left;
-        self.ensure_row_cells(self.screen().cursor.row, self.margins.left + 1);
+        self.ensure_row_cells(self.screen().cursor.row, usize::from(self.cols));
         self.screen_mut().cursor.pending_wrap = false;
     }
 
@@ -1075,6 +1120,7 @@ impl Terminal {
             };
             y.saturating_sub(amount.max(1)).max(top)
         };
+        self.ensure_row_cells(target, self.screen().cursor.col + 1);
         self.screen_mut().cursor.row = target;
         self.clamp_cursor();
         self.screen_mut().cursor.pending_wrap = false;
@@ -1144,9 +1190,10 @@ impl Terminal {
         if y == self.margins.bottom {
             let x = self.screen().cursor.col;
             if x >= self.margins.left && x <= self.margins.right {
-                self.scroll_up(1, true);
+                self.index_scroll();
             }
         } else if y + 1 < self.rows as usize {
+            self.ensure_row_cells(y + 1, self.screen().cursor.col + 1);
             self.screen_mut().cursor.row += 1;
         }
         self.clamp_cursor();
@@ -1175,7 +1222,128 @@ impl Terminal {
         }
     }
 
+    fn index_scroll(&mut self) {
+        self.ensure_active_columns();
+        let m = self.margins;
+        let cols = usize::from(self.cols);
+        let full = m.left == 0 && m.right == cols - 1;
+        if full && self.rows == 1 && self.screen().limits.bytes == Some(0) {
+            let screen = self.screen_mut();
+            let background = screen.cursor.style.background;
+            screen.edit_row(0, |row| {
+                *row = Row::new(row.id, row.cells.len(), background)
+            });
+            return;
+        }
+        if !full || (m.top == 0 && (self.screen().limits.bytes != Some(0) || m.bottom == 0)) {
+            self.scroll_up(1, true);
+            if full && self.screen().limits.bytes != Some(0) {
+                let screen = self.screen_mut();
+                let bottom = screen.history.len() + m.bottom;
+                let at_end = m.bottom + 1 == screen.rows.len();
+                let columns = usize::from(if at_end {
+                    screen.pages.pages.back().unwrap().columns
+                } else {
+                    screen.pages.page_at(bottom).0.columns
+                });
+                if screen.rows[m.bottom].cells.len() != columns {
+                    screen.rows[m.bottom] = Row::new(
+                        screen.rows[m.bottom].id,
+                        columns,
+                        screen.cursor.style.background,
+                    );
+                }
+                if at_end {
+                    return;
+                }
+                // History insertion moves the suffix down through the page
+                // list. At each boundary, native code copies into that page's
+                // recycled last row (or a fresh blank row after growing).
+                let mut page_start = 0;
+                let mut copies = Vec::new();
+                for page in &screen.pages.pages {
+                    let page_end = page_start + usize::from(page.rows);
+                    if page_start > bottom {
+                        let target = page_start - screen.history.len();
+                        let columns = usize::from(page.columns);
+                        let row = &screen.rows[target];
+                        if row.cells.len() != columns || cols < columns {
+                            copies.push((
+                                target,
+                                screen.prepare_row_copy(
+                                    target,
+                                    (page_end - screen.history.len() < screen.rows.len())
+                                        .then_some(page_end - screen.history.len()),
+                                    columns,
+                                    cols,
+                                ),
+                            ));
+                        }
+                    }
+                    page_start = page_end;
+                }
+                screen.install_row_copies(copies, None);
+            }
+            return;
+        }
+
+        // Full-width IND rotates complete rows, unlike SU/DL which detach
+        // wrapped lines and keep pins at their physical coordinates.
+        let screen = self.screen_mut();
+        let top = screen.history.len() + m.top;
+        let bottom = screen.history.len() + m.bottom;
+        let (page, page_row) = screen.pages.page_at(top);
+        let mut copies = Vec::new();
+        if top - page_row + usize::from(page.rows) <= bottom {
+            let mut page_start = 0;
+            for page in &screen.pages.pages {
+                let page_end = page_start + usize::from(page.rows);
+                if page_end > bottom {
+                    break;
+                }
+                if page_end > top {
+                    let source = page_end - screen.history.len();
+                    let columns = usize::from(page.columns);
+                    let row = &screen.rows[source];
+                    if row.cells.len() != columns {
+                        let recycled = page_start.max(top) - screen.history.len();
+                        copies.push((
+                            source - 1,
+                            screen.prepare_row_copy(source, Some(recycled), columns, columns),
+                        ));
+                    }
+                }
+                page_start = page_end;
+            }
+        }
+        let erased = screen.rows[m.top].id;
+        screen.pages.invalidate_layout(top, bottom);
+        let replacement = if page_row == 0 {
+            screen.rows[m.top + 1].id
+        } else {
+            screen.all_rows().nth(top - 1).unwrap().id
+        };
+        for point in screen.grid_points_mut() {
+            if point.row == erased {
+                point.row = replacement;
+                if page_row == 0 {
+                    point.col = 0;
+                }
+            }
+        }
+        let blank = screen.blank_row(
+            screen.rows[m.bottom].cells.len(),
+            screen.cursor.style.background,
+        );
+        let row = screen.rows.remove(m.top);
+        screen.rows.insert(m.bottom, blank);
+        screen.discard_row(row.id);
+        screen.install_row_copies(copies, Some(row));
+        screen.sync_style_pages(false);
+    }
+
     fn scroll_up(&mut self, count: usize, history: bool) {
+        self.ensure_active_columns();
         let m = self.margins;
         let count = count.max(1).min(m.bottom - m.top + 1);
         let cols = self.cols as usize;
@@ -1236,14 +1404,28 @@ impl Terminal {
                 screen.rows.insert(m.bottom, blank);
                 if shift_history {
                     screen.push_history(row);
+                    if screen.limits.bytes == Some(0) {
+                        screen.pages.invalidate_layout(
+                            screen.history.len() + m.top,
+                            screen.history.len() + m.bottom,
+                        );
+                    } else if m.bottom + 1 < screen.rows.len() {
+                        screen.pages.invalidate_layout(
+                            screen.history.len() + m.bottom + 1,
+                            screen.history.len() + screen.rows.len() - 1,
+                        );
+                    }
                 } else {
+                    screen.release_row_styles(&row);
                     screen.discard_row(row.id);
                 }
+                screen.sync_style_pages(false);
             } else {
                 for y in m.top..m.bottom {
                     self.copy_row_region(y + 1, y, m.left, m.right + 1, bg);
                 }
-                self.screen_mut().rows[m.bottom].erase(m.left, m.right + 1, bg, false);
+                self.screen_mut()
+                    .erase_row_cells(m.bottom, m.left, m.right + 1, bg, false);
             }
         }
         self.clamp_cursor();
@@ -1251,6 +1433,7 @@ impl Terminal {
     }
 
     fn scroll_down(&mut self, count: usize) {
+        self.ensure_active_columns();
         let m = self.margins;
         let cols = self.cols as usize;
         let count = count.max(1).min(m.bottom - m.top + 1);
@@ -1274,13 +1457,16 @@ impl Terminal {
                     .collect();
                 screen.remap_grid_rows(&pins);
                 let row = screen.rows.remove(m.bottom);
+                screen.release_row_styles(&row);
                 screen.discard_row(row.id);
                 screen.rows.insert(m.top, blank);
+                screen.sync_style_pages(true);
             } else {
                 for y in (m.top + 1..=m.bottom).rev() {
                     self.copy_row_region(y - 1, y, m.left, m.right + 1, bg);
                 }
-                self.screen_mut().rows[m.top].erase(m.left, m.right + 1, bg, false);
+                self.screen_mut()
+                    .erase_row_cells(m.top, m.left, m.right + 1, bg, false);
             }
         }
         self.clamp_cursor();
@@ -1290,6 +1476,13 @@ impl Terminal {
     fn prepare_row_shift(&mut self) {
         let m = self.margins;
         let right_edge = m.right + 1 == usize::from(self.cols);
+        if m.left == 0 && right_edge {
+            let screen = self.screen_mut();
+            screen.pages.invalidate_layout(
+                screen.history.len() + m.top,
+                screen.history.len() + m.bottom,
+            );
+        }
         for row in &mut self.screen_mut().rows[m.top..=m.bottom] {
             if m.left == 0 && right_edge {
                 row.wrapped = false;
@@ -1321,22 +1514,8 @@ impl Terminal {
         end: usize,
         background: Color,
     ) {
-        let end = end.min(self.screen().rows[destination].cells.len());
-        if start >= end {
-            return;
-        }
-        let source = &self.screen().rows[source].cells;
-        let cells: Vec<_> = (start..end)
-            .map(|col| {
-                source
-                    .get(col)
-                    .cloned()
-                    .unwrap_or_else(|| Cell::blank(background))
-            })
-            .collect();
-        let destination = &mut self.screen_mut().rows[destination];
-        destination.cells[start..end].clone_from_slice(&cells);
-        destination.repair_wide(background);
+        self.screen_mut()
+            .copy_row_cells(source, destination, start, end, background);
     }
 
     fn tab(&mut self, count: usize, backward: bool) {
@@ -1376,12 +1555,14 @@ impl Terminal {
         if cur.col < self.margins.left || cur.col > self.margins.right {
             return;
         }
-        let end = (self.margins.right + 1).min(self.screen().rows[cur.row].cells.len());
+        self.ensure_row_cells(cur.row, usize::from(self.cols));
+        let end = self.margins.right + 1;
         let count = count.max(1).min(end - cur.col);
-        let row = &mut self.screen_mut().rows[cur.row];
-        row.cells[cur.col..end].rotate_right(count);
-        row.cells[cur.col..cur.col + count].fill(Cell::blank(cur.style.background));
-        row.repair_wide(cur.style.background);
+        self.screen_mut().edit_row(cur.row, |row| {
+            row.cells[cur.col..end].rotate_right(count);
+            row.cells[cur.col..cur.col + count].fill(Cell::blank(cur.style.background));
+            row.repair_wide(cur.style.background);
+        });
         self.changed();
     }
 
@@ -1390,17 +1571,18 @@ impl Terminal {
         if cur.col < self.margins.left || cur.col > self.margins.right {
             return;
         }
-        let end = (self.margins.right + 1).min(self.screen().rows[cur.row].cells.len());
+        self.ensure_row_cells(cur.row, usize::from(self.cols));
+        let end = self.margins.right + 1;
         let count = count.max(1).min(end - cur.col);
         self.screen_mut().split_cell_boundary(cur.col);
         self.screen_mut().split_cell_boundary(cur.col + count);
         self.screen_mut().split_cell_boundary(end);
-        let row = &mut self.screen_mut().rows[cur.row];
-        row.cells[cur.col..end].rotate_left(count);
-        row.cells[end - count..end].fill(Cell::blank(cur.style.background));
-        row.repair_wide(cur.style.background);
-        row.wrapped = false;
-        self.screen_mut().cursor.pending_wrap = false;
+        self.screen_mut().edit_row(cur.row, |row| {
+            row.cells[cur.col..end].rotate_left(count);
+            row.cells[end - count..end].fill(Cell::blank(cur.style.background));
+            row.repair_wide(cur.style.background);
+        });
+        self.screen_mut().cursor_reset_wrap();
         self.changed();
     }
 
@@ -1414,16 +1596,25 @@ impl Terminal {
             2 => (0, cols),
             _ => return,
         };
-        let row = &mut self.screen_mut().rows[cursor.row];
-        row.erase(start, end, cursor.style.background, protected);
+        self.ensure_row_cells(cursor.row, cols);
         if mode != 1 {
-            row.wrapped = false;
+            self.screen_mut().cursor_reset_wrap();
         }
+        self.screen_mut().erase_row_cells(
+            cursor.row,
+            start,
+            end,
+            cursor.style.background,
+            protected,
+        );
         self.screen_mut().cursor.pending_wrap = false;
         self.changed();
     }
 
     pub fn erase_display(&mut self, mode: u16, protected: bool) {
+        if matches!(mode, 0..=2 | 22) {
+            self.ensure_active_columns();
+        }
         let cursor = self.screen().cursor.clone();
         let rows = self.rows as usize;
         let protected = protected || self.screen().iso_protection;
@@ -1446,7 +1637,11 @@ impl Terminal {
                 {
                     self.scroll_clear();
                 }
-                self.screen_mut().clear_visible_images();
+                let cell = [
+                    self.width_px / u32::from(self.cols),
+                    self.height_px / u32::from(self.rows),
+                ];
+                self.screen_mut().clear_visible_images(cell);
                 (0, rows)
             }
             3 => {
@@ -1460,8 +1655,10 @@ impl Terminal {
             }
             _ => return,
         };
-        for row in &mut self.screen_mut().rows[start..end] {
-            row.erase(0, row.cells.len(), cursor.style.background, protected);
+        for y in start..end {
+            self.screen_mut()
+                .erase_row_cells(y, 0, usize::MAX, cursor.style.background, protected);
+            let row = &mut self.screen_mut().rows[y];
             if !protected {
                 row.wrapped = false;
                 row.wrap_continuation = false;
@@ -1473,6 +1670,11 @@ impl Terminal {
     }
 
     fn scroll_clear(&mut self) {
+        self.ensure_active_columns();
+        let cell = [
+            self.width_px / u32::from(self.cols),
+            self.height_px / u32::from(self.rows),
+        ];
         let cols = usize::from(self.cols);
         let count = self
             .screen()
@@ -1501,7 +1703,7 @@ impl Terminal {
             screen.cursor.row -= count;
         }
         screen.cursor.pending_wrap = false;
-        screen.clear_visible_images();
+        screen.clear_visible_images(cell);
         self.clamp_cursor();
         self.changed();
     }
@@ -1527,9 +1729,9 @@ impl Terminal {
         let screen = self.screen_mut();
         // DECRC restores only saved attributes. Hyperlinks, semantic content,
         // and cursor appearance retain their current state.
+        screen.set_cursor_style(saved.cursor.style);
         screen.cursor.col = saved.cursor.col.min(cols - 1);
         screen.cursor.row = saved.cursor.row.min(rows - 1);
-        screen.cursor.style = saved.cursor.style;
         screen.cursor.protected = saved.cursor.protected;
         screen.cursor.pending_wrap = saved.cursor.pending_wrap;
         screen.charset = saved.charset;
@@ -1701,22 +1903,38 @@ impl Terminal {
                 };
             }
             ([b'#'], b'8') => {
+                self.ensure_active_columns();
                 let style = Style {
                     foreground: self.screen().cursor.style.foreground,
                     background: self.screen().cursor.style.background,
                     ..Style::default()
                 };
+                self.screen_mut().release_cursor_style();
                 self.screen_mut().cursor.style = style;
+                self.screen_mut().sync_cursor_style();
                 self.modes.set(true, 6, false);
                 self.reset_margins();
-                for row in &mut self.screen_mut().rows {
-                    for cell in &mut row.cells {
-                        *cell = Cell {
-                            text: "E".into(),
-                            style,
-                            ..Cell::default()
-                        };
+                self.cursor_position(1, 1);
+                for y in 0..usize::from(self.rows) {
+                    self.screen_mut()
+                        .erase_row_cells(y, 0, usize::MAX, Color::Default, false);
+                }
+                for y in 0..usize::from(self.rows) {
+                    self.screen_mut().cursor.row = y;
+                    self.screen_mut().sync_cursor_style();
+                    let count = self.screen().rows[y].cells.len();
+                    let mut style_id = 0;
+                    for _ in 0..count {
+                        style_id = self.screen_mut().retain_cursor_style_for_cell();
                     }
+                    let style = self.screen().cursor.style;
+                    let row = &mut self.screen_mut().rows[y];
+                    row.cells.fill(Cell {
+                        style_id,
+                        text: "E".into(),
+                        style,
+                        ..Cell::default()
+                    });
                     row.wrapped = false;
                     row.wrap_continuation = false;
                     row.semantic = SemanticContent::Output;
@@ -1829,19 +2047,20 @@ impl Terminal {
             ([], b'@') => self.insert_blanks(count),
             ([], b'P') => self.delete_chars(count),
             ([], b'X') => {
+                self.ensure_row_cells(self.screen().cursor.row, usize::from(self.cols));
                 let cur = self.screen().cursor.clone();
                 let protected = self.screen().iso_protection;
                 let end = cur.col.saturating_add(count).min(self.cols as usize);
                 self.screen_mut().split_cell_boundary(cur.col);
                 self.screen_mut().split_cell_boundary(end);
-                self.screen_mut().rows[cur.row].erase(
+                self.screen_mut().cursor_reset_wrap();
+                self.screen_mut().erase_row_cells(
+                    cur.row,
                     cur.col,
                     end,
                     cur.style.background,
                     protected,
                 );
-                self.screen_mut().rows[cur.row].wrapped = false;
-                self.screen_mut().cursor.pending_wrap = false;
                 self.changed();
             }
             ([], b'L' | b'M') => {
@@ -1881,7 +2100,7 @@ impl Terminal {
                 }
             }
             ([], b'm') => {
-                sgr(&mut self.screen_mut().cursor.style, p, sep);
+                sgr(self.screen_mut(), p, sep);
                 self.changed();
             }
             ([b'>'], b'm') => self.modify_other_keys = n == 4 && second == 2,
@@ -2069,6 +2288,10 @@ impl Terminal {
             // These fixed captures append a NUL before dispatch.
             0 | 2 | 7 | 8 | 777 | 1337 if !has_separator || data.len() >= 2048 => return,
             9 | 133 if !has_separator || data.len() > 2048 => return,
+            // Allocating captures count only bytes after the numeric prefix.
+            // OSC 52 and 66 reserve a byte for the parser's trailing NUL.
+            52 | 66 if !has_separator || data.len() >= MAX_OSC_BYTES => return,
+            72 | 99 | 5522 if !has_separator || data.len() > MAX_OSC_BYTES => return,
             _ => {}
         }
         match number {
@@ -2202,6 +2425,7 @@ impl Terminal {
                 clipboard_read_enabled,
                 effects,
             ),
+            72 => dnd::handle(&mut self.kitty_dnd, data, bell, effects),
             133 => self.osc133(data, effects),
             1 | 22 => {}
             _ => effects.push(Effect::UnknownSequence(format!("OSC {number}"))),
@@ -2527,9 +2751,10 @@ pub fn default_palette() -> Vec<[u8; 3]> {
     colors
 }
 
-fn sgr(style: &mut Style, params: &[u16], separators: u32) {
+fn sgr(screen: &mut Screen, params: &[u16], separators: u32) {
+    let mut style = screen.cursor.style;
     if params.is_empty() {
-        *style = Style::default();
+        screen.set_cursor_style(Style::default());
         return;
     }
     let is_colon = |index: usize| separators & (1 << index) != 0;
@@ -2554,7 +2779,7 @@ fn sgr(style: &mut Style, params: &[u16], separators: u32) {
             continue;
         }
         match n {
-            0 => *style = Style::default(),
+            0 => style = Style::default(),
             1 => style.bold = true,
             2 => style.faint = true,
             3 => style.italic = true,
@@ -2643,5 +2868,7 @@ fn sgr(style: &mut Style, params: &[u16], separators: u32) {
             }
             _ => {}
         }
+        screen.set_cursor_style(style);
+        style = screen.cursor.style;
     }
 }

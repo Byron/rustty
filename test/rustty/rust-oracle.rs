@@ -7,6 +7,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::io::{self, BufRead, Read, Write};
 
+#[path = "rust-dnd.rs"]
+mod dnd_adapter;
 #[path = "rust-glyph.rs"]
 mod glyph_adapter;
 #[path = "rust-graphics.rs"]
@@ -27,6 +29,7 @@ mod paste;
 mod semantic_adapter;
 
 const CAPABILITIES: &[&str] = &[
+    "drag-and-drop",
     "terminal.pages",
     "graphics.glyphs",
     "terminal.page-layout",
@@ -61,7 +64,7 @@ const CAPABILITIES: &[&str] = &[
     "snapshot.fixtures",
     "protocol.dcs",
 ];
-const MAX_REQUEST_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_REQUEST_BYTES: u64 = 32 * 1024 * 1024;
 
 #[derive(Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -83,6 +86,8 @@ struct Request {
     observe_colors: bool,
     observe_semantic: bool,
     observe_graphics: bool,
+    observe_graphics_placements: bool,
+    dnd_events: bool,
     color_inputs: Vec<String>,
     page_layout: Option<page_layout_adapter::Request>,
 }
@@ -107,6 +112,8 @@ impl Default for Request {
             observe_colors: false,
             observe_semantic: false,
             observe_graphics: false,
+            observe_graphics_placements: false,
+            dnd_events: true,
             color_inputs: Vec::new(),
             page_layout: None,
         }
@@ -117,6 +124,8 @@ impl Default for Request {
 #[serde(deny_unknown_fields)]
 struct Operation {
     op: String,
+    #[serde(default)]
+    snapshot_max_continuation_bytes: Option<usize>,
     #[serde(default)]
     glyph_max_bytes: Option<usize>,
     #[serde(default)]
@@ -153,6 +162,8 @@ struct Operation {
     colors: Option<ColorDefaults>,
     #[serde(default)]
     grid: Option<grid_adapter::Operation>,
+    #[serde(default)]
+    dnd: Option<dnd_adapter::Operation>,
 }
 
 #[derive(Default, Deserialize)]
@@ -343,6 +354,7 @@ struct Host {
     clipboard_write_enabled: bool,
     clipboard_write_limit: usize,
     host: DecodedHost,
+    dnd_events: bool,
 }
 
 impl Host {
@@ -355,6 +367,7 @@ impl Host {
             clipboard_write_enabled: request.clipboard_write_enabled,
             clipboard_write_limit: request.clipboard_write_limit,
             host: DecodedHost::new(&request.host)?,
+            dnd_events: request.dnd_events,
         };
         for reply in &request.clipboard_replies {
             let contents = reply
@@ -421,6 +434,18 @@ impl EffectHandler for Host {
     fn effect(&mut self, effect: Effect) {
         if let Err(error) = self.record(effect) {
             self.error = Some(error);
+        }
+    }
+
+    fn drag_and_drop(
+        &mut self,
+        value: rustty_vt::dnd::Event,
+        state: Option<&rustty_vt::dnd::State>,
+    ) {
+        if self.dnd_events {
+            let mut observed = event("dnd", hex(dnd_adapter::event_name(value).as_bytes()));
+            observed["dnd_state"] = state.map(dnd_adapter::observe).unwrap_or(Value::Null);
+            self.events.push(observed);
         }
     }
 
@@ -571,10 +596,13 @@ fn main() -> io::Result<()> {
         {
             break;
         }
+        if line.last() == Some(&b'\n') {
+            line.pop();
+        }
         if line.len() as u64 > MAX_REQUEST_BYTES {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "request exceeds 16 MiB",
+                format!("request exceeds {MAX_REQUEST_BYTES} bytes"),
             ));
         }
         let response = match serde_json::from_slice::<Request>(&line) {
@@ -593,7 +621,7 @@ fn main() -> io::Result<()> {
 
 fn response(id: &str, error: Option<&str>) -> Value {
     json!({"id":id,"ok":error.is_none(),"err":error,"capabilities":CAPABILITIES,
-        "observations":[],"events":[],"widths":[],"parser":null,"snapshots":[],"snapshot_progress":[],"mode_results":[],"parsed_colors":[],"grid_results":[],"page_layout":null,"glyph_results":[],"page_results":[]})
+        "observations":[],"events":[],"widths":[],"parser":null,"snapshots":[],"snapshot_progress":[],"mode_results":[],"parsed_colors":[],"grid_results":[],"page_layout":null,"glyph_results":[],"page_results":[],"dnd_results":[]})
 }
 
 fn execute(request: &Request) -> Result<Value, &'static str> {
@@ -651,6 +679,7 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
     let mut grid_results = Vec::new();
     let mut glyph_results = Vec::new();
     let mut page_results = Vec::new();
+    let mut dnd_results = Vec::new();
     let mut host = Host::new(request)?;
     host.host.configure(&mut terminal);
     let mut snapshots = Vec::new();
@@ -660,6 +689,16 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
     for operation in &request.operations {
         match operation.op.as_str() {
             "pages" => page_results.push(pages_adapter::observe(&terminal)),
+            "dnd" => {
+                let (state, bytes) = dnd_adapter::run(
+                    &mut terminal,
+                    operation.dnd.as_ref().ok_or("MissingDndOperation")?,
+                )?;
+                if !bytes.is_empty() {
+                    host.effect(Effect::Write(bytes));
+                }
+                dnd_results.push(state);
+            }
             "write" => {
                 let bytes = unhex(&operation.data)?;
                 if request.scalar {
@@ -782,19 +821,28 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
                 grid_results.clear();
                 glyph_results.clear();
                 page_results.clear();
+                dnd_results.clear();
             }
             "snapshot" => {
                 snapshots.push(hex(&rustty_vt::snapshot::encode_to_vec(&terminal)
                     .map_err(|_| "SnapshotEncodeFailed")?));
             }
-            "restore" => {
+            "restore" | "restore_exact" => {
                 if grid.has_handles() {
                     return Err("UnsupportedGridRestore");
                 }
-                terminal = rustty_vt::snapshot::decode(
-                    &unhex(&operation.data)?[..],
-                    rustty_vt::snapshot::DecodeOptions::default(),
-                )
+                let data = unhex(&operation.data)?;
+                let options = rustty_vt::snapshot::DecodeOptions {
+                    max_continuation_bytes: operation
+                        .snapshot_max_continuation_bytes
+                        .unwrap_or(8 * 1024 * 1024),
+                    ..Default::default()
+                };
+                terminal = if operation.op == "restore_exact" {
+                    rustty_vt::snapshot::decode_exact(data.as_slice(), options)
+                } else {
+                    rustty_vt::snapshot::decode(data.as_slice(), options)
+                }
                 .map_err(|_| "InvalidSnapshot")?;
                 terminal.clipboard_write_limit = host.clipboard_write_limit;
                 host.host.configure(&mut terminal);
@@ -810,7 +858,12 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
                         data: io::Cursor::new(unhex(&operation.data)?),
                         offset: snapshot_offset.clone(),
                     },
-                    rustty_vt::snapshot::DecodeOptions::default(),
+                    rustty_vt::snapshot::DecodeOptions {
+                        max_continuation_bytes: operation
+                            .snapshot_max_continuation_bytes
+                            .unwrap_or(8 * 1024 * 1024),
+                        ..Default::default()
+                    },
                 );
                 terminal = decoder.ready().map_err(|_| "InvalidSnapshot")?;
                 terminal.clipboard_write_limit = host.clipboard_write_limit;
@@ -849,11 +902,12 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
     result["grid_results"] = json!(grid_results);
     result["glyph_results"] = json!(glyph_results);
     result["page_results"] = json!(page_results);
+    result["dnd_results"] = json!(dnd_results);
     Ok(result)
 }
 
 fn event(kind: &str, data: String) -> Value {
-    json!({"kind":kind,"data":data,"notification":null,"progress":null,"clipboard":null})
+    json!({"kind":kind,"data":data,"notification":null,"progress":null,"clipboard":null,"dnd_state":null})
 }
 
 struct SnapshotReader {
@@ -910,7 +964,8 @@ fn observe(terminal: &Terminal, request: &Request) -> Value {
         "title":hex(terminal.title_bytes()),"pwd":hex(terminal.working_directory_bytes()),
         "modes":modes,"mode_effects":mode_effects,"colors":colors,
         "semantic":request.observe_semantic.then(|| semantic_adapter::observe(terminal)),
-        "graphics":request.observe_graphics.then(|| graphics_adapter::observe(terminal))})
+        "graphics":request.observe_graphics.then(|| graphics_adapter::observe(terminal)),
+        "graphics_placements":request.observe_graphics_placements.then(|| graphics_adapter::observe_placements(terminal))})
 }
 
 fn screen(screen: &Screen) -> Value {

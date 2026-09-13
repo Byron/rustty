@@ -49,9 +49,10 @@
 /// snapshot captured at `press`.
 ///
 /// The tracked pin is tied to both a `ScreenSet.Key` and that screen's
-/// generation. If the active screen changes, or a screen is removed/recycled,
-/// `validatedLeftClickPin` returns null and drag-style operations stop producing
-/// selections. `autoscrollTick` treats this as cancellation and calls `reset` so
+/// generation. If the active screen changes, a screen is removed/recycled, or
+/// reset/pruning discards the anchor's contents, `validatedLeftClickPin` returns
+/// null and drag-style operations stop producing selections. `autoscrollTick`
+/// treats this as cancellation and calls `reset` so
 /// callers can stop their timers. This avoids exposing pins from inactive or
 /// freed screens, but it does not make a historical snapshot of terminal data.
 ///
@@ -202,8 +203,9 @@ pub fn reset(self: *SelectionGesture, t: *Terminal) void {
 /// Return the tracked left-click pin only if it still belongs to the current
 /// active screen instance.
 ///
-/// This validates both the screen key and generation so a pin from a removed,
-/// recycled, or inactive screen is never exposed to callers. A null result means
+/// This validates the screen key, generation and pin contents so an anchor from
+/// a removed, recycled, inactive or reset screen, or pruned history, is never
+/// exposed to callers. A null result means
 /// callers should treat the in-progress gesture as temporarily or permanently
 /// unable to produce a selection. For a normal drag this usually means "do
 /// nothing for this event"; for autoscroll it is treated as cancellation because
@@ -217,6 +219,7 @@ pub fn validatedLeftClickPin(
     if (self.left_click_screen != screens.active_key) return null;
     if (screens.generation(self.left_click_screen) != self.left_click_screen_generation) return null;
     _ = screens.get(self.left_click_screen) orelse return null;
+    if (pin.garbage) return null;
     return pin;
 }
 
@@ -636,18 +639,9 @@ fn pressRepeat(
     );
     if (distance > p.max_distance) return error.PressRequiresReset;
 
-    // If our prior click was on another screen then free and reset. "Another screen"
-    // doesn't just mean alt vs primary, it could mean an alt screen that was
-    // recycled since we free tracked pins on recycle.
-    const screens: *const ScreenSet = &t.screens;
-    if (self.left_click_screen != screens.active_key or
-        screens.generation(self.left_click_screen) !=
-            self.left_click_screen_generation)
-    {
-        // The error return will trigger the top-level errdefer which
-        // will reset our pin.
-        return error.PressRequiresReset;
-    }
+    // A screen change, reset or pruned anchor ends the click sequence. The
+    // error return untracks it before pressInitial records the new click.
+    _ = self.validatedLeftClickPin(&t.screens) orelse return error.PressRequiresReset;
 
     self.left_click_time = time;
     self.left_click_dragged = false;
@@ -2107,4 +2101,64 @@ test "SelectionGesture deinit untracks pin" {
 
     gesture.deinit(&t);
     try testing.expectEqual(tracked, t.screens.active.pages.countTrackedPins());
+}
+
+test "SelectionGesture garbage anchor stops drag deep press and autoscroll" {
+    inline for (.{ true, false }) |reset_terminal| {
+        var t = try Terminal.init(testing.io, testing.allocator, .{
+            .cols = 80,
+            .rows = 5,
+            .max_scrollback_bytes = 1024,
+        });
+        defer t.deinit(testing.allocator);
+        var gesture: SelectionGesture = .init;
+        defer gesture.deinit(&t);
+
+        _ = try gesture.press(&t, testPress(&t, 1, 0, .{ .nanoseconds = 0 }));
+        _ = gesture.drag(&t, testDrag(&t, 2, 0, 20, 1));
+        try testing.expectEqual(.up, gesture.left_drag_autoscroll);
+        if (reset_terminal) {
+            t.fullReset();
+        } else {
+            const rows = 3 * t.screens.active.pages.pages.first.?.capacity().rows;
+            for (0..rows) |_| try t.printString("line\n");
+        }
+        try testing.expect(gesture.left_click_pin.?.garbage);
+        try testing.expectEqual(null, gesture.validatedLeftClickPin(&t.screens));
+        try testing.expectEqual(null, gesture.drag(&t, testDrag(&t, 2, 0, 20, 1)));
+        try testing.expectEqual(null, gesture.deepPress(&t, .{ .word_boundary_codepoints = &.{} }));
+        try testing.expectEqual(null, gesture.autoscrollTick(&t, testAutoscrollTick(.{ .x = 2, .y = 0 }, 20, 1)));
+        try testing.expectEqual(.none, gesture.left_drag_autoscroll);
+        try testing.expectEqual(@as(u3, 0), gesture.left_click_count);
+        try testing.expectEqual(null, gesture.left_click_pin);
+    }
+}
+
+test "SelectionGesture garbage anchor starts a new click sequence" {
+    inline for (.{ true, false }) |reset_terminal| {
+        var t = try Terminal.init(testing.io, testing.allocator, .{
+            .cols = 80,
+            .rows = 5,
+            .max_scrollback_bytes = 1024,
+        });
+        defer t.deinit(testing.allocator);
+        var gesture: SelectionGesture = .init;
+        defer gesture.deinit(&t);
+
+        _ = try gesture.press(&t, testPress(&t, 1, 0, .{ .nanoseconds = 0 }));
+        if (reset_terminal) {
+            t.fullReset();
+        } else {
+            const rows = 3 * t.screens.active.pages.pages.first.?.capacity().rows;
+            for (0..rows) |_| try t.printString("line\n");
+        }
+        try testing.expect(gesture.left_click_pin.?.garbage);
+        const event = testPress(&t, 1, 0, .{ .nanoseconds = 1 });
+        try testing.expectEqual(null, try gesture.press(&t, event));
+        try testing.expectEqual(@as(u3, 1), gesture.left_click_count);
+        try testing.expectEqual(.cell, gesture.left_click_behavior);
+        const anchor = gesture.validatedLeftClickPin(&t.screens).?;
+        try testing.expect(event.pin.eql(anchor.*));
+        try testing.expect(!anchor.garbage);
+    }
 }

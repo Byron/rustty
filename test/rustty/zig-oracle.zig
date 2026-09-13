@@ -11,6 +11,7 @@ const grid_adapter = @import("zig-grid.zig");
 const glyph_adapter = @import("zig-glyph.zig");
 const page_layout_adapter = @import("zig-page-layout.zig");
 const pages_adapter = @import("zig-pages.zig");
+const dnd_adapter = @import("zig-dnd.zig");
 const Allocator = std.mem.Allocator;
 // libghostty-vt exposes this type through the callback without re-exporting
 // the implementation module. Use that public signature as the source of truth.
@@ -20,6 +21,7 @@ const DeviceAttributes = @typeInfo(@typeInfo(DeviceAttributesFn).pointer.child).
 pub const std_options: std.Options = .{ .log_level = .err };
 
 const capabilities = [_][]const u8{
+    "drag-and-drop",
     "terminal.pages",
     "graphics.glyphs",
     "terminal.page-layout",
@@ -57,6 +59,7 @@ const capabilities = [_][]const u8{
 
 const Operation = struct {
     op: []const u8,
+    snapshot_max_continuation_bytes: ?usize = null,
     data: []const u8 = "",
     cols: u16 = 0,
     rows: u16 = 0,
@@ -75,6 +78,7 @@ const Operation = struct {
     colors: ?ColorDefaults = null,
     grid: ?grid_adapter.Operation = null,
     glyph_max_bytes: ?usize = null,
+    dnd: ?dnd_adapter.Operation = null,
 };
 const Request = struct {
     id: []const u8 = "case",
@@ -94,6 +98,8 @@ const Request = struct {
     observe_colors: bool = false,
     observe_semantic: bool = false,
     observe_graphics: bool = false,
+    observe_graphics_placements: bool = false,
+    dnd_events: bool = true,
     color_inputs: []const []const u8 = &.{},
     page_layout: ?page_layout_adapter.Request = null,
 };
@@ -246,6 +252,7 @@ const Observation = struct {
     colors: ?Colors,
     semantic: ?semantic_adapter.State,
     graphics: ?graphics_adapter.State,
+    graphics_placements: ?graphics_adapter.Placements,
 };
 const Notification = struct { title: []const u8, body: []const u8 };
 const Progress = struct { state: u8, value: ?u8 };
@@ -265,6 +272,7 @@ const Event = struct {
     notification: ?Notification = null,
     progress: ?Progress = null,
     clipboard: ?Clipboard = null,
+    dnd_state: ?dnd_adapter.State = null,
 };
 const SnapshotProgress = struct {
     stage: []const u8,
@@ -291,6 +299,7 @@ const Response = struct {
     page_layout: ?page_layout_adapter.Result = null,
     glyph_results: []const glyph_adapter.State = &.{},
     page_results: []const pages_adapter.State = &.{},
+    dnd_results: []const ?dnd_adapter.State = &.{},
 };
 
 // Effects arrive synchronously; one terminal is exercised at a time. This
@@ -306,6 +315,7 @@ const Context = struct {
     clipboard_write_enabled: bool,
     clipboard_write_limit: usize,
     host: DecodedHost,
+    dnd_events: bool,
 
     fn append(kind: []const u8, bytes: []const u8) void {
         const self = current.?;
@@ -326,6 +336,13 @@ const Context = struct {
     }
     fn bell(_: *vt.TerminalStream.Handler) void {
         append("bell", "");
+    }
+    fn dragAndDrop(handler: *vt.TerminalStream.Handler, value: vt.kitty.dnd.Event) void {
+        record(.{
+            .kind = "dnd",
+            .data = encoded(@tagName(value)),
+            .dnd_state = dnd_adapter.observe(current.?.alloc, handler.terminal) catch @panic("oracle allocation failed"),
+        });
     }
     fn title(h: *vt.TerminalStream.Handler) void {
         append("title", h.terminal.getTitle() orelse "");
@@ -442,7 +459,8 @@ pub fn main(init: std.process.Init) !void {
         defer arena.deinit();
         const alloc = arena.allocator();
         var line: std.Io.Writer.Allocating = .init(alloc);
-        _ = try stdin.interface.streamDelimiterLimit(&line.writer, '\n', .limited(16 * 1024 * 1024));
+        // Allow the delimiter lookahead after a maximum-sized JSON payload.
+        _ = try stdin.interface.streamDelimiterLimit(&line.writer, '\n', .limited(32 * 1024 * 1024 + 1));
         _ = stdin.interface.discardDelimiterInclusive('\n') catch {};
         const parsed = std.json.parseFromSlice(Request, alloc, line.written(), .{ .allocate = .alloc_always }) catch {
             try std.json.Stringify.value(Response{ .id = "invalid", .ok = false, .err = "InvalidRequest" }, .{}, &stdout.interface);
@@ -464,7 +482,7 @@ pub fn main(init: std.process.Init) !void {
 fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
     const previous_png = vt.sys.decode_png;
     defer vt.sys.decode_png = previous_png;
-    if (request.observe_graphics) graphics_adapter.install();
+    if (request.observe_graphics or request.observe_graphics_placements) graphics_adapter.install();
     var response: Response = .{ .id = request.id };
     if (std.mem.eql(u8, request.kind, "capabilities")) return response;
     if (std.mem.eql(u8, request.kind, "page_layout")) {
@@ -520,6 +538,7 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
         .clipboard_write_enabled = request.clipboard_write_enabled,
         .clipboard_write_limit = request.clipboard_write_limit,
         .host = try DecodedHost.init(alloc, request.host),
+        .dnd_events = request.dnd_events,
     };
     current = &ctx;
     defer current = null;
@@ -532,6 +551,7 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
     var grid_results: std.ArrayList(grid_adapter.Result) = .empty;
     var glyph_results: std.ArrayList(glyph_adapter.State) = .empty;
     var page_results: std.ArrayList(pages_adapter.State) = .empty;
+    var dnd_results: std.ArrayList(?dnd_adapter.State) = .empty;
     var snapshots: std.ArrayList([]const u8) = .empty;
     var snapshot_source: std.Io.Reader = .fixed(&.{});
     var snapshot_decoder: ?vt.snapshot.Decoder = null;
@@ -539,6 +559,12 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
     for (request.operations) |op| {
         if (std.mem.eql(u8, op.op, "pages")) {
             try page_results.append(alloc, try pages_adapter.observe(alloc, &t));
+        } else if (std.mem.eql(u8, op.op, "dnd")) {
+            var output: std.Io.Writer.Allocating = .init(alloc);
+            defer output.deinit();
+            const state = try dnd_adapter.run(alloc, &t, &output.writer, op.dnd orelse return error.MissingDndOperation);
+            if (output.written().len > 0) Context.append("write", output.written());
+            try dnd_results.append(alloc, state);
         } else if (std.mem.eql(u8, op.op, "write")) {
             const bytes = try hexDecode(alloc, op.data);
             if (request.scalar) {
@@ -635,6 +661,7 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
             grid_results.clearRetainingCapacity();
             glyph_results.clearRetainingCapacity();
             page_results.clearRetainingCapacity();
+            dnd_results.clearRetainingCapacity();
         } else if (std.mem.eql(u8, op.op, "snapshot")) {
             var continuation: std.Io.Writer.Allocating = .init(alloc);
             try stream.writeContinuation(&continuation.writer);
@@ -643,10 +670,13 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
                 .continuation = if (continuation.written().len == 0) .ground else .{ .bytes = continuation.written() },
             });
             try snapshots.append(alloc, try hexEncode(alloc, encoded.written()));
-        } else if (std.mem.eql(u8, op.op, "restore")) {
+        } else if (std.mem.eql(u8, op.op, "restore") or std.mem.eql(u8, op.op, "restore_exact")) {
             if (grid.hasHandles()) return error.UnsupportedGridRestore;
             var source: std.Io.Reader = .fixed(try hexDecode(alloc, op.data));
-            var decoded = vt.snapshot.decode(alloc, io, &source, .{ .max_continuation_bytes = 8 * 1024 * 1024 }) catch return error.InvalidSnapshot;
+            var decoded = (if (std.mem.eql(u8, op.op, "restore_exact"))
+                vt.snapshot.decodeExact(alloc, io, &source, .{ .max_continuation_bytes = op.snapshot_max_continuation_bytes orelse 8 * 1024 * 1024 })
+            else
+                vt.snapshot.decode(alloc, io, &source, .{ .max_continuation_bytes = op.snapshot_max_continuation_bytes orelse 8 * 1024 * 1024 })) catch return error.InvalidSnapshot;
             defer decoded.deinit(alloc);
             restoreTerminal(alloc, &t, &stream, &decoded);
             snapshot_decoder = null;
@@ -654,7 +684,7 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
             if (grid.hasHandles()) return error.UnsupportedGridRestore;
             snapshot_source = .fixed(try hexDecode(alloc, op.data));
             snapshot_decoder = .init(&snapshot_source);
-            var decoded = snapshot_decoder.?.ready(alloc, io, .{ .max_continuation_bytes = 8 * 1024 * 1024 }) catch return error.InvalidSnapshot;
+            var decoded = snapshot_decoder.?.ready(alloc, io, .{ .max_continuation_bytes = op.snapshot_max_continuation_bytes orelse 8 * 1024 * 1024 }) catch return error.InvalidSnapshot;
             defer decoded.deinit(alloc);
             restoreTerminal(alloc, &t, &stream, &decoded);
             try snapshot_progress.append(alloc, .{
@@ -684,6 +714,7 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
     response.grid_results = grid_results.items;
     response.glyph_results = glyph_results.items;
     response.page_results = page_results.items;
+    response.dnd_results = dnd_results.items;
     return response;
 }
 
@@ -710,6 +741,7 @@ fn terminalStream(alloc: Allocator, terminal: *vt.Terminal) vt.TerminalStream {
     result.handler.effects.pwd_changed = Context.pwd;
     result.handler.effects.desktop_notification = Context.notification;
     result.handler.effects.progress_report = Context.progress;
+    result.handler.effects.drag_and_drop = if (current.?.dnd_events) Context.dragAndDrop else null;
     configureClipboard(&result);
     configureHost(&result);
     return result;
@@ -781,6 +813,7 @@ fn observe(alloc: Allocator, t: *vt.Terminal, request: Request) !Observation {
         .colors = if (request.observe_colors) observeColors(&t.colors) else null,
         .semantic = if (request.observe_semantic) try semantic_adapter.observe(alloc, t) else null,
         .graphics = if (request.observe_graphics) try graphics_adapter.observe(alloc, t) else null,
+        .graphics_placements = if (request.observe_graphics_placements) try graphics_adapter.observePlacements(alloc, t) else null,
     };
 }
 

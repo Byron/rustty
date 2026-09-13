@@ -1,6 +1,27 @@
 use rustty_vt::{SemanticContent, Terminal, snapshot};
 
 #[test]
+fn narrowing_with_more_active_rows_counts_continuations_at_the_active_boundary() {
+    let mut terminal = Terminal::new(4, 2, 20);
+    terminal.feed(b"ABCDEFGHI");
+    terminal.resize(2, 4);
+
+    assert_eq!(terminal.screen().history.len(), 1);
+    assert_eq!(terminal.screen().history[0].text(), "AB");
+    assert_eq!(
+        terminal
+            .screen()
+            .rows
+            .iter()
+            .map(|row| row.text())
+            .collect::<Vec<_>>(),
+        ["CD", "EF", "GH", "I"],
+    );
+    assert_eq!(terminal.screen().cursor.row, 3);
+    assert_eq!(terminal.screen().cursor.col, 1);
+}
+
+#[test]
 fn reflow_copies_source_prompt_metadata_to_each_destination_segment() {
     for (kind, expected) in [
         ("i", SemanticContent::Prompt),

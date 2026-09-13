@@ -2,6 +2,64 @@
 import base64
 
 
+def allocating_requests(case_filter=None):
+    """Build large capture cases only after applying the requested ID filter."""
+    limit = 8 * 1024 * 1024
+
+    def osc(number, body):
+        return b"\x1b]" + str(number).encode() + b";" + body + b"\x1b\\"
+
+    def case(name, operations, covers):
+        return ({"id": name, "kind": "input", "operations": [
+            op if isinstance(op, dict) else {"op": "write", "data": op.hex()}
+            for op in operations]}, covers)
+
+    observe = {"op": "dnd", "dnd": {"action": "observe"}}
+    for pending in ("query", "registration", "status"):
+        for extra in ((-3, 0, 1) if pending == "query" else (0, 1)):
+            name = f"protocol/dnd/capture/{pending}/{extra}"
+            if case_filter and case_filter not in name:
+                continue
+            prefix = []
+            if pending == "registration":
+                prefix = [osc(72, b"t=a:i=7:m=1;text/")]
+            elif pending == "status":
+                prefix = [osc(72, b"t=a:i=7;text/plain"), osc(72, b"t=m:o=1:m=1;text/")]
+            body = b"t=q;" + b"x" * (limit + extra - 4)
+            yield case(name, [*prefix, osc(72, body), observe,
+                              osc(72, b"t=q;plain"), observe], ["drag-and-drop", "effects.pty"])
+
+    for number in (52, 5522):
+        for extra in (-1, 0, 1):
+            name = f"protocol/osc/allocating-boundary/{number}/{extra}"
+            if case_filter and case_filter not in name:
+                continue
+            prefix = b";" if number == 52 else b"type=write:id=capture:unused="
+            body = prefix + b"A" * (limit + extra - len(prefix))
+            packets = [osc(number, body)]
+            if number == 5522:
+                packets.append(osc(5522, b"type=wdata"))
+            yield case(name, packets, ["clipboard", "effects.pty"])
+
+    for number in (66, 99):
+        for extra in (-1, 0, 1):
+            name = f"protocol/osc/unsupported-allocating/capture/{number}/{extra}"
+            if case_filter and case_filter not in name:
+                continue
+            # Keep the payload within its own small limit. Only metadata fills
+            # the capture, so a payload-limit failure cannot mask admission.
+            body = b"x" * (limit + extra - 2) + b";X"
+            yield case(name, [b"A", {"op": "observe"}, osc(number, body),
+                              {"op": "observe"}, b"B", {"op": "observe"}],
+                       ["terminal.cells", "terminal.cursor", "effects.host", "effects.pty"])
+
+    name = "protocol/dnd/capture/direct-reset"
+    if not case_filter or case_filter in name:
+        yield case(name, [b"\x1b]72;t=q;", {"op": "terminal_reset"},
+                          b"x" * (limit - 4) + b"\x1b\\", observe],
+                   ["drag-and-drop", "terminal.reset", "effects.pty"])
+
+
 def requests():
     def case(name, operations, covers=None, **options):
         return ({"id": "protocol/osc/" + name, "host": {"title_report": True},
@@ -140,3 +198,68 @@ def requests():
     yield case("hyperlink/cursor/1049", [previous, b"A", b"\x1b[?1049h", observe,
                osc(8, b"id=alternate;https://example.org/alternate"), b"B", b"\x1b[?1049l", observe, b"C"],
                covers=covers, cols=8, rows=3)
+
+    yield from unsupported_allocating_requests()
+
+
+def unsupported_allocating_requests():
+    """OSC 66/99 parse natively, but their TerminalStream callbacks are unimplemented."""
+    observe = {"op": "observe"}
+    covers = ["terminal.cells", "terminal.cursor", "effects.host", "effects.pty"]
+
+    def osc(number, body, end=b"\x07"):
+        return b"\x1b]" + str(number).encode() + b";" + body + end
+
+    def case(number, name, operations, **options):
+        return ({"id": f"protocol/osc/unsupported-allocating/{number}/{name}",
+                 "operations": [op if isinstance(op, dict) else {"op": "write", "data": op.hex()}
+                                for op in operations], **options}, covers)
+
+    payloads = [b"", b"plain text", "héllö 世界 😀".encode(), b"semi;colon=equals",
+                b"bad\x00text", b"bad\ttext", b"bad\ntext", b"bad\rtext", b"bad\x7ftext",
+                b"\x80", b"\xc2\x80", b"\xc0\xaf", b"\xed\xa0\x80", b"\xf4\x90\x80\x80",
+                b"\xe2\x82", b"raw\xff"]
+    bodies = {
+        66: [b"", b"missing-separator", b";", b"s=2;size", b"s=7:w=7:n=15:d=15:v=2:h=2;size",
+             b"s=0:w=8:n=16:d=-1:v=3:h=3;defaults", b"s=2:s=3:s=0;duplicate",
+             b"x=1:s:long=2:=2:s==2:s=2=3;malformed"],
+        99: [b"", b"missing-separator", b";", b"e=1;dGV4dA==", b"e=1;not base64!",
+             b"e=0:e=1;first", b"e=1:e=0;first", b"e=x:e=1;invalid-first",
+             b"i=stable:d=0:p=title;part", b"i=stable:d=1:p=body;body",
+             b"a=focus,report:c=1:d=1:e=0:f=app:g=icon:i=id:n=dialog:o=unfocused:p=title:s=silent:t=test:u=2:w=100;all",
+             b"x=1:i:first:i=good:p=unknown;malformed"],
+    }
+    bodies[99] += [b"p=" + payload + b";data"
+                   for payload in (b"alive", b"body", b"buttons", b"close", b"icon", b"?", b"title", b"query", b"unknown")]
+    seed = b"\x1b]2;before\x07\x1b[31;1mA"
+    for number in (66, 99):
+        for index, body in enumerate(bodies[number] + [b";" + p for p in payloads]):
+            for end in (b"\x07", b"\x1b\\"):
+                yield case(number, f"body/{index}/{end.hex()}",
+                           [seed, observe, osc(number, body, end), observe, b"B", observe,
+                            osc(9, b"control notification")])
+        for metadata, limit in ((b"", 4096),) if number == 66 else ((b"", 2048), (b"e=1", 4096)):
+            for extra in (-1, 0, 1):
+                for end in (b"\x07", b"\x1b\\"):
+                    body = metadata + b";" + b"x" * (limit + extra)
+                    yield case(number, f"payload-limit/{metadata.hex()}/{extra}/{end.hex()}",
+                               [seed, observe, osc(number, body, end), observe, b"B"])
+        for index, prefix in enumerate((b"0", b"+", b"-", b" ")):
+            yield case(number, f"prefix/{index}",
+                       [seed, b"\x1b]" + prefix + str(number).encode() + b";;text\x07", b"B"])
+        yield case(number, "no-capture", [seed, b"\x1b]" + str(number).encode() + b"\x07", b"B"])
+        for index, end in enumerate((b"\x18", b"\x1a", b"\x1b[0m", b"\x1bX", b"\x1b]2;replacement\x07")):
+            yield case(number, f"termination/{index}", [seed, osc(number, b";pending", end), b"B"])
+        for length in (0, 17, 2048, 4096):
+            pending = b"\x1b]" + str(number).encode() + b";;" + b"x" * length
+            yield case(number, f"snapshot/{length}", [seed, pending], kind="snapshot",
+                       after=[{"op": "write", "data": b"\x07B".hex()}])
+            yield case(number, f"direct-reset/{length}",
+                       [seed, pending, {"op": "terminal_reset"}, b"\x07B", observe])
+        if number == 99:
+            yield case(number, "multipart-and-query", [seed, observe,
+                       osc(99, b"i=stable:d=0:p=title;part"), observe,
+                       osc(99, b"i=stable:d=1:p=body;body"), observe,
+                       osc(99, b"i=stable:p=?;"), observe,
+                       osc(99, b"i=stable:p=alive;"), observe,
+                       osc(99, b"i=stable:p=close;"), observe, b"B"])

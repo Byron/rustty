@@ -11,9 +11,10 @@ use rustty_app::{
     input,
     platform::{Platform, PlatformEvent},
     presentation::{
-        Activity, CompletionFlash, DirectoryLabel, TabAccent, common_directory_name, directory_name,
+        Activity, CompletionFlash, DirectoryLabel, FocusHint, Progress, TabAccent,
+        common_directory_name, cursor_blink_phase, directory_name,
     },
-    workspace::{Axis, Id, Peek, Rect, Tab, WindowState, Workspace},
+    workspace::{self, Axis, Id, Peek, Rect, SavedPane, Tab, WindowState, Workspace},
 };
 use rustty_font::{FontConfig, FontFeature};
 use rustty_render::{Frame, RenderOptions};
@@ -38,7 +39,6 @@ use winit::{
 };
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const BLINK: Duration = Duration::from_millis(600);
 const INPUT_BUDGET: usize = 16 * 1024 * 1024;
 const MIN_WINDOW_SIZE: LogicalSize<f64> = LogicalSize::new(240.0, 120.0);
 
@@ -62,6 +62,7 @@ struct Pane {
     input: VecDeque<Vec<u8>>,
     input_bytes: usize,
     title: String,
+    title_override: Option<String>,
     cwd: PathBuf,
     running: Option<Instant>,
     activity: Activity,
@@ -72,6 +73,20 @@ struct Pane {
     links: vt::search::LinkMatcher,
 }
 impl Pane {
+    fn update_saved(&self, saved: &mut SavedPane) -> bool {
+        let title = (!self.title.is_empty()).then_some(self.title.as_str());
+        if saved.working_directory == self.cwd
+            && saved.title.as_deref() == title
+            && saved.title_override == self.title_override
+        {
+            return false;
+        }
+        saved.working_directory.clone_from(&self.cwd);
+        saved.title = title.map(str::to_owned);
+        saved.title_override.clone_from(&self.title_override);
+        true
+    }
+
     fn write(&mut self, bytes: Vec<u8>) -> std::io::Result<()> {
         QueuedInput {
             session: &self.session,
@@ -146,6 +161,18 @@ enum Confirmation {
     Paste(PendingPaste),
 }
 
+struct LayoutPicker {
+    choices: Vec<workspace::SavedLayout>,
+    path: String,
+    error: Option<String>,
+}
+
+enum LayoutCommand {
+    Open(PathBuf),
+    Browse,
+    Close,
+}
+
 struct Host {
     id: Id,
     viewport: ViewportId,
@@ -166,9 +193,12 @@ struct Host {
     peek: Option<Peek>,
     navigation_warning: Option<(Id, Instant)>,
     mouse: Pos2,
+    deferred_pointer: Option<Pos2>,
     mouse_button: Option<vt::MouseButton>,
     selection_drag: Option<input::SelectionDrag>,
     focused: bool,
+    focus_hint: FocusHint,
+    cursor_blink_started: Instant,
     visible: bool,
     occluded: bool,
     deadline: Option<Instant>,
@@ -176,6 +206,8 @@ struct Host {
     search_index: usize,
     focus_text_input: bool,
     popup_open: bool,
+    messages_open: bool,
+    layout_picker: Option<LayoutPicker>,
     palette: bool,
     palette_query: String,
     confirm: Option<Confirmation>,
@@ -188,6 +220,8 @@ impl Host {
         self.search.is_some()
             || self.palette
             || self.popup_open
+            || self.messages_open
+            || self.layout_picker.is_some()
             || self.confirm.is_some()
             || !self.clipboard_request.is_empty()
     }
@@ -205,14 +239,17 @@ struct DirectoryBadge {
     active: bool,
     attention: bool,
     flash: f32,
-    accent: Color32,
+    accent: TabAccent,
 }
 impl DirectoryBadge {
     fn paint(self, ui: &egui::Ui) {
+        let [r, g, b] = self.accent.background;
+        let accent = Color32::from_rgb(r, g, b);
         let color = if self.label.focused {
-            Color32::WHITE
+            let [r, g, b] = self.accent.foreground;
+            Color32::from_rgb(r, g, b)
         } else {
-            ui.visuals().text_color()
+            ui.visuals().strong_text_color()
         };
         let mut job = egui::text::LayoutJob::simple(
             format!(
@@ -226,6 +263,10 @@ impl DirectoryBadge {
         );
         job.wrap.max_rows = 1;
         job.wrap.break_anywhere = true;
+        job.sections[0]
+            .format
+            .coords
+            .push("wght", if self.large { 600.0 } else { 500.0 });
         if self.label.shows_activity(self.active) {
             job.sections[0].format.underline = egui::Stroke::new(1.0, color);
         }
@@ -250,7 +291,7 @@ impl DirectoryBadge {
             bounds,
             rounding,
             if self.label.focused {
-                Color32::from_black_alpha(235)
+                accent
             } else {
                 ui.visuals().widgets.inactive.bg_fill
             },
@@ -258,18 +299,11 @@ impl DirectoryBadge {
         painter.rect_stroke(
             bounds,
             rounding,
-            egui::Stroke::new(
-                1.0,
-                if self.label.focused {
-                    self.accent
-                } else {
-                    ui.visuals().weak_text_color().gamma_multiply(0.35)
-                },
-            ),
+            egui::Stroke::new(1.0, color.gamma_multiply(0.35)),
             egui::StrokeKind::Inside,
         );
         if self.flash > 0.0 {
-            painter.rect_filled(bounds, rounding, self.accent.gamma_multiply(self.flash));
+            painter.rect_filled(bounds, rounding, accent.gamma_multiply(self.flash));
         }
         painter.galley(bounds.min + padding, galley, color);
     }
@@ -364,9 +398,10 @@ pub fn run() -> Result<()> {
     let mut loaded = load_config(&mut config_loader, &args, Platform::system_theme());
     if show_config {
         println!(
-            "Configuration: {:?}\nOwn settings: {}",
+            "Configuration: {:?}\nOwn settings: {}\nEdit settings: {}",
             loaded.family,
-            loaded.own_config_path.display()
+            loaded.own_config_path.display(),
+            loaded.edit_config_path.display()
         );
         for source in &loaded.sources {
             println!("  {}", source.display());
@@ -406,6 +441,7 @@ pub fn run() -> Result<()> {
     let context = egui::Context::default();
     context.enable_accesskit();
     context.set_theme(ui_theme(&loaded.config));
+    configure_ui_fonts(&context);
     let repaint = proxy.clone();
     context.set_request_repaint_callback(move |info| {
         if let Some(deadline) = Instant::now().checked_add(info.delay) {
@@ -583,6 +619,20 @@ impl App {
         visible
     }
     fn sync_host_state(&mut self) {
+        let now = Instant::now();
+        for host in self.windows.values_mut() {
+            let focused = self
+                .workspace
+                .windows
+                .iter()
+                .find(|window| window.id == host.id)
+                .and_then(|window| window.tabs.get(window.active_tab))
+                .map(|tab| tab.focused)
+                .filter(|_| host.focused && host.visible);
+            if host.focus_hint.focus(focused, now) {
+                host.repaint();
+            }
+        }
         let visible = self.visible_panes();
         let scheme = color_scheme(self.config_loader.dark_mode);
         for (&id, pane) in &mut self.panes {
@@ -697,6 +747,17 @@ impl App {
                 return Err(error.into());
             }
         };
+        let saved = self
+            .workspace
+            .windows
+            .iter()
+            .flat_map(|window| &window.tabs)
+            .find_map(|tab| tab.panes.get(&id));
+        let title_override = saved.and_then(|pane| pane.title_override.clone());
+        let title = title_override
+            .clone()
+            .or_else(|| saved.and_then(|pane| pane.title.clone()))
+            .unwrap_or_default();
         self.panes.insert(
             id,
             Pane {
@@ -705,7 +766,8 @@ impl App {
                 wake_pending,
                 input: VecDeque::new(),
                 input_bytes: 0,
-                title: String::new(),
+                title,
+                title_override,
                 cwd: directory,
                 running: None,
                 activity: Activity::default(),
@@ -748,8 +810,7 @@ impl App {
             .with_transparent(self.config().background_opacity < 1.0)
             .with_titlebar_transparent(true)
             .with_fullsize_content_view(true)
-            .with_title_hidden(true)
-            .with_tabbing_identifier("rustty");
+            .with_title_hidden(true);
         let window = Arc::new(event_loop.create_window(attributes)?);
         if let Some(platform) = &self.platform {
             platform.configure_window(&window, quick, self.config())?;
@@ -799,9 +860,12 @@ impl App {
             peek: None,
             navigation_warning: None,
             mouse: Pos2::ZERO,
+            deferred_pointer: None,
             mouse_button: None,
             selection_drag: None,
             focused: false,
+            focus_hint: FocusHint::default(),
+            cursor_blink_started: Instant::now(),
             visible: !quick,
             occluded: false,
             deadline: None,
@@ -809,6 +873,8 @@ impl App {
             search_index: 0,
             focus_text_input: false,
             popup_open: false,
+            messages_open: false,
+            layout_picker: None,
             palette: false,
             palette_query: String::new(),
             confirm: None,
@@ -879,6 +945,18 @@ impl App {
             self.errors.push(error.to_string());
         }
     }
+    fn terminal_input(&self, host: &mut Host, pane: Id) {
+        let now = Instant::now();
+        let focused = self
+            .focused(host.id)
+            .filter(|_| host.focused && host.visible);
+        host.focus_hint.focus(focused, now);
+        if focused == Some(pane) {
+            host.focus_hint.dismiss();
+            host.cursor_blink_started = now;
+            host.repaint();
+        }
+    }
     fn paste_target_exists(&self, window: Id, pane: Id) -> bool {
         self.index(window)
             .is_some_and(|index| window_contains_pane(&self.workspace.windows[index], pane))
@@ -907,6 +985,7 @@ impl App {
         terminal.screen_mut().viewport_offset = 0;
         terminal.screen_mut().selection = None;
         drop(terminal);
+        self.terminal_input(host, paste.pane);
         self.write(paste.pane, bytes);
         host.repaint();
     }
@@ -1021,21 +1100,27 @@ impl App {
         {
             self.errors.push(error.to_string());
         }
-        if let Ok(terminal) = pane.session.terminal() {
-            pane.title = terminal.title.clone();
-            if let Some(directory) = directory_from_osc(&terminal.working_directory) {
-                pane.cwd = directory;
-            }
+        if let Ok(terminal) = pane.session.terminal()
+            && let Some(directory) = directory_from_osc(&terminal.working_directory)
+        {
+            pane.cwd = directory;
         }
         let events = pane.session.events().collect::<Vec<_>>();
         for event in events {
             match event {
                 SessionEvent::Effect(vt::Effect::Title(title)) => {
-                    pane.activity
-                        .title_changed(&String::from_utf8_lossy(&title));
+                    let title = String::from_utf8_lossy(&title);
+                    pane.activity.title_changed(&title);
+                    if pane.title_override.is_none() {
+                        pane.title = title.into_owned();
+                    }
                 }
-                SessionEvent::Effect(vt::Effect::Progress { state, .. }) => {
-                    stopped |= pane.activity.progress_reported(state, Instant::now());
+                SessionEvent::Effect(vt::Effect::Progress { state, value }) => {
+                    stopped |= pane.activity.progress_reported(
+                        if config.progress_style { state } else { 0 },
+                        value,
+                        Instant::now(),
+                    );
                 }
                 SessionEvent::Effect(vt::Effect::CommandStart) => {
                     pane.running = Some(Instant::now());
@@ -1110,7 +1195,6 @@ impl App {
             pane.running = None;
             stopped |= pane.activity.clear();
         }
-        let cwd = pane.cwd.clone();
         let indicators_changed = stopped
             || previous_title != pane.title
             || previous_status
@@ -1134,10 +1218,9 @@ impl App {
         for window in &mut self.workspace.windows {
             for tab in &mut window.tabs {
                 if let Some(saved) = tab.panes.get_mut(&id)
-                    && saved.working_directory != cwd
+                    && let Some(pane) = self.panes.get(&id)
                 {
-                    saved.working_directory = cwd.clone();
-                    changed = true;
+                    changed |= pane.update_saved(saved);
                 }
             }
         }
@@ -1425,6 +1508,9 @@ impl App {
             Action::Unbind => return false,
             Action::Text(bytes) => {
                 if let Some(id) = focused {
+                    if !bytes.is_empty() {
+                        self.terminal_input(host, id);
+                    }
                     self.write(id, bytes);
                 }
             }
@@ -1674,7 +1760,7 @@ impl App {
                         vt::clipboard::Location::Standard
                     };
                     match self.paste_event(host.id, id, location) {
-                        Ok(true) => {}
+                        Ok(true) => self.terminal_input(host, id),
                         Err(error) => self.errors.push(error),
                         Ok(false) => {
                             let text = if action == Action::PasteFromSelection {
@@ -1720,6 +1806,7 @@ impl App {
             }
             Action::ClearScreen => {
                 if let Some(id) = focused {
+                    self.terminal_input(host, id);
                     self.write(id, b"\x0c".to_vec());
                 }
             }
@@ -1810,10 +1897,23 @@ impl App {
             }
             Action::OpenConfig => {
                 if let Some(platform) = &self.platform
-                    && let Err(error) = platform.open_config(&self.loaded.own_config_path)
+                    && let Err(error) = platform.open_config(&self.loaded.edit_config_path)
                 {
                     self.errors.push(error);
                 }
+            }
+            Action::OpenLayout => {
+                let choices = workspace::saved_layouts(&self.config_loader.home, &self.state_path);
+                let path = choices
+                    .iter()
+                    .find(|choice| choice.available)
+                    .map(|choice| choice.path.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                host.layout_picker = Some(LayoutPicker {
+                    choices,
+                    path,
+                    error: None,
+                });
             }
             Action::ReloadConfig => {
                 if let Some(theme) = event_loop.system_theme() {
@@ -1892,9 +1992,12 @@ impl App {
         {
             self.errors.push(error);
         }
-        for pane in self.panes.values() {
+        for pane in self.panes.values_mut() {
             if let Err(error) = pane.session.apply_config(&self.loaded.config) {
                 self.errors.push(error.to_string());
+            }
+            if !self.loaded.config.progress_style {
+                pane.activity.progress_reported(0, None, Instant::now());
             }
         }
         self.update_fonts(host.as_deref_mut());
@@ -2015,20 +2118,17 @@ impl App {
                 self.errors.push(error.to_string());
             }
         }
-        let mut directories_changed = false;
+        let mut metadata_changed = false;
         for window in &mut self.workspace.windows {
             for tab in &mut window.tabs {
                 for (id, saved) in &mut tab.panes {
-                    if let Some(pane) = self.panes.get(id)
-                        && saved.working_directory != pane.cwd
-                    {
-                        saved.working_directory = pane.cwd.clone();
-                        directories_changed = true;
+                    if let Some(pane) = self.panes.get(id) {
+                        metadata_changed |= pane.update_saved(saved);
                     }
                 }
             }
         }
-        if directories_changed {
+        if metadata_changed {
             self.changed();
         }
         for id in self
@@ -2096,6 +2196,11 @@ impl App {
                     if binding.flags.all
                         && let Action::Text(bytes) = action
                     {
+                        if !bytes.is_empty()
+                            && let Some(id) = self.focused(host.id)
+                        {
+                            self.terminal_input(host, id);
+                        }
                         for id in self
                             .workspace
                             .windows
@@ -2151,6 +2256,9 @@ impl App {
             Some(terminal.encode_key_with_options(&event, options))
         });
         if let Some(bytes) = bytes {
+            if key.state == ElementState::Pressed && !bytes.is_empty() {
+                self.terminal_input(host, id);
+            }
             self.write(id, bytes);
         }
         host.repaint();
@@ -2166,6 +2274,7 @@ fn reveal(screen: &mut vt::Screen, point: vt::GridPoint) {
 
 impl App {
     fn draw(&mut self, event_loop: &ActiveEventLoop, host: &mut Host) -> Result<()> {
+        host.messages_open = !self.errors.is_empty();
         if !host.visible || host.occluded {
             return Ok(());
         }
@@ -2189,6 +2298,11 @@ impl App {
         }
         let mut raw = host.egui.take_egui_input(&host.window);
         raw.viewport_id = host.viewport;
+        if !self.passive_mouse_motion(host, host.mouse)
+            && let Some(position) = host.deferred_pointer.take()
+        {
+            raw.events.push(egui::Event::PointerMoved(position));
+        }
         input::filter_egui_events(&mut raw, host.ui_input());
         let context = self.context.clone();
         let now = Instant::now();
@@ -2208,6 +2322,7 @@ impl App {
         );
         self.activity_flashes.remove(&active.id);
         let mut commands = Vec::new();
+        let mut layout_command = None;
         let mut tab_selection = None;
         let mut presentation_changed = false;
         let mut retry_pane = None;
@@ -2217,9 +2332,9 @@ impl App {
             .render_state()
             .ok_or("GPU unavailable")?
             .target_format;
-        let blink_on = (self.started.elapsed().as_millis() / BLINK.as_millis()).is_multiple_of(2);
+        let (blink_on, blink_deadline) = cursor_blink_phase(host.cursor_blink_started, now);
         let mut needs_blink = false;
-        let mut graphics_deadline: Option<Instant> = None;
+        let mut animation_deadline: Option<Instant> = None;
         if host
             .navigation_warning
             .is_some_and(|(_, until)| until <= Instant::now())
@@ -2318,7 +2433,7 @@ impl App {
                                 ));
                             }
                             let flash =
-                                self.flash_opacity(tab.id, now, &mut graphics_deadline) * 0.45;
+                                self.flash_opacity(tab.id, now, &mut animation_deadline) * 0.45;
                             let fill = if selected {
                                 color
                             } else {
@@ -2378,6 +2493,9 @@ impl App {
             // Cache this viewport's popup state for native events between frames.
             host.popup_open = egui::Popup::is_any_open(ctx);
             if host.ui_input() {
+                host.mouse_button = None;
+                host.selection_drag = None;
+                host.divider_drag = None;
                 host.composing = false;
                 host.preedit.clear();
                 host.preedit_selection = None;
@@ -2494,8 +2612,9 @@ impl App {
                                 if let Some(next) = terminal.tick_graphics(now_ms) {
                                     let deadline = Instant::now()
                                         + Duration::from_millis(next.saturating_sub(now_ms));
-                                    graphics_deadline = Some(
-                                        graphics_deadline.map_or(deadline, |old| old.min(deadline)),
+                                    animation_deadline = Some(
+                                        animation_deadline
+                                            .map_or(deadline, |old| old.min(deadline)),
                                     );
                                 }
                             }
@@ -2509,6 +2628,7 @@ impl App {
                             let is_focused = host.focused && id == focused && host.peek.is_none();
                             needs_blink |= is_focused
                                 && !pane.exited
+                                && !host.composing
                                 && snapshot.screen.cursor.visible
                                 && snapshot.screen.cursor.blink;
                             let cursor_color = snapshot.cursor_color.unwrap_or(snapshot.foreground);
@@ -2680,12 +2800,23 @@ impl App {
                                     .map(rgb)
                                     .unwrap_or(Color32::from_gray(65))
                             };
-                            ui.painter().rect_stroke(
+                            paint_pane_frame(ui.painter(), rect, color);
+                        }
+                        if config.progress_style
+                            && let Some(progress) =
+                                self.panes.get(&id).and_then(|p| p.activity.progress())
+                            && paint_progress(
+                                ui,
+                                id,
                                 rect,
-                                0.0,
-                                egui::Stroke::new(if selected { 1.5 } else { 0.5 }, color),
-                                egui::StrokeKind::Inside,
-                            );
+                                progress,
+                                accent,
+                                now.duration_since(self.started),
+                            )
+                        {
+                            let deadline = now + Duration::from_millis(33);
+                            animation_deadline =
+                                Some(animation_deadline.map_or(deadline, |old| old.min(deadline)));
                         }
                     }
                     for (&id, &rect) in &host.rects {
@@ -2754,12 +2885,7 @@ impl App {
                                 );
                             }
                             if Some(id) == selected {
-                                ui.painter().rect_stroke(
-                                    bounds,
-                                    0.0,
-                                    egui::Stroke::new(2.0, accent),
-                                    egui::StrokeKind::Inside,
-                                );
+                                paint_pane_frame(ui.painter(), bounds, accent);
                             }
                         }
                         if let Some(label) = self.quadrant_label(active, host, id) {
@@ -2769,13 +2895,13 @@ impl App {
                                 bounds,
                                 large: true,
                                 attention,
-                                accent,
+                                accent: tab_accent,
                                 active: members.iter().any(|id| {
                                     self.panes
                                         .get(id)
                                         .is_some_and(|pane| pane.activity.is_active())
                                 }),
-                                flash: self.flash_opacity(id, now, &mut graphics_deadline),
+                                flash: self.flash_opacity(id, now, &mut animation_deadline),
                             }
                             .paint(ui);
                         }
@@ -2792,14 +2918,14 @@ impl App {
                             directory_name(&pane.cwd),
                             selected,
                             host.focused,
-                            false,
+                            host.focus_hint.visible(id, now),
                         ) {
                             let large = label.large(
                                 active.quadrant_zoom.is_some()
                                     && (host.peek.is_some() || active.zoom == active.quadrant_zoom),
                             );
                             let flash = if label.shows_flash(true, false) {
-                                self.flash_opacity(id, now, &mut graphics_deadline)
+                                self.flash_opacity(id, now, &mut animation_deadline)
                             } else {
                                 0.0
                             };
@@ -2808,7 +2934,7 @@ impl App {
                                 bounds,
                                 large,
                                 flash,
-                                accent,
+                                accent: tab_accent,
                                 active: pane.activity.is_active(),
                                 attention: pane.unseen,
                             }
@@ -2963,22 +3089,11 @@ impl App {
                         });
                     });
             }
-            if !self.errors.is_empty() {
-                egui::Window::new("Rustty messages")
-                    .default_size([600.0, 240.0])
-                    .show(ctx, |ui| {
-                        egui::ScrollArea::vertical()
-                            .max_height(300.0)
-                            .show(ui, |ui| {
-                                for error in &self.errors {
-                                    ui.label(error);
-                                }
-                            });
-                        if ui.button("Dismiss").clicked() {
-                            self.errors.clear();
-                        }
-                    });
+            if let Some(picker) = &mut host.layout_picker {
+                layout_command = show_layout_picker(ctx, picker).or(layout_command.take());
             }
+            let _ = show_messages(ctx, &mut self.errors);
+            host.messages_open = !self.errors.is_empty();
         });
         if presentation_changed {
             self.changed();
@@ -3002,6 +3117,9 @@ impl App {
         }
         for action in commands {
             self.action(event_loop, host, action, false);
+        }
+        if let Some(command) = layout_command {
+            self.layout_command(host, command);
         }
         if let Some(update) = &mut output.platform_output.accesskit_update {
             for text in host.accessibility.values() {
@@ -3045,17 +3163,79 @@ impl App {
             &host.window,
         );
         host.frames += 1;
-        host.deadline = graphics_deadline;
+        host.deadline = animation_deadline;
+        if let Some(deadline) = host.focus_hint.deadline(now) {
+            host.deadline = Some(host.deadline.map_or(deadline, |old| old.min(deadline)));
+        }
         if let Some((_, deadline)) = host.navigation_warning {
             host.deadline = Some(host.deadline.map_or(deadline, |old| old.min(deadline)));
         }
         if needs_blink {
-            let elapsed = self.started.elapsed().as_millis();
-            let deadline = Instant::now()
-                + Duration::from_millis((BLINK.as_millis() - elapsed % BLINK.as_millis()) as u64);
+            let deadline = blink_deadline;
             host.deadline = Some(host.deadline.map_or(deadline, |old| old.min(deadline)));
         }
         Ok(())
+    }
+    fn passive_mouse_motion(&self, host: &Host, position: Pos2) -> bool {
+        !host.ui_input()
+            && host.peek.is_none()
+            && host.divider_drag.is_none()
+            && host.mouse_button.is_none()
+            && host.egui.is_pointer_in_window()
+            && !self.context.egui_is_using_pointer()
+            && [host.mouse, position].into_iter().all(|position| {
+                host.rects.iter().any(|(id, rect)| {
+                    rect.contains(position) && !self.failed_panes.contains_key(id)
+                }) && self
+                    .context
+                    .layer_id_at(position)
+                    .is_none_or(|layer| layer.order == egui::Order::Background)
+            })
+    }
+    fn layout_command(&mut self, host: &mut Host, command: LayoutCommand) {
+        let result = match command {
+            LayoutCommand::Close => {
+                host.layout_picker = None;
+                Ok(())
+            }
+            LayoutCommand::Browse => self
+                .platform
+                .as_ref()
+                .ok_or_else(|| "macOS file services are unavailable".to_owned())
+                .and_then(Platform::choose_layout_path)
+                .map(|path| {
+                    if let Some(path) = path
+                        && let Some(picker) = &mut host.layout_picker
+                    {
+                        picker.path = path.to_string_lossy().into_owned();
+                        picker.error = None;
+                    }
+                }),
+            LayoutCommand::Open(path) => {
+                let path = path
+                    .to_str()
+                    .and_then(|path| path.strip_prefix("~/"))
+                    .map(|path| self.config_loader.home.join(path))
+                    .unwrap_or(path);
+                workspace::load_layout(&path)
+                    .and_then(|layout| {
+                        let mut next = self.workspace.clone();
+                        next.append_layout(layout)?;
+                        self.remember();
+                        self.workspace = next;
+                        self.changed();
+                        host.layout_picker = None;
+                        Ok(())
+                    })
+                    .map_err(|error| format!("Could not open saved layout: {error}"))
+            }
+        };
+        if let Err(error) = result
+            && let Some(picker) = &mut host.layout_picker
+        {
+            picker.error = Some(error);
+        }
+        host.repaint();
     }
     fn mouse(&mut self, host: &mut Host, action: vt::MouseAction, button: Option<vt::MouseButton>) {
         if let Some((id, axis, bounds)) = host.divider_drag {
@@ -3173,7 +3353,15 @@ impl App {
             let bytes = terminal.encode_mouse(event);
             drop(terminal);
             self.write(id, bytes);
-            host.repaint();
+            // Mouse reporting does not change the local screen; PTY output will repaint it.
+            if action != vt::MouseAction::Move || !self.errors.is_empty() {
+                host.repaint();
+            }
+            return;
+        }
+        if action == vt::MouseAction::Move
+            && (host.mouse_button != Some(vt::MouseButton::Left) || host.selection_drag.is_none())
+        {
             return;
         }
         let screen = terminal.screen_mut();
@@ -3242,6 +3430,7 @@ fn palette_actions() -> Vec<(&'static str, Action)> {
         ("Equalize splits", Action::EqualizeSplits),
         ("Find", Action::StartSearch),
         ("Open configuration", Action::OpenConfig),
+        ("Open saved layout", Action::OpenLayout),
         ("Reload configuration", Action::ReloadConfig),
         ("Toggle quick terminal", Action::ToggleQuickTerminal),
         ("Undo layout change", Action::Undo),
@@ -3328,6 +3517,11 @@ impl ApplicationHandler<Event> for App {
                         }
                     }
                 } else if let PlatformEvent::Action(action) = event {
+                    if action == Action::OpenLayout && self.windows.is_empty() {
+                        let id = self.add_window(false);
+                        self.reconcile(event_loop);
+                        self.active = Some(id);
+                    }
                     let key = self
                         .windows
                         .iter()
@@ -3444,6 +3638,7 @@ impl ApplicationHandler<Event> for App {
         let Some(mut host) = self.windows.remove(&window) else {
             return;
         };
+        host.messages_open = !self.errors.is_empty();
         if let Some(smoke) = &mut self.smoke {
             let input = match &event {
                 WindowEvent::CursorMoved { position, .. } => {
@@ -3501,8 +3696,27 @@ impl ApplicationHandler<Event> for App {
                 smoke.input(host.frames);
             }
         }
+        let passive_motion = if let WindowEvent::CursorMoved { position, .. } = &event {
+            let position = position.to_logical::<f32>(host.window.scale_factor());
+            self.passive_mouse_motion(&host, Pos2::new(position.x, position.y))
+        } else {
+            false
+        };
         let response = host.egui.on_window_event(&host.window, &event);
-        if response.repaint && !matches!(event, WindowEvent::RedrawRequested) {
+        if passive_motion {
+            // Merely ignoring response.repaint leaves PointerMoved queued, which
+            // restarts egui's repaint loop when the next cursor-blink frame runs.
+            host.deferred_pointer = input::defer_pointer_move(host.egui.egui_input_mut());
+        } else if matches!(
+            event,
+            WindowEvent::CursorMoved { .. }
+                | WindowEvent::CursorLeft { .. }
+                | WindowEvent::MouseInput { .. }
+                | WindowEvent::Touch(_)
+        ) {
+            host.deferred_pointer = None;
+        }
+        if response.repaint && !passive_motion && !matches!(event, WindowEvent::RedrawRequested) {
             host.repaint();
         }
         match event {
@@ -3669,6 +3883,11 @@ impl ApplicationHandler<Event> for App {
             WindowEvent::Ime(ime) if !host.ui_input() => {
                 match ime {
                     Ime::Preedit(text, selection) => {
+                        if !text.is_empty()
+                            && let Some(pane) = self.focused(host.id)
+                        {
+                            self.terminal_input(&mut host, pane);
+                        }
                         host.composing = !text.is_empty();
                         host.preedit = text;
                         host.preedit_selection = selection;
@@ -3678,6 +3897,9 @@ impl ApplicationHandler<Event> for App {
                         host.preedit.clear();
                         host.preedit_selection = None;
                         if let Some(pane) = self.focused(host.id) {
+                            if !text.is_empty() {
+                                self.terminal_input(&mut host, pane);
+                            }
                             self.write(pane, text.into_bytes());
                         }
                     }
@@ -3765,6 +3987,7 @@ impl ApplicationHandler<Event> for App {
                         .get(&id)
                         .and_then(|p| p.session.terminal().ok().map(|t| t.encode_paste(&escaped)));
                     if let Some(bytes) = bytes {
+                        self.terminal_input(&mut host, id);
                         self.write(id, bytes);
                     }
                 }
@@ -3999,6 +4222,104 @@ fn directory_from_osc(value: &str) -> Option<PathBuf> {
     Some(PathBuf::from(value))
 }
 
+fn show_layout_picker(ctx: &egui::Context, picker: &mut LayoutPicker) -> Option<LayoutCommand> {
+    let mut open = true;
+    let mut command = None;
+    egui::Window::new("Open saved layout")
+        .open(&mut open)
+        .collapsible(false)
+        .default_width(560.0)
+        .show(ctx, |ui| {
+            ui.label("Open saved tabs and panes in new windows.");
+            ui.label("New shells start in the saved directories.");
+            ui.add_space(8.0);
+            for choice in &picker.choices {
+                let selected = Path::new(&picker.path) == choice.path;
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(
+                            choice.available,
+                            egui::Button::selectable(selected, &choice.name),
+                        )
+                        .on_hover_text(choice.path.display().to_string())
+                        .clicked()
+                    {
+                        picker.path = choice.path.to_string_lossy().into_owned();
+                        picker.error = None;
+                    }
+                    if !choice.available {
+                        ui.weak("No saved layout found");
+                    }
+                });
+            }
+            ui.separator();
+            ui.label("Saved layout file or folder");
+            ui.horizontal(|ui| {
+                if ui
+                    .add(
+                        egui::TextEdit::singleline(&mut picker.path)
+                            .desired_width(ui.available_width() - 80.0),
+                    )
+                    .changed()
+                {
+                    picker.error = None;
+                }
+                if ui.button("Browse…").clicked() {
+                    command = Some(LayoutCommand::Browse);
+                }
+            });
+            if let Some(error) = &picker.error {
+                ui.colored_label(ui.visuals().error_fg_color, error);
+            }
+            ui.horizontal(|ui| {
+                if ui.button("Cancel").clicked() {
+                    command = Some(LayoutCommand::Close);
+                }
+                if ui
+                    .add_enabled(!picker.path.trim().is_empty(), egui::Button::new("Open"))
+                    .clicked()
+                {
+                    command = Some(LayoutCommand::Open(PathBuf::from(picker.path.trim())));
+                }
+            });
+        });
+    if !open || ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+        command = Some(LayoutCommand::Close);
+    }
+    command
+}
+
+fn show_messages(ctx: &egui::Context, errors: &mut Vec<String>) -> Option<egui::Response> {
+    if errors.is_empty() {
+        return None;
+    }
+    let mut open = true;
+    let dismiss = egui::Window::new("Rustty messages")
+        .open(&mut open)
+        .collapsible(false)
+        .default_size([600.0, 240.0])
+        .show(ctx, |ui| {
+            egui::ScrollArea::vertical()
+                .max_height(300.0)
+                .show(ui, |ui| {
+                    for error in errors.iter() {
+                        ui.label(error);
+                    }
+                });
+            ui.button("Dismiss")
+        })
+        .and_then(|window| window.inner);
+    if !open
+        || dismiss.as_ref().is_some_and(egui::Response::clicked)
+        || ctx.input(|input| input.key_pressed(egui::Key::Escape))
+    {
+        errors.clear();
+        // The current frame still contains the window's shapes.
+        ctx.request_repaint();
+    }
+    dismiss
+}
+
 fn repaint_is_current(requested_pass: u64, current_pass: u64) -> bool {
     // Match egui's native runner: one completed pass still needs its requested
     // follow-up, but later passes have already superseded the request.
@@ -4045,6 +4366,91 @@ fn initial_visible_panes(window: &WindowState, native: Option<(bool, bool, bool)
     window_visible_panes(window, visible, occluded, peek)
 }
 
+fn configure_ui_fonts(context: &egui::Context) {
+    // Use the installed macOS UI font; egui's bundled fonts remain fallbacks.
+    if let Ok(bytes) = std::fs::read("/System/Library/Fonts/SFNS.ttf") {
+        let mut fonts = egui::FontDefinitions::default();
+        fonts.font_data.insert(
+            "macos-system".into(),
+            Arc::new(egui::FontData::from_owned(bytes)),
+        );
+        fonts
+            .families
+            .get_mut(&egui::FontFamily::Proportional)
+            .unwrap()
+            .insert(0, "macos-system".into());
+        context.set_fonts(fonts);
+    }
+}
+
+fn paint_pane_frame(painter: &egui::Painter, bounds: egui::Rect, color: Color32) {
+    painter.rect_stroke(
+        bounds,
+        0.0,
+        egui::Stroke::new(1.0, color),
+        egui::StrokeKind::Inside,
+    );
+}
+
+/// Returns whether a visible indeterminate bar needs another frame.
+fn paint_progress(
+    ui: &mut egui::Ui,
+    pane: Id,
+    bounds: egui::Rect,
+    progress: Progress,
+    accent: Color32,
+    elapsed: Duration,
+) -> bool {
+    // Keep a static fill separate from the focused split's same-color outline.
+    let bounds = bounds.shrink(2.0);
+    let bar = egui::Rect::from_min_size(bounds.min, Vec2::new(bounds.width(), 2.0));
+    if !ui.is_rect_visible(bar) {
+        return false;
+    }
+    let color = match progress.state {
+        2 => Color32::from_rgb(255, 59, 48),
+        4 => Color32::from_rgb(255, 149, 0),
+        _ => accent,
+    };
+    let percentage = progress.percentage();
+    let (offset, fraction) = if let Some(value) = percentage {
+        (0.0, f32::from(value) / 100.0)
+    } else {
+        ui.painter()
+            .rect_filled(bar, 0.0, color.gamma_multiply(0.3));
+        let phase = elapsed.as_secs_f32() * std::f32::consts::PI / 1.2;
+        (0.375 * (1.0 - phase.cos()), 0.25)
+    };
+    ui.painter().rect_filled(
+        egui::Rect::from_min_size(
+            bar.min + Vec2::new(offset * bar.width(), 0.0),
+            Vec2::new(fraction * bar.width(), bar.height()),
+        ),
+        0.0,
+        color,
+    );
+    let response = ui.interact(
+        bar,
+        egui::Id::new(("terminal-progress", pane)),
+        Sense::empty(),
+    );
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_role(egui::accesskit::Role::ProgressIndicator);
+        node.set_label(match progress.state {
+            2 => "Terminal progress — Error",
+            4 => "Terminal progress — Paused",
+            3 => "Terminal progress — In progress",
+            _ => "Terminal progress",
+        });
+        if let Some(value) = percentage {
+            node.set_min_numeric_value(0.0);
+            node.set_max_numeric_value(100.0);
+            node.set_numeric_value(f64::from(value));
+        }
+    });
+    percentage.is_none()
+}
+
 fn ui_theme(config: &Config) -> egui::ThemePreference {
     match config.window_theme {
         config::WindowTheme::System => egui::ThemePreference::System,
@@ -4066,6 +4472,306 @@ fn ui_theme(config: &Config) -> egui::ThemePreference {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn determinate_progress_does_not_blend_into_the_focused_split_outline() {
+        let context = egui::Context::default();
+        let bounds = egui::Rect::from_min_size(Pos2::new(20.0, 30.0), Vec2::new(200.0, 100.0));
+        let accent = Color32::from_rgb(200, 90, 230);
+        for percentage in [25, 50, 100] {
+            let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                paint_pane_frame(ui.painter(), bounds, accent);
+                assert!(!paint_progress(
+                    ui,
+                    1,
+                    bounds,
+                    Progress {
+                        state: 1,
+                        value: Some(percentage)
+                    },
+                    accent,
+                    Duration::ZERO
+                ));
+            });
+            output.textures_delta.clear();
+            let rectangles: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect) => Some(rect),
+                    _ => None,
+                })
+                .collect();
+            let (outline, fill) = (rectangles[0], rectangles[1]);
+            assert!(
+                fill.rect.top() >= outline.rect.top() + outline.stroke.width,
+                "a static fill with the same accent must not cover the split outline"
+            );
+            assert!(fill.rect.left() >= outline.rect.left() + outline.stroke.width);
+            assert!(fill.rect.right() <= outline.rect.right() - outline.stroke.width);
+            assert_eq!(
+                fill.rect.width(),
+                (bounds.width() - 4.0) * f32::from(percentage) / 100.0
+            );
+        }
+    }
+
+    #[test]
+    fn progress_bars_render_percentages_and_only_animate_without_a_value() {
+        let context = egui::Context::default();
+        let bounds = egui::Rect::from_min_size(Pos2::new(20.0, 30.0), Vec2::new(200.0, 100.0));
+        for (state, value, width, animated) in [
+            (1, Some(40), 78.4, false),
+            (2, Some(75), 147.0, false),
+            (4, None, 196.0, false),
+            (3, None, 49.0, true),
+            (2, None, 49.0, true),
+        ] {
+            let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                assert_eq!(
+                    paint_progress(
+                        ui,
+                        1,
+                        bounds,
+                        Progress { state, value },
+                        Color32::BLUE,
+                        Duration::ZERO
+                    ),
+                    animated,
+                );
+            });
+            output.textures_delta.clear();
+            let fill = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect) => Some(rect),
+                    _ => None,
+                })
+                .next_back()
+                .unwrap();
+            assert_eq!(
+                fill.rect,
+                egui::Rect::from_min_size(bounds.min + Vec2::splat(2.0), Vec2::new(width, 2.0))
+            );
+            assert_eq!(
+                fill.fill,
+                match state {
+                    2 => Color32::from_rgb(255, 59, 48),
+                    4 => Color32::from_rgb(255, 149, 0),
+                    _ => Color32::BLUE,
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn directory_badges_are_centered_and_readable_with_the_native_font() {
+        let context = egui::Context::default();
+        configure_ui_fonts(&context);
+        let bounds = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 240.0));
+        let accent = TabAccent::new(Some([230, 185, 60]), [0; 3]);
+        for focused in [false, true] {
+            for theme in [egui::ThemePreference::Dark, egui::ThemePreference::Light] {
+                context.set_theme(theme);
+                let mut output = context.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(bounds),
+                        ..Default::default()
+                    },
+                    |ui| {
+                        let label = DirectoryLabel::new(Some("rustty".into()), focused, true, true)
+                            .unwrap();
+                        DirectoryBadge {
+                            large: label.large(true),
+                            label,
+                            bounds,
+                            active: false,
+                            attention: false,
+                            flash: 0.0,
+                            accent,
+                        }
+                        .paint(ui);
+                    },
+                );
+                output.textures_delta.clear();
+                let text = output
+                    .shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) => Some(text),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert!((text.pos + text.galley.size() / 2.0 - bounds.center()).length() < 1.0);
+                assert_eq!(
+                    text.galley.job.sections[0].format.color,
+                    if focused || theme == egui::ThemePreference::Light {
+                        Color32::BLACK
+                    } else {
+                        Color32::WHITE
+                    }
+                );
+                if focused {
+                    assert!(output.shapes.iter().any(|shape| {
+                        matches!(&shape.shape, egui::Shape::Rect(rect)
+                            if rect.fill == Color32::from_rgb(230, 185, 60)
+                                && rect.rect.center() == bounds.center())
+                    }));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn saved_layout_picker_opens_the_selected_path_and_cancels() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let path = PathBuf::from("/tmp/saved-rustty-workspace.json");
+        let mut picker = LayoutPicker {
+            choices: vec![workspace::SavedLayout {
+                name: "Rustty".into(),
+                path: path.clone(),
+                available: true,
+            }],
+            path: path.display().to_string(),
+            error: None,
+        };
+        let mut frame = |events| {
+            let mut command = None;
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        Pos2::ZERO,
+                        Vec2::new(800.0, 600.0),
+                    )),
+                    focused: true,
+                    events,
+                    ..Default::default()
+                },
+                |_| {
+                    command = show_layout_picker(&context, &mut picker).or(command.take());
+                },
+            );
+            let open = output
+                .platform_output
+                .accesskit_update
+                .as_ref()
+                .and_then(|update| {
+                    update.nodes.iter().find_map(|(_, node)| {
+                        if node.label() != Some("Open") {
+                            return None;
+                        }
+                        let rect = node.bounds()?;
+                        Some(Pos2::new(
+                            ((rect.x0 + rect.x1) / 2.0) as f32,
+                            ((rect.y0 + rect.y1) / 2.0) as f32,
+                        ))
+                    })
+                });
+            output.textures_delta.clear();
+            (command, open)
+        };
+        frame(vec![]);
+        let point = frame(vec![]).1.expect("accessible Open button");
+        let mut command = None;
+        for pressed in [true, false] {
+            command = frame(vec![
+                egui::Event::PointerMoved(point),
+                egui::Event::PointerButton {
+                    pos: point,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::default(),
+                },
+            ])
+            .0;
+        }
+        assert!(matches!(command, Some(LayoutCommand::Open(selected)) if selected == path));
+        let command = frame(vec![egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::default(),
+        }])
+        .0;
+        assert!(matches!(command, Some(LayoutCommand::Close)));
+    }
+
+    #[test]
+    fn messages_close_by_click_or_escape_without_terminal_focus() {
+        fn frame(
+            context: &egui::Context,
+            errors: &mut Vec<String>,
+            events: Vec<egui::Event>,
+        ) -> Option<egui::Rect> {
+            let ui_input = !errors.is_empty();
+            let mut raw = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    Pos2::ZERO,
+                    Vec2::new(800.0, 600.0),
+                )),
+                focused: true,
+                events,
+                ..Default::default()
+            };
+            input::filter_egui_events(&mut raw, ui_input);
+            let mut dismiss = None;
+            let mut output = context.run_ui(raw, |root| {
+                egui::CentralPanel::default().show(root, |ui| {
+                    let terminal = ui.interact(
+                        ui.max_rect(),
+                        egui::Id::new("terminal"),
+                        Sense::click_and_drag(),
+                    );
+                    input::terminal_input(&terminal, None, ui_input);
+                });
+                dismiss = show_messages(context, errors).map(|button| button.rect);
+            });
+            output.textures_delta.clear();
+            dismiss
+        }
+
+        for click in [true, false] {
+            let context = egui::Context::default();
+            let mut errors = vec!["The text editor could not open settings".to_owned()];
+            frame(&context, &mut errors, vec![]);
+            let button = frame(&context, &mut errors, vec![]).unwrap();
+            if click {
+                let point = button.center();
+                for pressed in [true, false] {
+                    frame(
+                        &context,
+                        &mut errors,
+                        vec![
+                            egui::Event::PointerMoved(point),
+                            egui::Event::PointerButton {
+                                pos: point,
+                                button: egui::PointerButton::Primary,
+                                pressed,
+                                modifiers: egui::Modifiers::default(),
+                            },
+                        ],
+                    );
+                }
+            } else {
+                frame(
+                    &context,
+                    &mut errors,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::default(),
+                    }],
+                );
+            }
+            assert!(errors.is_empty(), "dismiss by click={click}");
+            assert!(frame(&context, &mut errors, vec![]).is_none());
+        }
+    }
 
     #[test]
     fn appearance_selects_dual_themes_and_reload_preserves_cli_overrides() {
