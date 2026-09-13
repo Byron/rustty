@@ -5,6 +5,10 @@ const vt = @import("ghostty-vt");
 const input_adapter = @import("zig-input.zig");
 const parser_adapter = @import("zig-parser.zig");
 const Allocator = std.mem.Allocator;
+// libghostty-vt exposes this type through the callback without re-exporting
+// the implementation module. Use that public signature as the source of truth.
+const DeviceAttributesFn = @typeInfo(@FieldType(vt.TerminalStream.Handler.Effects, "device_attributes")).optional.child;
+const DeviceAttributes = @typeInfo(@typeInfo(DeviceAttributesFn).pointer.child).@"fn".return_type.?;
 
 pub const std_options: std.Options = .{ .log_level = .err };
 
@@ -18,11 +22,14 @@ const capabilities = [_][]const u8{
     "terminal.styles",
     "terminal.screens",
     "terminal.cursor",
+    "terminal.modes",
+    "terminal.colors",
     "effects.pty",
     "effects.title",
     "effects.pwd",
     "effects.bell",
     "effects.host",
+    "clipboard",
     "unicode.width",
     "input.key",
     "input.mouse",
@@ -39,6 +46,17 @@ const Operation = struct {
     cols: u16 = 0,
     rows: u16 = 0,
     input: ?input_adapter.Event = null,
+    clipboard_read_enabled: ?bool = null,
+    clipboard_write_enabled: ?bool = null,
+    clipboard_write_limit: ?usize = null,
+    host: ?HostOptions = null,
+    cell_size: ?[2]u32 = null,
+    number: u16 = 0,
+    private: bool = false,
+    value: bool = false,
+    cursor_shape: []const u8 = "block",
+    cursor_blink: ?bool = false,
+    colors: ?ColorDefaults = null,
 };
 const Request = struct {
     id: []const u8 = "case",
@@ -48,6 +66,109 @@ const Request = struct {
     scalar: bool = false,
     operations: []const Operation = &.{},
     codepoints: []const u32 = &.{},
+    clipboard_replies: []const ClipboardReply = &.{},
+    clipboard_read_enabled: bool = true,
+    clipboard_write_enabled: bool = true,
+    clipboard_write_limit: usize = 64 * 1024 * 1024,
+    host: HostOptions = .{},
+    observe_modes: []const ModeTag = &.{},
+    observe_mode_effects: bool = false,
+    observe_colors: bool = false,
+    color_inputs: []const []const u8 = &.{},
+};
+const ColorDefaults = struct {
+    foreground: ?[3]u8 = null,
+    background: ?[3]u8 = null,
+    cursor: ?[3]u8 = null,
+    palette: ?[]const [3]u8 = null,
+};
+const ColorState = struct { current: ?[3]u16, default: ?[3]u16, override: ?[3]u16 };
+const Colors = struct {
+    foreground: ColorState,
+    background: ColorState,
+    cursor: ColorState,
+    palette: [256]ColorState,
+};
+const ModeTag = struct { number: u16, private: bool };
+const Mode = struct {
+    number: u16,
+    private: bool,
+    current: ?bool,
+    saved: ?bool,
+    default: ?bool,
+    report: u8,
+    default_configurable: bool,
+};
+const ModeEffects = struct {
+    cursor_visible: bool,
+    cursor_blink: bool,
+    mouse_mode: u16,
+    mouse_format: u16,
+};
+const HostScheme = enum { none, light, dark };
+const HostSize = struct {
+    rows: u16 = 24,
+    columns: u16 = 80,
+    cell_width: u32 = 9,
+    cell_height: u32 = 18,
+    available: bool = true,
+};
+const HostAttributes = struct {
+    conformance_level: u16 = 62,
+    features: []const u16 = &.{22},
+    device_type: u16 = 1,
+    firmware_version: u16 = 0,
+    rom_cartridge: u16 = 0,
+    unit_id: u32 = 0,
+};
+const HostOptions = struct {
+    color_scheme: ?HostScheme = null,
+    device_attributes: ?HostAttributes = null,
+    size: ?HostSize = null,
+    enquiry: ?[]const u8 = null,
+    xtversion: ?[]const u8 = null,
+    terminfo_name: ?[]const u8 = null,
+    title_report: bool = false,
+    visible: bool = true,
+};
+const DecodedHost = struct {
+    options: HostOptions,
+    attributes: ?DeviceAttributes,
+    enquiry: ?[]const u8,
+    xtversion: ?[]const u8,
+    terminfo_name: ?[]const u8,
+
+    fn init(alloc: Allocator, options: HostOptions) !DecodedHost {
+        const attributes: ?DeviceAttributes = if (options.device_attributes) |value| attrs: {
+            const features = try alloc.alloc(@FieldType(DeviceAttributes, "primary").Feature, value.features.len);
+            for (value.features, features) |source, *destination| destination.* = @enumFromInt(source);
+            break :attrs .{
+                .primary = .{ .conformance_level = @enumFromInt(value.conformance_level), .features = features },
+                .secondary = .{ .device_type = @enumFromInt(value.device_type), .firmware_version = value.firmware_version, .rom_cartridge = value.rom_cartridge },
+                .tertiary = .{ .unit_id = value.unit_id },
+            };
+        } else null;
+        return .{
+            .options = options,
+            .attributes = attributes,
+            .enquiry = if (options.enquiry) |value| try hexDecode(alloc, value) else null,
+            .xtversion = if (options.xtversion) |value| try hexDecode(alloc, value) else null,
+            .terminfo_name = if (options.terminfo_name) |value| try hexDecode(alloc, value) else null,
+        };
+    }
+};
+const ClipboardStatus = enum { success, denied, unsupported, busy, invalid_data, io_error, none };
+const ClipboardReply = struct {
+    status: ClipboardStatus = .success,
+    contents: []const ClipboardContent = &.{},
+    available: []const []const u8 = &.{},
+    remember: bool = false,
+};
+const DecodedClipboardReply = struct {
+    status: ClipboardStatus = .success,
+    contents: []const vt.clipboard.Content = &.{},
+    available: []const []const u8 = &.{},
+    remember: bool = false,
 };
 const Color = struct { kind: []const u8 = "default", value: []const u16 = &.{} };
 const Style = struct {
@@ -93,14 +214,28 @@ const Observation = struct {
     margins: [4]u16,
     title: []const u8,
     pwd: []const u8,
+    modes: []const Mode,
+    mode_effects: ?ModeEffects,
+    colors: ?Colors,
 };
 const Notification = struct { title: []const u8, body: []const u8 };
 const Progress = struct { state: u8, value: ?u8 };
+const ClipboardContent = struct { mime: []const u8, data: []const u8 };
+const Clipboard = struct {
+    location: []const u8,
+    contents: []const ClipboardContent = &.{},
+    mimes: []const []const u8 = &.{},
+    list: bool = false,
+    name: []const u8 = "",
+    granted: bool = false,
+    can_remember: bool = false,
+};
 const Event = struct {
     kind: []const u8,
     data: []const u8 = "",
     notification: ?Notification = null,
     progress: ?Progress = null,
+    clipboard: ?Clipboard = null,
 };
 const SnapshotProgress = struct {
     stage: []const u8,
@@ -121,6 +256,8 @@ const Response = struct {
     parser: ?parser_adapter.Result = null,
     snapshots: []const []const u8 = &.{},
     snapshot_progress: []const SnapshotProgress = &.{},
+    mode_results: []const bool = &.{},
+    parsed_colors: []const ?[3]u16 = &.{},
 };
 
 // Effects arrive synchronously; one terminal is exercised at a time. This
@@ -129,6 +266,13 @@ var current: ?*Context = null;
 const Context = struct {
     alloc: Allocator,
     events: std.ArrayList(Event) = .empty,
+    clipboard_replies: []const DecodedClipboardReply,
+    clipboard_reply_index: usize = 0,
+    invalid_read_status: bool = false,
+    clipboard_read_enabled: bool,
+    clipboard_write_enabled: bool,
+    clipboard_write_limit: usize,
+    host: DecodedHost,
 
     fn append(kind: []const u8, bytes: []const u8) void {
         const self = current.?;
@@ -168,6 +312,86 @@ const Context = struct {
     }
     fn progress(_: *vt.TerminalStream.Handler, value: vt.osc.Command.ProgressReport) void {
         record(.{ .kind = "progress", .progress = .{ .state = @intCast(@intFromEnum(value.state)), .value = value.progress } });
+    }
+    fn colorScheme(_: *vt.TerminalStream.Handler) ?vt.device_status.ColorScheme {
+        append("query_color_scheme", "");
+        return switch (current.?.host.options.color_scheme.?) {
+            .none => null,
+            .light => .light,
+            .dark => .dark,
+        };
+    }
+    fn deviceAttributes(_: *vt.TerminalStream.Handler) DeviceAttributes {
+        append("query_device_attributes", "");
+        return current.?.host.attributes.?;
+    }
+    fn size(_: *vt.TerminalStream.Handler) ?vt.size_report.Size {
+        append("query_size", "");
+        const value = current.?.host.options.size.?;
+        if (!value.available) return null;
+        return .{ .rows = value.rows, .columns = value.columns, .cell_width = value.cell_width, .cell_height = value.cell_height };
+    }
+    fn enquiry(_: *vt.TerminalStream.Handler) []const u8 {
+        append("query_enquiry", "");
+        return current.?.host.enquiry.?;
+    }
+    fn xtversion(_: *vt.TerminalStream.Handler) []const u8 {
+        append("query_xtversion", "");
+        return current.?.host.xtversion.?;
+    }
+    fn nextClipboardReply() DecodedClipboardReply {
+        const self = current.?;
+        if (self.clipboard_reply_index >= self.clipboard_replies.len) return .{};
+        defer self.clipboard_reply_index += 1;
+        return self.clipboard_replies[self.clipboard_reply_index];
+    }
+    fn clipboardWrite(_: *vt.TerminalStream.Handler, value: vt.clipboard.Write) void {
+        const contents = current.?.alloc.alloc(ClipboardContent, value.contents.len) catch @panic("oracle allocation failed");
+        for (value.contents, contents) |source, *destination| {
+            destination.* = .{ .mime = encoded(source.mime), .data = encoded(source.data) };
+        }
+        record(.{ .kind = "clipboard_write", .clipboard = .{
+            .location = @tagName(value.location),
+            .contents = contents,
+            .name = encoded(value.name),
+            .granted = value.granted,
+            .can_remember = value.can_remember,
+        } });
+        const reply = nextClipboardReply();
+        value.reply(switch (reply.status) {
+            .success => .{ .success = .{ .remember = reply.remember } },
+            .denied => .denied,
+            .unsupported => .unsupported,
+            .busy => .busy,
+            .invalid_data => .invalid_data,
+            .io_error => .io_error,
+            .none => return,
+        });
+    }
+    fn clipboardRead(_: *vt.TerminalStream.Handler, value: vt.clipboard.Read) void {
+        const mimes = current.?.alloc.alloc([]const u8, value.mimes.len) catch @panic("oracle allocation failed");
+        for (value.mimes, mimes) |source, *destination| destination.* = encoded(source);
+        record(.{ .kind = "clipboard_read", .clipboard = .{
+            .location = @tagName(value.location),
+            .mimes = mimes,
+            .list = value.list,
+            .name = encoded(value.name),
+            .granted = value.granted,
+            .can_remember = value.can_remember,
+        } });
+        const reply = nextClipboardReply();
+        value.reply(switch (reply.status) {
+            .success => .{ .success = .{ .contents = reply.contents, .available = reply.available, .remember = reply.remember } },
+            .denied => .denied,
+            .unsupported => .unsupported,
+            .busy => .busy,
+            .io_error => .io_error,
+            .none => return,
+            .invalid_data => {
+                current.?.invalid_read_status = true;
+                return;
+            },
+        });
     }
 };
 
@@ -211,6 +435,14 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
         response.parser = try parser_adapter.run(alloc, request.operations);
         return response;
     }
+    if (std.mem.eql(u8, request.kind, "colors")) {
+        const colors = try alloc.alloc(?[3]u16, request.color_inputs.len);
+        for (request.color_inputs, colors) |input, *result| {
+            result.* = rgbBytes(vt.color.RGB.parse(try hexDecode(alloc, input)) catch null);
+        }
+        response.parsed_colors = colors;
+        return response;
+    }
     if (std.mem.eql(u8, request.kind, "unicode")) {
         const widths = try alloc.alloc(i8, request.codepoints.len);
         for (request.codepoints, widths) |cp, *width| {
@@ -231,12 +463,30 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
         .kitty_image_loading_limits = .direct,
     });
     defer t.deinit(alloc);
-    var stream = terminalStream(alloc, &t);
-    defer stream.deinit();
-    var ctx: Context = .{ .alloc = alloc };
+    const clipboard_replies = try alloc.alloc(DecodedClipboardReply, request.clipboard_replies.len);
+    for (request.clipboard_replies, clipboard_replies) |source, *destination| {
+        const contents = try alloc.alloc(vt.clipboard.Content, source.contents.len);
+        for (source.contents, contents) |content, *decoded| {
+            decoded.* = .{ .mime = try hexDecode(alloc, content.mime), .data = try hexDecode(alloc, content.data) };
+        }
+        const available = try alloc.alloc([]const u8, source.available.len);
+        for (source.available, available) |mime, *decoded| decoded.* = try hexDecode(alloc, mime);
+        destination.* = .{ .status = source.status, .contents = contents, .available = available, .remember = source.remember };
+    }
+    var ctx: Context = .{
+        .alloc = alloc,
+        .clipboard_replies = clipboard_replies,
+        .clipboard_read_enabled = request.clipboard_read_enabled,
+        .clipboard_write_enabled = request.clipboard_write_enabled,
+        .clipboard_write_limit = request.clipboard_write_limit,
+        .host = try DecodedHost.init(alloc, request.host),
+    };
     current = &ctx;
     defer current = null;
+    var stream = terminalStream(alloc, &t);
+    defer stream.deinit();
     var observations: std.ArrayList(Observation) = .empty;
+    var mode_results: std.ArrayList(bool) = .empty;
     var snapshots: std.ArrayList([]const u8) = .empty;
     var snapshot_source: std.Io.Reader = .fixed(&.{});
     var snapshot_decoder: ?vt.snapshot.Decoder = null;
@@ -249,16 +499,75 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
             } else stream.nextSlice(bytes);
         } else if (std.mem.eql(u8, op.op, "resize")) {
             if (op.cols == 0 or op.rows == 0 or op.cols > 1024 or op.rows > 1024) return error.InvalidDimensions;
-            try stream.handler.resize(.{ .cols = op.cols, .rows = op.rows });
+            try stream.handler.resize(.{
+                .cols = op.cols,
+                .rows = op.rows,
+                .cell_size_px = if (op.cell_size) |value| .{ .width = value[0], .height = value[1] } else null,
+            });
         } else if (std.mem.eql(u8, op.op, "reset")) {
             stream.nextSlice("\x1bc");
+        } else if (std.mem.eql(u8, op.op, "terminal_reset")) {
+            t.fullReset();
+        } else if (std.mem.eql(u8, op.op, "title_set")) {
+            try t.setTitle(try hexDecode(alloc, op.data));
+        } else if (std.mem.eql(u8, op.op, "pwd_set")) {
+            try t.setPwd(try hexDecode(alloc, op.data));
+        } else if (std.mem.eql(u8, op.op, "mode_set") or
+            std.mem.eql(u8, op.op, "mode_default") or
+            std.mem.eql(u8, op.op, "mode_raw_default") or
+            std.mem.eql(u8, op.op, "mode_save") or
+            std.mem.eql(u8, op.op, "mode_restore"))
+        {
+            const success = if (vt.modes.modeFromInt(op.number, !op.private)) |mode| apply: {
+                if (std.mem.eql(u8, op.op, "mode_set")) {
+                    t.modes.set(mode, op.value);
+                } else if (std.mem.eql(u8, op.op, "mode_default")) {
+                    // Match the original C embedder policy; raw ModeState's
+                    // setDefault intentionally accepts every known mode.
+                    if (!vt.modes.defaultConfigurable(mode)) break :apply false;
+                    t.modes.setDefault(mode, op.value);
+                } else if (std.mem.eql(u8, op.op, "mode_raw_default")) {
+                    t.modes.setDefault(mode, op.value);
+                } else if (std.mem.eql(u8, op.op, "mode_save")) {
+                    t.modes.save(mode);
+                } else {
+                    _ = t.modes.restore(mode);
+                }
+                break :apply true;
+            } else false;
+            try mode_results.append(alloc, success);
+        } else if (std.mem.eql(u8, op.op, "modes_reset")) {
+            t.modes.reset();
+        } else if (std.mem.eql(u8, op.op, "cursor_defaults")) {
+            t.setDefaultCursorStyle(std.meta.stringToEnum(vt.Screen.CursorStyle, op.cursor_shape) orelse return error.InvalidCursorShape);
+            t.setDefaultCursorBlink(op.cursor_blink);
+        } else if (std.mem.eql(u8, op.op, "color_defaults")) {
+            const colors = op.colors orelse return error.MissingColorDefaults;
+            t.colors.foreground.default = if (colors.foreground) |value| rgb(value) else null;
+            t.colors.background.default = if (colors.background) |value| rgb(value) else null;
+            t.colors.cursor.default = if (colors.cursor) |value| rgb(value) else null;
+            var palette = vt.color.default;
+            if (colors.palette) |values| {
+                if (values.len != palette.len) return error.InvalidPalette;
+                for (&palette, values) |*entry, value| entry.* = rgb(value);
+            }
+            try t.colors.palette.changeDefault(alloc, palette);
+        } else if (std.mem.eql(u8, op.op, "host_options")) {
+            ctx.host = try DecodedHost.init(alloc, op.host orelse return error.MissingHostOptions);
+            configureHost(&stream);
+        } else if (std.mem.eql(u8, op.op, "clipboard_options")) {
+            if (op.clipboard_read_enabled) |value| ctx.clipboard_read_enabled = value;
+            if (op.clipboard_write_enabled) |value| ctx.clipboard_write_enabled = value;
+            if (op.clipboard_write_limit) |value| ctx.clipboard_write_limit = value;
+            configureClipboard(&stream);
         } else if (std.mem.eql(u8, op.op, "observe")) {
-            try observations.append(alloc, try observe(alloc, &t));
+            try observations.append(alloc, try observe(alloc, &t, request));
         } else if (std.mem.eql(u8, op.op, "input")) {
             Context.append("input", try input_adapter.encode(alloc, &t, op.input orelse return error.MissingInput));
         } else if (std.mem.eql(u8, op.op, "checkpoint")) {
             observations.clearRetainingCapacity();
             ctx.events.clearRetainingCapacity();
+            mode_results.clearRetainingCapacity();
         } else if (std.mem.eql(u8, op.op, "snapshot")) {
             var continuation: std.Io.Writer.Allocating = .init(alloc);
             try stream.writeContinuation(&continuation.writer);
@@ -296,11 +605,13 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
             } else .{ .stage = "finish", .offset = snapshot_source.seek });
         } else return error.UnsupportedOperation;
     }
-    if (observe_terminal) try observations.append(alloc, try observe(alloc, &t));
+    if (ctx.invalid_read_status) return error.UnsupportedClipboardReadStatus;
+    if (observe_terminal) try observations.append(alloc, try observe(alloc, &t, request));
     response.observations = observations.items;
     response.events = ctx.events.items;
     response.snapshots = snapshots.items;
     response.snapshot_progress = snapshot_progress.items;
+    response.mode_results = mode_results.items;
     return response;
 }
 
@@ -327,10 +638,46 @@ fn terminalStream(alloc: Allocator, terminal: *vt.Terminal) vt.TerminalStream {
     result.handler.effects.pwd_changed = Context.pwd;
     result.handler.effects.desktop_notification = Context.notification;
     result.handler.effects.progress_report = Context.progress;
+    configureClipboard(&result);
+    configureHost(&result);
     return result;
 }
 
-fn observe(alloc: Allocator, t: *vt.Terminal) !Observation {
+fn configureClipboard(stream: *vt.TerminalStream) void {
+    const ctx = current.?;
+    stream.handler.effects.clipboard_write = if (ctx.clipboard_write_enabled) Context.clipboardWrite else null;
+    stream.handler.effects.clipboard_read = if (ctx.clipboard_read_enabled) Context.clipboardRead else null;
+    stream.handler.kitty_clipboard_write_max_bytes = ctx.clipboard_write_limit;
+}
+
+fn configureHost(stream: *vt.TerminalStream) void {
+    const host = &current.?.host;
+    stream.handler.effects.color_scheme = if (host.options.color_scheme != null) Context.colorScheme else null;
+    stream.handler.effects.device_attributes = if (host.attributes != null) Context.deviceAttributes else null;
+    stream.handler.effects.size = if (host.options.size != null) Context.size else null;
+    stream.handler.effects.enquiry = if (host.enquiry != null) Context.enquiry else null;
+    stream.handler.effects.xtversion = if (host.xtversion != null) Context.xtversion else null;
+    stream.handler.title_report = host.options.title_report;
+    stream.handler.terminfo_name = host.terminfo_name;
+    stream.handler.terminal.flags.visible = host.options.visible;
+}
+
+fn observe(alloc: Allocator, t: *vt.Terminal, request: Request) !Observation {
+    const modes = try alloc.alloc(Mode, request.observe_modes.len);
+    for (request.observe_modes, modes) |tag, *result| {
+        const mode = vt.modes.modeFromInt(tag.number, !tag.private);
+        const saved: vt.modes.ModeState = .{ .values = t.modes.saved };
+        const defaults: vt.modes.ModeState = .{ .values = t.modes.default };
+        result.* = .{
+            .number = tag.number,
+            .private = tag.private,
+            .current = if (mode) |value| t.modes.get(value) else null,
+            .saved = if (mode) |value| saved.get(value) else null,
+            .default = if (mode) |value| defaults.get(value) else null,
+            .report = @intFromEnum(t.modes.getReport(.{ .value = @truncate(tag.number), .ansi = !tag.private }).state),
+            .default_configurable = if (mode) |value| vt.modes.defaultConfigurable(value) else false,
+        };
+    }
     return .{
         .cols = t.cols,
         .rows = t.rows,
@@ -338,9 +685,58 @@ fn observe(alloc: Allocator, t: *vt.Terminal) !Observation {
         .primary = try observeScreen(alloc, t.screens.all.get(.primary).?),
         .alternate = if (t.screens.all.get(.alternate)) |screen| try observeScreen(alloc, screen) else null,
         .margins = .{ t.scrolling_region.top, t.scrolling_region.bottom, t.scrolling_region.left, t.scrolling_region.right },
-        .title = try alloc.dupe(u8, t.getTitle() orelse ""),
-        .pwd = try alloc.dupe(u8, t.getPwd() orelse ""),
+        .title = try hexEncode(alloc, t.getTitle() orelse ""),
+        .pwd = try hexEncode(alloc, t.getPwd() orelse ""),
+        .modes = modes,
+        .mode_effects = if (request.observe_mode_effects) .{
+            .cursor_visible = t.modes.get(.cursor_visible),
+            .cursor_blink = t.modes.get(.cursor_blinking),
+            .mouse_mode = switch (t.flags.mouse_event) {
+                .none => 0,
+                .x10 => 9,
+                .normal => 1000,
+                .button => 1002,
+                .any => 1003,
+            },
+            .mouse_format = switch (t.flags.mouse_format) {
+                .x10 => 0,
+                .utf8 => 1005,
+                .sgr => 1006,
+                .urxvt => 1015,
+                .sgr_pixels => 1016,
+            },
+        } else null,
+        .colors = if (request.observe_colors) observeColors(&t.colors) else null,
     };
+}
+
+fn rgb(value: [3]u8) vt.color.RGB {
+    return .{ .r = value[0], .g = value[1], .b = value[2] };
+}
+
+fn rgbBytes(value: ?vt.color.RGB) ?[3]u16 {
+    const color = value orelse return null;
+    return .{ color.r, color.g, color.b };
+}
+
+fn observeColors(colors: *const vt.Terminal.Colors) Colors {
+    var result: Colors = undefined;
+    inline for (.{ "foreground", "background", "cursor" }) |name| {
+        const value = &@field(colors, name);
+        @field(result, name) = .{
+            .current = rgbBytes(value.get()),
+            .default = rgbBytes(value.default),
+            .override = rgbBytes(value.override),
+        };
+    }
+    for (&result.palette, 0..) |*entry, i| {
+        entry.* = .{
+            .current = rgbBytes(colors.palette.current[i]),
+            .default = rgbBytes(colors.palette.original[i]),
+            .override = if (colors.palette.mask.isSet(i)) rgbBytes(colors.palette.current[i]) else null,
+        };
+    }
+    return result;
 }
 
 fn observeScreen(alloc: Allocator, screen: *vt.Screen) !Screen {

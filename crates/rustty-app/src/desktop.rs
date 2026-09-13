@@ -10,12 +10,15 @@ use rustty_app::{
     accessibility::TerminalText,
     input,
     platform::{Platform, PlatformEvent},
+    presentation::{
+        Activity, CompletionFlash, DirectoryLabel, TabAccent, common_directory_name, directory_name,
+    },
     workspace::{Axis, Id, Peek, Rect, Tab, WindowState, Workspace},
 };
 use rustty_font::{FontConfig, FontFeature};
 use rustty_render::{Frame, RenderOptions};
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     num::NonZeroU32,
     path::{Path, PathBuf},
     sync::{
@@ -42,7 +45,7 @@ const INPUT_BUDGET: usize = 16 * 1024 * 1024;
 enum Event {
     Output(Id),
     Platform(PlatformEvent),
-    Repaint(ViewportId, Duration),
+    Repaint(egui::RequestRepaintInfo, Instant),
     Access(egui_winit::accesskit_winit::Event),
 }
 impl From<egui_winit::accesskit_winit::Event> for Event {
@@ -59,10 +62,12 @@ struct Pane {
     title: String,
     cwd: PathBuf,
     running: Option<Instant>,
+    activity: Activity,
     unseen: bool,
     exited: bool,
     started: Instant,
     exit_message: Option<String>,
+    links: vt::search::LinkMatcher,
 }
 impl Pane {
     fn write(&mut self, bytes: Vec<u8>) -> std::io::Result<()> {
@@ -130,10 +135,12 @@ struct Host {
     deadline: Option<Instant>,
     search: Option<String>,
     search_index: usize,
+    focus_text_input: bool,
+    popup_open: bool,
     palette: bool,
     palette_query: String,
     confirm: Option<Action>,
-    clipboard_request: Option<(Id, String, Option<Vec<u8>>)>,
+    clipboard_request: VecDeque<(Id, vt::Effect)>,
     capture: bool,
     frames: u64,
 }
@@ -141,13 +148,91 @@ impl Host {
     fn ui_input(&self) -> bool {
         self.search.is_some()
             || self.palette
+            || self.popup_open
             || self.confirm.is_some()
-            || self.clipboard_request.is_some()
+            || !self.clipboard_request.is_empty()
     }
     fn repaint(&self) {
         if self.visible && !self.occluded {
             self.window.request_redraw();
         }
+    }
+}
+
+struct DirectoryBadge {
+    label: DirectoryLabel,
+    bounds: egui::Rect,
+    large: bool,
+    active: bool,
+    attention: bool,
+    flash: f32,
+    accent: Color32,
+}
+impl DirectoryBadge {
+    fn paint(self, ui: &egui::Ui) {
+        let color = if self.label.focused {
+            Color32::WHITE
+        } else {
+            ui.visuals().text_color()
+        };
+        let mut job = egui::text::LayoutJob::simple(
+            format!(
+                "{}{}",
+                self.label.name,
+                if self.attention { " ●" } else { "" }
+            ),
+            egui::FontId::proportional(if self.large { 22.0 } else { 12.0 }),
+            color,
+            (self.bounds.width() * 0.75 - 24.0).max(1.0),
+        );
+        job.wrap.max_rows = 1;
+        job.wrap.break_anywhere = true;
+        if self.label.shows_activity(self.active) {
+            job.sections[0].format.underline = egui::Stroke::new(1.0, color);
+        }
+        let galley = ui.painter().layout_job(job);
+        let padding = if self.large {
+            Vec2::new(16.0, 10.0)
+        } else {
+            Vec2::new(8.0, 4.0)
+        };
+        let size = galley.size() + 2.0 * padding;
+        let bounds = if self.large {
+            egui::Rect::from_center_size(self.bounds.center(), size)
+        } else {
+            egui::Rect::from_min_size(
+                self.bounds.right_top() + Vec2::new(-size.x - 8.0, 8.0),
+                size,
+            )
+        };
+        let painter = ui.painter().with_clip_rect(self.bounds);
+        let rounding = if self.large { 10.0 } else { 6.0 };
+        painter.rect_filled(
+            bounds,
+            rounding,
+            if self.label.focused {
+                Color32::from_black_alpha(235)
+            } else {
+                ui.visuals().widgets.inactive.bg_fill
+            },
+        );
+        painter.rect_stroke(
+            bounds,
+            rounding,
+            egui::Stroke::new(
+                1.0,
+                if self.label.focused {
+                    self.accent
+                } else {
+                    ui.visuals().weak_text_color().gamma_multiply(0.35)
+                },
+            ),
+            egui::StrokeKind::Inside,
+        );
+        if self.flash > 0.0 {
+            painter.rect_filled(bounds, rounding, self.accent.gamma_multiply(self.flash));
+        }
+        painter.galley(bounds.min + padding, galley, color);
     }
 }
 
@@ -202,6 +287,7 @@ struct App {
     resources: Option<PathBuf>,
     panes: HashMap<Id, Pane>,
     failed_panes: BTreeMap<Id, String>,
+    activity_flashes: HashMap<Id, CompletionFlash>,
     closing: Vec<Session>,
     windows: HashMap<WindowId, Host>,
     platform: Option<Platform>,
@@ -218,7 +304,6 @@ struct App {
     close_at: Option<Instant>,
     smoke: Option<smoke::Smoke>,
     smoke_error: Option<String>,
-    primary_selection: Option<String>,
 }
 
 pub fn run() -> Result<()> {
@@ -280,7 +365,9 @@ pub fn run() -> Result<()> {
     context.set_theme(ui_theme(&loaded.config));
     let repaint = proxy.clone();
     context.set_request_repaint_callback(move |info| {
-        let _ = repaint.send_event(Event::Repaint(info.viewport_id, info.delay));
+        if let Some(deadline) = Instant::now().checked_add(info.delay) {
+            let _ = repaint.send_event(Event::Repaint(info, deadline));
+        }
     });
     let mut gpu_config = egui_wgpu::WgpuConfiguration::default();
     if smoke.is_some() {
@@ -311,6 +398,7 @@ pub fn run() -> Result<()> {
         resources,
         panes: HashMap::new(),
         failed_panes: BTreeMap::new(),
+        activity_flashes: HashMap::new(),
         closing: Vec::new(),
         windows: HashMap::new(),
         platform: None,
@@ -327,7 +415,6 @@ pub fn run() -> Result<()> {
         close_at,
         smoke,
         smoke_error: None,
-        primary_selection: None,
     };
     let result = event_loop.run_app(&mut app);
     app.shutdown();
@@ -527,10 +614,12 @@ impl App {
                 title: String::new(),
                 cwd: directory,
                 running: None,
+                activity: Activity::default(),
                 unseen: false,
                 exited: false,
                 started,
                 exit_message: None,
+                links: vt::search::LinkMatcher::default(),
             },
         );
         Ok(())
@@ -566,7 +655,6 @@ impl App {
         if let Some(platform) = &self.platform {
             platform.configure_window(&window, quick, self.config())?;
         }
-        window.set_ime_allowed(true);
         let viewport = ViewportId::from_hash_of(id);
         pollster::block_on(self.painter.set_window(viewport, Some(window.clone())))?;
         let fonts =
@@ -619,10 +707,12 @@ impl App {
             deadline: None,
             search: None,
             search_index: 0,
+            focus_text_input: false,
+            popup_open: false,
             palette: false,
             palette_query: String::new(),
             confirm: None,
-            clipboard_request: None,
+            clipboard_request: VecDeque::new(),
             capture: false,
             frames: 0,
         };
@@ -703,6 +793,8 @@ impl App {
             .iter()
             .any(|window| window.tabs.iter().any(|tab| tab.panes.contains_key(&id)));
         let mut close = false;
+        let mut stopped = false;
+        let mut clipboard = Vec::new();
         let focused = self
             .windows
             .values()
@@ -711,6 +803,12 @@ impl App {
         let Some(pane) = self.panes.get_mut(&id) else {
             return;
         };
+        let previous_title = pane.title.clone();
+        let previous_status = (
+            pane.activity.is_active(),
+            pane.activity.reported_active(),
+            pane.unseen,
+        );
         pane.wake_pending.store(false, Ordering::Release);
         if let Err(error) = pane.flush()
             && !pane.session.has_exited()
@@ -726,10 +824,19 @@ impl App {
         let events = pane.session.events().collect::<Vec<_>>();
         for event in events {
             match event {
+                SessionEvent::Effect(vt::Effect::Title(title)) => {
+                    pane.activity
+                        .title_changed(&String::from_utf8_lossy(&title));
+                }
+                SessionEvent::Effect(vt::Effect::Progress { state, .. }) => {
+                    stopped |= pane.activity.progress_reported(state, Instant::now());
+                }
                 SessionEvent::Effect(vt::Effect::CommandStart) => {
-                    pane.running = Some(Instant::now())
+                    pane.running = Some(Instant::now());
+                    pane.activity.command_started();
                 }
                 SessionEvent::Effect(vt::Effect::CommandEnd { exit_code }) => {
+                    stopped |= pane.activity.command_finished();
                     let elapsed = pane.running.take().map(|start| start.elapsed());
                     if elapsed
                         .is_some_and(|elapsed| elapsed >= config.notify_on_command_finish_after)
@@ -771,38 +878,9 @@ impl App {
                 SessionEvent::Effect(vt::Effect::Bell) => {
                     pane.unseen |= !focused;
                 }
-                SessionEvent::Effect(vt::Effect::Clipboard { selection, data }) => {
-                    let host = self.windows.values_mut().find(|host| {
-                        self.workspace
-                            .windows
-                            .iter()
-                            .find(|w| w.id == host.id)
-                            .is_some_and(|w| w.tabs.iter().any(|t| t.panes.contains_key(&id)))
-                    });
-                    if let Some(host) = host {
-                        let policy = if data.is_some() {
-                            config.clipboard_write
-                        } else {
-                            config.clipboard_read
-                        };
-                        match policy {
-                            config::ClipboardAccess::Deny => {}
-                            config::ClipboardAccess::Ask => {
-                                host.clipboard_request = Some((id, selection, data));
-                                host.repaint();
-                            }
-                            config::ClipboardAccess::Allow => {
-                                if let Some(data) = data {
-                                    host.egui.set_clipboard_text(
-                                        String::from_utf8_lossy(&data).into_owned(),
-                                    );
-                                } else if let Some(text) = host.egui.clipboard_text() {
-                                    let _ = pane.write(clipboard_reply(&selection, &text));
-                                }
-                            }
-                        }
-                    }
-                }
+                SessionEvent::Effect(
+                    effect @ (vt::Effect::ClipboardRead(_) | vt::Effect::ClipboardWrite(_)),
+                ) => clipboard.push(effect),
                 SessionEvent::Exited {
                     code,
                     signal,
@@ -821,7 +899,26 @@ impl App {
                 _ => {}
             }
         }
+        // The child waiter can report exit before the reader delivers its final effects.
+        if pane.exited {
+            pane.running = None;
+            stopped |= pane.activity.clear();
+        }
         let cwd = pane.cwd.clone();
+        let indicators_changed = stopped
+            || previous_title != pane.title
+            || previous_status
+                != (
+                    pane.activity.is_active(),
+                    pane.activity.reported_active(),
+                    pane.unseen,
+                );
+        if stopped {
+            self.activity_stopped(id, Instant::now());
+        }
+        for request in clipboard {
+            self.queue_clipboard(id, request);
+        }
         if close {
             self.remember();
             self.workspace.close_pane(id);
@@ -852,28 +949,197 @@ impl App {
                     .count(),
             );
         }
+        self.repaint_pane(id, indicators_changed);
+    }
+
+    fn repaint_pane(&self, pane: Id, indicators_changed: bool) {
         for host in self.windows.values() {
-            if self
-                .tab(host.id)
-                .is_some_and(|tab| tab.panes.contains_key(&id))
-            {
+            if self.index(host.id).is_some_and(|index| {
+                let window = &self.workspace.windows[index];
+                window.tabs.iter().enumerate().any(|(index, tab)| {
+                    tab.panes.contains_key(&pane)
+                        && (index == window.active_tab || indicators_changed)
+                })
+            }) {
+                // Plain output in hidden tabs does not invalidate the visible terminals.
                 host.repaint();
             }
         }
     }
-}
 
-fn clipboard_reply(selection: &str, text: &str) -> Vec<u8> {
-    use base64::Engine;
-    format!(
-        "\x1b]52;{};{}\x1b\\",
-        selection,
-        base64::engine::general_purpose::STANDARD.encode(text)
-    )
-    .into_bytes()
+    fn activity_stopped(&mut self, pane: Id, now: Instant) {
+        for window in &self.workspace.windows {
+            for (index, tab) in window.tabs.iter().enumerate() {
+                if !tab.panes.contains_key(&pane) {
+                    continue;
+                }
+                if index != window.active_tab {
+                    self.activity_flashes.entry(tab.id).or_default().start(now);
+                }
+                if pane != tab.focused {
+                    self.activity_flashes
+                        .entry(pane)
+                        .or_default()
+                        .start_if_idle(now);
+                }
+                if let Some(quadrant) = tab.root.quadrant(pane)
+                    && let Some(host) = self.windows.values().find(|host| host.id == window.id)
+                    && self.quadrant_label(tab, host, quadrant).is_some()
+                {
+                    self.activity_flashes
+                        .entry(quadrant)
+                        .or_default()
+                        .start_if_idle(now);
+                }
+            }
+        }
+    }
+
+    fn quadrant_label(&self, tab: &Tab, host: &Host, quadrant: Id) -> Option<DirectoryLabel> {
+        // A full-pane zoom does not display its containing quadrant's label.
+        let node = tab.visible_tree(host.peek.is_some()).node(quadrant)?;
+        let name = common_directory_name(
+            node.panes()
+                .iter()
+                .map(|id| self.panes.get(id).map(|pane| pane.cwd.as_path())),
+        );
+        let focused = host.peek.map_or(tab.focused, |peek| peek.target);
+        DirectoryLabel::new(
+            name,
+            node.contains(focused),
+            host.focused,
+            host.peek.is_some(),
+        )
+    }
+
+    fn flash_opacity(&self, id: Id, now: Instant, deadline: &mut Option<Instant>) -> f32 {
+        let Some(flash) = self.activity_flashes.get(&id) else {
+            return 0.0;
+        };
+        if let Some(next) = flash.next_repaint(now) {
+            *deadline = Some(deadline.map_or(next, |old| old.min(next)));
+        }
+        flash.opacity(now)
+    }
 }
 
 impl App {
+    fn queue_clipboard(&mut self, pane: Id, request: vt::Effect) {
+        let supported = match &request {
+            vt::Effect::ClipboardRead(read) => read.location,
+            vt::Effect::ClipboardWrite(write) => write.location,
+            _ => return,
+        } != vt::clipboard::Location::Primary;
+        let policy = clipboard_policy(self.config(), &request);
+        let window = self
+            .workspace
+            .windows
+            .iter()
+            .find(|window| window.tabs.iter().any(|tab| tab.panes.contains_key(&pane)))
+            .map(|window| window.id);
+        let key = self
+            .windows
+            .iter()
+            .find(|(_, host)| Some(host.id) == window)
+            .map(|(key, _)| *key);
+        let Some(key) = key else {
+            self.finish_clipboard(pane, request, false, false);
+            return;
+        };
+        let mut host = self.windows.remove(&key).unwrap();
+        if policy == config::ClipboardAccess::Ask && supported && host.clipboard_request.len() < 16
+        {
+            host.clipboard_request.push_back((pane, request));
+            host.repaint();
+        } else {
+            self.finish_clipboard(
+                pane,
+                request,
+                policy != config::ClipboardAccess::Deny
+                    && (policy == config::ClipboardAccess::Allow || !supported),
+                false,
+            );
+        }
+        self.windows.insert(key, host);
+    }
+    fn finish_clipboard(&mut self, pane: Id, request: vt::Effect, allow: bool, remember: bool) {
+        use vt::clipboard::{ReadResult, WriteResult};
+        let Some(session) = self.panes.get(&pane).map(|pane| &pane.session) else {
+            return;
+        };
+        // Native pasteboard providers may block. Never hold the terminal mutex
+        // during native access, or while queuing the reply to the PTY worker.
+        let reply = match request {
+            vt::Effect::ClipboardRead(read) => {
+                let mut result = if allow {
+                    self.platform
+                        .as_ref()
+                        .map_or(ReadResult::IoError, |p| p.clipboard_read(&read))
+                } else {
+                    ReadResult::Denied
+                };
+                if let ReadResult::Success(success) = &mut result {
+                    success.remember = remember && read.can_remember;
+                }
+                session
+                    .terminal()
+                    .map(|mut terminal| Some(terminal.reply_clipboard_read(read, result)))
+            }
+            vt::Effect::ClipboardWrite(write) => {
+                let mut result = if allow {
+                    self.platform
+                        .as_ref()
+                        .map_or(WriteResult::IoError, |p| p.clipboard_write(&write))
+                } else {
+                    WriteResult::Denied
+                };
+                if let WriteResult::Success { remember: grant } = &mut result {
+                    *grant = remember && write.can_remember;
+                }
+                session
+                    .terminal()
+                    .map(|mut terminal| terminal.reply_clipboard_write(write, result))
+            }
+            _ => return,
+        };
+        match reply {
+            Ok(Some(bytes)) => self.write(pane, bytes),
+            Ok(None) => {}
+            Err(error) => self.errors.push(error.to_string()),
+        }
+    }
+    fn selection_text(&self) -> Option<String> {
+        use vt::clipboard::{Location, Read, ReadResult, Terminator, is_text_mime};
+        let ReadResult::Success(success) = self
+            .platform
+            .as_ref()?
+            .clipboard_read(&Read::osc52(Location::Selection, Terminator::St))
+        else {
+            return None;
+        };
+        success
+            .contents
+            .iter()
+            .find(|c| is_text_mime(&c.mime))
+            .map(|c| String::from_utf8_lossy(&c.data).into_owned())
+    }
+    fn set_selection_text(&mut self, text: String) {
+        use vt::clipboard::{Content, Location, Write, WriteResult};
+        let request = Write::osc52(
+            Location::Selection,
+            vec![Content {
+                mime: b"text/plain".to_vec(),
+                data: text.into_bytes().into(),
+            }],
+        );
+        if let Some(platform) = &self.platform {
+            let result = platform.clipboard_write(&request);
+            if !matches!(result, WriteResult::Success { .. }) {
+                self.errors
+                    .push(format!("Could not copy selection: {result:?}"));
+            }
+        }
+    }
     fn action(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -1163,6 +1429,7 @@ impl App {
             Action::ToggleCommandPalette => {
                 host.palette = !host.palette;
                 host.palette_query.clear();
+                host.focus_text_input = host.palette || host.search.is_some();
             }
             Action::CopyToClipboard => {
                 let text = focused.and_then(|id| {
@@ -1181,7 +1448,7 @@ impl App {
             }
             Action::PasteFromClipboard | Action::PasteFromSelection => {
                 let text = if action == Action::PasteFromSelection {
-                    self.primary_selection.clone()
+                    self.selection_text()
                 } else {
                     host.egui.clipboard_text()
                 };
@@ -1239,6 +1506,7 @@ impl App {
                 };
                 host.search = Some(text);
                 host.search_index = 0;
+                host.focus_text_input = true;
             }
             Action::EndSearch => host.search = None,
             Action::NavigateSearch { next } => {
@@ -1440,6 +1708,9 @@ impl App {
             .collect::<Vec<_>>();
         for id in removed {
             if let Some(host) = self.windows.remove(&id) {
+                for (pane, request) in host.clipboard_request {
+                    self.finish_clipboard(pane, request, false, false);
+                }
                 self.painter
                     .gc_viewports(&self.windows.values().map(|host| host.viewport).collect());
                 if let Some(state) = self.painter.render_state()
@@ -1634,22 +1905,27 @@ impl App {
         }
         let mut raw = host.egui.take_egui_input(&host.window);
         raw.viewport_id = host.viewport;
-        if !host.ui_input() {
-            raw.events.retain(|e| {
-                !matches!(
-                    e,
-                    egui::Event::Key { .. }
-                        | egui::Event::Text(_)
-                        | egui::Event::Paste(_)
-                        | egui::Event::Copy
-                        | egui::Event::Cut
-                        | egui::Event::Ime(_)
-                )
-            });
-        }
+        input::filter_egui_events(&mut raw, host.ui_input());
         let context = self.context.clone();
+        let now = Instant::now();
+        let platform_accent = self
+            .platform
+            .as_ref()
+            .and_then(Platform::accent_color)
+            .unwrap_or_else(|| {
+                let [r, g, b, _] = context.global_style().visuals.selection.bg_fill.to_array();
+                [r, g, b]
+            });
+        let tab_accent = TabAccent::new(active.color, platform_accent);
+        let accent = Color32::from_rgb(
+            tab_accent.background[0],
+            tab_accent.background[1],
+            tab_accent.background[2],
+        );
+        self.activity_flashes.remove(&active.id);
         let mut commands = Vec::new();
         let mut tab_selection = None;
+        let mut presentation_changed = false;
         let mut retry_pane = None;
         let mut render_error = None;
         let format = self
@@ -1682,6 +1958,13 @@ impl App {
         host.accessibility.clear();
         let mut output = context.run_ui(raw, |root_ui| {
             let ctx = &context;
+            root_ui.visuals_mut().selection.bg_fill = accent;
+            root_ui.visuals_mut().selection.stroke.color = Color32::from_rgb(
+                tab_accent.foreground[0],
+                tab_accent.foreground[1],
+                tab_accent.foreground[2],
+            );
+            root_ui.visuals_mut().hyperlink_color = accent;
             egui::Panel::top("tabs")
                 .exact_size(38.0)
                 .frame(
@@ -1702,30 +1985,76 @@ impl App {
                                     pane.map(|p| p.title.as_str()).filter(|s| !s.is_empty())
                                 })
                                 .unwrap_or("Terminal");
-                            let running = tab
+                            let working = tab
                                 .panes
                                 .keys()
                                 .filter(|id| {
-                                    self.panes.get(id).is_some_and(|p| p.running.is_some())
+                                    self.panes
+                                        .get(id)
+                                        .is_some_and(|p| p.activity.reported_active())
                                 })
                                 .count();
                             let attention = tab
                                 .panes
                                 .keys()
                                 .any(|id| self.panes.get(id).is_some_and(|p| p.unseen));
-                            let suffix = if attention {
-                                " ●".into()
-                            } else if running > 0 {
-                                format!(" ▪ {running}")
-                            } else {
-                                String::new()
-                            };
+                            let is_active = tab.panes.keys().any(|id| {
+                                self.panes.get(id).is_some_and(|p| p.activity.is_active())
+                            });
+                            let suffix = format!(
+                                "{}{}",
+                                if attention { " ●" } else { "" },
+                                if working > 0 {
+                                    format!(" ▶ {working}")
+                                } else {
+                                    String::new()
+                                }
+                            );
                             let label = format!(
                                 "{}{suffix}{}",
                                 title.chars().take(26).collect::<String>(),
                                 if tab.zoom.is_some() { " ◩" } else { "" }
                             );
-                            let response = ui.selectable_label(index == state.active_tab, label);
+                            let selected = index == state.active_tab;
+                            let colors = TabAccent::new(tab.color, platform_accent);
+                            let color = Color32::from_rgb(
+                                colors.background[0],
+                                colors.background[1],
+                                colors.background[2],
+                            );
+                            let mut text = egui::RichText::new(label);
+                            if !selected && is_active {
+                                text = text.underline();
+                            }
+                            if selected {
+                                text = text.color(Color32::from_rgb(
+                                    colors.foreground[0],
+                                    colors.foreground[1],
+                                    colors.foreground[2],
+                                ));
+                            }
+                            let flash =
+                                self.flash_opacity(tab.id, now, &mut graphics_deadline) * 0.45;
+                            let fill = if selected {
+                                color
+                            } else {
+                                color.gamma_multiply(flash.max(if tab.color.is_some() {
+                                    0.12
+                                } else {
+                                    0.0
+                                }))
+                            };
+                            let response =
+                                ui.add(egui::Button::selectable(selected, text).fill(fill));
+                            if tab.color.is_some() {
+                                ui.painter().line_segment(
+                                    [
+                                        response.rect.left_top() + Vec2::new(4.0, 1.0),
+                                        response.rect.right_top() + Vec2::new(-4.0, 1.0),
+                                    ],
+                                    egui::Stroke::new(2.0, color),
+                                );
+                            }
                             if response.clicked() {
                                 tab_selection = Some(index);
                             }
@@ -1733,11 +2062,23 @@ impl App {
                                 let window_index = self.index(host.id).unwrap();
                                 let actual = &mut self.workspace.windows[window_index].tabs[index];
                                 ui.label("Tab title");
-                                ui.text_edit_singleline(
-                                    actual.title.get_or_insert_with(String::new),
-                                );
-                                let color = actual.color.get_or_insert([100, 150, 230]);
-                                ui.color_edit_button_srgb(color);
+                                let mut title = actual.title.clone().unwrap_or_default();
+                                if ui.text_edit_singleline(&mut title).changed() {
+                                    actual.title = (!title.is_empty()).then_some(title);
+                                    presentation_changed = true;
+                                }
+                                ui.label("Tab color");
+                                let mut color = actual.color.unwrap_or(platform_accent);
+                                if ui.color_edit_button_srgb(&mut color).changed() {
+                                    actual.color = Some(color);
+                                    presentation_changed = true;
+                                }
+                                if actual.color.is_some()
+                                    && ui.button("Use system accent").clicked()
+                                {
+                                    actual.color = None;
+                                    presentation_changed = true;
+                                }
                                 if ui.button("Close tab").clicked() {
                                     tab_selection = Some(index);
                                     commands.push(Action::CloseTab);
@@ -1750,17 +2091,29 @@ impl App {
                         }
                     });
                 });
+            // Cache this viewport's popup state for native events between frames.
+            host.popup_open = egui::Popup::is_any_open(ctx);
+            if host.ui_input() {
+                host.composing = false;
+                host.preedit.clear();
+                host.preedit_selection = None;
+            }
             if host.search.is_some() {
                 egui::Panel::bottom("search").show(root_ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Find");
-                        let response = ui.text_edit_singleline(host.search.as_mut().unwrap());
+                        let focus = !host.palette
+                            && !ui.is_sizing_pass()
+                            && std::mem::take(&mut host.focus_text_input);
+                        let response = input::text_edit(
+                            ui,
+                            host.search.as_mut().unwrap(),
+                            egui::Id::new(("search", host.id)),
+                            focus,
+                        );
                         if response.changed() {
                             host.search_index = 0;
                             self.search(host);
-                        }
-                        if !response.has_focus() && !ctx.egui_wants_keyboard_input() {
-                            response.request_focus();
                         }
                         if ui.button("Previous").clicked() {
                             commands.push(Action::NavigateSearch { next: false });
@@ -1807,6 +2160,7 @@ impl App {
                         .collect();
                     let mut composed = Frame::empty([size.width, size.height]);
                     let mut accessible = Vec::new();
+                    let mut terminal_ime_rect = None;
                     // An atlas eviction can happen halfway through a multi-pane frame.
                     // Rebuild against its new generation before handing a frame to WGPU.
                     for attempt in 0..2 {
@@ -1963,7 +2317,7 @@ impl App {
                                 ),
                             );
                             accessible.push((id, rect));
-                            if id == focused {
+                            if id == focused && !pane.exited {
                                 let cursor = &snapshot.screen.cursor;
                                 let [x, y, width, height] = ime_cursor.unwrap_or([
                                     padding[0] + cursor.col as f32 * metrics.cell_width as f32,
@@ -1971,13 +2325,10 @@ impl App {
                                     metrics.cell_width as f32,
                                     metrics.cell_height as f32,
                                 ]);
-                                host.window.set_ime_cursor_area(
-                                    LogicalPosition::new(
-                                        rect.left() + x / scale,
-                                        rect.top() + y / scale,
-                                    ),
-                                    LogicalSize::new(width / scale, height / scale),
-                                );
+                                terminal_ime_rect = Some(egui::Rect::from_min_size(
+                                    Pos2::new(rect.left() + x / scale, rect.top() + y / scale),
+                                    Vec2::new(width / scale, height / scale),
+                                ));
                             }
                         }
                         if !retry {
@@ -2021,8 +2372,8 @@ impl App {
                             node.add_action(egui::accesskit::Action::ScrollUp);
                             node.add_action(egui::accesskit::Action::ScrollDown);
                         });
-                        if id == focused && host.focused && !host.ui_input() {
-                            response.request_focus();
+                        if id == focused && host.focused {
+                            input::terminal_input(&response, terminal_ime_rect, host.ui_input());
                         }
                         if host.navigation_warning.is_some_and(|(pane, _)| pane == id) {
                             ui.painter().rect_stroke(
@@ -2038,7 +2389,7 @@ impl App {
                                 .map(|peek| peek.target == id)
                                 .unwrap_or(id == focused);
                             let color = if selected {
-                                Color32::from_rgb(112, 165, 245)
+                                accent
                             } else {
                                 config
                                     .split_divider_color
@@ -2051,45 +2402,6 @@ impl App {
                                 egui::Stroke::new(if selected { 1.5 } else { 0.5 }, color),
                                 egui::StrokeKind::Inside,
                             );
-                            if host.peek.is_none()
-                                && let Some(pane) = self.panes.get(&id)
-                            {
-                                let directory = pane
-                                    .cwd
-                                    .file_name()
-                                    .unwrap_or(pane.cwd.as_os_str())
-                                    .to_string_lossy();
-                                let label = format!(
-                                    "{}{}",
-                                    directory,
-                                    if pane.unseen {
-                                        " ●"
-                                    } else if pane.running.is_some() {
-                                        " ▪"
-                                    } else {
-                                        ""
-                                    }
-                                );
-                                let label_pos = rect.left_top() + Vec2::new(8.0, 4.0);
-                                let galley = ui.painter().layout_no_wrap(
-                                    label,
-                                    egui::FontId::proportional(11.0),
-                                    if selected {
-                                        Color32::WHITE
-                                    } else {
-                                        Color32::LIGHT_GRAY
-                                    },
-                                );
-                                ui.painter().rect_filled(
-                                    egui::Rect::from_min_size(
-                                        label_pos - Vec2::splat(2.0),
-                                        galley.size() + Vec2::splat(4.0),
-                                    ),
-                                    3.0,
-                                    rgb(config.background).gamma_multiply(0.9),
-                                );
-                                ui.painter().galley(label_pos, galley, Color32::WHITE);
-                            }
                         }
                     }
                     for (&id, &rect) in &host.rects {
@@ -2125,58 +2437,98 @@ impl App {
                             ui.painter().galley(bounds.min, galley, Color32::WHITE);
                         }
                     }
-                    if let Some(peek) = host.peek {
-                        let mut quadrants = BTreeMap::<Id, egui::Rect>::new();
-                        for (&pane, &rect) in &host.rects {
-                            if let Some(quadrant) = active.root.quadrant(pane) {
-                                quadrants
-                                    .entry(quadrant)
-                                    .and_modify(|bounds| *bounds = bounds.union(rect))
-                                    .or_insert(rect);
-                            }
+                    let mut quadrants = BTreeMap::<Id, egui::Rect>::new();
+                    for (&pane, &rect) in &host.rects {
+                        if let Some(quadrant) = active.root.quadrant(pane) {
+                            quadrants
+                                .entry(quadrant)
+                                .and_modify(|bounds| *bounds = bounds.union(rect))
+                                .or_insert(rect);
                         }
-                        let selected = active.root.quadrant(peek.target);
-                        for (id, bounds) in quadrants {
+                    }
+                    let mut shared_labels = HashSet::new();
+                    for (id, bounds) in quadrants {
+                        let members = active.root.node(id).unwrap().panes();
+                        let attention = members
+                            .iter()
+                            .any(|id| self.panes.get(id).is_some_and(|pane| pane.unseen));
+                        if let Some(peek) = host.peek {
+                            let selected = active.root.quadrant(peek.target);
                             if !peek.navigation_used && Some(id) != selected {
                                 ui.painter().rect_filled(
                                     bounds,
                                     0.0,
-                                    Color32::from_black_alpha(
-                                        (config.quadrant_peek_opacity * 255.0) as u8,
-                                    ),
+                                    if attention {
+                                        accent
+                                    } else {
+                                        config
+                                            .unfocused_split_fill
+                                            .map(rgb)
+                                            .unwrap_or(Color32::BLACK)
+                                    }
+                                    .gamma_multiply(config.quadrant_peek_opacity),
                                 );
                             }
                             if Some(id) == selected {
                                 ui.painter().rect_stroke(
                                     bounds,
                                     0.0,
-                                    egui::Stroke::new(2.0, Color32::from_rgb(112, 165, 245)),
+                                    egui::Stroke::new(2.0, accent),
                                     egui::StrokeKind::Inside,
                                 );
                             }
-                            let pane =
-                                active.activate_quadrant(active.root.node(id).unwrap().panes()[0]);
-                            if let Some(pane) = pane.and_then(|id| self.panes.get(&id)) {
-                                let label = pane
-                                    .cwd
-                                    .file_name()
-                                    .unwrap_or(pane.cwd.as_os_str())
-                                    .to_string_lossy();
-                                let galley = ui.painter().layout_no_wrap(
-                                    label.into_owned(),
-                                    egui::FontId::proportional(18.0),
-                                    Color32::WHITE,
-                                );
-                                let label_bounds =
-                                    egui::Rect::from_center_size(bounds.center(), galley.size());
-                                ui.painter().rect_filled(
-                                    label_bounds.expand(7.0),
-                                    5.0,
-                                    Color32::from_black_alpha(220),
-                                );
-                                ui.painter()
-                                    .galley(label_bounds.min, galley, Color32::WHITE);
+                        }
+                        if let Some(label) = self.quadrant_label(active, host, id) {
+                            shared_labels.extend(members.iter().copied());
+                            DirectoryBadge {
+                                label,
+                                bounds,
+                                large: true,
+                                attention,
+                                accent,
+                                active: members.iter().any(|id| {
+                                    self.panes
+                                        .get(id)
+                                        .is_some_and(|pane| pane.activity.is_active())
+                                }),
+                                flash: self.flash_opacity(id, now, &mut graphics_deadline),
                             }
+                            .paint(ui);
+                        }
+                    }
+                    for (&id, &bounds) in &host.rects {
+                        if shared_labels.contains(&id) {
+                            continue;
+                        }
+                        let Some(pane) = self.panes.get(&id) else {
+                            continue;
+                        };
+                        let selected = host.peek.map_or(focused, |peek| peek.target) == id;
+                        if let Some(label) = DirectoryLabel::new(
+                            directory_name(&pane.cwd),
+                            selected,
+                            host.focused,
+                            false,
+                        ) {
+                            let large = label.large(
+                                active.quadrant_zoom.is_some()
+                                    && (host.peek.is_some() || active.zoom == active.quadrant_zoom),
+                            );
+                            let flash = if label.shows_flash(true, false) {
+                                self.flash_opacity(id, now, &mut graphics_deadline)
+                            } else {
+                                0.0
+                            };
+                            DirectoryBadge {
+                                label,
+                                bounds,
+                                large,
+                                flash,
+                                accent,
+                                active: pane.activity.is_active(),
+                                attention: pane.unseen,
+                            }
+                            .paint(ui);
                         }
                     }
                 });
@@ -2186,10 +2538,14 @@ impl App {
                     .resizable(false)
                     .anchor(egui::Align2::CENTER_TOP, [0.0, 60.0])
                     .show(ctx, |ui| {
-                        let response = ui.text_edit_singleline(&mut host.palette_query);
-                        if !ctx.egui_wants_keyboard_input() {
-                            response.request_focus();
-                        }
+                        let focus =
+                            !ui.is_sizing_pass() && std::mem::take(&mut host.focus_text_input);
+                        input::text_edit(
+                            ui,
+                            &mut host.palette_query,
+                            egui::Id::new(("palette", host.id)),
+                            focus,
+                        );
                         for (label, action) in palette_actions() {
                             if label
                                 .to_lowercase()
@@ -2198,10 +2554,12 @@ impl App {
                             {
                                 commands.push(action);
                                 host.palette = false;
+                                host.focus_text_input = host.search.is_some();
                             }
                         }
                         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                             host.palette = false;
+                            host.focus_text_input = host.search.is_some();
                         }
                     });
             }
@@ -2223,29 +2581,50 @@ impl App {
                         });
                     });
             }
-            if let Some((pane, selection, data)) = host.clipboard_request.clone() {
+            if let Some((pane, request)) = host.clipboard_request.front() {
+                let write = matches!(request, vt::Effect::ClipboardWrite(_));
+                let (name, can_remember) = match request {
+                    vt::Effect::ClipboardRead(read) => (&read.name, read.can_remember),
+                    vt::Effect::ClipboardWrite(write) => (&write.name, write.can_remember),
+                    _ => unreachable!(),
+                };
+                let name = String::from_utf8_lossy(name).into_owned();
+                let title = self
+                    .panes
+                    .get(pane)
+                    .map(|pane| pane.title.clone())
+                    .unwrap_or_default();
                 egui::Window::new("Terminal clipboard access")
                     .collapsible(false)
                     .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                     .show(ctx, |ui| {
-                        ui.label(if data.is_some() {
+                        if !title.is_empty() {
+                            ui.label(&title);
+                        }
+                        if !name.is_empty() {
+                            ui.label(format!("Program: {name}"));
+                        }
+                        ui.label(if write {
                             "A terminal program wants to replace the clipboard."
                         } else {
                             "A terminal program wants to read the clipboard."
                         });
                         ui.horizontal(|ui| {
-                            if ui.button("Deny").clicked() {
-                                host.clipboard_request = None;
+                            if ui.button("Deny").clicked()
+                                && let Some((pane, request)) = host.clipboard_request.pop_front()
+                            {
+                                self.finish_clipboard(pane, request, false, false);
                             }
-                            if ui.button("Allow once").clicked() {
-                                if let Some(data) = data {
-                                    host.egui.set_clipboard_text(
-                                        String::from_utf8_lossy(&data).into_owned(),
-                                    );
-                                } else if let Some(text) = host.egui.clipboard_text() {
-                                    self.write(pane, clipboard_reply(&selection, &text));
-                                }
-                                host.clipboard_request = None;
+                            if ui.button("Allow once").clicked()
+                                && let Some((pane, request)) = host.clipboard_request.pop_front()
+                            {
+                                self.finish_clipboard(pane, request, true, false);
+                            }
+                            if can_remember
+                                && ui.button("Allow for this session").clicked()
+                                && let Some((pane, request)) = host.clipboard_request.pop_front()
+                            {
+                                self.finish_clipboard(pane, request, true, true);
                             }
                         });
                     });
@@ -2267,6 +2646,9 @@ impl App {
                     });
             }
         });
+        if presentation_changed {
+            self.changed();
+        }
         if let Some(error) = render_error
             && !self.errors.contains(&error)
         {
@@ -2433,7 +2815,8 @@ impl App {
                     })
                     * scale,
             );
-        let Some(pane) = self.panes.get(&id) else {
+        let config = &self.loaded.config;
+        let Some(pane) = self.panes.get_mut(&id) else {
             return;
         };
         let Ok(mut terminal) = pane.session.terminal() else {
@@ -2466,13 +2849,10 @@ impl App {
             .map(|r| vt::GridPoint { row: r.id, col });
         if let Some(point) = point {
             if action == vt::MouseAction::Press && button == Some(vt::MouseButton::Left) {
-                if host.modifiers.super_key() && self.config().link_url {
-                    let mut matcher = vt::search::LinkMatcher::default();
-                    let links = matcher.links(&screen.snapshot_viewport());
-                    if let Some(link) = links.iter().find(|link| {
-                        (link.start.row, link.start.col) <= (point.row, point.col)
-                            && (link.end.row, link.end.col) >= (point.row, point.col)
-                    }) && let Some(platform) = &self.platform
+                if host.modifiers.super_key() && config.link_url {
+                    let links = pane.links.links(&screen.snapshot_viewport());
+                    if let Some(link) = links.iter().find(|link| link.contains(screen, point))
+                        && let Some(platform) = &self.platform
                         && let Err(error) = platform.open_url(&link.uri)
                     {
                         self.errors.push(error);
@@ -2493,18 +2873,22 @@ impl App {
                 }
             } else if action == vt::MouseAction::Release {
                 host.selection_anchor = None;
-                if matches!(
-                    self.config().copy_on_select,
-                    config::CopyOnSelect::Primary | config::CopyOnSelect::Both
-                ) {
-                    self.primary_selection = screen.selection_text();
-                }
-                if matches!(
-                    self.config().copy_on_select,
-                    config::CopyOnSelect::Clipboard | config::CopyOnSelect::Both
-                ) && let Some(text) = screen.selection_text()
-                {
-                    host.egui.set_clipboard_text(text);
+                let copy = config.copy_on_select;
+                let text = screen.selection_text();
+                drop(terminal);
+                if let Some(text) = text {
+                    if matches!(
+                        copy,
+                        config::CopyOnSelect::Clipboard | config::CopyOnSelect::Both
+                    ) {
+                        host.egui.set_clipboard_text(text.clone());
+                    }
+                    if matches!(
+                        copy,
+                        config::CopyOnSelect::Primary | config::CopyOnSelect::Both
+                    ) {
+                        self.set_selection_text(text);
+                    }
                 }
             }
         }
@@ -2555,18 +2939,35 @@ impl ApplicationHandler<Event> for App {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
         match event {
             Event::Output(id) => {
+                if let Some(smoke) = &mut self.smoke {
+                    smoke.record("pty-output");
+                }
                 self.drain(id);
                 self.reconcile(event_loop);
             }
-            Event::Repaint(viewport, delay) => {
+            Event::Repaint(info, deadline) => {
+                let current_pass = self.context.cumulative_pass_nr_for(info.viewport_id);
+                if !repaint_is_current(info.current_cumulative_pass_nr, current_pass) {
+                    if let Some(smoke) = &mut self.smoke {
+                        smoke.record("egui-stale");
+                    }
+                    return;
+                }
+                if let Some(smoke) = &mut self.smoke {
+                    smoke.record(if info.delay.is_zero() {
+                        "egui-immediate"
+                    } else {
+                        "egui-delayed"
+                    });
+                }
                 if let Some(host) = self
                     .windows
                     .values_mut()
-                    .find(|host| host.viewport == viewport)
+                    .find(|host| host.viewport == info.viewport_id)
                 {
-                    if delay.is_zero() {
+                    if deadline <= Instant::now() {
                         host.repaint();
-                    } else if let Some(deadline) = Instant::now().checked_add(delay) {
+                    } else {
                         host.deadline =
                             Some(host.deadline.map_or(deadline, |old| old.min(deadline)));
                     }
@@ -2709,6 +3110,63 @@ impl ApplicationHandler<Event> for App {
         let Some(mut host) = self.windows.remove(&window) else {
             return;
         };
+        if let Some(smoke) = &mut self.smoke {
+            let input = match &event {
+                WindowEvent::CursorMoved { position, .. } => {
+                    let position = position.to_logical::<f32>(host.window.scale_factor());
+                    let changed = host.mouse != Pos2::new(position.x, position.y);
+                    smoke.pointer(Some(Pos2::new(position.x, position.y)), host.frames);
+                    smoke.record(if changed {
+                        "cursor-moved"
+                    } else {
+                        "cursor-unchanged"
+                    });
+                    changed
+                }
+                WindowEvent::CursorLeft { .. } => {
+                    smoke.pointer(None, host.frames);
+                    smoke.record("cursor-left");
+                    false
+                }
+                WindowEvent::KeyboardInput {
+                    is_synthetic: false,
+                    ..
+                }
+                | WindowEvent::MouseInput { .. }
+                | WindowEvent::MouseWheel { .. }
+                | WindowEvent::Touch(_) => {
+                    smoke.record("user-input");
+                    true
+                }
+                WindowEvent::RedrawRequested => {
+                    smoke.record("redraw");
+                    false
+                }
+                WindowEvent::Resized(_) => {
+                    smoke.record("resize");
+                    false
+                }
+                WindowEvent::Focused(_) => {
+                    smoke.record("focus");
+                    false
+                }
+                WindowEvent::Ime(_) => {
+                    smoke.record("ime");
+                    false
+                }
+                WindowEvent::Occluded(_) => {
+                    smoke.record("occlusion");
+                    false
+                }
+                _ => {
+                    smoke.record("other-window-event");
+                    false
+                }
+            };
+            if input {
+                smoke.input(host.frames);
+            }
+        }
         let response = host.egui.on_window_event(&host.window, &event);
         if response.repaint && !matches!(event, WindowEvent::RedrawRequested) {
             host.repaint();
@@ -2977,6 +3435,24 @@ impl ApplicationHandler<Event> for App {
             }
         }
         let now = Instant::now();
+        let expired = self
+            .panes
+            .iter_mut()
+            .filter_map(|(&id, pane)| {
+                pane.activity
+                    .deadline()
+                    .filter(|&deadline| deadline <= now)
+                    .map(|_| (id, pane.activity.expire(now)))
+            })
+            .collect::<Vec<_>>();
+        for (id, stopped) in expired {
+            if stopped {
+                self.activity_stopped(id, now);
+            }
+            self.repaint_pane(id, true);
+        }
+        self.activity_flashes
+            .retain(|_, flash| flash.next_repaint(now).is_some());
         let count = self.history.len() + self.redo.len();
         self.history.retain(|(expires, _)| *expires > now);
         self.redo.retain(|(expires, _)| *expires > now);
@@ -2995,6 +3471,11 @@ impl ApplicationHandler<Event> for App {
             .save_at
             .into_iter()
             .chain(self.close_at)
+            .chain(
+                self.panes
+                    .values()
+                    .filter_map(|pane| pane.activity.deadline()),
+            )
             .chain((!self.closing.is_empty()).then_some(now + Duration::from_millis(20)))
             .chain(
                 self.history
@@ -3068,6 +3549,21 @@ impl App {
     }
 }
 
+fn clipboard_policy(config: &Config, request: &vt::Effect) -> config::ClipboardAccess {
+    let (policy, exempt) = match request {
+        vt::Effect::ClipboardRead(read) => {
+            (config.clipboard_read, read.granted || read.mimes.is_empty())
+        }
+        vt::Effect::ClipboardWrite(write) => (config.clipboard_write, write.granted),
+        _ => return config::ClipboardAccess::Deny,
+    };
+    if policy == config::ClipboardAccess::Ask && exempt {
+        config::ClipboardAccess::Allow
+    } else {
+        policy
+    }
+}
+
 fn hold_after_exit(config: &Config, runtime: Duration) -> bool {
     config.wait_after_command
         || runtime.as_millis() <= u128::from(config.abnormal_command_exit_runtime)
@@ -3098,6 +3594,12 @@ fn directory_from_osc(value: &str) -> Option<PathBuf> {
     Some(PathBuf::from(value))
 }
 
+fn repaint_is_current(requested_pass: u64, current_pass: u64) -> bool {
+    // Match egui's native runner: one completed pass still needs its requested
+    // follow-up, but later passes have already superseded the request.
+    current_pass == requested_pass || requested_pass.checked_add(1) == Some(current_pass)
+}
+
 fn ui_theme(config: &Config) -> egui::ThemePreference {
     match config.window_theme {
         config::WindowTheme::System => egui::ThemePreference::System,
@@ -3119,6 +3621,75 @@ fn ui_theme(config: &Config) -> egui::ThemePreference {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn repaint_callbacks_only_survive_their_own_pass_and_its_follow_up() {
+        let context = egui::Context::default();
+        let viewport = ViewportId::from_hash_of("terminal");
+        let mut requests = Vec::new();
+        for _ in 0..8 {
+            requests.push(context.cumulative_pass_nr_for(viewport));
+            let mut input = egui::RawInput {
+                viewport_id: viewport,
+                ..Default::default()
+            };
+            input.viewports.entry(viewport).or_default();
+            let mut output = context.run_ui(input, |_| {});
+            output.textures_delta.clear();
+        }
+        let current = context.cumulative_pass_nr_for(viewport);
+        assert_eq!(
+            requests
+                .into_iter()
+                .filter(|&pass| repaint_is_current(pass, current))
+                .count(),
+            1,
+            "queued callbacks must not each render another unchanged frame"
+        );
+        assert!(repaint_is_current(current, current));
+        assert!(!repaint_is_current(current + 1, current));
+        assert!(!repaint_is_current(u64::MAX, 0));
+    }
+    #[test]
+    fn clipboard_grants_and_metadata_queries_respect_explicit_denial() {
+        use config::ClipboardAccess::{Allow, Ask, Deny};
+        use vt::clipboard::{Location, Read, Terminator, Write};
+        let mut config = Config::default();
+        let read = Read::osc52(Location::Standard, Terminator::St);
+        assert_eq!(
+            clipboard_policy(&config, &vt::Effect::ClipboardRead(read.clone())),
+            Ask
+        );
+        for metadata_only in [false, true] {
+            let mut read = read.clone();
+            if metadata_only {
+                read.mimes.clear();
+            } else {
+                read.granted = true;
+            }
+            config.clipboard_read = Ask;
+            assert_eq!(
+                clipboard_policy(&config, &vt::Effect::ClipboardRead(read.clone())),
+                Allow
+            );
+            config.clipboard_read = Deny;
+            assert_eq!(
+                clipboard_policy(&config, &vt::Effect::ClipboardRead(read)),
+                Deny
+            );
+        }
+        let mut write = Write::osc52(Location::Standard, Vec::new());
+        write.granted = true;
+        config.clipboard_write = Ask;
+        assert_eq!(
+            clipboard_policy(&config, &vt::Effect::ClipboardWrite(write.clone())),
+            Allow
+        );
+        config.clipboard_write = Deny;
+        assert_eq!(
+            clipboard_policy(&config, &vt::Effect::ClipboardWrite(write)),
+            Deny
+        );
+    }
     #[test]
     fn shell_exit_policy_holds_fast_failures_and_respects_wait_setting() {
         let mut config = Config::default();

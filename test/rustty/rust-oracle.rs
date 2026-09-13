@@ -1,5 +1,8 @@
 //! Test-only NDJSON adapter for comparisons with the original Zig terminal.
-use rustty_vt::{Color, Effect, Screen, SemanticContent, Style, Terminal};
+use rustty_vt::{
+    Color, CursorShape, Effect, EffectHandler, Screen, SemanticContent, Style, Terminal, clipboard,
+    color, modes::Modes, query,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::io::{self, BufRead, Read, Write};
@@ -18,11 +21,14 @@ const CAPABILITIES: &[&str] = &[
     "terminal.styles",
     "terminal.screens",
     "terminal.cursor",
+    "terminal.modes",
+    "terminal.colors",
     "effects.pty",
     "effects.title",
     "effects.pwd",
     "effects.bell",
     "effects.host",
+    "clipboard",
     "unicode.width",
     "input.key",
     "input.mouse",
@@ -45,6 +51,15 @@ struct Request {
     scalar: bool,
     operations: Vec<Operation>,
     codepoints: Vec<u32>,
+    clipboard_replies: Vec<ClipboardReply>,
+    clipboard_read_enabled: bool,
+    clipboard_write_enabled: bool,
+    clipboard_write_limit: usize,
+    host: HostOptions,
+    observe_modes: Vec<ModeTag>,
+    observe_mode_effects: bool,
+    observe_colors: bool,
+    color_inputs: Vec<String>,
 }
 
 impl Default for Request {
@@ -57,6 +72,15 @@ impl Default for Request {
             scalar: false,
             operations: Vec::new(),
             codepoints: Vec::new(),
+            clipboard_replies: Vec::new(),
+            clipboard_read_enabled: true,
+            clipboard_write_enabled: true,
+            clipboard_write_limit: 64 * 1024 * 1024,
+            host: HostOptions::default(),
+            observe_modes: Vec::new(),
+            observe_mode_effects: false,
+            observe_colors: false,
+            color_inputs: Vec::new(),
         }
     }
 }
@@ -73,6 +97,432 @@ struct Operation {
     rows: u16,
     #[serde(default)]
     input: Option<input::Event>,
+    #[serde(default)]
+    clipboard_read_enabled: Option<bool>,
+    #[serde(default)]
+    clipboard_write_enabled: Option<bool>,
+    #[serde(default)]
+    clipboard_write_limit: Option<usize>,
+    #[serde(default)]
+    host: Option<HostOptions>,
+    #[serde(default)]
+    cell_size: Option<[u32; 2]>,
+    #[serde(default)]
+    number: u16,
+    #[serde(default)]
+    private: bool,
+    #[serde(default)]
+    value: bool,
+    #[serde(default = "default_cursor_shape")]
+    cursor_shape: String,
+    #[serde(default = "default_cursor_blink")]
+    cursor_blink: Option<bool>,
+    #[serde(default)]
+    colors: Option<ColorDefaults>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct ColorDefaults {
+    foreground: Option<[u8; 3]>,
+    background: Option<[u8; 3]>,
+    cursor: Option<[u8; 3]>,
+    palette: Option<Vec<[u8; 3]>>,
+}
+
+fn default_cursor_shape() -> String {
+    "block".into()
+}
+
+fn default_cursor_blink() -> Option<bool> {
+    Some(false)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModeTag {
+    number: u16,
+    private: bool,
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum HostScheme {
+    None,
+    Light,
+    Dark,
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct HostSize {
+    rows: u16,
+    columns: u16,
+    cell_width: u32,
+    cell_height: u32,
+    available: bool,
+}
+impl Default for HostSize {
+    fn default() -> Self {
+        Self {
+            rows: 24,
+            columns: 80,
+            cell_width: 9,
+            cell_height: 18,
+            available: true,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct HostAttributes {
+    conformance_level: u16,
+    features: Vec<u16>,
+    device_type: u16,
+    firmware_version: u16,
+    rom_cartridge: u16,
+    unit_id: u32,
+}
+impl Default for HostAttributes {
+    fn default() -> Self {
+        Self {
+            conformance_level: 62,
+            features: vec![22],
+            device_type: 1,
+            firmware_version: 0,
+            rom_cartridge: 0,
+            unit_id: 0,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct HostOptions {
+    color_scheme: Option<HostScheme>,
+    device_attributes: Option<HostAttributes>,
+    size: Option<HostSize>,
+    enquiry: Option<String>,
+    xtversion: Option<String>,
+    terminfo_name: Option<String>,
+    title_report: bool,
+    visible: bool,
+}
+impl Default for HostOptions {
+    fn default() -> Self {
+        Self {
+            color_scheme: None,
+            device_attributes: None,
+            size: None,
+            enquiry: None,
+            xtversion: None,
+            terminfo_name: None,
+            title_report: false,
+            visible: true,
+        }
+    }
+}
+
+struct DecodedHost {
+    color_scheme: Option<HostScheme>,
+    device_attributes: Option<query::DeviceAttributes>,
+    size: Option<HostSize>,
+    enquiry: Option<Vec<u8>>,
+    xtversion: Option<Vec<u8>>,
+    terminfo_name: Option<Vec<u8>>,
+    title_report: bool,
+    visible: bool,
+}
+impl DecodedHost {
+    fn new(options: &HostOptions) -> Result<Self, &'static str> {
+        Ok(Self {
+            color_scheme: options.color_scheme,
+            device_attributes: options.device_attributes.as_ref().map(|value| {
+                query::DeviceAttributes {
+                    conformance_level: value.conformance_level,
+                    features: value.features.clone(),
+                    device_type: value.device_type,
+                    firmware_version: value.firmware_version,
+                    rom_cartridge: value.rom_cartridge,
+                    unit_id: value.unit_id,
+                }
+            }),
+            size: options.size,
+            enquiry: options.enquiry.as_deref().map(unhex).transpose()?,
+            xtversion: options.xtversion.as_deref().map(unhex).transpose()?,
+            terminfo_name: options.terminfo_name.as_deref().map(unhex).transpose()?,
+            title_report: options.title_report,
+            visible: options.visible,
+        })
+    }
+
+    fn configure(&self, terminal: &mut Terminal) {
+        terminal.terminfo_name = self.terminfo_name.clone();
+        terminal.title_report = self.title_report;
+        terminal.visible = self.visible;
+    }
+}
+
+#[derive(Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ClipboardStatus {
+    #[default]
+    Success,
+    Denied,
+    Unsupported,
+    Busy,
+    InvalidData,
+    IoError,
+    None,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct ClipboardReply {
+    status: ClipboardStatus,
+    contents: Vec<ClipboardContent>,
+    available: Vec<String>,
+    remember: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClipboardContent {
+    mime: String,
+    data: String,
+}
+
+#[derive(Default)]
+struct HostReply {
+    status: ClipboardStatus,
+    contents: Vec<clipboard::Content>,
+    available: Vec<Vec<u8>>,
+    remember: bool,
+}
+
+struct Host {
+    events: Vec<Value>,
+    replies: std::collections::VecDeque<HostReply>,
+    error: Option<&'static str>,
+    clipboard_read_enabled: bool,
+    clipboard_write_enabled: bool,
+    clipboard_write_limit: usize,
+    host: DecodedHost,
+}
+
+impl Host {
+    fn new(request: &Request) -> Result<Self, &'static str> {
+        let mut host = Self {
+            events: Vec::new(),
+            replies: std::collections::VecDeque::new(),
+            error: None,
+            clipboard_read_enabled: request.clipboard_read_enabled,
+            clipboard_write_enabled: request.clipboard_write_enabled,
+            clipboard_write_limit: request.clipboard_write_limit,
+            host: DecodedHost::new(&request.host)?,
+        };
+        for reply in &request.clipboard_replies {
+            let contents = reply
+                .contents
+                .iter()
+                .map(|content| {
+                    Ok(clipboard::Content {
+                        mime: unhex(&content.mime)?,
+                        data: unhex(&content.data)?.into(),
+                    })
+                })
+                .collect::<Result<Vec<_>, &'static str>>()?;
+            let available = reply
+                .available
+                .iter()
+                .map(|mime| unhex(mime))
+                .collect::<Result<Vec<_>, _>>()?;
+            host.replies.push_back(HostReply {
+                status: reply.status,
+                contents,
+                available,
+                remember: reply.remember,
+            });
+        }
+        Ok(host)
+    }
+
+    fn record(&mut self, effect: Effect) -> Result<(), &'static str> {
+        let (kind, data) = match effect {
+            Effect::Write(bytes) => ("write", hex(&bytes)),
+            Effect::Title(bytes) => ("title", hex(&bytes)),
+            Effect::WorkingDirectory(bytes) => ("pwd", hex(&bytes)),
+            Effect::Bell => ("bell", String::new()),
+            Effect::Notification { title, body } => {
+                let mut value = event("notification", String::new());
+                value["notification"] = json!({"title":hex(&title),"body":hex(&body)});
+                self.events.push(value);
+                return Ok(());
+            }
+            Effect::Progress { state, value } => {
+                let mut observed = event("progress", String::new());
+                observed["progress"] = json!({"state":state,"value":value});
+                self.events.push(observed);
+                return Ok(());
+            }
+            // Unknown-sequence diagnostics are not an external terminal effect.
+            Effect::UnknownSequence(_) => return Ok(()),
+            _ => return Err("UnsupportedEffect"),
+        };
+        if kind == "write"
+            && let Some(last) = self.events.last_mut()
+            && last["kind"] == "write"
+        {
+            let combined = format!("{}{}", last["data"].as_str().unwrap(), data);
+            last["data"] = json!(combined);
+        } else {
+            self.events.push(event(kind, data));
+        }
+        Ok(())
+    }
+}
+
+impl EffectHandler for Host {
+    fn effect(&mut self, effect: Effect) {
+        if let Err(error) = self.record(effect) {
+            self.error = Some(error);
+        }
+    }
+
+    fn color_scheme(&mut self) -> Option<query::ColorScheme> {
+        let scheme = self.host.color_scheme?;
+        self.events.push(event("query_color_scheme", String::new()));
+        match scheme {
+            HostScheme::None => None,
+            HostScheme::Light => Some(query::ColorScheme::Light),
+            HostScheme::Dark => Some(query::ColorScheme::Dark),
+        }
+    }
+
+    fn device_attributes(&mut self) -> Option<query::DeviceAttributes> {
+        let attributes = self.host.device_attributes.clone()?;
+        self.events
+            .push(event("query_device_attributes", String::new()));
+        Some(attributes)
+    }
+
+    fn size(&mut self) -> Option<query::Size> {
+        let size = self.host.size?;
+        self.events.push(event("query_size", String::new()));
+        size.available.then_some(query::Size {
+            rows: size.rows,
+            columns: size.columns,
+            cell_width: size.cell_width,
+            cell_height: size.cell_height,
+        })
+    }
+
+    fn enquiry(&mut self) -> Vec<u8> {
+        let Some(bytes) = &self.host.enquiry else {
+            return Vec::new();
+        };
+        self.events.push(event("query_enquiry", String::new()));
+        bytes.clone()
+    }
+
+    fn xtversion(&mut self) -> Vec<u8> {
+        let Some(bytes) = &self.host.xtversion else {
+            return Vec::new();
+        };
+        self.events.push(event("query_xtversion", String::new()));
+        bytes.clone()
+    }
+
+    fn clipboard_read_enabled(&self) -> bool {
+        self.clipboard_read_enabled
+    }
+
+    fn clipboard_write_enabled(&self) -> bool {
+        self.clipboard_write_enabled
+    }
+
+    fn clipboard_read(&mut self, request: &clipboard::Read) -> clipboard::ReadResult {
+        let mut observed = clipboard_event(
+            "clipboard_read",
+            request.location,
+            &request.name,
+            request.granted,
+            request.can_remember,
+        );
+        observed["clipboard"]["mimes"] = json!(
+            request
+                .mimes
+                .iter()
+                .map(|mime| hex(mime))
+                .collect::<Vec<_>>()
+        );
+        observed["clipboard"]["list"] = json!(request.list);
+        self.events.push(observed);
+        let reply = self.replies.pop_front().unwrap_or_default();
+        match reply.status {
+            ClipboardStatus::Success => clipboard::ReadResult::Success(clipboard::ReadSuccess {
+                contents: reply.contents,
+                available: reply.available,
+                remember: reply.remember,
+            }),
+            ClipboardStatus::InvalidData => {
+                self.error = Some("UnsupportedClipboardReadStatus");
+                clipboard::ReadResult::Denied
+            }
+            ClipboardStatus::Denied | ClipboardStatus::None => clipboard::ReadResult::Denied,
+            ClipboardStatus::Unsupported => clipboard::ReadResult::Unsupported,
+            ClipboardStatus::Busy => clipboard::ReadResult::Busy,
+            ClipboardStatus::IoError => clipboard::ReadResult::IoError,
+        }
+    }
+
+    fn clipboard_write(&mut self, request: &clipboard::Write) -> clipboard::WriteResult {
+        let mut observed = clipboard_event(
+            "clipboard_write",
+            request.location,
+            &request.name,
+            request.granted,
+            request.can_remember,
+        );
+        observed["clipboard"]["contents"] = json!(
+            request
+                .contents
+                .iter()
+                .map(|content| { json!({"mime":hex(&content.mime),"data":hex(&content.data)}) })
+                .collect::<Vec<_>>()
+        );
+        self.events.push(observed);
+        let reply = self.replies.pop_front().unwrap_or_default();
+        match reply.status {
+            ClipboardStatus::Success => clipboard::WriteResult::Success {
+                remember: reply.remember,
+            },
+            ClipboardStatus::Denied | ClipboardStatus::None => clipboard::WriteResult::Denied,
+            ClipboardStatus::Unsupported => clipboard::WriteResult::Unsupported,
+            ClipboardStatus::Busy => clipboard::WriteResult::Busy,
+            ClipboardStatus::InvalidData => clipboard::WriteResult::InvalidData,
+            ClipboardStatus::IoError => clipboard::WriteResult::IoError,
+        }
+    }
+}
+
+fn clipboard_event(
+    kind: &str,
+    location: clipboard::Location,
+    name: &[u8],
+    granted: bool,
+    can_remember: bool,
+) -> Value {
+    let mut observed = event(kind, String::new());
+    let location = match location {
+        clipboard::Location::Standard => "standard",
+        clipboard::Location::Selection => "selection",
+        clipboard::Location::Primary => "primary",
+    };
+    observed["clipboard"] = json!({"location":location,"contents":[],"mimes":[],
+        "list":false,"name":hex(name),"granted":granted,"can_remember":can_remember});
+    observed
 }
 
 fn main() -> io::Result<()> {
@@ -109,7 +559,7 @@ fn main() -> io::Result<()> {
 
 fn response(id: &str, error: Option<&str>) -> Value {
     json!({"id":id,"ok":error.is_none(),"err":error,"capabilities":CAPABILITIES,
-        "observations":[],"events":[],"widths":[],"parser":null,"snapshots":[],"snapshot_progress":[]})
+        "observations":[],"events":[],"widths":[],"parser":null,"snapshots":[],"snapshot_progress":[],"mode_results":[],"parsed_colors":[]})
 }
 
 fn execute(request: &Request) -> Result<Value, &'static str> {
@@ -118,6 +568,20 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
         "capabilities" => return Ok(result),
         "parser" => {
             result["parser"] = parser::run(&request.operations)?;
+            return Ok(result);
+        }
+        "colors" => {
+            let colors = request
+                .color_inputs
+                .iter()
+                .map(|input| {
+                    let bytes = unhex(input)?;
+                    Ok(std::str::from_utf8(&bytes)
+                        .ok()
+                        .and_then(rustty_vt::parse_color))
+                })
+                .collect::<Result<Vec<_>, &'static str>>()?;
+            result["parsed_colors"] = json!(colors);
             return Ok(result);
         }
         "unicode" => {
@@ -134,53 +598,130 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
     }
     dimensions(request.cols, request.rows)?;
     let mut terminal = Terminal::new(request.cols, request.rows, usize::MAX);
+    terminal.clipboard_write_limit = request.clipboard_write_limit;
     if request.kind == "input" {
         terminal.set_pixel_size(u32::from(request.cols) * 8, u32::from(request.rows) * 16);
     }
     let mut observations = Vec::new();
-    let mut events: Vec<Value> = Vec::new();
+    let mut mode_results = Vec::new();
+    let mut host = Host::new(request)?;
+    host.host.configure(&mut terminal);
     let mut snapshots = Vec::new();
     let mut snapshot_progress = Vec::new();
     let mut snapshot_decoder = None;
     let snapshot_offset = std::rc::Rc::new(std::cell::Cell::new(0));
     for operation in &request.operations {
-        let effects = match operation.op.as_str() {
+        match operation.op.as_str() {
             "write" => {
                 let bytes = unhex(&operation.data)?;
                 if request.scalar {
-                    bytes
-                        .iter()
-                        .flat_map(|byte| terminal.feed(std::slice::from_ref(byte)))
-                        .collect()
+                    for byte in &bytes {
+                        terminal.feed_with_handler(std::slice::from_ref(byte), &mut host);
+                    }
                 } else {
-                    terminal.feed(&bytes)
+                    terminal.feed_with_handler(&bytes, &mut host);
                 }
             }
             "resize" => {
                 dimensions(operation.cols, operation.rows)?;
-                terminal.resize(operation.cols, operation.rows);
-                Vec::new()
+                for effect in terminal.resize_with_cell_size(
+                    operation.cols,
+                    operation.rows,
+                    operation.cell_size.map(|value| (value[0], value[1])),
+                ) {
+                    host.effect(effect);
+                }
             }
-            "reset" => terminal.feed(b"\x1bc"),
+            "reset" => terminal.feed_with_handler(b"\x1bc", &mut host),
+            "terminal_reset" => terminal.reset(),
+            "title_set" => terminal.set_title(&unhex(&operation.data)?),
+            "pwd_set" => terminal.set_working_directory(&unhex(&operation.data)?),
+            "mode_set" => mode_results.push(terminal.modes.set(
+                operation.private,
+                operation.number,
+                operation.value,
+            )),
+            "mode_default" => mode_results.push(terminal.set_default_mode(
+                operation.private,
+                operation.number,
+                operation.value,
+            )),
+            "mode_raw_default" => mode_results.push(terminal.modes.set_default(
+                operation.private,
+                operation.number,
+                operation.value,
+            )),
+            "mode_save" | "mode_restore" => {
+                let known = terminal
+                    .modes
+                    .get_default(operation.private, operation.number)
+                    .is_some();
+                if operation.op == "mode_save" {
+                    terminal.modes.save(operation.private, operation.number);
+                } else {
+                    terminal.modes.restore(operation.private, operation.number);
+                }
+                mode_results.push(known);
+            }
+            "modes_reset" => terminal.modes.reset(),
+            "cursor_defaults" => {
+                let shape = match operation.cursor_shape.as_str() {
+                    "block" => CursorShape::Block,
+                    "bar" => CursorShape::Bar,
+                    "underline" => CursorShape::Underline,
+                    "block_hollow" => CursorShape::HollowBlock,
+                    _ => return Err("InvalidCursorShape"),
+                };
+                terminal.set_default_cursor(shape, operation.cursor_blink);
+            }
+            "color_defaults" => {
+                let colors = operation.colors.as_ref().ok_or("MissingColorDefaults")?;
+                let palette = colors
+                    .palette
+                    .clone()
+                    .unwrap_or_else(rustty_vt::default_palette);
+                if palette.len() != 256 {
+                    return Err("InvalidPalette");
+                }
+                terminal.set_default_colors(
+                    colors.foreground,
+                    colors.background,
+                    colors.cursor,
+                    &palette,
+                );
+            }
+            "host_options" => {
+                host.host = DecodedHost::new(operation.host.as_ref().ok_or("MissingHostOptions")?)?;
+                host.host.configure(&mut terminal);
+            }
+            "clipboard_options" => {
+                if let Some(value) = operation.clipboard_read_enabled {
+                    host.clipboard_read_enabled = value;
+                }
+                if let Some(value) = operation.clipboard_write_enabled {
+                    host.clipboard_write_enabled = value;
+                }
+                if let Some(value) = operation.clipboard_write_limit {
+                    host.clipboard_write_limit = value;
+                    terminal.clipboard_write_limit = value;
+                }
+            }
             "observe" => {
-                observations.push(observe(&terminal));
-                Vec::new()
+                observations.push(observe(&terminal, request));
             }
             "input" => {
                 let bytes =
                     input::encode(&terminal, operation.input.as_ref().ok_or("MissingInput")?)?;
-                events.push(event("input", hex(&bytes)));
-                Vec::new()
+                host.events.push(event("input", hex(&bytes)));
             }
             "checkpoint" => {
                 observations.clear();
-                events.clear();
-                Vec::new()
+                host.events.clear();
+                mode_results.clear();
             }
             "snapshot" => {
                 snapshots.push(hex(&rustty_vt::snapshot::encode_to_vec(&terminal)
                     .map_err(|_| "SnapshotEncodeFailed")?));
-                Vec::new()
             }
             "restore" => {
                 terminal = rustty_vt::snapshot::decode(
@@ -188,8 +729,9 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
                     rustty_vt::snapshot::DecodeOptions::default(),
                 )
                 .map_err(|_| "InvalidSnapshot")?;
+                terminal.clipboard_write_limit = host.clipboard_write_limit;
+                host.host.configure(&mut terminal);
                 snapshot_decoder = None;
-                Vec::new()
             }
             "restore_ready" => {
                 snapshot_offset.set(0);
@@ -201,10 +743,11 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
                     rustty_vt::snapshot::DecodeOptions::default(),
                 );
                 terminal = decoder.ready().map_err(|_| "InvalidSnapshot")?;
+                terminal.clipboard_write_limit = host.clipboard_write_limit;
+                host.host.configure(&mut terminal);
                 snapshot_progress.push(json!({"stage":"ready", "offset":snapshot_offset.get(),
                     "history_rows":decoder.history_rows(), "screen":null, "rows":0, "remaining":0}));
                 snapshot_decoder = Some(decoder);
-                Vec::new()
             }
             "restore_next" => {
                 let progress = snapshot_decoder
@@ -218,56 +761,26 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
                     None => json!({"stage":"finish", "offset":snapshot_offset.get(),
                         "history_rows":[0,0], "screen":null, "rows":0, "remaining":0}),
                 });
-                Vec::new()
             }
             _ => return Err("UnsupportedOperation"),
         };
-        for effect in effects {
-            let (kind, data) = match effect {
-                Effect::Write(bytes) => ("write", hex(&bytes)),
-                Effect::Title(text) => ("title", hex(text.as_bytes())),
-                Effect::WorkingDirectory(text) => ("pwd", hex(text.as_bytes())),
-                Effect::Bell => ("bell", String::new()),
-                Effect::Notification { title, body } => {
-                    let mut value = event("notification", String::new());
-                    value["notification"] =
-                        json!({"title":hex(title.as_ref()),"body":hex(body.as_ref())});
-                    events.push(value);
-                    continue;
-                }
-                Effect::Progress { state, value } => {
-                    let mut observed = event("progress", String::new());
-                    observed["progress"] = json!({"state":state,"value":value});
-                    events.push(observed);
-                    continue;
-                }
-                // Unknown-sequence diagnostics are not an external terminal effect.
-                Effect::UnknownSequence(_) => continue,
-                _ => return Err("UnsupportedEffect"),
-            };
-            if kind == "write"
-                && let Some(last) = events.last_mut()
-                && last["kind"] == "write"
-            {
-                let combined = format!("{}{}", last["data"].as_str().unwrap(), data);
-                last["data"] = json!(combined);
-                continue;
-            }
-            events.push(event(kind, data));
+        if let Some(error) = host.error {
+            return Err(error);
         }
     }
     if request.kind == "terminal" {
-        observations.push(observe(&terminal));
+        observations.push(observe(&terminal, request));
     }
     result["observations"] = json!(observations);
-    result["events"] = json!(events);
+    result["events"] = json!(host.events);
     result["snapshots"] = json!(snapshots);
     result["snapshot_progress"] = json!(snapshot_progress);
+    result["mode_results"] = json!(mode_results);
     Ok(result)
 }
 
 fn event(kind: &str, data: String) -> Value {
-    json!({"kind":kind,"data":data,"notification":null,"progress":null})
+    json!({"kind":kind,"data":data,"notification":null,"progress":null,"clipboard":null})
 }
 
 struct SnapshotReader {
@@ -290,20 +803,48 @@ fn dimensions(cols: u16, rows: u16) -> Result<(), &'static str> {
     }
 }
 
-fn observe(terminal: &Terminal) -> Value {
+fn observe(terminal: &Terminal, request: &Request) -> Value {
     let m = &terminal.margins;
+    let modes: Vec<_> = request
+        .observe_modes
+        .iter()
+        .map(|tag| {
+            let default = terminal.modes.get_default(tag.private, tag.number);
+            json!({"number":tag.number,"private":tag.private,
+            "current":default.map(|_| terminal.modes.get(tag.private,tag.number)),
+            "saved":terminal.modes.get_saved(tag.private,tag.number),"default":default,
+            "report":terminal.modes.report(tag.private,tag.number),
+            "default_configurable":Modes::default_configurable(tag.private,tag.number)})
+        })
+        .collect();
+    let mode_effects = request.observe_mode_effects.then(|| {
+        let cursor = &terminal.screen().cursor;
+        json!({"cursor_visible":cursor.visible,"cursor_blink":cursor.blink,
+            "mouse_mode":terminal.mouse_mode,"mouse_format":terminal.mouse_format})
+    });
+    let colors = request.observe_colors.then(|| {
+        let state = |target| json!({"current":terminal.color_current(target),
+            "default":terminal.color_default(target),"override":terminal.color_override(target)});
+        json!({"foreground":state(color::Target::Foreground),
+            "background":state(color::Target::Background),"cursor":state(color::Target::Cursor),
+            "palette":(0..=255).map(|index| state(color::Target::Palette(index))).collect::<Vec<_>>()})
+    });
     json!({"cols":terminal.cols,"rows":terminal.rows,
         "alternate_active":terminal.is_alternate_screen(),
         "primary":screen(terminal.primary_screen()),
         "alternate":terminal.alternate_screen().map(screen),
         "margins":[m.top,m.bottom,m.left,m.right],
-        "title":terminal.title,"pwd":terminal.working_directory})
+        "title":hex(terminal.title_bytes()),"pwd":hex(terminal.working_directory_bytes()),
+        "modes":modes,"mode_effects":mode_effects,"colors":colors})
 }
 
 fn screen(screen: &Screen) -> Value {
     let c = &screen.cursor;
     json!({"cursor":{"x":c.col,"y":c.row,"pending_wrap":c.pending_wrap,
-        "shape":format!("{:?}",c.shape).to_lowercase(),"style":style(c.style),
+        "shape":match c.shape {
+            CursorShape::Block => "block", CursorShape::Bar => "bar",
+            CursorShape::Underline => "underline", CursorShape::HollowBlock => "block_hollow",
+        },"style":style(c.style),
         "protected":c.protected,"semantic":semantic(c.semantic)},
         "rows":screen.rows.iter().map(row).collect::<Vec<_>>(),
         "history":screen.history.iter().map(row).collect::<Vec<_>>()})
