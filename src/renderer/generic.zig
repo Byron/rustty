@@ -43,17 +43,6 @@ const DisplayLink = switch (builtin.os.tag) {
     else => void,
 };
 
-fn displayLinkShouldRun(focused: bool, visible: bool) bool {
-    return focused and visible;
-}
-
-test "display link runs only while focused and visible" {
-    try std.testing.expect(displayLinkShouldRun(true, true));
-    try std.testing.expect(!displayLinkShouldRun(true, false));
-    try std.testing.expect(!displayLinkShouldRun(false, true));
-    try std.testing.expect(!displayLinkShouldRun(false, false));
-}
-
 const log = std.log.scoped(.generic_renderer);
 
 /// Create a renderer type with the provided graphics API wrapper.
@@ -1209,8 +1198,8 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
             }
 
             const should_run =
-                // Unfocused or non-visible surfaces never vsync.
-                displayLinkShouldRun(self.focused, self.visible.load(.acquire)) and
+                // Visible surfaces batch output at vsync even when unfocused.
+                self.visible.load(.acquire) and
                 // Only vsync if we have cell changes or animation
                 (self.cells_rebuilt or self.animationWake() != null);
 
