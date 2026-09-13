@@ -21,7 +21,9 @@ pub enum Effect {
         title: Vec<u8>,
         body: Vec<u8>,
     },
+    /// Rustty host extension, enabled by `Terminal::shell_command_events`.
     CommandStart,
+    /// Rustty host extension, enabled by `Terminal::shell_command_events`.
     CommandEnd {
         exit_code: Option<i32>,
     },
@@ -98,12 +100,16 @@ pub struct Terminal {
     pub query_defaults: query::Defaults,
     /// Allow CSI 21 t to report the raw title. Disabled by default.
     pub title_report: bool,
+    /// Emit command lifecycle effects for OSC 133 C/D. Disabled for native VT
+    /// compatibility; application sessions opt in. Retained through reset,
+    /// but not persisted in terminal snapshots.
+    pub shell_command_events: bool,
     /// Externally owned view visibility, retained through reset.
     pub visible: bool,
     /// Maximum total decoded bytes in a Kitty clipboard write transaction.
     /// A transfer retains the value that was configured when it began.
     pub clipboard_write_limit: usize,
-    clipboard: clipboard::kitty::State,
+    pub(crate) clipboard: clipboard::kitty::State,
     pub title: String,
     pub working_directory: String,
     pub generation: u64,
@@ -160,6 +166,7 @@ impl Terminal {
             terminfo_name: None,
             query_defaults: query::Defaults::default(),
             title_report: false,
+            shell_command_events: false,
             visible: true,
             clipboard_write_limit: 64 * 1024 * 1024,
             clipboard: clipboard::kitty::State::default(),
@@ -247,6 +254,14 @@ impl Terminal {
             .is_err()
             .then(|| directory.to_vec());
         self.changed();
+    }
+
+    pub fn shell_prompt_redraw(&self) -> PromptRedraw {
+        match self.metadata.shell_redraw {
+            1 => PromptRedraw::None,
+            2 => PromptRedraw::Last,
+            _ => PromptRedraw::All,
+        }
     }
 
     /// Feed input with runtime `query_defaults` and return deferred host effects.
@@ -458,6 +473,7 @@ impl Terminal {
         let terminfo_name = self.terminfo_name.take();
         let query_defaults = self.query_defaults.clone();
         let title_report = self.title_report;
+        let shell_command_events = self.shell_command_events;
         let visible = self.visible;
         let clipboard = std::mem::take(&mut self.clipboard);
         let clipboard_write_limit = self.clipboard_write_limit;
@@ -485,6 +501,7 @@ impl Terminal {
         self.terminfo_name = terminfo_name;
         self.query_defaults = query_defaults;
         self.title_report = title_report;
+        self.shell_command_events = shell_command_events;
         self.visible = visible;
         self.clipboard = clipboard;
         self.clipboard_write_limit = clipboard_write_limit;
@@ -620,6 +637,9 @@ impl Terminal {
     ) {
         match event {
             Event::Print(cp) => self.print(cp),
+            // Raw C1 controls emitted outside UTF-8 ground-state decoding are
+            // equivalent to their seven-bit ESC forms.
+            Event::Execute(byte) if byte > 0x7f => self.esc(&[], byte - 0x40, effects),
             Event::Execute(byte) => match byte {
                 0x05 => effects.push(Effect::Query(Query::Enquiry)),
                 0x07 => effects.push(Effect::Bell),
@@ -710,18 +730,10 @@ impl Terminal {
         }
     }
 
-    pub fn print(&mut self, mut cp: char) {
+    pub fn print(&mut self, cp: char) {
         self.clamp_cursor();
         if self.status_display {
             return;
-        }
-        let charset = {
-            let cs = &mut self.screen_mut().charset;
-            let slot = cs.single.take().unwrap_or(cs.gl);
-            cs.slots[slot]
-        };
-        if cp as u32 <= 255 {
-            cp = map_charset(cp, charset);
         }
         let current = self.screen().cursor.clone();
         let right = if current.col > self.margins.right {
@@ -844,11 +856,26 @@ impl Terminal {
             }
             let cell = self.screen().rows[cursor.row].cells[col].clone();
             self.screen_mut().cursor.col = col;
-            self.put_cell(String::new(), 1, right == self.cols as usize - 1);
+            if cell.text.chars().nth(1).is_some() {
+                // Native moves existing grapheme data without printing a
+                // spacer head, so the pending single shift reaches the base.
+                let spacer_head = right == self.cols as usize - 1;
+                let row = &mut self.screen_mut().rows[cursor.row];
+                row.cells[col].text.clear();
+                row.cells[col].width = 1;
+                row.cells[col].spacer_head = spacer_head;
+                row.dirty = true;
+            } else {
+                self.put_cell(String::new(), 1, right == self.cols as usize - 1);
+            }
             self.print_wrap();
             col = self.screen().cursor.col;
             self.put_cell(cell.text, width, false);
         } else if width != old_width {
+            if width == 2 {
+                // Widening writes a spacer tail, which consumes the shift.
+                self.screen_mut().charset.single = None;
+            }
             let row = &mut self.screen_mut().rows[cursor.row];
             row.cells[col].width = width;
             if col < right {
@@ -871,7 +898,17 @@ impl Terminal {
         self.changed();
     }
 
-    fn put_cell(&mut self, text: String, width: u8, spacer_head: bool) {
+    fn put_cell(&mut self, mut text: String, width: u8, spacer_head: bool) {
+        // Map only when writing a cell. Width, combining behavior, and REP
+        // use the original scalar; even an empty spacer consumes one shift.
+        let charset = &mut self.screen_mut().charset;
+        let slot = charset.single.take().unwrap_or(charset.gl);
+        if let Some(cp) = text.chars().next() {
+            let mapped = map_charset(cp, charset.slots[slot]);
+            if cp != mapped {
+                text.replace_range(..cp.len_utf8(), &mapped.to_string());
+            }
+        }
         let cursor = self.screen().cursor.clone();
         self.ensure_row_cells(cursor.row, cursor.col + usize::from(width));
         let old_width = self.screen().rows[cursor.row].cells[cursor.col].width;
@@ -911,11 +948,19 @@ impl Terminal {
 
     fn print_wrap(&mut self) {
         let y = self.screen().cursor.row;
+        let semantic = self.screen().cursor.semantic;
+        let clear_eol = self.screen().metadata.cursor_clear_eol;
         let mark_wrap = self.screen().cursor.col == usize::from(self.cols) - 1;
         if mark_wrap {
             self.screen_mut().rows[y].wrapped = true;
         }
         self.index();
+        let screen = self.screen_mut();
+        screen.cursor.semantic = semantic;
+        screen.metadata.cursor_clear_eol = clear_eol;
+        if semantic == SemanticContent::Prompt {
+            screen.rows[screen.cursor.row].semantic = SemanticContent::Input;
+        }
         if mark_wrap {
             let y = self.screen().cursor.row;
             self.screen_mut().rows[y].wrap_continuation = true;
@@ -1051,6 +1096,15 @@ impl Terminal {
         }
         self.clamp_cursor();
         self.screen_mut().cursor.pending_wrap = false;
+        let screen = self.screen_mut();
+        if screen.cursor.semantic != SemanticContent::Output {
+            if screen.metadata.cursor_clear_eol {
+                screen.cursor.semantic = SemanticContent::Output;
+                screen.metadata.cursor_clear_eol = false;
+            } else {
+                screen.rows[screen.cursor.row].semantic = SemanticContent::Input;
+            }
+        }
         self.changed();
     }
 
@@ -1144,16 +1198,30 @@ impl Terminal {
         for _ in 0..count.min(self.cols as usize) {
             let col = self.screen().cursor.col;
             let next = if backward {
-                (0..col).rev().find(|&i| self.tabstops[i]).unwrap_or(0)
-            } else {
-                (col + 1..self.cols as usize)
+                let left = if self.modes.dec(6) {
+                    self.margins.left
+                } else {
+                    0
+                };
+                if col <= left {
+                    break;
+                }
+                (left..col)
+                    .rev()
                     .find(|&i| self.tabstops[i])
-                    .unwrap_or(self.cols as usize - 1)
+                    .unwrap_or(left)
+            } else {
+                let right = self.margins.right;
+                if col >= right {
+                    break;
+                }
+                (col + 1..=right)
+                    .find(|&i| self.tabstops[i])
+                    .unwrap_or(right)
             };
             self.screen_mut().cursor.col = next;
             self.ensure_row_cells(self.screen().cursor.row, next + 1);
         }
-        self.screen_mut().cursor.pending_wrap = false;
         self.changed();
     }
 
@@ -1224,6 +1292,15 @@ impl Terminal {
                 (0, cursor.row)
             }
             2 => {
+                if !self.alternate_active
+                    && self
+                        .screen()
+                        .rows
+                        .last()
+                        .is_some_and(|row| row.semantic != SemanticContent::Output)
+                {
+                    self.scroll_clear();
+                }
                 self.screen_mut().clear_visible_images();
                 (0, rows)
             }
@@ -1233,19 +1310,54 @@ impl Terminal {
                 return;
             }
             22 => {
-                let m = self.margins;
-                self.reset_margins();
-                self.scroll_up(rows, true);
-                self.margins = m;
+                self.scroll_clear();
                 return;
             }
             _ => return,
         };
         for row in &mut self.screen_mut().rows[start..end] {
             row.erase(0, row.cells.len(), cursor.style.background, protected);
-            row.wrapped = false;
+            if !protected {
+                row.wrapped = false;
+                row.wrap_continuation = false;
+                row.semantic = SemanticContent::Output;
+            }
         }
         self.screen_mut().cursor.pending_wrap = false;
+        self.changed();
+    }
+
+    fn scroll_clear(&mut self) {
+        let cols = usize::from(self.cols);
+        let count = self
+            .screen()
+            .rows
+            .iter()
+            .rposition(|row| {
+                row.cells.iter().take(cols).any(|cell| {
+                    !cell.text.is_empty()
+                        || cell.width != 1
+                        || cell.spacer_head
+                        || cell.style.background != Color::Default
+                })
+            })
+            .map_or(0, |row| row + 1);
+        let screen = self.screen_mut();
+        for _ in 0..count {
+            let row = screen.rows.remove(0);
+            screen.push_history(row);
+            let blank = screen.blank_row(cols, Color::Default);
+            screen.rows.push(blank);
+        }
+        if screen.cursor.row < count {
+            screen.cursor.row = 0;
+            screen.cursor.col = 0;
+        } else {
+            screen.cursor.row -= count;
+        }
+        screen.cursor.pending_wrap = false;
+        screen.clear_visible_images();
+        self.clamp_cursor();
         self.changed();
     }
 
@@ -1265,17 +1377,18 @@ impl Terminal {
             origin: false,
             charset: CharsetState::default(),
         });
-        let shape = self.screen().cursor.shape;
-        let visible = self.screen().cursor.visible;
-        let blink = self.screen().cursor.blink;
-        self.screen_mut().cursor = saved.cursor;
-        self.screen_mut().cursor.shape = shape;
-        self.screen_mut().cursor.visible = visible;
-        self.screen_mut().cursor.blink = blink;
-        self.screen_mut().cursor.col = self.screen().cursor.col.min(self.cols as usize - 1);
+        let cols = self.cols as usize;
+        let rows = self.rows as usize;
+        let screen = self.screen_mut();
+        // DECRC restores only saved attributes. Hyperlinks, semantic content,
+        // and cursor appearance retain their current state.
+        screen.cursor.col = saved.cursor.col.min(cols - 1);
+        screen.cursor.row = saved.cursor.row.min(rows - 1);
+        screen.cursor.style = saved.cursor.style;
+        screen.cursor.protected = saved.cursor.protected;
+        screen.cursor.pending_wrap = saved.cursor.pending_wrap;
+        screen.charset = saved.charset;
         self.ensure_row_cells(self.screen().cursor.row, self.screen().cursor.col + 1);
-        self.screen_mut().cursor.row = self.screen().cursor.row.min(self.rows as usize - 1);
-        self.screen_mut().charset = saved.charset;
         self.modes.set(true, 6, saved.origin);
         self.changed();
     }
@@ -1352,6 +1465,7 @@ impl Terminal {
             self.erase_display(2, false);
         }
         let old_cursor = self.screen().cursor.clone();
+        let clear_eol = self.screen().metadata.cursor_clear_eol;
         let charset = self.screen().charset.clone();
         self.end_hyperlink();
         let switched = self.alternate_active != enabled;
@@ -1372,6 +1486,7 @@ impl Terminal {
         // alternate cursor's appearance. Legacy modes copy in both directions.
         if switched && (mode != 1049 || enabled) {
             self.screen_mut().cursor = old_cursor;
+            self.screen_mut().metadata.cursor_clear_eol = clear_eol;
             self.end_hyperlink();
         }
         if mode == 1049 && !enabled {
@@ -1429,7 +1544,6 @@ impl Terminal {
                     _ => Charset::Ascii,
                 };
             }
-            ([b'%'], b'G') => self.screen_mut().charset.slots = [Charset::Utf8; 4],
             ([b'#'], b'8') => {
                 self.reset_margins();
                 for row in &mut self.screen_mut().rows {
@@ -1464,14 +1578,42 @@ impl Terminal {
         if sep != 0 && byte != b'm' {
             return;
         }
+        // Validate before dispatch: excess parameters invalidate the whole
+        // command, rather than applying just the first value(s).
+        match (i, byte, p.len()) {
+            (
+                [],
+                b'@'
+                | b'A'..=b'G'
+                | b'I'..=b'M'
+                | b'P'
+                | b'S'
+                | b'T'
+                | b'W'
+                | b'X'
+                | b'Z'
+                | b'`'
+                | b'a'
+                | b'b'
+                | b'd'
+                | b'e',
+                2..,
+            )
+            | ([], b'H' | b'f' | b'r' | b's', 3..)
+            | ([], b'g', 0 | 2..)
+            | ([b'?'], b'J' | b'K', 2..)
+            | ([b'"'], b'q', 2..)
+            | ([b'>'], b'm', 3..) => return,
+            _ => {}
+        }
         let n = p.first().copied().unwrap_or(0);
         let count = usize::from(n.max(1));
         let second = p.get(1).copied().unwrap_or(0);
         let private = i.first() == Some(&b'?');
         match (i, byte) {
             ([], b'A') => self.cursor_vertical(count, false),
-            ([], b'B' | b'e') => self.cursor_vertical(count, true),
-            ([], b'C' | b'a') => self.cursor_right(count),
+            ([], b'B') => self.cursor_vertical(count, true),
+            ([], b'C') => self.cursor_right(count),
             ([], b'D') => self.cursor_left(count),
             ([], b'E' | b'F') => {
                 self.cursor_vertical(count, byte == b'E');
@@ -1479,9 +1621,20 @@ impl Terminal {
             }
             ([], b'G' | b'`') => self.cursor_position(self.screen().cursor.row + 1, count),
             ([], b'd') => self.cursor_position(count, self.screen().cursor.col + 1),
+            ([], b'a' | b'e') => {
+                // HPR/VPR retain an explicit zero and apply the same origin
+                // offsets and bounds as absolute cursor positioning.
+                let amount = usize::from(p.first().copied().unwrap_or(1));
+                let cursor = &self.screen().cursor;
+                self.cursor_position(
+                    cursor.row + 1 + if byte == b'e' { amount } else { 0 },
+                    cursor.col + 1 + if byte == b'a' { amount } else { 0 },
+                );
+            }
             ([], b'H' | b'f') => self.cursor_position(count, second.max(1).into()),
-            ([], b'I') => self.tab(count, false),
-            ([], b'Z') => self.tab(count, true),
+            ([], b'I' | b'Z') => {
+                self.tab(usize::from(p.first().copied().unwrap_or(1)), byte == b'Z')
+            }
             ([], b'g') => match n {
                 0 => {
                     let col = self.screen().cursor.col;
@@ -1533,7 +1686,12 @@ impl Terminal {
                     self.carriage_return();
                 }
             }
-            ([], b'S') => self.scroll_up(count, true),
+            ([], b'S') => {
+                // SU defaults to one only when the parameter is omitted.
+                if p.is_empty() || n != 0 {
+                    self.scroll_up(count, true);
+                }
+            }
             ([], b'T') => self.scroll_down(count),
             ([], b'b') => {
                 if let Some(cp) = self.previous_char {
@@ -1730,10 +1888,9 @@ impl Terminal {
         match number {
             // These fixed captures append a NUL before dispatch.
             0 | 2 | 7 | 8 | 777 | 1337 if !has_separator || data.len() >= 2048 => return,
-            9 if !has_separator || data.len() > 2048 => return,
+            9 | 133 if !has_separator || data.len() > 2048 => return,
             _ => {}
         }
-        let text = String::from_utf8_lossy(data);
         match number {
             0 | 2 => {
                 // The stream validates the full title before the host handler
@@ -1750,12 +1907,31 @@ impl Terminal {
             }
             8 => {
                 if let Some(split) = data.iter().position(|&b| b == b';') {
-                    self.end_hyperlink();
                     let uri = &data[split + 1..];
+                    let params = &data[..split];
+                    let mut explicit = None;
+                    let mut start = 0;
+                    while start < params.len() {
+                        // Native option traversal searches past the first
+                        // byte, so an empty field prefixes the next option.
+                        let end = params[start + 1..]
+                            .iter()
+                            .position(|&byte| matches!(byte, b':' | 0))
+                            .map_or(params.len(), |offset| start + 1 + offset);
+                        let option = &params[start..end];
+                        let Some(equal) = option.iter().position(|&byte| byte == b'=') else {
+                            break;
+                        };
+                        if option[..equal] == *b"id" && equal + 1 < option.len() {
+                            explicit = Some(&option[equal + 1..]);
+                        }
+                        start = end + 1;
+                    }
+                    if uri.is_empty() && explicit.is_some() {
+                        return;
+                    }
+                    self.end_hyperlink();
                     if !uri.is_empty() {
-                        let explicit = data[..split]
-                            .split(|&b| b == b':')
-                            .find_map(|part| part.strip_prefix(b"id=").filter(|id| !id.is_empty()));
                         let screen = self.screen_mut();
                         let id = match explicit {
                             Some(id) => HyperlinkId::Explicit(id.to_vec()),
@@ -1846,43 +2022,114 @@ impl Terminal {
                 clipboard_read_enabled,
                 effects,
             ),
-            133 => match text.split(';').next().unwrap_or("") {
-                "A" => {
-                    let row = self.screen().cursor.row;
-                    self.screen_mut().cursor.semantic = SemanticContent::Prompt;
-                    self.screen_mut().rows[row].semantic = SemanticContent::Prompt;
-                }
-                "B" => self.screen_mut().cursor.semantic = SemanticContent::Input,
-                "C" => {
-                    self.screen_mut().cursor.semantic = SemanticContent::Output;
-                    effects.push(Effect::CommandStart);
-                }
-                "D" => effects.push(Effect::CommandEnd {
-                    exit_code: text.split(';').nth(1).and_then(|v| v.parse().ok()),
-                }),
-                _ => {}
-            },
+            133 => self.osc133(data, effects),
             1 | 22 => {}
             _ => effects.push(Effect::UnknownSequence(format!("OSC {number}"))),
         }
     }
 
+    fn semantic_fresh_line(&mut self) {
+        let col = self.screen().cursor.col;
+        let left = if col < self.margins.left {
+            0
+        } else {
+            self.margins.left
+        };
+        if col != left {
+            self.carriage_return();
+            self.index();
+        }
+    }
+
+    fn semantic_prompt(&mut self, continuation: bool) {
+        let screen = self.screen_mut();
+        screen.cursor.semantic = SemanticContent::Prompt;
+        screen.metadata.cursor_clear_eol = false;
+        screen.rows[screen.cursor.row].semantic = if continuation {
+            SemanticContent::Input
+        } else {
+            SemanticContent::Prompt
+        };
+    }
+
+    fn osc133(&mut self, data: &[u8], effects: &mut Vec<Effect>) {
+        let Some(&action) = data.first() else { return };
+        if data.len() > 1 && (action == b'L' || data[1] != b';') {
+            return;
+        }
+        let options = data.get(2..).unwrap_or_default();
+        // The first matching key wins, even when its value is invalid.
+        let option = |prefix| {
+            options
+                .split(|&byte| byte == b';')
+                .find_map(|part| part.strip_prefix(prefix))
+        };
+        match action {
+            b'L' => self.semantic_fresh_line(),
+            b'A' | b'N' | b'P' => {
+                if action != b'P' {
+                    self.semantic_fresh_line();
+                }
+                self.semantic_prompt(matches!(option(b"k=".as_slice()), Some(b"c" | b"s")));
+                if action != b'P' {
+                    if let Some(redraw) = match option(b"redraw=") {
+                        Some(b"0") => Some(1),
+                        Some(b"1") => Some(0),
+                        Some(b"last") => Some(2),
+                        _ => None,
+                    } {
+                        self.metadata.shell_redraw = redraw;
+                    }
+                    let click = match option(b"click_events=") {
+                        Some(b"1") => Some([1, 0]),
+                        Some(b"2") => Some([1, 1]),
+                        _ => match option(b"cl=") {
+                            Some(b"line") => Some([2, 0]),
+                            Some(b"m") => Some([2, 1]),
+                            Some(b"v") => Some([2, 2]),
+                            Some(b"w") => Some([2, 3]),
+                            _ => None,
+                        },
+                    };
+                    if let Some(click) = click {
+                        self.screen_mut().metadata.semantic_click = click;
+                    }
+                }
+            }
+            b'B' | b'I' => {
+                let screen = self.screen_mut();
+                screen.cursor.semantic = SemanticContent::Input;
+                screen.metadata.cursor_clear_eol = action == b'I';
+            }
+            b'C' | b'D' => {
+                let screen = self.screen_mut();
+                screen.cursor.semantic = SemanticContent::Output;
+                screen.metadata.cursor_clear_eol = false;
+                if action == b'C' && screen.cursor.col == 0 {
+                    screen.rows[screen.cursor.row].semantic = SemanticContent::Output;
+                }
+                if self.shell_command_events {
+                    effects.push(if action == b'C' {
+                        Effect::CommandStart
+                    } else {
+                        Effect::CommandEnd {
+                            exit_code: options
+                                .split(|&byte| byte == b';')
+                                .next()
+                                .and_then(|value| std::str::from_utf8(value).ok())
+                                .and_then(|value| value.parse().ok()),
+                        }
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn osc9(&mut self, data: &[u8], effects: &mut Vec<Effect>) {
         if data.starts_with(b"12") {
-            let col = self.screen().cursor.col;
-            let left = if col < self.margins.left {
-                0
-            } else {
-                self.margins.left
-            };
-            if col != left {
-                self.carriage_return();
-                self.index();
-            }
-            let screen = self.screen_mut();
-            screen.cursor.semantic = SemanticContent::Prompt;
-            screen.metadata.cursor_clear_eol = false;
-            screen.rows[screen.cursor.row].semantic = SemanticContent::Prompt;
+            self.semantic_fresh_line();
+            self.semantic_prompt(false);
             return;
         }
         if let Some(progress) = data.strip_prefix(b"4;")
@@ -2062,6 +2309,9 @@ fn sgr_report(style: Style) -> String {
 }
 
 fn map_charset(cp: char, set: Charset) -> char {
+    if matches!(set, Charset::British | Charset::DecSpecial) && cp as u32 > 255 {
+        return ' ';
+    }
     if set == Charset::British && cp == '#' {
         return '£';
     }
@@ -2102,10 +2352,27 @@ fn sgr(style: &mut Style, params: &[u16], separators: u32) {
         *style = Style::default();
         return;
     }
+    let is_colon = |index: usize| separators & (1 << index) != 0;
+    let colon_count = |start: usize| {
+        (start..params.len() - 1)
+            .take_while(|&index| is_colon(index))
+            .count()
+    };
     let mut i = 0;
     while i < params.len() {
-        let n = params[i];
-        let colon = separators & (1 << i) != 0;
+        let slice = &params[i..];
+        let n = slice[0];
+        let colon = is_colon(i);
+        i += 1;
+        if colon && !matches!(n, 4 | 38 | 48 | 58) {
+            // Unknown colon groups form one attribute. Their values must not
+            // accidentally reset or enable unrelated styles.
+            while is_colon(i) {
+                i += 1;
+            }
+            i += 1;
+            continue;
+        }
         match n {
             0 => *style = Style::default(),
             1 => style.bold = true,
@@ -2113,8 +2380,15 @@ fn sgr(style: &mut Style, params: &[u16], separators: u32) {
             3 => style.italic = true,
             4 => {
                 let kind = if colon {
+                    if slice.len() < 2 {
+                        continue;
+                    }
+                    if is_colon(i) {
+                        i += colon_count(i) + 1;
+                        continue;
+                    }
                     i += 1;
-                    params.get(i).copied().unwrap_or(1)
+                    slice[1]
                 } else {
                     1
                 };
@@ -2152,32 +2426,30 @@ fn sgr(style: &mut Style, params: &[u16], separators: u32) {
             55 => style.overline = false,
             59 => style.underline_color = Color::Default,
             38 | 48 | 58 => {
-                let color = match params.get(i + 1) {
-                    Some(5) => {
-                        let value = params
-                            .get(i + 2)
-                            .copied()
-                            .filter(|&v| v <= 255)
-                            .map(|v| Color::Indexed(v as u8));
+                let color = match slice.get(1) {
+                    Some(5) if slice.len() >= 3 => {
                         i += 2;
-                        value
+                        Some(Color::Indexed(slice[2] as u8))
                     }
-                    Some(2) => {
-                        let mut start = i + 2;
-                        if colon {
-                            let mut end = start;
-                            while end < params.len() && separators & (1 << (end - 1)) != 0 {
-                                end += 1;
+                    Some(2) if slice.len() >= 5 => {
+                        let start = if colon {
+                            match colon_count(i) {
+                                3 => 2,
+                                4 => 3, // Skip the optional colorspace.
+                                count => {
+                                    i += count + 1;
+                                    continue;
+                                }
                             }
-                            if end.saturating_sub(start) >= 4 {
-                                start += 1;
-                            }
-                        }
-                        let rgb = params
-                            .get(start..start + 3)
-                            .filter(|v| v.iter().all(|&v| v <= 255));
-                        i = start + 2;
-                        rgb.map(|v| Color::Rgb(v[0] as u8, v[1] as u8, v[2] as u8))
+                        } else {
+                            2
+                        };
+                        i += start + 2;
+                        Some(Color::Rgb(
+                            slice[start] as u8,
+                            slice[start + 1] as u8,
+                            slice[start + 2] as u8,
+                        ))
                     }
                     _ => None,
                 };
@@ -2191,6 +2463,5 @@ fn sgr(style: &mut Style, params: &[u16], separators: u32) {
             }
             _ => {}
         }
-        i += 1;
     }
 }

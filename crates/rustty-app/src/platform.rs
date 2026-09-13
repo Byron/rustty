@@ -5,6 +5,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     ffi::c_void,
+    io::{self, Read},
     path::Path,
     ptr::NonNull,
     rc::Rc,
@@ -58,7 +59,7 @@ use rustty::vt::clipboard::{self, Content, Location, ReadResult, ReadSuccess, Wr
 use winit::{
     platform::macos::{OptionAsAlt as WinitOptionAsAlt, WindowExtMacOS},
     raw_window_handle::{HasWindowHandle, RawWindowHandle},
-    window::Window,
+    window::{Theme, Window},
 };
 
 #[derive(Clone, Debug)]
@@ -83,6 +84,44 @@ pub struct Platform {
 }
 
 impl Platform {
+    /// The kernel supplies cryptographic entropy; failures must not mint a paste grant.
+    pub fn secure_random(bytes: &mut [u8]) -> io::Result<()> {
+        std::fs::File::open("/dev/urandom")?.read_exact(bytes)
+    }
+
+    /// Native state for an explicitly requested smoke-test failure report.
+    pub fn window_diagnostics(window: &Window) -> Result<String, String> {
+        let native = native_window(window)?;
+        let app = NSApplication::sharedApplication(native.mtm());
+        Ok(format!(
+            "visible={}, key={}, minimized={}, active_space={}, occlusion={:?}, frame={:?}, app_active={}, app_hidden={}, activation_policy={:?}",
+            native.isVisible(),
+            native.isKeyWindow(),
+            native.isMiniaturized(),
+            native.isOnActiveSpace(),
+            native.occlusionState(),
+            native.frame(),
+            app.isActive(),
+            app.isHidden(),
+            app.activationPolicy(),
+        ))
+    }
+
+    /// Read application appearance after Winit has initialized NSApplication.
+    pub fn system_theme() -> Option<Theme> {
+        let app = NSApplication::sharedApplication(MainThreadMarker::new()?);
+        let light = NSString::from_str("NSAppearanceNameAqua");
+        let dark = NSString::from_str("NSAppearanceNameDarkAqua");
+        let appearance = app
+            .effectiveAppearance()
+            .bestMatchFromAppearancesWithNames(&NSArray::from_slice(&[&*light, &*dark]))?;
+        Some(if *appearance == *dark {
+            Theme::Dark
+        } else {
+            Theme::Light
+        })
+    }
+
     pub fn new(callback: EventSink, config: &Config) -> Result<Self, String> {
         let mtm = MainThreadMarker::new().ok_or("platform must initialize on the main thread")?;
         let (menu, menu_actions) = make_menu()?;
@@ -218,8 +257,7 @@ impl Platform {
             native.setTabbingMode(NSWindowTabbingMode::Disallowed);
             native.setRestorable(false);
             native.setAnimationBehavior(NSWindowAnimationBehavior::None);
-            // Native auto-hide would bypass the host's visibility state. Winit
-            // owns an NSWindow: NSPanel's NonactivatingPanel style is invalid here.
+            // Native auto-hide would bypass the host's visibility state.
             native.setHidesOnDeactivate(false);
         }
         Ok(())
@@ -255,8 +293,8 @@ impl Platform {
     }
 
     /// Select the screen on each reveal, retaining the user's resized dimensions.
-    /// Winit's NSWindow must activate the app; nonactivating NSPanel behavior needs
-    /// a different window owner, not an Objective-C class or style-mask replacement.
+    /// Winit created this window as a nonactivating NSPanel, so focusing it leaves
+    /// the previously active application in control of the menu bar and its windows.
     pub fn show_quick(&self, window: &Window, config: &Config) -> Result<(), String> {
         let native = native_window(window)?;
         self.configure_window(window, true, config)?;
