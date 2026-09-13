@@ -38,6 +38,21 @@ pub struct FontVariation {
     pub value: f64,
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum FontStyleRequest {
+    #[default]
+    Default,
+    Disabled,
+    Named(String),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CodepointMap {
+    pub start: u32,
+    pub end: u32,
+    pub family: String,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct FontConfig {
     pub families: Vec<String>,
@@ -48,7 +63,15 @@ pub struct FontConfig {
     pub scale_factor: f32,
     pub features: Vec<FontFeature>,
     pub variations: Vec<FontVariation>,
+    pub bold_variations: Vec<FontVariation>,
+    pub italic_variations: Vec<FontVariation>,
+    pub bold_italic_variations: Vec<FontVariation>,
+    pub style_requests: [FontStyleRequest; 4],
+    pub codepoint_map: Vec<CodepointMap>,
+    /// Bold, italic and bold-italic synthetic fallbacks, respectively.
+    pub synthetic_styles: [bool; 3],
     pub thicken: bool,
+    pub thicken_strength: u8,
 }
 
 impl Default for FontConfig {
@@ -62,7 +85,25 @@ impl Default for FontConfig {
             scale_factor: 1.0,
             features: Vec::new(),
             variations: Vec::new(),
+            bold_variations: Vec::new(),
+            italic_variations: Vec::new(),
+            bold_italic_variations: Vec::new(),
+            style_requests: Default::default(),
+            codepoint_map: Vec::new(),
+            synthetic_styles: [true; 3],
             thicken: false,
+            thicken_strength: 255,
+        }
+    }
+}
+
+impl FontConfig {
+    pub(crate) fn style_variations(&self, index: usize) -> &[FontVariation] {
+        match index {
+            0 => &self.variations,
+            1 => &self.bold_variations,
+            2 => &self.italic_variations,
+            _ => &self.bold_italic_variations,
         }
     }
 }

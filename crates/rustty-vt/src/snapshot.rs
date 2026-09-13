@@ -3,9 +3,10 @@
 //! The encoder streams active rows before history. Decode budgets bound record
 //! sizes and the total cells restored; PAGE allocation hints are advisory and
 //! do not control native allocation. Version 1 excludes graphics and selection.
-//! Mixed-width PAGEs currently require a separate reflow step and are rejected.
+//! Physical PAGE widths are preserved on restore and during in-bounds edits.
+//! Column resizes reflow them; edits beyond a narrow row extend it safely.
 use crate::modes::Modes;
-use crate::screen::{Charset, CharsetState, SavedCursor};
+use crate::screen::{Charset, CharsetState, KittyKeyboard, SavedCursor};
 use crate::{
     Cell, Color, Cursor, CursorShape, HyperlinkId, Margins, Row, Screen, ScrollbackLimits,
     SemanticContent, Style, Terminal, Underline, default_palette,
@@ -300,18 +301,8 @@ fn encode_screen(screen: &Screen, key: usize) -> io::Result<Vec<u8>> {
     } else {
         m.protected_mode
     });
-    let mut flags = m.keyboard_flags;
-    let mut index = usize::from(m.keyboard_index);
-    let current = flags[..=index].to_vec();
-    if current != screen.kitty_keyboard && !(screen.kitty_keyboard.is_empty() && current == [0]) {
-        flags = [0; 8];
-        index = screen.kitty_keyboard.len().saturating_sub(1).min(7);
-        for (dst, &src) in flags.iter_mut().zip(screen.kitty_keyboard.iter()) {
-            *dst = src & 31;
-        }
-    }
-    out.push(index as u8);
-    out.extend_from_slice(&flags);
+    out.push(screen.kitty_keyboard.index);
+    out.extend_from_slice(&screen.kitty_keyboard.flags);
     out.extend_from_slice(&m.semantic_click);
     out.push(u8::from(screen.saved_cursor.is_some()));
     debug_assert_eq!(out.len(), 53);
@@ -723,6 +714,7 @@ pub struct Decoder<R> {
     finished: bool,
     cols: u16,
     identities: [Option<u64>; 2],
+    reflow_generations: [u64; 2],
     history_rows: [u64; 2],
     history_seen: [bool; 2],
     history_remaining: usize,
@@ -739,6 +731,7 @@ impl<R: Read> Decoder<R> {
             finished: false,
             cols: 0,
             identities: [None; 2],
+            reflow_generations: [0; 2],
             history_rows: [0; 2],
             history_seen: [false; 2],
             history_remaining: 0,
@@ -931,6 +924,7 @@ impl<R: Read> Decoder<R> {
             seen[key] = true;
             self.history_rows[key] = extent;
             self.identities[key] = Some(screen.metadata.identity);
+            self.reflow_generations[key] = screen.metadata.reflow_generation;
             if key == 0 {
                 terminal.primary = screen;
             } else {
@@ -1008,15 +1002,18 @@ impl<R: Read> Decoder<R> {
             _ => 0,
         };
         screen.iso_protection = m.protected_mode == 1;
-        m.keyboard_index = match r.u8()? {
+        let index = match r.u8()? {
             v @ 0..=7 => v,
             _ => 0,
         };
-        m.keyboard_flags = r.array()?;
-        for flags in &mut m.keyboard_flags {
+        let mut keyboard_flags = r.array()?;
+        for flags in &mut keyboard_flags {
             *flags &= 31;
         }
-        screen.kitty_keyboard = m.keyboard_flags[..=usize::from(m.keyboard_index)].to_vec();
+        screen.kitty_keyboard = KittyKeyboard {
+            flags: keyboard_flags,
+            index,
+        };
         let click = r.array::<2>()?;
         m.semantic_click = if matches!(click, [0, 0] | [1, 0..=1] | [2, 0..=2]) {
             click
@@ -1057,19 +1054,14 @@ impl<R: Read> Decoder<R> {
         if contents.len() < usize::from(rows) {
             return Err(invalid("snapshot pages do not cover active rows"));
         }
-        if contents
-            .iter()
-            .any(|row| row.cells.len() != usize::from(cols))
-        {
-            return Err(invalid(
-                "mixed-width snapshot pages require lazy reflow support",
-            ));
-        }
         for (i, row) in contents.iter_mut().enumerate() {
             row.id = i as u64;
         }
         screen.next_row = contents.len() as u64;
         screen.rows = contents.split_off(contents.len() - usize::from(rows));
+        let physical_cols = screen.rows[screen.cursor.row].cells.len();
+        screen.cursor.col = x.min(physical_cols - 1);
+        screen.cursor.pending_wrap = flags & 1 != 0 && screen.cursor.col == physical_cols - 1;
         screen.history = contents.into();
         screen.history_bytes = screen.history.iter().map(Row::storage_bytes).sum();
         screen.enforce_limits();
@@ -1237,13 +1229,12 @@ impl<R: Read> Decoder<R> {
                 let mut count = 0;
                 if sequence.apply
                     && t.cols == self.cols
-                    && let Some(screen) = target
-                        .filter(|s| Some(s.metadata.identity) == self.identities[sequence.key])
+                    && let Some(screen) = target.filter(|s| {
+                        Some(s.metadata.identity) == self.identities[sequence.key]
+                            && s.metadata.reflow_generation == self.reflow_generations[sequence.key]
+                    })
                 {
                     let mut rows = self.decode_page(&payload)?;
-                    if rows.iter().any(|r| r.cells.len() != usize::from(t.cols)) {
-                        return Err(invalid("incompatible snapshot history width"));
-                    }
                     let bytes = rows.iter().map(Row::storage_bytes).sum::<usize>();
                     let allowed = screen.limits.bytes != Some(0)
                         && screen
@@ -1346,10 +1337,9 @@ impl Default for TerminalMetadata {
 #[derive(Clone, Debug)]
 pub(crate) struct ScreenMetadata {
     pub identity: u64,
+    pub reflow_generation: u64,
     pub hyperlink_implicit_id: u32,
     pub protected_mode: u8,
-    pub keyboard_index: u8,
-    pub keyboard_flags: [u8; 8],
     pub semantic_click: [u8; 2],
     pub cursor_clear_eol: bool,
 }
@@ -1359,10 +1349,9 @@ impl Default for ScreenMetadata {
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         Self {
             identity: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            reflow_generation: 0,
             hyperlink_implicit_id: 0,
             protected_mode: 0,
-            keyboard_index: 0,
-            keyboard_flags: [0; 8],
             semantic_click: [0; 2],
             cursor_clear_eol: false,
         }

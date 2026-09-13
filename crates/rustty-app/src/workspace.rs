@@ -1,5 +1,5 @@
 //! Window/tab/split state, independent of native windows and running processes.
-use rustty::config::Direction;
+use rustty::config::{Direction, Modifiers};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, OpenOptions};
@@ -149,10 +149,13 @@ impl Tree {
     }
     pub fn layout(&self, rect: Rect) -> Vec<(Id, Rect)> {
         let mut out = Vec::new();
-        self.layout_into(rect, &mut out);
+        self.layout_into(rect, &mut out, false);
         out
     }
-    fn layout_into(&self, rect: Rect, out: &mut Vec<(Id, Rect)>) {
+    fn layout_into(&self, rect: Rect, out: &mut Vec<(Id, Rect)>, include_splits: bool) {
+        if include_splits && matches!(self.kind, Node::Split { .. }) {
+            out.push((self.id, rect));
+        }
         match &self.kind {
             Node::Pane(pane) => out.push((*pane, rect)),
             Node::Split {
@@ -185,25 +188,72 @@ impl Tree {
                         },
                     ),
                 };
-                first.layout_into(a, out);
-                second.layout_into(b, out);
+                first.layout_into(a, out, include_splits);
+                second.layout_into(b, out, include_splits);
             }
+        }
+    }
+    // Ghostty's spatial navigation uses top-left distances on a grid whose
+    // dimensions come from the split topology, including structural nodes.
+    fn spatial(&self) -> Vec<(Id, Rect)> {
+        fn dimensions(tree: &Tree) -> [f32; 2] {
+            match &tree.kind {
+                Node::Pane(_) => [1.0, 1.0],
+                Node::Split {
+                    axis,
+                    first,
+                    second,
+                    ..
+                } => {
+                    let a = dimensions(first);
+                    let b = dimensions(second);
+                    match axis {
+                        Axis::Horizontal => [a[0] + b[0], a[1].max(b[1])],
+                        Axis::Vertical => [a[0].max(b[0]), a[1] + b[1]],
+                    }
+                }
+            }
+        }
+        let [width, height] = dimensions(self);
+        let mut out = Vec::new();
+        self.layout_into(
+            Rect {
+                width,
+                height,
+                ..Rect::UNIT
+            },
+            &mut out,
+            true,
+        );
+        out
+    }
+    fn weight(&self, direction: Axis) -> usize {
+        match &self.kind {
+            Node::Split {
+                axis,
+                first,
+                second,
+                ..
+            } if *axis == direction => first.weight(direction) + second.weight(direction),
+            _ => 1,
         }
     }
     pub fn equalize(&mut self) {
         if let Node::Split {
+            axis,
             ratio,
             first,
             second,
-            ..
         } = &mut self.kind
         {
-            *ratio = 0.5;
+            let a = first.weight(*axis);
+            let b = second.weight(*axis);
+            *ratio = a as f32 / (a + b) as f32;
             first.equalize();
             second.equalize();
         }
     }
-    pub fn resize(&mut self, pane: Id, direction: Direction, delta: f32) -> bool {
+    pub fn resize(&mut self, pane: Id, direction: Direction, pixels: f32, bounds: Rect) -> bool {
         let Node::Split {
             axis,
             ratio,
@@ -213,21 +263,80 @@ impl Tree {
         else {
             return false;
         };
+        let mut child_bounds = bounds;
         let in_first = first.contains(pane);
-        if if in_first {
-            first.resize(pane, direction, delta)
-        } else {
-            second.resize(pane, direction, delta)
-        } {
+        if !in_first && !second.contains(pane) {
+            return false;
+        }
+        match axis {
+            Axis::Horizontal => {
+                child_bounds.width *= if in_first { *ratio } else { 1.0 - *ratio };
+                if !in_first {
+                    child_bounds.x += bounds.width * *ratio;
+                }
+            }
+            Axis::Vertical => {
+                child_bounds.height *= if in_first { *ratio } else { 1.0 - *ratio };
+                if !in_first {
+                    child_bounds.y += bounds.height * *ratio;
+                }
+            }
+        }
+        let child = if in_first { first } else { second };
+        if child.resize(pane, direction, pixels, child_bounds) {
             return true;
         }
         let horizontal = matches!(direction, Direction::Left | Direction::Right);
         if horizontal != (*axis == Axis::Horizontal) {
             return false;
         }
+        let size = if horizontal {
+            bounds.width
+        } else {
+            bounds.height
+        };
+        if size <= 0.0 || !size.is_finite() || !pixels.is_finite() {
+            return false;
+        }
+        let delta = pixels / size;
         let positive = matches!(direction, Direction::Right | Direction::Down);
-        *ratio = (*ratio + if positive { delta } else { -delta }).clamp(0.05, 0.95);
+        *ratio = (*ratio + if positive { delta } else { -delta }).clamp(0.1, 0.9);
         true
+    }
+    pub fn set_ratio(&mut self, id: Id, value: f32) -> bool {
+        if !value.is_finite() {
+            return false;
+        }
+        match &mut self.kind {
+            Node::Split { ratio, .. } if self.id == id => {
+                *ratio = value.clamp(0.1, 0.9);
+                true
+            }
+            Node::Split { first, second, .. } => {
+                first.set_ratio(id, value) || second.set_ratio(id, value)
+            }
+            _ => false,
+        }
+    }
+    /// Return the deepest divider under the pointer and its parent bounds.
+    pub fn divider_at(
+        &self,
+        bounds: Rect,
+        point: [f32; 2],
+        tolerance: f32,
+    ) -> Option<(Id, Axis, Rect)> {
+        let mut nodes = Vec::new();
+        self.layout_into(bounds, &mut nodes, true);
+        nodes.into_iter().rev().find_map(|(id, rect)| {
+            let Node::Split { axis, ratio, .. } = self.node(id)?.kind else {
+                return None;
+            };
+            let near = match axis {
+                Axis::Horizontal => (point[0] - rect.x - rect.width * ratio).abs() <= tolerance,
+                Axis::Vertical => (point[1] - rect.y - rect.height * ratio).abs() <= tolerance,
+            };
+            (rect.contains(point) && near).then_some((id, axis, rect))
+        })
     }
     pub fn quadrant(&self, pane: Id) -> Option<Id> {
         fn find(tree: &Tree, pane: Id, horizontal: bool, vertical: bool) -> Option<Id> {
@@ -240,9 +349,9 @@ impl Tree {
             else {
                 return None;
             };
-            let child = if first.contains(pane) {
+            let child = if first.node(pane).is_some() {
                 first
-            } else if second.contains(pane) {
+            } else if second.node(pane).is_some() {
                 second
             } else {
                 return None;
@@ -262,6 +371,14 @@ impl Tree {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SavedPane {
     pub working_directory: PathBuf,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Peek {
+    pub chord: Modifiers,
+    pub target: Id,
+    pub full_zoom: Option<Id>,
+    pub navigation_used: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -325,6 +442,67 @@ impl Tab {
             self.remembered.insert(quadrant, pane);
         }
     }
+    pub fn begin_peek(&mut self, chord: Modifiers) -> Option<Peek> {
+        self.quadrant_zoom?;
+        if chord == Modifiers::default() {
+            return None;
+        }
+        let peek = Peek {
+            chord,
+            target: self.focused,
+            full_zoom: self.zoom.filter(|zoom| Some(*zoom) != self.quadrant_zoom),
+            navigation_used: false,
+        };
+        self.zoom = None;
+        self.quadrant_zoom = None;
+        Some(peek)
+    }
+    pub fn finish_peek(&mut self, peek: Peek) -> Id {
+        if self.zoom.is_some() || self.quadrant_zoom.is_some() || !self.root.contains(peek.target) {
+            return self.focused;
+        }
+        let quadrant = self.root.quadrant(peek.target);
+        let target = peek
+            .full_zoom
+            .filter(|original| {
+                quadrant.is_some()
+                    && self.root.quadrant(*original) == quadrant
+                    && self.root.contains(*original)
+            })
+            .unwrap_or(peek.target);
+        self.quadrant_zoom = quadrant;
+        self.zoom = if Some(target) == peek.full_zoom {
+            Some(target)
+        } else {
+            quadrant
+        };
+        target
+    }
+    pub fn remembered_for(&self, pane: Id) -> Option<Id> {
+        let quadrant = self.root.node(self.root.quadrant(pane)?)?;
+        self.remembered
+            .get(&quadrant.id)
+            .copied()
+            .filter(|id| quadrant.contains(*id))
+    }
+    pub fn activate_quadrant(&self, pane: Id) -> Option<Id> {
+        let quadrant = self.root.node(self.root.quadrant(pane)?)?;
+        self.remembered_for(pane)
+            .or_else(|| quadrant.panes().first().copied())
+    }
+    pub fn unzoom_after_blocked_navigation(&mut self) -> bool {
+        let Some(zoom) = self.zoom else {
+            return false;
+        };
+        if Some(zoom) == self.quadrant_zoom && !self.root.contains(zoom) {
+            return false;
+        }
+        self.zoom = self.quadrant_zoom.filter(|id| *id != zoom);
+        if self.zoom.is_none() {
+            self.quadrant_zoom = None;
+        }
+        true
+    }
     pub fn toggle_zoom(&mut self) {
         if self.zoom == Some(self.focused) {
             self.zoom = self.quadrant_zoom.filter(|id| *id != self.focused);
@@ -343,20 +521,6 @@ impl Tab {
         }
     }
     pub fn target(&self, from: Id, direction: Direction) -> Option<Id> {
-        let layout = self.root.layout(Rect::UNIT);
-        let index = layout.iter().position(|(id, _)| *id == from)?;
-        if matches!(direction, Direction::Previous | Direction::Next) {
-            return Some(
-                layout[(index
-                    + if direction == Direction::Next {
-                        1
-                    } else {
-                        layout.len() - 1
-                    })
-                    % layout.len()]
-                .0,
-            );
-        }
         let quadrant_only = matches!(
             direction,
             Direction::QuadrantLeft
@@ -364,32 +528,65 @@ impl Tab {
                 | Direction::QuadrantUp
                 | Direction::QuadrantDown
         );
-        let source_quadrant = self.root.quadrant(from);
-        let source = layout[index].1.center();
-        let mut targets = layout
-            .into_iter()
-            .filter_map(|(id, rect)| {
-                if id == from || quadrant_only && self.root.quadrant(id) == source_quadrant {
-                    return None;
-                }
-                let center = rect.center();
-                let (along, across) = match direction {
-                    Direction::Left | Direction::QuadrantLeft => {
-                        (source[0] - center[0], source[1] - center[1])
-                    }
-                    Direction::Right | Direction::QuadrantRight => {
-                        (center[0] - source[0], source[1] - center[1])
-                    }
-                    Direction::Up | Direction::QuadrantUp => {
-                        (source[1] - center[1], source[0] - center[0])
-                    }
-                    _ => (center[1] - source[1], source[0] - center[0]),
-                };
-                (along > 0.0001).then_some((id, across.abs() * 2.0 + along))
-            })
-            .collect::<Vec<_>>();
-        targets.sort_by(|a, b| a.1.total_cmp(&b.1));
-        targets.first().map(|(id, _)| *id)
+        let root = if quadrant_only {
+            &self.root
+        } else {
+            self.quadrant_zoom
+                .and_then(|id| self.root.node(id))
+                .unwrap_or(&self.root)
+        };
+        let panes = root.panes();
+        let index = panes.iter().position(|id| *id == from)?;
+        if matches!(direction, Direction::Previous | Direction::Next) {
+            return Some(
+                panes[(index
+                    + if direction == Direction::Next {
+                        1
+                    } else {
+                        panes.len() - 1
+                    })
+                    % panes.len()],
+            );
+        }
+        let slots = root.spatial();
+        let adjacent = |from: Id| -> Vec<Id> {
+            let Some((_, source)) = slots.iter().find(|(id, _)| *id == from) else {
+                return Vec::new();
+            };
+            let mut candidates = slots
+                .iter()
+                .filter(|(id, rect)| {
+                    *id != from
+                        && match direction {
+                            Direction::Left | Direction::QuadrantLeft => {
+                                rect.x + rect.width <= source.x
+                            }
+                            Direction::Right | Direction::QuadrantRight => {
+                                rect.x >= source.x + source.width
+                            }
+                            Direction::Up | Direction::QuadrantUp => {
+                                rect.y + rect.height <= source.y
+                            }
+                            _ => rect.y >= source.y + source.height,
+                        }
+                })
+                .collect::<Vec<_>>();
+            let distance = |rect: &Rect| (rect.x - source.x).powi(2) + (rect.y - source.y).powi(2);
+            candidates.sort_by(|a, b| distance(&a.1).total_cmp(&distance(&b.1)));
+            candidates.into_iter().map(|(id, _)| *id).collect()
+        };
+        let target_quadrant = if quadrant_only {
+            let current = root.quadrant(from)?;
+            let target = adjacent(current)
+                .into_iter()
+                .find(|id| root.quadrant(*id) == Some(*id))?;
+            Some(root.node(target)?)
+        } else {
+            None
+        };
+        adjacent(from).into_iter().find(|id| {
+            panes.contains(id) && target_quadrant.is_none_or(|quadrant| quadrant.contains(*id))
+        })
     }
     pub fn split(&mut self, new_pane: Id, split_id: Id, direction: Direction, directory: PathBuf) {
         self.root.split(self.focused, new_pane, split_id, direction);
@@ -403,6 +600,23 @@ impl Tab {
     }
     /// Returns false when the tab's last pane has closed.
     pub fn close(&mut self, pane: Id) -> bool {
+        let next = if self.focused == pane {
+            let neighbor = |tree: &Tree| {
+                let panes = tree.panes();
+                let index = panes.iter().position(|id| *id == pane)?;
+                if index > 0 {
+                    Some(panes[index - 1])
+                } else {
+                    panes.get(1).copied()
+                }
+            };
+            self.quadrant_zoom
+                .and_then(|id| self.root.node(id))
+                .and_then(neighbor)
+                .or_else(|| neighbor(&self.root))
+        } else {
+            None
+        };
         let Some(root) = self.root.clone().remove(pane) else {
             return false;
         };
@@ -418,7 +632,7 @@ impl Tab {
             .quadrant_zoom
             .filter(|id| self.root.node(*id).is_some());
         if self.focused == pane {
-            self.focused = self.root.panes()[0];
+            self.focused = next.unwrap_or_else(|| self.root.panes()[0]);
         }
         true
     }
@@ -451,6 +665,35 @@ impl Default for Workspace {
 }
 
 impl Workspace {
+    /// Restoring a layout must not reuse IDs issued after that snapshot.
+    pub fn restore(&mut self, mut previous: Self) -> Self {
+        previous.next_id = previous.next_id.max(self.next_id);
+        std::mem::replace(self, previous)
+    }
+    pub fn close_pane(&mut self, pane: Id) -> bool {
+        let Some((window, tab)) = self.windows.iter().enumerate().find_map(|(w, window)| {
+            window
+                .tabs
+                .iter()
+                .position(|tab| tab.panes.contains_key(&pane))
+                .map(|tab| (w, tab))
+        }) else {
+            return false;
+        };
+        let window_state = &mut self.windows[window];
+        if !window_state.tabs[tab].close(pane) {
+            window_state.tabs.remove(tab);
+            if window_state.tabs.is_empty() {
+                self.windows.remove(window);
+            } else if window_state.active_tab >= tab {
+                window_state.active_tab = window_state
+                    .active_tab
+                    .saturating_sub(1)
+                    .min(window_state.tabs.len() - 1);
+            }
+        }
+        true
+    }
     pub fn id(&mut self) -> Id {
         let id = self.next_id;
         self.next_id = self
@@ -602,6 +845,122 @@ mod tests {
         assert_eq!(tab.target(2, Direction::Left), None);
         assert!(tab.close(9));
         assert_eq!(tab.root.quadrant(2), Some(2));
+    }
+    #[test]
+    fn directional_navigation_uses_edges_and_stays_in_zoomed_quadrant() {
+        let mut tab = Tab::new(1, 2, PathBuf::from("/tmp"));
+        tab.split(3, 4, Direction::Right, PathBuf::from("/tmp"));
+        tab.split(5, 6, Direction::Down, PathBuf::from("/tmp"));
+        if let Node::Split { second, .. } = &mut tab.root.kind
+            && let Node::Split { ratio, .. } = &mut second.kind
+        {
+            *ratio = 0.1;
+        }
+        // A full-height pane moves to the topmost neighboring pane, and has
+        // nothing below it even if another pane has a lower center point.
+        assert_eq!(tab.target(2, Direction::Right), Some(3));
+        assert_eq!(tab.target(2, Direction::Down), None);
+        let mut tab = quadrants();
+        tab.focus(2);
+        tab.split(9, 10, Direction::Right, PathBuf::from("/tmp"));
+        tab.toggle_quadrant_zoom();
+        assert_eq!(tab.target(2, Direction::Right), Some(9));
+        assert_eq!(tab.target(9, Direction::Right), None);
+        assert_eq!(tab.target(9, Direction::Next), Some(2));
+        assert_eq!(tab.target(9, Direction::QuadrantRight), Some(3));
+    }
+    #[test]
+    fn peek_restores_full_zoom_only_within_original_quadrant() {
+        let mut tab = quadrants();
+        tab.focus(2);
+        tab.split(9, 10, Direction::Right, PathBuf::from("/tmp"));
+        tab.toggle_quadrant_zoom();
+        tab.toggle_zoom();
+        let chord = Modifiers {
+            super_key: true,
+            ..Modifiers::default()
+        };
+        let mut peek = tab.begin_peek(chord).unwrap();
+        assert_eq!((tab.zoom, tab.quadrant_zoom), (None, None));
+        assert_eq!(tab.activate_quadrant(2), Some(9));
+        peek.target = 2;
+        let target = tab.finish_peek(peek);
+        tab.focus(target);
+        assert_eq!(
+            (target, tab.zoom, tab.quadrant_zoom),
+            (9, Some(9), Some(10))
+        );
+        let mut peek = tab.begin_peek(chord).unwrap();
+        peek.target = 5;
+        let target = tab.finish_peek(peek);
+        tab.focus(target);
+        assert_eq!((target, tab.zoom, tab.quadrant_zoom), (5, Some(5), Some(5)));
+        assert!(tab.unzoom_after_blocked_navigation());
+        assert_eq!((tab.zoom, tab.quadrant_zoom), (None, None));
+        tab.toggle_zoom();
+        assert!(
+            tab.begin_peek(chord).is_none(),
+            "full zoom alone does not trigger peek"
+        );
+        assert!(tab.unzoom_after_blocked_navigation());
+        tab.focus(2);
+        tab.toggle_quadrant_zoom();
+        assert!(
+            !tab.unzoom_after_blocked_navigation(),
+            "multi-pane quadrant stays zoomed at its edge"
+        );
+    }
+    #[test]
+    fn split_sizes_use_axis_weights_pixels_and_clamped_dividers() {
+        let mut tree = Tree::leaf(1);
+        tree.split(1, 2, 3, Direction::Right);
+        tree.split(2, 4, 5, Direction::Right);
+        tree.split(4, 6, 7, Direction::Down);
+        tree.equalize();
+        let bounds = Rect {
+            width: 900.0,
+            height: 600.0,
+            ..Rect::UNIT
+        };
+        for (_, rect) in tree.layout(bounds) {
+            assert!((rect.width - 300.0).abs() < 0.001);
+        }
+        assert!(tree.resize(4, Direction::Left, 60.0, bounds));
+        let widths = tree.layout(bounds);
+        assert!((widths[1].1.width - 240.0).abs() < 0.001);
+        assert!((widths[2].1.width - 360.0).abs() < 0.001);
+        let (id, axis, parent) = tree.divider_at(bounds, [540.0, 20.0], 3.0).unwrap();
+        assert_eq!((id, axis), (5, Axis::Horizontal));
+        assert!((parent.width - 600.0).abs() < 0.001);
+        assert!(tree.set_ratio(id, 2.0));
+        assert!((tree.layout(bounds)[1].1.width - 540.0).abs() < 0.001);
+        assert!(!tree.set_ratio(id, f32::NAN));
+        assert!(!tree.resize(99, Direction::Left, 20.0, bounds));
+    }
+    #[test]
+    fn restored_layouts_do_not_reuse_ids_and_closing_keeps_nearby_focus() {
+        let mut workspace = Workspace::default();
+        workspace.id();
+        let saved = workspace.clone();
+        let issued = workspace.id();
+        workspace.restore(saved);
+        assert!(workspace.id() > issued);
+        let mut tab = quadrants();
+        tab.focus(5);
+        assert!(tab.close(5));
+        assert_eq!(tab.focused, 3);
+        workspace.windows.push(WindowState {
+            id: 100,
+            tabs: vec![tab],
+            active_tab: 0,
+            frame: [0.0, 0.0, 100.0, 100.0],
+            quick: false,
+        });
+        assert!(workspace.close_pane(2));
+        assert!(workspace.close_pane(3));
+        assert!(workspace.close_pane(7));
+        assert!(workspace.windows.is_empty());
+        assert!(!workspace.close_pane(7));
     }
     #[test]
     fn serialized_workspace_preserves_layout_focus_and_directories() {

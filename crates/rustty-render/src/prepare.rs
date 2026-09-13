@@ -20,6 +20,10 @@ static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
 #[path = "graphics.rs"]
 mod graphics;
 
+#[path = "preedit.rs"]
+mod preedit;
+pub use preedit::Preedit;
+
 #[derive(Clone, Debug)]
 pub struct RenderOptions {
     pub size: [u32; 2],
@@ -35,6 +39,7 @@ pub struct RenderOptions {
     pub cursor_visible: bool,
     pub blink_visible: bool,
     pub background_opacity: f32,
+    pub preedit: Option<Preedit>,
 }
 
 impl Default for RenderOptions {
@@ -79,6 +84,7 @@ impl Default for RenderOptions {
             cursor_visible: true,
             blink_visible: true,
             background_opacity: 1.0,
+            preedit: None,
         }
     }
 }
@@ -191,6 +197,8 @@ impl Renderer {
             }
             let cursor = screen.cursor.visible
                 && options.cursor_visible
+                && !(options.focused
+                    && options.preedit.as_ref().is_some_and(|p| !p.text.is_empty()))
                 && screen.viewport_offset == 0
                 && screen.cursor.row == row_index;
             let mut paints = Vec::with_capacity(row.cells.len());
@@ -293,6 +301,7 @@ impl Renderer {
         frame.quads.extend(below_text);
         frame.quads.extend(foreground.quads);
         frame.quads.extend(above_text);
+        self.preedit(screen, options, &mut frame)?;
         frame.atlas_uploads = self.uploads.clone();
         Ok(frame)
     }
@@ -319,7 +328,7 @@ impl Renderer {
             }
             let style = cell.style;
             let color = paints[col];
-            if let Some(cp) = sprite_codepoint(&cell.text) {
+            if let Some(cp) = self.sprite_codepoint(&cell.text) {
                 let cached = self.sprite(cp, cell.width)?;
                 frame.quads.push(Quad {
                     rect: [
@@ -341,7 +350,7 @@ impl Renderer {
             while col < paints.len()
                 && row.cells[col].style == style
                 && paints[col] == color
-                && sprite_codepoint(&row.cells[col].text).is_none()
+                && self.sprite_codepoint(&row.cells[col].text).is_none()
                 && !row.cells[col].text.starts_with(graphics::PLACEHOLDER)
             {
                 let cell = &row.cells[col];
@@ -412,6 +421,10 @@ impl Renderer {
         let cached = self.cache_bitmap(bitmap)?;
         self.glyphs.insert(key, cached.clone());
         Ok(cached)
+    }
+
+    fn sprite_codepoint(&self, text: &str) -> Option<char> {
+        sprite_codepoint(text).filter(|cp| !self.fonts.has_codepoint_override(*cp))
     }
 
     fn sprite(&mut self, cp: char, width: u8) -> Result<CachedGlyph, RenderError> {
@@ -762,5 +775,17 @@ mod tests {
         assert_eq!(sprite_codepoint("─\u{301}"), None);
         renderer.clear_cache();
         assert!(renderer.sprites.is_empty());
+        let mut mapped = Renderer::new(FontConfig {
+            codepoint_map: vec![rustty_font::CodepointMap {
+                start: '─' as u32,
+                end: '─' as u32,
+                family: "Menlo".into(),
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+        mapped.prepare(terminal.screen(), &options).unwrap();
+        assert!(!mapped.sprites.contains_key(&('─', 1)));
+        assert!(mapped.sprites.contains_key(&('█', 1)));
     }
 }

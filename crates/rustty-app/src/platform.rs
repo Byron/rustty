@@ -1,4 +1,4 @@
-//! Native macOS integration. Window creation, presentation and focus stay in the app.
+//! Native macOS integration. Winit owns windows; native helpers handle OS policy.
 #![cfg(target_os = "macos")]
 
 use std::{
@@ -26,20 +26,21 @@ use objc2::{
     sel,
 };
 use objc2_app_kit::{
-    NSAccessibility, NSApplication, NSColor, NSEvent, NSFloatingWindowLevel,
-    NSUserInterfaceItemIdentification, NSView, NSWindow, NSWindowAnimationBehavior,
-    NSWindowCollectionBehavior, NSWindowTitleVisibility, NSWorkspace,
+    NSAccessibility, NSApplication, NSApplicationActivationOptions, NSColor, NSEvent,
+    NSFloatingWindowLevel, NSRunningApplication, NSScreen, NSUserInterfaceItemIdentification,
+    NSView, NSWindow, NSWindowAnimationBehavior, NSWindowCollectionBehavior, NSWindowTabbingMode,
+    NSWindowTitleVisibility, NSWorkspace,
 };
 use objc2_core_foundation::{
     CFMachPort, CFRetained, CFRunLoop, CFRunLoopSource, kCFRunLoopCommonModes,
 };
 use objc2_core_graphics::{
-    CGEvent, CGEventFlags, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement,
-    CGEventTapProxy, CGEventType,
+    CGDisplayBounds, CGEvent, CGEventFlags, CGEventTapLocation, CGEventTapOptions,
+    CGEventTapPlacement, CGEventTapProxy, CGEventType, CGMainDisplayID,
 };
 use objc2_foundation::{
-    NSArray, NSBundle, NSDictionary, NSError, NSNumber, NSObject, NSObjectProtocol, NSString,
-    NSTimer, NSURL,
+    NSArray, NSBundle, NSDictionary, NSError, NSNumber, NSObject, NSObjectProtocol, NSPoint,
+    NSPointInRect, NSRect, NSSize, NSString, NSTimer, NSURL,
 };
 use objc2_user_notifications::{
     UNAuthorizationOptions, UNMutableNotificationContent, UNNotification,
@@ -47,7 +48,10 @@ use objc2_user_notifications::{
     UNNotificationRequest, UNNotificationResponse, UNNotificationSound, UNUserNotificationCenter,
     UNUserNotificationCenterDelegate,
 };
-use rustty::config::{Action, Config, Direction, KeyBinding, KeyTrigger, Modifiers, OptionAsAlt};
+use rustty::config::{
+    Action, Config, Direction, KeyBinding, KeyTrigger, Modifiers, OptionAsAlt,
+    QuickTerminalPosition, QuickTerminalScreen, QuickTerminalSpaceBehavior,
+};
 use winit::{
     platform::macos::{OptionAsAlt as WinitOptionAsAlt, WindowExtMacOS},
     raw_window_handle::{HasWindowHandle, RawWindowHandle},
@@ -72,6 +76,7 @@ pub struct Platform {
     notifications: Option<Retained<UNUserNotificationCenter>>,
     notification_state: Arc<NotificationState>,
     _notification_delegate: Retained<NotificationDelegate>,
+    previous_quick_app: RefCell<Option<Retained<NSRunningApplication>>>,
 }
 
 impl Platform {
@@ -114,6 +119,7 @@ impl Platform {
             notifications,
             notification_state: Arc::default(),
             _notification_delegate: delegate,
+            previous_quick_app: RefCell::new(None),
         };
         platform.update_config(config)?;
         Ok(platform)
@@ -188,15 +194,109 @@ impl Platform {
             native.setIdentifier(Some(&NSString::from_str("app.rustty.quickTerminal")));
             native.setAccessibilitySubrole(Some(&NSString::from_str("AXFloatingWindow")));
             native.setLevel(NSFloatingWindowLevel);
-            native.setCollectionBehavior(
-                NSWindowCollectionBehavior::CanJoinAllSpaces
-                    | NSWindowCollectionBehavior::IgnoresCycle
-                    | NSWindowCollectionBehavior::FullScreenAuxiliary,
-            );
+            native.setCollectionBehavior(quick_collection_behavior(
+                config.quick_terminal_space_behavior,
+            ));
+            native.setExcludedFromWindowsMenu(true);
+            native.setTabbingMode(NSWindowTabbingMode::Disallowed);
+            native.setRestorable(false);
             native.setAnimationBehavior(NSWindowAnimationBehavior::None);
-            // The host animates and hides on focus loss; native auto-hide would
-            // bypass its visibility state. Winit owns an NSWindow, not an NSPanel.
+            // Native auto-hide would bypass the host's visibility state. Winit
+            // owns an NSWindow: NSPanel's NonactivatingPanel style is invalid here.
             native.setHidesOnDeactivate(false);
+        }
+        Ok(())
+    }
+
+    /// Initial quick-terminal frame in Winit's global logical, top-left coordinates.
+    pub fn quick_terminal_frame(&self, config: &Config) -> Option<[f64; 4]> {
+        Some(quick_frame(
+            self.quick_visible_frame(config.quick_terminal_screen)?,
+            config.quick_terminal_position,
+            None,
+        ))
+    }
+
+    fn quick_visible_frame(&self, selection: QuickTerminalScreen) -> Option<[f64; 4]> {
+        let screens = NSScreen::screens(self.mtm);
+        let screen = match selection {
+            QuickTerminalScreen::Main => NSScreen::mainScreen(self.mtm),
+            QuickTerminalScreen::Mouse => {
+                let mouse = NSEvent::mouseLocation();
+                screens
+                    .iter()
+                    .find(|screen| NSPointInRect(mouse, screen.frame()))
+            }
+            QuickTerminalScreen::MacosMenuBar => screens.firstObject(),
+        }
+        .or_else(|| NSScreen::mainScreen(self.mtm))
+        .or_else(|| screens.firstObject())?;
+        Some(logical_screen_frame(
+            screen.visibleFrame(),
+            CGDisplayBounds(CGMainDisplayID()).size.height,
+        ))
+    }
+
+    /// Select the screen on each reveal, retaining the user's resized dimensions.
+    /// Winit's NSWindow must activate the app; nonactivating NSPanel behavior needs
+    /// a different window owner, not an Objective-C class or style-mask replacement.
+    pub fn show_quick(&self, window: &Window, config: &Config) -> Result<(), String> {
+        let native = native_window(window)?;
+        self.configure_window(window, true, config)?;
+        if !native.isVisible() {
+            *self.previous_quick_app.borrow_mut() = NSWorkspace::sharedWorkspace()
+                .frontmostApplication()
+                .filter(|app| app.processIdentifier() != std::process::id() as i32);
+            if let Some(visible) = self.quick_visible_frame(config.quick_terminal_screen) {
+                let size = native.frame().size;
+                let [x, y, width, height] = quick_frame(
+                    visible,
+                    config.quick_terminal_position,
+                    Some([size.width, size.height]),
+                );
+                // Cocoa uses one global point space even on mixed-DPI displays.
+                // Convert only the Y axis, never scale a global screen origin.
+                native.setFrame_display(
+                    NSRect::new(
+                        NSPoint::new(
+                            x,
+                            CGDisplayBounds(CGMainDisplayID()).size.height - y - height,
+                        ),
+                        NSSize::new(width, height),
+                    ),
+                    false,
+                );
+            }
+        }
+        window.set_visible(true);
+        window.focus_window();
+        Ok(())
+    }
+
+    /// `restore_focus` is true only for an explicit toggle/close. Autohide must
+    /// leave the app or window the user just selected in control of keyboard focus.
+    pub fn hide_quick(&self, window: &Window, restore_focus: bool) -> Result<(), String> {
+        let native = native_window(window)?;
+        let previous = self.previous_quick_app.borrow_mut().take();
+        if may_restore_quick_focus(
+            restore_focus,
+            native.isKeyWindow(),
+            NSApplication::sharedApplication(self.mtm).isActive(),
+            native.isOnActiveSpace(),
+        ) && let Some(previous) = previous.filter(|app| !app.isTerminated())
+        {
+            // Restore before ordering out, so macOS does not first raise a normal
+            // Rustty window. Never force activation over a newly selected app.
+            previous.activateWithOptions(NSApplicationActivationOptions::empty());
+        }
+        window.set_visible(false);
+        Ok(())
+    }
+
+    /// Forget an old activation target even when autohide is disabled.
+    pub fn quick_resigned_focus(&self, window: &Window) -> Result<(), String> {
+        if !native_window(window)?.isKeyWindow() {
+            self.previous_quick_app.borrow_mut().take();
         }
         Ok(())
     }
@@ -337,6 +437,64 @@ fn native_window(window: &Window) -> Result<Retained<NSWindow>, String> {
     let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
     view.window()
         .ok_or_else(|| "native window has no attached view".into())
+}
+
+fn quick_collection_behavior(behavior: QuickTerminalSpaceBehavior) -> NSWindowCollectionBehavior {
+    let spaces = match behavior {
+        QuickTerminalSpaceBehavior::Move => NSWindowCollectionBehavior::CanJoinAllSpaces,
+        QuickTerminalSpaceBehavior::Remain => NSWindowCollectionBehavior::MoveToActiveSpace,
+    };
+    spaces
+        | NSWindowCollectionBehavior::IgnoresCycle
+        | NSWindowCollectionBehavior::FullScreenAuxiliary
+}
+
+fn logical_screen_frame(frame: NSRect, primary_height: f64) -> [f64; 4] {
+    [
+        frame.origin.x,
+        primary_height - frame.origin.y - frame.size.height,
+        frame.size.width,
+        frame.size.height,
+    ]
+}
+
+fn quick_frame(
+    visible: [f64; 4],
+    position: QuickTerminalPosition,
+    saved_size: Option<[f64; 2]>,
+) -> [f64; 4] {
+    let [x, y, screen_width, screen_height] = visible;
+    let [width, height] = saved_size.unwrap_or(match position {
+        QuickTerminalPosition::Top | QuickTerminalPosition::Bottom => {
+            [screen_width, screen_height * 0.5]
+        }
+        QuickTerminalPosition::Left | QuickTerminalPosition::Right => {
+            [screen_width * 0.5, screen_height]
+        }
+        QuickTerminalPosition::Center => [screen_width * 0.8, screen_height * 0.7],
+    });
+    let width = width.min(screen_width);
+    let height = height.min(screen_height);
+    let x = x + match position {
+        QuickTerminalPosition::Left => 0.0,
+        QuickTerminalPosition::Right => screen_width - width,
+        _ => (screen_width - width) * 0.5,
+    };
+    let y = y + match position {
+        QuickTerminalPosition::Top => 0.0,
+        QuickTerminalPosition::Bottom => screen_height - height,
+        _ => (screen_height - height) * 0.5,
+    };
+    [x.round(), y.round(), width, height]
+}
+
+fn may_restore_quick_focus(
+    explicit: bool,
+    key: bool,
+    app_active: bool,
+    active_space: bool,
+) -> bool {
+    explicit && key && app_active && active_space
 }
 
 fn open_native_url(url: &NSURL) -> Result<(), String> {
@@ -884,6 +1042,64 @@ fn physical_key(code: u16) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quick_terminal_geometry_uses_visible_points_across_displays() {
+        let rect = |x, y, w, h| NSRect::new(NSPoint::new(x, y), NSSize::new(w, h));
+        let main = logical_screen_frame(rect(0.0, 64.0, 1440.0, 812.0), 900.0);
+        assert_eq!(main, [0.0, 24.0, 1440.0, 812.0]);
+        assert_eq!(
+            quick_frame(main, QuickTerminalPosition::Top, None),
+            [0.0, 24.0, 1440.0, 406.0]
+        );
+        assert_eq!(
+            quick_frame(main, QuickTerminalPosition::Bottom, None),
+            [0.0, 430.0, 1440.0, 406.0]
+        );
+        // A display above and to the left has negative Winit coordinates. Its
+        // native scale factor never enters the global logical-point conversion.
+        let above = logical_screen_frame(rect(-1920.0, 940.0, 1920.0, 1040.0), 900.0);
+        assert_eq!(above, [-1920.0, -1080.0, 1920.0, 1040.0]);
+        assert_eq!(
+            quick_frame(above, QuickTerminalPosition::Right, Some([800.0, 600.0])),
+            [-800.0, -860.0, 800.0, 600.0]
+        );
+        let left = quick_frame(main, QuickTerminalPosition::Left, None);
+        assert_eq!(left, [0.0, 24.0, 720.0, 812.0]);
+        assert_eq!(
+            quick_frame(main, QuickTerminalPosition::Center, Some([2000.0, 2000.0])),
+            main
+        );
+        assert_eq!(
+            quick_frame(main, QuickTerminalPosition::Center, Some([640.0, 400.0])),
+            [400.0, 230.0, 640.0, 400.0]
+        );
+    }
+
+    #[test]
+    fn quick_terminal_spaces_and_focus_do_not_displace_user_choices() {
+        let moving = quick_collection_behavior(QuickTerminalSpaceBehavior::Move);
+        let remaining = quick_collection_behavior(QuickTerminalSpaceBehavior::Remain);
+        for flags in [moving, remaining] {
+            assert!(flags.contains(NSWindowCollectionBehavior::IgnoresCycle));
+            assert!(flags.contains(NSWindowCollectionBehavior::FullScreenAuxiliary));
+        }
+        assert!(moving.contains(NSWindowCollectionBehavior::CanJoinAllSpaces));
+        assert!(!moving.contains(NSWindowCollectionBehavior::MoveToActiveSpace));
+        assert!(remaining.contains(NSWindowCollectionBehavior::MoveToActiveSpace));
+        assert!(!remaining.contains(NSWindowCollectionBehavior::CanJoinAllSpaces));
+        for state in 0..16 {
+            assert_eq!(
+                may_restore_quick_focus(
+                    state & 1 != 0,
+                    state & 2 != 0,
+                    state & 4 != 0,
+                    state & 8 != 0,
+                ),
+                state == 15,
+            );
+        }
+    }
 
     #[test]
     fn global_binding_distinguishes_layout_physical_keys_and_modifiers() {

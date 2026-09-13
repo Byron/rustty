@@ -7,6 +7,7 @@ pub mod screen;
 pub mod search;
 pub mod snapshot;
 mod terminal;
+mod terminfo;
 pub mod unicode;
 
 pub use input::{Key, KeyAction, KeyEvent, Modifiers, MouseAction, MouseButton, MouseEvent};

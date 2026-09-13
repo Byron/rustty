@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, fmt, sync::Arc};
 #[cfg(target_os = "macos")]
 mod prepare;
 #[cfg(target_os = "macos")]
-pub use prepare::{RenderOptions, Renderer};
+pub use prepare::{Preedit, RenderOptions, Renderer};
 
 #[derive(Debug)]
 pub enum RenderError {
@@ -106,6 +106,8 @@ pub struct Frame {
     pub generation: u64,
     pub quads: Vec<Quad>,
     pub atlas_uploads: Vec<AtlasUpload>,
+    /// IME candidate-window anchor in physical pixels, when a preedit caret is present.
+    pub ime_cursor: Option<[f32; 4]>,
 }
 
 impl Frame {
@@ -115,6 +117,7 @@ impl Frame {
             generation: 0,
             quads: Vec::new(),
             atlas_uploads: Vec::new(),
+            ime_cursor: None,
         }
     }
 
@@ -182,6 +185,9 @@ impl Frame {
         }
         self.generation = other.generation;
         self.atlas_uploads = uploads;
+        if let Some([x, y, w, h]) = other.ime_cursor {
+            self.ime_cursor = Some([x + origin[0], y + origin[1], w, h]);
+        }
         Ok(())
     }
 }
