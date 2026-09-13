@@ -671,6 +671,25 @@ pub fn increaseCapacity(
     return new_node;
 }
 
+/// Make a retained page safe for edits in the screen's logical columns.
+/// Page replacement preserves row coordinates and migrates the cursor's
+/// extra STYLE and hyperlink references independently of the copied cells.
+pub fn ensurePageColumns(self: *Screen, node: *PageList.List.Node) Allocator.Error!void {
+    if (node.cols() >= self.pages.cols) return;
+    const cursor_page = node == self.cursor.page_pin.node;
+    try self.pages.ensurePageColumns(node);
+    if (cursor_page and node != self.cursor.page_pin.node) self.cursorPageReplaced();
+}
+
+/// Prepare the physical rows touched by edits spanning the active screen.
+pub fn ensureActiveColumns(self: *Screen) Allocator.Error!void {
+    var current: ?*PageList.List.Node = self.pages.getTopLeft(.active).node;
+    while (current) |node| {
+        current = node.next;
+        try self.ensurePageColumns(node);
+    }
+}
+
 /// Rebuild the cursor state that lives in page memory after the page the
 /// cursor was on has been destroyed and PageList moved the tracked cursor
 /// pin onto another page. This happens when increaseCapacity replaces the
@@ -682,6 +701,9 @@ pub fn increaseCapacity(
 /// then the cursor is reloaded.
 fn cursorPageReplaced(self: *Screen) void {
     const new_page: *Page = self.cursor.page_pin.node.page();
+    const rac = self.cursor.page_pin.rowAndCell();
+    self.cursor.page_row = rac.row;
+    self.cursor.page_cell = rac.cell;
 
     // Re-add the style, if the page somehow doesn't have enough
     // memory to add it, we emit a warning and gracefully degrade
@@ -707,22 +729,19 @@ fn cursorPageReplaced(self: *Screen) void {
     // memory to add it, we emit a warning and gracefully degrade to
     // no hyperlink.
     if (self.cursor.hyperlink) |link| {
-        // So we don't attempt to free any memory in the replaced page.
-        self.cursor.hyperlink_id = 0;
-        self.cursor.hyperlink = null;
-
-        // Re-add
-        self.startHyperlinkOnce(link.*) catch |err| {
+        // Reuse the cursor's external hyperlink without allocating a copy
+        // after the page replacement has already committed.
+        self.cursor.hyperlink_id = new_page.insertHyperlink(link.*) catch |err| id: {
             // TODO: Should we increase the capacity further in this case?
             log.warn(
                 "(Screen.cursorPageReplaced) Failed to add cursor hyperlink back to page, err={}",
                 .{err},
             );
+            link.deinit(self.alloc);
+            self.alloc.destroy(link);
+            self.cursor.hyperlink = null;
+            break :id 0;
         };
-
-        // Remove our old link
-        link.deinit(self.alloc);
-        self.alloc.destroy(link);
     }
 
     // Reload the cursor information because the pin changed.
@@ -825,6 +844,10 @@ pub fn cursorRight(self: *Screen, n: size.CellCountInt) void {
     assert(self.cursor.x + n < self.pages.cols);
     defer self.assertIntegrity();
 
+    if (self.cursor.x + n >= self.cursor.page_pin.node.cols()) {
+        self.ensurePageColumns(self.cursor.page_pin.node) catch return;
+    }
+
     const cell: [*]pagepkg.Cell = @ptrCast(self.cursor.page_cell);
     self.cursor.page_cell = @ptrCast(cell + n);
     self.cursor.page_pin.x += n;
@@ -886,6 +909,10 @@ pub fn cursorDown(self: *Screen, n: size.CellCountInt) void {
 pub fn cursorHorizontalAbsolute(self: *Screen, x: size.CellCountInt) void {
     assert(x < self.pages.cols);
     defer self.assertIntegrity();
+
+    if (x >= self.cursor.page_pin.node.cols()) {
+        self.ensurePageColumns(self.cursor.page_pin.node) catch return;
+    }
 
     self.cursor.page_pin.x = x;
     const page_rac = self.cursor.page_pin.rowAndCell();
@@ -965,6 +992,7 @@ pub fn cursorReload(self: *Screen) void {
 /// Scroll the active area and keep the cursor at the bottom of the screen.
 /// This is a very specialized function but it keeps it fast.
 pub fn cursorDownScroll(self: *Screen) !void {
+    try self.ensureActiveColumns();
     assert(self.cursor.y == self.pages.rows - 1);
     defer self.assertIntegrity();
 
@@ -1117,6 +1145,7 @@ pub fn cursorDownScroll(self: *Screen) !void {
 /// This scrolls the active area at and above the cursor.
 /// The lines below the cursor are not scrolled.
 pub fn cursorScrollAbove(self: *Screen) !void {
+    try self.ensureActiveColumns();
     // We unconditionally mark the cursor row as dirty here because
     // the cursor always changes page rows inside this function, and
     // when that happens it can mean the text in the old row needs to
@@ -1322,6 +1351,7 @@ fn cursorScrollAboveRotate(
 /// is optimized for the common case where the full region is within
 /// a single page.
 pub fn cursorScrollRegionUp(self: *Screen, limit: usize) !void {
+    try self.ensureActiveColumns();
     assert(limit >= 1);
     assert(self.cursor.y >= limit);
     defer self.assertIntegrity();
@@ -1546,7 +1576,26 @@ pub fn cursorCopy(self: *Screen, other: Cursor, opts: struct {
 /// setting up our cursor forces a capacity adjustment of the underlying
 /// cursor page, so any references to the page pin should be re-read
 /// from `self.cursor.page_pin` after calling this.
-inline fn cursorChangePin(self: *Screen, new: Pin) void {
+inline fn cursorChangePin(self: *Screen, requested: Pin) void {
+    var new = requested;
+    // PageList movement clamps to physical widths. The terminal cursor
+    // preserves its requested logical column by growing the destination.
+    new.x = self.cursor.x;
+    if (new.x >= new.node.cols()) {
+        // Track a valid coordinate while widening; the requested column
+        // becomes valid only once the replacement pages are committed.
+        const x = new.x;
+        const y = self.cursor.y;
+        new.x = 0;
+        if (self.pages.trackPin(new)) |tracked| {
+            defer self.pages.untrackPin(tracked);
+            self.ensurePageColumns(tracked.node) catch {};
+            new = tracked.*;
+        } else |_| {}
+        new.x = @min(x, new.node.cols() - 1);
+        self.cursor.x = new.x;
+        self.cursor.y = y;
+    }
     // Moving the cursor affects text run splitting (ligatures) so
     // we must mark the old and new page dirty. We do this as long
     // as the pins are not equal
@@ -1734,6 +1783,7 @@ pub inline fn scroll(self: *Screen, behavior: Scroll) void {
 ///
 /// Returns an error if memory for the new rows can't be allocated.
 pub inline fn scrollClear(self: *Screen) !void {
+    try self.ensureActiveColumns();
     defer self.assertIntegrity();
 
     // Scrolling adds rows one at a time, and each new row can cause the
@@ -2728,12 +2778,13 @@ fn splitForCapacity(
     // cursorChangePin to move to the new pin. The old node is guaranteed
     // to still exist, just not the row.
     //
-    // Note that page_row and all that will be invalid, it points to the
-    // new node, but at the time of writing this we don't need any of that
-    // to be right in cursorChangePin.
+    // The cached row and cell still point to the retired row in the old node.
     const new_cursor = self.cursor.page_pin.*;
     self.cursor.page_pin.* = old_cursor;
     self.cursorChangePin(new_cursor);
+    const rac = self.cursor.page_pin.rowAndCell();
+    self.cursor.page_row = rac.row;
+    self.cursor.page_cell = rac.cell;
 }
 
 /// Append a grapheme to the given cell within the current cursor row.
@@ -12081,6 +12132,14 @@ test "Screen setAttribute splits page on OutOfSpace at max styles" {
         node_before_set.prev != null or
         s.cursor.page_pin.node != original_node;
     try testing.expect(page_was_split);
+
+    // Printing after the split must use the cursor's new page.
+    const cursor_rac = s.cursor.page_pin.rowAndCell();
+    try testing.expectEqual(cursor_rac.row, s.cursor.page_row);
+    try testing.expectEqual(cursor_rac.cell, s.cursor.page_cell);
+    try s.testWriteString("X");
+    try testing.expectEqual(@as(u21, 'X'), cursor_rac.cell.codepoint());
+    try testing.expectEqual(s.cursor.style_id, cursor_rac.cell.style_id);
 }
 
 test "Screen: promptClickMove line right basic" {

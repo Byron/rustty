@@ -40,6 +40,16 @@ impl SelectionDrag {
     }
 }
 
+/// Keep egui-winit's native pointer position without waking egui for terminal hover.
+pub fn defer_pointer_move(raw: &mut egui::RawInput) -> Option<egui::Pos2> {
+    let Some(egui::Event::PointerMoved(position)) = raw.events.last() else {
+        return None;
+    };
+    let position = *position;
+    raw.events.pop();
+    Some(position)
+}
+
 /// Terminal keyboard and IME events are already handled by the native event loop.
 pub fn filter_egui_events(raw: &mut egui::RawInput, ui_input: bool) {
     if !ui_input {
@@ -433,6 +443,82 @@ pub fn chord_held(chord: config::Modifiers, current: config::Modifiers) -> bool 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn passive_pointer_motion_does_not_restart_egui_repaints_or_discard_clicks() {
+        let context = egui::Context::default();
+        let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 400.0));
+        let mut time = 0.0;
+        let mut draw = |events| {
+            time += 0.1;
+            let mut clicked = false;
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(rect),
+                    time: Some(time),
+                    events,
+                    ..Default::default()
+                },
+                |root| {
+                    egui::CentralPanel::default().show(root, |ui| {
+                        clicked = ui
+                            .interact(
+                                rect,
+                                egui::Id::new("terminal"),
+                                egui::Sense::click_and_drag(),
+                            )
+                            .clicked();
+                    });
+                },
+            );
+            output.textures_delta.clear();
+            clicked
+        };
+        // Entering the terminal is delivered normally, then the UI settles.
+        draw(vec![egui::Event::PointerMoved(egui::pos2(10.0, 10.0))]);
+        for _ in 0..4 {
+            draw(Vec::new());
+        }
+        assert!(!context.has_requested_repaint());
+        let mut raw = egui::RawInput::default();
+        let mut latest = None;
+        for frame in 0..10 {
+            for pixel in 0..100 {
+                raw.events.push(egui::Event::PointerMoved(egui::pos2(
+                    20.0 + pixel as f32,
+                    20.0 + frame as f32,
+                )));
+                latest = defer_pointer_move(&mut raw);
+                assert!(raw.events.is_empty());
+            }
+            // An unrelated redraw, such as cursor blinking, must stay idle afterward.
+            draw(std::mem::take(&mut raw.events));
+            assert!(!context.has_requested_repaint());
+        }
+        // egui-winit's button event carries the latest native coordinates, even
+        // when the intervening terminal hover events were deferred.
+        let position = latest.unwrap();
+        raw.events.push(egui::Event::PointerButton {
+            pos: position,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: Default::default(),
+        });
+        raw.events.push(egui::Event::PointerMoved(position));
+        assert_eq!(defer_pointer_move(&mut raw), Some(position));
+        assert_eq!(raw.events.len(), 1);
+        draw(std::mem::take(&mut raw.events));
+        assert_eq!(
+            context.input(|input| input.pointer.latest_pos()),
+            Some(position)
+        );
+        assert!(draw(vec![egui::Event::PointerButton {
+            pos: position,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: Default::default(),
+        }]));
+    }
 
     #[test]
     fn selection_requires_pointer_movement_and_can_select_one_cell() {

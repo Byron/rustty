@@ -2959,6 +2959,73 @@ fn resizeWithoutReflow(self: *PageList, opts: Resize) Allocator.Error!void {
     }
 }
 
+/// Widen one retained page without reflowing rows or changing neighboring pages.
+/// Tracked pins move only after all replacement pages have been prepared. On
+/// allocation failure the source page, pins, and allocation charge are unchanged.
+pub fn ensurePageColumns(self: *PageList, node: *List.Node) Allocator.Error!void {
+    const cols = self.cols;
+    if (node.cols() >= cols) return;
+    const page = node.page();
+
+    // Restored pages can retain spare physical columns after a prior shrink.
+    if (page.capacity.cols >= cols) fast: {
+        const rows = page.rows.ptr(page.memory)[0..page.size.rows];
+        for (rows) |*row| {
+            if (page.getCells(row)[page.size.cols - 1].wide == .spacer_head) break :fast;
+        }
+        page.size.cols = cols;
+        page.dirty = true;
+        self.page_compression.markActivity();
+        return;
+    }
+
+    // Use the same capacity policy as column growth without reflow. Wider
+    // rows can require several replacement pages even though row count stays.
+    const cap = page.capacity.adjust(.{ .cols = cols }) catch cap: {
+        var cap = page.capacity;
+        cap.cols = cols;
+        cap.rows = @min(page.size.rows, cap.rows);
+        break :cap cap;
+    };
+    var prepared: List = .{};
+    errdefer {
+        while (prepared.popFirst()) |new_node| self.destroyNode(new_node);
+    }
+
+    var copied: size.CellCountInt = 0;
+    while (copied < page.size.rows) {
+        const new_node = try self.createPage(.{ .cap = cap });
+        prepared.append(new_node);
+        const new_page = new_node.page();
+        const count = @min(cap.rows, page.size.rows - copied);
+        new_page.size.rows = count;
+        new_page.cloneFrom(page, copied, copied + count) catch |err| {
+            log.warn("failed to widen retained page err={}", .{err});
+            return error.OutOfMemory;
+        };
+        new_page.dirty = true;
+        copied += count;
+    }
+
+    // Nothing below allocates or fails. Only now may a tracked pin stop
+    // referring to the original page, which remains valid until the end.
+    const first = prepared.first.?;
+    while (prepared.popFirst()) |new_node| self.pages.insertBefore(node, new_node);
+    for (self.tracked_pins.keys()) |p| {
+        if (p.node != node) continue;
+        var target = first;
+        while (p.y >= target.rows()) {
+            p.y -= target.rows();
+            target = target.next.?;
+        }
+        p.node = target;
+    }
+    self.pages.remove(node);
+    self.destroyNode(node);
+    self.page_compression.markActivity();
+    self.assertIntegrity();
+}
+
 fn resizeWithoutReflowGrowCols(
     self: *PageList,
     cols: size.CellCountInt,
@@ -7814,6 +7881,56 @@ test "PageList Builder transfers mixed-width pages" {
         .node.next.?.page().getRowAndCell(0, 0).cell.codepoint());
 
     result.assertIntegrity();
+}
+
+test "PageList ensurePageColumns preserves source and pins on allocation failure" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    var builder = try Builder.init(alloc, .{ .cols = 32, .rows = 64 });
+    defer builder.deinit();
+    const page = try builder.allocatePage(.{
+        .cols = 4,
+        .rows = 64,
+        .styles = 0,
+        .grapheme_bytes = 0,
+        .hyperlink_bytes = 0,
+        .string_bytes = 0,
+    });
+    page.size.rows = 64;
+    page.getRowAndCell(3, 63).cell.* = .init('X');
+    var s = try builder.finish();
+    defer s.deinit();
+    const original = s.pages.first.?;
+    const p = try s.trackPin(.{ .node = original, .y = 63, .x = 3 });
+    defer s.untrackPin(p);
+    const old_charge = s.page_size;
+    const old_bytes = try alloc.dupe(u8, page.memory);
+    defer alloc.free(old_bytes);
+
+    // Fail the second backing-page allocation, after one replacement
+    // already copied source rows. Remove unused preheated pool items first.
+    while (s.pool.pages.free.pop()) |item| s.pool.pages.release(item);
+    var failing = testing.FailingAllocator.init(alloc, .{ .fail_index = 1 });
+    s.pool.pages.allocator = failing.allocator();
+    defer s.pool.pages.allocator = alloc;
+    try testing.expectError(error.OutOfMemory, s.ensurePageColumns(original));
+    try testing.expect(failing.has_induced_failure);
+    try testing.expectEqual(@as(usize, 1), failing.alloc_index);
+    try testing.expectEqual(original, s.pages.first.?);
+    try testing.expectEqual(original, s.pages.last.?);
+    try testing.expectEqual(original, p.node);
+    try testing.expectEqual(@as(size.CellCountInt, 63), p.y);
+    try testing.expectEqual(old_charge, s.page_size);
+    try testing.expectEqualSlices(u8, old_bytes, page.memory);
+    s.assertIntegrity();
+
+    s.pool.pages.allocator = alloc;
+    try s.ensurePageColumns(original);
+    try testing.expect(p.node != original);
+    try testing.expectEqual(@as(size.CellCountInt, 32), p.node.cols());
+    try testing.expectEqual(@as(u21, 'X'), p.rowAndCell().cell.codepoint());
+    try testing.expectEqual(point.Point{ .screen = .{ .x = 3, .y = 63 } }, s.pointFromPin(.screen, p.*));
+    try testing.expectEqual(@as(usize, 64), s.total_rows);
 }
 
 test "PageList Builder validates the finished list" {

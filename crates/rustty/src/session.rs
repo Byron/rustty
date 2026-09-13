@@ -186,7 +186,7 @@ impl Session {
                         }
                     };
                     let effects = match read_terminal.lock() {
-                        Ok(mut terminal) => terminal.feed(&buffer[..length]),
+                        Ok(mut terminal) => feed_output(&mut terminal, &buffer[..length]),
                         Err(_) => break,
                     };
                     for effect in effects {
@@ -403,6 +403,26 @@ fn scrollback_limits(config: &Config) -> ScrollbackLimits {
         bytes: config.scrollback_limit_bytes,
         lines: config.scrollback_limit_lines,
     }
+}
+
+fn feed_output(terminal: &mut Terminal, bytes: &[u8]) -> Vec<Effect> {
+    let had_title = !terminal.title_bytes().is_empty();
+    let mut effects = terminal.feed(bytes);
+    // RIS clears the title without a VT host effect. Reconcile at most one
+    // missing clear per read, preserving the ordered title/activity effects.
+    if terminal.title_bytes().is_empty()
+        && effects
+            .iter()
+            .rev()
+            .find_map(|effect| match effect {
+                Effect::Title(title) => Some(!title.is_empty()),
+                _ => None,
+            })
+            .unwrap_or(had_title)
+    {
+        effects.push(Effect::Title(Vec::new()));
+    }
+    effects
 }
 
 impl Drop for Session {
@@ -730,6 +750,60 @@ mod tests {
         assert_eq!(
             effects,
             ["start", "title:working", "progress:1", "end", "title:ready"]
+        );
+    }
+
+    #[test]
+    fn reader_reconciles_reset_titles_across_input_batches_without_extra_events() {
+        let stream = b"\x1b]133;C\x07\x1b]2;temporary\x07\x1b]133;D;0\x07\x1bc";
+        for split in 0..=stream.len() {
+            let mut terminal = Terminal::new(20, 2, 0);
+            terminal.shell_command_events = true;
+            let mut effects = feed_output(&mut terminal, &stream[..split]);
+            effects.extend(feed_output(&mut terminal, &stream[split..]));
+            assert_eq!(
+                effects,
+                [
+                    Effect::CommandStart,
+                    Effect::Title(b"temporary".to_vec()),
+                    Effect::CommandEnd { exit_code: Some(0) },
+                    Effect::Progress {
+                        state: 0,
+                        value: None,
+                    },
+                    Effect::Title(Vec::new()),
+                ],
+                "read split at {split}"
+            );
+            assert!(terminal.title_bytes().is_empty());
+            assert!(feed_output(&mut terminal, b"ordinary output").is_empty());
+        }
+
+        let mut terminal = Terminal::new(20, 2, 0);
+        assert!(feed_output(&mut terminal, b"initial output").is_empty());
+        assert_eq!(
+            feed_output(&mut terminal, b"\x1b]2;retained\x07"),
+            [Effect::Title(b"retained".to_vec())]
+        );
+        assert!(feed_output(&mut terminal, b"more output").is_empty());
+        assert_eq!(terminal.title_bytes(), b"retained");
+        // An explicit empty title already provides the reset's final state.
+        assert_eq!(
+            feed_output(&mut terminal, b"\x1b]2;\x07\x1bc"),
+            [
+                Effect::Title(Vec::new()),
+                Effect::Progress {
+                    state: 0,
+                    value: None,
+                },
+            ]
+        );
+        assert_eq!(
+            feed_output(&mut terminal, b"\x1bc"),
+            [Effect::Progress {
+                state: 0,
+                value: None,
+            }]
         );
     }
 

@@ -988,6 +988,7 @@ fn printSliceFill(
         // If we're soft-wrapping, handle that first so that our cursor
         // is in the row/column that will receive the next codepoint.
         if (screen.cursor.pending_wrap) try self.printWrap();
+        try screen.ensurePageColumns(screen.cursor.page_pin.node);
 
         // Our right margin depends on where our cursor is now,
         // matching the logic in print().
@@ -1286,6 +1287,8 @@ pub fn print(self: *Terminal, c: u21) !void {
         @branchHint(.cold);
         return;
     }
+
+    try self.screens.active.ensurePageColumns(self.screens.active.cursor.page_pin.node);
 
     // After doing any printing, wrapping, scrolling, etc. we want to ensure
     // that our screen remains in a consistent state.
@@ -1836,6 +1839,7 @@ fn printWrap(self: *Terminal) !void {
 
     // Move to the next line
     try self.index();
+    try self.screens.active.ensurePageColumns(self.screens.active.cursor.page_pin.node);
     self.screens.active.cursorHorizontalAbsolute(self.scrolling_region.left);
 
     // Our pointer should never move
@@ -3078,6 +3082,8 @@ pub fn insertLines(self: *Terminal, count: usize) void {
         self.screens.active.cursor.x < self.scrolling_region.left or
         self.screens.active.cursor.x > self.scrolling_region.right) return;
 
+    self.screens.active.ensureActiveColumns() catch return;
+
     if (comptime build_options.kitty_graphics) {
         // Scrolling dirties the images because it updates their placements pins.
         self.screens.active.kitty_images.markDirty();
@@ -3252,6 +3258,8 @@ pub fn deleteLines(self: *Terminal, count: usize) void {
         self.screens.active.cursor.x < self.scrolling_region.left or
         self.screens.active.cursor.x > self.scrolling_region.right) return;
 
+    self.screens.active.ensureActiveColumns() catch return;
+
     if (comptime build_options.kitty_graphics) {
         // Scrolling dirties the images because it updates their placements pins.
         self.screens.active.kitty_images.markDirty();
@@ -3418,6 +3426,8 @@ pub fn insertBlanks(self: *Terminal, count: usize) void {
     if (self.screens.active.cursor.x < self.scrolling_region.left or
         self.screens.active.cursor.x > self.scrolling_region.right) return;
 
+    self.screens.active.ensurePageColumns(self.screens.active.cursor.page_pin.node) catch return;
+
     // If our count is larger than the remaining amount, we just erase right.
     // We only do this if we can erase the entire line (no right margin).
     // if (right_limit == self.cols and
@@ -3510,6 +3520,8 @@ pub fn deleteChars(self: *Terminal, count_req: usize) void {
     if (self.screens.active.cursor.x < self.scrolling_region.left or
         self.screens.active.cursor.x > self.scrolling_region.right) return;
 
+    self.screens.active.ensurePageColumns(self.screens.active.cursor.page_pin.node) catch return;
+
     // left is just the cursor position but as a multi-pointer
     const left: [*]Cell = @ptrCast(self.screens.active.cursor.page_cell);
     var page = self.screens.active.cursor.page_pin.node.page();
@@ -3553,6 +3565,7 @@ pub fn deleteChars(self: *Terminal, count_req: usize) void {
 }
 
 pub fn eraseChars(self: *Terminal, count_req: usize) void {
+    self.screens.active.ensurePageColumns(self.screens.active.cursor.page_pin.node) catch return;
     const count = end: {
         const remaining = self.cols - self.screens.active.cursor.x;
         var end = @min(remaining, @max(count_req, 1));
@@ -3609,6 +3622,7 @@ pub fn eraseLine(
     mode: csi.EraseLine,
     protected_req: bool,
 ) void {
+    self.screens.active.ensurePageColumns(self.screens.active.cursor.page_pin.node) catch return;
     // Get our start/end positions depending on mode.
     const start, const end = switch (mode) {
         .right => right: {
@@ -3694,6 +3708,7 @@ pub fn eraseDisplay(
     mode: csi.EraseDisplay,
     protected_req: bool,
 ) void {
+    if (mode != .scrollback) self.screens.active.ensureActiveColumns() catch return;
     // We respect protected attributes if explicitly requested (probably
     // a DECSEL sequence) or if our last protected mode was ISO even if its
     // not currently set.
@@ -3830,6 +3845,7 @@ pub fn eraseDisplay(
 ///
 /// Sets the cursor to the top left corner.
 pub fn decaln(self: *Terminal) !void {
+    try self.screens.active.ensureActiveColumns();
     // Clear our stylistic attributes. This is the only thing that can
     // fail so we do it first so we can undo it.
     const old_style = self.screens.active.cursor.style;
@@ -5210,6 +5226,137 @@ fn isDirty(t: *const Terminal, pt: point.Point) bool {
 /// Clear all dirty bits. Testing only.
 fn clearDirty(t: *Terminal) void {
     t.screens.active.pages.clearDirty();
+}
+
+fn testNarrowPages() !Terminal {
+    const alloc = testing.allocator;
+    var t = try init(testing.io, alloc, .{ .cols = 8, .rows = 2 });
+    errdefer t.deinit(alloc);
+    var builder = try PageList.Builder.init(alloc, .{ .cols = 8, .rows = 2 });
+    defer builder.deinit();
+    inline for (.{ "ABCD", "EFGH" }) |text| {
+        const page = try builder.allocatePage(.{ .cols = 4, .rows = 1 });
+        page.size.rows = 1;
+        for (text, 0..) |cp, x| page.getRowAndCell(x, 0).cell.* = .init(cp);
+    }
+    var pages = try builder.finish();
+    errdefer pages.deinit();
+    const p = try pages.trackPin(pages.getTopLeft(.active));
+    const rac = p.rowAndCell();
+    t.screens.active.pages.deinit();
+    t.screens.active.pages = pages;
+    t.screens.active.cursor = .{ .page_pin = p, .page_row = rac.row, .page_cell = rac.cell };
+    return t;
+}
+
+test "Terminal: narrow retained pages preserve widths until mutation" {
+    var t = try testNarrowPages();
+    defer t.deinit(testing.allocator);
+    const first = t.screens.active.pages.pages.first.?;
+    const last = t.screens.active.pages.pages.last.?;
+    const text = try t.plainString(testing.allocator);
+    defer testing.allocator.free(text);
+    try testing.expectEqualStrings("ABCD\nEFGH", text);
+    t.cursorDown(1);
+    t.cursorUp(1);
+    t.insertLines(0);
+    t.deleteLines(0);
+    t.insertBlanks(0);
+    t.deleteChars(0);
+    t.eraseDisplay(.scrollback, false);
+    try testing.expectEqual(first, t.screens.active.pages.pages.first.?);
+    try testing.expectEqual(last, t.screens.active.pages.pages.last.?);
+    try testing.expectEqual(@as(size.CellCountInt, 4), first.cols());
+    try testing.expectEqual(@as(size.CellCountInt, 4), last.cols());
+    t.screens.active.pages.assertIntegrity();
+}
+
+test "Terminal: narrow retained pages print through both stream paths" {
+    inline for (.{ false, true }) |scalar| {
+        inline for (.{ false, true }) |linked| {
+            var t = try testNarrowPages();
+            defer t.deinit(testing.allocator);
+            const screen = t.screens.active;
+            try screen.setAttribute(.bold);
+            if (linked) try screen.startHyperlink("https://example.com", "id");
+            const p = try screen.pages.trackPin(screen.cursor.page_pin.*);
+            defer screen.pages.untrackPin(p);
+            var stream = t.vtStream();
+            defer stream.deinit();
+            const text = "12345678Z";
+            if (scalar) {
+                for (text) |cp| stream.next(cp);
+            } else stream.nextSlice(text);
+            try testing.expectEqual(@as(size.CellCountInt, 8), p.node.cols());
+            try testing.expectEqual(@as(u21, '1'), p.rowAndCell().cell.codepoint());
+            try testing.expectEqual(@as(size.CellCountInt, 1), screen.cursor.x);
+            try testing.expectEqual(@as(size.CellCountInt, 1), screen.cursor.y);
+            try testing.expect(screen.cursor.style.flags.bold);
+            if (linked) try testing.expectEqualStrings("https://example.com", screen.cursor.hyperlink.?.uri);
+            const cell = screen.pages.getCell(.{ .active = .{ .x = 0, .y = 1 } }).?;
+            try testing.expectEqual(@as(u21, 'Z'), cell.cell.codepoint());
+            const page = screen.cursor.page_pin.node.page();
+            try testing.expect(page.styles.get(page.memory, cell.cell.style_id).flags.bold);
+            try testing.expectEqual(linked, cell.cell.hyperlink);
+            screen.pages.assertIntegrity();
+        }
+    }
+}
+
+test "Terminal: narrow retained pages support direct cursor and erase operations" {
+    var t = try testNarrowPages();
+    defer t.deinit(testing.allocator);
+    t.setCursorPos(1, 7);
+    t.cursorDown(1);
+    try testing.expectEqual(@as(size.CellCountInt, 6), t.screens.active.cursor.x);
+    try testing.expectEqual(@as(size.CellCountInt, 1), t.screens.active.cursor.y);
+    try testing.expect(t.screens.active.pages.pinIsValid(t.screens.active.cursor.page_pin.*));
+    t.eraseLine(.complete, false);
+    t.cursorUp(1);
+    t.setCursorPos(1, 1);
+    t.eraseChars(8);
+    const text = try t.plainString(testing.allocator);
+    defer testing.allocator.free(text);
+    try testing.expectEqualStrings("", text);
+    t.screens.active.pages.assertIntegrity();
+}
+
+test "Terminal: narrow retained pages print across narrow margins" {
+    inline for (.{ false, true }) |scalar| {
+        var t = try testNarrowPages();
+        defer t.deinit(testing.allocator);
+        t.scrolling_region.right = 2;
+        var stream = t.vtStream();
+        defer stream.deinit();
+        if (scalar) {
+            for ("1234") |cp| stream.next(cp);
+        } else stream.nextSlice("1234");
+        try testing.expectEqual(@as(size.CellCountInt, 8), t.screens.active.cursor.page_pin.node.cols());
+        try testing.expectEqual(@as(size.CellCountInt, 1), t.screens.active.cursor.x);
+        try testing.expectEqual(@as(size.CellCountInt, 1), t.screens.active.cursor.y);
+        t.screens.active.pages.assertIntegrity();
+    }
+}
+
+test "Terminal: narrow retained pages support direct row edits" {
+    const Action = enum { erase, insert, delete };
+    inline for ([_]Action{ .erase, .insert, .delete }) |action| {
+        var t = try testNarrowPages();
+        defer t.deinit(testing.allocator);
+        switch (action) {
+            .erase => t.eraseDisplay(.complete, false),
+            .insert => t.insertLines(1),
+            .delete => t.deleteLines(1),
+        }
+        const text = try t.plainString(testing.allocator);
+        defer testing.allocator.free(text);
+        try testing.expectEqualStrings(switch (action) {
+            .erase => "",
+            .insert => "\nABCD",
+            .delete => "EFGH",
+        }, text);
+        t.screens.active.pages.assertIntegrity();
+    }
 }
 
 test "Terminal: setCursorPos saturates overflowing origin offsets" {

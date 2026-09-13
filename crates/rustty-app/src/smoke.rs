@@ -74,12 +74,13 @@ impl Smoke {
         }))
     }
     pub(super) fn configure(loaded: &mut LoadedConfig) {
-        let command = config::Command::Direct(vec!["/bin/sh".into(),"-c".into(),r"printf '\033[2J\033[H\033[1;36mRustty native smoke\033[0m\n\033]7;file://localhost/tmp\007'; exec /bin/sh -i".into()]);
+        let command = config::Command::Direct(vec!["/bin/sh".into(),"-c".into(),r"printf '\033[2J\033[H\033[1;36mRustty native smoke\033[0m\n\033]7;file://localhost/tmp\007\033]9;4;1;65\007'; exec /bin/sh -i".into()]);
         loaded.config.command = Some(command.clone());
         loaded.config.initial_command = Some(command);
         loaded.config.working_directory = Some(PathBuf::from("/tmp"));
         loaded.config.window_save_state = config::WindowSaveState::Always;
         loaded.config.cursor_style_blink = Some(false);
+        loaded.config.progress_style = true;
         loaded.config.undo_timeout = Duration::from_secs(5);
         loaded.config.keybinds.retain(|b| !b.flags.global);
     }
@@ -109,9 +110,14 @@ impl Smoke {
                 .values()
                 .map(|host| Platform::window_diagnostics(&host.window))
                 .collect();
+            let progress: Vec<_> = app
+                .panes
+                .iter()
+                .map(|(&id, pane)| (id, pane.activity.progress()))
+                .collect();
             return Err(format!(
-                "native smoke timed out at stage {}: {:?}; windows: {:?}",
-                self.stage, app.errors, windows
+                "native smoke timed out at stage {}: {:?}; windows: {:?}; pane progress: {:?}",
+                self.stage, app.errors, windows, progress
             )
             .into());
         }
@@ -210,6 +216,18 @@ impl Smoke {
                 if app.panes.values().any(|p| p.cwd != Path::new("/tmp")) {
                     return Err("OSC directory was not decoded before restoration".into());
                 }
+                if app.panes.values().any(|p| {
+                    p.activity.progress()
+                        != Some(Progress {
+                            state: 1,
+                            value: Some(65),
+                        })
+                }) {
+                    // The worker exposes terminal text before the UI drains
+                    // its queued progress effects. Wait for both, bounded by
+                    // the smoke deadline, rather than racing event delivery.
+                    return Ok(false);
+                }
                 if self.closed.is_none() {
                     self.closed = Some((pane, app.panes[&pane].started));
                     app.action(event_loop, host, Action::CloseSurface, true);
@@ -292,7 +310,7 @@ impl Smoke {
                     )
                     .into());
                 }
-                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
+                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
                 fs::write(
                     self.directory.join("result.json"),
                     serde_json::to_vec_pretty(&report)?,

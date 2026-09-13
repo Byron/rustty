@@ -6,7 +6,7 @@ use std::{
     collections::HashMap,
     ffi::c_void,
     io::{self, Read},
-    path::Path,
+    path::{Path, PathBuf},
     ptr::NonNull,
     rc::Rc,
     sync::{
@@ -30,10 +30,11 @@ use objc2::{
 };
 use objc2_app_kit::{
     NSAccessibility, NSAnimatablePropertyContainer, NSAnimationContext, NSApplication,
-    NSApplicationActivationOptions, NSColor, NSColorSpace, NSEvent, NSFloatingWindowLevel,
-    NSPasteboard, NSPasteboardAccessBehavior, NSPasteboardItem, NSPasteboardTypeString,
-    NSPopUpMenuWindowLevel, NSRunningApplication, NSScreen, NSUserInterfaceItemIdentification,
-    NSView, NSWindow, NSWindowAnimationBehavior, NSWindowCollectionBehavior, NSWindowTabbingMode,
+    NSApplicationActivationOptions, NSColor, NSColorSpace, NSEvent, NSFloatingWindowLevel, NSMenu,
+    NSModalResponseCancel, NSModalResponseOK, NSOpenPanel, NSPasteboard,
+    NSPasteboardAccessBehavior, NSPasteboardItem, NSPasteboardTypeString, NSPopUpMenuWindowLevel,
+    NSRunningApplication, NSScreen, NSUserInterfaceItemIdentification, NSView, NSWindow,
+    NSWindowAnimationBehavior, NSWindowCollectionBehavior, NSWindowTabbingMode,
     NSWindowTitleVisibility, NSWorkspace,
 };
 use objc2_core_foundation::{
@@ -190,6 +191,9 @@ impl Platform {
             item.set_key_accelerator(accelerator)
                 .map_err(|e| e.to_string())?;
         }
+        if let Some(menu) = NSApplication::sharedApplication(self.mtm).mainMenu() {
+            update_native_menu_accelerators(&menu, &config.keybinds);
+        }
         let bindings: Vec<_> = config
             .keybinds
             .iter()
@@ -239,6 +243,8 @@ impl Platform {
             OptionAsAlt::Right => WinitOptionAsAlt::OnlyRight,
         });
         let native = native_window(window)?;
+        // Rustty manages tabs itself; AppKit must keep workspace windows separate.
+        native.setTabbingMode(NSWindowTabbingMode::Disallowed);
         native.setTitlebarAppearsTransparent(true);
         native.setTitleVisibility(NSWindowTitleVisibility::Hidden);
         native.setMovableByWindowBackground(false);
@@ -267,7 +273,6 @@ impl Platform {
                 config.quick_terminal_space_behavior,
             ));
             native.setExcludedFromWindowsMenu(true);
-            native.setTabbingMode(NSWindowTabbingMode::Disallowed);
             native.setRestorable(false);
             native.setAnimationBehavior(NSWindowAnimationBehavior::None);
             // Native auto-hide would bypass the host's visibility state.
@@ -585,6 +590,38 @@ impl Platform {
         open_native_url(&url)
     }
 
+    pub fn choose_layout_path(&self) -> Result<Option<PathBuf>, String> {
+        let panel = NSOpenPanel::openPanel(self.mtm);
+        panel.setTitle(Some(&NSString::from_str("Import Saved Layout")));
+        panel.setMessage(Some(&NSString::from_str(
+            "Choose a Rustty workspace JSON file or a Ghostty .savedState folder.",
+        )));
+        panel.setPrompt(Some(&NSString::from_str("Import")));
+        panel.setCanChooseFiles(true);
+        panel.setCanChooseDirectories(true);
+        panel.setAllowsMultipleSelection(false);
+        panel.setCanCreateDirectories(false);
+        panel.setTreatsFilePackagesAsDirectories(false);
+        // The string-based API avoids adding a UniformTypeIdentifiers dependency.
+        #[allow(deprecated)]
+        panel.setAllowedFileTypes(Some(&NSArray::from_slice(&[
+            &*NSString::from_str("json"),
+            &*NSString::from_str("savedState"),
+        ])));
+        let response = panel.runModal();
+        if response == NSModalResponseCancel {
+            return Ok(None);
+        }
+        if response != NSModalResponseOK {
+            return Err("Could not display the saved layout picker".into());
+        }
+        panel
+            .URL()
+            .and_then(|url| url.to_file_path())
+            .map(Some)
+            .ok_or_else(|| "The selected layout has no valid file path".into())
+    }
+
     pub fn open_config(&self, path: &Path) -> Result<(), String> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -598,8 +635,21 @@ impl Platform {
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (),
             Err(e) => return Err(e.to_string()),
         }
-        let path = path.to_str().ok_or("config path is not valid UTF-8")?;
-        open_native_url(&NSURL::fileURLWithPath(&NSString::from_str(path)))
+        // Legacy Ghostty/Rustty extensions may have no Launch Services handler.
+        // `-t` selects the user's default text editor instead of the file type.
+        let status = std::process::Command::new("/usr/bin/open")
+            .arg("-t")
+            .arg(path)
+            .status()
+            .map_err(|error| format!("Could not open settings in a text editor: {error}"))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!(
+                "The text editor could not open {} ({status})",
+                path.display()
+            ))
+        }
     }
 }
 
@@ -1123,6 +1173,7 @@ fn make_menu() -> Result<(Menu, Vec<(MenuItem, Action)>), String> {
     for (name, action) in [
         ("New Window", Action::NewWindow),
         ("New Tab", Action::NewTab),
+        ("Open Saved Layout…", Action::OpenLayout),
         ("Split Right", Action::NewSplit(Direction::Right)),
         ("Split Down", Action::NewSplit(Direction::Down)),
         ("Close Surface", Action::CloseSurface),
@@ -1239,6 +1290,61 @@ fn menu_accelerator(trigger: &KeyTrigger) -> Option<KeyAccelerator> {
         _ => return None,
     };
     Some(KeyAccelerator::new(Some(mods), key))
+}
+
+fn update_native_menu_accelerators(menu: &NSMenu, bindings: &[KeyBinding]) {
+    for item in menu.itemArray() {
+        if let Some(submenu) = item.submenu() {
+            update_native_menu_accelerators(&submenu, bindings);
+        }
+        let Some(action) = item.action() else {
+            continue;
+        };
+        let (key, alt) = if action == sel!(hide:) {
+            ("h", false)
+        } else if action == sel!(hideOtherApplications:) {
+            ("h", true)
+        } else if action == sel!(performMiniaturize:) {
+            ("m", false)
+        } else {
+            continue;
+        };
+        // Muda has no accelerator setter for predefined items. Keep their native
+        // actions and modifier masks, but let configured keys reach app routing.
+        item.setKeyEquivalent(&NSString::from_str(native_menu_key_equivalent(
+            bindings,
+            key,
+            Modifiers {
+                alt,
+                super_key: true,
+                ..Modifiers::default()
+            },
+        )));
+    }
+}
+
+fn native_menu_key_equivalent<'a>(
+    bindings: &[KeyBinding],
+    key: &'a str,
+    modifiers: Modifiers,
+) -> &'a str {
+    let configured = bindings
+        .iter()
+        .filter(|binding| binding.table.is_none())
+        .flat_map(|binding| &binding.trigger)
+        .any(|trigger| {
+            trigger.modifiers == modifiers
+                && (trigger.physical
+                    || trigger.key == "catch_all"
+                    || trigger
+                        .key
+                        .strip_prefix("key_")
+                        .unwrap_or(&trigger.key)
+                        .eq_ignore_ascii_case(key))
+        });
+    // Include conditional bindings and every sequence step. Physical bindings
+    // stay in app routing since their characters depend on the keyboard layout.
+    if configured { "" } else { key }
 }
 
 struct TapRegistration {
@@ -1783,6 +1889,54 @@ mod tests {
             assert_eq!(hidden.origin, origin);
             assert_eq!(hidden.size, frame.size);
         }
+    }
+
+    #[test]
+    fn native_menu_shortcuts_yield_to_configured_bindings_and_return_after_reload() {
+        let command = Modifiers {
+            super_key: true,
+            ..Modifiers::default()
+        };
+        let command_option = Modifiers {
+            alt: true,
+            ..command
+        };
+        let mut bindings = Config::default().keybinds;
+        assert_eq!(native_menu_key_equivalent(&bindings, "h", command), "h");
+        assert_eq!(
+            native_menu_key_equivalent(&bindings, "h", command_option),
+            "h"
+        );
+        assert_eq!(native_menu_key_equivalent(&bindings, "m", command), "m");
+        for (binding, key, modifiers, expected) in [
+            ("cmd+h=goto_split:left", "h", command, ""),
+            ("cmd+key_h=goto_split:left", "h", command, ""),
+            ("performable:cmd+h=goto_split:left", "h", command, ""),
+            ("unconsumed:cmd+h=goto_split:left", "h", command, ""),
+            ("all:cmd+h=goto_split:left", "h", command, ""),
+            ("global:cmd+h=goto_split:left", "h", command, ""),
+            ("cmd+h>l=goto_split:left", "h", command, ""),
+            ("cmd+k>cmd+h=goto_split:left", "h", command, ""),
+            ("cmd+catch_all=goto_split:left", "h", command, ""),
+            ("physical:cmd+h=goto_split:left", "h", command, ""),
+            // A physical Q can produce H on another keyboard layout.
+            ("physical:cmd+q=goto_split:left", "h", command, ""),
+            ("cmd+ctrl+h=goto_split:left", "h", command, "h"),
+            ("cmd+j=goto_split:left", "h", command, "h"),
+            ("navigation/cmd+h=goto_split:left", "h", command, "h"),
+            ("cmd+h=goto_split:left", "h", command_option, "h"),
+            ("cmd+alt+h=goto_split:left", "h", command_option, ""),
+            ("cmd+m=goto_split:left", "m", command, ""),
+        ] {
+            bindings = vec![KeyBinding::parse(binding).unwrap()];
+            assert_eq!(
+                native_menu_key_equivalent(&bindings, key, modifiers),
+                expected,
+                "{binding}"
+            );
+        }
+        bindings.clear();
+        assert_eq!(native_menu_key_equivalent(&bindings, "m", command), "m");
     }
 
     #[test]

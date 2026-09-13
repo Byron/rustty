@@ -8,6 +8,43 @@ fn osc(number: &str, body: &[u8]) -> Vec<u8> {
 }
 
 #[test]
+fn allocating_capture_counts_payload_and_reserves_native_terminating_nul() {
+    let limit = rustty_parser::MAX_OSC_BYTES;
+    for length in [limit - 1, limit, limit + 1] {
+        let mut terminal = Terminal::new(2, 2, 0);
+        let mut body = vec![b'A'; length];
+        body[0] = b';';
+        let effects = terminal.feed(&osc("52", &body));
+        if length < limit {
+            let [Effect::ClipboardWrite(request)] = effects.as_slice() else {
+                panic!("expected clipboard write");
+            };
+            assert_eq!(request.contents[0].data.len(), (length - 1) * 3 / 4);
+        } else {
+            assert!(effects.is_empty());
+        }
+
+        body[..4].copy_from_slice(b"t=q;");
+        let effects = terminal.feed(&osc("72", &body));
+        if length <= limit {
+            assert_eq!(effects, [Effect::Write(b"\x1b]72;t=q\x07".to_vec())]);
+        } else {
+            assert!(effects.is_empty());
+        }
+    }
+
+    // A direct terminal reset preserves pending parser input and its budget.
+    let mut terminal = Terminal::new(2, 2, 0);
+    terminal.feed(b"\x1b]72;t=q;");
+    terminal.reset();
+    terminal.feed(&vec![b'x'; limit - 4]);
+    assert_eq!(
+        terminal.feed(b"\x07"),
+        [Effect::Write(b"\x1b]72;t=q\x07".to_vec())]
+    );
+}
+
+#[test]
 fn title_validation_precedes_byte_truncation_and_raw_setters_preserve_data() {
     let mut terminal = Terminal::new(80, 24, 0);
     let mut title = vec![b'a'; 1023];

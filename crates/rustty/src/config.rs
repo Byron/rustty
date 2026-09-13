@@ -275,6 +275,7 @@ pub struct Config {
     pub undo_timeout: Duration,
     pub quit_after_last_window_closed: bool,
     pub bell_features: BellFeatures,
+    pub progress_style: bool,
     pub notify_on_command_finish: NotifyOnCommandFinish,
     pub notify_on_command_finish_action: NotifyActions,
     pub notify_on_command_finish_after: Duration,
@@ -358,6 +359,7 @@ impl Default for Config {
             undo_timeout: Duration::from_secs(5),
             quit_after_last_window_closed: false,
             bell_features: BellFeatures::default(),
+            progress_style: true,
             notify_on_command_finish: NotifyOnCommandFinish::Never,
             notify_on_command_finish_action: NotifyActions::default(),
             notify_on_command_finish_after: Duration::from_secs(5),
@@ -523,6 +525,7 @@ impl Config {
                 set!(quit_after_last_window_closed, parse_bool(value)?)
             }
             "bell-features" => set!(bell_features, parse_bell_features(value)?),
+            "progress-style" => set!(progress_style, parse_bool(value)?),
             "notify-on-command-finish" => set!(
                 notify_on_command_finish,
                 NotifyOnCommandFinish::parse(value)?
@@ -630,6 +633,8 @@ pub struct LoadedConfig {
     pub diagnostics: Vec<Diagnostic>,
     /// Use only for an explicit create/edit action. Loading never creates files.
     pub own_config_path: PathBuf,
+    /// Settings opens the selected root file, preserving Ghostty fallback.
+    pub edit_config_path: PathBuf,
 }
 
 /// Explicit paths make configuration loading independent of process-global
@@ -673,17 +678,19 @@ impl ConfigLoader {
     pub fn load_with_args(&self, args: &[String]) -> LoadedConfig {
         let own_app = self.home.join("Library/Application Support/com.rustty.app");
         let own = candidates(&self.xdg_config_home.join("rustty"), &own_app, "rustty");
+        let own_config_path = own
+            .iter()
+            .rev()
+            .find(|p| present(p))
+            .cloned()
+            .unwrap_or_else(|| own_app.join("rustty.txt"));
         let mut result = LoadedConfig {
             config: Config::default(),
             family: ConfigFamily::Defaults,
             sources: vec![],
             diagnostics: vec![],
-            own_config_path: own
-                .iter()
-                .rev()
-                .find(|p| present(p))
-                .cloned()
-                .unwrap_or_else(|| own_app.join("config.rustty")),
+            edit_config_path: own_config_path.clone(),
+            own_config_path,
         };
         let mut entries = Vec::new();
         let mut includes = VecDeque::new();
@@ -766,6 +773,9 @@ impl ConfigLoader {
             }
             paths
         };
+        if let Some(path) = roots.iter().rev().find(|p| present(p)) {
+            result.edit_config_path = path.clone();
+        }
         for path in roots {
             self.read_entries(
                 &path,
@@ -1087,12 +1097,19 @@ fn push_diagnostic(
     });
 }
 fn candidates(xdg: &Path, app: &Path, extension: &str) -> Vec<PathBuf> {
-    vec![
-        xdg.join("config"),
-        xdg.join(format!("config.{extension}")),
-        app.join("config"),
-        app.join(format!("config.{extension}")),
-    ]
+    [xdg, app]
+        .into_iter()
+        .flat_map(|directory| {
+            let mut paths = vec![
+                directory.join("config"),
+                directory.join(format!("config.{extension}")),
+            ];
+            if extension == "rustty" {
+                paths.push(directory.join("rustty.txt"));
+            }
+            paths
+        })
+        .collect()
 }
 fn present(path: &Path) -> bool {
     !matches!(fs::symlink_metadata(path), Err(error) if error.kind() == io::ErrorKind::NotFound)

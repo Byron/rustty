@@ -1,4 +1,5 @@
 """Checks that the differential runner cannot hide missing coverage or state."""
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -7,6 +8,18 @@ import parity
 
 
 class HarnessTests(unittest.TestCase):
+    def test_failure_artifacts_can_live_outside_the_checkout(self):
+        request = {"id": "regression", "operations": []}
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary) / "checkout"
+            for artifacts in (root / "evidence", Path(temporary) / "external"):
+                with patch.object(parity, "ROOT", root), patch.object(parity, "ARTIFACTS", artifacts):
+                    reported = parity.save_failure(request, {"ok": True}, None, "oracle exited")
+                actual = root / reported
+                self.assertEqual(request, json.loads((actual / "request.json").read_text()))
+                self.assertEqual("oracle exited\n", (actual / "difference.txt").read_text())
+                self.assertEqual(artifacts.parent != root, reported.is_absolute())
+
     def test_color_and_effect_differences_are_observed(self):
         left = {"cells": [{"text": [65], "color": [1, 2, 3]}], "events": ["bell"]}
         right = {"cells": [{"text": [65], "color": [1, 9, 3]}], "events": ["bell"]}
@@ -58,6 +71,13 @@ class HarnessTests(unittest.TestCase):
     def test_generated_cases_are_reproducible(self):
         self.assertEqual(list(parity.generated_requests(42, 3)), list(parity.generated_requests(42, 3)))
         self.assertNotEqual(list(parity.generated_requests(41, 3)), list(parity.generated_requests(42, 3)))
+
+    def test_large_delivery_keeps_bytes_and_bounded_transport_overhead(self):
+        data = bytes(range(256)) * 512
+        request = {"id": "large", "operations": [{"op": "write", "data": data.hex()}]}
+        for variant in parity.variants(request):
+            self.assertEqual(data, b"".join(bytes.fromhex(op["data"]) for op in variant["operations"]))
+            self.assertLess(len(json.dumps(variant)), len(data) * 2 + 65536)
 
     def test_parser_corpus_keeps_its_first_byte(self):
         data = b"\x1b[31m"
