@@ -35,6 +35,17 @@ def frame(records):
 
 
 def wire_requests(root, reference):
+    import hyperlink_requests
+    import snapshot_resources
+    yield from snapshot_resources.requests(reference)
+    yield from snapshot_resources.style_requests(reference)
+    reference_limits = []
+    for request, covers in hyperlink_requests.requests(reference):
+        if request["id"].startswith("snapshot/reference-limit/"):
+            reference_limits.append((request, covers))
+        else:
+            yield request, covers
+
     data = fixture(root / "src/terminal/snapshot/testdata/complete-v1.hex")
     if frame(records(data)) != data:
         raise RuntimeError("snapshot fixture framing or checksum differs")
@@ -43,7 +54,6 @@ def wire_requests(root, reference):
         write(b"\x1b[?1049l\x1b[0mZ"),
     ]}, ["snapshot.fixtures"])
 
-    reference_limits = []
     for physical, logical in ((4, 8), (8, 4)):
         encoded = reference.request({"id": "snapshot/mixed-source", "cols": physical, "rows": 1,
             "operations": [write(b"abcdefgh"[:physical]), {"op": "snapshot"}]})
@@ -55,9 +65,9 @@ def wire_requests(root, reference):
         struct.pack_into("<H", terminal, 18, logical - 1)
         parts[0] = (1, terminal)
         if physical > logical:
-            reference_limits.append({"id": "snapshot/reference-limit/wide-cursor", "operations": [
+            reference_limits.append(({"id": "snapshot/reference-limit/wide-cursor", "operations": [
                 {"op": "restore", "data": frame(parts).hex()}, {"op": "observe"},
-            ]})
+            ]}, ["snapshot.cross-decode"]))
             screen = bytearray(parts[1][1])
             struct.pack_into("<H", screen, 12, logical - 1)
             screen[17] &= ~1  # The cursor no longer reaches the physical edge.
@@ -72,13 +82,12 @@ def wire_requests(root, reference):
                 "operations": [{"op": "restore", "data": data.hex()}, {"op": "observe"}] + after}
             if physical < logical and name == "right":
                 request["id"] = "snapshot/reference-limit/narrow-cursor-right"
-                reference_limits.append(request)
+                reference_limits.append((request, ["snapshot.cross-decode"]))
             else:
                 yield request, ["snapshot.cross-decode"]
     # Keep reference assertions visible and in thorough runs. They are last so
     # an infrastructure abort does not hide the preceding decoder comparisons.
-    for request in reference_limits:
-        yield request, ["snapshot.cross-decode"]
+    yield from reference_limits
 
 
 def streaming_requests(root):
@@ -125,6 +134,31 @@ def requests():
     yield case("empty", b"")
     yield case("unicode", "é界👩🏽‍💻".encode())
     yield case("styles-links", b"\x1b[1;3;38:2::10:20:30mA\x1b]8;id=x;https://example.org\x1b\\B")
+    for count in (103, 104, 207, 208, 256):
+        yield case(f"encoding-resources/styles/{count}",
+                   b"".join(f"\x1b[38;5;{index}mX".encode() for index in range(count)),
+                   cols=64, rows=4)
+    import snapshot_resources
+    colliding = []
+    number = 0
+    while len(colliding) < 33:
+        if snapshot_resources._style_hash(snapshot_resources._style_value(number)) & 127 == 127:
+            colliding.append(number)
+        number += 1
+    yield case("encoding-resources/style-collision",
+               b"".join(f"\x1b[38;2;{value & 255};{value >> 8 & 255};{value >> 16 & 255}mX".encode()
+                        for value in colliding), cols=16, rows=3)
+    for count in (2, 3, 32, 40):
+        yield case(f"encoding-resources/links/{count}",
+                   b"".join(f"\x1b]8;id={index};https://example.org/{index}/{'x' * 128}\x07XXXXX".encode()
+                            for index in range(count)), cols=80, rows=4)
+    for count in (102, 103, 200):
+        yield case(f"encoding-resources/linked-cells/{count}",
+                   b"\x1b]8;id=one;https://example.org\x07" + b"x" * count,
+                   cols=80, rows=3)
+    for count in (30, 31, 32, 64):
+        yield case(f"encoding-resources/graphemes/{count}",
+                   ("\x1b[?2027h" + ("A" + "\u0301" * 64) * count).encode(), cols=16, rows=4)
     yield case("saved-cursor", b"A\x1b[31m\x1b7\x1b[4;8HB", b"\x1b8C")
     yield case("alt-active", b"primary\x1b[?1049halternate", b"\x1b[?1049lZ")
     yield case("alt-inactive", b"primary\x1b[?47halternate\x1b[?47l", b"\x1b[?47hZ")

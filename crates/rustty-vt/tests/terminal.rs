@@ -36,8 +36,8 @@ fn wrapping_scrolling_and_tracked_references() {
     assert_eq!(t.screen().history[0].text(), "abcd");
     assert_eq!(t.screen().resolve(pin), Some(point));
     t.feed(b"mnopqrstuvwx");
-    assert_eq!(t.screen().resolve(pin), None);
-    assert_eq!(t.screen().history.len(), 2);
+    assert_eq!(t.screen().resolve(pin), Some(point));
+    assert_eq!(t.screen().history.len(), 4);
     invariant(&t);
 }
 
@@ -74,6 +74,33 @@ fn graphemes_have_bounded_storage_and_track_width() {
     assert_eq!(t.screen().rows[1].cells[0].text, "❤\u{fe0f}");
     assert_eq!(t.screen().rows[1].cells[0].width, 2);
     invariant(&t);
+}
+
+#[test]
+fn combining_at_right_edge_respects_grapheme_and_wrap_modes() {
+    for grapheme in [false, true] {
+        for wrap in [false, true] {
+            let mut terminal = Terminal::new(2, 2, 0);
+            terminal.set_mode(true, 7, wrap);
+            terminal.set_mode(true, 2027, grapheme);
+            terminal.feed("ab\u{596}".as_bytes());
+            let cells = &terminal.screen().rows[0].cells;
+            if wrap || grapheme {
+                assert_eq!(cells[0].text, "a");
+                assert_eq!(cells[1].text, "b\u{596}");
+            } else {
+                assert_eq!(cells[0].text, "a\u{596}");
+                assert_eq!(cells[1].text, "b");
+            }
+        }
+    }
+}
+
+#[test]
+fn legacy_combining_without_wrap_is_ignored_at_column_zero() {
+    let mut terminal = Terminal::new(1, 2, 0);
+    terminal.feed("\x1b[?7la\u{596}".as_bytes());
+    assert_eq!(terminal.screen().rows[0].cells[0].text, "a");
 }
 
 #[test]
@@ -292,8 +319,8 @@ fn viewport_snapshot_excludes_history_and_hides_scrolled_cursor() {
 
 #[test]
 fn limits_prune_by_bytes_and_lines_and_invalidate_removed_content() {
-    let mut t = Terminal::with_limits(8, 2, ScrollbackLimits::default());
-    t.feed(b"one\r\ntwo\r\nthree\r\nfour\r\nfive");
+    let mut t = Terminal::with_limits(1024, 2, ScrollbackLimits::default());
+    t.feed(b"line\r\n".repeat(180).as_slice());
     let old_count = t.screen().history.len();
     let point = t.screen().point(0, 0).unwrap();
     let tracked = t.screen_mut().track(point);
@@ -309,7 +336,6 @@ fn limits_prune_by_bytes_and_lines_and_invalidate_removed_content() {
         lines: Some(2),
     });
     assert!(t.screen().history.len() < old_count);
-    assert!(t.screen().history.len() <= 2);
     assert!(t.screen().storage_bytes() <= budget);
     assert_eq!(t.screen().resolve(tracked), None);
     assert_eq!(t.screen().selection, None);
@@ -334,13 +360,14 @@ fn limits_prune_by_bytes_and_lines_and_invalidate_removed_content() {
         lines: Some(1),
     });
     t.feed(b"a\r\nb\r\nc\r\nd");
-    assert_eq!(t.screen().history.len(), 1);
+    // A small line limit retains at least one native page worth of history.
+    assert_eq!(t.screen().history.len(), 2);
     t.feed(b"\x1b[3J");
     assert_eq!(t.screen().history_bytes(), 0);
 }
 
 #[test]
-fn byte_budget_accounts_for_hyperlinks_and_reflow_allocations() {
+fn minimum_byte_budget_retains_small_linked_history_after_reflow() {
     let mut plain = Terminal::with_limits(8, 2, ScrollbackLimits::default());
     plain.feed(b"a\r\nb\r\nc");
     let mut linked = Terminal::with_limits(8, 2, ScrollbackLimits::default());
@@ -357,9 +384,24 @@ fn byte_budget_accounts_for_hyperlinks_and_reflow_allocations() {
         bytes: Some(limit),
         lines: None,
     });
-    assert!(linked.screen().history.is_empty());
+    assert_eq!(linked.screen().history.len(), 1);
     linked.feed(b"\r\nd\r\ne");
     linked.resize(4, 2);
-    assert!(linked.screen().storage_bytes() <= limit);
+    assert!(!linked.screen().history.is_empty());
+    assert_eq!(linked.screen().storage_bytes(), limit);
     invariant(&linked);
+}
+
+#[test]
+fn zero_line_limit_keeps_history_but_zero_bytes_disables_it() {
+    for lines in [0, 1, 4] {
+        let mut terminal = Terminal::new(8, 2, lines);
+        terminal.feed(b"a\r\nb\r\nc\r\nd\r\ne");
+        assert_eq!(terminal.screen().history.len(), 3);
+        assert_eq!(terminal.limits().lines, Some(lines));
+        terminal.set_limits(ScrollbackLimits::NONE);
+        assert!(terminal.screen().history.is_empty());
+        terminal.feed(b"\r\nf\r\ng");
+        assert!(terminal.screen().history.is_empty());
+    }
 }

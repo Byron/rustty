@@ -101,6 +101,7 @@ pub struct Placement {
 struct Loading {
     command: Command,
     data: Vec<u8>,
+    image_id: u32,
     image_generation: Option<u64>,
 }
 
@@ -123,7 +124,7 @@ impl Default for Graphics {
             generation: 0,
             limit: 320_000_000,
             loading: None,
-            next_image: 1,
+            next_image: 2147483647,
             next_placement: 1,
         }
     }
@@ -186,14 +187,17 @@ impl Graphics {
                 .map(|i| i.id)
         }
     }
-    fn allocate_id(&mut self) -> u32 {
-        loop {
-            let id = self.next_image;
-            self.next_image = self.next_image.wrapping_add(1).max(1);
-            if id != 0 && !self.images.contains_key(&id) {
-                return id;
-            }
+    fn allocate_id(&mut self, implicit: bool) -> u32 {
+        // Numbered uploads choose the lowest free client ID. Anonymous uploads
+        // use a separate counter so they rarely collide with client choices.
+        let mut id = if implicit { self.next_image } else { 1 };
+        while id == 0 || self.images.contains_key(&id) {
+            id = id.wrapping_add(1);
         }
+        if implicit {
+            self.next_image = id.wrapping_add(1);
+        }
+        id
     }
     fn reserve(&mut self, bytes: usize, exclude: u32) -> Result<(), &'static str> {
         if bytes > self.limit {
@@ -429,26 +433,40 @@ impl Terminal {
             if quiet > 0 {
                 command.values.insert(b'q', i64::from(quiet));
             }
-            id = command.n(b'i');
+            id = loading.image_id;
             image_generation = loading.image_generation;
-        } else if action == b'f' {
-            let Some(resolved) = self.graphics().resolve_id(id, command.n(b'I')) else {
-                command.reply(
-                    id,
-                    command.n(b'r') as usize,
-                    "ENOENT: image not found",
-                    effects,
-                );
+        } else {
+            if matches!(action, b't' | b'T')
+                && !matches!(
+                    command.values.get(&b'f').copied().unwrap_or(32),
+                    24 | 32 | 100
+                )
+            {
+                command.reply(id, 0, "EINVAL: unsupported format", effects);
                 return;
-            };
-            id = resolved;
-            image_generation = Some(self.graphics().images[&id].identity);
-            command.values.insert(b'i', i64::from(id));
+            }
+            if action == b'f' {
+                let Some(resolved) = self.graphics().resolve_id(id, command.n(b'I')) else {
+                    command.reply(
+                        id,
+                        command.n(b'r') as usize,
+                        "ENOENT: image not found",
+                        effects,
+                    );
+                    return;
+                };
+                id = resolved;
+                image_generation = Some(self.graphics().images[&id].identity);
+                command.values.insert(b'i', i64::from(id));
+            } else if action != b'q' && id == 0 {
+                id = self.screen_mut().graphics.allocate_id(command.n(b'I') == 0);
+            }
         }
         if action != b'q' && command.n(b'm') != 0 {
             self.screen_mut().graphics.loading = Some(Loading {
                 command,
                 data,
+                image_id: id,
                 image_generation,
             });
             return;
@@ -456,7 +474,7 @@ impl Terminal {
         let (width, height, pixels) = match decode_image(&command, data) {
             Ok(decoded) => decoded,
             Err(error) => {
-                command.reply(id, 0, error, effects);
+                command.reply(command.n(b'i'), 0, error, effects);
                 return;
             }
         };
@@ -473,14 +491,11 @@ impl Terminal {
             }
             return;
         }
-        let implicit = id == 0 && command.n(b'I') == 0;
-        if id == 0 {
-            id = self.screen_mut().graphics.allocate_id();
-        }
+        let implicit = command.n(b'i') == 0 && command.n(b'I') == 0;
         let storage = &mut self.screen_mut().graphics;
         let old_size = storage.images.get(&id).map_or(0, Image::bytes);
         if let Err(error) = storage.reserve(pixels.len().saturating_sub(old_size), id) {
-            command.reply(id, 0, error, effects);
+            command.reply(command.n(b'i'), 0, error, effects);
             return;
         }
         storage.generation = storage.generation.wrapping_add(1);
@@ -508,10 +523,8 @@ impl Terminal {
         } else {
             Ok(())
         };
-        if let Err(error) = result {
-            command.reply(id, 0, error, effects);
-        } else if !implicit {
-            command.reply(id, 0, "OK", effects);
+        if !implicit {
+            command.reply(id, 0, result.err().unwrap_or("OK"), effects);
         }
         self.generation = self.generation.wrapping_add(1);
     }
@@ -926,23 +939,62 @@ fn decode_image(cmd: &Command, mut data: Vec<u8>) -> Result<(u32, u32, Vec<u8>),
     let mut width = cmd.n(b's');
     let mut height = cmd.n(b'v');
     if format == 100 {
-        let mut decoder = png::Decoder::new(std::io::Cursor::new(data));
+        let mut decoder = png::Decoder::new(std::io::Cursor::new(data.as_slice()));
         decoder.set_limits(png::Limits { bytes: MAX_DATA });
         decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
         let mut reader = decoder.read_info().map_err(|_| "EINVAL: invalid data")?;
         width = reader.info().width;
         height = reader.info().height;
-        check_dimensions(width, height)?;
+        // The native PNG callback bounds the expanded RGBA output before the
+        // terminal checks dimensions. Keep that bound for grayscale input too.
+        let pixel_count = u64::from(width) * u64::from(height);
+        if pixel_count > MAX_DATA as u64 / 4 {
+            return Err("EINVAL: invalid data");
+        }
         let len = reader
             .output_buffer_size()
             .filter(|&n| n <= MAX_DATA)
             .ok_or("EINVAL: invalid data")?;
         let mut bytes = vec![0; len];
-        let info = reader
-            .next_frame(&mut bytes)
-            .map_err(|_| "EINVAL: invalid data")?;
-        bytes.truncate(info.buffer_size());
-        data = match info.color_type {
+        let (color, depth) = reader.output_color_type();
+        let stride = reader
+            .output_line_size(width)
+            .ok_or("EINVAL: invalid data")?;
+        let mut decoded = 0;
+        while decoded < len {
+            let row = reader
+                .next_interlaced_row()
+                .map_err(|_| "EINVAL: invalid data")?
+                .ok_or("EINVAL: invalid data")?;
+            if row.data().len() > len - decoded {
+                return Err("EINVAL: invalid data");
+            }
+            match row.interlace() {
+                png::InterlaceInfo::Null(_) => {
+                    bytes[decoded..decoded + row.data().len()].copy_from_slice(row.data());
+                }
+                png::InterlaceInfo::Adam7(info) => png::expand_interlaced_row(
+                    &mut bytes,
+                    stride,
+                    row.data(),
+                    info,
+                    color.samples() as u8 * depth as u8,
+                ),
+            }
+            decoded += row.data().len();
+        }
+        // Flush the compressed stream and validate IDAT checksums. Wuffs stops
+        // after the final IDAT; png also reads the following chunk header. EOF
+        // is harmless only after every pixel and the full IDAT were consumed.
+        match reader.next_interlaced_row() {
+            Ok(None) => {}
+            Err(png::DecodingError::IoError(error))
+                if error.kind() == std::io::ErrorKind::UnexpectedEof
+                    && png_ends_after_idat(&data) => {}
+            _ => return Err("EINVAL: invalid data"),
+        }
+        check_dimensions(width, height)?;
+        data = match color {
             png::ColorType::Rgba => bytes,
             png::ColorType::Rgb => bytes
                 .as_chunks::<3>()
@@ -979,6 +1031,21 @@ fn decode_image(cmd: &Command, mut data: Vec<u8>) -> Result<(u32, u32, Vec<u8>),
         }
     }
     Ok((width, height, data))
+}
+
+fn png_ends_after_idat(data: &[u8]) -> bool {
+    let mut chunks = data.get(8..).unwrap_or_default();
+    while chunks.len() >= 12 {
+        let len = u32::from_be_bytes(chunks[..4].try_into().unwrap()) as usize;
+        let Some(rest) = len.checked_add(12).and_then(|end| chunks.get(end..)) else {
+            return false;
+        };
+        if rest.len() < 8 {
+            return &chunks[4..8] == b"IDAT";
+        }
+        chunks = rest;
+    }
+    false
 }
 
 fn check_dimensions(width: u32, height: u32) -> Result<(), &'static str> {
@@ -1041,6 +1108,52 @@ impl Screen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn anonymous_and_numbered_images_use_independent_id_allocation() {
+        let mut terminal = Terminal::new(8, 4, 10);
+        assert!(
+            terminal
+                .feed(b"\x1b_Gf=32,s=1,v=1;AQID/w==\x1b\\")
+                .is_empty()
+        );
+        assert!(terminal.graphics().images.contains_key(&2147483647));
+        terminal.feed(b"\x1b_Gi=1,f=32,s=1,v=1;AQID/w==\x1b\\");
+        terminal.feed(b"\x1b_GI=7,f=32,s=1,v=1;AQID/w==\x1b\\");
+        assert_eq!(terminal.graphics().images[&2].number, 7);
+        terminal.feed(b"\x1b_Ga=d,d=I,i=1\x1b\\");
+        terminal.feed(b"\x1b_GI=8,f=32,s=1,v=1;AQID/w==\x1b\\");
+        assert_eq!(terminal.graphics().images[&1].number, 8);
+        assert_eq!(terminal.screen_mut().graphics.allocate_id(true), 2147483648);
+        terminal.screen_mut().graphics.next_image = u32::MAX;
+        assert_eq!(terminal.screen_mut().graphics.allocate_id(true), u32::MAX);
+        assert_eq!(terminal.screen_mut().graphics.allocate_id(true), 3);
+    }
+
+    #[test]
+    fn transmission_ids_are_chosen_before_chunking_and_pixel_validation() {
+        let mut terminal = Terminal::new(8, 4, 10);
+        terminal.feed(b"\x1b_Gi=1,f=32,s=1,v=1;AQID/w==\x1b\\");
+        terminal.feed(b"\x1b_GI=9,f=32,s=1,v=1,m=1;AQI=\x1b\\");
+        terminal.feed(b"\x1b_Ga=q,i=1,f=32,s=1,v=1;AQID/w==\x1b\\");
+        assert_eq!(
+            terminal.feed(b"\x1b_Gm=0;A/8=\x1b\\"),
+            [Effect::Write(b"\x1b_Gi=2,I=9;OK\x1b\\".to_vec())]
+        );
+        assert_eq!(terminal.graphics().images[&2].number, 9);
+        assert!(terminal.feed(b"\x1b_Gf=32,s=1,v=1;AQ==\x1b\\").is_empty());
+        terminal.feed(b"\x1b_Gf=99,s=1,v=1;AQID/w==\x1b\\");
+        terminal.feed(b"\x1b_Gf=32,s=1,v=1;AQID/w==\x1b\\");
+        assert!(!terminal.graphics().images.contains_key(&2147483647));
+        assert!(terminal.graphics().images.contains_key(&2147483648));
+        terminal.set_graphics_limit(3);
+        assert!(
+            terminal
+                .feed(b"\x1b_Gf=32,s=1,v=1;AQID/w==\x1b\\")
+                .is_empty()
+        );
+    }
+
     #[test]
     fn transmit_query_chunks_place_delete_and_quiet() {
         let mut t = Terminal::new(80, 24, 100);
@@ -1126,6 +1239,33 @@ mod tests {
         let payload = base64::engine::general_purpose::STANDARD.encode(zlib.finish().unwrap());
         t.feed(format!("\x1b_Gi=2,s=1,v=1,f=24,o=z;{payload}\x1b\\").as_bytes());
         assert_eq!(t.graphics().images[&2].pixels.as_ref(), [90, 80, 70, 255]);
+    }
+
+    #[test]
+    fn png_accepts_missing_trailer_but_requires_complete_pixels_and_checksum() {
+        let mut encoded = Vec::new();
+        {
+            let mut png = png::Encoder::new(&mut encoded, 1, 1);
+            png.set_color(png::ColorType::Rgba);
+            png.set_depth(png::BitDepth::Eight);
+            png.write_header()
+                .unwrap()
+                .write_image_data(&[12, 34, 56, 78])
+                .unwrap();
+        }
+        let (command, _) = Command::parse(b"Gf=100;").unwrap();
+        let idat_end = encoded.len() - 12;
+        for length in 0..=encoded.len() {
+            let decoded = decode_image(&command, encoded[..length].to_vec());
+            if length >= idat_end {
+                assert_eq!(decoded.unwrap(), (1, 1, vec![12, 34, 56, 78]));
+            } else {
+                assert!(decoded.is_err(), "accepted truncated PNG at {length}");
+            }
+        }
+        encoded[idat_end - 1] ^= 1;
+        assert!(decode_image(&command, encoded[..idat_end].to_vec()).is_err());
+        assert!(decode_image(&command, encoded).is_err());
     }
 
     #[test]

@@ -2,11 +2,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
+use crate::page_list::{PageAllocationInfo, PageList};
+
 /// Independent logical storage budgets. `None` means unlimited.
 ///
-/// Bytes include active and history row storage, including cell, text, and
-/// hyperlink allocations. Active rows are always retained. Graphics use their
-/// own budget. Unlike Ghostty's page allocator, pruning here removes whole rows.
+/// Bytes charge native page allocations, including active pages. Active rows
+/// are always retained; pruning removes complete historical pages. Graphics
+/// have their own budget. Limits have Ghostty's minimum page-size floor; an
+/// explicit zero byte limit disables ordinary scrolling into history.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScrollbackLimits {
     pub bytes: Option<usize>,
@@ -59,6 +62,60 @@ pub struct Style {
     pub strikethrough: bool,
     pub overline: bool,
     pub underline: Underline,
+}
+
+impl Style {
+    /// Hash the native packed representation used by page style admission.
+    pub(crate) fn native_hash(self) -> u64 {
+        let mut packed = 0u128;
+        for (i, color) in [self.foreground, self.background, self.underline_color]
+            .into_iter()
+            .enumerate()
+        {
+            let (tag, data): (u128, u128) = match color {
+                Color::Default => (0, 0),
+                Color::Indexed(index) => (1, index.into()),
+                Color::Rgb(r, g, b) => (
+                    2,
+                    u128::from(r) | (u128::from(g) << 8) | (u128::from(b) << 16),
+                ),
+            };
+            packed |= tag << (i * 8);
+            packed |= data << (24 + i * 24);
+        }
+        let underline = match self.underline {
+            Underline::None => 0u128,
+            Underline::Single => 1,
+            Underline::Double => 2,
+            Underline::Curly => 3,
+            Underline::Dotted => 4,
+            Underline::Dashed => 5,
+        };
+        let mut flags = underline << 8;
+        for (bit, set) in [
+            self.bold,
+            self.italic,
+            self.faint,
+            self.blink,
+            self.inverse,
+            self.invisible,
+            self.strikethrough,
+            self.overline,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            flags |= u128::from(set) << bit;
+        }
+        packed |= flags << 96;
+        let mut hash = packed as u64 ^ (packed >> 64) as u64;
+        // Zig std.hash.int(u64).
+        const MULTIPLIER: u64 = 0xbea225f9eb34556d;
+        hash = (hash ^ (hash >> 32)).wrapping_mul(MULTIPLIER);
+        hash = (hash ^ (hash >> 29)).wrapping_mul(MULTIPLIER);
+        hash = (hash ^ (hash >> 32)).wrapping_mul(MULTIPLIER);
+        hash ^ (hash >> 29)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -347,6 +404,16 @@ pub struct Selection {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TrackedPoint(u64);
 
+/// External handles belong to a live screen, never its copies or snapshots.
+#[derive(Debug, Default)]
+struct TrackedPoints(HashMap<u64, Option<GridPoint>>);
+
+impl Clone for TrackedPoints {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum Charset {
     #[default]
@@ -391,11 +458,10 @@ pub struct Screen {
     pub(crate) iso_protection: bool,
     pub(crate) limits: ScrollbackLimits,
     pub(crate) history_bytes: usize,
+    pub(crate) pages: PageList,
     pub(crate) next_row: u64,
     #[serde(skip)]
-    tracked: HashMap<u64, Option<GridPoint>>,
-    #[serde(skip)]
-    next_track: u64,
+    tracked: TrackedPoints,
 }
 
 impl Screen {
@@ -440,14 +506,19 @@ impl Screen {
             iso_protection: false,
             limits,
             history_bytes: 0,
+            pages: PageList::new(cols as u16, rows),
             next_row: rows as u64,
-            tracked: HashMap::new(),
-            next_track: 0,
+            tracked: TrackedPoints::default(),
         }
     }
 
     pub fn all_rows(&self) -> impl DoubleEndedIterator<Item = &Row> {
         self.history.iter().chain(self.rows.iter())
+    }
+
+    /// Native allocation capacities and physical boundaries of the live pages.
+    pub fn page_allocations(&self) -> impl Iterator<Item = PageAllocationInfo> + '_ {
+        self.pages.allocations()
     }
 
     pub fn viewport(&self) -> impl Iterator<Item = &Row> {
@@ -476,9 +547,12 @@ impl Screen {
             iso_protection: self.iso_protection,
             limits: ScrollbackLimits::NONE,
             history_bytes: 0,
+            pages: self.pages.clone_range(
+                self.history.len().saturating_sub(self.viewport_offset),
+                self.rows.len(),
+            ),
             next_row: self.next_row,
-            tracked: HashMap::new(),
-            next_track: 0,
+            tracked: TrackedPoints::default(),
         }
     }
 
@@ -499,21 +573,25 @@ impl Screen {
     }
 
     pub fn track(&mut self, point: GridPoint) -> TrackedPoint {
-        let id = self.next_track;
-        self.next_track = self.next_track.wrapping_add(1);
+        use std::sync::atomic::{AtomicU64, Ordering};
+        // Handles must not alias across screens, terminal resets or clones.
+        static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+        let id = NEXT_ID
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .expect("tracked point IDs exhausted");
         let valid = self
             .row_by_id(point.row)
             .is_some_and(|r| point.col < r.cells.len());
-        self.tracked.insert(id, valid.then_some(point));
+        self.tracked.0.insert(id, valid.then_some(point));
         TrackedPoint(id)
     }
 
     pub fn resolve(&self, point: TrackedPoint) -> Option<GridPoint> {
-        self.tracked.get(&point.0).copied().flatten()
+        self.tracked.0.get(&point.0).copied().flatten()
     }
 
     pub fn untrack(&mut self, point: TrackedPoint) {
-        self.tracked.remove(&point.0);
+        self.tracked.0.remove(&point.0);
     }
 
     pub fn selection_text(&self) -> Option<String> {
@@ -527,9 +605,21 @@ impl Screen {
             std::mem::swap(&mut first, &mut last);
             std::mem::swap(&mut left, &mut right);
         }
+        if !selection.rectangular
+            && rows[last]
+                .cells
+                .get(right)
+                .is_some_and(|cell| cell.spacer_head)
+            && last + 1 < rows.len()
+        {
+            last += 1;
+            right = 0;
+        }
         let mut result = String::new();
+        let mut blank_rows = 0;
+        let mut blank_cells = 0;
         for (i, row) in rows.iter().enumerate().take(last + 1).skip(first) {
-            let start = if selection.rectangular {
+            let mut start = if selection.rectangular {
                 left.min(right)
             } else if i == first {
                 left
@@ -537,30 +627,44 @@ impl Screen {
                 0
             };
             let end = if selection.rectangular {
-                left.max(right) + 1
+                left.max(right).saturating_add(1)
             } else if i == last {
-                right + 1
+                right.saturating_add(1)
             } else {
                 row.cells.len()
             };
-            let line_start = result.len();
-            for cell in &row.cells[start.min(row.cells.len())..end.min(row.cells.len())] {
+            start = start.min(row.cells.len());
+            if start > 0
+                && let Some(cell) = row.cells.get(start)
+            {
+                if cell.spacer_head {
+                    continue;
+                }
+                if cell.width == 0 {
+                    start -= 1;
+                }
+            }
+            let cells = &row.cells[start..end.min(row.cells.len())];
+            if cells.iter().all(|cell| cell.text.is_empty()) {
+                blank_rows += 1;
+                continue;
+            }
+            result.extend(std::iter::repeat_n('\n', blank_rows));
+            blank_rows = usize::from(!row.wrapped);
+            if !row.wrap_continuation {
+                blank_cells = 0;
+            }
+            for cell in cells {
                 if cell.width == 0 || cell.spacer_head {
                     continue;
                 }
-                if cell.text.is_empty() {
-                    result.push(' ');
-                } else {
-                    result.push_str(&cell.text);
+                if cell.text.is_empty() || cell.text.starts_with(' ') {
+                    blank_cells += 1;
+                    continue;
                 }
-            }
-            if selection.rectangular || !row.wrapped {
-                while result.len() > line_start && result.ends_with(' ') {
-                    result.pop();
-                }
-                if i < last {
-                    result.push('\n');
-                }
+                result.extend(std::iter::repeat_n(' ', blank_cells));
+                blank_cells = 0;
+                result.push_str(&cell.text);
             }
         }
         Some(result)
@@ -570,6 +674,25 @@ impl Screen {
         let id = self.next_row;
         self.next_row = self.next_row.wrapping_add(1);
         Row::new(id, cols, background)
+    }
+
+    pub(crate) fn extend_physical_row(&mut self, row: usize, columns: usize) {
+        let absolute = self.history.len() + row;
+        let columns = columns.max(usize::from(self.pages.page_at(absolute).0.columns));
+        let range = self.pages.extend_page(absolute, columns as u16);
+        for row in self
+            .history
+            .iter_mut()
+            .chain(&mut self.rows)
+            .skip(range.start)
+            .take(range.len())
+        {
+            row.cells.resize(columns, Cell::default());
+            row.repair_wide(Color::Default);
+        }
+        if range.start < self.history.len() {
+            self.history_bytes = self.history.iter().map(Row::storage_bytes).sum();
+        }
     }
 
     pub(crate) fn split_cell_boundary(&mut self, col: usize) {
@@ -608,9 +731,23 @@ impl Screen {
         }
     }
 
+    /// Move external pins and selection endpoints independently of row contents.
+    /// Line edits retain physical coordinates; history scrolling moves them.
+    pub(crate) fn remap_grid_rows(&mut self, rows: &HashMap<u64, u64>) {
+        for point in self.tracked.0.values_mut().flatten().chain(
+            self.selection
+                .iter_mut()
+                .flat_map(|selection| [&mut selection.start, &mut selection.end]),
+        ) {
+            if let Some(&row) = rows.get(&point.row) {
+                point.row = row;
+            }
+        }
+    }
+
     pub(crate) fn discard_row(&mut self, id: u64) {
         self.graphics.discard_row(id);
-        for point in self.tracked.values_mut() {
+        for point in self.tracked.0.values_mut() {
             if point.is_some_and(|p| p.row == id) {
                 *point = None;
             }
@@ -624,16 +761,24 @@ impl Screen {
     }
 
     pub(crate) fn push_history(&mut self, row: Row) {
-        if self.limits.bytes == Some(0) || self.limits.lines == Some(0) {
+        if self.limits.bytes == Some(0) {
             self.discard_row(row.id);
             return;
         }
+        self.retain_history(row);
+    }
+
+    // ED22 grows native page storage even when ordinary scrollback is disabled.
+    pub(crate) fn retain_history(&mut self, row: Row) {
         self.history_bytes = self.history_bytes.saturating_add(row.storage_bytes());
         self.history.push_back(row);
         if self.viewport_offset > 0 {
             self.viewport_offset += 1;
         }
-        self.enforce_limits();
+        let removed = self
+            .pages
+            .grow(self.columns as u16, self.rows.len(), self.limits);
+        self.discard_history_prefix(removed);
     }
 
     /// Charged bytes in history rows; container spare capacity and graphics are
@@ -642,47 +787,101 @@ impl Screen {
         self.history_bytes
     }
 
+    /// Logical native page allocation charge, including active and history pages.
     pub fn storage_bytes(&self) -> usize {
-        self.rows.iter().fold(self.history_bytes, |bytes, row| {
-            bytes.saturating_add(row.storage_bytes())
-        })
+        self.pages.allocation_bytes()
     }
 
     pub(crate) fn set_limits(&mut self, limits: ScrollbackLimits) {
         self.limits = limits;
-        self.enforce_limits();
+        if limits.bytes == Some(0) {
+            self.clear_history();
+        } else {
+            self.enforce_limits();
+        }
         self.history.shrink_to_fit();
     }
 
     pub(crate) fn clear_history(&mut self) {
-        while let Some(row) = self.history.pop_front() {
-            self.discard_row(row.id);
-        }
-        self.history_bytes = 0;
+        self.pages.remove_prefix(self.history.len());
+        self.discard_history_prefix(self.history.len());
         self.viewport_offset = 0;
+    }
+
+    pub(crate) fn effective_limits(&self) -> ScrollbackLimits {
+        PageList::effective_limits(self.columns as u16, self.rows.len(), self.limits)
     }
 
     pub(crate) fn enforce_limits(&mut self) {
         if self.history.is_empty() {
             return;
         }
-        let byte_budget = self.limits.bytes.map(|bytes| {
-            let active = self.rows.iter().fold(0usize, |bytes, row| {
-                bytes.saturating_add(row.storage_bytes())
-            });
-            bytes.saturating_sub(active)
-        });
-        while self
-            .limits
-            .lines
-            .is_some_and(|max| self.history.len() > max)
-            || byte_budget.is_some_and(|max| self.history_bytes > max)
-        {
+        let removed = self.pages.prune(self.rows.len(), self.effective_limits());
+        self.discard_history_prefix(removed);
+    }
+
+    fn discard_history_prefix(&mut self, count: usize) {
+        for _ in 0..count {
             let row = self.history.pop_front().unwrap();
             self.history_bytes = self.history_bytes.saturating_sub(row.storage_bytes());
             self.discard_row(row.id);
         }
         self.viewport_offset = self.viewport_offset.min(self.history.len());
+    }
+
+    pub(crate) fn clear_prompt_for_redraw(&mut self, redraw: PromptRedraw) {
+        if self.cursor.semantic == SemanticContent::Output {
+            return;
+        }
+        let cursor = self.history.len() + self.cursor.row;
+        let (start, end) = match redraw {
+            PromptRedraw::None => return,
+            PromptRedraw::Last => (cursor, cursor + 1),
+            PromptRedraw::All => {
+                let mut previous = self
+                    .all_rows()
+                    .rev()
+                    .skip(self.rows.len() - self.cursor.row - 1);
+                let Some((offset, row)) = previous
+                    .by_ref()
+                    .enumerate()
+                    .find(|(_, row)| row.semantic != SemanticContent::Output)
+                else {
+                    return;
+                };
+                let found = cursor - offset;
+                let start = if row.semantic == SemanticContent::Input {
+                    previous
+                        .enumerate()
+                        .find_map(|(offset, row)| match row.semantic {
+                            SemanticContent::Prompt => Some(found - offset - 1),
+                            SemanticContent::Output => Some(found - offset),
+                            SemanticContent::Input => None,
+                        })
+                        // Native prompt iteration keeps its starting continuation
+                        // when the entire preceding history is a continuation.
+                        .unwrap_or(found)
+                } else {
+                    found
+                };
+                (start, self.history.len() + self.rows.len())
+            }
+        };
+        for row in self
+            .history
+            .iter_mut()
+            .chain(&mut self.rows)
+            .skip(start)
+            .take(end - start)
+        {
+            // Native resize temporarily releases the cursor style before
+            // clearing, so these cells have the default background.
+            row.cells.fill(Cell::default());
+            row.dirty = true;
+        }
+        if start < self.history.len() {
+            self.history_bytes = self.history.iter().map(Row::storage_bytes).sum();
+        }
     }
 
     pub(crate) fn resize(&mut self, cols: usize, rows: usize, reflow: bool) {
@@ -712,7 +911,7 @@ impl Screen {
             .unwrap();
         // Narrowing uses the new height while wrapping; widening unwraps
         // first, before changing the height. This preserves the active boundary.
-        let height_first = !reflow || cols <= old_cols;
+        let height_first = reflow && cols <= old_cols;
         if height_first {
             self.resize_height(
                 &mut contents,
@@ -725,6 +924,13 @@ impl Screen {
         }
         let mut mapped_cursor = old_cursor;
         if columns_changed && reflow {
+            let source_pages = std::mem::take(&mut self.pages);
+            let first_capacity = source_pages
+                .pages
+                .front()
+                .unwrap()
+                .adjusted_capacity(cols as u16, false);
+            self.pages.append(first_capacity, 1);
             let height = if height_first { rows } else { old_rows };
             let active_start = contents.len().saturating_sub(height);
             let old_wrapped = contents
@@ -737,7 +943,9 @@ impl Screen {
             let mut line = self.blank_row(cols, Color::Default);
             let mut x: usize = 0;
             let mut pin_x: usize = 0;
-            for old in &contents {
+            for (old_index, old) in contents.iter().enumerate() {
+                let source_page = source_pages.page_at(old_index).0;
+                let capacity = source_page.adjusted_capacity(cols as u16, true);
                 let mut used = if old.wrapped {
                     old.cells.len()
                 } else {
@@ -756,7 +964,7 @@ impl Screen {
                 if let Some(point) = &mut saved_point {
                     keep_pin(point);
                 }
-                for point in self.tracked.values_mut().flatten() {
+                for point in self.tracked.0.values_mut().flatten() {
                     keep_pin(point);
                 }
                 if let Some(selection) = &mut self.selection {
@@ -769,6 +977,12 @@ impl Screen {
                 if old.semantic != SemanticContent::Output {
                     used = used.max(1);
                 }
+                if used > 0 {
+                    while self.pages.total_rows() <= output.len() {
+                        self.pages.reflow_row(capacity);
+                    }
+                }
+                line.semantic = old.semantic;
                 let mut wide_tail = None;
                 for (old_col, cell) in old.cells.iter().take(used).enumerate() {
                     if cell.width == 0 {
@@ -804,8 +1018,12 @@ impl Screen {
                         line.wrapped = true;
                         output.push(line);
                         line = self.blank_row(cols, Color::Default);
+                        line.semantic = old.semantic;
                         line.wrap_continuation = true;
                         x = 0;
+                        while self.pages.total_rows() <= output.len() {
+                            self.pages.reflow_row(capacity);
+                        }
                     }
                     map.insert(
                         (old.id, old_col),
@@ -845,7 +1063,6 @@ impl Screen {
                     pin_x = x.min(cols - 1);
                 }
                 if !old.wrapped {
-                    line.semantic = old.semantic;
                     output.push(line);
                     line = self.blank_row(cols, Color::Default);
                     x = 0;
@@ -858,7 +1075,7 @@ impl Screen {
                 mapped_cursor = *p;
             }
             saved_point = saved_point.and_then(|p| map.get(&(p.row, p.col)).copied());
-            for point in self.tracked.values_mut() {
+            for point in self.tracked.0.values_mut() {
                 *point = point.and_then(|p| map.get(&(p.row, p.col)).copied());
             }
             self.selection = self.selection.and_then(|s| {
@@ -876,6 +1093,7 @@ impl Screen {
                         && !saved_point.is_some_and(|p| p.row == r.id)
                         && !self
                             .tracked
+                            .0
                             .values()
                             .any(|p| p.is_some_and(|p| p.row == r.id))
                         && r.used() == 0
@@ -884,8 +1102,11 @@ impl Screen {
             {
                 output.pop();
             }
+            if self.pages.total_rows() > output.len() {
+                self.pages.truncate(output.len());
+            }
             while output.len() < height {
-                output.push(self.blank_row(cols, Color::Default));
+                self.grow_contents(&mut output, cols, height);
             }
             let start = output.len() - height;
             if let Some(cursor_index) = output
@@ -903,12 +1124,27 @@ impl Screen {
                     .saturating_sub(wrapped.saturating_sub(old_wrapped))
                     .saturating_sub(current);
                 for _ in 0..grow {
-                    output.push(self.blank_row(cols, Color::Default));
+                    self.grow_contents(&mut output, cols, height);
                 }
             }
             contents = output;
             self.graphics.reflow(&map);
         } else if columns_changed {
+            let mut start = 0;
+            let spacer_heads: Vec<_> = self
+                .pages
+                .pages
+                .iter()
+                .map(|page| {
+                    let end = start + usize::from(page.rows);
+                    let has_head = contents[start..end]
+                        .iter()
+                        .any(|row| row.cells.last().is_some_and(|cell| cell.spacer_head));
+                    start = end;
+                    has_head
+                })
+                .collect();
+            self.pages.resize_columns(cols as u16, &spacer_heads);
             for row in &mut contents {
                 row.cells.resize(cols, Cell::default());
                 row.repair_wide(Color::Default);
@@ -929,7 +1165,7 @@ impl Screen {
             );
         }
         while contents.len() < rows {
-            contents.push(self.blank_row(cols, Color::Default));
+            self.grow_contents(&mut contents, cols, rows);
         }
         let start = contents.len() - rows;
         let cursor_index = contents.iter().position(|r| r.id == mapped_cursor.row);
@@ -965,10 +1201,28 @@ impl Screen {
             .cursor
             .col
             .min(self.rows[self.cursor.row].cells.len() - 1);
-        for row in contents {
-            self.push_history(row);
+        self.history_bytes = contents.iter().map(Row::storage_bytes).sum();
+        self.history = contents.into();
+        if self.limits.bytes == Some(0) {
+            self.clear_history();
+        } else {
+            let removed = self.pages.prune(
+                rows,
+                ScrollbackLimits {
+                    bytes: None,
+                    ..self.effective_limits()
+                },
+            );
+            self.discard_history_prefix(removed);
         }
         self.viewport_offset = self.viewport_offset.min(self.history.len());
+        // Native resize reattaches the cursor hyperlink to its new page,
+        // assigning a new implicit identity while printed links keep theirs.
+        if matches!(self.cursor.hyperlink_id, Some(HyperlinkId::Implicit(_))) {
+            let id = self.metadata.hyperlink_implicit_id;
+            self.cursor.hyperlink_id = Some(HyperlinkId::Implicit(id));
+            self.metadata.hyperlink_implicit_id = id.wrapping_add(1);
+        }
     }
 
     fn resize_height(
@@ -988,6 +1242,7 @@ impl Screen {
                     && !saved.is_some_and(|p| p.row == r.id)
                     && !self
                         .tracked
+                        .0
                         .values()
                         .any(|p| p.is_some_and(|p| p.row == r.id))
                     && r.cells.iter().all(|c| c.text.is_empty())
@@ -996,13 +1251,25 @@ impl Screen {
             contents.pop();
             trim -= 1;
         }
+        if self.pages.total_rows() > contents.len() {
+            self.pages.truncate(contents.len());
+        }
         if rows > old_rows && self.cursor.row < old_rows - 1 {
             for _ in 0..rows - old_rows {
-                contents.push(self.blank_row(cols, Color::Default));
+                self.grow_contents(contents, cols, rows);
             }
         }
         while contents.len() < rows {
-            contents.push(self.blank_row(cols, Color::Default));
+            self.grow_contents(contents, cols, rows);
+        }
+    }
+
+    fn grow_contents(&mut self, contents: &mut Vec<Row>, columns: usize, active_rows: usize) {
+        let removed = self.pages.grow(columns as u16, active_rows, self.limits);
+        let width = usize::from(self.pages.pages.back().unwrap().columns);
+        contents.push(self.blank_row(width, Color::Default));
+        for row in contents.drain(..removed) {
+            self.discard_row(row.id);
         }
     }
 }

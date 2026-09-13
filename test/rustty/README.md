@@ -41,6 +41,9 @@ python3 test/rustty/parity.py --no-build --unicode
 python3 test/rustty/parity.py --no-build --snapshots
 python3 test/rustty/parity.py --no-build --snapshot-wire
 python3 test/rustty/parity.py --no-build --protocols
+python3 test/rustty/parity.py --no-build --grid
+python3 test/rustty/parity.py --no-build --page-layout
+python3 test/rustty/parity.py --pages
 python3 test/rustty/parity.py --no-build --replay target/parity/failures/ID/request.json
 python3 test/rustty/parity.py --no-build --replay target/parity/failures/ID/request.json --minimize
 python3 -m unittest discover -s test/rustty -p 'test_*.py'
@@ -79,6 +82,80 @@ snapshot continuation. Combining characters and wide-cell spacers exercise
 shift consumption separately from input-scalar dispatch. Smoke cases also keep
 minimized inherited failures with their original corpus source identifiers.
 
+`--grid` compares direct selection, literal search and tracked-reference APIs.
+Each `grid` operation appends its result to `grid_results`; actions are `select`,
+`clear_selection`, `track`, `untrack`, `viewport`, `limits`, `search` and `observe`.
+Points name `active`, `viewport`, `screen` or `history` coordinates. Observations
+translate each implementation's own handles to those coordinates and include
+cell codepoints, selected text and viewport position. Raw row IDs are not shared.
+Selection extraction uses the native plain-text defaults (`unwrap` and `trim`
+enabled). Search needles are hexadecimal bytes. Rust's `Screen::search_literal`
+accepts arbitrary bytes, folds ASCII case and retains overlapping matches and
+native formatter coordinates, including reversed maps for adjacent spaces.
+Partial UTF-8 needles map each endpoint to the cell containing that byte. The
+regex search and link APIs keep their existing semantics. Match order and
+endpoints are compared without sorting, deduplication or normalization.
+
+Literal search formats each retained page separately and follows native active
+and history traversal, including repeated soft-wrap matches and trimmed blank
+page tails. With scrollback disabled, it preserves native prefix pruning by
+match endpoint before reversing results. `search_pages.py` also checks restored
+history whose row IDs differ from physical order. The suite retains a native
+integer underflow on a short search window (`sliding_window.zig`); `--thorough`
+includes that failing case. Run the page suite independently with:
+
+```sh
+zig build vt-oracle -Demit-lib-vt=true -Demit-macos-app=false -Doptimize=ReleaseSafe
+python3 test/rustty/search_pages.py > target/search-pages.json
+python3 test/rustty/parity.py --no-build --fixtures target/search-pages.json --max-failures 10000
+```
+
+These direct search cases use `kind=input` to avoid serializing hundreds of
+thousands of unrelated cells; their search endpoints and result order remain
+unmodified. A reference-process crash is reported as a failure and ends that
+run. Incremental search and complete resource-driven page changes remain
+uncovered, so the search coverage entry remains partial.
+
+`--page-layout` compares native page/resource offsets, table and bitmap
+capacities, column adjustment, and pooled versus exact allocation charge.
+`page_layout_requests.py` retains dimension/resource boundaries and deterministic
+mixed capacities. These requests compute layouts without allocating their backing
+pages, including cases near the native 32-bit page-offset limit. Both adapters
+impose nonzero dimensions and 32-bit page-offset limits, and report row-count
+overflow in place of native adjustment's checked-cast abort. The Zig
+adapter calls the real layout and adjustment functions; initial capacity uses
+their private caller's standard-adjustment/fallback policy. The Rust adapter
+compiles the private production calculator directly. Constants are observed from
+the native ABI and currently validated on macOS ARM64 only. Passing arithmetic
+cases does not establish page lifetime, resource retention, splitting, reflow or
+search parity; the coverage entry remains partial. `--thorough` includes this
+matrix.
+
+Production scrollback limits use these native dimension-dependent minimums,
+including a zero line limit. Only zero bytes disables normal scrollback.
+Storage charges and pruning use retained page allocations and complete history
+pages. Minimum-limit comparisons alone do not establish full storage compatibility.
+
+`--pages` compares each actual storage page's logical columns, used rows,
+capacity, pooled ownership and allocation charge, plus each screen's aggregate
+row and byte totals. A `pages` operation appends this state to `page_results`.
+Large storage cases use `kind=input` to avoid serializing unrelated cells.
+Boundaries and allocation metadata are compared without regrouping rows or
+normalizing values. The retained cases exercise growth, limits, clearing,
+resize and snapshot admission; resource-driven page splitting remains partial.
+The harness builds the native core in ReleaseSafe for `--pages` and `--thorough`:
+runtime safety remains enabled, while debug-only full-page integrity scans on
+every edit would make large boundary cases quadratic. When reusing binaries with
+`--no-build`, build the oracle with `-Doptimize=ReleaseSafe` for these cases.
+
+Grid cases cover live writes, erasure, reflow, height changes, screen switches,
+resets, handle reuse and scrollback limits, including release of an inactive
+screen's tracked handle. Restoring a new terminal while
+the adapter owns tracked handles is explicitly unsupported; those external
+lifetimes need a separate API comparison. Incremental search, search selection,
+word/line/output selection, gestures and styled selection formatting remain
+uncovered. The failing grid cases remain part of `--grid` and `--thorough`.
+
 Native libghostty-vt updates OSC 133 semantic state without command lifecycle
 callbacks. `Terminal::shell_command_events` explicitly enables Rustty's
 `CommandStart`/`CommandEnd` host extension and defaults to false; application
@@ -92,6 +169,40 @@ state and visible/history row markers to observations. Snapshot cases restore
 those values through both encodings, including `redraw=last` and `cl=w`.
 These observations read terminal state directly and remain optional for other
 protocol cases.
+
+`--protocols --case protocol/prompt-redraw` compares primary-screen resize
+cleanup for OSC 133 `redraw=1`, `0` and `last`, including inactive primary
+screens, unmarked input, prompt history, styled/protected cells and snapshot
+continuation. It also checks that alternate screens and unchanged dimensions
+retain their content. Narrowing cases compare prompt metadata on every reflowed
+row; inherited streams cover cleanup before DECCOLM's display erasure.
+
+`--protocols --case protocol/graphics` uses the real Wuffs PNG callback with
+its original bounded allocator and compares stored image IDs, dimensions and
+RGBA pixels on both screens. Native RGB storage is expanded only at the
+observation boundary. The matrix includes PNG color depths, palette/transparency,
+Adam7, raw/zlib uploads, truncation, checksum corruption and dimension precedence.
+Wuffs decoder storage has an alignment correction for arena allocators; it does
+not change terminal protocol behavior. Placements, animation, transports and
+complete graphics resource-limit coverage remain separate work.
+
+`--protocols --case protocol/glyph` compares native Glyph APC support, uploads,
+queries and clearing. Observations retain insertion order, decoded contours and
+points, design metrics, declared width and protocol-controlled constraints;
+padding uses exact IEEE 754 bits, including signed zero. Cases cover malformed
+options/base64/outlines, replacement and 1,024-entry FIFO eviction, the 64 KiB
+payload and decoder-allocation limits, dirty state and configured APC capture.
+Snapshot cases resume uncommitted commands and explicitly compare version 1's
+deliberate omission of committed registrations. The native headless API supports
+`glyf` only, reports glossary coverage only and stores the requested width without
+changing printed cell width. Font coverage, visible rasterization and injected
+allocator failures remain separate work.
+
+`--protocols --case protocol/reset-stream` resets terminal state at every byte
+boundary through UTF-8, ESC/CSI, OSC, DCS and APC commands. The pending native
+input stream survives a direct host reset, including captured DCS/APC bytes and
+their overflow state. This is separate from terminal state cleared by RIS;
+already-executed commands are not replayed after either reset.
 
 `--snapshots` exports one snapshot from each implementation, restores each
 encoding in both implementations, and resumes terminal input. It compares
@@ -112,6 +223,15 @@ advanced cases currently expose differences and original Zig assertions;
 `--case snapshot/streaming` or `--case snapshot/invalid` for isolated checks.
 An expected rejection must be `InvalidSnapshot`; an unrelated adapter error
 or an unexpected successful decode still fails the case.
+
+`--snapshot-wire --case snapshot/resources/hyperlinks` compares PAGE hyperlink
+table admission, string-pool allocation, duplicate values and wire IDs, invalid
+entries, collision limits and the linked-cell map limit. Explicit IDs allocate
+before URIs; discarded entries retain their strings until the next successful
+allocation reaches set admission. Duplicate values also need temporary string
+space. The suite keeps the native bitmap bounds panic for oversized strings in
+`snapshot/reference-limit/hyperlinks/`, after the returning wire cases. These
+failures remain part of unfiltered `--snapshot-wire` and `--thorough` runs.
 
 `--protocols` compares terminal-level DCS replies and host notifications.
 Capability names are read

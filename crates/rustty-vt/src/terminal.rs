@@ -109,6 +109,7 @@ pub struct Terminal {
     /// Maximum total decoded bytes in a Kitty clipboard write transaction.
     /// A transfer retains the value that was configured when it began.
     pub clipboard_write_limit: usize,
+    pub glyphs: crate::glyph::Glyphs,
     pub(crate) clipboard: clipboard::kitty::State,
     pub title: String,
     pub working_directory: String,
@@ -127,6 +128,7 @@ pub struct Terminal {
     dcs: Vec<u8>,
     dcs_header: (Vec<u8>, Vec<u16>, u8),
     apc: Vec<u8>,
+    apc_glyph_limit: Option<usize>,
     string_overflow: bool,
 }
 
@@ -169,6 +171,7 @@ impl Terminal {
             shell_command_events: false,
             visible: true,
             clipboard_write_limit: 64 * 1024 * 1024,
+            glyphs: crate::glyph::Glyphs::default(),
             clipboard: clipboard::kitty::State::default(),
             title: String::new(),
             working_directory: String::new(),
@@ -187,6 +190,7 @@ impl Terminal {
             dcs: Vec::new(),
             dcs_header: (Vec::new(), Vec::new(), 0),
             apc: Vec::new(),
+            apc_glyph_limit: None,
             string_overflow: false,
         }
     }
@@ -218,6 +222,15 @@ impl Terminal {
     pub fn alternate_screen(&self) -> Option<&Screen> {
         self.alternate.as_ref()
     }
+
+    /// Release a tracked cell even when its screen is inactive or was reset.
+    pub fn untrack(&mut self, point: TrackedPoint) {
+        self.primary.untrack(point);
+        if let Some(screen) = &mut self.alternate {
+            screen.untrack(point);
+        }
+    }
+
     pub fn tabstops(&self) -> &[bool] {
         &self.tabstops
     }
@@ -285,9 +298,6 @@ impl Terminal {
             }
         });
         self.parser = parser;
-        // Active rows can grow allocations without scrolling (graphemes and
-        // hyperlinks), so reconcile the byte budget after the complete update.
-        self.primary.enforce_limits();
         effects
     }
 
@@ -342,7 +352,6 @@ impl Terminal {
             }
         });
         self.parser = parser;
-        self.primary.enforce_limits();
     }
 
     /// Complete a deferred clipboard request, including an optional grant.
@@ -367,11 +376,11 @@ impl Terminal {
 
     fn ensure_row_cells(&mut self, row: usize, end: usize) {
         let columns = usize::from(self.cols);
-        let cells = &mut self.screen_mut().rows[row].cells;
-        if cells.len() < end.min(columns) {
+        if self.screen().rows[row].cells.len() < end.min(columns) {
             // A partial reflow can leave a physical row narrower than the
-            // logical screen. Keep it intact until an edit reaches past it.
-            cells.resize(columns, Cell::default());
+            // logical screen. Extend its actual page when an edit reaches
+            // past it, so subsequent snapshots keep valid PAGE dimensions.
+            self.screen_mut().extend_physical_row(row, columns);
         }
     }
 
@@ -403,8 +412,10 @@ impl Terminal {
         if cols == self.cols && rows == self.rows {
             return;
         }
+        let prompt_redraw = self.shell_prompt_redraw();
         self.primary
             .resize(cols.into(), rows.into(), self.modes.dec(7));
+        self.primary.clear_prompt_for_redraw(prompt_redraw);
         if let Some(alt) = &mut self.alternate {
             alt.resize(cols.into(), rows.into(), false);
         }
@@ -466,7 +477,17 @@ impl Terminal {
         }
     }
 
+    /// Reset terminal state while preserving the input stream's pending bytes.
+    /// A host reset does not cancel a partially received escape sequence.
     pub fn reset(&mut self) {
+        let input = (
+            std::mem::take(&mut self.parser),
+            std::mem::take(&mut self.dcs),
+            std::mem::take(&mut self.dcs_header),
+            std::mem::take(&mut self.apc),
+            self.apc_glyph_limit,
+            self.string_overflow,
+        );
         let limits = self.primary.limits;
         let primary_identity = self.primary.metadata.identity;
         let reflow_generation = self.primary.metadata.reflow_generation;
@@ -477,6 +498,8 @@ impl Terminal {
         let visible = self.visible;
         let clipboard = std::mem::take(&mut self.clipboard);
         let clipboard_write_limit = self.clipboard_write_limit;
+        let mut glyphs = std::mem::take(&mut self.glyphs);
+        glyphs.reset();
         let (foreground, background, cursor, palette) = (
             self.foreground,
             self.background,
@@ -494,6 +517,14 @@ impl Terminal {
         let mut modes = self.modes.clone();
         modes.reset();
         *self = Self::with_limits(self.cols, self.rows, limits);
+        (
+            self.parser,
+            self.dcs,
+            self.dcs_header,
+            self.apc,
+            self.apc_glyph_limit,
+            self.string_overflow,
+        ) = input;
         // RIS resets the existing primary screen. A streaming restore may
         // still deliver older history into that same screen afterward.
         self.primary.metadata.identity = primary_identity;
@@ -505,6 +536,7 @@ impl Terminal {
         self.visible = visible;
         self.clipboard = clipboard;
         self.clipboard_write_limit = clipboard_write_limit;
+        self.glyphs = glyphs;
         self.width_px = width_px;
         self.height_px = height_px;
         self.metadata = metadata;
@@ -707,19 +739,41 @@ impl Terminal {
             Event::DcsUnhook => self.dcs_end(effects),
             Event::ApcStart => {
                 self.apc.clear();
+                self.apc_glyph_limit = None;
                 self.string_overflow = false;
             }
             Event::ApcPut(byte) => {
-                if self.apc.len() < 64 * 1024 * 1024 {
-                    self.apc.push(byte);
-                } else {
+                if self.string_overflow {
+                    // A disabled or over-limit glyph command stays ignored.
+                } else if self
+                    .apc_glyph_limit
+                    .map_or(self.apc.len() >= 64 * 1024 * 1024, |limit| {
+                        self.apc.len() - 5 >= limit
+                    })
+                {
                     self.string_overflow = true;
+                } else {
+                    self.apc.push(byte);
+                    if self.apc.as_slice() == b"25a1;" {
+                        self.apc_glyph_limit = Some(self.glyphs.apc_limit());
+                        self.string_overflow = !self.glyphs.enabled();
+                    }
                 }
             }
             Event::ApcEnd => {
                 let mut apc = std::mem::take(&mut self.apc);
                 if !self.string_overflow {
-                    self.graphics_command(&apc, effects);
+                    if self.apc_glyph_limit.is_some() {
+                        let (reply, changed) = self.glyphs.execute(&apc[5..]);
+                        if let Some(reply) = reply {
+                            effects.push(Effect::Write(reply));
+                        }
+                        if changed {
+                            self.changed();
+                        }
+                    } else {
+                        self.graphics_command(&apc, effects);
+                    }
                 }
                 apc.clear();
                 self.apc = apc;
@@ -743,7 +797,8 @@ impl Terminal {
         };
         let previous_col = if current.pending_wrap && self.modes.dec(7) {
             Some(current.col)
-        } else if !self.modes.dec(7)
+        } else if self.modes.dec(2027)
+            && !self.modes.dec(7)
             && current.col == right
             && !self.screen().rows[current.row].cells[right].text.is_empty()
         {
@@ -1109,14 +1164,15 @@ impl Terminal {
     }
 
     fn reverse_index(&mut self) {
-        if self.screen().cursor.row == self.margins.top {
+        let cursor = &self.screen().cursor;
+        if cursor.row == self.margins.top
+            && cursor.col >= self.margins.left
+            && cursor.col <= self.margins.right
+        {
             self.scroll_down(1);
         } else {
-            self.screen_mut().cursor.row = self.screen().cursor.row.saturating_sub(1);
+            self.cursor_vertical(1, false);
         }
-        self.clamp_cursor();
-        self.screen_mut().cursor.pending_wrap = false;
-        self.changed();
     }
 
     fn scroll_up(&mut self, count: usize, history: bool) {
@@ -1125,16 +1181,64 @@ impl Terminal {
         let cols = self.cols as usize;
         let bg = self.screen().cursor.style.background;
         let full = m.left == 0 && m.right == cols - 1;
+        let alternate = self.alternate_active;
+        let shift_history =
+            history && m.top == 0 && full && (!alternate || m.bottom + 1 == usize::from(self.rows));
+        if !shift_history {
+            self.prepare_row_shift();
+        }
         for _ in 0..count {
             if full {
-                let row = self.screen_mut().rows.remove(m.top);
-                if history && m.top == 0 {
-                    self.screen_mut().push_history(row);
+                let screen = self.screen_mut();
+                let blank = screen.blank_row(cols, bg);
+                let pins = if !shift_history {
+                    // IL/DL-style movement copies contents between physical
+                    // rows without moving their tracked coordinates.
+                    (m.top..=m.bottom)
+                        .map(|y| {
+                            (
+                                screen.rows[y].id,
+                                if y == m.bottom {
+                                    blank.id
+                                } else {
+                                    screen.rows[y + 1].id
+                                },
+                            )
+                        })
+                        .collect()
+                } else if alternate {
+                    // The no-scrollback fast path clamps pins scrolled off
+                    // the top to the first surviving row.
+                    [(
+                        screen.rows[0].id,
+                        screen.rows.get(1).map_or(blank.id, |row| row.id),
+                    )]
+                    .into_iter()
+                    .collect()
                 } else {
-                    self.screen_mut().discard_row(row.id);
+                    // Native history insertion shifts the whole page list.
+                    // Restoring content below the margin leaves pins in place.
+                    (m.bottom + 1..screen.rows.len())
+                        .map(|y| {
+                            (
+                                screen.rows[y].id,
+                                if y == m.bottom + 1 {
+                                    blank.id
+                                } else {
+                                    screen.rows[y - 1].id
+                                },
+                            )
+                        })
+                        .collect()
+                };
+                screen.remap_grid_rows(&pins);
+                let row = screen.rows.remove(m.top);
+                screen.rows.insert(m.bottom, blank);
+                if shift_history {
+                    screen.push_history(row);
+                } else {
+                    screen.discard_row(row.id);
                 }
-                let blank = self.screen_mut().blank_row(cols, bg);
-                self.screen_mut().rows.insert(m.bottom, blank);
             } else {
                 for y in m.top..m.bottom {
                     self.copy_row_region(y + 1, y, m.left, m.right + 1, bg);
@@ -1151,12 +1255,27 @@ impl Terminal {
         let cols = self.cols as usize;
         let count = count.max(1).min(m.bottom - m.top + 1);
         let bg = self.screen().cursor.style.background;
+        self.prepare_row_shift();
         for _ in 0..count {
             if m.left == 0 && m.right == cols - 1 {
-                let row = self.screen_mut().rows.remove(m.bottom);
-                self.screen_mut().discard_row(row.id);
-                let blank = self.screen_mut().blank_row(cols, bg);
-                self.screen_mut().rows.insert(m.top, blank);
+                let screen = self.screen_mut();
+                let blank = screen.blank_row(cols, bg);
+                let pins = (m.top..=m.bottom)
+                    .map(|y| {
+                        (
+                            screen.rows[y].id,
+                            if y == m.top {
+                                blank.id
+                            } else {
+                                screen.rows[y - 1].id
+                            },
+                        )
+                    })
+                    .collect();
+                screen.remap_grid_rows(&pins);
+                let row = screen.rows.remove(m.bottom);
+                screen.discard_row(row.id);
+                screen.rows.insert(m.top, blank);
             } else {
                 for y in (m.top + 1..=m.bottom).rev() {
                     self.copy_row_region(y - 1, y, m.left, m.right + 1, bg);
@@ -1166,6 +1285,32 @@ impl Terminal {
         }
         self.clamp_cursor();
         self.changed();
+    }
+
+    fn prepare_row_shift(&mut self) {
+        let m = self.margins;
+        let right_edge = m.right + 1 == usize::from(self.cols);
+        for row in &mut self.screen_mut().rows[m.top..=m.bottom] {
+            if m.left == 0 && right_edge {
+                row.wrapped = false;
+                row.wrap_continuation = false;
+            }
+            if (right_edge || m.left < 2)
+                && let Some(cell) = row.cells.last_mut()
+            {
+                cell.spacer_head = false;
+            }
+            // Split glyphs lose their text, but the cells outside the moved
+            // region retain their attributes and hyperlink identity.
+            for boundary in [m.left, m.right + 1] {
+                if boundary > 0 && row.cells.get(boundary).is_some_and(|cell| cell.width == 0) {
+                    row.cells[boundary - 1].text.clear();
+                    row.cells[boundary - 1].width = 1;
+                    row.cells[boundary].width = 1;
+                }
+            }
+            row.dirty = true;
+        }
     }
 
     fn copy_row_region(
@@ -1345,9 +1490,9 @@ impl Terminal {
         let screen = self.screen_mut();
         for _ in 0..count {
             let row = screen.rows.remove(0);
-            screen.push_history(row);
             let blank = screen.blank_row(cols, Color::Default);
             screen.rows.push(blank);
+            screen.retain_history(row);
         }
         if screen.cursor.row < count {
             screen.cursor.row = 0;
@@ -1464,11 +1609,21 @@ impl Terminal {
         if mode == 1047 && !enabled && self.alternate_active {
             self.erase_display(2, false);
         }
+        if self.alternate_active == enabled {
+            if mode == 1049 {
+                if enabled {
+                    self.erase_display(2, false);
+                } else {
+                    self.restore_cursor();
+                }
+            }
+            return;
+        }
         let old_cursor = self.screen().cursor.clone();
         let clear_eol = self.screen().metadata.cursor_clear_eol;
+        let hyperlink_implicit_id = self.screen().metadata.hyperlink_implicit_id;
         let charset = self.screen().charset.clone();
         self.end_hyperlink();
-        let switched = self.alternate_active != enabled;
         if enabled && self.alternate.is_none() {
             self.alternate = Some(Screen::new(
                 self.cols.into(),
@@ -1484,9 +1639,10 @@ impl Terminal {
         }
         // Mode 1049 restores the primary cursor on exit without copying the
         // alternate cursor's appearance. Legacy modes copy in both directions.
-        if switched && (mode != 1049 || enabled) {
+        if mode != 1049 || enabled {
             self.screen_mut().cursor = old_cursor;
             self.screen_mut().metadata.cursor_clear_eol = clear_eol;
+            self.screen_mut().metadata.hyperlink_implicit_id = hyperlink_implicit_id;
             self.end_hyperlink();
         }
         if mode == 1049 && !enabled {
@@ -1545,15 +1701,25 @@ impl Terminal {
                 };
             }
             ([b'#'], b'8') => {
+                let style = Style {
+                    foreground: self.screen().cursor.style.foreground,
+                    background: self.screen().cursor.style.background,
+                    ..Style::default()
+                };
+                self.screen_mut().cursor.style = style;
+                self.modes.set(true, 6, false);
                 self.reset_margins();
                 for row in &mut self.screen_mut().rows {
                     for cell in &mut row.cells {
                         *cell = Cell {
                             text: "E".into(),
+                            style,
                             ..Cell::default()
                         };
                     }
                     row.wrapped = false;
+                    row.wrap_continuation = false;
+                    row.semantic = SemanticContent::Output;
                     row.dirty = true;
                 }
                 self.cursor_position(1, 1);
@@ -1596,7 +1762,9 @@ impl Terminal {
                 | b'a'
                 | b'b'
                 | b'd'
-                | b'e',
+                | b'e'
+                | b'j'
+                | b'k',
                 2..,
             )
             | ([], b'H' | b'f' | b'r' | b's', 3..)
@@ -1611,10 +1779,10 @@ impl Terminal {
         let second = p.get(1).copied().unwrap_or(0);
         let private = i.first() == Some(&b'?');
         match (i, byte) {
-            ([], b'A') => self.cursor_vertical(count, false),
+            ([], b'A' | b'k') => self.cursor_vertical(count, false),
             ([], b'B') => self.cursor_vertical(count, true),
             ([], b'C') => self.cursor_right(count),
-            ([], b'D') => self.cursor_left(count),
+            ([], b'D' | b'j') => self.cursor_left(count),
             ([], b'E' | b'F') => {
                 self.cursor_vertical(count, byte == b'E');
                 self.carriage_return();
@@ -1643,7 +1811,15 @@ impl Terminal {
                 3 => self.tabstops.fill(false),
                 _ => {}
             },
-            ([], b'W') if n == 5 => {
+            ([], b'W') => match n {
+                0 | 2 => {
+                    let col = self.screen().cursor.col;
+                    self.tabstops[col] = n == 0;
+                }
+                5 => self.tabstops.fill(false),
+                _ => {}
+            },
+            ([b'?'], b'W') if p == [5] => {
                 for (col, set) in self.tabstops.iter_mut().enumerate() {
                     *set = col > 0 && col % 8 == 0;
                 }
@@ -1670,7 +1846,8 @@ impl Terminal {
             }
             ([], b'L' | b'M') => {
                 let cur = self.screen().cursor.clone();
-                if cur.row >= self.margins.top
+                if (p.is_empty() || n != 0)
+                    && cur.row >= self.margins.top
                     && cur.row <= self.margins.bottom
                     && cur.col >= self.margins.left
                     && cur.col <= self.margins.right
@@ -1686,13 +1863,16 @@ impl Terminal {
                     self.carriage_return();
                 }
             }
-            ([], b'S') => {
-                // SU defaults to one only when the parameter is omitted.
+            ([], b'S' | b'T') => {
+                // Scrolling defaults to one only when the parameter is omitted.
                 if p.is_empty() || n != 0 {
-                    self.scroll_up(count, true);
+                    if byte == b'S' {
+                        self.scroll_up(count, true);
+                    } else {
+                        self.scroll_down(count);
+                    }
                 }
             }
-            ([], b'T') => self.scroll_down(count),
             ([], b'b') => {
                 if let Some(cp) = self.previous_char {
                     for _ in 0..count {

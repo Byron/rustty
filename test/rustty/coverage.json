@@ -14,12 +14,12 @@
     {
       "id": "terminal.resize",
       "status": "partial",
-      "remaining": "Reflow, height changes, scrollback pruning and tracked references need complete cases."
+      "remaining": "Row prompt metadata and OSC 133 redraw policies are compared across resize and snapshots; complete reflow, height changes, scrollback pruning and tracked-reference cases remain."
     },
     {
       "id": "terminal.reset",
       "status": "partial",
-      "remaining": "Mode/cursor defaults, saved bits, color persistence, RIS and direct resets are compared; graphics and other reset state still need complete coverage."
+      "remaining": "Mode/cursor defaults, saved bits, color persistence, RIS, and direct-reset continuation through UTF-8/ESC/CSI/OSC/DCS/APC including capture limits are compared; graphics and other reset state still need complete coverage."
     },
     {
       "id": "terminal.observe",
@@ -93,33 +93,43 @@
     },
     {
       "id": "terminal.selection",
-      "status": "pending",
-      "remaining": "Selection extraction, rectangular/wide/grapheme bounds and viewport."
+      "status": "partial",
+      "remaining": "Direct bounds/text, rectangles, wide/grapheme cells and whitespace/wrap cases pass. Selection mutations, word/line/output selection, gestures, adjustments and styled formats remain."
     },
     {
       "id": "terminal.search",
-      "status": "pending",
-      "remaining": "Regex/literal search across wraps/history and tracked results."
+      "status": "partial",
+      "remaining": "Literal byte matching, ASCII case folding, formatter coordinates, per-page order/overlap/trimming, no-scrollback prefix pruning and restored history are compared without normalizing results. A retained native search-underflow case still fails. Incremental feed/tick, selected matches, viewport results, resource-driven page changes and regex extension coverage remain."
+    },
+    {
+      "id": "terminal.page-layout",
+      "status": "partial",
+      "remaining": "Page/resource capacity and offset arithmetic, column adjustment and pooled/exact allocation charge are compared on macOS ARM64 without backing allocations. Page lifetime, splitting, retained resource entries, fragmentation, reflow inheritance and other platform ABIs remain."
+    },
+    {
+      "id": "terminal.pages",
+      "status": "partial",
+      "remaining": "Initialization, growth, whole-page pruning, clear/reset, dimension changes, reflow and snapshot admission compare native boundaries, capacities and allocation charges on macOS ARM64. Live managed-resource growth/splitting, compression and complete lifecycle combinations remain."
     },
     {
       "id": "terminal.tracked",
-      "status": "pending",
-      "remaining": "Tracked references through reflow, erasure and pruning."
+      "status": "partial",
+      "remaining": "Live coordinates/codepoints are compared through reflow, erasure, resets, handle reuse and screen switches. Owner isolation, reset lifetime, inactive release, line shifts and alternate/history pin motion pass; rebinding, exact pruning and snapshot restoration remain."
     },
     {
       "id": "graphics.kitty",
-      "status": "pending",
-      "remaining": "Image pixels, placement, virtual placement, animation with deterministic clocks."
+      "status": "partial",
+      "remaining": "Stored IDs, dimensions and RGBA pixels for raw/PNG/zlib uploads on both screens are compared; placement, virtual placement, transports and animation with deterministic clocks remain."
     },
     {
       "id": "graphics.png",
-      "status": "pending",
-      "remaining": "Install real PNG decoding in the Zig oracle and compare decoded pixels."
+      "status": "partial",
+      "remaining": "Real bounded Wuffs decoding and stored pixels are compared across color types/depths, transparency, Adam7, truncation, checksums and dimension precedence; APNG, ancillary chunks and complete resource/error limits remain."
     },
     {
       "id": "graphics.glyphs",
-      "status": "pending",
-      "remaining": "Custom glyph uploads, rendering state and resource limits."
+      "status": "partial",
+      "remaining": "Headless glyf uploads, exact outlines/design/constraints, ordered replacement/eviction, replies, dirty state, configured capture and decoder limits, and snapshot continuation/omission are compared; font coverage, visible rasterization and allocator-failure injection remain."
     },
     {
       "id": "clipboard",
@@ -159,7 +169,7 @@
     {
       "id": "snapshot.cross-decode",
       "status": "partial",
-      "remaining": "Both encodings are decoded in both peers and compared to uninterrupted continuation; complete metadata, lazy mixed-width PAGEs and all state transitions still need coverage."
+      "remaining": "Both encodings and uninterrupted continuation are compared; PAGE STYLE/LINK admission, hyperlink string lifetimes/deduplication and linked-cell limits have bounded coverage. Native short-bitmap snapshot cases still abort. Complete metadata, lazy mixed-width PAGEs and all state transitions remain."
     },
     {
       "id": "snapshot.streaming",

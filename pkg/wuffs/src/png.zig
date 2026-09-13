@@ -18,7 +18,9 @@ pub fn decode(alloc: Allocator, data: []const u8) Error!ImageData {
     // gets around that by using the Zig allocator to allocate enough memory for
     // the struct and then casts it to the appropriate pointer.
 
-    const decoder_buf = try alloc.alloc(u8, c.sizeof__wuffs_png__decoder());
+    // The opaque C decoder contains uint64_t fields. Byte alignment is not
+    // sufficient for arena and fixed-buffer allocators.
+    const decoder_buf = try alloc.alignedAlloc(u8, .of(u64), c.sizeof__wuffs_png__decoder());
     defer alloc.free(decoder_buf);
 
     const decoder: ?*c.wuffs_png__decoder = @ptrCast(decoder_buf);

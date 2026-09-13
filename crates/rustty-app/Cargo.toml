@@ -16,6 +16,11 @@ name = "native_panel"
 path = "tests/native_panel.rs"
 harness = false
 
+[[test]]
+name = "native_quick_animation"
+path = "tests/native_quick_animation.rs"
+harness = false
+
 [dependencies]
 rustty = { workspace = true, features = ["sessions"] }
 rustty-font.workspace = true
@@ -30,7 +35,6 @@ serde.workspace = true
 serde_json.workspace = true
 pollster = "0.4"
 base64.workspace = true
-regex.workspace = true
 png.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]

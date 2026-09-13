@@ -13,6 +13,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
+    time::Duration,
 };
 
 use block2::{DynBlock, RcBlock};
@@ -28,9 +29,10 @@ use objc2::{
     sel,
 };
 use objc2_app_kit::{
-    NSAccessibility, NSApplication, NSApplicationActivationOptions, NSColor, NSColorSpace, NSEvent,
-    NSFloatingWindowLevel, NSPasteboard, NSPasteboardAccessBehavior, NSPasteboardItem,
-    NSPasteboardTypeString, NSRunningApplication, NSScreen, NSUserInterfaceItemIdentification,
+    NSAccessibility, NSAnimatablePropertyContainer, NSAnimationContext, NSApplication,
+    NSApplicationActivationOptions, NSColor, NSColorSpace, NSEvent, NSFloatingWindowLevel,
+    NSPasteboard, NSPasteboardAccessBehavior, NSPasteboardItem, NSPasteboardTypeString,
+    NSPopUpMenuWindowLevel, NSRunningApplication, NSScreen, NSUserInterfaceItemIdentification,
     NSView, NSWindow, NSWindowAnimationBehavior, NSWindowCollectionBehavior, NSWindowTabbingMode,
     NSWindowTitleVisibility, NSWorkspace,
 };
@@ -59,7 +61,7 @@ use rustty::vt::clipboard::{self, Content, Location, ReadResult, ReadSuccess, Wr
 use winit::{
     platform::macos::{OptionAsAlt as WinitOptionAsAlt, WindowExtMacOS},
     raw_window_handle::{HasWindowHandle, RawWindowHandle},
-    window::{Theme, Window},
+    window::{Theme, Window, WindowId},
 };
 
 #[derive(Clone, Debug)]
@@ -81,6 +83,7 @@ pub struct Platform {
     notification_state: Arc<NotificationState>,
     _notification_delegate: Retained<NotificationDelegate>,
     previous_quick_app: RefCell<Option<Retained<NSRunningApplication>>>,
+    quick_animations: RefCell<HashMap<WindowId, Rc<RefCell<QuickAnimation>>>>,
 }
 
 impl Platform {
@@ -162,6 +165,7 @@ impl Platform {
             notification_state: Arc::default(),
             _notification_delegate: delegate,
             previous_quick_app: RefCell::new(None),
+            quick_animations: RefCell::new(HashMap::new()),
         };
         platform.update_config(config)?;
         Ok(platform)
@@ -249,7 +253,16 @@ impl Platform {
         if quick {
             native.setIdentifier(Some(&NSString::from_str("app.rustty.quickTerminal")));
             native.setAccessibilitySubrole(Some(&NSString::from_str("AXFloatingWindow")));
-            native.setLevel(NSFloatingWindowLevel);
+            let animating = self
+                .quick_animations
+                .borrow()
+                .get(&window.id())
+                .is_some_and(|state| state.borrow().running);
+            native.setLevel(if animating {
+                NSPopUpMenuWindowLevel
+            } else {
+                NSFloatingWindowLevel
+            });
             native.setCollectionBehavior(quick_collection_behavior(
                 config.quick_terminal_space_behavior,
             ));
@@ -263,18 +276,29 @@ impl Platform {
         Ok(())
     }
 
-    /// Initial quick-terminal frame in Winit's global logical, top-left coordinates.
-    pub fn quick_terminal_frame(&self, config: &Config) -> Option<[f64; 4]> {
+    /// Anchor a new or restored quick terminal in Winit's global logical coordinates.
+    pub fn quick_terminal_frame(
+        &self,
+        config: &Config,
+        saved_size: Option<[f64; 2]>,
+    ) -> Option<[f64; 4]> {
         Some(quick_frame(
             self.quick_visible_frame(config.quick_terminal_screen)?,
             config.quick_terminal_position,
-            None,
+            saved_size,
         ))
     }
 
     fn quick_visible_frame(&self, selection: QuickTerminalScreen) -> Option<[f64; 4]> {
+        Some(logical_screen_frame(
+            self.quick_screen(selection)?.visibleFrame(),
+            CGDisplayBounds(CGMainDisplayID()).size.height,
+        ))
+    }
+
+    fn quick_screen(&self, selection: QuickTerminalScreen) -> Option<Retained<NSScreen>> {
         let screens = NSScreen::screens(self.mtm);
-        let screen = match selection {
+        match selection {
             QuickTerminalScreen::Main => NSScreen::mainScreen(self.mtm),
             QuickTerminalScreen::Mouse => {
                 let mouse = NSEvent::mouseLocation();
@@ -285,11 +309,42 @@ impl Platform {
             QuickTerminalScreen::MacosMenuBar => screens.firstObject(),
         }
         .or_else(|| NSScreen::mainScreen(self.mtm))
-        .or_else(|| screens.firstObject())?;
-        Some(logical_screen_frame(
-            screen.visibleFrame(),
+        .or_else(|| screens.firstObject())
+    }
+
+    fn quick_animation(&self, window: &Window, native: &NSWindow) -> Rc<RefCell<QuickAnimation>> {
+        self.quick_animations
+            .borrow_mut()
+            .entry(window.id())
+            .or_insert_with(|| Rc::new(RefCell::new(QuickAnimation::new(native.frame()))))
+            .clone()
+    }
+
+    /// Read the final frame while animating and the live frame after settling.
+    /// Event coordinates may describe an earlier animation tick by the time Winit
+    /// delivers them; querying here also preserves user resizes after completion.
+    pub fn quick_terminal_saved_frame(&self, window: &Window) -> Result<[f64; 4], String> {
+        let native = native_window(window)?;
+        let frame = self
+            .quick_animations
+            .borrow()
+            .get(&window.id())
+            .and_then(|state| {
+                let state = state.borrow();
+                state.running.then_some(state.frame)
+            })
+            .unwrap_or_else(|| native.frame());
+        Ok(logical_screen_frame(
+            frame,
             CGDisplayBounds(CGMainDisplayID()).size.height,
         ))
+    }
+
+    /// Invalidate native completions before Winit closes its window and delegate.
+    pub fn forget_window(&self, window: &Window) {
+        if let Some(state) = self.quick_animations.borrow_mut().remove(&window.id()) {
+            state.borrow_mut().cancel();
+        }
     }
 
     /// Select the screen on each reveal, retaining the user's resized dimensions.
@@ -298,40 +353,90 @@ impl Platform {
     pub fn show_quick(&self, window: &Window, config: &Config) -> Result<(), String> {
         let native = native_window(window)?;
         self.configure_window(window, true, config)?;
-        if !native.isVisible() {
+        let state = self.quick_animation(window, &native);
+        let saved = {
+            let state = state.borrow();
+            if state.running {
+                state.frame
+            } else {
+                native.frame()
+            }
+        };
+        if !state.borrow().visible || !native.isVisible() {
             *self.previous_quick_app.borrow_mut() = NSWorkspace::sharedWorkspace()
                 .frontmostApplication()
                 .filter(|app| app.processIdentifier() != std::process::id() as i32);
-            if let Some(visible) = self.quick_visible_frame(config.quick_terminal_screen) {
-                let size = native.frame().size;
-                let [x, y, width, height] = quick_frame(
-                    visible,
+        }
+        let screen = self.quick_screen(config.quick_terminal_screen);
+        let frame = screen.as_ref().map_or(saved, |screen| {
+            let primary_height = CGDisplayBounds(CGMainDisplayID()).size.height;
+            let [x, y, width, height] = quick_frame(
+                logical_screen_frame(screen.visibleFrame(), primary_height),
+                config.quick_terminal_position,
+                Some([saved.size.width, saved.size.height]),
+            );
+            NSRect::new(
+                NSPoint::new(x, primary_height - y - height),
+                NSSize::new(width, height),
+            )
+        });
+        let duration = if screen.is_some() {
+            config.quick_terminal_animation_duration
+        } else {
+            Duration::ZERO
+        };
+        let generation = state.borrow_mut().begin(frame, true);
+        let fade = config.quick_terminal_position == QuickTerminalPosition::Center;
+        if !native.isVisible() {
+            let initial = if duration.is_zero() {
+                frame
+            } else {
+                quick_hidden_frame(
+                    frame,
+                    screen.as_ref().unwrap().frame(),
                     config.quick_terminal_position,
-                    Some([size.width, size.height]),
-                );
-                // Cocoa uses one global point space even on mixed-DPI displays.
-                // Convert only the Y axis, never scale a global screen origin.
-                native.setFrame_display(
-                    NSRect::new(
-                        NSPoint::new(
-                            x,
-                            CGDisplayBounds(CGMainDisplayID()).size.height - y - height,
-                        ),
-                        NSSize::new(width, height),
-                    ),
-                    false,
-                );
-            }
+                )
+            };
+            native.setFrame_display(initial, false);
+            native.setAlphaValue(if fade && !duration.is_zero() {
+                0.0
+            } else {
+                1.0
+            });
         }
         window.set_visible(true);
         window.focus_window();
+        animate_quick(native, state, generation, frame, 1.0, duration);
         Ok(())
     }
 
     /// `restore_focus` is true only for an explicit toggle/close. Autohide must
     /// leave the app or window the user just selected in control of keyboard focus.
-    pub fn hide_quick(&self, window: &Window, restore_focus: bool) -> Result<(), String> {
+    pub fn hide_quick(
+        &self,
+        window: &Window,
+        restore_focus: bool,
+        config: &Config,
+    ) -> Result<(), String> {
         let native = native_window(window)?;
+        let state = self.quick_animation(window, &native);
+        let frame = {
+            let state = state.borrow();
+            if state.running {
+                state.frame
+            } else {
+                native.frame()
+            }
+        };
+        let screen = native.screen();
+        let duration = if native.isVisible() && native.isOnActiveSpace() && screen.is_some() {
+            config.quick_terminal_animation_duration
+        } else {
+            Duration::ZERO
+        };
+        // Invalidate a previous show before restoring focus, which can synchronously
+        // produce focus-loss notifications and another autohide request.
+        let generation = state.borrow_mut().begin(frame, false);
         let previous = self.previous_quick_app.borrow_mut().take();
         if may_restore_quick_focus(
             restore_focus,
@@ -344,16 +449,29 @@ impl Platform {
             // Rustty window. Never force activation over a newly selected app.
             previous.activateWithOptions(NSApplicationActivationOptions::empty());
         }
-        window.set_visible(false);
+        let target = screen.as_ref().map_or(frame, |screen| {
+            quick_hidden_frame(frame, screen.frame(), config.quick_terminal_position)
+        });
+        let alpha = if config.quick_terminal_position == QuickTerminalPosition::Center {
+            0.0
+        } else {
+            1.0
+        };
+        animate_quick(native, state, generation, target, alpha, duration);
         Ok(())
     }
 
-    /// Forget an old activation target even when autohide is disabled.
-    pub fn quick_resigned_focus(&self, window: &Window) -> Result<(), String> {
-        if !native_window(window)?.isKeyWindow() {
+    /// Ignore Winit's initial unfocused event and stale events overtaken by a reveal.
+    /// Forget a real activation target even when autohide is disabled.
+    pub fn quick_resigned_focus(&self, window: &Window, was_focused: bool) -> Result<bool, String> {
+        let lost = was_focused && !native_window(window)?.isKeyWindow();
+        if lost {
             self.previous_quick_app.borrow_mut().take();
+            if let Some(state) = self.quick_animations.borrow().get(&window.id()) {
+                state.borrow_mut().focus = false;
+            }
         }
-        Ok(())
+        Ok(lost)
     }
 
     /// The host applies its clipboard policy before calling native accessors.
@@ -728,6 +846,128 @@ fn quick_collection_behavior(behavior: QuickTerminalSpaceBehavior) -> NSWindowCo
     spaces
         | NSWindowCollectionBehavior::IgnoresCycle
         | NSWindowCollectionBehavior::FullScreenAuxiliary
+}
+
+#[derive(Debug)]
+struct QuickAnimation {
+    generation: u64,
+    frame: NSRect,
+    visible: bool,
+    running: bool,
+    focus: bool,
+}
+
+impl QuickAnimation {
+    fn new(frame: NSRect) -> Self {
+        Self {
+            generation: 0,
+            frame,
+            visible: false,
+            running: false,
+            focus: false,
+        }
+    }
+
+    fn begin(&mut self, frame: NSRect, visible: bool) -> u64 {
+        self.generation = self.generation.wrapping_add(1);
+        self.frame = frame;
+        self.visible = visible;
+        self.focus = visible;
+        self.running = true;
+        self.generation
+    }
+
+    fn current(&self, generation: u64) -> bool {
+        self.running && self.generation == generation
+    }
+
+    fn finish(&mut self, generation: u64) -> bool {
+        if !self.current(generation) {
+            return false;
+        }
+        self.running = false;
+        true
+    }
+
+    fn cancel(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
+        self.running = false;
+        self.focus = false;
+    }
+}
+
+fn animate_quick(
+    native: Retained<NSWindow>,
+    state: Rc<RefCell<QuickAnimation>>,
+    generation: u64,
+    target: NSRect,
+    alpha: f64,
+    duration: Duration,
+) {
+    let (target, alpha) = if duration.is_zero() {
+        (state.borrow().frame, 1.0)
+    } else {
+        (target, alpha)
+    };
+    let window = native.clone();
+    let completion = RcBlock::new(move || {
+        let (frame, visible, focus) = {
+            let state = state.borrow();
+            if !state.current(generation) {
+                return;
+            }
+            (state.frame, state.visible, state.focus)
+        };
+        // Closing a Winit window clears its delegate. A retained animation proxy
+        // must never bring that closed window back or try to focus its old view.
+        if window.delegate().is_some() {
+            if !visible {
+                window.orderOut(None);
+            }
+            window.setFrame_display(frame, false);
+            window.setAlphaValue(1.0);
+            // IME candidate windows must be able to appear above the terminal.
+            window.setLevel(NSFloatingWindowLevel);
+            if visible && focus && window.isVisible() {
+                window.makeKeyAndOrderFront(None);
+            }
+        }
+        // Settle the native frame before allowing queued move events to read it.
+        state.borrow_mut().finish(generation);
+    });
+    if !duration.is_zero() {
+        native.setLevel(NSPopUpMenuWindowLevel);
+    }
+    let changes = RcBlock::new(move |context: NonNull<NSAnimationContext>| {
+        // AppKit supplies the current animation context for this synchronous block.
+        unsafe { context.as_ref() }.setDuration(duration.as_secs_f64());
+        let animator = native.animator();
+        animator.setFrame_display(target, true);
+        animator.setAlphaValue(alpha);
+    });
+    if duration.is_zero() {
+        // Retarget the animator as well as settling the window. A direct frame
+        // assignment alone would let an interrupted animation keep moving it.
+        NSAnimationContext::runAnimationGroup(&changes);
+        completion.call(());
+    } else {
+        NSAnimationContext::runAnimationGroup_completionHandler(&changes, Some(&completion));
+    }
+}
+
+fn quick_hidden_frame(
+    mut frame: NSRect,
+    screen: NSRect,
+    position: QuickTerminalPosition,
+) -> NSRect {
+    match position {
+        QuickTerminalPosition::Top => frame.origin.y = screen.origin.y + screen.size.height,
+        QuickTerminalPosition::Bottom => frame.origin.y = screen.origin.y - frame.size.height,
+        QuickTerminalPosition::Left => frame.origin.x = screen.origin.x - frame.size.width,
+        QuickTerminalPosition::Right => frame.origin.x = screen.origin.x + screen.size.width,
+        QuickTerminalPosition::Center => {}
+    }
+    frame
 }
 
 fn logical_screen_frame(frame: NSRect, primary_height: f64) -> [f64; 4] {
@@ -1453,6 +1693,33 @@ mod tests {
     }
 
     #[test]
+    fn quick_terminal_restores_dimensions_when_anchoring_to_the_current_display() {
+        let main = [0.0, 24.0, 1440.0, 812.0];
+        let position = QuickTerminalPosition::Top;
+        let fresh = quick_frame(main, position, None);
+        assert_eq!(fresh, [0.0, 24.0, 1440.0, 406.0]);
+        assert_eq!(
+            quick_frame(main, position, Some([fresh[2], fresh[3]])),
+            fresh
+        );
+
+        // Reopening keeps a custom size, including legal sizes below 320×180.
+        assert_eq!(
+            quick_frame(main, position, Some([520.0, 280.0])),
+            [460.0, 24.0, 520.0, 280.0]
+        );
+        assert_eq!(
+            quick_frame(main, position, Some([280.0, 150.0])),
+            [580.0, 24.0, 280.0, 150.0]
+        );
+        let smaller = [-480.0, -300.0, 480.0, 240.0];
+        assert_eq!(
+            quick_frame(smaller, position, Some([520.0, 280.0])),
+            smaller
+        );
+    }
+
+    #[test]
     fn quick_terminal_spaces_and_focus_do_not_displace_user_choices() {
         let moving = quick_collection_behavior(QuickTerminalSpaceBehavior::Move);
         let remaining = quick_collection_behavior(QuickTerminalSpaceBehavior::Remain);
@@ -1474,6 +1741,47 @@ mod tests {
                 ),
                 state == 15,
             );
+        }
+    }
+
+    #[test]
+    fn quick_animation_reversals_keep_the_latest_frame_visibility_and_focus() {
+        let frame = NSRect::new(NSPoint::new(-900.0, 1100.0), NSSize::new(640.0, 320.0));
+        let mut animation = QuickAnimation::new(frame);
+        let show = animation.begin(frame, true);
+        let hide = animation.begin(frame, false);
+        let resized = NSRect::new(frame.origin, NSSize::new(480.0, 240.0));
+        let reveal = animation.begin(resized, true);
+        assert!(!animation.finish(hide));
+        assert!(!animation.finish(show));
+        assert_eq!(animation.frame, resized);
+        assert!(animation.visible && animation.running && animation.focus);
+        // A user switching windows during the slide must not get focus stolen back.
+        animation.focus = false;
+        assert!(animation.finish(reveal));
+        assert!(!animation.focus);
+        assert!(!animation.finish(reveal));
+        let closing = animation.begin(resized, false);
+        animation.cancel();
+        assert!(!animation.finish(closing));
+        assert!(!animation.running);
+    }
+
+    #[test]
+    fn quick_animation_edges_clear_the_selected_native_screen_without_resizing() {
+        // A secondary display above/left of the primary still uses global points.
+        let screen = NSRect::new(NSPoint::new(-1920.0, 900.0), NSSize::new(1920.0, 1080.0));
+        let frame = NSRect::new(NSPoint::new(-1200.0, 1200.0), NSSize::new(640.0, 320.0));
+        for (position, origin) in [
+            (QuickTerminalPosition::Top, NSPoint::new(-1200.0, 1980.0)),
+            (QuickTerminalPosition::Bottom, NSPoint::new(-1200.0, 580.0)),
+            (QuickTerminalPosition::Left, NSPoint::new(-2560.0, 1200.0)),
+            (QuickTerminalPosition::Right, NSPoint::new(0.0, 1200.0)),
+            (QuickTerminalPosition::Center, frame.origin),
+        ] {
+            let hidden = quick_hidden_frame(frame, screen, position);
+            assert_eq!(hidden.origin, origin);
+            assert_eq!(hidden.size, frame.size);
         }
     }
 
