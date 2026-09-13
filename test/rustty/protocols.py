@@ -1,5 +1,6 @@
 """Terminal-level protocol requests; source names come from the Zig reference."""
 import re
+import base64
 
 
 def requests(root):
@@ -65,3 +66,59 @@ def effect_requests():
                                        b";01", b";+1", b"; 1", b";18446744073709551616", b";1_0",
                                        b";_10", b";10_", b";1__0", b";_", b";0x10", b";-0", b";18446744073709551615")):
             yield case(f"progress/{state.decode()}/{index}", b"9;4;" + state + value)
+
+
+def clipboard_requests():
+    def content(mime, data):
+        return {"mime": mime.hex(), "data": data.hex()}
+
+    def case(name, data, replies=()):
+        return ({"id": "protocol/clipboard/" + name,
+                 "operations": [{"op": "write", "data": data.hex()}],
+                 "clipboard_replies": list(replies)}, ["clipboard", "effects.pty"])
+
+    endings = (("bel", b"\x07"), ("st", b"\x1b\\"), ("c1", b"\x9c"))
+    selectors = (b"", b"c", b"p", b"s", b"x", b"0", b"cp", b"pc", b"\xff")
+    payloads = [b"", b"Zg==", b"Zg", b"Zm8=", b"Zm8", b"Zm9v", b"AAH/",
+                b"Zg===", b"Z g==", b"Zh==", b"Z", b"Zg=", b"=g==", b"Zh",
+                b"Zg==\n", b";", base64.b64encode(bytes(range(256))),
+                base64.b64encode(b"a" * 16384)]
+    for selector in selectors:
+        for index, payload in enumerate(payloads):
+            for ending, terminator in endings:
+                yield case(f"write/{selector.hex()}/{index}/{ending}",
+                           b"\x1b]52;" + selector + b";" + payload + terminator)
+
+    for selector in selectors:
+        for status in ("success", "denied", "unsupported", "busy", "io_error", "none"):
+            for ending, terminator in endings:
+                yield case(f"read/{selector.hex()}/{status}/{ending}",
+                           b"\x1b]52;" + selector + b";?" + terminator,
+                           [{"status": status, "contents": [content(b"text/plain", b"a\x00b\xff")]}])
+
+    for status in ("success", "denied", "unsupported", "busy", "invalid_data", "io_error", "none"):
+        yield case("write-status/" + status, b"\x1b]52;c;dGV4dA==\x07", [{"status": status}])
+
+    representations = [
+        [], [content(b"image/png", b"\x89PNG")], [content(b"text/plain", b"")],
+        [content(b"text/plain", b"first"), content(b"text/plain", b"second")],
+        [content(b"image/png", b"\x89PNG"), content(b"UTF8_STRING", b"hi")],
+        [content(b"TEXT/PLAIN", b"wrong case")],
+        [content(b"text/plain", bytes(range(256)) * 64)],
+    ] + [[content(mime, "héllo 界".encode())] for mime in
+         (b"text/plain", b"text/plain;charset=utf-8", b"UTF8_STRING", b"TEXT", b"STRING")]
+    for index, contents in enumerate(representations):
+        yield case(f"read-mimes/{index}", b"\x1b]52;c;?\x07", [{
+            "contents": contents, "available": [b"image/png".hex()], "remember": True,
+        }])
+
+    for index, payload in enumerate((b"52;", b"52;c", b"52;c?", b"52;cp;?",
+                                     b"52;;??", b"52;;;?", b"52;c;?tail")):
+        yield case(f"invalid/{index}", b"\x1b]" + payload + b"\x07")
+
+    yield case("ordering", b"\x1b]52;c;?\x07\x1b[6n\x1b]52;p;dGV4dA==\x07"
+               b"\x1b]52;s;?\x1b\\\x1b]9;notice\x07\x1bc", [
+                   {"contents": [content(b"text/plain", b"first")]},
+                   {"status": "denied"},
+                   {"contents": [content(b"text/plain", b"last")]},
+               ])

@@ -39,50 +39,9 @@ impl Rgb {
     }
 
     pub fn parse(value: &str) -> Result<Self, &'static str> {
-        let value = value.trim();
-        let hex = value.strip_prefix('#').unwrap_or(value);
-        if (hex.len() == 3 || hex.len() == 6) && hex.bytes().all(|b| b.is_ascii_hexdigit()) {
-            let n = u32::from_str_radix(hex, 16).map_err(|_| "invalid color")?;
-            return Ok(if hex.len() == 3 {
-                Self::new(
-                    ((n >> 8) & 15) as u8 * 17,
-                    ((n >> 4) & 15) as u8 * 17,
-                    (n & 15) as u8 * 17,
-                )
-            } else {
-                Self::new((n >> 16) as u8, (n >> 8) as u8, n as u8)
-            });
-        }
-        if let Some(channels) = value.strip_prefix("rgb:") {
-            let channels = channels
-                .split('/')
-                .map(|c| {
-                    if c.is_empty() || c.len() > 4 {
-                        return Err("invalid RGB channel");
-                    }
-                    let n = u32::from_str_radix(c, 16).map_err(|_| "invalid RGB channel")?;
-                    Ok((n * 255 / ((1u32 << (c.len() * 4)) - 1)) as u8)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            return match channels.as_slice() {
-                [r, g, b] => Ok(Self::new(*r, *g, *b)),
-                _ => Err("three RGB channels are required"),
-            };
-        }
-        // Reuse Ghostty's MIT/X11 color table, embedded in the Rust binary.
-        for line in include_str!("../../../src/terminal/res/rgb.txt").lines() {
-            if line.len() < 13 {
-                continue;
-            }
-            if line[12..].trim().eq_ignore_ascii_case(value) {
-                return Ok(Self::new(
-                    line[..3].trim().parse().unwrap(),
-                    line[4..7].trim().parse().unwrap(),
-                    line[8..11].trim().parse().unwrap(),
-                ));
-            }
-        }
-        Err("invalid color; expected a hex, rgb: or X11 color")
+        rustty_vt::parse_color(value)
+            .map(|[r, g, b]| Self::new(r, g, b))
+            .ok_or("invalid color; expected hex, rgb:, rgbi: or an X11 color")
     }
 
     pub fn to_array(self) -> [u8; 3] {
@@ -307,6 +266,7 @@ pub struct Config {
     pub copy_on_select: CopyOnSelect,
     pub clipboard_read: ClipboardAccess,
     pub clipboard_write: ClipboardAccess,
+    pub clipboard_write_limit_bytes: Option<usize>,
     pub confirm_close_surface: ConfirmCloseSurface,
     pub wait_after_command: bool,
     pub abnormal_command_exit_runtime: u32,
@@ -387,6 +347,7 @@ impl Default for Config {
             copy_on_select: CopyOnSelect::None,
             clipboard_read: ClipboardAccess::Ask,
             clipboard_write: ClipboardAccess::Allow,
+            clipboard_write_limit_bytes: Some(64 * 1024 * 1024),
             confirm_close_surface: ConfirmCloseSurface::True,
             wait_after_command: false,
             abnormal_command_exit_runtime: 250,
@@ -529,6 +490,10 @@ impl Config {
             "copy-on-select" => set!(copy_on_select, CopyOnSelect::parse(value)?),
             "clipboard-read" => set!(clipboard_read, ClipboardAccess::parse(value)?),
             "clipboard-write" => set!(clipboard_write, ClipboardAccess::parse(value)?),
+            "clipboard-write-limit-bytes" => set!(
+                clipboard_write_limit_bytes,
+                parse_limit(value, Some(64 * 1024 * 1024))?
+            ),
             "confirm-close-surface" => {
                 set!(confirm_close_surface, ConfirmCloseSurface::parse(value)?)
             }

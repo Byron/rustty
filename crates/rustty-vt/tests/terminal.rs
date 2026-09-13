@@ -209,10 +209,13 @@ fn effects_and_terminal_replies_are_ordered() {
             Effect::Bell,
             Effect::CommandStart,
             Effect::CommandEnd { exit_code: Some(2) },
-            Effect::Clipboard {
-                selection: "c".into(),
-                data: Some(b"hello".to_vec())
-            }
+            Effect::ClipboardWrite(rustty_vt::clipboard::Write::osc52(
+                rustty_vt::clipboard::Location::Standard,
+                vec![rustty_vt::clipboard::Content {
+                    mime: b"text/plain".to_vec(),
+                    data: b"hello".as_slice().into(),
+                }],
+            ))
         ]
     );
     assert_eq!(
@@ -343,11 +346,11 @@ fn byte_budget_accounts_for_hyperlinks_and_reflow_allocations() {
     linked.feed(
         format!(
             "\x1b]8;;https://example.org/{}\x07a\x1b]8;;\x07\r\nb\r\nc",
-            "x".repeat(4096)
+            "x".repeat(1024)
         )
         .as_bytes(),
     );
-    assert!(linked.screen().history_bytes() > plain.screen().history_bytes() + 4096);
+    assert!(linked.screen().history_bytes() > plain.screen().history_bytes() + 1024);
     let limit = plain.screen().storage_bytes();
     linked.set_limits(ScrollbackLimits {
         bytes: Some(limit),

@@ -255,7 +255,7 @@ fn restored_defaults_survive_configuration_changes_and_protocol_resets() {
     let mut terminal = Terminal::new(5, 3, 10);
     let mut palette = default_palette();
     palette[7] = [44, 55, 66];
-    terminal.set_default_colors([1, 2, 3], [4, 5, 6], Some([7, 8, 9]), &palette);
+    terminal.set_default_colors(Some([1, 2, 3]), Some([4, 5, 6]), Some([7, 8, 9]), &palette);
     terminal.set_default_cursor(CursorShape::HollowBlock, Some(false));
     terminal.modes.set_default(true, 2027, true);
     terminal.feed(b"\x1b]10;#aabbcc\x07\x1b]4;7;#112233\x07\x1b[5 q\x1b[?2027l");
@@ -267,7 +267,7 @@ fn restored_defaults_survive_configuration_changes_and_protocol_resets() {
     terminal.set_default_cursor(CursorShape::Underline, Some(false));
     assert_eq!(terminal.screen().cursor.shape, CursorShape::Bar);
     assert!(terminal.screen().cursor.blink);
-    terminal.set_default_colors([10, 20, 30], [4, 5, 6], None, &palette);
+    terminal.set_default_colors(Some([10, 20, 30]), Some([4, 5, 6]), None, &palette);
     assert_eq!(terminal.foreground, [0xaa, 0xbb, 0xcc]);
     assert_eq!(terminal.palette[7], [0x11, 0x22, 0x33]);
     terminal.feed(b"\x1b]110\x07\x1b]104;7\x07\x1b[0 q");
@@ -285,7 +285,8 @@ fn restored_defaults_survive_configuration_changes_and_protocol_resets() {
 #[test]
 fn invalid_utf8_metadata_and_links_survive_without_loss() {
     let mut terminal = Terminal::new(5, 3, 10);
-    terminal.feed(b"\x1b]2;title\xff\x07\x1b]7;file:///\xfe\x07\x1b]8;id=\xff;https://x/\xfd\x07z");
+    terminal.set_title(b"title\xff");
+    terminal.feed(b"\x1b]7;file:///\xfe\x07\x1b]8;id=\xff;https://x/\xfd\x07z");
     let encoded = encode_to_vec(&terminal).unwrap();
     let restored = decode(encoded.as_slice(), DecodeOptions::default()).unwrap();
     same_terminal(&terminal, &restored);

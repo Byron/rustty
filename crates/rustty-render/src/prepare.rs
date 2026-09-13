@@ -14,6 +14,7 @@ use std::{
 
 const PAGE_SIZE: u32 = 1024;
 const MAX_ATLAS_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_SHAPED_BYTES: usize = 4 * 1024 * 1024;
 const MAX_IMAGE_ATLAS_BYTES: u64 = 320 * 1024 * 1024;
 static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
 
@@ -111,6 +112,8 @@ struct Page {
 pub struct Renderer {
     fonts: FontSystem,
     glyphs: HashMap<(FontId, u16), CachedGlyph>,
+    shaped: [HashMap<String, Arc<[ShapedGlyph]>>; 4],
+    shaped_bytes: usize,
     sprites: HashMap<(char, u8), CachedGlyph>,
     images: HashMap<graphics::TileKey, graphics::CachedTile>,
     pages: Vec<Page>,
@@ -123,6 +126,8 @@ impl Renderer {
         Ok(Self {
             fonts: FontSystem::new(config)?,
             glyphs: HashMap::new(),
+            shaped: Default::default(),
+            shaped_bytes: 0,
             sprites: HashMap::new(),
             images: HashMap::new(),
             pages: Vec::new(),
@@ -140,6 +145,10 @@ impl Renderer {
 
     pub fn clear_cache(&mut self) {
         self.glyphs.clear();
+        for cache in &mut self.shaped {
+            cache.clear();
+        }
+        self.shaped_bytes = 0;
         self.sprites.clear();
         self.images.clear();
         self.pages.clear();
@@ -197,6 +206,7 @@ impl Renderer {
             }
             let cursor = screen.cursor.visible
                 && options.cursor_visible
+                && (!options.focused || !screen.cursor.blink || options.blink_visible)
                 && !(options.focused
                     && options.preedit.as_ref().is_some_and(|p| !p.text.is_empty()))
                 && screen.viewport_offset == 0
@@ -370,7 +380,7 @@ impl Renderer {
                 (false, true) => FontStyle::Italic,
                 (true, true) => FontStyle::BoldItalic,
             };
-            let glyphs = self.fonts.shape(&text, font_style)?;
+            let glyphs = self.shape(text, font_style)?;
             let column = |g: &ShapedGlyph| {
                 sources[sources
                     .partition_point(|(byte, _)| *byte <= g.cluster)
@@ -378,15 +388,15 @@ impl Renderer {
                 .1
             };
             let mut anchors = HashMap::new();
-            for glyph in &glyphs {
+            for glyph in glyphs.iter() {
                 if glyph.advance > 0.0 {
                     anchors.entry(column(glyph)).or_insert(glyph.x);
                 }
             }
-            for glyph in &glyphs {
+            for glyph in glyphs.iter() {
                 anchors.entry(column(glyph)).or_insert(glyph.x);
             }
-            for glyph in &glyphs {
+            for glyph in glyphs.iter() {
                 let cached = self.glyph(glyph)?;
                 if cached.size.contains(&0) {
                     continue;
@@ -410,6 +420,29 @@ impl Renderer {
             }
         }
         Ok(())
+    }
+
+    fn shape(&mut self, text: String, style: FontStyle) -> Result<Arc<[ShapedGlyph]>, FontError> {
+        if let Some(glyphs) = self.shaped[style as usize].get(text.as_str()) {
+            return Ok(glyphs.clone());
+        }
+        let glyphs: Arc<[ShapedGlyph]> = self.fonts.shape(&text, style)?.into();
+        let bytes = text.capacity()
+            + std::mem::size_of_val(&*glyphs)
+            + std::mem::size_of::<(String, Arc<[ShapedGlyph]>)>();
+        if bytes <= MAX_SHAPED_BYTES {
+            // ponytail: clear the bounded run cache on overflow; use LRU eviction
+            // if a working set larger than 4 MiB makes repeated eviction measurable.
+            if self.shaped_bytes + bytes > MAX_SHAPED_BYTES {
+                for cache in &mut self.shaped {
+                    cache.clear();
+                }
+                self.shaped_bytes = 0;
+            }
+            self.shaped_bytes += bytes;
+            self.shaped[style as usize].insert(text, glyphs.clone());
+        }
+        Ok(glyphs)
     }
 
     fn glyph(&mut self, glyph: &ShapedGlyph) -> Result<CachedGlyph, RenderError> {
@@ -659,6 +692,76 @@ fn decorations(
 mod tests {
     use super::*;
     use rustty_vt::{GridPoint, Selection, Terminal};
+
+    #[test]
+    fn focused_cursor_blinks_without_blinking_the_unfocused_outline() {
+        let mut terminal = Terminal::new(10, 2, 0);
+        terminal.feed(b"cursor\r");
+        terminal.screen_mut().cursor.blink = true;
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        for shape in [
+            CursorShape::Block,
+            CursorShape::Bar,
+            CursorShape::Underline,
+            CursorShape::HollowBlock,
+        ] {
+            terminal.screen_mut().cursor.shape = shape;
+            let mut options = RenderOptions::default();
+            let shown = renderer.prepare(terminal.screen(), &options).unwrap();
+            options.blink_visible = false;
+            let hidden = renderer.prepare(terminal.screen(), &options).unwrap();
+            options.cursor_visible = false;
+            let without = renderer.prepare(terminal.screen(), &options).unwrap();
+            assert_eq!(hidden.quads, without.quads, "hidden phase for {shape:?}");
+            assert_ne!(shown.quads, hidden.quads);
+            options.cursor_visible = true;
+            options.focused = false;
+            let outline = renderer.prepare(terminal.screen(), &options).unwrap();
+            options.blink_visible = true;
+            assert_eq!(
+                outline.quads,
+                renderer.prepare(terminal.screen(), &options).unwrap().quads
+            );
+        }
+    }
+
+    #[test]
+    fn unchanged_runs_reuse_shaping_without_caching_color_or_cell_positions() {
+        let mut terminal = Terminal::new(20, 2, 0);
+        terminal.feed("水e\u{301} => 👩🏽‍💻".as_bytes());
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let mut options = RenderOptions {
+            cursor_visible: false,
+            ..Default::default()
+        };
+        let original = renderer.prepare(terminal.screen(), &options).unwrap();
+        let cached = renderer.shaped.clone();
+        assert!(cached.iter().any(|cache| !cache.is_empty()));
+        options.padding = [20.0, 25.0];
+        options.foreground = [13, 24, 35];
+        let updated = renderer.prepare(terminal.screen(), &options).unwrap();
+        for (old, new) in cached.iter().zip(&renderer.shaped) {
+            assert_eq!(old.len(), new.len());
+            for (text, glyphs) in old {
+                assert!(Arc::ptr_eq(glyphs, &new[text]));
+            }
+        }
+        assert_ne!(original.quads, updated.quads);
+        renderer.clear_cache();
+        assert_eq!(renderer.shaped_bytes, 0);
+        assert_eq!(
+            renderer.prepare(terminal.screen(), &options).unwrap().quads,
+            updated.quads
+        );
+        let regular = renderer.shape("style".into(), FontStyle::Regular).unwrap();
+        let bold = renderer.shape("style".into(), FontStyle::Bold).unwrap();
+        assert!(!Arc::ptr_eq(&regular, &bold));
+        // Exercise eviction without allocating a huge CoreText run in a unit test.
+        renderer.shaped_bytes = MAX_SHAPED_BYTES;
+        renderer.shape("new".into(), FontStyle::Regular).unwrap();
+        assert!(renderer.shaped_bytes < MAX_SHAPED_BYTES);
+        assert_eq!(renderer.shaped.iter().map(HashMap::len).sum::<usize>(), 1);
+    }
 
     #[test]
     fn styled_unicode_frame_is_self_contained_and_cache_can_be_recreated() {

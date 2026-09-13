@@ -1,4 +1,6 @@
+use crate::clipboard;
 use crate::modes::Modes;
+use crate::query::{self, Query};
 use crate::screen::*;
 use crate::unicode::{self, properties};
 use base64::Engine;
@@ -8,13 +10,13 @@ use rustty_parser::{Event, Parser};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Effect {
     Write(Vec<u8>),
-    Title(String),
-    WorkingDirectory(String),
+    Title(Vec<u8>),
+    WorkingDirectory(Vec<u8>),
     Bell,
-    Clipboard {
-        selection: String,
-        data: Option<Vec<u8>>,
-    },
+    ClipboardRead(clipboard::Read),
+    ClipboardWrite(clipboard::Write),
+    /// Serviced by built-in query defaults or the synchronous host callbacks.
+    Query(Query),
     Notification {
         title: Vec<u8>,
         body: Vec<u8>,
@@ -28,6 +30,45 @@ pub enum Effect {
         value: Option<u8>,
     },
     UnknownSequence(String),
+}
+
+/// Synchronous host callbacks used by `Terminal::feed_with_handler`.
+/// Clipboard callbacks are separate from `effect`; they are never reported
+/// twice. OSC 52 writes need no acknowledgement; unanswered reads return empty.
+pub trait EffectHandler {
+    fn effect(&mut self, effect: Effect);
+
+    fn color_scheme(&mut self) -> Option<query::ColorScheme> {
+        None
+    }
+    fn device_attributes(&mut self) -> Option<query::DeviceAttributes> {
+        None
+    }
+    fn enquiry(&mut self) -> Vec<u8> {
+        Vec::new()
+    }
+    fn size(&mut self) -> Option<query::Size> {
+        None
+    }
+    fn xtversion(&mut self) -> Vec<u8> {
+        Vec::new()
+    }
+
+    fn clipboard_read_enabled(&self) -> bool {
+        true
+    }
+
+    fn clipboard_write_enabled(&self) -> bool {
+        true
+    }
+
+    fn clipboard_read(&mut self, _request: &clipboard::Read) -> clipboard::ReadResult {
+        clipboard::ReadResult::Denied
+    }
+
+    fn clipboard_write(&mut self, _request: &clipboard::Write) -> clipboard::WriteResult {
+        clipboard::WriteResult::Denied
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,7 +94,16 @@ pub struct Terminal {
     pub cursor_color: Option<[u8; 3]>,
     /// Host's actual TERM name, used for XTGETTCAP TN. Unset or names longer
     /// than 128 bytes leave TN unanswered. This host setting is not persisted.
-    pub terminfo_name: Option<String>,
+    pub terminfo_name: Option<Vec<u8>>,
+    pub query_defaults: query::Defaults,
+    /// Allow CSI 21 t to report the raw title. Disabled by default.
+    pub title_report: bool,
+    /// Externally owned view visibility, retained through reset.
+    pub visible: bool,
+    /// Maximum total decoded bytes in a Kitty clipboard write transaction.
+    /// A transfer retains the value that was configured when it began.
+    pub clipboard_write_limit: usize,
+    clipboard: clipboard::kitty::State,
     pub title: String,
     pub working_directory: String,
     pub generation: u64,
@@ -108,6 +158,11 @@ impl Terminal {
             background: [0; 3],
             cursor_color: None,
             terminfo_name: None,
+            query_defaults: query::Defaults::default(),
+            title_report: false,
+            visible: true,
+            clipboard_write_limit: 64 * 1024 * 1024,
+            clipboard: clipboard::kitty::State::default(),
             title: String::new(),
             working_directory: String::new(),
             generation: 0,
@@ -160,15 +215,139 @@ impl Terminal {
         &self.tabstops
     }
 
+    /// Raw title bytes, including non-UTF-8 bytes retained by direct setters
+    /// or a stream title truncated in the middle of a character.
+    pub fn title_bytes(&self) -> &[u8] {
+        self.metadata
+            .title_raw
+            .as_deref()
+            .unwrap_or(self.title.as_bytes())
+    }
+
+    pub fn working_directory_bytes(&self) -> &[u8] {
+        self.metadata
+            .pwd_raw
+            .as_deref()
+            .unwrap_or(self.working_directory.as_bytes())
+    }
+
+    /// Replace raw host state without stream length limits or host effects.
+    /// An empty value clears the title; `title` remains its display string.
+    pub fn set_title(&mut self, title: &[u8]) {
+        self.title = String::from_utf8_lossy(title).into_owned();
+        self.metadata.title_raw = std::str::from_utf8(title).is_err().then(|| title.to_vec());
+        self.changed();
+    }
+
+    /// Replace the raw working directory without parsing or decoding its URI.
+    /// An empty value clears it. This direct setter emits no host effects.
+    pub fn set_working_directory(&mut self, directory: &[u8]) {
+        self.working_directory = String::from_utf8_lossy(directory).into_owned();
+        self.metadata.pwd_raw = std::str::from_utf8(directory)
+            .is_err()
+            .then(|| directory.to_vec());
+        self.changed();
+    }
+
+    /// Feed input with runtime `query_defaults` and return deferred host effects.
+    /// Query replies use the current terminal geometry. For fully headless or
+    /// readonly hosts, use `feed_with_handler` and opt into the needed callbacks.
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<Effect> {
         let mut effects = Vec::new();
+        let mut pending = Vec::new();
         let mut parser = std::mem::take(&mut self.parser);
-        parser.advance(bytes, |event| self.handle(event, &mut effects));
+        parser.advance(bytes, |event| {
+            self.handle(event, &mut pending, true, true);
+            for effect in pending.drain(..) {
+                match effect {
+                    Effect::Query(query) => {
+                        if let Some(reply) = self.query_defaults.reply(query, self.query_size()) {
+                            effects.push(Effect::Write(reply));
+                        }
+                    }
+                    effect => effects.push(effect),
+                }
+            }
+        });
         self.parser = parser;
         // Active rows can grow allocations without scrolling (graphemes and
         // hyperlinks), so reconcile the byte budget after the complete update.
         self.primary.enforce_limits();
         effects
+    }
+
+    /// Feed bytes while servicing host queries and clipboard requests before
+    /// the next parser event. Replies are delivered through `handler.effect`.
+    /// Hosts that need deferred consent can use `feed` and `Read::reply` instead.
+    pub fn feed_with_handler(&mut self, bytes: &[u8], handler: &mut impl EffectHandler) {
+        let mut effects = Vec::new();
+        let mut parser = std::mem::take(&mut self.parser);
+        let read_enabled = handler.clipboard_read_enabled();
+        let write_enabled = handler.clipboard_write_enabled();
+        parser.advance(bytes, |event| {
+            self.handle(event, &mut effects, write_enabled, read_enabled);
+            for effect in effects.drain(..) {
+                match effect {
+                    Effect::ClipboardRead(request) => {
+                        let result = if read_enabled {
+                            handler.clipboard_read(&request)
+                        } else if request.protocol == clipboard::Protocol::Osc52 {
+                            continue;
+                        } else {
+                            clipboard::ReadResult::Denied
+                        };
+                        handler.effect(Effect::Write(self.reply_clipboard_read(request, result)));
+                    }
+                    Effect::ClipboardWrite(request) => {
+                        if write_enabled {
+                            let result = handler.clipboard_write(&request);
+                            if let Some(reply) = self.reply_clipboard_write(request, result) {
+                                handler.effect(Effect::Write(reply));
+                            }
+                        }
+                    }
+                    Effect::Query(query) => {
+                        let reply = match query {
+                            Query::ColorScheme => {
+                                handler.color_scheme().map(query::ColorScheme::encode)
+                            }
+                            Query::DeviceAttributes(kind) => {
+                                handler.device_attributes().map(|a| a.encode(kind))
+                            }
+                            Query::Enquiry => query::enquiry(&handler.enquiry()),
+                            Query::Size(style) => handler.size().map(|s| s.encode(style)),
+                            Query::Xtversion => query::xtversion(&handler.xtversion()),
+                        };
+                        if let Some(reply) = reply {
+                            handler.effect(Effect::Write(reply));
+                        }
+                    }
+                    effect => handler.effect(effect),
+                }
+            }
+        });
+        self.parser = parser;
+        self.primary.enforce_limits();
+    }
+
+    /// Complete a deferred clipboard request, including an optional grant.
+    pub fn reply_clipboard_read(
+        &mut self,
+        request: clipboard::Read,
+        result: clipboard::ReadResult,
+    ) -> Vec<u8> {
+        self.clipboard.remember_read(&request, &result);
+        request.reply_result(result)
+    }
+
+    /// Complete a deferred write. OSC 52 has no acknowledgement bytes.
+    pub fn reply_clipboard_write(
+        &mut self,
+        request: clipboard::Write,
+        result: clipboard::WriteResult,
+    ) -> Option<Vec<u8>> {
+        self.clipboard.remember_write(&request, result);
+        request.reply(result)
     }
 
     fn ensure_row_cells(&mut self, row: usize, end: usize) {
@@ -228,11 +407,60 @@ impl Terminal {
         self.height_px = height;
     }
 
+    /// Current complete cell geometry for the built-in query responder.
+    pub fn query_size(&self) -> query::Size {
+        query::Size {
+            rows: self.rows,
+            columns: self.cols,
+            cell_width: self.width_px / u32::from(self.cols),
+            cell_height: self.height_px / u32::from(self.rows),
+        }
+    }
+
+    /// Resize with optional cell pixel geometry. Supplying complete geometry
+    /// emits the mode-2048 report when enabled, even if grid dimensions match.
+    pub fn resize_with_cell_size(
+        &mut self,
+        cols: u16,
+        rows: u16,
+        cell_size: Option<(u32, u32)>,
+    ) -> Vec<Effect> {
+        if cols == 0 || rows == 0 {
+            return Vec::new();
+        }
+        self.resize(cols, rows);
+        let Some((cell_width, cell_height)) = cell_size else {
+            return Vec::new();
+        };
+        self.set_pixel_size(
+            u32::from(cols).saturating_mul(cell_width),
+            u32::from(rows).saturating_mul(cell_height),
+        );
+        if self.modes.dec(2048) {
+            vec![Effect::Write(
+                query::Size {
+                    rows,
+                    columns: cols,
+                    cell_width,
+                    cell_height,
+                }
+                .encode(query::SizeStyle::InBand),
+            )]
+        } else {
+            Vec::new()
+        }
+    }
+
     pub fn reset(&mut self) {
         let limits = self.primary.limits;
         let primary_identity = self.primary.metadata.identity;
         let reflow_generation = self.primary.metadata.reflow_generation;
         let terminfo_name = self.terminfo_name.take();
+        let query_defaults = self.query_defaults.clone();
+        let title_report = self.title_report;
+        let visible = self.visible;
+        let clipboard = std::mem::take(&mut self.clipboard);
+        let clipboard_write_limit = self.clipboard_write_limit;
         let (foreground, background, cursor, palette) = (
             self.foreground,
             self.background,
@@ -255,6 +483,11 @@ impl Terminal {
         self.primary.metadata.identity = primary_identity;
         self.primary.metadata.reflow_generation = reflow_generation;
         self.terminfo_name = terminfo_name;
+        self.query_defaults = query_defaults;
+        self.title_report = title_report;
+        self.visible = visible;
+        self.clipboard = clipboard;
+        self.clipboard_write_limit = clipboard_write_limit;
         self.width_px = width_px;
         self.height_px = height_px;
         self.metadata = metadata;
@@ -264,28 +497,43 @@ impl Terminal {
         self.cursor_color = cursor;
         self.palette = palette;
         self.set_cursor_style(0);
+        self.set_mode(true, 25, self.modes.dec(25));
         self.changed();
     }
 
+    /// Set a host-configurable mode's current value and reset default. Modes
+    /// with transition side effects require their semantic API instead.
+    pub fn set_default_mode(&mut self, private: bool, mode: u16, value: bool) -> bool {
+        if !Modes::default_configurable(private, mode) {
+            return false;
+        }
+        self.modes.set_default(private, mode, value);
+        self.set_mode(private, mode, value);
+        true
+    }
+
     /// Update configured colors while preserving application overrides.
+    /// `None` clears a configured dynamic color without inventing a query value.
     /// Palette entries beyond the supplied slice retain their defaults.
     pub fn set_default_colors(
         &mut self,
-        foreground: [u8; 3],
-        background: [u8; 3],
+        foreground: Option<[u8; 3]>,
+        background: Option<[u8; 3]>,
         cursor: Option<[u8; 3]>,
         palette: &[[u8; 3]],
     ) {
-        for (entry, value) in
-            self.metadata
-                .colors
-                .iter_mut()
-                .zip([Some(background), Some(foreground), cursor])
+        for (entry, value) in self
+            .metadata
+            .colors
+            .iter_mut()
+            .zip([background, foreground, cursor])
         {
             entry[0] = value;
         }
-        self.background = self.metadata.colors[0][1].unwrap_or(background);
-        self.foreground = self.metadata.colors[1][1].unwrap_or(foreground);
+        self.background = self.metadata.colors[0][1].or(background).unwrap_or([0; 3]);
+        self.foreground = self.metadata.colors[1][1]
+            .or(foreground)
+            .unwrap_or([255; 3]);
         self.cursor_color = self.metadata.colors[2][1].or(cursor);
         for (i, &color) in palette.iter().take(256).enumerate() {
             self.metadata.original_palette[i] = color;
@@ -351,7 +599,7 @@ impl Terminal {
         }
     }
 
-    fn changed(&mut self) {
+    pub(crate) fn changed(&mut self) {
         self.generation = self.generation.wrapping_add(1);
     }
     fn reset_margins(&mut self) {
@@ -363,11 +611,17 @@ impl Terminal {
         };
     }
 
-    fn handle(&mut self, event: Event<'_>, effects: &mut Vec<Effect>) {
+    fn handle(
+        &mut self,
+        event: Event<'_>,
+        effects: &mut Vec<Effect>,
+        clipboard_write_enabled: bool,
+        clipboard_read_enabled: bool,
+    ) {
         match event {
             Event::Print(cp) => self.print(cp),
             Event::Execute(byte) => match byte {
-                0x05 => {}
+                0x05 => effects.push(Effect::Query(Query::Enquiry)),
                 0x07 => effects.push(Effect::Bell),
                 0x08 => self.cursor_left(1),
                 0x09 => self.tab(1, false),
@@ -391,11 +645,24 @@ impl Terminal {
                 params,
                 colon_separators,
                 final_byte,
-            } => self.csi(intermediates, params, colon_separators, final_byte, effects),
+            } => self.csi(
+                intermediates,
+                params,
+                colon_separators,
+                final_byte,
+                effects,
+                clipboard_read_enabled,
+            ),
             Event::Osc {
                 data,
                 terminated_by_bell,
-            } => self.osc(data, terminated_by_bell, effects),
+            } => self.osc(
+                data,
+                terminated_by_bell,
+                effects,
+                clipboard_write_enabled,
+                clipboard_read_enabled,
+            ),
             Event::DcsHook {
                 intermediates,
                 params,
@@ -1019,10 +1286,14 @@ impl Terminal {
         }
         if private {
             match mode {
-                3 if self.modes.dec(40) => {
-                    self.resize(if value { 132 } else { 80 }, self.rows);
-                    self.erase_display(2, false);
-                    self.cursor_position(1, 1);
+                3 => {
+                    if self.modes.dec(40) {
+                        self.resize(if value { 132 } else { 80 }, self.rows);
+                        self.erase_display(2, false);
+                        self.cursor_position(1, 1);
+                    } else {
+                        self.modes.set(true, 3, false);
+                    }
                 }
                 6 => self.cursor_position(1, 1),
                 12 | 25 => {
@@ -1056,6 +1327,23 @@ impl Terminal {
         self.changed();
     }
 
+    fn set_stream_mode(
+        &mut self,
+        private: bool,
+        mode: u16,
+        value: bool,
+        effects: &mut Vec<Effect>,
+    ) {
+        self.set_mode(private, mode, value);
+        if private && value {
+            match mode {
+                2048 => effects.push(Effect::Query(Query::Size(query::SizeStyle::InBand))),
+                2033 => effects.push(Effect::Write(query::visibility(self.visible))),
+                _ => {}
+            }
+        }
+    }
+
     fn switch_screen(&mut self, mode: u16, enabled: bool) {
         if mode == 1049 && enabled {
             self.save_cursor();
@@ -1080,7 +1368,9 @@ impl Terminal {
         if mode == 1049 && enabled {
             self.erase_display(2, false);
         }
-        if switched {
+        // Mode 1049 restores the primary cursor on exit without copying the
+        // alternate cursor's appearance. Legacy modes copy in both directions.
+        if switched && (mode != 1049 || enabled) {
             self.screen_mut().cursor = old_cursor;
             self.end_hyperlink();
         }
@@ -1100,12 +1390,16 @@ impl Terminal {
                 self.carriage_return();
             }
             ([], b'M') => self.reverse_index(),
+            ([], b'Z') => effects.push(Effect::Query(Query::DeviceAttributes(
+                query::AttributeKind::Primary,
+            ))),
             ([], b'H') => {
                 let col = self.screen().cursor.col;
                 self.tabstops[col] = true;
             }
             ([], b'c') => {
                 self.reset();
+                self.clipboard.clear_grants();
                 effects.push(Effect::Progress {
                     state: 0,
                     value: None,
@@ -1158,7 +1452,18 @@ impl Terminal {
         }
     }
 
-    fn csi(&mut self, i: &[u8], p: &[u16], sep: u32, byte: u8, effects: &mut Vec<Effect>) {
+    fn csi(
+        &mut self,
+        i: &[u8],
+        p: &[u16],
+        sep: u32,
+        byte: u8,
+        effects: &mut Vec<Effect>,
+        clipboard_read_enabled: bool,
+    ) {
+        if sep != 0 && byte != b'm' {
+            return;
+        }
         let n = p.first().copied().unwrap_or(0);
         let count = usize::from(n.max(1));
         let second = p.get(1).copied().unwrap_or(0);
@@ -1245,7 +1550,7 @@ impl Terminal {
             ([b'>'], b'n') => self.modify_other_keys = false,
             ([], b'h' | b'l') | ([b'?'], b'h' | b'l') => {
                 for &mode in p {
-                    self.set_mode(private, mode, byte == b'h');
+                    self.set_stream_mode(private, mode, byte == b'h', effects);
                 }
             }
             ([b'?'], b's') => {
@@ -1256,7 +1561,7 @@ impl Terminal {
             ([b'?'], b'r') => {
                 for &mode in p {
                     let value = self.modes.restore(true, mode);
-                    self.set_mode(true, mode, value);
+                    self.set_stream_mode(true, mode, value, effects);
                 }
             }
             ([], b'r') => {
@@ -1292,7 +1597,11 @@ impl Terminal {
                 }
             }
             ([], b'u') => self.restore_cursor(),
-            ([b' '], b'q') if n <= 6 => self.set_cursor_style(n),
+            ([b' '], b'q') => {
+                if p.len() <= 1 && n <= 6 {
+                    self.set_cursor_style(n);
+                }
+            }
             ([b'"'], b'q') if n <= 2 => {
                 let screen = self.screen_mut();
                 screen.cursor.protected = n == 1;
@@ -1301,29 +1610,24 @@ impl Terminal {
                     screen.metadata.protected_mode = 2;
                 }
             }
-            ([b'!'], b'p') => {
-                self.screen_mut().cursor.style = Style::default();
-                self.screen_mut().cursor.protected = false;
-                self.modes.reset();
-                self.reset_margins();
-                self.screen_mut().cursor.visible = true;
-            }
-            ([b'$'], b'p') | ([b'?', b'$'], b'p') => {
-                for &mode in p {
-                    effects.push(Effect::Write(
-                        format!(
-                            "\x1b[{}{};{}$y",
-                            if private { "?" } else { "" },
-                            mode,
-                            self.modes.report(private, mode)
-                        )
-                        .into_bytes(),
-                    ));
+            // The pinned libghostty stream ignores DECSTR and ANSI DECRQM.
+            ([b'!'] | [b'$'], b'p') => {}
+            ([b'?', b'$'], b'p') => {
+                if p.len() != 1 {
+                    return;
                 }
+                let report = if n == 5522 && !clipboard_read_enabled {
+                    0
+                } else {
+                    self.modes.report(true, n)
+                };
+                effects.push(Effect::Write(
+                    format!("\x1b[?{};{report}$y", n & 0x7fff).into_bytes(),
+                ));
             }
-            ([], b'n') | ([b'?'], b'n') => match n {
-                5 => effects.push(Effect::Write(b"\x1b[0n".to_vec())),
-                6 => {
+            ([], b'n') | ([b'?'], b'n') if p.len() == 1 => match (private, n) {
+                (false, 5) => effects.push(Effect::Write(b"\x1b[0n".to_vec())),
+                (false, 6) => {
                     let cur = &self.screen().cursor;
                     let row = cur.row.saturating_sub(if self.modes.dec(6) {
                         self.margins.top
@@ -1335,16 +1639,22 @@ impl Terminal {
                     } else {
                         0
                     }) + 1;
-                    effects.push(Effect::Write(
-                        format!("\x1b[{}{row};{col}R", if private { "?" } else { "" }).into_bytes(),
-                    ));
+                    effects.push(Effect::Write(format!("\x1b[{row};{col}R").into_bytes()));
                 }
+                (true, 996) => effects.push(Effect::Query(Query::ColorScheme)),
+                (true, 998) => effects.push(Effect::Write(query::visibility(self.visible))),
                 _ => {}
             },
-            ([], b'c') if n == 0 => effects.push(Effect::Write(b"\x1b[?62;22c".to_vec())),
-            ([b'>'], b'c') => effects.push(Effect::Write(b"\x1b[>1;10;0c".to_vec())),
-            ([b'='], b'c') => effects.push(Effect::Write(b"\x1bP!|00000000\x1b\\".to_vec())),
-            ([b'>'], b'q') => effects.push(Effect::Write(b"\x1bP>|rustty 0.1.0\x1b\\".to_vec())),
+            ([], b'c') => effects.push(Effect::Query(Query::DeviceAttributes(
+                query::AttributeKind::Primary,
+            ))),
+            ([b'>'], b'c') => effects.push(Effect::Query(Query::DeviceAttributes(
+                query::AttributeKind::Secondary,
+            ))),
+            ([b'='], b'c') => effects.push(Effect::Query(Query::DeviceAttributes(
+                query::AttributeKind::Tertiary,
+            ))),
+            ([b'>'], b'q') => effects.push(Effect::Query(Query::Xtversion)),
             ([b'?'], b'u') => effects.push(Effect::Write(
                 format!("\x1b[?{}u", self.screen().kitty_keyboard.current()).into_bytes(),
             )),
@@ -1360,20 +1670,21 @@ impl Terminal {
             ([b'$'], b'}') => self.status_display = n == 1,
             ([b'$'], b'~') => {}
             ([], b't') => match n {
-                14 => effects.push(Effect::Write(
-                    format!("\x1b[4;{};{}t", self.height_px, self.width_px).into_bytes(),
-                )),
-                16 => effects.push(Effect::Write(
-                    format!(
-                        "\x1b[6;{};{}t",
-                        self.height_px / u32::from(self.rows),
-                        self.width_px / u32::from(self.cols)
-                    )
-                    .into_bytes(),
-                )),
-                18 => effects.push(Effect::Write(
-                    format!("\x1b[8;{};{}t", self.rows, self.cols).into_bytes(),
-                )),
+                14 if p.len() == 1 => {
+                    effects.push(Effect::Query(Query::Size(query::SizeStyle::TextPixels)))
+                }
+                16 if p.len() == 1 => {
+                    effects.push(Effect::Query(Query::Size(query::SizeStyle::CellPixels)))
+                }
+                18 if p.len() == 1 => {
+                    effects.push(Effect::Query(Query::Size(query::SizeStyle::Cells)))
+                }
+                21 if p.len() == 1 && self.title_report => {
+                    let mut reply = b"\x1b]l".to_vec();
+                    reply.extend_from_slice(self.title_bytes());
+                    reply.extend_from_slice(b"\x1b\\");
+                    effects.push(Effect::Write(reply));
+                }
                 22 | 23 => {}
                 _ => {}
             },
@@ -1384,7 +1695,14 @@ impl Terminal {
         }
     }
 
-    fn osc(&mut self, data: &[u8], bell: bool, effects: &mut Vec<Effect>) {
+    fn osc(
+        &mut self,
+        data: &[u8],
+        bell: bool,
+        effects: &mut Vec<Effect>,
+        clipboard_write_enabled: bool,
+        clipboard_read_enabled: bool,
+    ) {
         let split = data.iter().position(|&b| b == b';').unwrap_or(data.len());
         let Ok(number) = std::str::from_utf8(&data[..split])
             .unwrap_or("")
@@ -1392,22 +1710,43 @@ impl Terminal {
         else {
             return;
         };
+        if data[..split] != *number.to_string().as_bytes() {
+            return;
+        }
+        let has_separator = split < data.len();
+        if matches!(number, 4 | 5 | 10..=19 | 21 | 104 | 105 | 110..=119) {
+            let reply = crate::color::osc(
+                self,
+                number,
+                data.get(split + 1..).unwrap_or_default(),
+                bell,
+            );
+            if !reply.is_empty() {
+                effects.push(Effect::Write(reply));
+            }
+            return;
+        }
         let data = data.get(split + 1..).unwrap_or_default();
+        match number {
+            // These fixed captures append a NUL before dispatch.
+            0 | 2 | 7 | 8 | 777 | 1337 if !has_separator || data.len() >= 2048 => return,
+            9 if !has_separator || data.len() > 2048 => return,
+            _ => {}
+        }
         let text = String::from_utf8_lossy(data);
-        let terminator = if bell { "\x07" } else { "\x1b\\" };
         match number {
             0 | 2 => {
-                let tail = data.len().saturating_sub(2047);
-                self.title = String::from_utf8_lossy(&data[tail..]).into_owned();
-                self.metadata.title_raw = std::str::from_utf8(&data[tail..])
-                    .is_err()
-                    .then(|| data[tail..].to_vec());
-                effects.push(Effect::Title(self.title.clone()));
+                // The stream validates the full title before the host handler
+                // keeps its first 1024 bytes, even across a UTF-8 boundary.
+                if std::str::from_utf8(data).is_err() {
+                    return;
+                }
+                self.set_title(&data[..data.len().min(1024)]);
+                effects.push(Effect::Title(self.title_bytes().to_vec()));
             }
             7 => {
-                self.working_directory = text.into_owned();
-                self.metadata.pwd_raw = std::str::from_utf8(data).is_err().then(|| data.to_vec());
-                effects.push(Effect::WorkingDirectory(self.working_directory.clone()));
+                self.set_working_directory(data);
+                effects.push(Effect::WorkingDirectory(data.to_vec()));
             }
             8 => {
                 if let Some(split) = data.iter().position(|&b| b == b';') {
@@ -1433,27 +1772,7 @@ impl Terminal {
                     }
                 }
             }
-            9 => {
-                if let Some(progress) = data.strip_prefix(b"4;")
-                    && let Some(&state @ b'0'..=b'4') = progress.first()
-                {
-                    let state = state - b'0';
-                    let value = match state {
-                        0 | 3 => None,
-                        _ if progress.get(1) == Some(&b';') => {
-                            parse_unsigned(&progress[2..]).map(|v| v.min(100) as u8)
-                        }
-                        1 => Some(0),
-                        _ => None,
-                    };
-                    effects.push(Effect::Progress { state, value });
-                } else {
-                    effects.push(Effect::Notification {
-                        title: Vec::new(),
-                        body: data.to_vec(),
-                    });
-                }
-            }
+            9 => self.osc9(data, effects),
             777 => {
                 if let Some(notification) = data.strip_prefix(b"notify;")
                     && let Some(split) = notification.iter().position(|&b| b == b';')
@@ -1464,31 +1783,69 @@ impl Terminal {
                     });
                 }
             }
+            1337 => {
+                if let Some(split) = data.iter().position(|&byte| byte == b'=')
+                    && data[..split].eq_ignore_ascii_case(b"CurrentDir")
+                    && split + 1 < data.len()
+                {
+                    let directory = &data[split + 1..];
+                    self.set_working_directory(directory);
+                    effects.push(Effect::WorkingDirectory(directory.to_vec()));
+                }
+            }
             52 => {
-                if let Some((selection, encoded)) = text.split_once(';') {
-                    let selection = selection.to_owned();
-                    if encoded == "?" {
-                        effects.push(Effect::Clipboard {
-                            selection,
-                            data: None,
-                        });
+                if let Some(split @ 0..=1) = data.iter().position(|&b| b == b';') {
+                    let location =
+                        clipboard::Location::from_selector(if split == 0 { b'c' } else { data[0] });
+                    let encoded = &data[split + 1..];
+                    if encoded == b"?" {
+                        effects.push(Effect::ClipboardRead(clipboard::Read::osc52(
+                            location,
+                            if bell {
+                                clipboard::Terminator::Bell
+                            } else {
+                                clipboard::Terminator::St
+                            },
+                        )));
                     } else {
                         let engine = base64::engine::general_purpose::GeneralPurpose::new(
                             &base64::alphabet::STANDARD,
                             base64::engine::general_purpose::GeneralPurposeConfig::new()
-                                .with_decode_padding_mode(
-                                    base64::engine::DecodePaddingMode::Indifferent,
-                                ),
+                                .with_decode_allow_trailing_bits(true)
+                                .with_decode_padding_mode(if encoded.ends_with(b"=") {
+                                    base64::engine::DecodePaddingMode::RequireCanonical
+                                } else {
+                                    base64::engine::DecodePaddingMode::RequireNone
+                                }),
                         );
                         if let Ok(data) = engine.decode(encoded) {
-                            effects.push(Effect::Clipboard {
-                                selection,
-                                data: Some(data),
-                            });
+                            let contents = if encoded.is_empty() {
+                                Vec::new()
+                            } else {
+                                vec![clipboard::Content {
+                                    mime: b"text/plain".to_vec(),
+                                    data: data.into(),
+                                }]
+                            };
+                            effects.push(Effect::ClipboardWrite(clipboard::Write::osc52(
+                                location, contents,
+                            )));
                         }
                     }
                 }
             }
+            5522 => self.clipboard.handle(
+                data,
+                if bell {
+                    clipboard::Terminator::Bell
+                } else {
+                    clipboard::Terminator::St
+                },
+                self.clipboard_write_limit,
+                clipboard_write_enabled,
+                clipboard_read_enabled,
+                effects,
+            ),
             133 => match text.split(';').next().unwrap_or("") {
                 "A" => {
                     let row = self.screen().cursor.row;
@@ -1505,80 +1862,68 @@ impl Terminal {
                 }),
                 _ => {}
             },
-            4 => {
-                let mut parts = text.split(';');
-                while let (Some(index), Some(value)) = (parts.next(), parts.next()) {
-                    if let Ok(index) = index.parse::<u8>() {
-                        if value == "?" {
-                            let [r, g, b] = self.palette[index as usize];
-                            effects.push(Effect::Write(format!("\x1b]4;{index};rgb:{r:02x}{r:02x}/{g:02x}{g:02x}/{b:02x}{b:02x}{terminator}").into_bytes()));
-                        } else if let Some(color) = parse_color(value) {
-                            self.palette[index as usize] = color;
-                            self.metadata.palette_overrides[index as usize / 8] |= 1 << (index % 8);
-                            self.changed();
-                        }
-                    }
-                }
-            }
-            10..=12 => {
-                for (offset, value) in text.split(';').enumerate() {
-                    let target = number + offset as u16;
-                    if target > 12 {
-                        break;
-                    }
-                    let color = match target {
-                        10 => self.foreground,
-                        11 => self.background,
-                        _ => self.cursor_color.unwrap_or(self.foreground),
-                    };
-                    if value == "?" {
-                        let [r, g, b] = color;
-                        effects.push(Effect::Write(format!("\x1b]{target};rgb:{r:02x}{r:02x}/{g:02x}{g:02x}/{b:02x}{b:02x}{terminator}").into_bytes()));
-                    } else if let Some(color) = parse_color(value) {
-                        self.metadata.colors[match target {
-                            10 => 1,
-                            11 => 0,
-                            _ => 2,
-                        }][1] = Some(color);
-                        match target {
-                            10 => self.foreground = color,
-                            11 => self.background = color,
-                            _ => self.cursor_color = Some(color),
-                        }
-                        self.changed();
-                    }
-                }
-            }
-            104 => {
-                if text.is_empty() {
-                    self.palette.clone_from(&self.metadata.original_palette);
-                    self.metadata.palette_overrides = [0; 32];
-                } else {
-                    for index in text.split(';').filter_map(|v| v.parse::<u8>().ok()) {
-                        self.palette[index as usize] =
-                            self.metadata.original_palette[index as usize];
-                        self.metadata.palette_overrides[index as usize / 8] &= !(1 << (index % 8));
-                    }
-                }
-                self.changed();
-            }
-            110 => {
-                self.metadata.colors[1][1] = None;
-                self.foreground = self.metadata.colors[1][0].unwrap_or([255; 3]);
-                self.changed();
-            }
-            111 => {
-                self.metadata.colors[0][1] = None;
-                self.background = self.metadata.colors[0][0].unwrap_or([0; 3]);
-                self.changed();
-            }
-            112 => {
-                self.metadata.colors[2][1] = None;
-                self.cursor_color = self.metadata.colors[2][0];
-                self.changed();
-            }
-            1 | 21 | 22 => {}
+            1 | 22 => {}
             _ => effects.push(Effect::UnknownSequence(format!("OSC {number}"))),
+        }
+    }
+
+    fn osc9(&mut self, data: &[u8], effects: &mut Vec<Effect>) {
+        if data.starts_with(b"12") {
+            let col = self.screen().cursor.col;
+            let left = if col < self.margins.left {
+                0
+            } else {
+                self.margins.left
+            };
+            if col != left {
+                self.carriage_return();
+                self.index();
+            }
+            let screen = self.screen_mut();
+            screen.cursor.semantic = SemanticContent::Prompt;
+            screen.metadata.cursor_clear_eol = false;
+            screen.rows[screen.cursor.row].semantic = SemanticContent::Prompt;
+            return;
+        }
+        if let Some(progress) = data.strip_prefix(b"4;")
+            && let Some(&state @ b'0'..=b'4') = progress.first()
+        {
+            let state = state - b'0';
+            let value = match state {
+                0 | 3 => None,
+                _ if progress.get(1) == Some(&b';') => {
+                    parse_unsigned(&progress[2..]).map(|v| v.min(100) as u8)
+                }
+                1 => Some(0),
+                _ => None,
+            };
+            effects.push(Effect::Progress { state, value });
+            return;
+        }
+        if let Some(directory) = data.strip_prefix(b"9;") {
+            if data.len() < 2048 {
+                self.set_working_directory(directory);
+                effects.push(Effect::WorkingDirectory(directory.to_vec()));
+            }
+            return;
+        }
+        if matches!(
+            data,
+            [b'1', b';', ..]
+                | [b'1', b'0']
+                | [b'1', b'0', b';', b'0'..=b'3', ..]
+                | [b'1', b'1', b';', ..]
+                | [b'2' | b'3' | b'6' | b'7' | b'8', b';', ..]
+                | [b'5', ..]
+        ) {
+            // Recognized ConEmu extensions are ignored by libghostty.
+            return;
+        }
+        if data.len() < 2048 {
+            effects.push(Effect::Notification {
+                title: Vec::new(),
+                body: data.to_vec(),
+            });
         }
     }
 
@@ -1625,8 +1970,7 @@ impl Terminal {
                     else {
                         continue;
                     };
-                    name.as_bytes()
-                        .iter()
+                    name.iter()
                         .map(|byte| format!("{byte:02X}"))
                         .collect::<String>()
                 } else {
@@ -1751,38 +2095,6 @@ pub fn default_palette() -> Vec<[u8; 3]> {
         colors.push([i * 10 + 8; 3]);
     }
     colors
-}
-
-pub fn parse_color(text: &str) -> Option<[u8; 3]> {
-    let value = text.trim().strip_prefix('#').unwrap_or(text.trim());
-    if value.len() == 6
-        && let Ok(rgb) = u32::from_str_radix(value, 16)
-    {
-        return Some([(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8]);
-    }
-    if let Some(rgb) = value.strip_prefix("rgb:") {
-        let parts: Vec<_> = rgb.split('/').collect();
-        if parts.len() != 3 {
-            return None;
-        }
-        let mut color = [0; 3];
-        for (component, part) in color.iter_mut().zip(parts) {
-            if part.is_empty() || part.len() > 4 {
-                return None;
-            }
-            let raw = u32::from_str_radix(part, 16).ok()?;
-            *component = ((raw * 255) / ((1 << (part.len() * 4)) - 1)) as u8;
-        }
-        return Some(color);
-    }
-    match value.to_ascii_lowercase().as_str() {
-        "black" => Some([0; 3]),
-        "white" => Some([255; 3]),
-        "red" => Some([255, 0, 0]),
-        "green" => Some([0, 255, 0]),
-        "blue" => Some([0, 0, 255]),
-        _ => None,
-    }
 }
 
 fn sgr(style: &mut Style, params: &[u16], separators: u32) {
