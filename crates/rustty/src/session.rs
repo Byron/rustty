@@ -1,7 +1,7 @@
 //! PTY ownership and background IO. No windowing or GPU dependency.
 use crate::config::{Command, Config, CursorStyle, ShellIntegration, TerminalColor};
 use portable_pty::{Child, CommandBuilder, ExitStatus, PtySize, native_pty_system};
-use rustty_vt::{CursorShape, Effect, Screen, ScrollbackLimits, Terminal};
+use rustty_vt::{CursorShape, Effect, Screen, ScrollbackLimits, Terminal, query};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,6 +18,9 @@ pub struct SessionOptions {
     pub working_directory: Option<PathBuf>,
     pub command: Option<Command>,
     pub resources: Option<PathBuf>,
+    /// Initial host state is installed before the child can issue queries.
+    pub color_scheme: Option<query::ColorScheme>,
+    pub visible: bool,
 }
 
 impl Default for SessionOptions {
@@ -28,6 +31,8 @@ impl Default for SessionOptions {
             working_directory: None,
             command: None,
             resources: None,
+            color_scheme: None,
+            visible: true,
         }
     }
 }
@@ -47,7 +52,8 @@ pub enum SessionEvent {
 
 enum IoCommand {
     Write(Vec<u8>),
-    Resize(PtySize),
+    HostReport(Vec<u8>),
+    Resize { size: PtySize, reply: Vec<u8> },
     Close,
 }
 
@@ -98,7 +104,7 @@ impl Session {
         let command = command(config, &options)?;
         let terminfo_name = command
             .get_env("TERM")
-            .map(|name| name.to_string_lossy().into_owned());
+            .map(|name| name.as_encoded_bytes().to_vec());
         // Prepare handles before launching a child: any failure here has no
         // process to kill or reap. Retaining the slave keeps the reader from
         // seeing EOF while the workers are starting.
@@ -107,6 +113,8 @@ impl Session {
 
         let mut terminal = Terminal::with_limits(cols, rows, scrollback_limits(config));
         terminal.terminfo_name = terminfo_name;
+        terminal.query_defaults.color_scheme = options.color_scheme;
+        terminal.visible = options.visible;
         apply_appearance(&mut terminal, config);
         terminal.working_directory = options
             .working_directory
@@ -138,7 +146,11 @@ impl Session {
                             writer_pending.release(bytes.len());
                             result
                         }
-                        IoCommand::Resize(size) => master.resize(size).map_err(error),
+                        IoCommand::HostReport(bytes) => writer.write_all(&bytes),
+                        IoCommand::Resize { size, reply } => master
+                            .resize(size)
+                            .map_err(error)
+                            .and_then(|()| writer.write_all(&reply)),
                         IoCommand::Close => break,
                     };
                     if let Err(e) = result {
@@ -186,7 +198,9 @@ impl Session {
                                     let _ = read_events.send(SessionEvent::Error(e.to_string()));
                                 }
                             }
-                            Effect::Title(_) | Effect::WorkingDirectory(_) => {}
+                            // The UI needs ordered title changes to distinguish
+                            // working/waiting reports across command boundaries.
+                            Effect::WorkingDirectory(_) => {}
                             effect => {
                                 read_wake();
                                 if read_events.send(SessionEvent::Effect(effect)).is_err() {
@@ -286,16 +300,63 @@ impl Session {
         {
             return Ok(());
         }
-        self.input
-            .send(IoCommand::Resize(PtySize {
-                cols,
-                rows,
-                pixel_width: width_px,
-                pixel_height: height_px,
-            }))
-            .map_err(error)?;
-        terminal.resize(cols, rows);
+        let effects = terminal.resize_with_cell_size(
+            cols,
+            rows,
+            Some((
+                u32::from(width_px) / u32::from(cols),
+                u32::from(height_px) / u32::from(rows),
+            )),
+        );
         terminal.set_pixel_size(width_px.into(), height_px.into());
+        drop(terminal);
+        let mut reply = Vec::new();
+        for effect in effects {
+            if let Effect::Write(bytes) = effect {
+                reply.extend(bytes);
+            }
+        }
+        // The owning IO worker writes the small resize report immediately
+        // after its resize, without blocking the UI or dropping a protocol
+        // reply when the user-input byte budget is full.
+        self.input
+            .send(IoCommand::Resize {
+                size: PtySize {
+                    cols,
+                    rows,
+                    pixel_width: width_px,
+                    pixel_height: height_px,
+                },
+                reply,
+            })
+            .map_err(error)?;
+        Ok(())
+    }
+
+    /// Apply actual window state and notify programs subscribed to its changes.
+    pub fn set_host_state(&self, visible: bool, scheme: query::ColorScheme) -> io::Result<()> {
+        let mut terminal = self.terminal()?;
+        let mut reply = Vec::new();
+        if terminal.query_defaults.color_scheme != Some(scheme) {
+            terminal.query_defaults.color_scheme = Some(scheme);
+            if terminal.modes.dec(2031) {
+                reply.extend(scheme.encode());
+            }
+        }
+        if terminal.visible != visible {
+            terminal.visible = visible;
+            if terminal.modes.dec(2033) {
+                reply.extend(query::visibility(visible));
+            }
+        }
+        drop(terminal);
+        if !reply.is_empty() {
+            // Host changes produce at most two small reports. Like resize
+            // reports, they must not block the UI on the user-input budget.
+            self.input
+                .send(IoCommand::HostReport(reply))
+                .map_err(error)?;
+        }
         Ok(())
     }
 
@@ -450,6 +511,7 @@ fn enqueue(
 }
 
 fn apply_appearance(terminal: &mut Terminal, config: &Config) {
+    terminal.clipboard_write_limit = config.clipboard_write_limit_bytes.unwrap_or(usize::MAX);
     let palette: Vec<_> = config
         .palette
         .iter()
@@ -460,8 +522,8 @@ fn apply_appearance(terminal: &mut Terminal, config: &Config) {
         _ => None,
     });
     terminal.set_default_colors(
-        config.foreground.to_array(),
-        config.background.to_array(),
+        Some(config.foreground.to_array()),
+        Some(config.background.to_array()),
         cursor_color,
         &palette,
     );
@@ -561,6 +623,114 @@ fn command(config: &Config, options: &SessionOptions) -> io::Result<CommandBuild
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    #[cfg(unix)]
+    #[test]
+    fn host_queries_and_subscribed_changes_reach_the_pty_without_input_budget() {
+        let session = Session::spawn(
+            &Config::default(),
+            SessionOptions {
+                color_scheme: Some(query::ColorScheme::Light),
+                visible: false,
+                command: Some(Command::Direct(vec![
+                    "/bin/sh".into(), "-c".into(),
+                    r"stty raw -echo; printf '\033[?996n\033[?998n'; dd bs=1 count=18 2>/dev/null | od -An -tx1 | tr -d ' \n'; printf '\r\nstate-ready\r\n'; dd bs=1 count=18 2>/dev/null | od -An -tx1 | tr -d ' \n'; stty min 0 time 1; dd bs=64 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n'; printf '\r\nstate-done\r\n'".into(),
+                ])),
+                ..SessionOptions::default()
+            },
+            Arc::new(|| {}),
+        ).unwrap();
+        let wait_for = |marker: &str| {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let text = session.terminal().unwrap().plain_text();
+                if text.contains(marker) {
+                    return text;
+                }
+                assert!(Instant::now() < deadline, "missing {marker}: {text:?}");
+                thread::sleep(Duration::from_millis(5));
+            }
+        };
+        assert!(wait_for("state-ready").contains("1b5b3f3939373b326e1b5b3f3939393b326e"));
+        {
+            let mut terminal = session.terminal().unwrap();
+            terminal.modes.set(true, 2031, true);
+            terminal.modes.set(true, 2033, true);
+        }
+        // A full user-input queue must neither block nor discard host reports.
+        *session.pending_input.used.lock().unwrap() = Some(MAX_PENDING_INPUT);
+        session
+            .set_host_state(true, query::ColorScheme::Dark)
+            .unwrap();
+        session
+            .set_host_state(true, query::ColorScheme::Dark)
+            .unwrap();
+        {
+            let mut terminal = session.terminal().unwrap();
+            terminal.modes.set(true, 2031, false);
+            terminal.modes.set(true, 2033, false);
+        }
+        session
+            .set_host_state(false, query::ColorScheme::Light)
+            .unwrap();
+        let text = wait_for("state-done");
+        assert_eq!(
+            text.matches("1b5b3f3939373b316e1b5b3f3939393b316e").count(),
+            1
+        );
+        assert_eq!(
+            text.matches("1b5b3f3939373b326e1b5b3f3939393b326e").count(),
+            1
+        );
+        assert_eq!(
+            *session.pending_input.used.lock().unwrap(),
+            Some(MAX_PENDING_INPUT)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn activity_title_effects_keep_their_order_around_command_boundaries() {
+        let session = Session::spawn(
+            &Config::default(),
+            SessionOptions {
+                command: Some(Command::Direct(vec![
+                    "/bin/sh".into(), "-c".into(),
+                    r"printf '\033]133;C\007\033]0;working\007\033]9;4;1;23\007\033]133;D;0\007\033]0;ready\007'".into(),
+                ])),
+                ..SessionOptions::default()
+            },
+            Arc::new(|| {}),
+        ).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut effects = Vec::new();
+        let mut closed = false;
+        while !closed && Instant::now() < deadline {
+            for event in session.events() {
+                match event {
+                    SessionEvent::Effect(Effect::Title(title)) => {
+                        effects.push(format!("title:{}", String::from_utf8_lossy(&title)))
+                    }
+                    SessionEvent::Effect(Effect::CommandStart) => effects.push("start".into()),
+                    SessionEvent::Effect(Effect::CommandEnd { .. }) => effects.push("end".into()),
+                    SessionEvent::Effect(Effect::Progress { state, .. }) => {
+                        effects.push(format!("progress:{state}"))
+                    }
+                    SessionEvent::OutputClosed => closed = true,
+                    SessionEvent::Error(error) => panic!("{error}"),
+                    _ => {}
+                }
+            }
+            if !closed {
+                thread::sleep(Duration::from_millis(5));
+            }
+        }
+        assert!(closed, "child did not finish its terminal output");
+        assert_eq!(
+            effects,
+            ["start", "title:working", "progress:1", "end", "title:ready"]
+        );
+    }
 
     #[test]
     fn exec_failure_is_reported_by_spawn() {
@@ -709,8 +879,10 @@ mod tests {
             .feed("\r\nline".repeat(40).as_bytes());
         assert_eq!(session.terminal().unwrap().screen().history.len(), 4);
         config.scrollback_limit_lines = Some(1);
+        config.clipboard_write_limit_bytes = Some(17);
         session.apply_config(&config).unwrap();
         assert_eq!(session.terminal().unwrap().screen().history.len(), 1);
+        assert_eq!(session.terminal().unwrap().clipboard_write_limit, 17);
         config.scrollback_limit_bytes = Some(0);
         session.apply_config(&config).unwrap();
         assert!(session.terminal().unwrap().screen().history.is_empty());

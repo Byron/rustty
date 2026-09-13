@@ -61,7 +61,7 @@ fn capability_queries_handle_names_values_and_unknown_keys_independently() {
         [b"\x1bP1+r544E=787465726D2D323536636F6C6F72\x1b\\".to_vec()]
     );
     for name in [String::new(), "x".repeat(129)] {
-        terminal.terminfo_name = Some(name);
+        terminal.terminfo_name = Some(name.into_bytes());
         assert!(writes(&mut terminal, b"\x1bP+q544E\x1b\\").is_empty());
     }
     let query = format!("\x1bP+q{}436F\x1b\\", "00;".repeat(3000));

@@ -19,12 +19,12 @@
     {
       "id": "terminal.reset",
       "status": "partial",
-      "remaining": "Default settings and all reset modes need full coverage."
+      "remaining": "Mode/cursor defaults, saved bits, color persistence, RIS and direct resets are compared; graphics and other reset state still need complete coverage."
     },
     {
       "id": "terminal.observe",
       "status": "partial",
-      "remaining": "Saved cursor, mode stacks, palette, viewport and internal continuation are not yet compared."
+      "remaining": "Mode saved/default state, colors and cursor/mouse transition effects are optionally observed; saved cursor, viewport and complete continuation remain."
     },
     {
       "id": "terminal.cells",
@@ -44,22 +44,22 @@
     {
       "id": "terminal.cursor",
       "status": "partial",
-      "remaining": "Cursor is observed; visible/blink state, saved cursor and all motion cases remain."
+      "remaining": "Cursor shape, visibility/blink and configured reset defaults are compared; saved cursor and all motion cases remain."
     },
     {
       "id": "effects.pty",
       "status": "partial",
-      "remaining": "Host-supplied device attributes, color scheme, size and version callbacks remain."
+      "remaining": "Host query decisions, mode reports and xterm/Kitty color replies are compared; disabled PTY writes and complete control contexts remain."
     },
     {
       "id": "effects.title",
       "status": "partial",
-      "remaining": "Title callback is observed; complete OSC cases remain."
+      "remaining": "Raw bytes, UTF-8 validation before truncation, fixed capture/prefix behavior, direct setters and snapshot restoration are compared; disabled callbacks, allocation failures and complete control contexts remain."
     },
     {
       "id": "effects.pwd",
       "status": "partial",
-      "remaining": "PWD callback is observed; complete URI handling cases remain."
+      "remaining": "Opaque raw bytes, OSC7/ConEmu/iTerm2 aliases, fixed capture/prefix behavior, uncapped setters and snapshots are compared; disabled callbacks, allocation failures and complete control contexts remain."
     },
     {
       "id": "effects.bell",
@@ -68,8 +68,8 @@
     },
     {
       "id": "unicode.width",
-      "status": "partial",
-      "remaining": "Selected codepoints covered; exhaustive Unicode scalar comparison remains."
+      "status": "complete",
+      "remaining": "All 1,112,064 valid Unicode scalar widths are compared; invalid scalar boundaries are rejected. Grapheme composition is tracked under terminal.cells."
     },
     {
       "id": "parser.raw-events",
@@ -78,18 +78,18 @@
     },
     {
       "id": "parser.events",
-      "status": "pending",
-      "remaining": "Validated OSC semantics, command-specific limits and malformed command behavior still require terminal/protocol comparisons."
+      "status": "partial",
+      "remaining": "Validated title/PWD, color, notification and clipboard semantics plus fixed capture/prefix cases are compared; remaining OSC commands, streaming capture allocation and complete malformed contexts remain."
     },
     {
       "id": "terminal.modes",
-      "status": "pending",
-      "remaining": "All ANSI/DEC modes, stacks, private requests and saved state."
+      "status": "partial",
+      "remaining": "All current source modes, raw saved/default bits, guarded reset policy, DECRQM and basic stream/mouse/cursor transitions are compared; complete cross-mode interactions and screen/input behavior remain."
     },
     {
       "id": "terminal.colors",
-      "status": "pending",
-      "remaining": "Palette/default color changes and exact query replies."
+      "status": "partial",
+      "remaining": "Current/default/override state, all palette indices, native X11 names, RGB/intensity parsing and xterm/Kitty reply matrices are compared; intermediate capture/continuation, allocation failures and complete control contexts remain."
     },
     {
       "id": "terminal.selection",
@@ -123,8 +123,8 @@
     },
     {
       "id": "clipboard",
-      "status": "pending",
-      "remaining": "OSC 52/5522 reads, writes, host decisions, grants and paste events."
+      "status": "partial",
+      "remaining": "OSC 52/5522 metadata, binary reads/writes, MIME filtering, streamed base64, aliases, statuses, callback absence, configured limits and session grants are compared; OSC 1337, one-time paste grants, allocation failures and complete capture/size limits remain."
     },
     {
       "id": "drag-and-drop",
@@ -149,12 +149,12 @@
     {
       "id": "protocol.dcs",
       "status": "partial",
-      "remaining": "Current source terminfo capabilities and DECRQSS styles/margins/cursor replies pass; host-specified terminfo names, all control contexts and resource limits remain."
+      "remaining": "Current source terminfo capabilities, host-specified names and DECRQSS styles/margins/cursor replies pass; all control contexts and resource limits remain."
     },
     {
       "id": "effects.host",
       "status": "partial",
-      "remaining": "OSC 9/777 notification bytes and ConEmu progress callbacks are observed, including malformed fields and RIS removal; Kitty notifications and explicit host query decisions remain."
+      "remaining": "OSC9/777 notification bytes, ConEmu classification/progress/fresh prompts, fixed captures and explicit host query decisions are compared; Kitty notifications and disabled callback combinations remain."
     },
     {
       "id": "snapshot.cross-decode",

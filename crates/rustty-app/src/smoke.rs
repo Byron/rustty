@@ -2,15 +2,47 @@
 use super::*;
 use std::fs;
 
+#[cfg(test)]
+#[test]
+fn hover_measurement_restarts_for_motion_and_leaving_but_not_duplicate_events() {
+    let now = Instant::now();
+    let mut smoke = Smoke {
+        directory: PathBuf::new(),
+        offscreen: false,
+        hover: true,
+        pointer: None,
+        stage: 4,
+        deadline: now + Duration::from_secs(45),
+        next: now,
+        original: None,
+        closed: None,
+        idle_frames: 0,
+        events: BTreeMap::new(),
+    };
+    let position = Some(Pos2::new(100.0, 100.0));
+    smoke.pointer(position, 5);
+    assert_eq!(smoke.idle_frames, 5);
+    let next = smoke.next;
+    smoke.pointer(position, 10);
+    assert_eq!((smoke.idle_frames, smoke.next), (5, next));
+    smoke.pointer(None, 12);
+    assert_eq!(smoke.idle_frames, 12);
+    smoke.pointer(position, 15);
+    assert_eq!(smoke.idle_frames, 15);
+}
+
 pub(super) struct Smoke {
     pub directory: PathBuf,
     pub offscreen: bool,
+    hover: bool,
+    pointer: Option<Pos2>,
     stage: u8,
     deadline: Instant,
     next: Instant,
     original: Option<Id>,
     closed: Option<(Id, Instant)>,
     idle_frames: u64,
+    events: BTreeMap<&'static str, u64>,
 }
 impl Smoke {
     pub fn from_env(loaded: &mut LoadedConfig) -> Result<Option<Self>> {
@@ -37,13 +69,35 @@ impl Smoke {
         Ok(Some(Self {
             directory,
             offscreen: std::env::var_os("RUSTTY_SMOKE_OFFSCREEN").is_some(),
+            hover: std::env::var_os("RUSTTY_SMOKE_HOVER").is_some(),
+            pointer: None,
             stage: 0,
             deadline: Instant::now() + Duration::from_secs(45),
             next: Instant::now(),
             original: None,
             closed: None,
             idle_frames: 0,
+            events: BTreeMap::new(),
         }))
+    }
+    pub fn record(&mut self, event: &'static str) {
+        if self.stage == 4 {
+            *self.events.entry(event).or_default() += 1;
+        }
+    }
+    pub fn pointer(&mut self, position: Option<Pos2>, frames: u64) {
+        if self.hover && self.pointer != position {
+            self.input(frames);
+        }
+        self.pointer = position;
+    }
+    pub fn input(&mut self, frames: u64) {
+        if self.stage == 4 {
+            // A developer can keep using an unlocked Mac during this check.
+            // Measure a full quiet interval, rather than calling input redraws idle.
+            self.idle_frames = frames;
+            self.next = Instant::now() + Duration::from_millis(1500);
+        }
     }
     pub fn step(&mut self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
         if Instant::now() > self.deadline {
@@ -93,7 +147,7 @@ impl Smoke {
                 }
                 self.original = Some(pane);
                 app.write(pane, b"printf '\\122USTTY_INPUT_OK\\n'\r".to_vec());
-                eprintln!("Native smoke: shell window rendered");
+                eprintln!("Native smoke: shell output received");
                 self.stage = 1;
             }
             1 => {
@@ -211,17 +265,26 @@ impl Smoke {
                 }
             }
             4 => {
+                if self.hover
+                    && !self.pointer.is_some_and(|position| {
+                        host.rects.values().any(|rect| rect.contains(position))
+                    })
+                {
+                    self.input(host.frames);
+                    return Ok(false);
+                }
                 if !app.errors.is_empty() {
                     return Err(format!("native app errors: {:?}", app.errors).into());
                 }
                 if host.frames.saturating_sub(self.idle_frames) > 4 {
                     return Err(format!(
-                        "idle window kept repainting: {} frames",
-                        host.frames - self.idle_frames
+                        "idle window kept repainting: {} frames; events: {:?}",
+                        host.frames - self.idle_frames,
+                        self.events
                     )
                     .into());
                 }
-                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"panes":app.panes.len()});
+                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
                 fs::write(
                     self.directory.join("result.json"),
                     serde_json::to_vec_pretty(&report)?,

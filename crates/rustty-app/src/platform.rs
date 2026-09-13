@@ -20,14 +20,16 @@ use muda::{
     accelerator::{Key, KeyAccelerator, Modifiers as MenuModifiers},
 };
 use objc2::{
-    DeclaredClass, MainThreadMarker, MainThreadOnly, define_class, msg_send,
+    DeclaredClass, MainThreadMarker, MainThreadOnly, define_class, extern_class, extern_methods,
+    msg_send,
     rc::Retained,
     runtime::{Bool, ProtocolObject},
     sel,
 };
 use objc2_app_kit::{
-    NSAccessibility, NSApplication, NSApplicationActivationOptions, NSColor, NSEvent,
-    NSFloatingWindowLevel, NSRunningApplication, NSScreen, NSUserInterfaceItemIdentification,
+    NSAccessibility, NSApplication, NSApplicationActivationOptions, NSColor, NSColorSpace, NSEvent,
+    NSFloatingWindowLevel, NSPasteboard, NSPasteboardAccessBehavior, NSPasteboardItem,
+    NSPasteboardTypeString, NSRunningApplication, NSScreen, NSUserInterfaceItemIdentification,
     NSView, NSWindow, NSWindowAnimationBehavior, NSWindowCollectionBehavior, NSWindowTabbingMode,
     NSWindowTitleVisibility, NSWorkspace,
 };
@@ -39,8 +41,8 @@ use objc2_core_graphics::{
     CGEventTapPlacement, CGEventTapProxy, CGEventType, CGMainDisplayID,
 };
 use objc2_foundation::{
-    NSArray, NSBundle, NSDictionary, NSError, NSNumber, NSObject, NSObjectProtocol, NSPoint,
-    NSPointInRect, NSRect, NSSize, NSString, NSTimer, NSURL,
+    NSArray, NSBundle, NSCopying, NSData, NSDictionary, NSError, NSNumber, NSObject,
+    NSObjectProtocol, NSPoint, NSPointInRect, NSRect, NSSize, NSString, NSTimer, NSURL,
 };
 use objc2_user_notifications::{
     UNAuthorizationOptions, UNMutableNotificationContent, UNNotification,
@@ -52,6 +54,7 @@ use rustty::config::{
     Action, Config, Direction, KeyBinding, KeyTrigger, Modifiers, OptionAsAlt,
     QuickTerminalPosition, QuickTerminalScreen, QuickTerminalSpaceBehavior,
 };
+use rustty::vt::clipboard::{self, Content, Location, ReadResult, ReadSuccess, WriteResult};
 use winit::{
     platform::macos::{OptionAsAlt as WinitOptionAsAlt, WindowExtMacOS},
     raw_window_handle::{HasWindowHandle, RawWindowHandle},
@@ -164,6 +167,20 @@ impl Platform {
             self.global_keys = Some(GlobalKeys::new(self.mtm, bindings, self.callback.clone()));
         }
         Ok(())
+    }
+
+    /// Resolve the user's current accent into portable sRGB for tab-owned UI.
+    pub fn accent_color(&self) -> Option<[u8; 3]> {
+        let color =
+            NSColor::controlAccentColor().colorUsingColorSpace(&NSColorSpace::sRGBColorSpace())?;
+        Some(
+            [
+                color.redComponent(),
+                color.greenComponent(),
+                color.blueComponent(),
+            ]
+            .map(|component| (component.clamp(0.0, 1.0) * 255.0).round() as u8),
+        )
     }
 
     pub fn configure_window(
@@ -299,6 +316,31 @@ impl Platform {
             self.previous_quick_app.borrow_mut().take();
         }
         Ok(())
+    }
+
+    /// The host applies its clipboard policy before calling native accessors.
+    /// Missing representations are a successful read with no matching content.
+    pub fn clipboard_read(&self, request: &clipboard::Read) -> ReadResult {
+        let Some(pasteboard) = clipboard_pasteboard(request.location) else {
+            return if request.location == Location::Primary {
+                ReadResult::Unsupported
+            } else {
+                ReadResult::IoError
+            };
+        };
+        read_pasteboard(&pasteboard, request)
+    }
+
+    /// Publish all representations together after validating their native types.
+    pub fn clipboard_write(&self, request: &clipboard::Write) -> WriteResult {
+        let Some(pasteboard) = clipboard_pasteboard(request.location) else {
+            return if request.location == Location::Primary {
+                WriteResult::Unsupported
+            } else {
+                WriteResult::IoError
+            };
+        };
+        write_pasteboard(&pasteboard, &request.contents)
     }
 
     /// Replace this pane's outstanding notification. The app decides when a pane
@@ -437,6 +479,207 @@ fn native_window(window: &Window) -> Result<Retained<NSWindow>, String> {
     let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
     view.window()
         .ok_or_else(|| "native window has no attached view".into())
+}
+
+// These four stable selectors avoid introducing a second objc2 generation just
+// for MIME lookup. UniformTypeIdentifiers is available on our minimum macOS 13.
+#[link(name = "UniformTypeIdentifiers", kind = "framework")]
+unsafe extern "C" {}
+extern_class!(
+    #[unsafe(super(NSObject))]
+    struct UTType;
+);
+impl UTType {
+    extern_methods!(
+        #[unsafe(method(typeWithMIMEType:))]
+        #[unsafe(method_family = none)]
+        fn from_mime(mime: &NSString) -> Option<Retained<Self>>;
+        #[unsafe(method(typeWithIdentifier:))]
+        #[unsafe(method_family = none)]
+        fn from_identifier(identifier: &NSString) -> Option<Retained<Self>>;
+        #[unsafe(method(identifier))]
+        #[unsafe(method_family = none)]
+        fn identifier(&self) -> Retained<NSString>;
+        #[unsafe(method(preferredMIMEType))]
+        #[unsafe(method_family = none)]
+        fn preferred_mime(&self) -> Option<Retained<NSString>>;
+    );
+}
+
+fn clipboard_pasteboard(location: Location) -> Option<Retained<NSPasteboard>> {
+    // AppKit can return nil when its pasteboard service is unavailable, despite
+    // the nonnull header annotations. Treat this as an IO failure at the API.
+    match location {
+        Location::Standard => unsafe { msg_send![objc2::class!(NSPasteboard), generalPasteboard] },
+        Location::Selection => unsafe {
+            msg_send![objc2::class!(NSPasteboard), pasteboardWithName: &*NSString::from_str("app.rustty.selection")]
+        },
+        Location::Primary => None,
+    }
+}
+
+fn clipboard_read_denied(pasteboard: &NSPasteboard) -> bool {
+    // macOS 15.4 added explicit per-app pasteboard access policy. Earlier
+    // versions have no such selector and continue through normal native access.
+    pasteboard.respondsToSelector(sel!(accessBehavior))
+        && pasteboard.accessBehavior() == NSPasteboardAccessBehavior::AlwaysDeny
+}
+
+fn valid_clipboard_mime(mime: &[u8]) -> Option<&str> {
+    if clipboard::is_text_mime(mime) {
+        return std::str::from_utf8(mime).ok();
+    }
+    let mime = std::str::from_utf8(mime).ok()?;
+    if mime.len() > 1024 || !mime.is_ascii() || mime.bytes().any(|b| b.is_ascii_control()) {
+        return None;
+    }
+    let base = mime.split(';').next()?.trim();
+    let (kind, subtype) = base.split_once('/')?;
+    let token = |s: &str| {
+        !s.is_empty()
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b))
+    };
+    (token(kind) && token(subtype)).then_some(mime)
+}
+
+fn clipboard_type(mime: &[u8]) -> Option<Retained<NSString>> {
+    if clipboard::is_text_mime(mime) {
+        return Some(unsafe { NSPasteboardTypeString }.copy());
+    }
+    let mime = NSString::from_str(valid_clipboard_mime(mime)?);
+    Some(UTType::from_mime(&mime).map_or(mime, |kind| kind.identifier()))
+}
+
+fn clipboard_mime(kind: &NSString) -> Option<Vec<u8>> {
+    if kind.isEqualToString(unsafe { NSPasteboardTypeString }) {
+        return Some(b"text/plain".to_vec());
+    }
+    let raw = kind.to_string();
+    let mime = UTType::from_identifier(kind)
+        .and_then(|kind| kind.preferred_mime())
+        .map(|mime| mime.to_string())
+        .or_else(|| valid_clipboard_mime(raw.as_bytes()).map(str::to_owned))?;
+    Some(if clipboard::is_text_mime(mime.as_bytes()) {
+        b"text/plain".to_vec()
+    } else {
+        mime.into_bytes()
+    })
+}
+
+fn read_pasteboard(pasteboard: &NSPasteboard, request: &clipboard::Read) -> ReadResult {
+    if clipboard_read_denied(pasteboard) {
+        return ReadResult::Denied;
+    }
+    let generation = pasteboard.changeCount();
+    if generation < 0 {
+        return ReadResult::IoError;
+    }
+    let types = pasteboard.types();
+    let mut success = ReadSuccess::default();
+    if request.list {
+        for kind in types.iter().flat_map(|types| types.iter()) {
+            if let Some(mime) = clipboard_mime(&kind)
+                && !success.available.contains(&mime)
+            {
+                success.available.push(mime);
+            }
+        }
+    }
+    // Different MIME aliases may refer to the same native representation.
+    // Read it once, then share its bytes rather than multiplying large images.
+    let mut cached = HashMap::<String, Arc<[u8]>>::new();
+    let mut total = 0usize;
+    for mime in &request.mimes {
+        if success.contents.iter().any(|content| &content.mime == mime) {
+            continue;
+        }
+        let Some(kind) = clipboard_type(mime) else {
+            continue;
+        };
+        let key = kind.to_string();
+        let data = if let Some(data) = cached.get(&key) {
+            data.clone()
+        } else if let Some(data) = pasteboard.dataForType(&kind) {
+            total = total.saturating_add(data.len());
+            if total > 64 * 1024 * 1024 {
+                return ReadResult::IoError;
+            }
+            let data: Arc<[u8]> = data.to_vec().into();
+            cached.insert(key, data.clone());
+            data
+        } else {
+            if pasteboard.changeCount() != generation {
+                return ReadResult::Busy;
+            }
+            if clipboard_read_denied(pasteboard) {
+                return ReadResult::Denied;
+            }
+            // A declared representation with no bytes is a failed lazy provider,
+            // distinct from a requested type that simply is not available.
+            if types
+                .as_ref()
+                .is_some_and(|types| types.containsObject(&kind))
+            {
+                return ReadResult::IoError;
+            }
+            continue;
+        };
+        success.contents.push(Content {
+            mime: mime.clone(),
+            data,
+        });
+    }
+    if pasteboard.changeCount() != generation {
+        ReadResult::Busy
+    } else {
+        ReadResult::Success(success)
+    }
+}
+
+fn write_pasteboard(pasteboard: &NSPasteboard, contents: &[Content]) -> WriteResult {
+    let item = NSPasteboardItem::new();
+    let mut types = HashMap::<String, Arc<[u8]>>::new();
+    let mut data_cache = HashMap::new();
+    for content in contents {
+        let Some(kind) = clipboard_type(&content.mime) else {
+            return WriteResult::InvalidData;
+        };
+        let key = kind.to_string();
+        if let Some(previous) = types.get(&key) {
+            if !Arc::ptr_eq(previous, &content.data) && previous != &content.data {
+                return WriteResult::InvalidData;
+            }
+            continue;
+        }
+        // Alias MIME names share their allocation in the core. Preserve that
+        // sharing while staging native representations, even for distinct UTIs.
+        let data = data_cache
+            .entry((content.data.as_ptr(), content.data.len()))
+            .or_insert_with(|| NSData::with_bytes(&content.data));
+        if !item.setData_forType(data, &kind) {
+            return WriteResult::InvalidData;
+        }
+        types.insert(key, content.data.clone());
+    }
+    let generation = pasteboard.clearContents();
+    if generation < 0 {
+        return WriteResult::IoError;
+    }
+    if !contents.is_empty()
+        && !pasteboard.writeObjects(&NSArray::from_slice(&[ProtocolObject::from_ref(&*item)]))
+    {
+        return if pasteboard.changeCount() != generation {
+            WriteResult::Busy
+        } else {
+            WriteResult::IoError
+        };
+    }
+    if pasteboard.changeCount() != generation {
+        WriteResult::Busy
+    } else {
+        WriteResult::Success { remember: false }
+    }
 }
 
 fn quick_collection_behavior(behavior: QuickTerminalSpaceBehavior) -> NSWindowCollectionBehavior {
@@ -1042,6 +1285,101 @@ fn physical_key(code: u16) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct TestPasteboard(Retained<NSPasteboard>);
+    impl Drop for TestPasteboard {
+        fn drop(&mut self) {
+            // This name was allocated by pasteboardWithUniqueName for this test;
+            // releaseGlobally never runs on the user's general/selection board.
+            unsafe {
+                let _: () = msg_send![&*self.0, releaseGlobally];
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "requires macOS pasteboard service; run explicitly outside the sandbox"]
+    fn named_pasteboard_roundtrips_raw_mime_data_without_touching_user_clipboard() {
+        let unique: Option<Retained<NSPasteboard>> =
+            unsafe { msg_send![objc2::class!(NSPasteboard), pasteboardWithUniqueName] };
+        let owned = TestPasteboard(unique.expect("macOS pasteboard service is unavailable"));
+        let board = &owned.0;
+        let content = |mime: &[u8], data: &[u8]| Content {
+            mime: mime.to_vec(),
+            data: data.into(),
+        };
+        let original = vec![
+            content(b"text/plain", "hello\0日本語\n".as_bytes()),
+            content(b"image/png", b"\x89PNG\r\n\x1a\n\0\xffbinary"),
+            content(b"application/x-rustty-opaque", b"\0\x01\xff\x80"),
+            content(b"application/x-rustty-empty", b""),
+        ];
+        assert_eq!(
+            write_pasteboard(board, &original),
+            WriteResult::Success { remember: false }
+        );
+        let mut request = clipboard::Read::osc52(Location::Standard, clipboard::Terminator::St);
+        request.mimes = original.iter().map(|c| c.mime.clone()).collect();
+        request.mimes.push(b"UTF8_STRING".to_vec());
+        request
+            .mimes
+            .push(b"application/x-rustty-unavailable".to_vec());
+        request.list = true;
+        let ReadResult::Success(read) = read_pasteboard(board, &request) else {
+            panic!("could not read test-owned pasteboard");
+        };
+        assert_eq!(read.contents[..4], original);
+        assert_eq!(read.contents.len(), 5);
+        assert!(Arc::ptr_eq(&read.contents[0].data, &read.contents[4].data));
+        for content in &original {
+            assert!(
+                read.available.contains(&content.mime),
+                "{:?}",
+                read.available
+            );
+        }
+        assert!(clipboard_pasteboard(Location::Primary).is_none());
+
+        // Invalid or conflicting types must leave existing contents intact.
+        assert_eq!(
+            write_pasteboard(board, &[content(b"not-a-mime", b"x")]),
+            WriteResult::InvalidData
+        );
+        assert_eq!(
+            write_pasteboard(
+                board,
+                &[content(b"text/plain", b"a"), content(b"UTF8_STRING", b"b")]
+            ),
+            WriteResult::InvalidData
+        );
+        let ReadResult::Success(unchanged) = read_pasteboard(board, &request) else {
+            panic!("invalid write changed pasteboard ownership");
+        };
+        assert_eq!(unchanged.contents, read.contents);
+
+        // A declared lazy representation has no data. Listing must never ask
+        // its provider for bytes and must still report the advertised MIME.
+        let html = NSString::from_str("public.html");
+        unsafe {
+            board.declareTypes_owner(&NSArray::from_slice(&[&*html]), None);
+        }
+        request.mimes.clear();
+        let ReadResult::Success(listing) = read_pasteboard(board, &request) else {
+            panic!("metadata-only listing attempted to read a lazy provider");
+        };
+        assert_eq!(listing.available, [b"text/html".to_vec()]);
+        assert!(listing.contents.is_empty());
+
+        assert_eq!(
+            write_pasteboard(board, &[]),
+            WriteResult::Success { remember: false }
+        );
+        request.mimes.push(b"text/plain".to_vec());
+        assert_eq!(
+            read_pasteboard(board, &request),
+            ReadResult::Success(ReadSuccess::default())
+        );
+    }
 
     #[test]
     fn quick_terminal_geometry_uses_visible_points_across_displays() {
