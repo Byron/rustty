@@ -15702,6 +15702,33 @@ test "PageList resize (no reflow) less cols clears graphemes" {
     }
 }
 
+test "PageList resize (no reflow) less cols clears truncated wide cells" {
+    const testing = std.testing;
+    var s = try init(testing.allocator, .{ .cols = 4, .rows = 2, .max_size = 0 });
+    defer s.deinit();
+
+    const page = s.pages.first.?.page();
+    const rac = page.getRowAndCell(2, 0);
+    rac.cell.* = .{
+        .content_tag = .codepoint,
+        .content = .{ .codepoint = .{ .data = '界' } },
+        .wide = .wide,
+    };
+    page.getRowAndCell(3, 0).cell.wide = .spacer_tail;
+    try page.appendGrapheme(rac.row, rac.cell, 0x0301);
+
+    try s.resize(.{ .cols = 3, .reflow = false });
+    try testing.expectEqual(@as(u21, 0), page.getRowAndCell(2, 0).cell.codepoint());
+    try testing.expectEqual(pagepkg.Cell.Wide.narrow, page.getRowAndCell(2, 0).cell.wide);
+    try testing.expectEqual(@as(usize, 0), page.graphemeCount());
+
+    try s.resize(.{ .cols = 4, .reflow = false });
+    for (page.getCells(page.getRowAndCell(0, 0).row)[2..4]) |cell| {
+        try testing.expectEqual(@as(u21, 0), cell.codepoint());
+        try testing.expectEqual(pagepkg.Cell.Wide.narrow, cell.wide);
+    }
+}
+
 test "PageList resize (no reflow) more cols" {
     const testing = std.testing;
     const alloc = testing.allocator;

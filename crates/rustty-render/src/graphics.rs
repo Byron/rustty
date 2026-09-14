@@ -63,46 +63,73 @@ impl Renderer {
             } else {
                 2
             };
-            let source = placement.source;
-            let [sx, sy, sw, sh] = source;
+            let [sx, sy, sw, sh] = placement.source;
             let [x, y, w, h] = placement.rect;
-            for ty in (sy as u32 / TILE)..=((sy + sh).ceil() as u32).saturating_sub(1) / TILE {
-                for tx in (sx as u32 / TILE)..=((sx + sw).ceil() as u32).saturating_sub(1) / TILE {
-                    let cached = match self.image_tile(image, tx, ty) {
-                        Ok(cached) => cached,
-                        Err(RenderError::AtlasCapacity) if omit_excess => {
-                            // ponytail: a 320 MiB image atlas is separate from text;
-                            // omit excess visible tiles after eviction rather than lose terminal text.
-                            continue;
+            for [sy, sh, y, h] in image_axis([sy, sh], [y, h], image.height) {
+                for [sx, sw, x, w] in image_axis([sx, sw], [x, w], image.width) {
+                    for ty in (sy as u32 / TILE)
+                        ..=(((sy + sh).ceil() as u32).saturating_sub(1) / TILE)
+                            .max(sy as u32 / TILE)
+                    {
+                        for tx in (sx as u32 / TILE)
+                            ..=(((sx + sw).ceil() as u32).saturating_sub(1) / TILE)
+                                .max(sx as u32 / TILE)
+                        {
+                            let cached = match self.image_tile(image, tx, ty) {
+                                Ok(cached) => cached,
+                                Err(RenderError::AtlasCapacity) if omit_excess => {
+                                    // ponytail: a 320 MiB image atlas is separate from text;
+                                    // omit excess visible tiles after eviction rather than lose terminal text.
+                                    continue;
+                                }
+                                Err(error) => return Err(error),
+                            };
+                            let left = sx.max((tx * TILE) as f32);
+                            let top = sy.max((ty * TILE) as f32);
+                            let right = (sx + sw).min((tx * TILE + cached.size[0]) as f32);
+                            let bottom = (sy + sh).min((ty * TILE + cached.size[1]) as f32);
+                            if (sw > 0.0 && left >= right) || (sh > 0.0 && top >= bottom) {
+                                continue;
+                            }
+                            let [u0, v0, u1, v1] = cached.uv;
+                            let uvx = |pixel| {
+                                u0 + (u1 - u0) * (pixel - (tx * TILE) as f32)
+                                    / cached.size[0] as f32
+                            };
+                            let uvy = |pixel| {
+                                v0 + (v1 - v0) * (pixel - (ty * TILE) as f32)
+                                    / cached.size[1] as f32
+                            };
+                            layers[layer].push(Quad {
+                                rect: [
+                                    if sw == 0.0 {
+                                        x
+                                    } else {
+                                        x + (left - sx) / sw * w
+                                    },
+                                    if sh == 0.0 {
+                                        y
+                                    } else {
+                                        y + (top - sy) / sh * h
+                                    },
+                                    if sw == 0.0 {
+                                        w
+                                    } else {
+                                        (right - left) / sw * w
+                                    },
+                                    if sh == 0.0 {
+                                        h
+                                    } else {
+                                        (bottom - top) / sh * h
+                                    },
+                                ],
+                                uv: [uvx(left), uvy(top), uvx(right), uvy(bottom)],
+                                color: Color::rgb([255; 3]),
+                                paint: Paint::Color,
+                                atlas: cached.atlas,
+                            });
                         }
-                        Err(error) => return Err(error),
-                    };
-                    let left = sx.max((tx * TILE) as f32);
-                    let top = sy.max((ty * TILE) as f32);
-                    let right = (sx + sw).min((tx * TILE + cached.size[0]) as f32);
-                    let bottom = (sy + sh).min((ty * TILE + cached.size[1]) as f32);
-                    if left >= right || top >= bottom {
-                        continue;
                     }
-                    let [u0, v0, u1, v1] = cached.uv;
-                    let uvx = |pixel| {
-                        u0 + (u1 - u0) * (pixel - (tx * TILE) as f32) / cached.size[0] as f32
-                    };
-                    let uvy = |pixel| {
-                        v0 + (v1 - v0) * (pixel - (ty * TILE) as f32) / cached.size[1] as f32
-                    };
-                    layers[layer].push(Quad {
-                        rect: [
-                            x + (left - sx) / sw * w,
-                            y + (top - sy) / sh * h,
-                            (right - left) / sw * w,
-                            (bottom - top) / sh * h,
-                        ],
-                        uv: [uvx(left), uvy(top), uvx(right), uvy(bottom)],
-                        color: Color::rgb([255; 3]),
-                        paint: Paint::Color,
-                        atlas: cached.atlas,
-                    });
                 }
             }
         }
@@ -265,6 +292,34 @@ fn clipped_source(p: &Placement, image: &Image) -> [f32; 4] {
     p.source_rect(image).map(|v| v as f32)
 }
 
+// Native textures clamp to their edge texels. Rounded placeholder fragments
+// can have zero source extent or extend past an image edge; keep their full
+// destination area by splitting off a constant-texel strip before atlas tiling.
+// Each slice is [source start, source length, destination start, destination length].
+fn image_axis(
+    source: [f32; 2],
+    destination: [f32; 2],
+    extent: u32,
+) -> impl Iterator<Item = [f32; 4]> {
+    let length = source[1].min((extent as f32 - source[0]).max(0.0));
+    let pixels = if source[1] == 0.0 {
+        0.0
+    } else {
+        length / source[1] * destination[1]
+    };
+    [
+        [source[0], length, destination[0], pixels],
+        [
+            (source[0] + length).clamp(0.5, extent as f32 - 0.5),
+            0.0,
+            destination[0] + pixels,
+            destination[1] - pixels,
+        ],
+    ]
+    .into_iter()
+    .filter(|slice| slice[3] > 0.0)
+}
+
 // Intersect in destination coordinates while preserving the source mapping.
 fn clip_image(source: &mut [f32; 4], rect: &mut [f32; 4], clip: [f32; 4]) -> bool {
     let [x, y, w, h] = *rect;
@@ -313,53 +368,28 @@ fn virtual_geometry(
             o[1] = o[1].min(row as i64);
         })
         .or_insert([run.col as i64, row as i64]);
-    let cols = if p.columns == 0 {
-        image.width.div_ceil(metrics.cell_width)
-    } else {
-        p.columns
+    let Some(geometry) = run.geometry(p, image, [metrics.cell_width, metrics.cell_height]) else {
+        return;
     };
-    let rows = if p.rows == 0 {
-        image.height.div_ceil(metrics.cell_height)
-    } else {
-        p.rows
-    };
-    let [col, img_row] = [run.image_col, run.image_row];
-    if col >= cols || img_row >= rows {
+    if geometry.pixels.contains(&0) {
         return;
     }
-    let cell = [metrics.cell_width as f32, metrics.cell_height as f32];
-    let grid = [cols as f32 * cell[0], rows as f32 * cell[1]];
-    let scale = (grid[0] / image.width as f32).min(grid[1] / image.height as f32);
-    let size = [image.width as f32 * scale, image.height as f32 * scale];
-    let start = [
-        options.padding[0] + run.col as f32 * cell[0],
-        options.padding[1] + row as f32 * cell[1],
-    ];
-    let mut rect = [
-        start[0] - col as f32 * cell[0] + (grid[0] - size[0]) / 2.0,
-        start[1] - img_row as f32 * cell[1] + (grid[1] - size[1]) / 2.0,
-        size[0],
-        size[1],
-    ];
-    let mut source = [0.0, 0.0, image.width as f32, image.height as f32];
-    if clip_image(
-        &mut source,
-        &mut rect,
-        [
-            start[0],
-            start[1],
-            run.width.min(cols - col) as f32 * cell[0],
-            cell[1],
+    result.push(Geometry {
+        image: id,
+        placement: p.placement_id,
+        z: -1,
+        source: geometry.source.map(|value| value as f32),
+        rect: [
+            options.padding[0]
+                + run.col as f32 * metrics.cell_width as f32
+                + geometry.offset[0] as f32,
+            options.padding[1]
+                + row as f32 * metrics.cell_height as f32
+                + geometry.offset[1] as f32,
+            geometry.pixels[0] as f32,
+            geometry.pixels[1] as f32,
         ],
-    ) {
-        result.push(Geometry {
-            image: id,
-            placement: p.placement_id,
-            z: -1,
-            source,
-            rect,
-        });
-    }
+    });
 }
 
 #[cfg(test)]
@@ -532,6 +562,186 @@ mod tests {
                 .iter()
                 .all(|u| u.pixels.iter().all(|p| *p == 255))
         );
+    }
+
+    #[test]
+    fn kitty_protocol_lifecycle_refreshes_pixels_and_reuses_unchanged_frames() {
+        let mut terminal = Terminal::new(10, 3, 100);
+        let (mut renderer, options) = renderer();
+        let mut check = |terminal: &Terminal, expected: Option<[u8; 4]>, uploads: usize| {
+            let frame = renderer.prepare(terminal.screen(), &options).unwrap();
+            assert_eq!(frame.atlas_uploads.len(), uploads);
+            let images: Vec<_> = frame
+                .quads
+                .iter()
+                .filter(|q| q.paint == Paint::Color)
+                .collect();
+            let Some(expected) = expected else {
+                assert!(images.is_empty());
+                return;
+            };
+            assert_eq!(images.len(), 1);
+            let quad = images[0];
+            let pixel = frame.atlas_uploads.iter().find_map(|upload| {
+                let x = (quad.uv[0] * upload.page_size as f32) as u32;
+                let y = (quad.uv[1] * upload.page_size as f32) as u32;
+                if quad.atlas != upload.page
+                    || !(upload.origin[0]..upload.origin[0] + upload.size[0]).contains(&x)
+                    || !(upload.origin[1]..upload.origin[1] + upload.size[1]).contains(&y)
+                {
+                    return None;
+                }
+                let index =
+                    ((y - upload.origin[1]) * upload.size[0] + x - upload.origin[0]) as usize * 4;
+                Some(&upload.pixels[index..index + 4])
+            });
+            assert_eq!(pixel, Some(expected.as_slice()));
+        };
+        let red = Some([255, 0, 0, 128]);
+        let green = Some([0, 255, 0, 255]);
+        transmit(&mut terminal, 1, "");
+        check(&terminal, red, 1);
+        terminal.feed(b"\x1b_Ga=f,i=1,f=32,s=1,v=1,z=10;AP8A/w==\x1b\\");
+        check(&terminal, red, 1); // Uploading a hidden frame needs no atlas update.
+        terminal.feed(b"\x1b_Ga=a,i=1,r=1,z=10,s=3\x1b\\");
+        assert_eq!(terminal.tick_graphics(0), Some(10));
+        assert_eq!(terminal.tick_graphics(10), Some(20));
+        check(&terminal, green, 2);
+        check(&terminal, green, 2); // Repainting the same frame reuses its texture.
+        terminal.feed(b"\x1b_Ga=a,i=1,c=1,s=1\x1b\\");
+        check(&terminal, red, 2);
+        terminal.feed(b"\x1b_Ga=a,i=1,c=2\x1b\\");
+        check(&terminal, green, 2);
+
+        // Both editing and composing into the displayed frame replace its pixels.
+        terminal.feed(b"\x1b_Ga=f,i=1,r=2,f=32,s=1,v=1,X=1;AAD//w==\x1b\\");
+        check(&terminal, Some([0, 0, 255, 255]), 3);
+        terminal.feed(b"\x1b_Ga=c,i=1,r=1,c=2,C=1\x1b\\");
+        check(&terminal, red, 4);
+        terminal.feed(b"\x1b_Ga=d,d=f,i=1,r=2\x1b\\");
+        check(&terminal, red, 4);
+        terminal.feed(b"\x1b_Ga=d,d=I,i=1\x1b\\");
+        check(&terminal, None, 4);
+        terminal.feed(b"\x1b_Ga=T,i=1,p=1,f=32,s=1,v=1,C=1;//8A/w==\x1b\\");
+        check(&terminal, Some([255, 255, 0, 255]), 5);
+    }
+
+    #[test]
+    fn unicode_placeholders_use_native_whole_pixel_source_and_destination_rectangles() {
+        let (renderer, options) = renderer();
+        let metrics = FontMetrics {
+            cell_width: 36,
+            cell_height: 80,
+            ..renderer.metrics()
+        };
+        let mut terminal = Terminal::new(8, 3, 100);
+        transmit(&mut terminal, 1, "U=1,c=4,r=2");
+        let image = terminal.screen_mut().graphics.images.get_mut(&1).unwrap();
+        image.width = 500;
+        image.height = 306;
+        image.pixels = vec![255; 500 * 306 * 4].into();
+        for row in 0..2 {
+            for col in 0..4 {
+                let cell = &mut terminal.screen_mut().rows[row].cells[col];
+                cell.text = if col == 0 {
+                    format!(
+                        "{PLACEHOLDER}{}\u{305}",
+                        if row == 0 { '\u{305}' } else { '\u{30d}' }
+                    )
+                } else {
+                    PLACEHOLDER.to_string()
+                };
+                cell.style.foreground = TerminalColor::Indexed(1);
+            }
+        }
+        let rendered = geometry(terminal.screen(), metrics, &options);
+        assert_eq!(rendered.len(), 2);
+        assert_eq!(rendered[0].source, [0.0, 0.0, 500.0, 153.0]);
+        assert_eq!(rendered[1].source, [0.0, 153.0, 500.0, 153.0]);
+        assert_eq!(
+            rendered[0].rect,
+            [options.padding[0], options.padding[1] + 36.0, 144.0, 44.0]
+        );
+        assert_eq!(
+            rendered[1].rect,
+            [options.padding[0], options.padding[1] + 80.0, 144.0, 44.0]
+        );
+    }
+
+    #[test]
+    fn tiny_placeholder_fragments_sample_clamped_texels_after_source_rounding() {
+        let (mut renderer, options) = renderer();
+        let mut terminal = Terminal::new(6, 4, 100);
+        transmit(&mut terminal, 1, "U=1,c=3,r=2");
+        let diacritics = ['\u{305}', '\u{30d}', '\u{30e}'];
+        for (row, (image_row, image_col, width)) in [(0, 0, 1), (0, 1, 2), (1, 0, 4), (1, 2, 1)]
+            .into_iter()
+            .enumerate()
+        {
+            for col in 0..width {
+                let cell = &mut terminal.screen_mut().rows[row].cells[col];
+                cell.text = if col == 0 {
+                    format!(
+                        "{PLACEHOLDER}{}{}",
+                        diacritics[image_row], diacritics[image_col]
+                    )
+                } else {
+                    PLACEHOLDER.to_string()
+                };
+                cell.style.foreground = TerminalColor::Indexed(1);
+            }
+        }
+        let expected = geometry(terminal.screen(), renderer.metrics(), &options);
+        assert_eq!(expected.len(), 4);
+        let frame = renderer.prepare(terminal.screen(), &options).unwrap();
+        let quads: Vec<_> = frame
+            .quads
+            .iter()
+            .filter(|quad| quad.paint == Paint::Color)
+            .collect();
+        assert_eq!(quads.len(), 4);
+        for (quad, expected) in quads.iter().zip(expected) {
+            assert_eq!(quad.rect, expected.rect);
+        }
+        assert!(quads.iter().any(|quad| quad.uv[0] == quad.uv[2]));
+        assert!(quads.iter().any(|quad| quad.uv[1] == quad.uv[3]));
+    }
+
+    #[test]
+    fn rounded_placeholder_overhang_keeps_its_area_and_samples_the_last_texel() {
+        let (mut renderer, options) = renderer();
+        let mut terminal = Terminal::new(4, 2, 100);
+        transmit(&mut terminal, 1, "U=1,c=2,r=2");
+        let image = terminal.screen_mut().graphics.images.get_mut(&1).unwrap();
+        image.width = 5;
+        image.height = 5;
+        image.pixels = (0..5)
+            .flat_map(|y| (0..5).flat_map(move |x| [x * 33, y * 27, 128, 255]))
+            .collect::<Vec<_>>()
+            .into();
+        let cell = &mut terminal.screen_mut().rows[0].cells[0];
+        cell.text = format!("{PLACEHOLDER}\u{30d}\u{30d}");
+        cell.style.foreground = TerminalColor::Indexed(1);
+        let expected = geometry(terminal.screen(), renderer.metrics(), &options);
+        assert_eq!(expected.len(), 1);
+        assert_eq!(expected[0].source, [3.0, 3.0, 3.0, 3.0]);
+        let frame = renderer.prepare(terminal.screen(), &options).unwrap();
+        let quads: Vec<_> = frame
+            .quads
+            .iter()
+            .filter(|quad| quad.paint == Paint::Color)
+            .collect();
+        let area: f32 = quads.iter().map(|quad| quad.rect[2] * quad.rect[3]).sum();
+        assert!((area - expected[0].rect[2] * expected[0].rect[3]).abs() < 0.01);
+        let corner = quads
+            .iter()
+            .find(|quad| quad.uv[0] == quad.uv[2] && quad.uv[1] == quad.uv[3])
+            .unwrap();
+        let upload = &frame.atlas_uploads[0];
+        let x = (corner.uv[0] * upload.page_size as f32) as u32 - upload.origin[0];
+        let y = (corner.uv[1] * upload.page_size as f32) as u32 - upload.origin[1];
+        let pixel = ((y * upload.size[0] + x) * 4) as usize;
+        assert_eq!(&upload.pixels[pixel..pixel + 4], &[132, 108, 128, 255]);
     }
 
     #[test]

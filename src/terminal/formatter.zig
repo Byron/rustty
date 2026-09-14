@@ -518,7 +518,7 @@ pub const TerminalFormatter = struct {
 
             // Emit present working directory using OSC 7
             if (self.extra.pwd) {
-                const pwd = self.terminal.pwd.items;
+                const pwd = self.terminal.getPwd() orelse "";
                 if (pwd.len > 0) try writer.print("\x1b]7;{s}\x1b\\", .{pwd});
             }
 
@@ -6435,6 +6435,12 @@ test "Terminal vt with pwd" {
 
     try formatter.format(&builder.writer);
     const output = builder.writer.buffered();
+
+    try testing.expect(std.mem.indexOf(
+        u8,
+        output,
+        "\x1b]7;file://host/home/user\x1b\\",
+    ) != null);
 
     // Create a second terminal and apply the output
     var t2 = try Terminal.init(io, alloc, .{

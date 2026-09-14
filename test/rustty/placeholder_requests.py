@@ -1,6 +1,8 @@
-"""Native Kitty Unicode placeholder runs, IDs and stable placement targets."""
+"""Native Kitty Unicode placeholder runs, targets and rounded pixel geometry."""
 from pathlib import Path
+import itertools
 import re
+from graphics_requests import png
 from placement_requests import case, command, upload
 
 # Exercise Rust's table with the native protocol's reference codepoints.
@@ -31,6 +33,7 @@ def placeholder_case(name, operations, cell=(8,16)):
 
 
 def requests():
+    yield from geometry_requests()
     observe = {'op': 'observe'}
     for name, content in (
             ('implicit', placeholder()*3),
@@ -91,6 +94,35 @@ def requests():
         yield placeholder_case(f'screens/{mode}',[upload(),put(),style(),placeholder(),observe,
             f'\x1b[?{mode}h'.encode(),upload(4,3),put(),style(),placeholder(1,0),observe,
             f'\x1b[?{mode}l'.encode(),observe])
+
+
+def geometry_requests():
+    fragments = [(0, 0, 1), (0, 1, 2), (1, 0, 4), (1, 2, 8),
+                 (2, 0, 12), (4, 4, 1), (255, 255, 1), (0, 0, 12)]
+    text = style() + b''.join(
+        f'\x1b[{line + 1};1H'.encode() + placeholder(row, col) + placeholder() * (width - 1)
+        for line, (row, col, width) in enumerate(fragments))
+    for image, grid, cell in itertools.product(
+            ((1, 1), (4, 3), (17, 19), (37, 11), (11, 37)),
+            ((0, 0), (1, 1), (2, 2), (3, 2), (1, 4), (4, 1),
+             (65535, 65535), (65536, 2), (2, 65536)),
+            ((7, 13), (8, 16), (36, 80))):
+        yield placeholder_case(f'geometry/{image}/{grid}/{cell}',
+            [upload(*image), put(extra=f',U=1,c={grid[0]},r={grid[1]}'), text], cell)
+    # Native's 500x306 example exercises round-up at both letterbox edges.
+    image = png(500, 306, 8, 6, (b'\0' + bytes([32, 64, 128, 255]) * 500) * 306)
+    for grid in ((4, 2), (2, 2), (1, 1)):
+        request, covers = placeholder_case(f'geometry/native-dog/{grid}',
+            [command(b'a=t,f=100,i=1', image), put(extra=f',U=1,c={grid[0]},r={grid[1]}'), text], (36, 80))
+        request['observe_graphics'] = False
+        yield request, covers
+    for target in (',U=1', ''):
+        yield placeholder_case('geometry/crop-offset/' + target,
+            [upload(), put(9), put(3, extra=target + ',c=3,r=2,x=4,y=7,w=6,h=8,X=2,Y=5,z=17'),
+             style(1,3), placeholder(0,0) + placeholder() * 5])
+    yield placeholder_case('geometry/resize-retransmit', [upload(), put(), text,
+        {'op':'observe'}, {'op':'resize','cols':12,'rows':8,'cell_size':[13,7]},
+        {'op':'observe'}, upload(11,37), {'op':'observe'}])
 
 
 if __name__ == '__main__':

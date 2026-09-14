@@ -121,6 +121,30 @@ pub enum WriteResult {
 }
 
 impl Write {
+    /// OSC 52 and iTerm2 Copy share the same base64 decoding and host request.
+    pub(crate) fn decode_osc52(location: Location, encoded: &[u8]) -> Option<Self> {
+        let engine = base64::engine::general_purpose::GeneralPurpose::new(
+            &base64::alphabet::STANDARD,
+            base64::engine::general_purpose::GeneralPurposeConfig::new()
+                .with_decode_allow_trailing_bits(true)
+                .with_decode_padding_mode(if encoded.ends_with(b"=") {
+                    base64::engine::DecodePaddingMode::RequireCanonical
+                } else {
+                    base64::engine::DecodePaddingMode::RequireNone
+                }),
+        );
+        let data = engine.decode(encoded).ok()?;
+        let contents = if encoded.is_empty() {
+            Vec::new()
+        } else {
+            vec![Content {
+                mime: b"text/plain".to_vec(),
+                data: data.into(),
+            }]
+        };
+        Some(Self::osc52(location, contents))
+    }
+
     pub fn osc52(location: Location, contents: Vec<Content>) -> Self {
         Self {
             location,

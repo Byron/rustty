@@ -89,6 +89,35 @@ def clipboard_requests():
                 yield case(f"write/{selector.hex()}/{index}/{ending}",
                            b"\x1b]52;" + selector + b";" + payload + terminator)
 
+    # iTerm2 Copy reuses the OSC 52 write callback, but has a fixed capture
+    # budget and cannot clear or query the clipboard.
+    for key in (b"Copy", b"copy", b"cOpY"):
+        for index, payload in enumerate([*payloads, b"?"]):
+            for ending, terminator in endings:
+                yield case(f"iterm2/payload/{key.decode()}/{index}/{ending}",
+                           b"\x1b]1337;" + key + b"=:" + payload + terminator)
+    for index, payload in enumerate((b"Copy", b"Copy=", b"Copy=:?", b"Copy=Zg==",
+                                     b"Copy=::Zg==", b"CopyToClipboard=:Zg==", b" Copy=:Zg==")):
+        yield case(f"iterm2/invalid/{index}", b"\x1b]1337;" + payload + b"\x07")
+    for length in range(2038, 2045):
+        for ending, terminator in endings:
+            yield case(f"iterm2/capture/{length}/{ending}",
+                       b"\x1b]1337;Copy=:" + b"A" * length + terminator + b"\x1b]52;c;Zg==\x07")
+    for enabled in (False, True):
+        for status in ("success", "denied", "unsupported", "busy", "invalid_data", "io_error", "none"):
+            request, covers = case(f"iterm2/status/{enabled}/{status}", b"\x1b]1337;Copy=:AAH/\x07",
+                                   [{"status": status}])
+            yield dict(request, clipboard_write_enabled=enabled), covers
+    yield case("iterm2/ordering", b"\x1b]1337;Copy=:dGV4dA==\x07\x1b[6n\x1b]1337;Copy=:?\x07"
+               b"\x1b]52;c;?\x07\x1b]1337;Copy=:\x07\x1b]52;c;\x07", [
+                   {"status": "denied"}, {"contents": [content(b"text/plain", b"reply")]},
+                   {"status": "success"},
+               ])
+    yield ({"id": "protocol/clipboard/iterm2/direct-reset", "operations": [
+        {"op": "write", "data": b"\x1b]1337;Copy=:AA".hex()}, {"op": "terminal_reset"},
+        {"op": "write", "data": b"H/\x07".hex()},
+    ]}, ["clipboard", "terminal.reset"])
+
     for selector in selectors:
         for status in ("success", "denied", "unsupported", "busy", "io_error", "none"):
             for ending, terminator in endings:

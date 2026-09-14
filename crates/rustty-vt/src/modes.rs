@@ -34,6 +34,13 @@ impl Default for Modes {
 }
 
 impl Modes {
+    /// Native formatter order is ANSI first, then DEC, ascending by number.
+    pub(crate) fn changed(&self) -> impl Iterator<Item = ((bool, u16), bool)> + '_ {
+        self.values.iter().filter_map(|(&key, &value)| {
+            (self.defaults.get(&key) != Some(&value)).then_some((key, value))
+        })
+    }
+
     pub(crate) fn packed(&self) -> [u64; 3] {
         [&self.values, &self.saved, &self.defaults].map(|values| {
             ANSI.iter()

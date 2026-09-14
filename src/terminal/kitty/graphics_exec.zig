@@ -522,7 +522,7 @@ fn transmitAnimationFrame(
     };
     loading.frame = .{
         .cmd = f,
-        .image_generation = img.generation,
+        .image_identity = img.identity,
     };
     loading.response.id = img.id;
 
@@ -563,7 +563,8 @@ fn completeAnimationFrame(
 
     // Re-resolve the image: it may have been deleted, evicted, or
     // replaced while the frame data was being transmitted. The saved
-    // generation pins the exact image the load started against.
+    // identity pins the exact image the load started against, even
+    // if playback advanced or edited its displayed contents.
     var img = storage.imagePtrByIdOrNumber(
         loading.image.id,
         loading.image.number,
@@ -571,7 +572,7 @@ fn completeAnimationFrame(
         result.message = "ENOENT: image not found";
         return result;
     };
-    if (img.generation != loading.frame.?.image_generation) {
+    if (img.identity != loading.frame.?.image_identity) {
         result.message = "ENOENT: image not found";
         return result;
     }
@@ -3117,6 +3118,79 @@ test "kittygfx animation: chunked frame transmission" {
         &.{ 255, 0, 0, 255, 0, 0, 255, 255 },
         anim.frames.items[0].data,
     );
+}
+
+test "kittygfx animation: chunked frame survives playback but not image replacement" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    const io = testing.io;
+
+    const Mutation = enum { playback, replacement, deletion };
+    for (std.enums.values(Mutation)) |mutation| {
+        var t = try Terminal.init(io, alloc, .{ .rows = 5, .cols = 5 });
+        defer t.deinit(alloc);
+        const storage = &t.screens.active.kitty_images;
+
+        for ([_][]const u8{
+            "a=T,f=24,s=2,v=1,i=1,C=1;////////",
+            "a=f,i=1,f=24,s=2,v=1,z=10;AAD/AAD/",
+        }) |input| {
+            const cmd = try command.Parser.parseString(alloc, input);
+            defer cmd.deinit(alloc);
+            try testing.expect(execute(io, alloc, &t, &cmd).?.ok());
+        }
+        {
+            const cmd = try command.Parser.parseString(alloc, "a=a,i=1,r=1,z=10,s=3");
+            defer cmd.deinit(alloc);
+            try testing.expect(execute(io, alloc, &t, &cmd) == null);
+        }
+        try testing.expectEqual(@as(?u64, 10), storage.animationTick(io, 0));
+        const original_generation = storage.imageById(1).?.generation;
+        {
+            const cmd = try command.Parser.parseString(
+                alloc,
+                "a=f,i=1,f=24,s=2,v=1,z=60,m=1;/wAA",
+            );
+            defer cmd.deinit(alloc);
+            try testing.expect(execute(io, alloc, &t, &cmd) == null);
+        }
+
+        switch (mutation) {
+            .playback => {
+                try testing.expectEqual(@as(?u64, 10), storage.animationTick(io, 10));
+                try testing.expect(storage.imageById(1).?.generation > original_generation);
+            },
+            // Storage can replace or evict the target while its protocol
+            // load is pending. Its old frame must not attach to a new image.
+            .replacement => try storage.addImage(io, alloc, t.screens.active, .{
+                .id = 1,
+                .width = 2,
+                .height = 1,
+                .format = .rgb,
+                .data = .{ .complete = try alloc.dupe(u8, &.{ 0, 0, 0, 0, 0, 0 }) },
+            }),
+            .deletion => storage.delete(io, alloc, &t, .{ .id = .{
+                .image_id = 1,
+                .delete = true,
+            } }),
+        }
+
+        const cmd = try command.Parser.parseString(alloc, "a=f,m=0;AAD/");
+        defer cmd.deinit(alloc);
+        const resp = execute(io, alloc, &t, &cmd).?;
+        try testing.expect(storage.loading == null);
+        if (mutation == .playback) {
+            try testing.expect(resp.ok());
+            try testing.expectEqual(@as(u32, 3), resp.frame);
+            try testing.expectEqualSlices(
+                u8,
+                &.{ 255, 0, 0, 255, 0, 0, 255, 255 },
+                storage.imageById(1).?.frameData(3).?,
+            );
+        } else {
+            try testing.expectEqualStrings("ENOENT: image not found", resp.message);
+        }
+    }
 }
 
 test "kittygfx animation: chunked frame continuation without a=f" {

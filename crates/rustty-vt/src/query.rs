@@ -127,7 +127,7 @@ impl Default for Defaults {
             color_scheme: None,
             device_attributes: Some(DeviceAttributes::default()),
             enquiry: Vec::new(),
-            xtversion: concat!("rustty ", env!("CARGO_PKG_VERSION"))
+            xtversion: concat!("ghostty ", env!("CARGO_PKG_VERSION"))
                 .as_bytes()
                 .to_vec(),
             size_reports: true,

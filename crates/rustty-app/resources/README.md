@@ -25,7 +25,8 @@ Resource provenance:
   compatibility. The build uses the system `tic` and does not require Zig.
 - Shell integration is copied directly from `src/shell-integration`, including
   zsh's `.zshenv`. Existing `GHOSTTY_*` environment variable names remain part
-  of the integration protocol, while `TERM_PROGRAM` identifies Rustty.
+  of the integration protocol. `TERM_PROGRAM=ghostty` enables compatible CLI
+  behavior such as Cargo's OSC progress reports; the application remains Rustty.
 - The app icon reuses `macos/Assets.xcassets/AppIconImage.imageset/macOS-AppIcon-1024px.png`.
   Ghostty's MIT notice is included in every app bundle.
 

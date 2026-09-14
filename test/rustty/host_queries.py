@@ -53,12 +53,20 @@ def requests():
     yield case("size/saved-mode", [b"\x1b[?2048h\x1b[?2048s\x1b[?2048l\x1b[?2048r\x1b[?2048$p"], {"size": {}})
     for enabled in (False, True):
         for cell_size in (None, [0, 0], [8, 16], [4294967295, 4294967295]):
-            yield case(f"size/resize/{enabled}/{cell_size}", [
-                b"\x1b[?2048h" if enabled else b"\x1b[?2048l",
-                {"op": "resize", "cols": 12, "rows": 4, "cell_size": cell_size},
-                {"op": "resize", "cols": 10, "rows": 5, "cell_size": cell_size},
-                b"\x1b[?2048$p",
-            ])
+            for kind in ("terminal", "input"):
+                request, covers = case(f"size/resize/{enabled}/{cell_size}/{kind}", [
+                    {"op": "snapshot"},
+                    b"\x1b[?2048h" if enabled else b"\x1b[?2048l",
+                    {"op": "resize", "cols": 12, "rows": 4, "cell_size": cell_size},
+                    {"op": "snapshot"},
+                    {"op": "resize", "cols": 10, "rows": 5, "cell_size": cell_size},
+                    {"op": "snapshot"},
+                    {"op": "resize", "cols": 10, "rows": 5},
+                    {"op": "snapshot"},
+                    b"\x1b[?2048$p",
+                ])
+                request["kind"] = kind
+                yield request, covers + ["terminal.resize"]
 
     for visible in (False, True):
         yield case(f"visibility/{visible}", [b"\x1b[?998n\x1b[?2033$p\x1b[?2033h\x1b[?2033h\x1b[?2033l",

@@ -132,18 +132,17 @@ pub fn encode(
         },
 
         .utf8 => {
-            try writer.writeAll("\x1B[M");
-            try writer.printUnicodeCodepoint(32 + @as(u21, button_code));
-
-            var buf: [4]u8 = undefined;
+            // Coordinates can land in the surrogate range. Validate both
+            // before writing so a dropped event cannot leave a partial CSI.
+            var buf: [8]u8 = undefined;
             const x_cp: u21 = @intCast(@as(u32, cell.x) + 33);
             const y_cp: u21 = @intCast(cell.y + 33);
+            const x_len: usize = std.unicode.utf8Encode(x_cp, buf[0..4]) catch return;
+            const y_len: usize = std.unicode.utf8Encode(y_cp, buf[x_len..][0..4]) catch return;
 
-            const x_len = std.unicode.utf8Encode(x_cp, &buf) catch unreachable;
-            try writer.writeAll(buf[0..x_len]);
-
-            const y_len = std.unicode.utf8Encode(y_cp, &buf) catch unreachable;
-            try writer.writeAll(buf[0..y_len]);
+            try writer.writeAll("\x1B[M");
+            try writer.printUnicodeCodepoint(32 + @as(u21, button_code));
+            try writer.writeAll(buf[0 .. x_len + y_len]);
         },
 
         .sgr => try writer.print("\x1B[<{d};{d};{d}{c}", .{
@@ -274,8 +273,8 @@ fn posToPixels(pos: Event.Pos, size: renderer_size.Size) PixelPoint {
     } }).convert(.terminal, size).terminal;
 
     return .{
-        .x = @as(i32, @intFromFloat(@round(coord.x))),
-        .y = @as(i32, @intFromFloat(@round(coord.y))),
+        .x = std.math.lossyCast(i32, @round(coord.x)),
+        .y = std.math.lossyCast(i32, @round(coord.y)),
     };
 }
 
@@ -556,6 +555,47 @@ test "utf8 encodes extended mouse buttons" {
     });
 
     try testing.expectEqualStrings("\x1B[M\u{A0}#$", writer.buffered());
+}
+
+test "utf8 surrogate coordinates emit no partial event" {
+    const size: renderer_size.Size = .{
+        .screen = .{ .width = 65535, .height = 65535 },
+        .cell = .{ .width = 1, .height = 1 },
+        .padding = .{},
+    };
+    for ([_]Event.Pos{
+        .{ .x = 0xD800 - 33, .y = 1 },
+        .{ .x = 1, .y = 0xDFFF - 33 },
+    }) |pos| {
+        var data: [32]u8 = undefined;
+        var writer: std.Io.Writer = .fixed(&data);
+        var last: ?point.Coordinate = null;
+        const opts: Options = .{ .event = .any, .format = .utf8, .size = size, .last_cell = &last };
+        try encode(&writer, .{ .button = .left, .pos = pos }, opts);
+        try testing.expectEqual(@as(usize, 0), writer.buffered().len);
+        try testing.expectEqual(point.Coordinate{ .x = @intFromFloat(pos.x), .y = @intFromFloat(pos.y) }, last.?);
+
+        try encode(&writer, .{ .button = .left, .pos = .{ .x = 1, .y = 1 } }, opts);
+        try testing.expectEqualSlices(u8, &.{ 0x1b, '[', 'M', 32, 34, 34 }, writer.buffered());
+    }
+}
+
+test "sgr pixels saturate coordinates beyond integer limits" {
+    var data: [64]u8 = undefined;
+    var writer: std.Io.Writer = .fixed(&data);
+    var last: ?point.Coordinate = null;
+    try encode(&writer, .{
+        .button = .left,
+        .action = .release,
+        .pos = .{ .x = std.math.floatMax(f32), .y = -std.math.floatMax(f32) },
+    }, .{
+        .event = .any,
+        .format = .sgr_pixels,
+        .size = testSize(),
+        .last_cell = &last,
+    });
+    try testing.expectEqualStrings("\x1b[<0;2147483647;-2147483648m", writer.buffered());
+    try testing.expectEqual(point.Coordinate{ .x = 999, .y = 0 }, last.?);
 }
 
 test "x10 coordinate limit" {

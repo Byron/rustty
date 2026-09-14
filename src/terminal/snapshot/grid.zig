@@ -1365,57 +1365,47 @@ fn decodeGraphemes(
             continue;
         };
 
-        var accept = true;
+        // The complete suffix is on the wire. Reserve it once, like a page
+        // copy: incremental append needs transient replacement space and can
+        // discard valid clusters from an otherwise full, encodable page.
+        var suffix: [terminal_page.grapheme_max_len]u21 = undefined;
+        var suffix_len: usize = 0;
         var index: usize = 0;
         while (index < cp_count) {
             const buffered = reader.buffered();
             if (buffered.len >= 4) {
                 const n = @min(cp_count - index, buffered.len / 4);
-                for (0..n) |i| applyGraphemeSuffix(
-                    page,
-                    resolved.row,
-                    resolved.cell,
-                    &accept,
+                for (0..n) |i| collectGraphemeSuffix(
+                    &suffix,
+                    &suffix_len,
                     std.mem.readInt(u32, buffered[i * 4 ..][0..4], .little),
                 );
                 reader.toss(n * 4);
                 index += n;
             } else {
-                applyGraphemeSuffix(
-                    page,
-                    resolved.row,
-                    resolved.cell,
-                    &accept,
+                collectGraphemeSuffix(
+                    &suffix,
+                    &suffix_len,
                     try io.readInt(reader, u32),
                 );
                 index += 1;
             }
         }
+        if (suffix_len > 0) {
+            page.setGraphemes(resolved.row, resolved.cell, suffix[0..suffix_len]) catch {};
+        }
     }
 }
 
-/// Attach one decoded suffix codepoint to its resolved target cell.
-///
-/// If native capacity is exhausted, any prefix already attached is removed
-/// so the cell never exposes a truncated cluster, and `accept` latches
-/// false so the entry's remaining codepoints are consumed but dropped.
-fn applyGraphemeSuffix(
-    page: *TerminalPage,
-    row: *TerminalRow,
-    cell: *TerminalCell,
-    accept: *bool,
+/// Collect the bounded valid suffix before admitting any page resources.
+fn collectGraphemeSuffix(
+    suffix: []u21,
+    len: *usize,
     cp: u32,
 ) void {
-    if (!accept.*) return;
-    if (cp == 0 or !validScalar(cp)) return;
-
-    page.appendGrapheme(row, cell, @intCast(cp)) catch {
-        if (cell.hasGrapheme()) {
-            page.clearGrapheme(cell);
-            page.updateRowGraphemeFlag(row);
-        }
-        accept.* = false;
-    };
+    if (len.* == suffix.len or cp == 0 or !validScalar(cp)) return;
+    suffix[len.*] = @intCast(cp);
+    len.* += 1;
 }
 
 /// The encoded word for one native cell and its hyperlink ID.
@@ -2135,10 +2125,42 @@ test "grid drops undeliverable grapheme entries" {
     try testing.expect(!page.getRowAndCell(3, 0).cell.hasGrapheme());
 }
 
-test "grid drops a complete grapheme when capacity fails mid-cluster" {
+test "grid restores a packed page without transient grapheme allocations" {
+    const testing = std.testing;
+    const capacity: terminal_page.Capacity = .{
+        .cols = 32,
+        .rows = 1,
+        .grapheme_bytes = 512,
+    };
+    var source = try TerminalPage.init(capacity);
+    defer source.deinit();
+    const suffix = [_]u21{ 0x0300, 0x0301, 0x0302, 0x0303, 0x0304 };
+    const row = source.getRow(0);
+    for (source.getCells(row)) |*cell| {
+        cell.* = .init('a');
+        try source.setGraphemes(row, cell, &suffix);
+    }
+    var payload: [2048]u8 = undefined;
+    var writer: std.Io.Writer = .fixed(&payload);
+    try encode(&source, &writer);
+
+    var restored = try TerminalPage.init(capacity);
+    defer restored.deinit();
+    var style_remap: StyleRemap = .empty;
+    var hyperlink_remap: HyperlinkRemap = .empty;
+    var reader: std.Io.Reader = .fixed(writer.buffered());
+    try decode(&restored, &reader, &style_remap, &hyperlink_remap);
+    try restored.verifyIntegrity(testing.allocator);
+    try testing.expectEqual(@as(usize, 32), restored.graphemeCount());
+    for (restored.getCells(restored.getRow(0))) |*cell| {
+        try testing.expectEqualSlices(u21, &suffix, restored.lookupGrapheme(cell).?);
+    }
+}
+
+test "grid drops a complete grapheme when no space remains" {
     const testing = std.testing;
     var page = try TerminalPage.init(.{
-        .cols = 4,
+        .cols = 5,
         .rows = 1,
         .grapheme_bytes = 512,
     });
@@ -2148,22 +2170,20 @@ test "grid drops a complete grapheme when capacity fails mid-cluster" {
     var hyperlink_remap = try HyperlinkRemap.init(testing.allocator);
     defer hyperlink_remap.deinit(testing.allocator);
 
-    var payload: [1024]u8 = undefined;
+    var payload: [2048]u8 = undefined;
     var writer: std.Io.Writer = .fixed(&payload);
     try writer.writeByte(@bitCast(Row{ .cell_width = .eight }));
-    try io.writeInt(&writer, u16, 4);
-    for (0..4) |i| try io.writeInt(
+    try io.writeInt(&writer, u16, 5);
+    for (0..5) |i| try io.writeInt(
         &writer,
         u64,
         @bitCast(Cell{ .kind = 1, .content = @intCast('x' + i) }),
     );
 
     // BitmapAllocator rounds this capacity to 64 four-codepoint chunks. The
-    // first three cells consume 34 chunks. On the fourth cell, appending the
-    // 61st suffix needs 16 new chunks while the old 15-chunk slice is still
-    // live, exceeding capacity and forcing the complete suffix to be dropped.
-    try io.writeInt(&writer, u32, 4);
-    for ([_]u16{ 64, 64, 8, 61 }, 0..) |count, x| {
+    // first four cells fill all of them, so the fifth suffix cannot fit.
+    try io.writeInt(&writer, u32, 5);
+    for ([_]u16{ 64, 64, 64, 64, 61 }, 0..) |count, x| {
         try io.writeInt(&writer, u16, 0);
         try io.writeInt(&writer, u16, @intCast(x));
         try io.writeInt(&writer, u16, count);
@@ -2178,11 +2198,11 @@ test "grid drops a complete grapheme when capacity fails mid-cluster" {
     try decode(&page, &reader, &style_remap, &hyperlink_remap);
     try page.verifyIntegrity(testing.allocator);
 
-    const cell = page.getRowAndCell(3, 0);
-    try testing.expectEqual(@as(u21, @intCast('x' + 3)), cell.cell.codepoint());
+    const cell = page.getRowAndCell(4, 0);
+    try testing.expectEqual(@as(u21, @intCast('x' + 4)), cell.cell.codepoint());
     try testing.expect(!cell.cell.hasGrapheme());
     try testing.expect(cell.row.grapheme);
-    try testing.expectEqual(@as(usize, 3), page.graphemeCount());
+    try testing.expectEqual(@as(usize, 4), page.graphemeCount());
 }
 
 test "grid encodes rows at their narrowest width" {

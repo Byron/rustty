@@ -2692,7 +2692,8 @@ pub fn Stream(comptime H: type) type {
             }
         }
 
-        inline fn oscDispatch(self: *Self, cmd: osc.Command) void {
+        /// Dispatch a validated OSC without consuming stream framing bytes.
+        pub inline fn oscDispatch(self: *Self, cmd: osc.Command) void {
             // The branch hints here are based on real world data
             // which indicates that the most common OSC commands are:
             //
