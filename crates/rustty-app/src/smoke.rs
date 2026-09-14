@@ -45,6 +45,7 @@ fn hover_measurement_restarts_for_motion_and_leaving_but_not_duplicate_events() 
         active_title_accesskit: false,
         events: BTreeMap::new(),
         timing: None,
+        report: None,
     };
     let position = Some(Pos2::new(100.0, 100.0));
     smoke.pointer(position, 5);
@@ -82,6 +83,7 @@ pub(super) struct Smoke {
     active_title_accesskit: bool,
     events: BTreeMap<&'static str, u64>,
     timing: Option<Replay>,
+    report: Option<serde_json::Value>,
 }
 impl Smoke {
     pub fn from_env(loaded: &mut LoadedConfig) -> Result<Option<Self>> {
@@ -132,6 +134,7 @@ impl Smoke {
             active_title_accesskit: false,
             events: BTreeMap::new(),
             timing,
+            report: None,
         }))
     }
     pub(super) fn configure(loaded: &mut LoadedConfig) {
@@ -279,7 +282,24 @@ impl Smoke {
             check_passive_pointer_motion(app, event_loop, key)?;
             check_focus_hint_clicks(app, event_loop, key)?;
         }
-        Ok(done)
+        let complete = done;
+        if complete && self.timing.is_none() {
+            #[cfg(target_os = "windows")]
+            check_last_window_exit(app, event_loop)?;
+            let mut report = self.report.take().ok_or("missing smoke report")?;
+            if cfg!(target_os = "windows") {
+                report["checks"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push("last-window-exit".into());
+            }
+            fs::write(
+                self.directory.join("result.json"),
+                serde_json::to_vec_pretty(&report)?,
+            )?;
+            println!("Native smoke passed: {}", self.directory.display());
+        }
+        Ok(complete)
     }
     fn step_window(
         &mut self,
@@ -513,11 +533,7 @@ impl Smoke {
                     .and_then(|monitor| monitor.refresh_rate_millihertz())
                     .map(|rate| f64::from(rate) / 1000.0);
                 let report = serde_json::json!({"passed":true,"renderer":app.painter.description(),"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","native-rendered-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","drag-selection-scrolling","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
-                fs::write(
-                    self.directory.join("result.json"),
-                    serde_json::to_vec_pretty(&report)?,
-                )?;
-                println!("Native smoke passed: {}", self.directory.display());
+                self.report = Some(report);
                 return Ok(true);
             }
             5 => {
@@ -959,6 +975,72 @@ fn resident_bytes() -> Result<u64> {
     };
     unsafe { GetProcessMemoryInfo(GetCurrentProcess(), &mut info, size)? };
     Ok(info.WorkingSetSize as u64)
+}
+
+#[cfg(target_os = "windows")]
+fn check_last_window_exit(app: &mut App, event_loop: &ActiveEventLoop) -> Result<()> {
+    let window_key = |app: &App, id: Id| {
+        app.windows
+            .iter()
+            .find(|(_, host)| host.id == id)
+            .map(|(&key, _)| key)
+            .ok_or("missing window for exit check")
+    };
+    let original = app.workspace.windows[0].id;
+    let quick = app.add_window(true);
+    let second = app.add_window(false);
+    app.loaded.config.quit_after_last_window_closed = true;
+    app.loaded.config.confirm_close_surface = config::ConfirmCloseSurface::True;
+    app.reconcile(event_loop);
+    let quick_key = window_key(app, quick)?;
+    if app.windows[&quick_key].visible || event_loop.exiting() {
+        return Err("hidden quick terminal changed the normal window lifecycle".into());
+    }
+    let second_key = window_key(app, second)?;
+    app.window_event(event_loop, second_key, WindowEvent::CloseRequested);
+    if event_loop.exiting() || app.index(second).is_some() {
+        return Err("closing one of two regular windows quit or left it open".into());
+    }
+    app.loaded.config.quit_after_last_window_closed = false;
+    let original_key = window_key(app, original)?;
+    app.window_event(event_loop, original_key, WindowEvent::CloseRequested);
+    if event_loop.exiting() || app.index(original).is_some() || app.index(quick).is_none() {
+        return Err("quit-after-last-window-closed=false did not keep the app running".into());
+    }
+    let last = app.add_window(false);
+    app.reconcile(event_loop);
+    let last_key = window_key(app, last)?;
+    let quick_pane = app.focused(quick).ok_or("missing quick terminal pane")?;
+    app.panes.get_mut(&quick_pane).unwrap().running = Some(Instant::now());
+    app.loaded.config.quit_after_last_window_closed = true;
+    app.window_event(event_loop, last_key, WindowEvent::CloseRequested);
+    if event_loop.exiting()
+        || !matches!(
+            app.windows
+                .get(&last_key)
+                .and_then(|host| host.confirm.as_ref()),
+            Some(Confirmation::Close(Action::CloseWindow))
+        )
+    {
+        return Err(
+            "last-window close skipped confirmation for a running quick-terminal job".into(),
+        );
+    }
+    let mut host = app.windows.remove(&last_key).unwrap();
+    host.confirm = None;
+    app.action(event_loop, &mut host, Action::CloseWindow, true);
+    app.windows.insert(last_key, host);
+    app.reconcile(event_loop);
+    if !event_loop.exiting() || app.index(last).is_some() {
+        return Err("hidden quick terminal kept the app alive after its last window closed".into());
+    }
+    if !app.errors.is_empty() {
+        return Err(format!("window lifecycle errors: {:?}", app.errors).into());
+    }
+    eprintln!(
+        "Native smoke: last-window close exited with a hidden quick terminal, honored the opt-out and confirmed its running job"
+    );
+    Ok(())
 }
 
 fn check_terminal_frames(

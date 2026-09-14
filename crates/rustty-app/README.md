@@ -40,6 +40,11 @@ per-user and requires no administrator access. Run `rustty.exe --unregister` bef
 moving or deleting a registered copy, then register the new location if needed.
 Normal launches do not register or install anything.
 
+On Windows, closing the last regular window exits Rustty and closes its hidden
+quick terminal and shell sessions. Existing close confirmation also covers running
+jobs in the quick terminal. Set `quit-after-last-window-closed = false` to keep
+Rustty running for the global quick-terminal shortcut after closing its windows.
+
 Settings live in `%APPDATA%\Rustty\rustty.txt`; workspace state lives in
 `%LOCALAPPDATA%\Rustty\workspace.json`. Explicit config files, XDG paths, and existing
 Ghostty-format settings remain supported. `rustty.exe --config-info` reports both

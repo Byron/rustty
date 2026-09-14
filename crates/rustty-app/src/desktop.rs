@@ -1919,13 +1919,15 @@ impl App {
                     | Action::Quit
             )
         {
+            let exits_app = self.config().quit_after_last_window_closed
+                && closes_last_window(&self.workspace, host.id, &action);
             let candidates = match action {
-                Action::CloseSurface => focused.into_iter().collect::<Vec<_>>(),
-                Action::CloseTab => self
+                Action::CloseSurface if !exits_app => focused.into_iter().collect::<Vec<_>>(),
+                Action::CloseTab if !exits_app => self
                     .tab(host.id)
                     .map(|tab| tab.root.panes())
                     .unwrap_or_default(),
-                Action::CloseWindow => self
+                Action::CloseWindow if !exits_app => self
                     .index(host.id)
                     .map(|i| {
                         self.workspace.windows[i]
@@ -2600,7 +2602,9 @@ impl App {
             }
         }
         self.sync_host_state();
-        if self.workspace.windows.is_empty() && self.config().quit_after_last_window_closed {
+        if self.config().quit_after_last_window_closed
+            && !self.workspace.windows.iter().any(window_keeps_app_running)
+        {
             self.save();
             event_loop.exit();
         }
@@ -5268,6 +5272,34 @@ fn clipboard_policy(config: &Config, request: &vt::Effect) -> config::ClipboardA
     }
 }
 
+fn window_keeps_app_running(window: &WindowState) -> bool {
+    // A Windows quick terminal is an auxiliary window, usually hidden. It must
+    // not keep the process and its executable alive after the last window closes.
+    !cfg!(target_os = "windows") || !window.quick
+}
+
+fn closes_last_window(workspace: &Workspace, window_id: Id, action: &Action) -> bool {
+    let Some(window) = workspace
+        .windows
+        .iter()
+        .find(|window| window.id == window_id)
+    else {
+        return false;
+    };
+    let closes_window = match action {
+        Action::CloseWindow => true,
+        Action::CloseTab => window.tabs.len() == 1,
+        Action::CloseSurface => window.tabs.len() == 1 && window.tabs[0].root.panes().len() == 1,
+        _ => false,
+    };
+    closes_window
+        && !workspace
+            .windows
+            .iter()
+            .filter(|window| window.id != window_id)
+            .any(window_keeps_app_running)
+}
+
 fn window_contains_pane(window: &WindowState, pane: Id) -> bool {
     window.tabs.iter().any(|tab| tab.panes.contains_key(&pane))
 }
@@ -6506,6 +6538,55 @@ mod tests {
         );
         assert!(!directory.join("Library").exists());
         std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn last_window_close_accounts_for_quick_terminals_tabs_and_splits() {
+        let mut workspace = Workspace::default();
+        workspace.windows.push(WindowState {
+            id: 100,
+            tabs: vec![Tab::new(10, 1, PathBuf::from("/tmp"))],
+            active_tab: 0,
+            frame: [0.0, 0.0, 800.0, 600.0],
+            quick: false,
+        });
+        for action in [Action::CloseWindow, Action::CloseTab, Action::CloseSurface] {
+            assert!(closes_last_window(&workspace, 100, &action));
+        }
+        let mut second = workspace.windows[0].clone();
+        second.id = 200;
+        second.tabs = vec![Tab::new(20, 2, PathBuf::from("/tmp"))];
+        workspace.windows.push(second);
+        for action in [Action::CloseWindow, Action::CloseTab, Action::CloseSurface] {
+            assert!(!closes_last_window(&workspace, 100, &action));
+        }
+        workspace.windows[1].quick = true;
+        let quits_with_quick = cfg!(target_os = "windows");
+        for action in [Action::CloseWindow, Action::CloseTab, Action::CloseSurface] {
+            assert_eq!(
+                closes_last_window(&workspace, 100, &action),
+                quits_with_quick
+            );
+        }
+        assert!(!closes_last_window(&workspace, 200, &Action::CloseWindow));
+        workspace.windows[0]
+            .tabs
+            .push(Tab::new(30, 3, PathBuf::from("/tmp")));
+        assert!(!closes_last_window(&workspace, 100, &Action::CloseTab));
+        assert!(!closes_last_window(&workspace, 100, &Action::CloseSurface));
+        workspace.windows[0].tabs.pop();
+        workspace.windows[0].tabs[0]
+            .root
+            .split(1, 3, 4, Direction::Right);
+        assert!(!closes_last_window(&workspace, 100, &Action::CloseSurface));
+        assert_eq!(
+            closes_last_window(&workspace, 100, &Action::CloseTab),
+            quits_with_quick
+        );
+        assert_eq!(
+            closes_last_window(&workspace, 100, &Action::CloseWindow),
+            quits_with_quick
+        );
     }
 
     #[test]
