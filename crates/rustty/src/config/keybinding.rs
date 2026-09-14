@@ -466,83 +466,156 @@ pub(super) fn apply(
 }
 
 pub(super) fn defaults() -> Vec<KeyBinding> {
-    [
-        "super+n=new_window",
-        "super+t=new_tab",
-        "super+w=close_surface",
-        "super+alt+w=close_tab",
-        "super+shift+w=close_window",
-        "super+alt+shift+w=close_all_windows",
-        "super+q=quit",
-        "performable:super+c=copy_to_clipboard",
-        "performable:super+v=paste_from_clipboard",
-        "super+shift+v=paste_from_selection",
-        "super+a=select_all",
-        "performable:super+k=clear_screen",
-        "super+d=new_split:right",
-        "super+shift+d=new_split:down",
-        "super+[=goto_split:previous",
-        "super+]=goto_split:next",
-        "super+alt+arrow_left=goto_split:left",
-        "super+alt+arrow_right=goto_split:right",
-        "super+alt+arrow_up=goto_split:up",
-        "super+alt+arrow_down=goto_split:down",
-        "super+ctrl+arrow_left=resize_split:left,10",
-        "super+ctrl+arrow_right=resize_split:right,10",
-        "super+ctrl+arrow_up=resize_split:up,10",
-        "super+ctrl+arrow_down=resize_split:down,10",
-        "super+ctrl+equal=equalize_splits",
-        "super+enter=toggle_fullscreen",
-        "super+ctrl+f=toggle_fullscreen",
-        "super+shift+enter=toggle_split_zoom",
-        "ctrl+tab=next_tab",
-        "ctrl+shift+tab=previous_tab",
-        "super+shift+[=previous_tab",
-        "super+shift+]=next_tab",
-        "super+1=goto_tab:1",
-        "super+2=goto_tab:2",
-        "super+3=goto_tab:3",
-        "super+4=goto_tab:4",
-        "super+5=goto_tab:5",
-        "super+6=goto_tab:6",
-        "super+7=goto_tab:7",
-        "super+8=goto_tab:8",
-        "super+9=last_tab",
-        "performable:super+f=start_search",
-        "performable:super+e=search_selection",
-        "performable:super+shift+f=end_search",
-        "performable:escape=end_search",
-        "performable:super+g=navigate_search:next",
-        "performable:super+shift+g=navigate_search:previous",
-        "super+shift+p=toggle_command_palette",
-        "super+,=open_config",
-        "super+shift+,=reload_config",
-        "super+equal=increase_font_size:1",
-        "super+plus=increase_font_size:1",
-        "super+-=decrease_font_size:1",
-        "super+0=reset_font_size",
-        "super+home=scroll_to_top",
-        "super+end=scroll_to_bottom",
-        "super+page_up=scroll_page_up",
-        "super+page_down=scroll_page_down",
-        "performable:super+j=scroll_to_selection",
-        "super+arrow_up=jump_to_prompt:-1",
-        "super+arrow_down=jump_to_prompt:1",
-        "super+shift+arrow_up=jump_to_prompt:-1",
-        "super+shift+arrow_down=jump_to_prompt:1",
-        "performable:super+z=undo",
-        "performable:super+shift+z=redo",
-        "performable:super+shift+t=undo",
-        "super+arrow_left=text:\\x01",
-        "super+arrow_right=text:\\x05",
-        "super+backspace=text:\\x15",
-        "alt+arrow_left=esc:b",
-        "alt+arrow_right=esc:f",
-    ]
-    .into_iter()
-    .map(|s| KeyBinding::parse(s).expect("valid built-in binding"))
-    .collect()
+    let bindings = if cfg!(target_os = "windows") {
+        WINDOWS_DEFAULTS
+    } else {
+        MACOS_DEFAULTS
+    };
+    bindings
+        .iter()
+        .map(|s| KeyBinding::parse(s).expect("valid built-in binding"))
+        .collect()
 }
+
+// Keep terminal control chords (especially Ctrl+C, Ctrl+V and Ctrl+W) available
+// to the child. The Windows key belongs to the desktop, not terminal actions.
+const WINDOWS_DEFAULTS: &[&str] = &[
+    "ctrl+shift+n=new_window",
+    "ctrl+shift+t=new_tab",
+    "ctrl+shift+w=close_surface",
+    "ctrl+alt+w=close_tab",
+    "alt+f4=close_window",
+    "ctrl+alt+shift+w=close_all_windows",
+    "ctrl+shift+q=quit",
+    "performable:ctrl+shift+c=copy_to_clipboard",
+    "performable:ctrl+shift+v=paste_from_clipboard",
+    "performable:shift+insert=paste_from_clipboard",
+    "ctrl+alt+shift+v=paste_from_selection",
+    "ctrl+shift+a=select_all",
+    "performable:ctrl+shift+k=clear_screen",
+    "ctrl+shift+d=new_split:right",
+    "ctrl+alt+d=new_split:down",
+    "ctrl+alt+[=goto_split:previous",
+    "ctrl+alt+]=goto_split:next",
+    "alt+arrow_left=goto_split:left",
+    "alt+arrow_right=goto_split:right",
+    "alt+arrow_up=goto_split:up",
+    "alt+arrow_down=goto_split:down",
+    "alt+shift+arrow_left=resize_split:left,10",
+    "alt+shift+arrow_right=resize_split:right,10",
+    "alt+shift+arrow_up=resize_split:up,10",
+    "alt+shift+arrow_down=resize_split:down,10",
+    "ctrl+alt+equal=equalize_splits",
+    "alt+enter=toggle_fullscreen",
+    "f11=toggle_fullscreen",
+    "ctrl+shift+enter=toggle_split_zoom",
+    "ctrl+tab=next_tab",
+    "ctrl+shift+tab=previous_tab",
+    "ctrl+alt+1=goto_tab:1",
+    "ctrl+alt+2=goto_tab:2",
+    "ctrl+alt+3=goto_tab:3",
+    "ctrl+alt+4=goto_tab:4",
+    "ctrl+alt+5=goto_tab:5",
+    "ctrl+alt+6=goto_tab:6",
+    "ctrl+alt+7=goto_tab:7",
+    "ctrl+alt+8=goto_tab:8",
+    "ctrl+alt+9=last_tab",
+    "performable:ctrl+shift+f=start_search",
+    "performable:ctrl+shift+e=search_selection",
+    "performable:escape=end_search",
+    "performable:f3=navigate_search:next",
+    "performable:shift+f3=navigate_search:previous",
+    "ctrl+shift+p=toggle_command_palette",
+    "ctrl+,=open_config",
+    "ctrl+shift+,=reload_config",
+    "ctrl+equal=increase_font_size:1",
+    "ctrl+plus=increase_font_size:1",
+    "ctrl+-=decrease_font_size:1",
+    "ctrl+0=reset_font_size",
+    "ctrl+shift+home=scroll_to_top",
+    "ctrl+shift+end=scroll_to_bottom",
+    "shift+page_up=scroll_page_up",
+    "shift+page_down=scroll_page_down",
+    "performable:ctrl+shift+j=scroll_to_selection",
+    "ctrl+shift+arrow_up=jump_to_prompt:-1",
+    "ctrl+shift+arrow_down=jump_to_prompt:1",
+    "performable:ctrl+shift+z=undo",
+    "performable:ctrl+shift+y=redo",
+];
+
+const MACOS_DEFAULTS: &[&str] = &[
+    "super+n=new_window",
+    "super+t=new_tab",
+    "super+w=close_surface",
+    "super+alt+w=close_tab",
+    "super+shift+w=close_window",
+    "super+alt+shift+w=close_all_windows",
+    "super+q=quit",
+    "performable:super+c=copy_to_clipboard",
+    "performable:super+v=paste_from_clipboard",
+    "super+shift+v=paste_from_selection",
+    "super+a=select_all",
+    "performable:super+k=clear_screen",
+    "super+d=new_split:right",
+    "super+shift+d=new_split:down",
+    "super+[=goto_split:previous",
+    "super+]=goto_split:next",
+    "super+alt+arrow_left=goto_split:left",
+    "super+alt+arrow_right=goto_split:right",
+    "super+alt+arrow_up=goto_split:up",
+    "super+alt+arrow_down=goto_split:down",
+    "super+ctrl+arrow_left=resize_split:left,10",
+    "super+ctrl+arrow_right=resize_split:right,10",
+    "super+ctrl+arrow_up=resize_split:up,10",
+    "super+ctrl+arrow_down=resize_split:down,10",
+    "super+ctrl+equal=equalize_splits",
+    "super+enter=toggle_fullscreen",
+    "super+ctrl+f=toggle_fullscreen",
+    "super+shift+enter=toggle_split_zoom",
+    "ctrl+tab=next_tab",
+    "ctrl+shift+tab=previous_tab",
+    "super+shift+[=previous_tab",
+    "super+shift+]=next_tab",
+    "super+1=goto_tab:1",
+    "super+2=goto_tab:2",
+    "super+3=goto_tab:3",
+    "super+4=goto_tab:4",
+    "super+5=goto_tab:5",
+    "super+6=goto_tab:6",
+    "super+7=goto_tab:7",
+    "super+8=goto_tab:8",
+    "super+9=last_tab",
+    "performable:super+f=start_search",
+    "performable:super+e=search_selection",
+    "performable:super+shift+f=end_search",
+    "performable:escape=end_search",
+    "performable:super+g=navigate_search:next",
+    "performable:super+shift+g=navigate_search:previous",
+    "super+shift+p=toggle_command_palette",
+    "super+,=open_config",
+    "super+shift+,=reload_config",
+    "super+equal=increase_font_size:1",
+    "super+plus=increase_font_size:1",
+    "super+-=decrease_font_size:1",
+    "super+0=reset_font_size",
+    "super+home=scroll_to_top",
+    "super+end=scroll_to_bottom",
+    "super+page_up=scroll_page_up",
+    "super+page_down=scroll_page_down",
+    "performable:super+j=scroll_to_selection",
+    "super+arrow_up=jump_to_prompt:-1",
+    "super+arrow_down=jump_to_prompt:1",
+    "super+shift+arrow_up=jump_to_prompt:-1",
+    "super+shift+arrow_down=jump_to_prompt:1",
+    "performable:super+z=undo",
+    "performable:super+shift+z=redo",
+    "performable:super+shift+t=undo",
+    "super+arrow_left=text:\\x01",
+    "super+arrow_right=text:\\x05",
+    "super+backspace=text:\\x15",
+    "alt+arrow_left=esc:b",
+    "alt+arrow_right=esc:f",
+];
 
 /// `text:` uses Zig string escapes. Hex escapes represent bytes, not codepoints.
 pub fn parse_escaped_bytes(input: &str) -> Result<Vec<u8>, &'static str> {
@@ -599,4 +672,40 @@ pub fn parse_escaped_bytes(input: &str) -> Result<Vec<u8>, &'static str> {
         }
     }
     Ok(output)
+}
+
+#[cfg(test)]
+mod platform_defaults_tests {
+    use super::*;
+
+    #[test]
+    fn windows_shortcuts_preserve_shell_control_keys_and_have_no_collisions() {
+        let mut triggers = std::collections::HashSet::new();
+        for text in WINDOWS_DEFAULTS {
+            let binding = KeyBinding::parse(text).unwrap();
+            let trigger = &binding.trigger[0];
+            assert!(
+                !trigger.modifiers.super_key,
+                "{text} reserves the Windows key"
+            );
+            assert!(
+                triggers.insert(trigger.clone()),
+                "duplicate shortcut: {text}"
+            );
+            assert!(
+                !(trigger.modifiers.control
+                    && !trigger.modifiers.shift
+                    && !trigger.modifiers.alt
+                    && matches!(trigger.key.as_str(), "c" | "v" | "w" | "z")),
+                "{text} intercepts a shell control key"
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_super_bindings_keep_their_meaning() {
+        let binding = KeyBinding::parse("super+c=copy_to_clipboard").unwrap();
+        assert!(binding.trigger[0].modifiers.super_key);
+        assert!(!binding.trigger[0].modifiers.control);
+    }
 }

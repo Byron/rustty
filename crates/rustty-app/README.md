@@ -1,9 +1,133 @@
-# Rustty for macOS
+# Rustty for macOS and Windows
 
-Rustty is a private Rust workspace implementing a terminal, CoreText font services,
-a portable frame renderer and a WGPU desktop application. All seven crates are
-`publish = false`. WGPU uses Metal on macOS; Windows and Linux desktop integration
-and a direct Metal renderer are deferred.
+Rustty is a private Rust workspace implementing a terminal, native font services,
+a portable frame renderer and a native desktop application. All crates are
+`publish = false`. GPU rendering uses Metal on macOS and DirectX 12 with
+DirectComposition on Windows. Windows also supports CPU rendering with GDI
+presentation. CoreText and DirectWrite supply the respective native font backends.
+
+## Windows 11 x64
+
+Install Rust 1.95 or later and the Visual Studio C++ build tools/Windows SDK.
+From PowerShell at the repository root:
+
+```powershell
+./crates/rustty-app/build.ps1 -Release
+./target/release/Rustty/rustty.exe
+```
+
+Omit `-Release` for a debug build. The first build downloads Microsoft's pinned
+ConPTY runtime and verifies its SHA-256. `-Offline` uses cached Cargo dependencies
+and the runtime package under `target/conpty`.
+The script builds for `x86_64-pc-windows-msvc` with a static C runtime; the portable
+folder needs no Visual C++ redistributable. It contains the executable, ConPTY,
+themes, shell integration, and license notices. Move the complete folder,
+including `resources`, together. `-SkipBuild`
+restages an existing script build. Cargo builds also work directly:
+`cargo run -p rustty-app --bin rustty`. Build the portable folder first for resource
+discovery during development. Zig, WSL, and an external shader compiler are not needed.
+
+The bundled ConPTY preserves the order of application-controlled synchronized
+updates (`CSI ?2026 h/l`), including cursor visibility. Some in-box Windows
+versions forward the end marker before their queued screen/cursor update, causing
+prompt animation flicker. Rustty loads its bundled runtime before creating any
+sessions; it reports missing runtime files instead of silently using that older
+transport. Both software and GPU rendering use the same synchronization guard.
+
+To add this location to the Start Menu and enable notification activation, run
+`rustty.exe --register`, or pass `-Register` to the build script. Registration is
+per-user and requires no administrator access. Run `rustty.exe --unregister` before
+moving or deleting a registered copy, then register the new location if needed.
+Normal launches do not register or install anything.
+
+On Windows, closing the last regular window exits Rustty and closes its hidden
+quick terminal and shell sessions. Existing close confirmation also covers running
+jobs in the quick terminal. Set `quit-after-last-window-closed = false` to keep
+Rustty running for the global quick-terminal shortcut after closing its windows.
+
+Layout changes are autosaved without waiting for activity to stop. Closing the
+last window saves its layout before exiting, so the next launch restores its
+tabs, splits, focused pane, window geometry and working directories. Set
+`window-save-state = never` to disable layout saving and restoration.
+
+Settings live in `%APPDATA%\Rustty\rustty.txt`; workspace state lives in
+`%LOCALAPPDATA%\Rustty\workspace.json`. Explicit config files, XDG paths, and existing
+Ghostty-format settings remain supported. `rustty.exe --config-info` reports both
+the selected configuration and shell.
+
+Windows defaults to `renderer = auto`: use a compatible hardware GPU when one is
+available, otherwise render on the CPU. Adapter discovery excludes Microsoft's
+software render driver before graphics-device initialization. If initial GPU
+device or surface setup fails, `auto` also falls back to software. This fallback
+applies at startup; it does not recover an already-running GPU device that is lost.
+Use `renderer = software` (or `rustty.exe --renderer=software`) to force CPU
+rendering, or `renderer = gpu` to force WGPU, including Windows' emulated adapter.
+The renderer setting takes effect after restarting Rustty; macOS uses GPU rendering.
+Both Windows paths retain native menus, per-pixel background opacity, and the same
+terminal/UI drawing. Software animation follows the monitor refresh rate, with a
+60 Hz default when it is unavailable. Idle windows do not continuously repaint.
+
+Windows defaults to **Cascadia Mono at 12 pt**, falling back to Consolas and then
+the embedded JetBrains Mono if those system families are unavailable. Explicit
+`font-family` and style-specific family lists take priority. Emoji and symbol
+fallbacks remain available with any terminal font.
+
+Windows `font-size` uses points: physical pixels = points × 96/72 × display scale.
+At 100% scaling the 12 pt default is 16 pixels; at 125%, 150%, and 200% it is 20,
+24, and 32 pixels. Earlier Windows builds treated points as pixels. To preserve
+the physical size of an explicit value from those builds, multiply it by 0.75
+(for example, change `font-size = 13` to `font-size = 9.75`). Existing settings
+are not rewritten. macOS sizing and defaults are unchanged.
+
+When no Rustty command is configured, Rustty reads **only the default shell command**
+from Windows Terminal's settings and profile fragments. It preserves its arguments,
+including Git Bash's login flags. It does not import Terminal's working directory,
+environment, appearance, fonts, or shortcuts. An explicit Rustty command or `-e`
+takes precedence. An unresolved generated profile produces a diagnostic and uses
+`ComSpec` (`cmd.exe`) as fallback. Git Bash supports cwd/title and command lifecycle
+integration without editing user startup files; other commands can be launched
+explicitly. The Windows bundle uses `xterm-256color` unless a compiled terminfo
+directory is supplied.
+
+Windows defaults use Ctrl+Shift+C/V for copy/paste, Ctrl+Shift+T for a tab,
+Ctrl+Shift+D for a right split, Ctrl+Alt+D for a down split, Ctrl+Tab to switch tabs,
+Alt+Enter for fullscreen, and Ctrl-click to open links. Ctrl+C and other ordinary
+shell control keys remain available to the child. Configured bindings retain their
+literal modifier meanings.
+
+Native menus, taskbar badges, toast notifications, clipboard formats, IME, and
+AccessKit/UI Automation use Windows services. The quick terminal is a tool window;
+`quick-terminal-space-behavior = move` moves it to the foreground desktop when
+revealed. Selection clipboard storage is shared within one process. The saved-layout
+picker accepts Rustty JSON; Ghostty's macOS archived-state format requires macOS.
+
+Windows validation:
+
+```powershell
+cargo test --workspace --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test -p rustty-app --test windows_platform -- --ignored
+cargo test -p rustty-app --test windows_conpty -- --ignored
+$env:RUSTTY_SMOKE_DIR = Join-Path $env:TEMP 'rustty-native-smoke'
+./target/debug/Rustty/rustty.exe
+Remove-Item Env:RUSTTY_SMOKE_DIR
+```
+
+The native smoke uses isolated Git Bash sessions (no profile or history writes),
+requiring Git for Windows at its standard installation path. Set `RUSTTY_SMOKE_SHELL`
+to another native Git Bash executable if needed. It writes its own workspace and
+readback image inside `RUSTTY_SMOKE_DIR` and does not restore the normal workspace.
+Its report includes the selected renderer and animation frame rate. Set
+`RUSTTY_SMOKE_NATIVE_CAPTURE=1` to also save `native-window.png`, an actual desktop
+capture including the Windows frame and menu; the test window must be foreground
+and unobscured. `window.png` captures client rendering with either backend.
+The native CPU opacity/menu test is opt-in:
+`cargo test -p rustty-app --lib software_surface -- --ignored --test-threads=1`.
+The ConPTY check sends fragmented animated redraws through a real PTY and verifies
+every byte boundary retains synchronization until text and cursor restoration
+are complete. Passing `--system` additionally selects the OS runtime for diagnosis.
+
+## macOS
 
 Build a native app from the repository root:
 
@@ -120,7 +244,7 @@ reverse video, DEC column mode, text blinking, synchronized output, hidden-tab t
 updates, independent Find overlays without terminal resizing, and idle rendering.
 The report records animation frame rate, the monitor's reported refresh rate, and
 window redraws and pane preparations during hidden-tab title updates. It writes
-`result.json`, `workspace.json` and a WGPU readback `window.png` into the specified
+`result.json`, `workspace.json` and a rendered `window.png` into the specified
 directory and exits. It uses the selected display configuration but does not
 restore or overwrite the regular app workspace.
 Find checks also capture `find-focused.png` and `find-unfocused.png` to verify
