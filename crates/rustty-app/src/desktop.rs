@@ -924,7 +924,9 @@ impl App {
         }
     }
     fn changed(&mut self) {
-        self.save_at = Some(Instant::now() + Duration::from_millis(500));
+        // Continuous resizing or title updates must not postpone saving forever.
+        self.save_at
+            .get_or_insert_with(|| Instant::now() + Duration::from_millis(500));
     }
     fn remember(&mut self) {
         if !self.config().undo_timeout.is_zero() {
@@ -1909,6 +1911,8 @@ impl App {
             return true;
         }
         let focused = self.focused(host.id);
+        let exits_app = self.config().quit_after_last_window_closed
+            && closes_last_window(&self.workspace, host.id, &action);
         if !approved
             && matches!(
                 action,
@@ -1919,8 +1923,6 @@ impl App {
                     | Action::Quit
             )
         {
-            let exits_app = self.config().quit_after_last_window_closed
-                && closes_last_window(&self.workspace, host.id, &action);
             let candidates = match action {
                 Action::CloseSurface if !exits_app => focused.into_iter().collect::<Vec<_>>(),
                 Action::CloseTab if !exits_app => self
@@ -1962,6 +1964,13 @@ impl App {
                 host.repaint();
                 return true;
             }
+        }
+        if exits_app {
+            // Closing the last window quits the app. Save its intact layout,
+            // just as explicit Quit does, before shutdown closes the sessions.
+            self.save();
+            event_loop.exit();
+            return true;
         }
         match action {
             Action::Ignore => {}

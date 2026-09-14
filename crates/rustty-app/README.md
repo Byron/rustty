@@ -45,6 +45,11 @@ quick terminal and shell sessions. Existing close confirmation also covers runni
 jobs in the quick terminal. Set `quit-after-last-window-closed = false` to keep
 Rustty running for the global quick-terminal shortcut after closing its windows.
 
+Layout changes are autosaved without waiting for activity to stop. Closing the
+last window saves its layout before exiting, so the next launch restores its
+tabs, splits, focused pane, window geometry and working directories. Set
+`window-save-state = never` to disable layout saving and restoration.
+
 Settings live in `%APPDATA%\Rustty\rustty.txt`; workspace state lives in
 `%LOCALAPPDATA%\Rustty\workspace.json`. Explicit config files, XDG paths, and existing
 Ghostty-format settings remain supported. `rustty.exe --config-info` reports both

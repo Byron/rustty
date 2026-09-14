@@ -288,10 +288,10 @@ impl Smoke {
             check_last_window_exit(app, event_loop)?;
             let mut report = self.report.take().ok_or("missing smoke report")?;
             if cfg!(target_os = "windows") {
-                report["checks"]
-                    .as_array_mut()
-                    .unwrap()
-                    .push("last-window-exit".into());
+                report["checks"].as_array_mut().unwrap().extend(
+                    ["last-window-exit", "layout-autosave", "layout-on-exit"]
+                        .map(serde_json::Value::from),
+                );
             }
             fs::write(
                 self.directory.join("result.json"),
@@ -979,6 +979,15 @@ fn resident_bytes() -> Result<u64> {
 
 #[cfg(target_os = "windows")]
 fn check_last_window_exit(app: &mut App, event_loop: &ActiveEventLoop) -> Result<()> {
+    let check_saved = |app: &App| -> Result<()> {
+        let restored = Workspace::load(&app.state_path)?.ok_or("workspace was not saved")?;
+        if serde_json::to_value(restored)? != serde_json::to_value(&app.workspace)? {
+            return Err(
+                "saved workspace lost the current windows, tabs, splits or directories".into(),
+            );
+        }
+        Ok(())
+    };
     let window_key = |app: &App, id: Id| {
         app.windows
             .iter()
@@ -1001,15 +1010,43 @@ fn check_last_window_exit(app: &mut App, event_loop: &ActiveEventLoop) -> Result
     if event_loop.exiting() || app.index(second).is_some() {
         return Err("closing one of two regular windows quit or left it open".into());
     }
+    // A due autosave must survive another layout change and run through the
+    // event loop, including replacing an existing workspace file on Windows.
+    app.save_at = Some(Instant::now());
+    app.changed();
+    app.about_to_wait(event_loop);
+    check_saved(app)?;
     app.loaded.config.quit_after_last_window_closed = false;
     let original_key = window_key(app, original)?;
     app.window_event(event_loop, original_key, WindowEvent::CloseRequested);
     if event_loop.exiting() || app.index(original).is_some() || app.index(quick).is_none() {
         return Err("quit-after-last-window-closed=false did not keep the app running".into());
     }
-    let last = app.add_window(false);
+    app.save_at = Some(Instant::now());
+    app.about_to_wait(event_loop);
+    check_saved(app)?;
+    if !app.undo_layout(false) {
+        return Err("could not restore the multi-tab layout for the exit check".into());
+    }
     app.reconcile(event_loop);
-    let last_key = window_key(app, last)?;
+    let last_key = window_key(app, original)?;
+    let mut host = app.windows.remove(&last_key).unwrap();
+    app.action(
+        event_loop,
+        &mut host,
+        Action::NewSplit(Direction::Right),
+        true,
+    );
+    let tab = app.tab_mut(original).unwrap();
+    tab.title = Some("Saved before closing".into());
+    tab.color = Some([50, 120, 180]);
+    app.windows.insert(last_key, host);
+    app.reconcile(event_loop);
+    let expected = serde_json::to_value(&app.workspace)?;
+    if app.save_at.is_none() || serde_json::to_value(Workspace::load(&app.state_path)?)? == expected
+    {
+        return Err("exit check did not have pending layout changes to save".into());
+    }
     let quick_pane = app.focused(quick).ok_or("missing quick terminal pane")?;
     app.panes.get_mut(&quick_pane).unwrap().running = Some(Instant::now());
     app.loaded.config.quit_after_last_window_closed = true;
@@ -1031,14 +1068,23 @@ fn check_last_window_exit(app: &mut App, event_loop: &ActiveEventLoop) -> Result
     app.action(event_loop, &mut host, Action::CloseWindow, true);
     app.windows.insert(last_key, host);
     app.reconcile(event_loop);
-    if !event_loop.exiting() || app.index(last).is_some() {
-        return Err("hidden quick terminal kept the app alive after its last window closed".into());
+    if !event_loop.exiting() || serde_json::to_value(&app.workspace)? != expected {
+        return Err("last-window close did not quit with its layout intact".into());
     }
+    check_saved(app)?;
+    // Shutdown also saves: it must not overwrite the intact layout with the
+    // result of removing the last regular window. Session close is idempotent.
+    app.exiting(event_loop);
+    check_saved(app)?;
+    fs::write(
+        app.state_path.with_file_name("last-window-layout.json"),
+        serde_json::to_vec_pretty(&expected)?,
+    )?;
     if !app.errors.is_empty() {
         return Err(format!("window lifecycle errors: {:?}", app.errors).into());
     }
     eprintln!(
-        "Native smoke: last-window close exited with a hidden quick terminal, honored the opt-out and confirmed its running job"
+        "Native smoke: layouts autosaved during changes; last-window close preserved pending edits, honored the opt-out and confirmed the quick terminal's running job"
     );
     Ok(())
 }
