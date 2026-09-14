@@ -24,7 +24,8 @@ pub mod unicode;
 
 pub use color::parse as parse_color;
 pub use input::{
-    Key, KeyAction, KeyEncodeOptions, KeyEvent, Modifiers, MouseAction, MouseButton, MouseEvent,
+    Key, KeyAction, KeyEncodeOptions, KeyEvent, Modifiers, MouseAction, MouseButton,
+    MouseEncodeOptions, MouseEvent,
 };
 pub use page_layout::PageCapacity;
 pub use page_list::PageAllocationInfo;

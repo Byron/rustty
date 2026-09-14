@@ -141,8 +141,8 @@ pub const Coordinate = union(enum) {
                 const cell_height: f64 = @as(f64, @floatFromInt(size.cell.height));
                 const clamped_x: f64 = @max(0, term.x);
                 const clamped_y: f64 = @max(0, term.y);
-                const col: GridSize.Unit = @intFromFloat(clamped_x / cell_width);
-                const row: GridSize.Unit = @intFromFloat(clamped_y / cell_height);
+                const col = std.math.lossyCast(GridSize.Unit, clamped_x / cell_width);
+                const row = std.math.lossyCast(GridSize.Unit, clamped_y / cell_height);
                 const clamped_col: GridSize.Unit = @min(col, grid.columns - 1);
                 const clamped_row: GridSize.Unit = @min(row, grid.rows - 1);
                 break :grid .{ .grid = .{ .x = clamped_col, .y = clamped_row } };
@@ -198,8 +198,8 @@ pub const ScreenSize = extern struct {
     /// Subtract padding from the screen size.
     pub fn subPadding(self: ScreenSize, padding: Padding) ScreenSize {
         return .{
-            .width = self.width -| (padding.left + padding.right),
-            .height = self.height -| (padding.top + padding.bottom),
+            .width = self.width -| (padding.left +| padding.right),
+            .height = self.height -| (padding.top +| padding.bottom),
         };
     }
 
@@ -255,8 +255,8 @@ pub const GridSize = extern struct {
         const cell_height: f32 = @floatFromInt(cell.height);
         const screen_width: f32 = @floatFromInt(screen.width);
         const screen_height: f32 = @floatFromInt(screen.height);
-        const calc_cols: Unit = @intFromFloat(screen_width / cell_width);
-        const calc_rows: Unit = @intFromFloat(screen_height / cell_height);
+        const calc_cols = std.math.lossyCast(Unit, screen_width / cell_width);
+        const calc_rows = std.math.lossyCast(Unit, screen_height / cell_height);
         self.columns = @max(1, calc_cols);
         self.rows = @max(1, calc_rows);
     }
@@ -406,6 +406,17 @@ test "GridSize update rounding" {
     try testing.expectEqual(@as(GridSize.Unit, 2), grid.rows);
 }
 
+test "Size grid saturates oversized dimensions and padding" {
+    var size: Size = .{
+        .screen = .{ .width = std.math.maxInt(u32), .height = 0 },
+        .cell = .{ .width = 1, .height = 1 },
+        .padding = .{},
+    };
+    try std.testing.expectEqual(GridSize{ .columns = std.math.maxInt(u16), .rows = 1 }, size.grid());
+    size.padding = .{ .left = std.math.maxInt(u32), .right = std.math.maxInt(u32) };
+    try std.testing.expectEqual(GridSize{ .columns = 1, .rows = 1 }, size.grid());
+}
+
 test "coordinate conversion" {
     const testing = std.testing;
 
@@ -447,6 +458,10 @@ test "coordinate conversion" {
         .{
             .{ .grid = .{ .x = test_size.grid().columns - 1, .y = test_size.grid().rows - 1 } },
             .{ .surface = .{ .x = 100_000, .y = 100_000 } },
+        },
+        .{
+            .{ .grid = .{ .x = test_size.grid().columns - 1, .y = 0 } },
+            .{ .surface = .{ .x = std.math.floatMax(f64), .y = -std.math.floatMax(f64) } },
         },
     };
 

@@ -171,14 +171,25 @@ pub enum MouseButton {
 pub struct MouseEvent {
     pub action: MouseAction,
     pub button: Option<MouseButton>,
-    /// Zero-based cell coordinates.
-    pub col: usize,
-    pub row: usize,
-    /// Terminal-space pixels. Preserve negative and fractional positions for
-    /// viewport tests; SGR-pixel reporting rounds them only when encoding.
+    /// Surface-space pixels, including renderer padding. Negative and
+    /// fractional positions are retained until protocol encoding.
     pub x: f64,
     pub y: f64,
     pub modifiers: Modifiers,
+}
+
+#[derive(Debug)]
+pub struct MouseEncodeOptions<'a> {
+    /// Full surface dimensions, including padding, in physical pixels.
+    pub screen_size: [f64; 2],
+    pub cell_size: [u32; 2],
+    /// Left, top, right and bottom padding in physical pixels.
+    pub padding: [f64; 4],
+    /// Current host button state, including the event being encoded.
+    pub any_button_pressed: bool,
+    /// Optional host-owned state. Motion within the same cell is suppressed,
+    /// except in SGR-pixel mode. Clear the stored value to reset tracking.
+    pub last_cell: Option<&'a mut Option<[u16; 2]>>,
 }
 
 impl Terminal {
@@ -300,10 +311,16 @@ impl Terminal {
         output
     }
 
-    pub fn encode_mouse(&self, event: MouseEvent) -> Vec<u8> {
+    pub fn encode_mouse(&self, event: MouseEvent, options: MouseEncodeOptions<'_>) -> Vec<u8> {
         let mode = self.mouse_mode;
         if !event.x.is_finite()
             || !event.y.is_finite()
+            || options.cell_size.contains(&0)
+            || options
+                .screen_size
+                .iter()
+                .any(|p| !p.is_finite() || *p < 0.0)
+            || options.padding.iter().any(|p| !p.is_finite() || *p < 0.0)
             || mode == 0
             || mode == 9
                 && (event.action != MouseAction::Press
@@ -316,15 +333,35 @@ impl Terminal {
         {
             return Vec::new();
         }
-        let outside = event.x < 0.0
-            || event.y < 0.0
-            || self.width_px != 0 && event.x > f64::from(self.width_px)
-            || self.height_px != 0 && event.y > f64::from(self.height_px);
+        // Native viewport bounds are compared at the surface's f32 precision.
+        let bounds = options.screen_size.map(|size| f64::from(size as f32));
+        let outside = event.x < 0.0 || event.y < 0.0 || event.x > bounds[0] || event.y > bounds[1];
         if event.action != MouseAction::Release
             && outside
-            && (!matches!(mode, 1002 | 1003) || event.button.is_none())
+            && (!matches!(mode, 1002 | 1003) || !options.any_button_pressed)
         {
             return Vec::new();
+        }
+        let pixels = [event.x - options.padding[0], event.y - options.padding[1]];
+        let mut cell = [0; 2];
+        for axis in 0..2 {
+            let extent =
+                (options.screen_size[axis] - options.padding[axis] - options.padding[axis + 2])
+                    .max(0.0);
+            // Native renderer grid dimensions use f32 division. Position
+            // conversion retains f64 precision until the cell is clamped.
+            let count = ((extent as f32 / options.cell_size[axis] as f32) as u16).max(1);
+            cell[axis] = ((pixels[axis].max(0.0) / f64::from(options.cell_size[axis])) as u16)
+                .min(count - 1);
+        }
+        if let Some(last) = options.last_cell {
+            if event.action == MouseAction::Move && self.mouse_format != 1016 && *last == Some(cell)
+            {
+                return Vec::new();
+            }
+            // Native tracking advances before rejecting an unsupported
+            // button or a coordinate the selected format cannot encode.
+            *last = Some(cell);
         }
         let release = event.action == MouseAction::Release;
         let mut code: u16 = if release && !matches!(self.mouse_format, 1006 | 1016) {
@@ -352,23 +389,25 @@ impl Terminal {
                 + u16::from(event.modifiers.control) * 16;
         }
         let (x, y) = if self.mouse_format == 1016 {
-            (event.x.round() as i32, event.y.round() as i32)
+            (pixels[0].round() as i32, pixels[1].round() as i32)
         } else {
-            (
-                event.col.min(usize::from(self.cols) - 1) as i32 + 1,
-                event.row.min(usize::from(self.rows) - 1) as i32 + 1,
-            )
+            (i32::from(cell[0]) + 1, i32::from(cell[1]) + 1)
         };
         match self.mouse_format {
             1006 | 1016 => {
                 format!("\x1b[<{code};{x};{y}{}", if release { 'm' } else { 'M' }).into_bytes()
             }
             1015 => format!("\x1b[{};{x};{y}M", code + 32).into_bytes(),
-            1005 if x <= 2015 && y <= 2015 => {
+            1005 => {
+                let (Some(x), Some(y)) =
+                    (char::from_u32(x as u32 + 32), char::from_u32(y as u32 + 32))
+                else {
+                    return Vec::new();
+                };
                 let mut output = b"\x1b[M".to_vec();
                 output.push((code + 32) as u8);
-                for n in [x as u32 + 32, y as u32 + 32] {
-                    output.extend_from_slice(char::from_u32(n).unwrap().to_string().as_bytes());
+                for cp in [x, y] {
+                    output.extend_from_slice(cp.encode_utf8(&mut [0; 4]).as_bytes());
                 }
                 output
             }
@@ -875,27 +914,35 @@ mod tests {
         assert!(!t.paste_is_safe("\x1b[201~"));
         assert_eq!(t.encode_paste("a\nb"), b"\x1b[200~a\nb\x1b[201~");
     }
+    fn mouse_options() -> MouseEncodeOptions<'static> {
+        MouseEncodeOptions {
+            screen_size: [640.0, 384.0],
+            cell_size: [8, 16],
+            padding: [0.0; 4],
+            any_button_pressed: true,
+            last_cell: None,
+        }
+    }
+
     #[test]
     fn mouse_protocol_and_focus() {
         let mut t = Terminal::new(80, 24, 10);
         let mut e = MouseEvent {
             action: MouseAction::Press,
             button: Some(MouseButton::Left),
-            col: 3,
-            row: 4,
-            x: 30.0,
-            y: 40.0,
+            x: 24.0,
+            y: 64.0,
             modifiers: Modifiers::default(),
         };
-        assert!(t.encode_mouse(e).is_empty());
+        assert!(t.encode_mouse(e, mouse_options()).is_empty());
         t.feed(b"\x1b[?1000h\x1b[?1006h\x1b[?1004h");
-        assert_eq!(t.encode_mouse(e), b"\x1b[<0;4;5M");
+        assert_eq!(t.encode_mouse(e, mouse_options()), b"\x1b[<0;4;5M");
         e.action = MouseAction::Release;
-        assert_eq!(t.encode_mouse(e), b"\x1b[<0;4;5m");
+        assert_eq!(t.encode_mouse(e, mouse_options()), b"\x1b[<0;4;5m");
         e.action = MouseAction::Move;
-        assert!(t.encode_mouse(e).is_empty());
+        assert!(t.encode_mouse(e, mouse_options()).is_empty());
         t.feed(b"\x1b[?1003h\x1b[?1016h");
-        assert_eq!(t.encode_mouse(e), b"\x1b[<32;30;40M");
+        assert_eq!(t.encode_mouse(e, mouse_options()), b"\x1b[<32;24;64M");
         assert_eq!(t.encode_focus(false), b"\x1b[O");
     }
     #[test]
@@ -906,25 +953,88 @@ mod tests {
         let mut event = MouseEvent {
             action: MouseAction::Press,
             button: Some(MouseButton::Left),
-            col: 0,
-            row: 0,
             x: -0.25,
             y: 0.0,
             modifiers: Modifiers::default(),
         };
-        assert!(t.encode_mouse(event).is_empty());
+        assert!(t.encode_mouse(event, mouse_options()).is_empty());
         event.action = MouseAction::Release;
         event.x = -1.5;
         event.y = 400.25;
-        assert_eq!(t.encode_mouse(event), b"\x1b[<0;-2;400m");
+        assert_eq!(t.encode_mouse(event, mouse_options()), b"\x1b[<0;-2;400m");
         t.feed(b"\x1b[?1003h\x1b[?1005h");
         event.action = MouseAction::Press;
         event.button = Some(MouseButton::Extra(0));
         event.x = 0.0;
         event.y = 0.0;
-        assert_eq!(t.encode_mouse(event), [0x1b, b'[', b'M', 160, 33, 33]);
+        assert_eq!(
+            t.encode_mouse(event, mouse_options()),
+            [0x1b, b'[', b'M', 160, 33, 33]
+        );
         t.feed(b"\x1b[?9h");
         event.button = Some(MouseButton::WheelUp);
-        assert!(t.encode_mouse(event).is_empty());
+        assert!(t.encode_mouse(event, mouse_options()).is_empty());
+    }
+
+    #[test]
+    fn mouse_tracking_uses_padded_cells_and_keeps_pixel_motion() {
+        let mut terminal = Terminal::new(80, 24, 0);
+        terminal.feed(b"\x1b[?1003h\x1b[?1006h");
+        let mut last = None;
+        let mut event = MouseEvent {
+            action: MouseAction::Move,
+            button: None,
+            x: 12.0,
+            y: 20.0,
+            modifiers: Modifiers::default(),
+        };
+        let encode = |terminal: &Terminal, event, last: &mut _| {
+            terminal.encode_mouse(
+                event,
+                MouseEncodeOptions {
+                    padding: [10.0, 20.0, 10.0, 20.0],
+                    last_cell: Some(last),
+                    any_button_pressed: false,
+                    ..mouse_options()
+                },
+            )
+        };
+        assert_eq!(encode(&terminal, event, &mut last), b"\x1b[<35;1;1M");
+        event.x += 1.0;
+        assert!(encode(&terminal, event, &mut last).is_empty());
+        // Even an unsupported button updates the retained cell before the
+        // native encoder decides whether it can produce bytes.
+        event.x = 20.0;
+        event.action = MouseAction::Press;
+        event.button = Some(MouseButton::Extra(2));
+        assert!(encode(&terminal, event, &mut last).is_empty());
+        assert_eq!(last, Some([1, 0]));
+        event.action = MouseAction::Move;
+        event.button = None;
+        assert!(encode(&terminal, event, &mut last).is_empty());
+        terminal.feed(b"\x1b[?1016h");
+        for _ in 0..2 {
+            assert_eq!(encode(&terminal, event, &mut last), b"\x1b[<35;10;0M");
+        }
+        event.x = -1.0;
+        assert!(encode(&terminal, event, &mut last).is_empty());
+        event.action = MouseAction::Release;
+        event.button = Some(MouseButton::Left);
+        assert_eq!(encode(&terminal, event, &mut last), b"\x1b[<0;-11;0m");
+
+        terminal.feed(b"\x1b[?1006h");
+        event.x = 640.5;
+        event.y = 384.5;
+        assert_eq!(
+            terminal.encode_mouse(
+                event,
+                MouseEncodeOptions {
+                    screen_size: [640.5, 384.5],
+                    padding: [0.5, 0.5, 0.0, 0.0],
+                    ..mouse_options()
+                }
+            ),
+            b"\x1b[<0;80;24m"
+        );
     }
 }

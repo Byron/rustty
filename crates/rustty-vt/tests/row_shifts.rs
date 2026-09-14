@@ -125,6 +125,27 @@ fn full_width_line_shifts_detach_wrapped_rows() {
 }
 
 #[test]
+fn scroll_up_without_history_preserves_pins_and_detaches_partial_regions() {
+    for bottom in [3, 4] {
+        let mut terminal = Terminal::with_limits(8, 4, ScrollbackLimits::NONE);
+        terminal.feed(b"abcdefghijklmnopqrstuvwxy");
+        let start = terminal.screen().point(0, 2).unwrap();
+        let tracked = terminal.screen_mut().track(start);
+        terminal.feed(format!("\x1b[1;{bottom}r\x1b[S").as_bytes());
+        let screen = terminal.screen();
+        assert!(screen.history.is_empty());
+        assert_eq!(screen.resolve(tracked), screen.point(0, 2));
+        assert_eq!(screen.rows[0].cells[2].text, "k");
+        assert_eq!(screen.rows[0].wrapped, bottom == 4);
+        assert_eq!(screen.rows[0].wrap_continuation, bottom == 4);
+        assert_eq!(
+            screen.rows[3].cells[0].text,
+            if bottom == 3 { "y" } else { "" }
+        );
+    }
+}
+
+#[test]
 fn partial_width_line_shifts_preserve_row_wrap_metadata() {
     for command in b"LMST" {
         let mut terminal = Terminal::new(8, 4, 10);

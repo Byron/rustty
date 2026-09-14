@@ -4,6 +4,7 @@ const std = @import("std");
 const vt = @import("ghostty-vt");
 const input_adapter = @import("zig-input.zig");
 const parser_adapter = @import("zig-parser.zig");
+const osc_adapter = @import("zig-osc.zig");
 const paste_adapter = @import("zig-paste.zig");
 const semantic_adapter = @import("zig-semantic.zig");
 const graphics_adapter = @import("zig-graphics.zig");
@@ -59,6 +60,7 @@ const capabilities = [_][]const u8{
 
 const Operation = struct {
     op: []const u8,
+    now_ms: ?u64 = null,
     snapshot_max_continuation_bytes: ?usize = null,
     data: []const u8 = "",
     cols: u16 = 0,
@@ -300,6 +302,7 @@ const Response = struct {
     glyph_results: []const glyph_adapter.State = &.{},
     page_results: []const pages_adapter.State = &.{},
     dnd_results: []const ?dnd_adapter.State = &.{},
+    graphics_ticks: []const graphics_adapter.Tick = &.{},
 };
 
 // Effects arrive synchronously; one terminal is exercised at a time. This
@@ -521,6 +524,10 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
         .kitty_image_loading_limits = .direct,
     });
     defer t.deinit(alloc);
+    if (!observe_terminal) {
+        t.width_px = @as(u32, request.cols) * 8;
+        t.height_px = @as(u32, request.rows) * 16;
+    }
     const clipboard_replies = try alloc.alloc(DecodedClipboardReply, request.clipboard_replies.len);
     for (request.clipboard_replies, clipboard_replies) |source, *destination| {
         const contents = try alloc.alloc(vt.clipboard.Content, source.contents.len);
@@ -546,18 +553,22 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
     defer stream.deinit();
     var observations: std.ArrayList(Observation) = .empty;
     var mode_results: std.ArrayList(bool) = .empty;
+    var mouse_cell: ?vt.point.Coordinate = null;
     var grid: grid_adapter.Context = .{};
     defer grid.deinit(alloc, &t);
     var grid_results: std.ArrayList(grid_adapter.Result) = .empty;
     var glyph_results: std.ArrayList(glyph_adapter.State) = .empty;
     var page_results: std.ArrayList(pages_adapter.State) = .empty;
     var dnd_results: std.ArrayList(?dnd_adapter.State) = .empty;
+    var graphics_ticks: std.ArrayList(graphics_adapter.Tick) = .empty;
     var snapshots: std.ArrayList([]const u8) = .empty;
     var snapshot_source: std.Io.Reader = .fixed(&.{});
     var snapshot_decoder: ?vt.snapshot.Decoder = null;
     var snapshot_progress: std.ArrayList(SnapshotProgress) = .empty;
     for (request.operations) |op| {
-        if (std.mem.eql(u8, op.op, "pages")) {
+        if (std.mem.eql(u8, op.op, "graphics_tick")) {
+            try graphics_ticks.append(alloc, graphics_adapter.tick(&t, io, op.now_ms orelse return error.MissingTime));
+        } else if (std.mem.eql(u8, op.op, "pages")) {
             try page_results.append(alloc, try pages_adapter.observe(alloc, &t));
         } else if (std.mem.eql(u8, op.op, "dnd")) {
             var output: std.Io.Writer.Allocating = .init(alloc);
@@ -570,6 +581,8 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
             if (request.scalar) {
                 for (bytes) |byte| stream.next(byte);
             } else stream.nextSlice(bytes);
+        } else if (std.mem.eql(u8, op.op, "osc")) {
+            osc_adapter.run(alloc, &stream, try hexDecode(alloc, op.data), request.scalar);
         } else if (std.mem.eql(u8, op.op, "resize")) {
             if (op.cols == 0 or op.rows == 0 or op.cols > 1024 or op.rows > 1024) return error.InvalidDimensions;
             try stream.handler.resize(.{
@@ -651,7 +664,7 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
         } else if (std.mem.eql(u8, op.op, "grid")) {
             try grid_results.append(alloc, try grid.run(alloc, &t, op.grid orelse return error.MissingGridOperation));
         } else if (std.mem.eql(u8, op.op, "input")) {
-            Context.append("input", try input_adapter.encode(alloc, &t, op.input orelse return error.MissingInput));
+            Context.append("input", try input_adapter.encode(alloc, &t, op.input orelse return error.MissingInput, &mouse_cell));
         } else if (std.mem.eql(u8, op.op, "paste")) {
             try paste_adapter.run(alloc, &stream.handler, op.paste orelse return error.MissingPaste, Context.append);
         } else if (std.mem.eql(u8, op.op, "checkpoint")) {
@@ -662,6 +675,7 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
             glyph_results.clearRetainingCapacity();
             page_results.clearRetainingCapacity();
             dnd_results.clearRetainingCapacity();
+            graphics_ticks.clearRetainingCapacity();
         } else if (std.mem.eql(u8, op.op, "snapshot")) {
             var continuation: std.Io.Writer.Allocating = .init(alloc);
             try stream.writeContinuation(&continuation.writer);
@@ -715,6 +729,7 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
     response.glyph_results = glyph_results.items;
     response.page_results = page_results.items;
     response.dnd_results = dnd_results.items;
+    response.graphics_ticks = graphics_ticks.items;
     return response;
 }
 

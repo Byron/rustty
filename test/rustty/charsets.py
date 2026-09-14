@@ -9,6 +9,15 @@ def requests():
             request.update(kind="snapshot", after=[{"op": "write", "data": after.hex()}])
         return request, ["terminal.cells", "terminal.cursor"]
 
+    for name, data in (
+        ("initial", b""), ("restore-default", b"\x1b~\x1b8"), ("reset", b"\x1b|\x1bc"),
+        ("restore-saved", b"\x1b7\x1b~\x1b8"), ("restore-selected", b"\x1b~\x1b7\x1b|\x1b8"),
+        ("alternate", b"\x1b[?1047h"), ("alternate-restore-default", b"\x1b[?1047h\x1b|\x1b8"),
+    ):
+        request, covers = case("defaults/" + name, data)
+        request["operations"].append({"op": "snapshot"})
+        yield request, covers + ["snapshot.fixtures"]
+
     for charset in (b"B", b"A", b"0"):
         for slot, invoke in ((b"(", b""), (b")", b"\x0e"),
                              (b"*", b"\x1bn"), (b"+", b"\x1bo")):

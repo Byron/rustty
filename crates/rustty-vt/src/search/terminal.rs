@@ -242,6 +242,7 @@ impl TerminalSearch {
                     screen.history.len().saturating_sub(row)
                 };
                 screen.viewport_pin_column = if row > 0 && screen.viewport_offset > 0 {
+                    screen.viewport_pin = Some(selected.bounds.start);
                     selected.bounds.start.col
                 } else {
                     0

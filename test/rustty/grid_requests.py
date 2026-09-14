@@ -85,6 +85,53 @@ def requests():
                    grid("track", id=1, point=point(1, 0, "viewport")),
                    grid("select", start=point(0, 0, "viewport"), end=point(2, 1, "viewport")),
                    b"\r\nsix", observe], ["terminal.selection", "terminal.tracked"])
+
+    # The internal viewport pin stays in the native pin set after scrolling
+    # back to the active area. Its blank cells affect subsequent saved pins.
+    for initial, text in (("empty", b""), ("written", b"abcdefghij"),
+                          ("history", b"\r\n".join(str(n).encode() for n in range(10))),
+                          ("blank-history", b"\n" * 12)):
+        for viewport, deltas in (("active", ()), ("top", (100,)), ("pin", (2,)),
+                                 ("returned", (2, -100)), ("through-top", (2, 100, -100))):
+            for mutation, edit in (("none", b""), ("index", b"\x1b[2;3r\x1b[3H\n\x1b[r"),
+                                   ("delete", b"\x1b[H\x1b[M"), ("insert", b"\x1b[H\x1b[L"),
+                                   ("history-clear", b"\x1b[3J")):
+                for cols in (6, 17):
+                    for tracked in (False, True):
+                        operations = [text, *(grid("viewport", delta=d) for d in deltas),
+                                      edit, b"\x1b[2;9H"]
+                        if tracked:
+                            operations.append(grid("track", id=1, point=point(8, 1)))
+                        operations.extend([b"\x1b[?1049h", {"op": "resize", "cols": cols, "rows": 4},
+                                           b"\x1b[?1049l", observe, b"X"])
+                        yield case(f"viewport-retention/{initial}/{viewport}/{mutation}/{cols}/{tracked}",
+                                   operations, ["terminal.resize", "terminal.cursor", "terminal.tracked"],
+                                   cols=12)
+
+    for narrow in (3, 4, 5):
+        for wide in (6, 7, 13):
+            for rows in (3, 4):
+                for retention in ("none", "track", "selection", "saved", "semantic", "background"):
+                    for advance in (b"\n", b"\r\n"):
+                        anchor = point(8 % narrow, 8 // narrow)
+                        operations = [b"\t", {"op": "resize", "cols": narrow, "rows": 4}]
+                        if retention == "track":
+                            operations.append(grid("track", id=1, point=anchor))
+                        elif retention == "selection":
+                            operations.append(grid("select", start=anchor, end=anchor))
+                        elif retention == "saved":
+                            operations.append(b"\x1b7")
+                        elif retention == "semantic":
+                            operations.append(b"\x1b]133;A\x07")
+                        elif retention == "background":
+                            operations.append(b"\x1b[44m\x1b[K\x1b[0m")
+                        operations.extend([advance, {"op": "resize", "cols": wide, "rows": rows}, observe])
+                        if retention == "saved":
+                            operations.append(b"\x1b8")
+                        operations.append(b"X")
+                        yield case(f"resize/empty-continuation/{narrow}/{wide}/{rows}/{retention}/{advance.hex()}",
+                                   operations, ["terminal.resize", "terminal.cursor", "terminal.tracked"], cols=12)
+
     for reset in ({"op": "terminal_reset"}, {"op": "reset"}):
         yield case("tracked/reuse/" + reset["op"], [b"A", grid("track", id=1), reset,
                    b"BC", grid("track", id=2, point=point(1)), observe, grid("untrack", id=2)],
@@ -114,20 +161,21 @@ def requests():
                     {"op": "resize", "cols": 12, "rows": 6}, b"\r\nmore\r\nrows", observe],
                    ["terminal.tracked", "terminal.resize"])
 
-    for alternate in (False, True):
+    for mode, prefix in (("primary", []), ("no-history", [grid("limits", bytes=0)]),
+                         ("alternate", [b"\x1b[?47h"]),
+                         ("no-history-retained", [grid("limits", bytes=0), b"A\x1b[22J"])):
         for margin, setup in (("full", b""), ("vertical", b"\x1b[2;3r"),
                               ("top", b"\x1b[1;3r"),
                               ("horizontal", b"\x1b[?69h\x1b[3;6s")):
             for command in "LMST":
                 for count in (0, 1, 2, 5):
-                    prefix = b"\x1b[?47h" if alternate else b""
-                    operations = [prefix + b"aaaaaa\r\nbbbbbb\r\ncccccc\r\ndddddd"]
+                    operations = [*prefix, b"aaaaaa\r\nbbbbbb\r\ncccccc\r\ndddddd"]
                     operations.extend(grid("track", id=y, point=point(1, y)) for y in range(4))
                     operations.extend([
                         grid("select", start=point(1), end=point(3, 2)),
                         setup + b"\x1b[2;3H" + f"\x1b[{count}{command}".encode(), observe,
                     ])
-                    yield case(f"tracked/row-shift/{alternate}/{margin}/{command}/{count}",
+                    yield case(f"tracked/row-shift/{mode}/{margin}/{command}/{count}",
                                operations, ["terminal.tracked", "terminal.selection"])
 
     yield case("index/corpus-wrap", [b"\x1b[5W\x1b[4r\x1b[\t33BhD"],

@@ -943,5 +943,102 @@
     "covers": [
       "terminal.resize"
     ]
+  },
+  {
+    "request": {
+      "id": "terminal/resize/retained-viewport-pin-before-saved-cursor",
+      "cols": 12,
+      "rows": 4,
+      "operations": [
+        {
+          "op": "write",
+          "data": "090a1b5b3f3130343968"
+        },
+        {
+          "op": "resize",
+          "cols": 6,
+          "rows": 4
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f313034396c"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.resize",
+      "terminal.cursor"
+    ],
+    "generated_sources": [
+      "generated/2/187"
+    ]
+  },
+  {
+    "request": {
+      "id": "terminal/resize/empty-wrap-continuation",
+      "cols": 12,
+      "rows": 4,
+      "operations": [
+        {
+          "op": "write",
+          "data": "09"
+        },
+        {
+          "op": "resize",
+          "cols": 3,
+          "rows": 4
+        },
+        {
+          "op": "write",
+          "data": "0a"
+        },
+        {
+          "op": "resize",
+          "cols": 7,
+          "rows": 3
+        }
+      ]
+    },
+    "covers": [
+      "terminal.resize",
+      "terminal.cursor"
+    ],
+    "generated_sources": [
+      "generated/2/291"
+    ]
+  },
+  {
+    "request": {
+      "id": "terminal/resize/blank-tail-of-wrapped-row",
+      "cols": 20,
+      "rows": 4,
+      "operations": [
+        {
+          "op": "write",
+          "data": "616263646566676809"
+        },
+        {
+          "op": "resize",
+          "cols": 14,
+          "rows": 8
+        },
+        {
+          "op": "write",
+          "data": "1b5b48"
+        },
+        {
+          "op": "resize",
+          "cols": 6,
+          "rows": 2
+        }
+      ]
+    },
+    "covers": [
+      "terminal.resize",
+      "terminal.cursor"
+    ],
+    "generated_sources": [
+      "generated/2/979"
+    ]
   }
 ]

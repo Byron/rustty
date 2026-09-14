@@ -10,6 +10,72 @@ use rustty_vt::{GridPoint, Screen, ScrollbackLimits, Selection, Terminal, Tracke
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct FormatOptions {
+    emit: rustty_vt::formatter::Format,
+    unwrap: Option<bool>,
+    trim: Option<bool>,
+    background: Option<[u8; 3]>,
+    foreground: Option<[u8; 3]>,
+    palette: Option<Vec<[u8; 3]>>,
+    codepoint_map: Vec<FormatMap>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FormatMap {
+    range: [u32; 2],
+    replacement: FormatReplacement,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum FormatReplacement {
+    Codepoint(u32),
+    String(String),
+}
+
+impl FormatOptions {
+    fn maps(&self) -> Result<Vec<rustty_vt::formatter::CodepointMap<'_>>, &'static str> {
+        use rustty_vt::formatter::{CodepointMap, Replacement};
+        let cp = |value| char::from_u32(value).ok_or("InvalidCodepoint");
+        self.codepoint_map
+            .iter()
+            .map(|rule| {
+                Ok(CodepointMap {
+                    range: [cp(rule.range[0])?, cp(rule.range[1])?],
+                    replacement: match &rule.replacement {
+                        FormatReplacement::Codepoint(value) => Replacement::Codepoint(cp(*value)?),
+                        FormatReplacement::String(value) => Replacement::String(value),
+                    },
+                })
+            })
+            .collect()
+    }
+
+    fn options<'a>(
+        &'a self,
+        selection: bool,
+        maps: &'a [rustty_vt::formatter::CodepointMap<'a>],
+    ) -> Result<rustty_vt::formatter::Options<'a>, &'static str> {
+        Ok(rustty_vt::formatter::Options {
+            emit: self.emit,
+            unwrap: self.unwrap.unwrap_or(selection),
+            trim: self.trim.unwrap_or(true),
+            background: self.background,
+            foreground: self.foreground,
+            palette: self
+                .palette
+                .as_deref()
+                .map(TryInto::try_into)
+                .transpose()
+                .map_err(|_| "InvalidFormatPalette")?,
+            codepoint_map: maps,
+        })
+    }
+}
+
 #[derive(Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Point {
@@ -48,7 +114,11 @@ pub struct Operation {
     trim_line: Option<bool>,
     semantic_prompt_boundary: Option<bool>,
     adjustment: Option<Adjustment>,
-    format: Option<rustty_vt::formatter::Options>,
+    format: Option<FormatOptions>,
+    format_map: bool,
+    format_content: Option<String>,
+    screen_extra: Option<rustty_vt::formatter::ScreenExtra>,
+    terminal_extra: Option<rustty_vt::formatter::TerminalExtra>,
     gesture: Option<GestureOptions>,
 }
 
@@ -108,6 +178,13 @@ impl Context {
             "observe" => {}
             "format_selection" => {
                 if terminal.screen().selection.is_none() {
+                    status = "no_value";
+                }
+            }
+            "format_screen" | "format_terminal" => {
+                if op.format_content.as_deref() == Some("selection")
+                    && terminal.screen().selection.is_none()
+                {
                     status = "no_value";
                 }
             }
@@ -415,14 +492,70 @@ impl Context {
                 "screen": if self.search.is_alternate_screen() { "alternate" } else { "primary" },
             }));
         }
-        let formatted = if op.action == "format_selection" {
-            terminal
-                .screen()
-                .selection
-                .and_then(|selection| {
-                    terminal.format_selection(selection, op.format.unwrap_or_default())
-                })
-                .map(|bytes| super::hex(&bytes))
+        let mut format_map = None;
+        let formatted = if matches!(
+            op.action.as_str(),
+            "format_selection" | "format_screen" | "format_terminal"
+        ) {
+            use rustty_vt::formatter::Content;
+            let selection = op.action == "format_selection";
+            let tag = if selection {
+                "selection"
+            } else {
+                op.format_content.as_deref().unwrap_or("all")
+            };
+            let content = match tag {
+                "all" => Some(Content::All),
+                "none" => Some(Content::None),
+                "selection" => terminal.screen().selection.map(Content::Selection),
+                _ => return Err("InvalidFormatContent"),
+            };
+            if let Some(content) = content {
+                let default = FormatOptions::default();
+                let format = op.format.as_ref().unwrap_or(&default);
+                let maps = format.maps()?;
+                let options = format.options(selection, &maps)?;
+                let mut mapped = |(bytes, map): (Vec<u8>, rustty_vt::formatter::ByteMap<'_>)| {
+                    assert_eq!(bytes.len(), map.len());
+                    format_map = Some(
+                        (0..map.len())
+                            .map(|offset| {
+                                let point = map.get(offset).unwrap();
+                                [point.page, point.x as usize, point.y as usize]
+                            })
+                            .collect::<Vec<_>>(),
+                    );
+                    bytes
+                };
+                let bytes = if op.action != "format_screen" {
+                    let mut formatter = terminal.formatter(options.emit);
+                    formatter.options = options;
+                    formatter.content = content;
+                    if !selection && let Some(extra) = op.terminal_extra {
+                        formatter.extra = extra;
+                    }
+                    if op.format_map {
+                        formatter.format_with_map().map(&mut mapped)
+                    } else {
+                        formatter.format()
+                    }
+                } else {
+                    let mut formatter = terminal.screen().formatter(options.emit);
+                    formatter.options = options;
+                    formatter.content = content;
+                    if let Some(extra) = op.screen_extra {
+                        formatter.extra = extra;
+                    }
+                    if op.format_map {
+                        formatter.format_with_map().map(&mut mapped)
+                    } else {
+                        formatter.format()
+                    }
+                };
+                bytes.map(|bytes| super::hex(&bytes))
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -446,6 +579,7 @@ impl Context {
             json!({"action": op.action, "status": status, "matches": matches, "search_needle": search_needle,
             "search_state": search_state,
             "formatted": formatted,
+            "format_map": format_map,
             "active_screen": if terminal.is_alternate_screen() { "alternate" } else { "primary" },
             "viewport_top": [screen.viewport_top().col, screen.history.len().saturating_sub(screen.viewport_offset)],
             "selection": selection, "selection_result": selection_result, "tracked": handles,

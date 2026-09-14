@@ -14,7 +14,7 @@
     {
       "id": "terminal.resize",
       "status": "partial",
-      "remaining": "Row prompt metadata and OSC 133 redraw policies are compared across resize and snapshots; complete reflow, height changes, scrollback pruning and tracked-reference cases remain."
+      "remaining": "Row prompt metadata and OSC 133 redraw policies are compared across resize and snapshots. Native non-reflow truncation now clears both halves of a wide cell, repairing a later insertion crash; 144 comparisons cover both screens, active/inactive state, graphemes, links, styles and snapshot continuation. Initial and resized pixel geometry is compared in snapshots for terminal and input requests, including missing/zero cell sizes, saturated products, unchanged grids and mode-2048 reports. The adapters now initialize identical pixel geometry for input requests. The internal viewport anchor survives returning to the active area; saved cursors and external pins agree across 1200 comparisons through narrowing, widening, line edits, history clearing and viewport movement. Empty wrap continuations are dropped without adding hard breaks; 648 comparisons cover retained cursor/selection pins, semantic rows and backgrounds. Reflow preserves the blank tail copied from a wrapped source row instead of trimming it as deferred empty space; generated/2/979 has a retained ASCII regression. Complete reflow, height changes, scrollback pruning and tracked-reference cases remain."
     },
     {
       "id": "terminal.reset",
@@ -29,7 +29,7 @@
     {
       "id": "terminal.cells",
       "status": "partial",
-      "remaining": "Cell comparison exists; ECH/EL/DCH wrap resets, next-row continuation and wide spacer cleanup have focused snapshot coverage. Complete grapheme, protection, wide-cell and semantic cases remain."
+      "remaining": "Cell comparison exists; ECH/EL/DCH wrap resets, next-row continuation and wide spacer cleanup have focused snapshot coverage. Non-reflow growth and restored-page edits retain spacer-head attributes and native copied-versus-reused row wrap flags across 96 comparisons. Complete grapheme, protection, wide-cell and semantic cases remain."
     },
     {
       "id": "terminal.styles",
@@ -79,7 +79,7 @@
     {
       "id": "parser.events",
       "status": "partial",
-      "remaining": "Validated title/PWD, color, notification and clipboard semantics plus fixed capture/prefix cases are compared. Native OSC 66/99 deliberately unimplemented terminal callbacks are verified as no-ops across payload/capture boundaries, malformed input and continuation. Remaining OSC commands, typed metadata APIs, streaming capture allocation and complete malformed contexts remain."
+      "remaining": "Validated title/PWD, color, notification and clipboard semantics plus fixed capture/prefix cases are compared. Native OSC 66/99 deliberately unimplemented terminal callbacks are verified as no-ops across payload/capture boundaries, malformed input and continuation. Direct OSC parser corpus and 176 focused fixtures pass 648 comparisons of terminal state and host effects, preserving all selector/payload bytes, missing terminators, embedded controls, capture boundaries and pending CSI continuation. Typed metadata for ignored commands, remaining OSC commands, streaming capture allocation and complete malformed contexts remain."
     },
     {
       "id": "terminal.modes",
@@ -94,7 +94,7 @@
     {
       "id": "terminal.selection",
       "status": "partial",
-      "remaining": "Direct bounds/text, rectangles, wide/grapheme cells and whitespace/wrap cases pass. Pure word, word-between, line, all and output queries pass 384 comparisons across 128 fixtures. All ten selection-end adjustments pass 450 comparisons across 150 fixtures, including reversed/rectangular endpoints, blank and written-space rows, wide spacers, history, alternate screens and mixed physical widths. Plain/VT/HTML selection export with all trim/unwrap combinations passes 363 comparisons across 121 fixtures. Gesture press/drag/release, repeats, deep press and autoscroll pass 1221 comparisons across 407 cell/word/line/output fixtures, including reset/pruned anchors. Complete mutation lifetimes, formatter coordinate maps and full terminal-state exports remain."
+      "remaining": "Direct bounds/text, rectangles, wide/grapheme cells and whitespace/wrap cases pass. Pure word, word-between, line, all and output queries pass 384 comparisons across 128 fixtures. All ten selection-end adjustments pass 450 comparisons across 150 fixtures, including reversed/rectangular endpoints, blank and written-space rows, wide spacers, history, alternate screens and mixed physical widths. Plain/VT/HTML selection export with all trim/unwrap combinations passes 363 comparisons across 121 fixtures. Full screen/terminal exports and optional state replay pass 279 comparisons across 93 fixtures, including native PWD terminator repair, pending wrap, mode defaults and restored pages. Explicit foreground/background/palette options and character/string replacements are compared across formats, all entry points, Unicode, page boundaries and cursor replay. Gesture press/drag/release, repeats, deep press and autoscroll pass 1221 comparisons across 407 cell/word/line/output fixtures, including reset/pruned anchors. Raw per-byte page coordinates are compared for all formatter cases, including UTF-8, escaped/replaced text, styles, links, state extras and page-boundary blanks. Complete mutation lifetimes remain."
     },
     {
       "id": "terminal.search",
@@ -104,22 +104,22 @@
     {
       "id": "terminal.page-layout",
       "status": "partial",
-      "remaining": "Page/resource capacity and offset arithmetic, column adjustment and pooled/exact allocation charge are compared on macOS ARM64 without backing allocations. Page lifetime, splitting, retained resource entries, fragmentation, reflow inheritance and other platform ABIs remain."
+      "remaining": "Page/resource capacity and offset arithmetic, column adjustment and pooled/exact allocation charge are compared on macOS ARM64 without backing allocations. Live STYLE, grapheme and hyperlink/string retention, fragmentation and growth have bounded coverage under terminal.pages; full splitting, resource inheritance and other platform ABIs remain."
     },
     {
       "id": "terminal.pages",
       "status": "partial",
-      "remaining": "Initialization, growth, whole-page pruning, clear/reset, dimension changes, reflow and snapshot admission compare native boundaries, capacities and allocation charges on macOS ARM64. Live STYLE ownership, growth and mixed-width row copies have bounded coverage. Native STYLE splits and narrow-page mutations are repaired; Rust follows corrected growth, padding and cursor metadata across 96 mixed-width comparisons. Other managed resources, splitting during reflow, compression and complete lifecycle combinations remain."
+      "remaining": "Initialization, growth, whole-page pruning, clear/reset, dimension changes, reflow and snapshot admission compare native boundaries, capacities and allocation charges on macOS ARM64. Live STYLE ownership, growth and mixed-width row copies have bounded coverage. Native STYLE splits and narrow-page mutations are repaired; Rust follows corrected growth, padding and cursor metadata across 96 mixed-width comparisons. Live grapheme chunk ownership, fragmentation, projected growth, erasure, row moves/copies, reflow, mixed restored widths, tiny capacities and snapshot continuation pass 777 comparisons across 259 fixtures. Growth rebuilds both resource ledgers atomically, and viewport copies own no allocations. Live hyperlink/string ownership, delayed reclamation, deduplication, hash collisions, cursor page crossings, temporary SU/SD cursor moves, growth, erasure, reflow, mixed restored widths and snapshot continuation pass 297 comparisons across 99 fixtures. Snapshot encoding preserves native LINK IDs and cursor-only references, including tables above 511 entries. Splitting during reflow, compression and complete lifecycle/resource-exhaustion combinations remain."
     },
     {
       "id": "terminal.tracked",
       "status": "partial",
-      "remaining": "Live coordinates/codepoints are compared through reflow, erasure, resets, handle reuse and screen switches. Owner isolation, reset lifetime, inactive release, line shifts and alternate/history pin motion pass; rebinding, exact pruning and snapshot restoration remain."
+      "remaining": "Live coordinates/codepoints are compared through reflow, erasure, resets, handle reuse and screen switches. Owner isolation, reset lifetime, inactive release, line shifts and alternate/history pin motion pass. IL/DL/SU/SD with full and partial margins, zero/oversized counts, primary/alternate screens, disabled scrollback and ED22-retained history pass 768 comparisons across 256 fixtures. Scroll path selection uses the active screen's actual byte limit, preserving pins and wrap flags with scrollback disabled. Rebinding, exact pruning and snapshot restoration remain."
     },
     {
       "id": "graphics.kitty",
       "status": "partial",
-      "remaining": "Stored IDs, dimensions and RGBA pixels for raw/PNG/zlib uploads on both screens are compared. Tagged placement keys, requested/source/pixel/grid geometry, zero pixel sizes, ordinary cursor/display/deletion/retransmission, basic history/reflow/screen/reset lifecycle and simple parent-orphan/virtual-clear cases are compared. Ordinary relative-parent choice, validation/error precedence, eight-link chains and per-link saturated offsets pass 192 comparisons across 64 fixtures. Unicode placeholder runs, all reference diacritics, ID inheritance, explicit/fallback targets, and basic viewport lifecycle pass 1,029 comparisons; shared renderer tests cover virtual-root minimum origins. Rounded placeholder geometry, complete margin clipping, pruning, virtual-root viewport edges, transports and animation with deterministic clocks remain."
+      "remaining": "Stored IDs, dimensions and RGBA pixels for raw/PNG/zlib uploads on both screens are compared. Tagged placement keys, requested/source/pixel/grid geometry, zero pixel sizes, ordinary cursor/display/deletion/retransmission, basic history/reflow/screen/reset lifecycle and simple parent-orphan/virtual-clear cases are compared. Ordinary relative-parent choice, validation/error precedence, eight-link chains and per-link saturated offsets pass 192 comparisons across 64 fixtures. Unicode placeholder runs, all reference diacritics, ID inheritance, explicit/fallback targets, basic viewport lifecycle and rounded pixel geometry pass 1,452 comparisons across 484 fixtures. The renderer shares the VT geometry; regressions cover virtual-root minimum origins and clamped sampling for tiny/overhanging rounded source rectangles. Deterministic animation ticks compare next wakeup delays, mutation signals, all frame pixels/gaps, current display, loop counters and timestamps across 90 fixtures. Unplaced images schedule no redraws; loading and finite loops retain the last displayed frame, clock restarts re-anchor deadlines, and repeated controls preserve active timing and pixel generations. Another 13 selected lifecycle scenarios (39 comparisons) cover root/current/neighbor deletion, surviving pixels/deadlines, frame editing/composition and replies, PNG/zlib/raw frames, short/excess data, partial uploads during playback or deletion, retransmission, screen switches and reset. Native deletion-index and upload-identity bugs were repaired; Rust deletion, composition and raw-frame decoding now match these cases. One renderer regression verifies uploaded pixels and texture reuse through edits, composition, animation, deletion and retransmission. Placeholder zero-cell/overflow cases, complete margin clipping, pruning, virtual-root viewport edges, transports, exhaustive animation editing/deletion, snapshots and resource limits remain."
     },
     {
       "id": "graphics.png",
@@ -134,7 +134,7 @@
     {
       "id": "clipboard",
       "status": "partial",
-      "remaining": "OSC 52/5522 metadata, binary reads/writes, MIME filtering, streamed base64, aliases, statuses, callback absence, configured limits, session grants, one-time paste grants and exact 8 MiB OSC capture boundaries are compared; OSC 1337, allocation failures and complete size limits remain."
+      "remaining": "OSC 52/5522 metadata, binary reads/writes, MIME filtering, streamed base64, aliases, statuses, callback absence, configured limits, session grants, one-time paste grants and exact 8 MiB OSC capture boundaries are compared. OSC 1337 Copy shares OSC 52 decoding and host policy; case-insensitive keys, binary data, malformed/query/empty values, fixed capture boundaries, disabled callbacks, reply statuses, event order and direct-reset continuation pass 645 comparisons across 215 fixtures. Allocation failures and complete size limits remain."
     },
     {
       "id": "drag-and-drop",
@@ -149,7 +149,7 @@
     {
       "id": "input.mouse",
       "status": "partial",
-      "remaining": "All mouse modes/formats, buttons and viewport/pixel cases pass; retained motion deduplication, renderer padding and full coordinate-limit cases remain."
+      "remaining": "All modes/formats, buttons, independent held-button state, renderer padding, zero/tiny/maximum surfaces, retained cell deduplication, explicit tracking reset and continuation through terminal reset/resize/screen/mode changes pass 1266 comparisons across 422 fixtures. Renderer geometry is independent of terminal dimensions, and UTF-8 coordinates may occupy three or four bytes. Rustty panes own their tracking state and retain fractional renderer bounds. Native surrogate-coordinate and grid/pixel overflow crashes are repaired: numeric conversion saturates and unencodable UTF-8 reports emit no partial bytes. Maximum padding and native f32 viewport rounding are compared. Complete malformed host geometry and allocation/writer-failure behavior remain."
     },
     {
       "id": "input.focus-paste",
@@ -169,7 +169,7 @@
     {
       "id": "snapshot.cross-decode",
       "status": "partial",
-      "remaining": "Both encodings and uninterrupted continuation are compared; PAGE STYLE/LINK admission, hyperlink string lifetimes/deduplication and linked-cell limits have bounded coverage. The native short-bitmap allocation failure is repaired; all 660 hyperlink resource comparisons pass. Complete metadata, lazy mixed-width PAGEs and all state transitions remain."
+      "remaining": "Both encodings and uninterrupted continuation are compared; PAGE STYLE/LINK admission, hyperlink string lifetimes/deduplication and linked-cell limits have bounded coverage. The native short-bitmap allocation failure is repaired; all 660 hyperlink resource comparisons pass. Both decoders now reserve whole grapheme suffixes, repairing native packed-page roundtrip loss caused by transient append allocations. All 534 grapheme resource comparisons pass, including malformed/duplicate entries, full arenas, retry after failed admission and three packed reflow cross-decode fixtures. Complete metadata, lazy mixed-width PAGEs and all state transitions remain."
     },
     {
       "id": "snapshot.streaming",
@@ -183,8 +183,8 @@
     },
     {
       "id": "fuzz.resource-limits",
-      "status": "pending",
-      "remaining": "All inherited corpora, deterministic mixed operations, invariants and minimized regressions."
+      "status": "partial",
+      "remaining": "All 3,295 inherited terminal-stream byte fixtures pass 9,885 delivery comparisons; --corpus can replay them independently with case filtering. Parser corpora are covered under parser.raw-events. All 1000 mixed-operation cases from seed 2 pass 3000 delivery comparisons after retaining three cursor/blank-row resize regressions, and all 40 inherited direct OSC records now pass 120 comparisons using their exact terminator selectors and raw payloads. Direct OSC comparison observes terminal state and effects; ignored command metadata, allocator/resource limits, broader mixed operations and invariants remain."
     }
   ]
 }

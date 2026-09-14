@@ -111,6 +111,43 @@ fn clipboard_writes_validate_selectors_and_base64_before_dispatch() {
 }
 
 #[test]
+fn iterm2_copy_uses_clipboard_policy_without_clear_or_read_requests() {
+    let mut terminal = Terminal::new(10, 2, 0);
+    for key in ["Copy", "copy", "cOpY"] {
+        assert_eq!(
+            terminal.feed(format!("\x1b]1337;{key}=:AAH/\x07").as_bytes()),
+            [Effect::ClipboardWrite(Write::osc52(
+                Location::Standard,
+                vec![Content {
+                    mime: b"text/plain".to_vec(),
+                    data: [0, 1, 255].as_slice().into(),
+                }],
+            ))]
+        );
+    }
+    for value in [
+        "Copy",
+        "Copy=",
+        "Copy=:",
+        "Copy=:?",
+        "Copy=Zg==",
+        "Copy=:Zg=",
+        "CopyToClipboard=:Zg==",
+    ] {
+        assert!(
+            terminal
+                .feed(format!("\x1b]1337;{value}\x07").as_bytes())
+                .is_empty()
+        );
+    }
+    for length in [2040, 2042] {
+        let effects =
+            terminal.feed(format!("\x1b]1337;Copy=:{}\x07", "A".repeat(length)).as_bytes());
+        assert_eq!(effects.len(), usize::from(length == 2040));
+    }
+}
+
+#[test]
 fn clipboard_reads_reply_in_event_order_and_preserve_binary_text_and_terminator() {
     #[derive(Default)]
     struct Host(Vec<Effect>);

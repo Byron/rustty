@@ -1,4 +1,44 @@
-use rustty_vt::{Effect, SemanticContent, Terminal};
+use rustty_vt::{Effect, EffectHandler, SemanticContent, Terminal};
+
+#[test]
+fn direct_osc_preserves_control_bytes_parser_state_and_reply_terminators() {
+    #[derive(Default)]
+    struct Host(Vec<Effect>);
+    impl EffectHandler for Host {
+        fn effect(&mut self, effect: Effect) {
+            self.0.push(effect);
+        }
+    }
+
+    let mut terminal = Terminal::new(12, 4, 0);
+    let mut host = Host::default();
+    terminal.feed(b"X\x1b[3");
+    let continuation = terminal.parser().continuation().unwrap();
+    let pwd = b"before\x00\x07\x18\x1a\x1b]2;title\x9cafter";
+    let mut command = b"7;".to_vec();
+    command.extend_from_slice(pwd);
+    terminal.feed_osc_with_handler(&command, None, &mut host);
+    assert_eq!(terminal.working_directory_bytes(), pwd);
+    assert_eq!(host.0, [Effect::WorkingDirectory(pwd.to_vec())]);
+    assert_eq!(terminal.parser().continuation().unwrap(), continuation);
+    terminal.feed(b"1mY");
+    assert_eq!(terminal.screen().cursor.col, 2);
+
+    for (terminator, expected) in [(None, "\x1b\\"), (Some(0x9c), "\x1b\\"), (Some(7), "\x07")] {
+        host.0.clear();
+        terminal.feed_osc_with_handler(b"52;c;?", terminator, &mut host);
+        assert_eq!(
+            host.0,
+            [Effect::Write(format!("\x1b]52;c;{expected}").into_bytes())]
+        );
+    }
+    host.0.clear();
+    let mut oversized = b"7;".to_vec();
+    oversized.extend_from_slice(&[b'x'; 2048]);
+    terminal.feed_osc_with_handler(&oversized, None, &mut host);
+    assert!(host.0.is_empty());
+    assert_eq!(terminal.working_directory_bytes(), pwd);
+}
 
 fn osc(number: &str, body: &[u8]) -> Vec<u8> {
     let mut bytes = format!("\x1b]{number};").into_bytes();

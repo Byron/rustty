@@ -1,7 +1,7 @@
 //! Input protocol adapter. Physical key names match the Zig public API.
 use rustty_vt::{
-    Key, KeyAction, KeyEncodeOptions, KeyEvent, Modifiers, MouseAction, MouseButton, MouseEvent,
-    Terminal,
+    Key, KeyAction, KeyEncodeOptions, KeyEvent, Modifiers, MouseAction, MouseButton,
+    MouseEncodeOptions, MouseEvent, Terminal,
 };
 use serde::Deserialize;
 
@@ -22,6 +22,12 @@ pub struct Event {
     button: Option<String>,
     x: f32,
     y: f32,
+    screen_size: Option<[u32; 2]>,
+    cell_size: [u32; 2],
+    padding: [u32; 4],
+    any_button_pressed: Option<bool>,
+    track_last_cell: bool,
+    reset_mouse: bool,
 }
 
 impl Default for Event {
@@ -41,11 +47,21 @@ impl Default for Event {
             button: None,
             x: 0.,
             y: 0.,
+            screen_size: None,
+            cell_size: [8, 16],
+            padding: [0; 4],
+            any_button_pressed: None,
+            track_last_cell: false,
+            reset_mouse: false,
         }
     }
 }
 
-pub fn encode(terminal: &Terminal, event: &Event) -> Result<Vec<u8>, &'static str> {
+pub fn encode(
+    terminal: &Terminal,
+    event: &Event,
+    last_cell: &mut Option<[u16; 2]>,
+) -> Result<Vec<u8>, &'static str> {
     let mods = modifiers(event.modifiers);
     match event.kind.as_str() {
         "key" => {
@@ -85,6 +101,24 @@ pub fn encode(terminal: &Terminal, event: &Event) -> Result<Vec<u8>, &'static st
             if !event.x.is_finite() || !event.y.is_finite() {
                 return Err("UnsupportedCoordinates");
             }
+            if event.cell_size.contains(&0) {
+                return Err("InvalidMouseSize");
+            }
+            let screen_size = if let Some(size) = event.screen_size {
+                size
+            } else {
+                [
+                    u32::from(terminal.cols)
+                        .checked_mul(event.cell_size[0])
+                        .ok_or("InvalidMouseSize")?,
+                    u32::from(terminal.rows)
+                        .checked_mul(event.cell_size[1])
+                        .ok_or("InvalidMouseSize")?,
+                ]
+            };
+            if event.reset_mouse {
+                *last_cell = None;
+            }
             let button = match event.button.as_deref() {
                 None => None,
                 Some("left") => Some(MouseButton::Left),
@@ -106,15 +140,24 @@ pub fn encode(terminal: &Terminal, event: &Event) -> Result<Vec<u8>, &'static st
                 "motion" => MouseAction::Move,
                 _ => return Err("InvalidAction"),
             };
-            Ok(terminal.encode_mouse(MouseEvent {
-                action,
-                button,
-                modifiers: mods,
-                col: (event.x / 8.).floor() as usize,
-                row: (event.y / 16.).floor() as usize,
-                x: f64::from(event.x),
-                y: f64::from(event.y),
-            }))
+            Ok(terminal.encode_mouse(
+                MouseEvent {
+                    action,
+                    button,
+                    modifiers: mods,
+                    x: f64::from(event.x),
+                    y: f64::from(event.y),
+                },
+                MouseEncodeOptions {
+                    screen_size: screen_size.map(f64::from),
+                    cell_size: event.cell_size,
+                    padding: event.padding.map(f64::from),
+                    any_button_pressed: event
+                        .any_button_pressed
+                        .unwrap_or(button.is_some() && action != MouseAction::Release),
+                    last_cell: event.track_last_cell.then_some(last_cell),
+                },
+            ))
         }
         "focus" => Ok(terminal.encode_focus(event.focused)),
         "paste" => {

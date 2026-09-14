@@ -1,4 +1,7 @@
 """Observe real native page lifetimes across terminal storage operations."""
+import struct
+
+import snapshots
 
 
 def requests(reference):
@@ -13,6 +16,70 @@ def requests(reference):
     def case(name, cols, rows, operations):
         return ({"id": "pages/" + name, "kind": "input", "cols": cols, "rows": rows,
                  "operations": [observe, *operations]}, ["terminal.pages"])
+
+    # Shrinking without reflow must retire a wide glyph whose tail is cut
+    # off, including its style, hyperlink and grapheme resources. Inserting
+    # into the shortened row used to crash the native reference.
+    for mode, setup in (("primary", b"\x1b[?7l"), ("alternate", b"\x1b[?1049h")):
+        for columns in (1, 2, 3, 4):
+            for name, glyph in (("wide", "界".encode()),
+                                ("grapheme", "界\u0301".encode()),
+                                ("linked-style", b"\x1b[1;31m\x1b]8;id=wide;https://example.org\x1b\\"
+                                 + "界\u0301".encode() + b"\x1b]8;;\x1b\\\x1b[0m")):
+                for inactive in (False, True):
+                    data = setup + f"\x1b[1;{columns}H".encode() + glyph
+                    if inactive:
+                        data += b"\x1b[?1049l" if mode == "alternate" else b"\x1b[?47h"
+                    resume = b""
+                    if inactive:
+                        resume = b"\x1b[?47h" if mode == "alternate" else b"\x1b[?47l"
+                    request, covers = case(f"wide-cut/{mode}/{columns}/{name}/{inactive}", 6, 2, [
+                        {"op": "write", "data": data.hex()},
+                        {"op": "resize", "cols": columns, "rows": 2, "cell_size": [8, 16]},
+                        {"op": "observe"}, {"op": "snapshot"}, observe,
+                        {"op": "write", "data": (resume + b"\x1b[H\x1b[@X").hex()},
+                        {"op": "resize", "cols": 6, "rows": 2, "cell_size": [8, 16]},
+                        {"op": "observe"}, {"op": "snapshot"}, observe,
+                    ])
+                    yield request, covers + ["terminal.resize", "terminal.cells", "terminal.screens"]
+
+    # Growing may reuse a retained allocation or copy into new pages. Copies
+    # clear spacer-head markers while keeping the blank cell's attributes;
+    # only copied rows lose their previous wrap metadata.
+    for mode, setup in (("primary", b""), ("alternate", b"\x1b[?1049h")):
+        for initial_columns in (4, 8):
+            for head, content in ((False, b"abcdE"), (True, "abc界".encode())):
+                for name, style in (("plain", b""), ("colors", b"\x1b[1;31;44m"),
+                                    ("link", b"\x1b[1;31m\x1b]8;id=wide;https://example.org\x1b\\")):
+                    operations = [{"op": "write", "data": setup.hex()},
+                                  {"op": "resize", "cols": 4, "rows": 3, "cell_size": [8, 16]}]
+                    data = style + content + (b"\x1b[?7l" if mode == "primary" else b"")
+                    operations += [{"op": "write", "data": data.hex()}, {"op": "observe"},
+                                   {"op": "resize", "cols": 6, "rows": 3, "cell_size": [8, 16]},
+                                   {"op": "observe"}, {"op": "snapshot"}, observe,
+                                   {"op": "write", "data": b"\x1b[H\x1b[@\x1b[2;1HZ".hex()},
+                                   {"op": "observe"}, {"op": "snapshot"}, observe]
+                    request, covers = case(f"widen/{mode}/{initial_columns}/{head}/{name}",
+                                           initial_columns, 3, operations)
+                    yield request, covers + ["terminal.resize", "terminal.cells", "terminal.styles"]
+
+    for mode, setup in (("primary", b""), ("alternate", b"\x1b[?1049h")):
+        data = setup + b"\x1b[1;31;44m\x1b]8;id=wide;https://example.org\x1b\\" + "abc界".encode()
+        source = reference.request({"id": "pages/widen/restored-source", "cols": 4, "rows": 3,
+                                    "operations": [{"op": "write", "data": data.hex()},
+                                                   {"op": "snapshot"}]})
+        parts = snapshots.records(bytes.fromhex(source["snapshots"][0]))
+        terminal = bytearray(parts[0][1])
+        struct.pack_into("<H", terminal, 0, 6)
+        parts[0] = (1, terminal)
+        restored = snapshots.frame(parts).hex()
+        for command in (b"\x1b[H\x1b[X", b"\x1b[H\x1b[@", b"\x1b[H\x1b[P", b"\x1b[1;6HX"):
+            request, covers = case(f"widen/restored/{mode}/{command.hex()}", 6, 3, [
+                {"op": "restore", "data": restored},
+                {"op": "write", "data": command.hex()},
+                {"op": "observe"}, {"op": "snapshot"}, observe,
+            ])
+            yield request, covers + ["terminal.resize", "terminal.cells", "terminal.styles"]
 
     capacities = {}
     pool_bytes = None

@@ -112,6 +112,14 @@ fn host_queries_use_binary_answers_and_preserve_callback_order() {
 #[test]
 fn host_defaults_survive_ris_and_are_reapplied_after_snapshot_restore() {
     let mut terminal = Terminal::new(10, 2, 0);
+    assert_eq!(
+        terminal.feed(b"\x1b[>0q"),
+        [Effect::Write(
+            concat!("\x1bP>|ghostty ", env!("CARGO_PKG_VERSION"), "\x1b\\")
+                .as_bytes()
+                .to_vec()
+        )]
+    );
     terminal.query_defaults.xtversion = b"embedder".to_vec();
     terminal.query_defaults.enquiry = b"answer".to_vec();
     terminal.query_defaults.color_scheme = Some(ColorScheme::Dark);

@@ -35,8 +35,10 @@ Use deterministic generated cases and saved failures to diagnose differences:
 
 ```sh
 python3 test/rustty/parity.py --no-build --generated 100 --seed 0
+python3 test/rustty/parity.py --corpus --case corpus/stream-initial/
 python3 test/rustty/parity.py --no-build --input
 python3 test/rustty/parity.py --no-build --parser
+python3 test/rustty/parity.py --no-build --osc
 python3 test/rustty/parity.py --no-build --unicode
 python3 test/rustty/parity.py --no-build --snapshots
 python3 test/rustty/parity.py --no-build --snapshot-wire
@@ -54,8 +56,20 @@ python3 test/rustty/transport_limits.py zig-out/bin/vt-oracle target/debug/examp
 actions, consumed text modifiers, IME, mouse formats, focus and paste. Use
 `--case input/key` to select keyboard cases. Input cases compare each encoded
 result even when it is empty; a dropped key cannot disappear from the event
-list. Mouse coordinates use 8-by-16-pixel cells. `--artifacts`, `--zig-bin` and
+list. Input requests initialize both terminals with 8-by-16-pixel cells, matching
+the mouse encoder geometry. Terminal requests retain the native zero pixel-size
+default. `--protocols --case protocol/host/size/resize/` compares initial and
+resized snapshot geometry for both request kinds, including missing/zero cell
+sizes, saturated dimensions and mode-2048 reports. `--artifacts`, `--zig-bin` and
 `--rust-bin` select isolated output and adapter paths for concurrent work.
+
+`--input --case input/mouse` also compares caller-owned motion tracking,
+padding, zero/tiny surfaces and large UTF-8 coordinates. Mouse events accept
+`screen_size`, `cell_size`, left/top/right/bottom `padding`, and an independent
+`any_button_pressed` value. Positions are surface pixels, including padding;
+renderer geometry may differ from terminal dimensions. `track_last_cell`
+retains the last cell across operations; `reset_mouse` explicitly clears it.
+Raw native tracking survives terminal resets, mode changes and screen switches.
 
 `--protocols --case protocol/paste` exercises the state-aware paste entry point:
 text versus clipboard sources, bracketed and Kitty modes, MIME selection and
@@ -71,6 +85,23 @@ parser and UTF-8 decoder. For OSC it captures bytes at the parser's transition
 boundary because Zig exposes validated commands while Rust exposes raw OSC
 payloads. This comparison therefore does **not** validate OSC command parsing,
 effects or command-specific limits; those need terminal/protocol cases.
+
+`--osc` compares direct OSC dispatch and includes all 40 inherited `osc-initial`
+and `osc-cmin` files unchanged. The first byte selects BEL, C1 ST or a missing
+terminator exactly as in `fuzz_osc.zig`. Remaining bytes go directly to the OSC
+parser, including embedded control bytes; wrapping these records in ANSI escapes
+would change their meaning. The native adapter dispatches validated commands
+through the existing stream handler. Rust's `Terminal::feed_osc_with_handler`
+uses the same command parsing and host-effect dispatch as streamed input while
+preserving any unfinished stream sequence.
+
+The corpus and 176 focused fixtures pass 648 comparisons of terminal state and
+host effects, including reply terminators, capture boundaries, control bytes and
+pending CSI continuation. Use `--osc --case osc/corpus/` for just the inherited
+records. Scalar delivery exercises native `next` rather than `nextSlice`;
+delivery variants keep each direct OSC record intact. This verifies observable
+command behavior, not the typed metadata of commands that the terminal ignores.
+Allocator-failure injection and complete command/resource coverage remain.
 
 The OSC hyperlink cases compare opaque URI/ID bytes in cells, the active cursor
 and restored snapshots. Duplicate IDs, malformed option traversal, invalid
@@ -91,20 +122,53 @@ explicit image deletes its old placements as soon as transmission starts, even
 if the replacement fails. Terminal clears reclaim unplaced image data while
 preserving placements outside the active area. Basic parent-orphan and virtual
 clear cases are included; full placeholder rendering, margin
-clipping, pruning, transports and animation clocks remain incomplete. Rust's
+clipping, pruning and transports remain incomplete. Rust's
 renderer and terminal now share integer placement sizing from `rustty-vt`.
+
+`--protocols --case protocol/graphics/animation/` compares host-clock animation
+ticks, their next wakeup delays and whether a tick changed image content. Image
+observations include every frame's RGBA pixels and gap, displayed pixels, current
+frame, playback state, loop budget/count and shown-at timestamp. A plain image
+has an implicit stopped root frame. Rust keeps its public absolute-deadline API;
+the adapter reports the corresponding delay, matching the native API.
+
+The 90 timing fixtures cover both screens, multiple images, stopped/loading/running
+states, finite loops, gapless frames, late ticks, clock restarts and saturation,
+unplaced/replaced placements, terminal reset, frame arrival while loading, and
+client-driven controls. Unplaced images schedule no redraws; loading and finite
+loops park on the last displayed frame. Controls selecting the current frame
+or continuing playback preserve the deadline and do not invalidate its pixels.
+
+An additional 13 lifecycle scenarios (39 comparisons) are selected with
+`--protocols --case protocol/graphics/animation/lifecycle/`. They cover deleting
+the root/current/neighboring frames while retaining surviving pixels and
+deadlines; frame edits, composition and replies; PNG/zlib/raw frame uploads;
+excess/short raw data; chunk completion during playback or after deletion; and
+same-ID replacement through screen switches and reset. These checks found and
+fixed native frame-deletion indexing and chunk identity bugs, alongside Rust
+deletion, composition and raw-frame decoding differences. A renderer regression
+checks uploaded pixels and texture reuse through the same basic lifecycle.
+These are selected transitions, not an exhaustive editing/deletion matrix;
+snapshot restoration, resource limits and complete lifecycle coverage remain.
 
 
 `--protocols --case protocol/graphics/placements/placeholder/` compares native
-Unicode placeholder runs and resolved target keys. All reference diacritics,
+Unicode placeholder runs, resolved target keys and rounded pixel rectangles.
+All reference diacritics,
 missing/invalid indices, inherited IDs, row/column discontinuities, palette/RGB
 IDs, stable zero-ID selection, explicit ordinary/relative targets, replacement,
-erasure, reflow and screen switches are covered by 343 fixtures (1,029 delivery
-comparisons). The renderer and adapter share the VT decoder and target lookup.
+erasure, reflow and screen switches are covered alongside aspect fitting,
+letterboxing, partial/out-of-image runs, tiny source rectangles and oversized
+grids by 484 fixtures (1,452 delivery comparisons). The renderer and adapter
+share the VT decoder, target lookup and `Placement::geometry` calculation.
+The optional observation reports `geometry` (offset, source and destination
+pixel sizes) or `geometry_error`, using native `renderPlacement` as the reference.
 Renderer tests check that relative children use independent minimum x/y origins
 from the selected virtual parent's visible placeholders, and that ordinary
-placements alone do not enable placeholder rendering. Pixel rounding and full
-viewport-edge behavior remain separate from these run/target observations.
+placements alone do not enable placeholder rendering. Rounded zero-size source
+rectangles and overhanging fragments retain their full destination area by
+sampling clamped edge texels in the image atlas. Zero cell sizes, overflowing
+pixel products and full viewport-edge behavior remain incomplete.
 
 `--protocols --case protocol/graphics/placements/relative/` covers ordinary
 parent references and chains with 64 fixtures (192 delivery comparisons).
@@ -123,11 +187,15 @@ and DEC graphics mappings through G0–G3, cell-write single shifts, repeat and
 snapshot continuation. Combining characters and wide-cell spacers exercise
 shift consumption separately from input-scalar dispatch. Smoke cases also keep
 minimized inherited failures with their original corpus source identifiers.
+`--case protocol/charsets/defaults` additionally compares snapshot bytes through
+initialization, reset, saved and unsaved cursor restoration, and alternate-screen
+creation. The default right-hand slot is G2 in all of these paths.
 
 `--grid` compares direct selection, literal search and tracked-reference APIs.
 Each `grid` operation appends its result to `grid_results`; actions are `select`,
 `clear_selection`, `select_word`, `select_word_between`, `select_line`,
-`select_all`, `select_output`, `adjust_selection`, `format_selection`, `track`, `untrack`, `viewport`, `limits`, `search`,
+`select_all`, `select_output`, `adjust_selection`, `format_selection`, `format_screen`,
+`format_terminal`, `track`, `untrack`, `viewport`, `limits`, `search`,
 `search_needle`, `search_feed`, `search_viewport`, `search_status`, `search_tick`,
 `search_run`, `search_matches`, `search_match`, `search_selected`, `search_next`,
 `search_prev`, `observe` and the `gesture_*`
@@ -142,6 +210,21 @@ native formatter coordinates, including reversed maps for adjacent spaces.
 Partial UTF-8 needles map each endpoint to the cell containing that byte. The
 regex search and link APIs keep their existing semantics. Match order and
 endpoints are compared without sorting, deduplication or normalization.
+
+`--grid --case grid/viewport-retention/` retains 400 fixtures (1,200 delivery
+comparisons) for the internal viewport anchor. Native keeps this pin registered
+even when the view returns to the active area or follows the top of history.
+It can preserve blank cells and affect the saved cursor's reflow position.
+Cases cover empty/written/history rows, viewport movement, line insertion and
+deletion, partial-region indexing, history clearing, narrowing and widening,
+with and without external pins. The minimized `generated/2/187` cursor failure
+also remains in the smoke suite.
+
+`--grid --case grid/resize/empty-continuation/` covers blank wrap continuations
+after narrowing and widening. Dropping an empty continuation does not add a hard
+line break; cursor/selection pins, prompt metadata and backgrounds can retain
+the row instead. The 216 fixtures pass 648 delivery comparisons, and the smoke
+suite retains the minimized `generated/2/291` case.
 
 `--grid --case grid/selectors/` compares `Screen::select_word`,
 `select_word_between`, `select_line`, `select_all` and `select_output` against
@@ -198,8 +281,46 @@ HTML retains native page wrappers, escaping and hyperlink identity boundaries;
 VT retains native SGR ordering. The 121 fixtures exercise all 12 option
 combinations, including rectangles, wide/grapheme cells, colors and attributes,
 opaque hyperlink bytes, empty rows, cross-page wrapping and restored mixed-width
-pages. These are selection exports; full terminal-state serialization and
-formatter coordinate maps remain separate requirements.
+pages.
+
+`--grid --case grid/terminal-format/` compares `Screen::formatter` and
+`Terminal::formatter` through the `format_screen` and `format_terminal` actions.
+`format_content` selects `all`, `none`, or the current `selection`. Full exporters
+preserve soft-wrapped rows by default; the selection convenience method keeps
+its existing unwrapping default. `screen_extra` controls cursor, style, link,
+protection, Kitty keyboard and charset state; `terminal_extra` also controls
+palette, modes, margins, tabstops, PWD and ModifyOtherKeys. Rust callers can use
+the `NONE`, `STYLES` and `ALL` constants to select these extras.
+
+The 93 fixtures pass 279 delivery comparisons across all formats and trim/unwrap
+combinations, history, alternate screens, restored mixed-width pages and extras
+individually or together. Exports preserve native ordering, including replaying
+the pending-wrap edge cell before restoring cursor attributes. Direct Rust tests
+also replay full and state-only exports into another terminal and check that
+exporting leaves the source unchanged. The native PWD formatter now omits its
+internal NUL terminator; all export bytes are compared directly.
+
+`--grid --case grid/terminal-format/options` checks explicit foreground/background
+colors, resolution of palette indices to RGB, and codepoint replacements for all
+three export entry points. `Options` borrows a 256-entry palette and a slice of
+`CodepointMap` rules; each rule has an inclusive character range and a character
+or UTF-8 string replacement. The last matching rule wins. HTML escapes replaced
+text, while blank cells keep their original padding behavior. The source terminal
+is unchanged. Cases include empty strings, NUL and combining characters, overlapping
+and inverted ranges, long strings, trim/unwrap combinations, page boundaries and
+pending-wrap cursor replay. The adapters reject invalid Unicode scalars and
+incorrect palette sizes before constructing the native options.
+
+All formatter fixtures also request `format_map: true`. The result of the same
+name contains a `[page_index, x, y]` for every output byte, compared directly
+without resolving or normalizing the native coordinates. Rust's
+`format_with_map()` returns the bytes and a borrowed `ByteMap`: `get()` retains
+raw page coordinates, while `point()` resolves valid coordinates to a `GridPoint`.
+It returns `None` when native carried blank-line coordinates extend beyond a
+physical page. The borrow prevents mutation while the map is live. Maps include
+UTF-8, escaped/replaced text, style/link boundaries, palette and state extras,
+reversed blank-cell runs and page-local newline inheritance. Normal `format()`
+exports allocate no coordinate map and share the same output path.
 
 Literal search formats each retained page separately and follows native active
 and history traversal, including repeated soft-wrap matches and trimmed blank
@@ -299,6 +420,22 @@ runtime safety remains enabled, while debug-only full-page integrity scans on
 every edit would make large boundary cases quadratic. When reusing binaries with
 `--no-build`, build the oracle with `-Doptimize=ReleaseSafe` for these cases.
 
+`--pages --case pages/wide-cut/` retains 48 cases (144 comparisons) for
+non-reflow shrinking through a wide character on either screen, active or
+inactive. Cells, graphemes, links, styles, snapshots and later insertion agree.
+The native reference now clears both halves of a truncated wide character;
+previously it left an orphan at the right edge and a later insert could assert
+while clearing beyond the shortened row. The native regression also verifies
+that grapheme storage is reclaimed and the tail stays cleared after widening.
+
+`--pages --case pages/widen/` covers 32 cases (96 comparisons) for growing
+without reflow and editing restored narrow pages. A spacer head becomes an
+ordinary blank cell while retaining its style, hyperlink and semantic content.
+Copied rows discard both wrap flags; rows that reuse their existing allocation
+retain them. Cases compare cells, snapshots and page ownership before continued
+printing, insertion, deletion and erasure. The shared row repair handles ordinary
+resize and lazy physical-page growth with the same attribute-preserving behavior.
+
 `--pages --case pages/styles/` exercises live STYLE ownership: each SGR
 attribute, cursor movement, printed and erased cells, page migration, resize,
 restored sparse IDs and mixed-width IND copies. Rustty retains the native set's
@@ -334,6 +471,46 @@ and batched failures remain recorded; these checks use the repaired reference.
 Complete resource-exhaustion combinations, especially splitting during reflow,
 remain unverified.
 
+`--pages --case pages/graphemes/` compares live grapheme allocation and reuse
+across 259 fixtures (777 delivery comparisons). Cells retain their native
+bitmap allocation through moves; copies reserve a new run. Append replaces
+four-codepoint chunks before freeing the previous run. Page growth uses native
+utilization and row-density projection and rebuilds styles and graphemes
+together. Restored snapshots retain their allocation history for continuation.
+The matrix covers capacity and fragmentation boundaries, erasure, row shifts,
+horizontal margins, both screens, widening across page boundaries, reflow,
+mixed-width restored pages, tiny capacities and continued printing. Viewport
+copies remain detached from live resource storage. Rust invariants check that
+each suffix has one owner, allocations do not overlap and erased storage is
+reclaimed. Complete resource limits and reflow splitting remain separate
+requirements.
+
+`--pages --case pages/hyperlinks/` retains 99 live hyperlink fixtures (297
+delivery comparisons). They cover string and cell-map growth, dead set entries,
+duplicate strings, colliding hashes, cursor page crossings, erasure, line shifts,
+reflow, mixed restored widths and continued writes after snapshot restoration.
+Cursor insertion, ordinary page copies, reflow and PAGE decoding follow their
+different native allocation orders. SU/SD retain temporary cursor crossings,
+including renewed implicit link IDs. Rebuilding any resource also remaps live
+hyperlinks, and detached viewport copies own no string allocations.
+
+Snapshots preserve the live LINK table IDs and cursor-only references, including
+tables with more than 511 entries. Three cross-decode fixtures compare continued
+terminal state with uninterrupted input. Page allocation charges are compared
+separately: PAGE captures populated row counts, so a native snapshot roundtrip
+can legitimately discard unused grid capacity. Complete resource exhaustion,
+reflow splitting, compression and mutation combinations remain incomplete.
+
+`--snapshot-wire --case snapshot/resources/graphemes/` includes 178 fixtures
+(534 delivery comparisons) for bounded suffix admission, malformed and
+duplicate entries, map and arena exhaustion, and packed-page roundtrips.
+Both decoders reserve a complete suffix once, using at most 64 valid scalars.
+The native decoder previously grew suffixes incrementally, requiring temporary
+replacement space: a valid packed page with 32 five-codepoint suffixes restored
+only 31. A native encode/decode regression and three reflow cross-decode cases
+retain that repair. Insufficient capacity still drops a whole suffix, and a
+later entry may retry a target whose earlier suffix could not fit.
+
 `pages/styles/mixed-edit/` adds 114 comparisons for cursor motion, direct row
 and cell edits, margins and linked/wide printing on restored pages.
 `pages/styles/wrap-reset/` adds 24 comparisons for ordinary wraps and wide-cell
@@ -344,9 +521,8 @@ Grid cases cover live writes, erasure, reflow, height changes, screen switches,
 resets, handle reuse and scrollback limits, including release of an inactive
 screen's tracked handle. Restoring a new terminal while
 the adapter owns tracked handles is explicitly unsupported; those external
-lifetimes need a separate API comparison. Complete selection mutation lifetimes,
-formatter coordinate maps, full terminal-state exports and resource-driven
-search invalidation remain uncovered. These grid cases remain part of `--grid`
+lifetimes need a separate API comparison. Complete selection mutation lifetimes
+and resource-driven search invalidation remain uncovered. These grid cases remain part of `--grid`
 and `--thorough`.
 
 Native libghostty-vt updates OSC 133 semantic state without command lifecycle
@@ -475,6 +651,10 @@ for OSC 52, which has no write acknowledgement or session grants. Cases compare
 binary data, text MIME preference, selectors, base64 validation, terminators,
 host decisions and ordering with other effects. No system clipboard is accessed.
 
+OSC 1337 `Copy=:` uses the same clipboard write callback and policy. Its cases
+also compare the fixed capture limit, case-insensitive key, rejected empty/query
+payloads, callback absence, ordering and direct reset during capture.
+
 Kitty OSC 5522 cases additionally compare metadata validation, read MIME filtering,
 targets listings, DATA chunk boundaries, streamed write transactions, aliases,
 write acknowledgements and remembered grants. Both adapters use the native
@@ -598,10 +778,15 @@ in batches of 4,096 codepoints, plus rejected surrogate and out-of-range inputs.
 The cases enumerate the scalar range independently of Rust's generated table.
 This verifies scalar width; terminal grapheme composition needs separate cases.
 
+`--corpus` runs the inherited `stream-initial` and `stream-cmin` terminal bytes
+without requiring the full compatibility gate. The 3,295 fixtures passed 9,885
+whole-buffer, scalar and varied-delivery comparisons. Their first byte is the
+original delivery selector, so it is removed from terminal input. `--case`
+filters corpus and generated cases as well as the other suites. Corpus builds
+use ReleaseSafe, retaining runtime checks without per-edit debug integrity scans.
+
 `--thorough` additionally exercises Unicode, input, parser, protocol and both snapshot suites, all split points
-for short writes, the inherited stream corpus and generated operations. The
-stream corpus's first byte is its original delivery selector, so it is removed
-from the terminal input.
+for short writes, the inherited stream corpus and generated operations.
 Missing corpus directories are errors. A thorough run also requires every
 entry in `coverage.json` to be complete, exposed by both adapters and covered
 by a passing case in that run. The coverage manifest intentionally remains

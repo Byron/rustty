@@ -1,4 +1,4 @@
-//! Input protocol adapter. Coordinates use fixed 8x16-pixel cells.
+//! Input protocol adapter. Default coordinates use 8x16-pixel cells.
 const std = @import("std");
 const vt = @import("ghostty-vt");
 
@@ -17,9 +17,15 @@ pub const Event = struct {
     button: ?[]const u8 = null,
     x: f32 = 0,
     y: f32 = 0,
+    screen_size: ?[2]u32 = null,
+    cell_size: [2]u32 = .{ 8, 16 },
+    padding: [4]u32 = .{ 0, 0, 0, 0 },
+    any_button_pressed: ?bool = null,
+    track_last_cell: bool = false,
+    reset_mouse: bool = false,
 };
 
-pub fn encode(alloc: std.mem.Allocator, terminal: *vt.Terminal, event: Event) ![]const u8 {
+pub fn encode(alloc: std.mem.Allocator, terminal: *vt.Terminal, event: Event, last_cell: *?vt.point.Coordinate) ![]const u8 {
     var writer: std.Io.Writer.Allocating = .init(alloc);
     const mods: vt.input.KeyMods = @bitCast(event.modifiers);
     if (std.mem.eql(u8, event.kind, "key")) {
@@ -37,12 +43,20 @@ pub fn encode(alloc: std.mem.Allocator, terminal: *vt.Terminal, event: Event) ![
             .composing = event.composing,
         }, options);
     } else if (std.mem.eql(u8, event.kind, "mouse")) {
+        if (!std.math.isFinite(event.x) or !std.math.isFinite(event.y)) return error.UnsupportedCoordinates;
+        if (event.cell_size[0] == 0 or event.cell_size[1] == 0) return error.InvalidMouseSize;
+        const screen = event.screen_size orelse [2]u32{
+            std.math.mul(u32, terminal.cols, event.cell_size[0]) catch return error.InvalidMouseSize,
+            std.math.mul(u32, terminal.rows, event.cell_size[1]) catch return error.InvalidMouseSize,
+        };
+        if (event.reset_mouse) last_cell.* = null;
         var options: vt.input.MouseEncodeOptions = .fromTerminal(terminal, .{
-            .screen = .{ .width = @as(u32, terminal.cols) * 8, .height = @as(u32, terminal.rows) * 16 },
-            .cell = .{ .width = 8, .height = 16 },
-            .padding = .{},
+            .screen = .{ .width = screen[0], .height = screen[1] },
+            .cell = .{ .width = event.cell_size[0], .height = event.cell_size[1] },
+            .padding = .{ .left = event.padding[0], .top = event.padding[1], .right = event.padding[2], .bottom = event.padding[3] },
         });
-        options.any_button_pressed = event.button != null and !std.mem.eql(u8, event.action, "release");
+        options.any_button_pressed = event.any_button_pressed orelse (event.button != null and !std.mem.eql(u8, event.action, "release"));
+        options.last_cell = if (event.track_last_cell) last_cell else null;
         try vt.input.encodeMouse(&writer.writer, .{
             .action = std.meta.stringToEnum(vt.input.MouseAction, event.action) orelse return error.InvalidAction,
             .button = if (event.button) |name| std.meta.stringToEnum(vt.input.MouseButton, name) orelse return error.InvalidButton else null,
