@@ -158,6 +158,8 @@ impl Smoke {
         let command = {
             // Use a deterministic native Git Bash child for the shared POSIX
             // fixtures; no WSL and no user startup files or history writes.
+            // Disable readline: a concurrent initial resize can make it lose
+            // the first input character with both system and bundled ConPTY.
             let shell = std::env::var_os("RUSTTY_SMOKE_SHELL")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| {
@@ -178,7 +180,7 @@ impl Smoke {
             } else {
                 config::Command::Direct(vec![shell.to_string_lossy().into_owned(),
                 "--noprofile".into(), "--norc".into(), "-c".into(),
-                r#"export HISTFILE=/dev/null PS1='' LC_ALL=C.UTF-8; printf '\033[2J\033[H\033[30;107m  ✔️\033[5G  > selected row\033[0m\n\033[1;36mRustty native smoke\033[0m\n\033]7;kitty-shell-cwd://localhost%s\007\033]9;4;1;65\007' "$PWD"; exec bash --noprofile --norc -i"#.into()])
+                r#"export HISTFILE=/dev/null INPUTRC=/dev/null PS1='RUSTTY_SMOKE_READY> ' LC_ALL=C.UTF-8; printf '\033[2J\033[H\033[30;107m  ✔️\033[5G  > selected row\033[0m\n\033[1;36mRustty native smoke\033[0m\n\033]7;kitty-shell-cwd://localhost%s\007\033]9;4;1;65\007' "$PWD"; exec bash --noprofile --norc --noediting -i"#.into()])
             }
         };
         loaded.config.command = Some(command.clone());
@@ -232,14 +234,23 @@ impl Smoke {
                 .values()
                 .map(|host| Platform::window_diagnostics(&host.window))
                 .collect();
-            let progress: Vec<_> = app
+            let panes: Vec<_> = app
                 .panes
                 .iter()
-                .map(|(&id, pane)| (id, pane.activity.progress()))
+                .map(|(&id, pane)| {
+                    (
+                        id,
+                        pane.activity.progress(),
+                        pane.input_bytes,
+                        pane.session
+                            .terminal()
+                            .map(|terminal| terminal.plain_text()),
+                    )
+                })
                 .collect();
             return Err(format!(
-                "native smoke timed out at stage {}: {:?}; windows: {:?}; pane progress: {:?}",
-                self.stage, app.errors, windows, progress
+                "native smoke timed out at stage {}: {:?}; windows: {:?}; panes (id, progress, queued input bytes, text): {:?}",
+                self.stage, app.errors, windows, panes
             )
             .into());
         }
@@ -287,10 +298,17 @@ impl Smoke {
                 .and_then(|p| p.session.terminal().ok().map(|t| t.plain_text()))
                 .unwrap_or_default()
         };
+        let ready = |app: &App, id: Id| {
+            let text = text(app, id);
+            // Windows prints the banner before exec starts interactive Bash.
+            // Wait for its prompt before sending input or replacing the grid.
+            text.contains("Rustty native smoke")
+                && (!cfg!(target_os = "windows") || text.contains("RUSTTY_SMOKE_READY>"))
+        };
         let pane = app.focused(host.id).ok_or("no active pane")?;
         match self.stage {
             0 => {
-                if host.frames == 0 || !text(app, pane).contains("Rustty native smoke") {
+                if host.frames == 0 || !ready(app, pane) {
                     return Ok(false);
                 }
                 {
@@ -352,11 +370,7 @@ impl Smoke {
                 self.stage = 2;
             }
             2 => {
-                if app
-                    .panes
-                    .keys()
-                    .any(|&id| !text(app, id).contains("Rustty native smoke"))
-                {
+                if app.panes.keys().any(|&id| !ready(app, id)) {
                     return Ok(false);
                 }
                 if app.panes.values().any(|p| p.cwd != fixture_directory()) {
