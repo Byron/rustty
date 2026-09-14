@@ -217,14 +217,14 @@ fn shortcut_label(bindings: &[KeyBinding], action: &Action) -> Option<String> {
 
 fn trigger_label(trigger: &KeyTrigger) -> String {
     let mut label = String::new();
-    for (enabled, symbol) in [
-        (trigger.modifiers.control, "⌃"),
-        (trigger.modifiers.alt, "⌥"),
-        (trigger.modifiers.shift, "⇧"),
-        (trigger.modifiers.super_key, "⌘"),
+    for (enabled, symbol, name) in [
+        (trigger.modifiers.control, "⌃", "Ctrl+"),
+        (trigger.modifiers.alt, "⌥", "Alt+"),
+        (trigger.modifiers.shift, "⇧", "Shift+"),
+        (trigger.modifiers.super_key, "⌘", "Win+"),
     ] {
         if enabled {
-            label.push_str(symbol);
+            label.push_str(if cfg!(windows) { name } else { symbol });
         }
     }
     let key = trigger
@@ -238,31 +238,36 @@ fn trigger_label(trigger: &KeyTrigger) -> String {
     } else {
         key
     };
-    label.push_str(&match key {
-        "arrow_left" => "←".into(),
-        "arrow_right" => "→".into(),
-        "arrow_up" => "↑".into(),
-        "arrow_down" => "↓".into(),
-        "enter" => "↩".into(),
-        "escape" => "⎋".into(),
-        "tab" => "⇥".into(),
-        "backspace" => "⌫".into(),
-        "delete" => "⌦".into(),
-        "home" => "↖".into(),
-        "end" => "↘".into(),
-        "page_up" => "⇞".into(),
-        "page_down" => "⇟".into(),
-        "space" | " " => "Space".into(),
-        "backquote" => "`".into(),
-        "caps_lock" => "⇪".into(),
-        "add" => "+".into(),
-        "subtract" => "-".into(),
-        "multiply" => "*".into(),
-        "divide" => "/".into(),
-        "decimal" => ".".into(),
-        "equal" => "=".into(),
-        key => key.replace('_', " ").to_uppercase(),
-    });
+    // Windows key names avoid relying on glyphs for macOS keyboard symbols.
+    let (symbol, name) = match key {
+        "arrow_left" => ("←", "Left"),
+        "arrow_right" => ("→", "Right"),
+        "arrow_up" => ("↑", "Up"),
+        "arrow_down" => ("↓", "Down"),
+        "enter" => ("↩", "Enter"),
+        "escape" => ("⎋", "Esc"),
+        "tab" => ("⇥", "Tab"),
+        "backspace" => ("⌫", "Backspace"),
+        "delete" => ("⌦", "Delete"),
+        "home" => ("↖", "Home"),
+        "end" => ("↘", "End"),
+        "page_up" => ("⇞", "Page Up"),
+        "page_down" => ("⇟", "Page Down"),
+        "space" | " " => ("Space", "Space"),
+        "backquote" => ("`", "`"),
+        "caps_lock" => ("⇪", "Caps Lock"),
+        "add" => ("+", "+"),
+        "subtract" => ("-", "-"),
+        "multiply" => ("*", "*"),
+        "divide" => ("/", "/"),
+        "decimal" => (".", "."),
+        "equal" => ("=", "="),
+        key => {
+            label.push_str(&key.replace('_', " ").to_uppercase());
+            return label;
+        }
+    };
+    label.push_str(if cfg!(windows) { name } else { symbol });
     label
 }
 
@@ -296,6 +301,7 @@ mod tests {
     fn shortcuts_follow_loaded_bindings_including_remaps_unbinds_and_sequences() {
         let home = std::env::temp_dir().join(format!("rustty-palette-{}", std::process::id()));
         let loader = ConfigLoader {
+            app_config_home: None,
             xdg_config_home: home.join(".config"),
             resources_dir: None,
             dark_mode: true,
@@ -311,34 +317,57 @@ mod tests {
         let defaults = load(&[]);
         assert_eq!(
             shortcut_label(&defaults, &Action::NewWindow).as_deref(),
-            Some("⌘N")
+            Some(if cfg!(windows) {
+                "Ctrl+Shift+N"
+            } else {
+                "⌘N"
+            })
         );
         assert_eq!(
             shortcut_label(&defaults, &Action::CloseAllWindows).as_deref(),
-            Some("⌥⇧⌘W")
+            Some(if cfg!(windows) {
+                "Ctrl+Alt+Shift+W"
+            } else {
+                "⌥⇧⌘W"
+            })
         );
         assert_eq!(shortcut_label(&defaults, &Action::OpenLayout), None);
         let remapped = load(&[
             "--keybind=super+n=unbind",
+            "--keybind=ctrl+shift+n=unbind",
             "--keybind=ctrl+alt+n=new_window",
             "--keybind=menu/super+p=new_window",
         ]);
         assert_eq!(
             shortcut_label(&remapped, &Action::NewWindow).as_deref(),
-            Some("⌃⌥N")
+            Some(if cfg!(windows) {
+                "Ctrl+Alt+N"
+            } else {
+                "⌃⌥N"
+            })
         );
         assert_eq!(
-            shortcut_label(&load(&["--keybind=super+n=unbind"]), &Action::NewWindow),
+            shortcut_label(
+                &load(&["--keybind=super+n=unbind", "--keybind=ctrl+shift+n=unbind"]),
+                &Action::NewWindow,
+            ),
             None
         );
         assert_eq!(
             shortcut_label(&load(&["--keybind=clear"]), &Action::NewWindow),
             None
         );
-        let sequence = load(&["--keybind=super+k>physical:shift+key_n=new_window"]);
+        let sequence = load(&[
+            "--keybind=clear",
+            "--keybind=super+k>physical:shift+key_n=new_window",
+        ]);
         assert_eq!(
             shortcut_label(&sequence, &Action::NewWindow).as_deref(),
-            Some("⌘K → ⇧N")
+            Some(if cfg!(windows) {
+                "Win+K → Shift+N"
+            } else {
+                "⌘K → ⇧N"
+            })
         );
         let chained = load(&[
             "--keybind=clear",
@@ -350,23 +379,34 @@ mod tests {
         let splits = load(&[]);
         assert_eq!(
             shortcut_label(&splits, &Action::NewSplit(Direction::Right)).as_deref(),
-            Some("⌘D")
+            Some(if cfg!(windows) {
+                "Ctrl+Shift+D"
+            } else {
+                "⌘D"
+            })
         );
         assert_eq!(
             shortcut_label(&splits, &Action::NewSplit(Direction::Down)).as_deref(),
-            Some("⇧⌘D")
+            Some(if cfg!(windows) {
+                "Ctrl+Alt+D"
+            } else {
+                "⇧⌘D"
+            })
         );
-        for (trigger, label) in [
-            ("super+shift+enter", "⇧⌘↩"),
-            ("super+alt+arrow_left", "⌥⌘←"),
-            ("physical:super+digit_1", "⌘1"),
-            ("super++", "⌘+"),
-            ("ctrl+space", "⌃Space"),
-            ("super+backquote", "⌘`"),
-            ("f12", "F12"),
-            ("super+kp_enter", "⌘Keypad ↩"),
+        for (trigger, symbol, name) in [
+            ("super+shift+enter", "⇧⌘↩", "Shift+Win+Enter"),
+            ("super+alt+arrow_left", "⌥⌘←", "Alt+Win+Left"),
+            ("physical:super+digit_1", "⌘1", "Win+1"),
+            ("super++", "⌘+", "Win++"),
+            ("ctrl+space", "⌃Space", "Ctrl+Space"),
+            ("super+backquote", "⌘`", "Win+`"),
+            ("f12", "F12", "F12"),
+            ("super+kp_enter", "⌘Keypad ↩", "Win+Keypad Enter"),
         ] {
-            assert_eq!(trigger_label(&KeyTrigger::parse(trigger).unwrap()), label);
+            assert_eq!(
+                trigger_label(&KeyTrigger::parse(trigger).unwrap()),
+                if cfg!(windows) { name } else { symbol }
+            );
         }
     }
 
@@ -451,7 +491,14 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert!(labels.contains(&"New Window"), "{labels:?}");
-        assert!(labels.contains(&"⌘N"), "{labels:?}");
+        assert!(
+            labels.contains(&if cfg!(windows) {
+                "Ctrl+Shift+N"
+            } else {
+                "⌘N"
+            }),
+            "{labels:?}"
+        );
         draw(
             &context,
             &mut palette,
@@ -700,7 +747,12 @@ mod tests {
 
     #[test]
     fn palette_stays_inside_small_windows() {
-        for size in [Vec2::new(800.0, 400.0), Vec2::new(240.0, 120.0)] {
+        use egui::emath::GuiRounding as _;
+
+        for (size, scale) in [Vec2::new(800.0, 400.0), Vec2::new(240.0, 120.0)]
+            .into_iter()
+            .flat_map(|size| [1.0, 1.25, 1.5, 2.0].map(|scale| (size, scale)))
+        {
             let context = egui::Context::default();
             let config = Config::default();
             let bounds = egui::Rect::from_min_size(egui::Pos2::ZERO, size);
@@ -709,22 +761,30 @@ mod tests {
             let mut focus = true;
             palette.toggle();
             for _ in 0..3 {
-                let mut output = context.run_ui(
-                    egui::RawInput {
-                        screen_rect: Some(bounds),
-                        focused: true,
-                        ..Default::default()
-                    },
-                    |root| {
-                        palette.show(root, id, &config, &mut focus);
-                    },
-                );
+                let mut input = egui::RawInput {
+                    screen_rect: Some(bounds),
+                    focused: true,
+                    ..Default::default()
+                };
+                input
+                    .viewports
+                    .get_mut(&egui::ViewportId::ROOT)
+                    .unwrap()
+                    .native_pixels_per_point = Some(scale);
+                let mut output = context.run_ui(input, |root| {
+                    palette.show(root, id, &config, &mut focus);
+                });
                 output.textures_delta.clear();
             }
             let panel = context.read_response(id).unwrap().rect;
+            // Text and container edges snap independently to native pixels.
+            // Compare those pixels, allowing egui's additional UI-point rounding.
+            let scale = context.pixels_per_point();
+            let panel_pixels = (panel * scale).round_to_pixels(1.0);
+            let bounds_pixels = (bounds.shrink(16.0) * scale).round_to_pixels(1.0);
             assert!(
-                bounds.shrink(16.0).contains_rect(panel),
-                "{panel:?} outside {bounds:?}"
+                bounds_pixels.expand(1.0).contains_rect(panel_pixels),
+                "{panel:?} outside {bounds:?} at {scale}x"
             );
         }
     }

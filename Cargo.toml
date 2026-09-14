@@ -15,6 +15,7 @@ rustty-vt = { path = "crates/rustty-vt" }
 rustty-font = { path = "crates/rustty-font" }
 rustty-render = { path = "crates/rustty-render" }
 rustty-render-wgpu = { path = "crates/rustty-render-wgpu" }
+rustty-render-software = { path = "crates/rustty-render-software" }
 rustty = { path = "crates/rustty", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -29,7 +30,7 @@ egui = "0.36.2"
 egui-winit = { version = "0.36.2", default-features = false, features = ["accesskit", "clipboard", "links"] }
 egui-wgpu = { version = "0.36.2", default-features = false, features = ["winit", "macos-window-resize-jitter-fix"] }
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
-wgpu = { version = "30.0.1", default-features = false, features = ["std", "wgsl", "metal"] }
+wgpu = { version = "30.0.1", default-features = false, features = ["std", "wgsl", "metal", "dx12"] }
 objc2 = "0.6"
 objc2-core-text = "0.3.2"
 objc2-core-graphics = "0.3.2"

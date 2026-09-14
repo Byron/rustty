@@ -1,5 +1,6 @@
 //! Public Rustty API, configuration, and terminal sessions.
 
+pub mod app_paths;
 pub mod config;
 
 pub use rustty_parser as parser;
