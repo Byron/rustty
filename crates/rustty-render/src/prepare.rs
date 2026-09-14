@@ -1189,7 +1189,7 @@ mod tests {
             codepoint_map: vec![rustty_font::CodepointMap {
                 start: '─' as u32,
                 end: '─' as u32,
-                family: "Menlo".into(),
+                family: "JetBrains Mono".into(),
             }],
             ..Default::default()
         })

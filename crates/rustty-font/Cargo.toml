@@ -17,3 +17,9 @@ png = "0.18"
 objc2-core-text.workspace = true
 objc2-core-graphics.workspace = true
 objc2-core-foundation.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+unicode-segmentation = "1.13"
+windows-numerics = "0.3.1"
+windows-core = "0.62.2"
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_DirectWrite", "Win32_Graphics_Direct2D", "Win32_Graphics_Direct2D_Common", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Imaging"] }

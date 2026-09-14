@@ -96,6 +96,7 @@ config_enum!(NotifyOnCommandFinish { Never => "never", Unfocused => "unfocused",
 config_enum!(ClipboardAccess { Allow => "allow", Deny => "deny", Ask => "ask" });
 config_enum!(ConfirmCloseSurface { False => "false", True => "true", Always => "always" });
 config_enum!(WindowTheme { Auto => "auto", System => "system", Light => "light", Dark => "dark" });
+config_enum!(Renderer { Auto => "auto", Gpu => "gpu", Software => "software" });
 config_enum!(ShellIntegration { None => "none", Detect => "detect", Bash => "bash", Zsh => "zsh", Fish => "fish", Elvish => "elvish", Nushell => "nushell" });
 config_enum!(QuickTerminalPosition { Top => "top", Bottom => "bottom", Left => "left", Right => "right", Center => "center" });
 config_enum!(QuickTerminalScreen { Main => "main", Mouse => "mouse", MacosMenuBar => "macos-menu-bar" });
@@ -223,11 +224,14 @@ impl Theme {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Config {
+    /// Select the rendering backend when the app starts.
+    pub renderer: Renderer,
     pub font_family: Vec<String>,
     pub font_family_bold: Vec<String>,
     pub font_family_italic: Vec<String>,
     pub font_family_bold_italic: Vec<String>,
     pub font_feature: Vec<String>,
+    /// Font size in points, before applying the display scale.
     pub font_size: f32,
     pub font_style: FontStyleRequest,
     pub font_style_bold: FontStyleRequest,
@@ -308,12 +312,17 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            renderer: Renderer::Auto,
             font_family: vec![],
             font_family_bold: vec![],
             font_family_italic: vec![],
             font_family_bold_italic: vec![],
             font_feature: vec![],
-            font_size: 13.0,
+            font_size: if cfg!(target_os = "windows") {
+                12.0
+            } else {
+                13.0
+            },
             font_style: FontStyleRequest::Default,
             font_style_bold: FontStyleRequest::Default,
             font_style_italic: FontStyleRequest::Default,
@@ -367,7 +376,7 @@ impl Default for Config {
             wait_after_command: false,
             abnormal_command_exit_runtime: 250,
             undo_timeout: Duration::from_secs(5),
-            quit_after_last_window_closed: false,
+            quit_after_last_window_closed: cfg!(windows),
             bell_features: BellFeatures::default(),
             progress_style: true,
             notify_on_command_finish: NotifyOnCommandFinish::Never,
@@ -424,6 +433,7 @@ impl Config {
             }};
         }
         match entry.key.as_str() {
+            "renderer" => set!(renderer, Renderer::parse(value)?),
             "font-family" => append_or_clear(&mut self.font_family, value),
             "font-family-bold" => append_or_clear(&mut self.font_family_bold, value),
             "font-family-italic" => append_or_clear(&mut self.font_family_italic, value),
@@ -661,6 +671,9 @@ pub struct LoadedConfig {
 pub struct ConfigLoader {
     pub home: PathBuf,
     pub xdg_config_home: PathBuf,
+    /// Native Windows roaming configuration root. Explicit loaders can leave
+    /// this unset to use the historical directory layout in isolated fixtures.
+    pub app_config_home: Option<PathBuf>,
     /// The directory containing bundled `themes/` and other app resources.
     pub resources_dir: Option<PathBuf>,
     pub dark_mode: bool,
@@ -669,10 +682,7 @@ pub struct ConfigLoader {
 
 impl ConfigLoader {
     pub fn from_env() -> io::Result<Self> {
-        let home = env::var_os("HOME")
-            .filter(|h| !h.is_empty())
-            .map(PathBuf::from)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is unavailable"))?;
+        let home = crate::app_paths::home_dir()?;
         let xdg = env::var_os("XDG_CONFIG_HOME")
             .map(PathBuf::from)
             .filter(|p| p.is_absolute());
@@ -682,6 +692,11 @@ impl ConfigLoader {
         });
         Ok(Self {
             xdg_config_home: xdg.unwrap_or_else(|| home.join(".config")),
+            app_config_home: if cfg!(windows) {
+                crate::app_paths::config_dir()?.parent().map(Path::to_owned)
+            } else {
+                None
+            },
             home,
             resources_dir,
             dark_mode: true,
@@ -694,7 +709,10 @@ impl ConfigLoader {
     }
 
     pub fn load_with_args(&self, args: &[String]) -> LoadedConfig {
-        let own_app = self.home.join("Library/Application Support/com.rustty.app");
+        let own_app = self.app_config_home.as_ref().map_or_else(
+            || self.home.join("Library/Application Support/com.rustty.app"),
+            |root| root.join("Rustty"),
+        );
         let own = candidates(&self.xdg_config_home.join("rustty"), &own_app, "rustty");
         let own_config_path = own
             .iter()
@@ -767,12 +785,20 @@ impl ConfigLoader {
             result.family = ConfigFamily::Rustty;
             own
         } else {
-            let local = self
-                .home
-                .join("Library/Application Support/com.mitchellh.ghostty.local");
-            let stable = self
-                .home
-                .join("Library/Application Support/com.mitchellh.ghostty");
+            let local = self.app_config_home.as_ref().map_or_else(
+                || {
+                    self.home
+                        .join("Library/Application Support/com.mitchellh.ghostty.local")
+                },
+                |root| root.join("ghostty.local"),
+            );
+            let stable = self.app_config_home.as_ref().map_or_else(
+                || {
+                    self.home
+                        .join("Library/Application Support/com.mitchellh.ghostty")
+                },
+                |root| root.join("ghostty"),
+            );
             let local_exists = [local.join("config"), local.join("config.ghostty")]
                 .iter()
                 .any(|p| present(p));
@@ -1036,6 +1062,19 @@ impl ConfigLoader {
             .join(name);
         if present(&user_path) {
             return Some(user_path);
+        }
+        if let Some(root) = &self.app_config_home {
+            let path = root
+                .join(if user_dir == "rustty" {
+                    "Rustty"
+                } else {
+                    user_dir
+                })
+                .join("themes")
+                .join(name);
+            if present(&path) {
+                return Some(path);
+            }
         }
         self.resources_dir
             .as_ref()

@@ -12,6 +12,16 @@ use winit::{
     platform::modifier_supplement::KeyEventExtModifierSupplement,
 };
 
+/// Windows reserves the Super key for desktop shortcuts. Link activation uses
+/// Control there, while macOS follows its native Command-click convention.
+pub fn link_modifier(modifiers: ModifiersState) -> bool {
+    if cfg!(target_os = "windows") {
+        modifiers.control_key()
+    } else {
+        modifiers.super_key()
+    }
+}
+
 /// Share the application's Shift override between mouse buttons and scrolling.
 pub fn mouse_reporting(
     terminal: &vt::Terminal,
@@ -1468,23 +1478,46 @@ mod tests {
     #[test]
     fn find_shortcuts_keep_navigation_available_without_stealing_editor_commands() {
         let config = config::Config::default();
-        for trigger in [
-            "super+f",
-            "super+g",
-            "super+shift+g",
-            "escape",
-            "super+alt+arrow_left",
-            "ctrl+tab",
-        ] {
+        let (navigation, editing) = if cfg!(target_os = "windows") {
+            (
+                [
+                    "ctrl+shift+f",
+                    "f3",
+                    "shift+f3",
+                    "escape",
+                    "alt+arrow_left",
+                    "ctrl+tab",
+                ],
+                [
+                    "ctrl+shift+a",
+                    "ctrl+shift+c",
+                    "ctrl+shift+v",
+                    "ctrl+shift+z",
+                ],
+            )
+        } else {
+            (
+                [
+                    "super+f",
+                    "super+g",
+                    "super+shift+g",
+                    "escape",
+                    "super+alt+arrow_left",
+                    "ctrl+tab",
+                ],
+                ["super+a", "super+c", "super+v", "super+z"],
+            )
+        };
+        for trigger in navigation {
             let binding = config
                 .binding(&config::KeyTrigger::parse(trigger).unwrap())
-                .unwrap();
+                .unwrap_or_else(|| panic!("missing default binding for {trigger}"));
             assert!(binding.actions.iter().all(search_shortcut), "{trigger}");
         }
-        for trigger in ["super+a", "super+c", "super+v", "super+z"] {
+        for trigger in editing {
             let binding = config
                 .binding(&config::KeyTrigger::parse(trigger).unwrap())
-                .unwrap();
+                .unwrap_or_else(|| panic!("missing default binding for {trigger}"));
             assert!(!binding.actions.iter().all(search_shortcut), "{trigger}");
         }
         assert!(!search_shortcut(&config::Action::Text(
