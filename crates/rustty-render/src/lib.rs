@@ -108,6 +108,8 @@ pub struct Frame {
     pub atlas_uploads: Vec<AtlasUpload>,
     /// IME candidate-window anchor in physical pixels, when a preedit caret is present.
     pub ime_cursor: Option<[f32; 4]>,
+    /// Prepared text or decorations depend on `RenderOptions::blink_visible`.
+    pub blinking_text: bool,
 }
 
 impl Frame {
@@ -118,6 +120,7 @@ impl Frame {
             quads: Vec::new(),
             atlas_uploads: Vec::new(),
             ime_cursor: None,
+            blinking_text: false,
         }
     }
 
@@ -185,6 +188,7 @@ impl Frame {
         }
         self.generation = other.generation;
         self.atlas_uploads = uploads;
+        self.blinking_text |= other.blinking_text;
         if let Some([x, y, w, h]) = other.ime_cursor {
             self.ime_cursor = Some([x + origin[0], y + origin[1], w, h]);
         }

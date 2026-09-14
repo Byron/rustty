@@ -48,6 +48,42 @@ fn osc(number: &str, body: &[u8]) -> Vec<u8> {
 }
 
 #[test]
+fn mouse_shape_survives_chunking_invalid_requests_reset_and_snapshots() {
+    let mut terminal = Terminal::new(12, 4, 0);
+    assert_eq!(terminal.mouse_shape(), "text");
+    for (name, expected) in [
+        ("pointer", "pointer"),
+        ("top_right_corner", "ne-resize"),
+        ("xterm", "text"),
+        ("hand", "pointer"),
+    ] {
+        let old = terminal.mouse_shape();
+        let bytes = osc("22", name.as_bytes());
+        for byte in &bytes[..bytes.len() - 1] {
+            terminal.feed(&[*byte]);
+            assert_eq!(terminal.mouse_shape(), old);
+        }
+        terminal.feed(&[7]);
+        assert_eq!(terminal.mouse_shape(), expected);
+    }
+    for name in [
+        b"".as_slice(),
+        b"unknown",
+        b"Pointer",
+        b"text;wait",
+        &[b'x'; 2048],
+    ] {
+        terminal.feed(&osc("22", name));
+        assert_eq!(terminal.mouse_shape(), "pointer");
+    }
+    terminal.feed(b"\x1bc");
+    assert_eq!(terminal.mouse_shape(), "pointer");
+    let snapshot = rustty_vt::snapshot::encode_to_vec(&terminal).unwrap();
+    let restored = rustty_vt::snapshot::decode(snapshot.as_slice(), Default::default()).unwrap();
+    assert_eq!(restored.mouse_shape(), "pointer");
+}
+
+#[test]
 fn allocating_capture_counts_payload_and_reserves_native_terminating_nul() {
     let limit = rustty_parser::MAX_OSC_BYTES;
     for length in [limit - 1, limit, limit + 1] {

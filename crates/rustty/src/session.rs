@@ -1,5 +1,7 @@
 //! PTY ownership and background IO. No windowing or GPU dependency.
-use crate::config::{Command, Config, CursorStyle, ShellIntegration, TerminalColor};
+use crate::config::{
+    Command, Config, CursorStyle, GraphemeWidthMethod, ShellIntegration, TerminalColor,
+};
 use portable_pty::{Child, CommandBuilder, ExitStatus, PtySize, native_pty_system};
 use rustty_vt::{CursorShape, Effect, Screen, ScrollbackLimits, Terminal, query};
 use std::io::{self, Read, Write};
@@ -21,6 +23,7 @@ pub struct SessionOptions {
     /// Initial host state is installed before the child can issue queries.
     pub color_scheme: Option<query::ColorScheme>,
     pub visible: bool,
+    pub focused: bool,
 }
 
 impl Default for SessionOptions {
@@ -33,6 +36,7 @@ impl Default for SessionOptions {
             resources: None,
             color_scheme: None,
             visible: true,
+            focused: false,
         }
     }
 }
@@ -52,6 +56,7 @@ pub enum SessionEvent {
 
 enum IoCommand {
     Write(Vec<u8>),
+    Linefeed(bool),
     HostReport(Vec<u8>),
     Resize { size: PtySize, reply: Vec<u8> },
     Close,
@@ -79,6 +84,9 @@ pub struct Session {
     events: mpsc::Receiver<SessionEvent>,
     pending_input: Arc<PendingInput>,
     exited: Arc<AtomicBool>,
+    #[cfg(target_os = "macos")]
+    close_child: std::os::unix::net::UnixStream,
+    #[cfg(not(target_os = "macos"))]
     close_child: mpsc::Sender<()>,
 }
 
@@ -112,9 +120,18 @@ impl Session {
         let mut writer = pair.master.take_writer().map_err(error)?;
 
         let mut terminal = Terminal::with_limits(cols, rows, scrollback_limits(config));
+        // Like Ghostty, this policy applies to new sessions, not config reloads.
+        terminal.set_default_mode(
+            true,
+            2027,
+            config.grapheme_width_method == GraphemeWidthMethod::Unicode,
+        );
         terminal.terminfo_name = terminfo_name;
         terminal.shell_command_events = true;
+        terminal.linefeed_mode_events = true;
         terminal.query_defaults.color_scheme = options.color_scheme;
+        terminal.query_defaults.focused = Some(options.focused);
+        terminal.query_defaults.size = Some(terminal.query_size());
         terminal.visible = options.visible;
         apply_appearance(&mut terminal, config);
         terminal.working_directory = options
@@ -130,6 +147,9 @@ impl Session {
         let (events_tx, events) = mpsc::sync_channel(256);
         let pending_input = Arc::new(PendingInput::default());
         let exited = Arc::new(AtomicBool::new(false));
+        #[cfg(target_os = "macos")]
+        let (close_child, child_closed) = std::os::unix::net::UnixStream::pair()?;
+        #[cfg(not(target_os = "macos"))]
         let (close_child, child_closed) = mpsc::channel();
         let (started_tx, started) = mpsc::sync_channel(1);
 
@@ -140,18 +160,23 @@ impl Session {
             .name("rustty-pty-write".into())
             .spawn(move || {
                 let master = pair.master;
+                let mut linefeed = false;
                 while let Ok(command) = input_rx.recv() {
                     let result = match command {
                         IoCommand::Write(bytes) => {
-                            let result = writer.write_all(&bytes);
+                            let result = write_pty(&mut writer, &bytes, linefeed);
                             writer_pending.release(bytes.len());
                             result
                         }
-                        IoCommand::HostReport(bytes) => writer.write_all(&bytes),
+                        IoCommand::Linefeed(enabled) => {
+                            linefeed = enabled;
+                            continue;
+                        }
+                        IoCommand::HostReport(bytes) => write_pty(&mut writer, &bytes, linefeed),
                         IoCommand::Resize { size, reply } => master
                             .resize(size)
                             .map_err(error)
-                            .and_then(|()| writer.write_all(&reply)),
+                            .and_then(|()| write_pty(&mut writer, &reply, linefeed)),
                         IoCommand::Close => break,
                     };
                     if let Err(e) = result {
@@ -191,6 +216,11 @@ impl Session {
                     };
                     for effect in effects {
                         match effect {
+                            Effect::LinefeedMode(enabled) => {
+                                if read_input.send(IoCommand::Linefeed(enabled)).is_err() {
+                                    return;
+                                }
+                            }
                             Effect::Write(bytes) => {
                                 // Replies use the same bounded byte budget as user
                                 // input. Backpressure cannot silently drop a reply.
@@ -293,22 +323,23 @@ impl Session {
     pub fn resize(&self, cols: u16, rows: u16, width_px: u16, height_px: u16) -> io::Result<()> {
         let cols = cols.max(1);
         let rows = rows.max(1);
+        let size = query::Size {
+            columns: cols,
+            rows,
+            cell_width: u32::from(width_px) / u32::from(cols),
+            cell_height: u32::from(height_px) / u32::from(rows),
+        };
         let mut terminal = self.terminal()?;
-        if terminal.cols == cols
-            && terminal.rows == rows
+        // A redraw with unchanged host geometry must not undo DECCOLM.
+        if terminal.query_defaults.size == Some(size)
             && terminal.width_px == u32::from(width_px)
             && terminal.height_px == u32::from(height_px)
         {
             return Ok(());
         }
-        let effects = terminal.resize_with_cell_size(
-            cols,
-            rows,
-            Some((
-                u32::from(width_px) / u32::from(cols),
-                u32::from(height_px) / u32::from(rows),
-            )),
-        );
+        terminal.query_defaults.size = Some(size);
+        let effects =
+            terminal.resize_with_cell_size(cols, rows, Some((size.cell_width, size.cell_height)));
         terminal.set_pixel_size(width_px.into(), height_px.into());
         drop(terminal);
         let mut reply = Vec::new();
@@ -335,7 +366,12 @@ impl Session {
     }
 
     /// Apply actual window state and notify programs subscribed to its changes.
-    pub fn set_host_state(&self, visible: bool, scheme: query::ColorScheme) -> io::Result<()> {
+    pub fn set_host_state(
+        &self,
+        visible: bool,
+        focused: bool,
+        scheme: query::ColorScheme,
+    ) -> io::Result<()> {
         let mut terminal = self.terminal()?;
         let mut reply = Vec::new();
         if terminal.query_defaults.color_scheme != Some(scheme) {
@@ -350,9 +386,13 @@ impl Session {
                 reply.extend(query::visibility(visible));
             }
         }
+        if terminal.query_defaults.focused != Some(focused) {
+            terminal.query_defaults.focused = Some(focused);
+            reply.extend(terminal.encode_focus(focused));
+        }
         drop(terminal);
         if !reply.is_empty() {
-            // Host changes produce at most two small reports. Like resize
+            // Host changes produce at most three small reports. Like resize
             // reports, they must not block the UI on the user-input budget.
             self.input
                 .send(IoCommand::HostReport(reply))
@@ -388,6 +428,9 @@ impl Session {
     pub fn close(&self) {
         self.pending_input.close();
         let _ = self.input.send(IoCommand::Close);
+        #[cfg(target_os = "macos")]
+        let _ = self.close_child.shutdown(std::net::Shutdown::Write);
+        #[cfg(not(target_os = "macos"))]
         let _ = self.close_child.send(());
     }
     pub fn apply_config(&self, config: &Config) -> io::Result<()> {
@@ -433,7 +476,8 @@ impl Drop for Session {
 
 fn wait_for_child(
     mut child: Box<dyn Child + Send + Sync>,
-    closed: mpsc::Receiver<()>,
+    #[cfg(target_os = "macos")] closed: std::os::unix::net::UnixStream,
+    #[cfg(not(target_os = "macos"))] closed: mpsc::Receiver<()>,
 ) -> io::Result<ExitStatus> {
     loop {
         match child.try_wait() {
@@ -443,12 +487,23 @@ fn wait_for_child(
             // Even a failed status query must not discard an owned child.
             Err(_) => break,
         }
-        // ponytail: one owner polls at 50 ms to receive close requests; use native
-        // process notifications if very large session counts need fewer wakeups.
+        #[cfg(target_os = "macos")]
+        match wait_for_child_event(child.process_id(), &closed) {
+            Ok(true) => {}
+            Ok(false) | Err(_) => break,
+        }
+        // ponytail: other platforms still poll; replace with their native
+        // process notifications when desktop support reaches them.
+        #[cfg(not(target_os = "macos"))]
         match closed.recv_timeout(Duration::from_millis(50)) {
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
+    }
+    // Closing or failing to register may race with a natural exit. Reap that
+    // exit before attempting to signal the process.
+    if let Ok(Some(status)) = child.try_wait() {
+        return Ok(status);
     }
     // Unlike clone_killer(), the owned portable-pty child escalates SIGHUP to
     // SIGKILL on Unix. Both its grace period and wait stay off the UI thread.
@@ -457,6 +512,70 @@ fn wait_for_child(
         match child.wait() {
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             result => return result,
+        }
+    }
+}
+
+/// Block until the process exits (true) or its owner requests close (false).
+#[cfg(target_os = "macos")]
+fn wait_for_child_event(
+    pid: Option<u32>,
+    closed: &std::os::unix::net::UnixStream,
+) -> io::Result<bool> {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+
+    let pid = pid.ok_or_else(|| error("PTY child has no process ID"))?;
+    // SAFETY: a successful kqueue call returns a new owned descriptor.
+    let fd = unsafe { libc::kqueue() };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let queue = unsafe { OwnedFd::from_raw_fd(fd) };
+    if unsafe { libc::fcntl(queue.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let event = |ident, filter, fflags| libc::kevent {
+        ident,
+        filter,
+        flags: libc::EV_ADD | libc::EV_ONESHOT,
+        fflags,
+        data: 0,
+        udata: std::ptr::null_mut(),
+    };
+    let changes = [
+        event(pid as usize, libc::EVFILT_PROC, libc::NOTE_EXIT),
+        event(closed.as_raw_fd() as usize, libc::EVFILT_READ, 0),
+    ];
+    let mut ready = event(0, 0, 0);
+    loop {
+        // Both filters are installed before blocking, with no timeout. Closing
+        // the socket is persistent EOF, including before this registration.
+        // SAFETY: the arrays and both descriptors remain live through kevent.
+        let count = unsafe {
+            libc::kevent(
+                queue.as_raw_fd(),
+                changes.as_ptr(),
+                changes.len() as i32,
+                &mut ready,
+                1,
+                std::ptr::null(),
+            )
+        };
+        let failure = if count < 0 {
+            io::Error::last_os_error()
+        } else if ready.flags & libc::EV_ERROR != 0 && ready.data != 0 {
+            io::Error::from_raw_os_error(ready.data as i32)
+        } else if count > 0 {
+            return Ok(ready.filter == libc::EVFILT_PROC);
+        } else {
+            continue;
+        };
+        if failure.raw_os_error() == Some(libc::ESRCH) {
+            // The child exited between try_wait and registering NOTE_EXIT.
+            return Ok(true);
+        }
+        if failure.kind() != io::ErrorKind::Interrupted {
+            return Err(failure);
         }
     }
 }
@@ -513,6 +632,26 @@ impl PendingInput {
     }
 }
 
+fn write_pty(writer: &mut impl Write, bytes: &[u8], linefeed: bool) -> io::Result<()> {
+    if !linefeed || !bytes.contains(&b'\r') {
+        return writer.write_all(bytes);
+    }
+    let mut expanded = [0; 8192];
+    for chunk in bytes.chunks(expanded.len() / 2) {
+        let mut length = 0;
+        for &byte in chunk {
+            expanded[length] = byte;
+            length += 1;
+            if byte == b'\r' {
+                expanded[length] = b'\n';
+                length += 1;
+            }
+        }
+        writer.write_all(&expanded[..length])?;
+    }
+    Ok(())
+}
+
 fn enqueue(
     input: &mpsc::Sender<IoCommand>,
     pending: &PendingInput,
@@ -533,6 +672,7 @@ fn enqueue(
 
 fn apply_appearance(terminal: &mut Terminal, config: &Config) {
     terminal.clipboard_write_limit = config.clipboard_write_limit_bytes.unwrap_or(usize::MAX);
+    terminal.title_report = config.title_report;
     let palette: Vec<_> = config
         .palette
         .iter()
@@ -648,6 +788,184 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn emoji_presentation_keeps_the_background_of_both_cells() {
+        for legacy in [false, true] {
+            let mut config = Config::default();
+            if legacy {
+                config.grapheme_width_method = GraphemeWidthMethod::Legacy;
+            }
+            let default_wide = !legacy;
+            let session = Session::spawn(
+                &config,
+                SessionOptions {
+                    command: Some(Command::Direct(vec!["/bin/sleep".into(), "30".into()])),
+                    ..SessionOptions::default()
+                },
+                Arc::new(|| {}),
+            )
+            .unwrap();
+            for (prefix, wide) in [
+                ("", default_wide),
+                ("\x1b[?2027h", true),
+                ("\x1b[?2027l", false),
+                ("\x1bc", default_wide),
+            ] {
+                let mut terminal = session.terminal().unwrap();
+                terminal.feed(b"\x1b[0m\x1b[2J\x1b[H");
+                terminal.feed(prefix.as_bytes());
+                // A TUI skips the second cell of an emoji when positioning its next run.
+                terminal.feed("\x1b[30;107m  ✔️\x1b[5G  > selected row\x1b[0m".as_bytes());
+                let cells = &terminal.screen().rows[0].cells;
+                assert_eq!(
+                    cells[3].style.background,
+                    if wide {
+                        rustty_vt::Color::Indexed(15)
+                    } else {
+                        rustty_vt::Color::Default
+                    },
+                );
+                assert_eq!(cells[2].text, "✔️");
+                assert_eq!(
+                    (cells[2].width, cells[3].width),
+                    if wide { (2, 0) } else { (1, 1) }
+                );
+            }
+            config.grapheme_width_method = if default_wide {
+                GraphemeWidthMethod::Legacy
+            } else {
+                GraphemeWidthMethod::Unicode
+            };
+            session.apply_config(&config).unwrap();
+            let terminal = session.terminal().unwrap();
+            assert_eq!(terminal.modes.get_default(true, 2027), Some(default_wide));
+            assert_eq!(terminal.modes.dec(2027), default_wide);
+        }
+    }
+
+    #[test]
+    fn title_reporting_follows_configuration_reload_and_survives_reset() {
+        let mut terminal = Terminal::new(10, 2, 0);
+        for title_report in [false, true, false] {
+            let mut config = Config::default();
+            config.title_report = title_report;
+            apply_appearance(&mut terminal, &config);
+            terminal.feed(b"\x1bc\x1b]2;title\x07");
+            let expected = if title_report {
+                vec![Effect::Write(b"\x1b]ltitle\x1b\\".to_vec())]
+            } else {
+                Vec::new()
+            };
+            assert_eq!(terminal.feed(b"\x1b[21t"), expected);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn column_mode_survives_redraw_until_host_geometry_changes() {
+        let session = Session::spawn(
+            &Config::default(),
+            SessionOptions {
+                command: Some(Command::Direct(vec!["/bin/sleep".into(), "30".into()])),
+                ..SessionOptions::default()
+            },
+            Arc::new(|| {}),
+        )
+        .unwrap();
+        session.resize(100, 10, 900, 180).unwrap();
+        session.terminal().unwrap().feed(b"\x1b[?40h\x1b[?3h");
+        let generation = session.terminal().unwrap().generation;
+        session.resize(100, 10, 900, 180).unwrap();
+        {
+            let mut terminal = session.terminal().unwrap();
+            assert_eq!(terminal.cols, 132);
+            assert_eq!(terminal.generation, generation);
+            assert_eq!(
+                terminal.feed(b"\x1b[14t\x1b[16t\x1b[18t\x1b[?2048h"),
+                [
+                    Effect::Write(b"\x1b[4;180;900t".to_vec()),
+                    Effect::Write(b"\x1b[6;18;9t".to_vec()),
+                    Effect::Write(b"\x1b[8;10;100t".to_vec()),
+                    Effect::Write(b"\x1b[48;10;100;180;900t".to_vec()),
+                ]
+            );
+            terminal.feed(b"\x1b[?3l");
+        }
+        session.resize(100, 10, 900, 180).unwrap();
+        {
+            let mut terminal = session.terminal().unwrap();
+            assert_eq!(terminal.cols, 80);
+            terminal.feed(b"\x1b[?40l");
+            assert_eq!(terminal.cols, 100);
+            terminal.feed(b"\x1b[?40h\x1b[?3h\x1b[?40h");
+            assert_eq!(terminal.cols, 100);
+            terminal.feed(b"\x1b[?3h");
+        }
+        // Even a pixel-only host resize restores the actual window grid.
+        session.resize(100, 10, 901, 180).unwrap();
+        assert_eq!(session.terminal().unwrap().cols, 100);
+        session.terminal().unwrap().feed(b"\x1b[?3h");
+        session.resize(90, 11, 810, 198).unwrap();
+        let mut terminal = session.terminal().unwrap();
+        assert_eq!((terminal.cols, terminal.rows), (90, 11));
+        terminal.feed(b"\x1b[?3h\x1b[?40l");
+        assert_eq!((terminal.cols, terminal.rows), (90, 11));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn linefeed_mode_translates_pty_input_and_keeps_expansion_bounded() {
+        let mut output = Vec::new();
+        write_pty(&mut output, &vec![b'\r'; 4097], true).unwrap();
+        assert_eq!(output, b"\r\n".repeat(4097));
+
+        let session = Session::spawn(
+            &Config::default(),
+            SessionOptions {
+                command: Some(Command::Direct(vec![
+                    "/bin/sh".into(), "-c".into(),
+                    r"stty raw -echo; printf '\033[20h\033]2;linefeed-on\007'; dd bs=1 count=6 2>/dev/null | od -An -tx1 | tr -d ' \n'; printf '\r\n\033[20l\033]2;linefeed-off\007'; dd bs=1 count=4 2>/dev/null | od -An -tx1 | tr -d ' \n'; printf '\r\n\033]2;linefeed-done\007'".into(),
+                ])),
+                ..SessionOptions::default()
+            },
+            Arc::new(|| {}),
+        ).unwrap();
+        let wait_for_title = |title: &[u8]| {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                for event in session.events() {
+                    match event {
+                        SessionEvent::Effect(Effect::Title(value)) if value == title => return,
+                        SessionEvent::Error(error) => panic!("{error}"),
+                        _ => {}
+                    }
+                }
+                assert!(Instant::now() < deadline, "missing title {title:?}");
+                thread::sleep(Duration::from_millis(5));
+            }
+        };
+        wait_for_title(b"linefeed-on");
+        session.write(b"a\rb\r").unwrap();
+        wait_for_title(b"linefeed-off");
+        assert!(
+            session
+                .terminal()
+                .unwrap()
+                .plain_text()
+                .contains("610d0a620d0a")
+        );
+        session.write(b"a\rb\r").unwrap();
+        wait_for_title(b"linefeed-done");
+        assert!(
+            session
+                .terminal()
+                .unwrap()
+                .plain_text()
+                .contains("610d620d")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn host_queries_and_subscribed_changes_reach_the_pty_without_input_budget() {
         let session = Session::spawn(
             &Config::default(),
@@ -656,7 +974,7 @@ mod tests {
                 visible: false,
                 command: Some(Command::Direct(vec![
                     "/bin/sh".into(), "-c".into(),
-                    r"stty raw -echo; printf '\033[?996n\033[?998n'; dd bs=1 count=18 2>/dev/null | od -An -tx1 | tr -d ' \n'; printf '\r\nstate-ready\r\n'; dd bs=1 count=18 2>/dev/null | od -An -tx1 | tr -d ' \n'; stty min 0 time 1; dd bs=64 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n'; printf '\r\nstate-done\r\n'".into(),
+                    r"stty raw -echo; printf '\033[?996n\033[?998n\033[?1004h'; dd bs=1 count=21 2>/dev/null | od -An -tx1 | tr -d ' \n'; printf '\r\nstate-ready\r\n'; dd bs=1 count=21 2>/dev/null | od -An -tx1 | tr -d ' \n'; stty min 0 time 1; dd bs=64 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n'; printf '\r\nstate-done\r\n'".into(),
                 ])),
                 ..SessionOptions::default()
             },
@@ -673,7 +991,7 @@ mod tests {
                 thread::sleep(Duration::from_millis(5));
             }
         };
-        assert!(wait_for("state-ready").contains("1b5b3f3939373b326e1b5b3f3939393b326e"));
+        assert!(wait_for("state-ready").contains("1b5b3f3939373b326e1b5b3f3939393b326e1b5b4f"));
         {
             let mut terminal = session.terminal().unwrap();
             terminal.modes.set(true, 2031, true);
@@ -682,26 +1000,29 @@ mod tests {
         // A full user-input queue must neither block nor discard host reports.
         *session.pending_input.used.lock().unwrap() = Some(MAX_PENDING_INPUT);
         session
-            .set_host_state(true, query::ColorScheme::Dark)
+            .set_host_state(true, true, query::ColorScheme::Dark)
             .unwrap();
         session
-            .set_host_state(true, query::ColorScheme::Dark)
+            .set_host_state(true, true, query::ColorScheme::Dark)
             .unwrap();
         {
             let mut terminal = session.terminal().unwrap();
             terminal.modes.set(true, 2031, false);
             terminal.modes.set(true, 2033, false);
+            terminal.modes.set(true, 1004, false);
         }
         session
-            .set_host_state(false, query::ColorScheme::Light)
+            .set_host_state(false, false, query::ColorScheme::Light)
             .unwrap();
         let text = wait_for("state-done");
         assert_eq!(
-            text.matches("1b5b3f3939373b316e1b5b3f3939393b316e").count(),
+            text.matches("1b5b3f3939373b316e1b5b3f3939393b316e1b5b49")
+                .count(),
             1
         );
         assert_eq!(
-            text.matches("1b5b3f3939373b326e1b5b3f3939393b326e").count(),
+            text.matches("1b5b3f3939373b326e1b5b3f3939393b326e1b5b4f")
+                .count(),
             1
         );
         assert_eq!(
@@ -893,6 +1214,56 @@ mod tests {
                 session.snapshot().unwrap();
             }
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn idle_child_waiter_checks_status_only_when_woken() {
+        use portable_pty::ChildKiller;
+        use std::sync::atomic::AtomicUsize;
+
+        #[derive(Debug)]
+        struct IdleChild(Arc<AtomicUsize>, mpsc::Sender<()>);
+        impl ChildKiller for IdleChild {
+            fn kill(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+            fn clone_killer(&self) -> Box<dyn ChildKiller + Send + Sync> {
+                unreachable!("the waiter owns and kills its child")
+            }
+        }
+        impl Child for IdleChild {
+            fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                let _ = self.1.send(());
+                Ok(None)
+            }
+            fn wait(&mut self) -> io::Result<ExitStatus> {
+                Ok(ExitStatus::with_exit_code(0))
+            }
+            fn process_id(&self) -> Option<u32> {
+                // Watch a process that stays alive; the fake kill never signals it.
+                Some(std::process::id())
+            }
+        }
+
+        let checks = Arc::new(AtomicUsize::new(0));
+        let (entered, ready) = mpsc::channel();
+        let (close, closed) = std::os::unix::net::UnixStream::pair().unwrap();
+        let (done, finished) = mpsc::channel();
+        let child = IdleChild(checks.clone(), entered);
+        thread::spawn(move || done.send(wait_for_child(Box::new(child), closed)).unwrap());
+        ready.recv_timeout(Duration::from_secs(2)).unwrap();
+        thread::sleep(Duration::from_millis(180));
+        let idle_checks = checks.load(Ordering::SeqCst);
+        drop(close);
+        assert!(
+            finished
+                .recv_timeout(Duration::from_secs(2))
+                .unwrap()
+                .is_ok()
+        );
+        assert_eq!(idle_checks, 1, "an idle child must not be polled");
     }
 
     #[test]

@@ -115,22 +115,29 @@ pub enum Query {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Defaults {
     pub color_scheme: Option<ColorScheme>,
+    /// Actual keyboard focus, when a host wants an initial mode-1004 report.
+    pub focused: Option<bool>,
     pub device_attributes: Option<DeviceAttributes>,
     pub enquiry: Vec<u8>,
     pub xtversion: Vec<u8>,
     pub size_reports: bool,
+    /// Actual host geometry, independent of DEC's forced 80/132-column grid.
+    /// Also restores the host grid when DEC mode 40 changes.
+    pub size: Option<Size>,
 }
 
 impl Default for Defaults {
     fn default() -> Self {
         Self {
             color_scheme: None,
+            focused: None,
             device_attributes: Some(DeviceAttributes::default()),
             enquiry: Vec::new(),
             xtversion: concat!("ghostty ", env!("CARGO_PKG_VERSION"))
                 .as_bytes()
                 .to_vec(),
             size_reports: true,
+            size: None,
         }
     }
 }
@@ -143,7 +150,9 @@ impl Defaults {
                 self.device_attributes.as_ref().map(|a| a.encode(kind))
             }
             Query::Enquiry => enquiry(&self.enquiry),
-            Query::Size(style) => self.size_reports.then(|| size.encode(style)),
+            Query::Size(style) => self
+                .size_reports
+                .then(|| self.size.unwrap_or(size).encode(style)),
             Query::Xtversion => xtversion(&self.xtversion),
         }
     }

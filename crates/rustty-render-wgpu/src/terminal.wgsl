@@ -25,11 +25,18 @@ fn encode_srgb(value: vec3<f32>) -> vec3<f32> {
 @fragment fn fragment_main(input: VertexOut) -> @location(0) vec4<f32> {
     var color = input.color.rgb;
     var alpha = input.color.a;
-    // Explicit LOD avoids derivative-uniformity constraints on solid/glyph branches.
-    if input.mode != 0u {
+    if input.mode == 1u {
+        // Ghostty samples rasterized glyph masks without filtering. Blending
+        // with transparent atlas padding opens seams between block glyphs at
+        // fractional pane origins, even though their cell rectangles touch.
+        let size = vec2<i32>(textureDimensions(atlas));
+        let pixel = clamp(vec2<i32>(input.uv * vec2<f32>(size)), vec2<i32>(0), size - 1);
+        alpha *= textureLoad(atlas, pixel, 0).a;
+    } else if input.mode == 2u {
+        // Explicit LOD keeps scaled RGBA content filtered in this branch.
         let texel = textureSampleLevel(atlas, atlas_sampler, input.uv, 0.0);
         alpha *= texel.a;
-        if input.mode == 2u { color = texel.rgb; }
+        color = texel.rgb;
     }
     // egui commonly supplies an UNORM target; also support an sRGB host target.
     if !TARGET_SRGB { color = encode_srgb(color); }

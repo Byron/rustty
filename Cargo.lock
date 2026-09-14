@@ -3021,6 +3021,7 @@ dependencies = [
 name = "rustty"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "portable-pty",
  "rustty-parser",
  "rustty-vt",

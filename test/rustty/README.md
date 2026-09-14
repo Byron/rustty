@@ -1,5 +1,9 @@
 # Rustty terminal compatibility checks
 
+The [CSI/OSC implementation inventory](SEQUENCES.md) traces recognized commands
+through the VT, PTY, renderer, and macOS app, including intentional no-ops and
+features that currently exist only in the library.
+
 This directory compares the Rust implementation with the current Ghostty Zig
 terminal in separate processes. Rustty's application and libraries never link
 the Zig oracle. Both adapters accept one JSON request per line and return one

@@ -9,9 +9,12 @@ description = "Public Rustty API, configuration, and terminal sessions."
 
 [features]
 default = []
-sessions = ["dep:portable-pty"]
+sessions = ["dep:portable-pty", "dep:libc"]
 
 [dependencies]
 rustty-parser.workspace = true
 rustty-vt.workspace = true
 portable-pty = { workspace = true, optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = { version = "0.2", optional = true }

@@ -338,7 +338,8 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
-    fn offscreen_render_preserves_alpha_and_color_glyphs() {
+    fn offscreen_render_preserves_alpha_color_and_tiled_glyph_coverage() {
+        const HEIGHT: u32 = 52;
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter =
             pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
@@ -347,7 +348,7 @@ mod tests {
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
         let mut renderer = Renderer::new(&device, format);
-        let mut frame = Frame::empty([32, 8]);
+        let mut frame = Frame::empty([32, HEIGHT]);
         frame.atlas_uploads.push(AtlasUpload {
             revision: 1,
             page: 0,
@@ -357,7 +358,7 @@ mod tests {
             pixels: Arc::from([255, 255, 255, 128, 0, 255, 0, 255]),
         });
         frame.quads.push(Quad::solid(
-            [0.0, 0.0, 32.0, 8.0],
+            [0.0, 0.0, 32.0, HEIGHT as f32],
             Color::rgb([255, 255, 255]),
         ));
         frame.quads.push(Quad {
@@ -374,12 +375,48 @@ mod tests {
             paint: Paint::Color,
             atlas: 0,
         });
+        // Scaled RGBA content still interpolates between texels.
+        frame.quads.push(Quad {
+            rect: [0.0, 8.0, 8.0, 4.0],
+            uv: [0.0, 0.25, 1.0, 0.25],
+            color: Color::rgb([255; 3]),
+            paint: Paint::Color,
+            atlas: 0,
+        });
+        // Like the glyph atlas, each full-block mask has transparent padding.
+        // Pane splits can place these otherwise contiguous cells between pixels.
+        frame.atlas_uploads.push(AtlasUpload {
+            revision: 2,
+            page: 1,
+            page_size: 8,
+            origin: [1, 1],
+            size: [4, 4],
+            pixels: Arc::from([255; 4 * 4 * 4]),
+        });
+        for (index, fraction) in [0.0, 0.25, 0.5, 0.75].into_iter().enumerate() {
+            for row in 0..2 {
+                for col in 0..6 {
+                    frame.quads.push(Quad {
+                        rect: [
+                            2.0 + col as f32 * 4.0 + fraction,
+                            16.0 + index as f32 * 8.0 + row as f32 * 4.0 + fraction,
+                            4.0,
+                            4.0,
+                        ],
+                        uv: [0.125, 0.125, 0.625, 0.625],
+                        color: Color::rgb([0, 255, 0]),
+                        paint: Paint::Mask,
+                        atlas: 1,
+                    });
+                }
+            }
+        }
         renderer.prepare(&device, &queue, &frame).unwrap();
         let target = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("offscreen terminal test"),
             size: wgpu::Extent3d {
                 width: 32,
-                height: 8,
+                height: HEIGHT,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -392,7 +429,7 @@ mod tests {
         let view = target.create_view(&Default::default());
         let readback = device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
-            size: 256 * 8,
+            size: 256 * u64::from(HEIGHT),
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
@@ -430,7 +467,7 @@ mod tests {
             },
             wgpu::Extent3d {
                 width: 32,
-                height: 8,
+                height: HEIGHT,
                 depth_or_array_layers: 1,
             },
         );
@@ -452,5 +489,19 @@ mod tests {
         assert_eq!(&covered[2..], &[255, 255]);
         assert_eq!(&bytes[20 * 4..20 * 4 + 4], &[0, 255, 0, 255]);
         assert_eq!(&bytes[28 * 4..28 * 4 + 4], &[255, 255, 255, 255]);
+        let pixel = |x: usize, y: usize| &bytes[y * 256 + x * 4..y * 256 + x * 4 + 4];
+        let interpolated = pixel(3, 9);
+        assert!((1..255).contains(&interpolated[0]), "{interpolated:?}");
+        for index in 0..4 {
+            for y in 18 + index * 8..23 + index * 8 {
+                for x in 4..25 {
+                    assert_eq!(
+                        pixel(x, y),
+                        &[0, 255, 0, 255],
+                        "gap at ({x}, {y}), phase {index}/4"
+                    );
+                }
+            }
+        }
     }
 }
