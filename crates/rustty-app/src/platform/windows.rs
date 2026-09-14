@@ -31,10 +31,13 @@ use winit::{
 };
 
 mod clipboard;
+mod conpty;
 mod keys;
 mod menu;
 mod notifications;
 mod quick;
+
+pub use conpty::initialize as initialize_terminal_runtime;
 
 pub const APP_USER_MODEL_ID: &str = "app.rustty";
 pub const TOAST_ACTIVATOR_CLSID: &str = "{9CB270BB-CC8F-4C71-ACF2-4D632A9A7E26}";

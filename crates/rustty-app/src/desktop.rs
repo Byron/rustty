@@ -634,6 +634,12 @@ pub fn run() -> Result<()> {
         }
         return Ok(());
     }
+    #[cfg(target_os = "windows")]
+    rustty_app::platform::initialize_terminal_runtime(
+        resources.as_deref().ok_or(
+            "Rustty resources are missing; build or copy the complete application folder.",
+        )?,
+    )?;
     let smoke = smoke::Smoke::from_env(&mut loaded)?;
     let mut state_path = app_paths::data_dir()?.join("workspace.json");
     let mut errors = loaded

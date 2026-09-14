@@ -16,13 +16,23 @@ From PowerShell at the repository root:
 ./target/release/Rustty/rustty.exe
 ```
 
-Omit `-Release` for a debug build. `-Offline` uses cached Cargo dependencies.
+Omit `-Release` for a debug build. The first build downloads Microsoft's pinned
+ConPTY runtime and verifies its SHA-256. `-Offline` uses cached Cargo dependencies
+and the runtime package under `target/conpty`.
 The script builds for `x86_64-pc-windows-msvc` with a static C runtime; the portable
-folder needs no Visual C++ redistributable. It contains the executable, themes,
-shell integration, and license notices and can be moved together. `-SkipBuild`
+folder needs no Visual C++ redistributable. It contains the executable, ConPTY,
+themes, shell integration, and license notices. Move the complete folder,
+including `resources`, together. `-SkipBuild`
 restages an existing script build. Cargo builds also work directly:
 `cargo run -p rustty-app --bin rustty`. Build the portable folder first for resource
 discovery during development. Zig, WSL, and an external shader compiler are not needed.
+
+The bundled ConPTY preserves the order of application-controlled synchronized
+updates (`CSI ?2026 h/l`), including cursor visibility. Some in-box Windows
+versions forward the end marker before their queued screen/cursor update, causing
+prompt animation flicker. Rustty loads its bundled runtime before creating any
+sessions; it reports missing runtime files instead of silently using that older
+transport. Both software and GPU rendering use the same synchronization guard.
 
 To add this location to the Start Menu and enable notification activation, run
 `rustty.exe --register`, or pass `-Register` to the build script. Registration is
@@ -75,6 +85,7 @@ Windows validation:
 cargo test --workspace --all-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test -p rustty-app --test windows_platform -- --ignored
+cargo test -p rustty-app --test windows_conpty -- --ignored
 $env:RUSTTY_SMOKE_DIR = Join-Path $env:TEMP 'rustty-native-smoke'
 ./target/debug/Rustty/rustty.exe
 Remove-Item Env:RUSTTY_SMOKE_DIR
@@ -90,6 +101,9 @@ capture including the Windows frame and menu; the test window must be foreground
 and unobscured. `window.png` captures client rendering with either backend.
 The native CPU opacity/menu test is opt-in:
 `cargo test -p rustty-app --lib software_surface -- --ignored --test-threads=1`.
+The ConPTY check sends fragmented animated redraws through a real PTY and verifies
+every byte boundary retains synchronization until text and cursor restoration
+are complete. Passing `--system` additionally selects the OS runtime for diagnosis.
 
 ## macOS
 

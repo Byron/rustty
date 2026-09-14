@@ -22,6 +22,13 @@ Their license notices are copied into `Contents/Resources/licenses`.
 
 Resource provenance:
 
+- Windows `conpty/` contains `conpty.dll` and `OpenConsole.exe` from Microsoft's
+  MIT-licensed `Microsoft.Windows.Console.ConPTY` NuGet package `1.24.260710001`.
+  Package: <https://api.nuget.org/v3-flatcontainer/microsoft.windows.console.conpty/1.24.260710001/microsoft.windows.console.conpty.1.24.260710001.nupkg>.
+  SHA-256: `175640566a3b59c4b132070ee96c2c77e5ab7edd2e92732a5eb3610bbf63d90e`.
+  The build extracts only the x64 runtime and includes `ConPTY-LICENSE.txt`.
+  Source: <https://github.com/microsoft/terminal>; the runtime preserves VT
+  byte ordering required by application-controlled synchronized redraws.
 - `themes/` is the unmodified Ghostty-format export of iTerm2-Color-Schemes
   release `release-20260831-151010-752a9c0`, as pinned in `build.zig.zon`.
   Source archive: <https://deps.files.ghostty.org/ghostty-themes-release-20260831-151010-752a9c0.tgz>.

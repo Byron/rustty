@@ -45,6 +45,58 @@ function Remove-BuildPath([string]$Candidate) {
     }
 }
 
+# The in-box ConPTY can forward DEC 2026's end marker before its buffered
+# screen/cursor update. The current standalone runtime preserves byte order.
+function Get-ConPtyPackage {
+    $version = '1.24.260710001'
+    $name = "microsoft.windows.console.conpty.$version.nupkg"
+    $cache = Join-Path $targetRoot 'conpty'
+    $package = Join-Path $cache $name
+    $sha256 = '175640566A3B59C4B132070EE96C2C77E5AB7EDD2E92732A5EB3610BBF63D90E'
+    Assert-BuildPath $package
+    if (!(Test-Path -LiteralPath $package -PathType Leaf)) {
+        if ($Offline) {
+            throw "ConPTY $version is not cached. Run build.ps1 once without -Offline to download it."
+        }
+        New-Item -ItemType Directory -Path $cache -Force | Out-Null
+        $download = Join-Path $cache ([Guid]::NewGuid().ToString('N') + '.download')
+        Assert-BuildPath $download
+        try {
+            $uri = "https://api.nuget.org/v3-flatcontainer/microsoft.windows.console.conpty/$version/$name"
+            Invoke-WebRequest -Uri $uri -OutFile $download -TimeoutSec 60
+            if ((Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ne $sha256) {
+                throw 'Downloaded ConPTY package failed its SHA-256 check.'
+            }
+            Move-Item -LiteralPath $download -Destination $package
+        } finally {
+            Remove-BuildPath $download
+        }
+    }
+    if ((Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash -ne $sha256) {
+        throw "Cached ConPTY package failed its SHA-256 check: $package"
+    }
+    return $package
+}
+
+function Install-ConPty([string]$Package, [string]$Destination) {
+    Assert-BuildPath $Destination
+    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($Package)
+    try {
+        # Extract only the pinned x64 runtime, without trusting archive paths.
+        foreach ($path in @('runtimes/win-x64/native/conpty.dll', 'build/native/runtimes/x64/OpenConsole.exe')) {
+            $entry = $archive.GetEntry($path)
+            if ($null -eq $entry) { throw "ConPTY package is missing $path" }
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $Destination $entry.Name))
+        }
+    } finally {
+        $archive.Dispose()
+    }
+}
+
+$conptyPackage = Get-ConPtyPackage
+
 if (!$SkipBuild) {
     $cargoArguments = @('build', '--manifest-path', (Join-Path $repository 'Cargo.toml'),
         '--target-dir', $targetRoot, '--target', $triple,
@@ -80,6 +132,7 @@ try {
     $resources = Join-Path $stage 'resources'
     $licenses = Join-Path $resources 'licenses'
     New-Item -ItemType Directory -Path $licenses -Force | Out-Null
+    Install-ConPty $conptyPackage (Join-Path $resources 'conpty')
     Copy-Item -LiteralPath $executable -Destination (Join-Path $stage 'rustty.exe')
     $symbols = Join-Path $buildOutput 'rustty.pdb'
     if (Test-Path -LiteralPath $symbols) {
@@ -98,11 +151,13 @@ try {
     }
     Copy-Item -LiteralPath (Join-Path $repository 'LICENSE') -Destination (Join-Path $licenses 'Ghostty-MIT.txt')
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'resources/iTerm2-Color-Schemes-LICENSE.txt') -Destination $licenses
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'resources/ConPTY-LICENSE.txt') -Destination $licenses
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../rustty-font/resources/JetBrainsMono-OFL.txt') -Destination $licenses
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../rustty-font/resources/NerdFontsSymbols-LICENSE.txt') -Destination $licenses
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'resources/README.md') -Destination (Join-Path $licenses 'Resources.md')
     @'
 Run rustty.exe to open the terminal.
+Keep the resources folder with rustty.exe; it contains the required ConPTY runtime.
 Run rustty.exe --register to add this location to the Start Menu and enable toast activation.
 Run rustty.exe --unregister before removing or moving the registered application.
 Configuration: %APPDATA%\Rustty\rustty.txt
