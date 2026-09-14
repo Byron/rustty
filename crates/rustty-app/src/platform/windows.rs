@@ -208,7 +208,11 @@ impl Platform {
                 .map_err(err)?;
             }
         } else if new {
+            // Winit creates the requested client area before a menu is attached.
+            // Preserve it so each restored window does not lose a menu's height.
+            let client_size = window.inner_size();
             self.menu.attach(native)?;
+            let _ = window.request_inner_size(client_size);
             self.notifications.set_badge(native, *self.badge.borrow());
         }
         Ok(())

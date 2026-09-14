@@ -89,9 +89,25 @@ mod windows {
                         .with_inner_size(LogicalSize::new(640.0, 320.0)),
                 )
                 .unwrap();
+            let client_size = window.inner_size();
+            let position = window.outer_position().unwrap();
             platform
                 .configure_window(&window, false, &self.config)
                 .unwrap();
+            assert_eq!(
+                window.inner_size(),
+                client_size,
+                "attaching the menu changed the restored client size"
+            );
+            assert_eq!(window.outer_position().unwrap(), position);
+            platform
+                .configure_window(&window, false, &self.config)
+                .unwrap();
+            assert_eq!(
+                window.inner_size(),
+                client_size,
+                "reconfiguring a window changed its client size"
+            );
             let RawWindowHandle::Win32(raw) = window.window_handle().unwrap().as_raw() else {
                 unreachable!()
             };
