@@ -1468,23 +1468,46 @@ mod tests {
     #[test]
     fn find_shortcuts_keep_navigation_available_without_stealing_editor_commands() {
         let config = config::Config::default();
-        for trigger in [
-            "super+f",
-            "super+g",
-            "super+shift+g",
-            "escape",
-            "super+alt+arrow_left",
-            "ctrl+tab",
-        ] {
+        let (navigation, editing) = if cfg!(target_os = "windows") {
+            (
+                [
+                    "ctrl+shift+f",
+                    "f3",
+                    "shift+f3",
+                    "escape",
+                    "alt+arrow_left",
+                    "ctrl+tab",
+                ],
+                [
+                    "ctrl+shift+a",
+                    "ctrl+shift+c",
+                    "ctrl+shift+v",
+                    "ctrl+shift+z",
+                ],
+            )
+        } else {
+            (
+                [
+                    "super+f",
+                    "super+g",
+                    "super+shift+g",
+                    "escape",
+                    "super+alt+arrow_left",
+                    "ctrl+tab",
+                ],
+                ["super+a", "super+c", "super+v", "super+z"],
+            )
+        };
+        for trigger in navigation {
             let binding = config
                 .binding(&config::KeyTrigger::parse(trigger).unwrap())
-                .unwrap();
+                .unwrap_or_else(|| panic!("missing default binding for {trigger}"));
             assert!(binding.actions.iter().all(search_shortcut), "{trigger}");
         }
-        for trigger in ["super+a", "super+c", "super+v", "super+z"] {
+        for trigger in editing {
             let binding = config
                 .binding(&config::KeyTrigger::parse(trigger).unwrap())
-                .unwrap();
+                .unwrap_or_else(|| panic!("missing default binding for {trigger}"));
             assert!(!binding.actions.iter().all(search_shortcut), "{trigger}");
         }
         assert!(!search_shortcut(&config::Action::Text(
