@@ -158,6 +158,10 @@ def requests(reference):
         yield case(f"map/{capacity}", capacity, [(0, col, [0x301]) for col in range(80)])
     yield case("mid-cluster", 512, [(0, col, list(range(0x300, 0x300 + count)))
                                     for col, count in enumerate((64, 64, 8, 61))])
+    yield case("packed", 512, [(0, col, [0x301] * 5) for col in range(32)])
+    yield case("full-arena", 512, [(0, col, [0x301] * 64) for col in range(5)])
+    yield case("full-suffix-retry", 512, [(0, col, [0x301] * count)
+        for col, count in ((0, 64), (1, 64), (2, 64), (3, 8), (4, 61), (4, 1), (4, 4))])
     yield case("retry-failed", 512, [(0, col, [0x301] * count)
                                      for col, count in ((0, 64), (1, 64), (2, 8),
                                                         (3, 61), (3, 1), (3, 4))])
@@ -166,3 +170,28 @@ def requests(reference):
         (0, 0, [0, 0xD800, 0x110000]), (0, 0, [0x301, 0, 0xD800, 0x302]),
         (0, 0, [0x303]), (0, 1, [0x301] * 65),
     ])
+
+    # Reflow packs separately restored pages using full suffix allocations.
+    # The native decoder formerly lost the last cluster while reappending it.
+    def native_snapshot(cols, rows, data=b""):
+        response = reference.request({"id": "snapshot/resources/graphemes/packed-source",
+            "cols": cols, "rows": rows, "operations": [snapshots.write(data), {"op": "snapshot"}]})
+        return snapshots.records(bytes.fromhex(response["snapshots"][0]))
+
+    for length, columns, capacity in ((5, 16, 512), (9, 10, 512), (64, 16, 8192)):
+        parts = native_snapshot(columns, 2)
+        page = bytearray(native_snapshot(columns, 1, ("a" + "\u0301" * length).encode() * columns)[2][1])
+        struct.pack_into("<I", page, 12, capacity)
+        first, second = bytearray(page), bytearray(page)
+        first[20] |= 1
+        second[20] |= 2
+        parts[2:3] = [(3, first), (3, second)]
+        screen = bytearray(parts[1][1])
+        struct.pack_into("<H", screen, 2, 2)
+        parts[1] = (2, screen)
+        yield ({"id": f"snapshot/resources/graphemes/packed-reflow/{length}", "kind": "snapshot",
+            "operations": [{"op": "restore", "data": snapshots.frame(parts).hex()},
+                           {"op": "resize", "cols": columns * 2, "rows": 2}],
+            "after": [snapshots.write(b"\x1b[H\x1b[20X"),
+                      snapshots.write(("a" + "\u0301" * length).encode() * 21)]},
+            ["snapshot.cross-decode", "terminal.cells", "terminal.pages"])

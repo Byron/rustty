@@ -587,7 +587,8 @@ fn command(config: &Config, options: &SessionOptions) -> io::Result<CommandBuild
     } else if let Some(home) = std::env::var_os("HOME") {
         cmd.cwd(home);
     }
-    cmd.env("TERM_PROGRAM", "rustty");
+    // Programs such as Cargo gate OSC progress on the terminal's identity.
+    cmd.env("TERM_PROGRAM", "ghostty");
     cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
     cmd.env("COLORTERM", "truecolor");
     cmd.env("TERM", "xterm-256color");

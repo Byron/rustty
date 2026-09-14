@@ -437,42 +437,49 @@ impl Graphics {
     pub fn tick(&mut self, now_ms: u64) -> Option<u64> {
         let mut next = None;
         for image in self.images.values_mut() {
-            if image.animation_state < 2 || image.frames.is_empty() {
+            if image.animation_state < 2
+                || image.frames.is_empty()
+                || image.max_loops != 0 && image.completed_loops >= image.max_loops
+            {
                 continue;
             }
             if image.root_gap_ms == 0 && image.frames.iter().all(|f| f.gap_ms == 0) {
                 continue;
             }
-            let shown = *image.frame_shown_at_ms.get_or_insert(now_ms);
-            let mut deadline = shown.saturating_add(u64::from(image.gap(image.current_frame)));
-            // At most one cycle per tick; old deadlines never cause unbounded catch-up.
-            for _ in 0..=image.frames.len() {
-                if now_ms < deadline {
-                    break;
-                }
-                if image.current_frame == image.frames.len() {
-                    if image.animation_state == 2 {
-                        image.frame_shown_at_ms = None;
-                        break;
-                    }
-                    image.completed_loops = image.completed_loops.saturating_add(1);
-                    if image.max_loops != 0 && image.completed_loops >= image.max_loops {
-                        image.animation_state = 1;
-                        break;
-                    }
-                    image.current_frame = 0;
-                } else {
-                    image.current_frame += 1;
-                }
-                image.generation = image.generation.wrapping_add(1);
-                self.generation = self.generation.wrapping_add(1);
-                image.frame_shown_at_ms = Some(now_ms);
-                deadline = now_ms.saturating_add(u64::from(image.gap(image.current_frame)));
+            // Unplaced images must not keep the renderer awake.
+            if !self.placements.iter().any(|p| p.image_id == image.id) {
+                continue;
             }
-            if image.animation_state >= 2
-                && !(image.animation_state == 2 && image.current_frame == image.frames.len())
-            {
-                let deadline = deadline.max(now_ms.saturating_add(1));
+            let shown = image.frame_shown_at_ms.unwrap_or(now_ms).min(now_ms);
+            image.frame_shown_at_ms = Some(shown);
+            let mut deadline = shown.saturating_add(u64::from(image.gap(image.current_frame)));
+            if now_ms >= deadline {
+                // Advance once, skipping gapless frames without ever displaying
+                // them. Parking at the loop boundary retains the displayed frame.
+                let mut index = image.current_frame;
+                loop {
+                    let following = (index + 1) % (image.frames.len() + 1);
+                    if following == 0 {
+                        if image.animation_state == 2 {
+                            break;
+                        }
+                        image.completed_loops = image.completed_loops.saturating_add(1);
+                        if image.max_loops != 0 && image.completed_loops >= image.max_loops {
+                            break;
+                        }
+                    }
+                    index = following;
+                    if image.gap(index) != 0 {
+                        image.current_frame = index;
+                        image.frame_shown_at_ms = Some(now_ms);
+                        self.generation = self.generation.wrapping_add(1);
+                        image.generation = self.generation;
+                        deadline = now_ms.saturating_add(u64::from(image.gap(index)));
+                        break;
+                    }
+                }
+            }
+            if deadline > now_ms {
                 next = Some(next.map_or(deadline, |n: u64| n.min(deadline)));
             }
         }
@@ -621,7 +628,7 @@ impl Terminal {
             };
             if let Err(error) = result {
                 command.reply(id, 0, error, effects);
-            } else if action == b'p' {
+            } else if matches!(action, b'p' | b'c') {
                 command.reply(id, 0, "OK", effects);
             }
             return;
@@ -935,12 +942,12 @@ impl Terminal {
     }
 
     fn graphics_animation(&mut self, id: u32, cmd: &Command) -> Result<(), &'static str> {
-        let image = self
-            .screen_mut()
-            .graphics
+        let graphics = &mut self.screen_mut().graphics;
+        let image = graphics
             .images
             .get_mut(&id)
             .ok_or("ENOENT: image not found")?;
+        let mut changed = false;
         let frame = cmd.n(b'r') as usize;
         if frame > 0 && frame <= image.frames.len() + 1 && cmd.signed(b'z') != 0 {
             let gap = cmd.signed(b'z').max(0) as u32;
@@ -949,39 +956,51 @@ impl Terminal {
             } else {
                 image.frames[frame - 2].gap_ms = gap;
             }
+            changed = true;
         }
-        if cmd.n(b'c') > 0 && cmd.n(b'c') as usize <= image.frames.len() + 1 {
+        let frame_changed = cmd.n(b'c') > 0
+            && cmd.n(b'c') as usize <= image.frames.len() + 1
+            && cmd.n(b'c') as usize - 1 != image.current_frame;
+        if frame_changed {
             image.current_frame = cmd.n(b'c') as usize - 1;
             image.frame_shown_at_ms = None;
+            changed = true;
         }
         if (1..=3).contains(&cmd.n(b's')) {
+            if image.animation_state == 1 && cmd.n(b's') != 1 {
+                image.frame_shown_at_ms = None;
+            }
             image.animation_state = cmd.n(b's') as u8;
             image.completed_loops = 0;
-            image.frame_shown_at_ms = None;
+            changed = true;
         }
         if cmd.n(b'v') > 0 {
             image.max_loops = cmd.n(b'v') - 1;
+            changed = true;
         }
-        image.generation = image.generation.wrapping_add(1);
-        self.screen_mut().graphics.generation = self.graphics().generation.wrapping_add(1);
-        self.generation = self.generation.wrapping_add(1);
+        if changed {
+            graphics.generation = graphics.generation.wrapping_add(1);
+            if frame_changed {
+                image.generation = graphics.generation;
+            }
+            self.generation = self.generation.wrapping_add(1);
+        }
         Ok(())
     }
 
     fn graphics_compose(&mut self, id: u32, cmd: &Command) -> Result<(), &'static str> {
-        let image = self
-            .screen_mut()
-            .graphics
+        let graphics = &mut self.screen_mut().graphics;
+        let image = graphics
             .images
             .get_mut(&id)
             .ok_or("ENOENT: image not found")?;
         let source = image
             .frame(cmd.n(b'r') as usize)
-            .ok_or("EINVAL: source frame not found")?
+            .ok_or("ENOENT: source frame not found")?
             .clone();
         let mut canvas = image
             .frame(cmd.n(b'c') as usize)
-            .ok_or("EINVAL: destination frame not found")?
+            .ok_or("ENOENT: destination frame not found")?
             .to_vec();
         let width = if cmd.n(b'w') == 0 {
             image.width
@@ -997,12 +1016,11 @@ impl Terminal {
         let sy = cmd.n(b'Y');
         let dx = cmd.n(b'x');
         let dy = cmd.n(b'y');
-        if sx.saturating_add(width) > image.width
-            || dx.saturating_add(width) > image.width
-            || sy.saturating_add(height) > image.height
-            || dy.saturating_add(height) > image.height
-        {
-            return Err("EINVAL: rectangle out of bounds");
+        if dx.saturating_add(width) > image.width || dy.saturating_add(height) > image.height {
+            return Err("EINVAL: destination rectangle out of bounds");
+        }
+        if sx.saturating_add(width) > image.width || sy.saturating_add(height) > image.height {
+            return Err("EINVAL: source rectangle out of bounds");
         }
         if cmd.n(b'r') == cmd.n(b'c')
             && sx.max(dx) < sx.min(dx).saturating_add(width)
@@ -1022,8 +1040,10 @@ impl Terminal {
             }
         }
         image.set_frame(cmd.n(b'c') as usize, canvas.into());
-        image.generation = image.generation.wrapping_add(1);
-        self.screen_mut().graphics.generation = self.graphics().generation.wrapping_add(1);
+        graphics.generation = graphics.generation.wrapping_add(1);
+        if cmd.n(b'c') as usize - 1 == image.current_frame {
+            image.generation = graphics.generation;
+        }
         self.generation = self.generation.wrapping_add(1);
         Ok(())
     }
@@ -1048,21 +1068,32 @@ impl Terminal {
         let graphics = &mut self.screen_mut().graphics;
         graphics.loading = None;
         if what.eq_ignore_ascii_case(&b'f') {
-            if let Some(image) = graphics.images.get_mut(&image_id) {
-                let frame = cmd.n(b'r') as usize;
-                if frame == 1 && !image.frames.is_empty() {
+            let Some(image) = graphics.images.get_mut(&image_id) else {
+                return;
+            };
+            if image.frames.is_empty() {
+                if !what.is_ascii_uppercase() {
+                    return;
+                }
+                graphics.images.remove(&image_id);
+                graphics.placements.retain(|p| p.image_id != image_id);
+                graphics.reap_orphans();
+            } else {
+                let frame = (cmd.n(b'r') as usize).clamp(1, image.frames.len() + 1);
+                if frame == 1 {
                     let first = image.frames.remove(0);
                     image.pixels = first.pixels;
                     image.root_gap_ms = first.gap_ms;
-                } else if frame >= 2 && frame <= image.frames.len() + 1 {
+                } else {
                     image.frames.remove(frame - 2);
-                } else if frame == 1 && what.is_ascii_uppercase() {
-                    graphics.images.remove(&image_id);
-                    graphics.placements.retain(|p| p.image_id != image_id);
                 }
-                if let Some(image) = graphics.images.get_mut(&image_id) {
+                let removed = frame - 1;
+                if removed == image.current_frame {
                     image.current_frame = image.current_frame.min(image.frames.len());
                     image.frame_shown_at_ms = None;
+                    image.generation = graphics.generation.wrapping_add(1);
+                } else if removed < image.current_frame {
+                    image.current_frame -= 1;
                 }
             }
         } else {
@@ -1234,7 +1265,14 @@ fn decode_image(cmd: &Command, mut data: Vec<u8>) -> Result<(u32, u32, Vec<u8>),
             32 => 4,
             _ => return Err("EINVAL: unsupported format"),
         };
-        if data.len() != width as usize * height as usize * bpp {
+        let expected = width as usize * height as usize * bpp;
+        if cmd.action() == b'f' {
+            if data.len() < expected {
+                return Err("ENODATA: insufficient data");
+            }
+            // Kitty accepts excess raw animation data, unlike ordinary images.
+            data.truncate(expected);
+        } else if data.len() != expected {
             return Err("EINVAL: invalid data");
         }
         if bpp == 3 {
@@ -1554,11 +1592,26 @@ mod tests {
             [Effect::Write(b"\x1b_Gi=1,r=2;OK\x1b\\".to_vec())]
         );
         t.feed(b"\x1b_Ga=a,i=1,r=1,z=50,s=3\x1b\\");
+        let generation = t.generation;
+        assert_eq!(t.tick_graphics(100), None);
+        assert_eq!(t.generation, generation);
+        assert_eq!(t.graphics().images[&1].frame_shown_at_ms, None);
+        t.feed(b"\x1b_Ga=p,i=1,C=1\x1b\\");
         assert_eq!(t.tick_graphics(100), Some(150));
+        let generation = t.graphics().images[&1].generation;
+        t.feed(b"\x1b_Ga=a,i=1,c=1,s=3\x1b\\");
+        assert_eq!(t.graphics().images[&1].generation, generation);
+        assert_eq!(t.tick_graphics(125), Some(150));
+        assert_eq!(t.tick_graphics(5), Some(55));
+        assert_eq!(t.graphics().images[&1].frame_shown_at_ms, Some(5));
         t.tick_graphics(150);
         assert_eq!(t.graphics().images[&1].display_pixels(), [0, 255, 0, 255]);
         t.tick_graphics(200);
         assert_eq!(t.graphics().images[&1].display_pixels(), [255, 0, 0, 255]);
+        t.feed(b"\x1b_Ga=d,d=i,i=1\x1b\\");
+        let generation = t.generation;
+        assert_eq!(t.tick_graphics(1000), None);
+        assert_eq!(t.generation, generation);
         t.set_graphics_limit(4);
         assert_eq!(t.graphics().bytes_used(), 0);
     }

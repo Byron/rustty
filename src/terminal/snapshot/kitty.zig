@@ -1774,8 +1774,8 @@ fn decodeLoading(
     // the restored image's fresh one.
     if (frame) |f| loading.frame = .{
         .cmd = f,
-        .image_generation = if (storage.imagePtrByIdOrNumber(id, number)) |img|
-            img.generation
+        .image_identity = if (storage.imagePtrByIdOrNumber(id, number)) |img|
+            img.transmission
         else
             0,
     };

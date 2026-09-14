@@ -63,11 +63,11 @@ pub const LoadingImage = struct {
         /// protocol's requirement that chunks repeat a=f.
         cmd: command.AnimationFrameLoading,
 
-        /// The generation of the target image when the load began.
-        /// A different generation at completion means the image was
+        /// The identity of the target image when the load began.
+        /// A different identity at completion means the image was
         /// replaced or evicted mid-transmission and the frame must be
         /// discarded rather than composed onto the wrong image.
-        image_generation: u64,
+        image_identity: u64,
     };
 
     /// The limits of the Kitty Graphics protocol we should allow.

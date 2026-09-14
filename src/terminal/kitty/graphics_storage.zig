@@ -1750,15 +1750,10 @@ pub const ImageStorage = struct {
         }
 
         // Fix up the current frame.
-        const removed_idx: u32 = if (number == 1) 0 else number - 2;
+        const removed_idx: u32 = number - 1;
         const remaining: u32 = @intCast(anim.frames.items.len);
-        if (anim.current_index > remaining) {
-            anim.current_index = remaining;
-            anim.frame_shown_at_ms = null;
-            self.markImageContentChanged(io, img);
-            return;
-        }
         if (removed_idx == anim.current_index) {
+            anim.current_index = @min(anim.current_index, remaining);
             anim.frame_shown_at_ms = null;
             self.markImageContentChanged(io, img);
         } else {
@@ -4754,6 +4749,46 @@ test "storage: eviction removes orphaned relative placements" {
     try testing.expect(s.imageById(1) == null);
     try testing.expectEqual(@as(usize, 0), s.placements.count());
     try testing.expect(s.imageById(2) != null);
+}
+
+test "storage: frame deletion retains the displayed image unless it was removed" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    const io = testing.io;
+    const Case = struct { current: u32, remove: u32, index: u32, pixel: u8, changed: bool };
+    for ([_]Case{
+        .{ .current = 0, .remove = 2, .index = 0, .pixel = 10, .changed = false },
+        .{ .current = 1, .remove = 2, .index = 1, .pixel = 30, .changed = true },
+        .{ .current = 2, .remove = 2, .index = 1, .pixel = 30, .changed = false },
+        .{ .current = 1, .remove = 1, .index = 0, .pixel = 20, .changed = false },
+    }) |case| {
+        var t = try terminal.Terminal.init(io, alloc, .{ .rows = 2, .cols = 2 });
+        defer t.deinit(alloc);
+        const s = &t.screens.active.kitty_images;
+        const anim = try alloc.create(animation.Animation);
+        anim.* = .{ .current_index = case.current, .frame_shown_at_ms = 100 };
+        for ([_]u8{ 20, 30 }) |value| try anim.frames.append(alloc, .{
+            .data = try alloc.dupe(u8, &.{ value, 0, 0, 255 }),
+            .gap_ms = 40,
+        });
+        try s.addImage(io, alloc, t.screens.active, .{
+            .id = 1,
+            .width = 1,
+            .height = 1,
+            .format = .rgba,
+            .data = .{ .complete = try alloc.dupe(u8, &.{ 10, 0, 0, 255 }) },
+            .animation = anim,
+        });
+        try s.reserveAnimationBytes(io, alloc, t.screens.active, 1, 8);
+        const img = s.images.getPtr(1).?;
+        const generation = img.generation;
+        s.delete(io, alloc, &t, .{ .animation_frames = .{ .image_id = 1, .frame = case.remove, .delete = false } });
+        try testing.expectEqual(case.index, anim.current_index);
+        try testing.expectEqual(case.pixel, img.renderData().bytes().?[0]);
+        try testing.expectEqual(case.changed, img.generation != generation);
+        try testing.expectEqual(if (case.changed) @as(?u64, null) else 100, anim.frame_shown_at_ms);
+        try testing.expectEqual(@as(usize, 8), s.total_bytes);
+    }
 }
 
 test "storage: placeholderTarget lookup" {

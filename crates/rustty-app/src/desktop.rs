@@ -71,6 +71,7 @@ struct Pane {
     started: Instant,
     exit_message: Option<String>,
     links: vt::search::LinkMatcher,
+    mouse_cell: Option<[u16; 2]>,
 }
 impl Pane {
     fn update_saved(&self, saved: &mut SavedPane) -> bool {
@@ -776,6 +777,7 @@ impl App {
                 started,
                 exit_message: None,
                 links: vt::search::LinkMatcher::default(),
+                mouse_cell: None,
             },
         );
         Ok(())
@@ -3318,17 +3320,20 @@ impl App {
         };
         let scale = host.window.scale_factor() as f32;
         let metrics = host.fonts.metrics();
-        let position = (host.mouse - rect.min) * scale
-            - Vec2::new(
-                self.config().window_padding_x.start * scale,
-                (self.config().window_padding_y.start
-                    + if self.tab(host.id).is_some_and(|t| t.panes.len() > 1) {
-                        18.0
-                    } else {
-                        0.0
-                    })
-                    * scale,
-            );
+        let surface = (host.mouse - rect.min) * scale;
+        let padding = [
+            self.config().window_padding_x.start * scale,
+            (self.config().window_padding_y.start
+                + if self.tab(host.id).is_some_and(|t| t.panes.len() > 1) {
+                    18.0
+                } else {
+                    0.0
+                })
+                * scale,
+            self.config().window_padding_x.end * scale,
+            self.config().window_padding_y.end * scale,
+        ];
+        let position = surface - Vec2::new(padding[0], padding[1]);
         let config = &self.loaded.config;
         let Some(pane) = self.panes.get_mut(&id) else {
             return;
@@ -3336,21 +3341,26 @@ impl App {
         let Ok(mut terminal) = pane.session.terminal() else {
             return;
         };
-        let col = (position.x.max(0.0) as usize / metrics.cell_width as usize)
-            .min(terminal.cols as usize - 1);
-        let row = (position.y.max(0.0) as usize / metrics.cell_height as usize)
-            .min(terminal.rows as usize - 1);
-        let event = vt::MouseEvent {
-            action,
-            button,
-            col,
-            row,
-            x: f64::from(position.x),
-            y: f64::from(position.y),
-            modifiers: input::terminal_modifiers(host.modifiers.state()),
-        };
         if terminal.mouse_mode != 0 && !host.modifiers.state().shift_key() {
-            let bytes = terminal.encode_mouse(event);
+            let bytes = terminal.encode_mouse(
+                vt::MouseEvent {
+                    action,
+                    button,
+                    x: f64::from(surface.x),
+                    y: f64::from(surface.y),
+                    modifiers: input::terminal_modifiers(host.modifiers.state()),
+                },
+                vt::MouseEncodeOptions {
+                    screen_size: [
+                        f64::from(rect.width() * scale),
+                        f64::from(rect.height() * scale),
+                    ],
+                    cell_size: [metrics.cell_width, metrics.cell_height],
+                    padding: padding.map(f64::from),
+                    any_button_pressed: host.mouse_button.is_some(),
+                    last_cell: Some(&mut pane.mouse_cell),
+                },
+            );
             drop(terminal);
             self.write(id, bytes);
             // Mouse reporting does not change the local screen; PTY output will repaint it.
@@ -3364,6 +3374,10 @@ impl App {
         {
             return;
         }
+        let col = (position.x.max(0.0) as usize / metrics.cell_width as usize)
+            .min(terminal.cols as usize - 1);
+        let row = (position.y.max(0.0) as usize / metrics.cell_height as usize)
+            .min(terminal.rows as usize - 1);
         let screen = terminal.screen_mut();
         let point = screen
             .viewport()

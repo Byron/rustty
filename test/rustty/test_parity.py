@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 import parity
+import osc_requests
 
 
 class HarnessTests(unittest.TestCase):
@@ -93,6 +94,24 @@ class HarnessTests(unittest.TestCase):
         for request in requests:
             for variant in parity.variants(request, exhaustive=True):
                 self.assertEqual(data, b"".join(bytes.fromhex(op["data"]) for op in variant["operations"]))
+
+    def test_direct_osc_corpus_preserves_selector_payload_and_operation(self):
+        records = [b"", b"\x00", b"\x00" + b"52;c;?", b"\x01" + b"7;a\x07b\x9cc",
+                   b"\x02" + b"133;A\x1b]2;raw\x18\x1a", b"\xff" + b"52;c;?"]
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("osc-initial", "osc-cmin"):
+                corpus = root / "test/fuzz-libghostty/corpus" / name
+                corpus.mkdir(parents=True)
+                for index, data in enumerate(records):
+                    (corpus / str(index)).write_bytes(data)
+            requests = list(osc_requests.corpus_requests(root))
+        self.assertEqual(2 * len(records), len(requests))
+        for request, _ in requests:
+            data = records[int(request["id"].rsplit("/", 1)[1])]
+            for variant in parity.variants(request, exhaustive=True):
+                direct = [op for op in variant["operations"] if op["op"] == "osc"]
+                self.assertEqual([{"op": "osc", "data": data.hex()}], direct)
 
     def test_snapshot_checks_uninterrupted_state_and_decoder_errors(self):
         class Peer:

@@ -192,6 +192,37 @@ fn resize_unwraps_before_growing_the_active_area() {
 }
 
 #[test]
+fn resize_skips_an_empty_wrap_continuation_without_ending_the_line() {
+    let mut terminal = Terminal::new(12, 4, 100);
+    terminal.feed(b"\t");
+    terminal.resize(3, 4);
+    terminal.feed(b"\n");
+    terminal.resize(7, 3);
+    assert_eq!(
+        (terminal.screen().cursor.col, terminal.screen().cursor.row),
+        (1, 1)
+    );
+    assert!(terminal.screen().rows[0].wrapped);
+    assert!(terminal.screen().rows[1].wrap_continuation);
+    invariant(&terminal);
+}
+
+#[test]
+fn resize_retains_blank_cells_copied_from_a_wrapped_source_row() {
+    let mut terminal = Terminal::new(20, 4, 100);
+    terminal.feed(b"abcdefgh\t");
+    terminal.resize(14, 8);
+    terminal.feed(b"\x1b[H");
+    terminal.resize(6, 2);
+    assert_eq!(terminal.screen().history.len(), 1);
+    assert_eq!(terminal.screen().history[0].text(), "abcdef");
+    assert_eq!(lines(&terminal), ["gh", ""]);
+    assert!(terminal.screen().rows[0].wrapped);
+    assert!(terminal.screen().rows[1].wrap_continuation);
+    invariant(&terminal);
+}
+
+#[test]
 fn resize_remaps_saved_cursor_separately_from_the_live_cursor() {
     let mut t = Terminal::new(12, 4, 100);
     t.feed(b"abcdefghi\n\x1b[?1049h");
@@ -201,6 +232,45 @@ fn resize_remaps_saved_cursor_separately_from_the_live_cursor() {
     // Ghostty clamps saved positions in blank columns using the preceding
     // reflow row's remaining width; the live cursor preserves its blanks.
     assert_eq!((t.screen().cursor.col, t.screen().cursor.row), (7, 1));
+}
+
+#[test]
+fn resize_retains_the_inactive_viewport_pin_before_saved_and_external_pins() {
+    for track in [false, true] {
+        let mut terminal = Terminal::new(12, 4, 100);
+        terminal.feed(b"\t\n");
+        let point = terminal.screen().point(1, 8).unwrap();
+        let pin = track.then(|| terminal.screen_mut().track(point));
+        terminal.feed(b"\x1b[?1049h");
+        terminal.resize(6, 4);
+        if let Some(pin) = pin {
+            assert_eq!(terminal.primary_screen().resolve(pin).unwrap().col, 4);
+        }
+        terminal.feed(b"\x1b[?1049l");
+        assert_eq!(
+            (terminal.screen().cursor.col, terminal.screen().cursor.row),
+            (4, 1)
+        );
+        invariant(&terminal);
+    }
+}
+
+#[test]
+fn widening_without_reflow_preserves_spacer_attributes() {
+    for initial_columns in [4, 8] {
+        let mut terminal = Terminal::new(initial_columns, 3, 100);
+        terminal.feed(b"\x1b[?1049h");
+        terminal.resize(4, 3);
+        terminal.feed("\x1b[1;31;44m\x1b]8;id=wide;https://example.org\x1b\\abc界".as_bytes());
+        let mut expected = terminal.screen().rows[0].cells[3].clone();
+        assert!(expected.spacer_head);
+        expected.spacer_head = false;
+
+        terminal.resize(6, 3);
+        assert_eq!(terminal.screen().rows[0].cells[3], expected);
+        assert!(!terminal.screen().rows[1].wrap_continuation);
+        invariant(&terminal);
+    }
 }
 
 #[test]

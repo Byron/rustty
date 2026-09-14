@@ -2,7 +2,7 @@
 //!
 //! The encoder streams active rows before history. Decode budgets bound record
 //! sizes and the total cells restored. Native PAGE capacities bound style
-//! admission and grapheme suffix storage; hyperlink accounting remains incomplete.
+//! admission, grapheme suffix storage and live hyperlink string ownership.
 //! Version 1 excludes graphics and selection.
 //! Physical PAGE widths are preserved on restore and during in-bounds edits.
 //! Column resizes reflow them; edits beyond a narrow row extend it safely.
@@ -10,7 +10,7 @@ use crate::modes::Modes;
 use crate::page_layout::PageCapacity;
 use crate::page_list::PageList;
 use crate::page_resources::{
-    BitmapAllocator, HyperlinkAdmission, SetAdmission, StyleAdmission, hyperlink_hash,
+    GraphemeAdmission, Hyperlink as Link, HyperlinkAdmission, HyperlinkFull, StyleAdmission,
 };
 use crate::screen::{Charset, CharsetState, KittyKeyboard, SavedCursor};
 use crate::{
@@ -126,36 +126,7 @@ fn style(out: &mut Vec<u8>, value: Style) {
     out.extend_from_slice(&[0, 0]);
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct Link {
-    id: HyperlinkId,
-    uri: Vec<u8>,
-}
 impl Link {
-    fn from_cell(cell: &Cell) -> Option<Self> {
-        cell.hyperlink.as_ref().map(|uri| Self {
-            id: cell
-                .hyperlink_id
-                .clone()
-                .unwrap_or(HyperlinkId::Implicit(0)),
-            uri: cell
-                .hyperlink_raw
-                .clone()
-                .unwrap_or_else(|| uri.as_bytes().to_vec()),
-        })
-    }
-    fn from_cursor(cursor: &Cursor) -> Option<Self> {
-        cursor.hyperlink.as_ref().map(|uri| Self {
-            id: cursor
-                .hyperlink_id
-                .clone()
-                .unwrap_or(HyperlinkId::Implicit(0)),
-            uri: cursor
-                .hyperlink_raw
-                .clone()
-                .unwrap_or_else(|| uri.as_bytes().to_vec()),
-        })
-    }
     fn validate(&self) -> io::Result<()> {
         if self.uri.is_empty() {
             return Err(invalid("empty snapshot hyperlink URI"));
@@ -338,7 +309,7 @@ fn encode_screen(screen: &Screen, key: usize, page_count: usize) -> io::Result<V
 fn encoding_capacity(
     mut capacity: PageCapacity,
     styles: Option<&[Style]>,
-    links: &[Link],
+    links: Option<&[Link]>,
     linked_cells: usize,
     suffixes: &[(usize, usize, Vec<u32>)],
 ) -> io::Result<PageCapacity> {
@@ -352,16 +323,11 @@ fn encoding_capacity(
     if suffixes.iter().any(|(_, _, cps)| cps.len() > 64) {
         return Err(invalid("snapshot grapheme exceeds the native suffix limit"));
     }
-    for link in links {
+    for link in links.unwrap_or_default() {
         link.validate()?;
     }
-    // ponytail: live resource growth/splitting is not yet in the page ledger.
-    // Until those mutation hooks exist, grow only emitted hints as needed to
-    // keep native decode from silently discarding owned cell resources.
-    let link_hashes: Vec<_> = links
-        .iter()
-        .map(|link| hyperlink_hash(&link.id, &link.uri))
-        .collect();
+    // Public detached cell values need sufficient admission hints. Owned
+    // style/link tables already carry the native capacity and insertion IDs.
     loop {
         let layout = capacity
             .layout()
@@ -372,42 +338,33 @@ fn encoding_capacity(
             capacity.styles = grow(u32::from(capacity.styles), u32::from(u16::MAX))? as u16;
             changed = true;
         }
-        let mut link_set = SetAdmission::new(layout.hyperlink_set_layout);
-        if linked_cells > layout.hyperlink_map_layout.capacity as usize * 80 / 100
-            || !links
+        if let Some(links) = links {
+            let limit = layout.hyperlink_map_layout.capacity as usize * 80 / 100;
+            let mut admission = HyperlinkAdmission::new(
+                layout.hyperlink_set_layout,
+                layout.string_alloc_layout,
+                limit,
+            );
+            let result = links
                 .iter()
-                .zip(&link_hashes)
-                .all(|(link, &hash)| link_set.admit_hashed(link, hash))
-        {
-            capacity.hyperlink_bytes =
-                grow(u32::from(capacity.hyperlink_bytes), u32::from(u16::MAX))? as u16;
-            changed = true;
+                .try_for_each(|link| admission.decode(link, true).map(|_| ()));
+            if linked_cells > limit || matches!(result, Err(HyperlinkFull::Set(_))) {
+                capacity.hyperlink_bytes =
+                    grow(u32::from(capacity.hyperlink_bytes), u32::from(u16::MAX))? as u16;
+                changed = true;
+            }
+            if matches!(result, Err(HyperlinkFull::Strings)) {
+                capacity.string_bytes = grow(capacity.string_bytes, u32::MAX)?;
+                changed = true;
+            }
         }
-        let mut strings = BitmapAllocator::<32>::new(layout.string_alloc_layout);
-        if !links.iter().all(|link| {
-            (match &link.id {
-                HyperlinkId::Explicit(id) => strings.alloc(id.len()).is_some(),
-                HyperlinkId::Implicit(_) => true,
-            }) && strings.alloc(link.uri.len()).is_some()
-        }) {
-            capacity.string_bytes = grow(capacity.string_bytes, u32::MAX)?;
-            changed = true;
-        }
-        let mut graphemes = BitmapAllocator::<16>::new(layout.grapheme_alloc_layout);
-        if suffixes.len() > layout.grapheme_map_layout.capacity as usize
-            || !suffixes.iter().all(|(_, _, cps)| {
-                let mut previous = None;
-                for count in (1..=cps.len()).step_by(4) {
-                    let Some(offset) = graphemes.alloc(count * 4) else {
-                        return false;
-                    };
-                    if let Some(previous) = previous {
-                        graphemes.free(previous, (count - 1) * 4);
-                    }
-                    previous = Some(offset);
-                }
-                true
-            })
+        let mut graphemes = GraphemeAdmission::new(
+            layout.grapheme_alloc_layout,
+            layout.grapheme_map_layout.capacity as usize,
+        );
+        if !suffixes
+            .iter()
+            .all(|(_, _, cps)| graphemes.acquire(cps.len() as u8).is_ok())
         {
             capacity.grapheme_bytes = grow(capacity.grapheme_bytes, u32::MAX)?;
             changed = true;
@@ -423,6 +380,7 @@ fn encode_page(
     capacity: PageCapacity,
     columns: u16,
     native_styles: &StyleAdmission,
+    native_links: &HyperlinkAdmission,
 ) -> io::Result<Vec<u8>> {
     if rows
         .iter()
@@ -438,8 +396,12 @@ fn encode_page(
         .collect();
     let mut style_ids: HashMap<_, _> = styles.iter().map(|(id, value)| (*value, *id)).collect();
     let mut owned_styles = true;
-    let mut links = Vec::new();
-    let mut link_ids = HashMap::new();
+    let mut links: Vec<_> = native_links
+        .iter()
+        .map(|(id, link)| (usize::from(id), link.clone()))
+        .collect();
+    let mut link_ids: HashMap<_, _> = links.iter().map(|(id, link)| (link.clone(), *id)).collect();
+    let mut owned_links = true;
     let mut page_words = Vec::with_capacity(rows.len());
     let mut suffixes = Vec::new();
     let mut linked_cells = 0;
@@ -495,15 +457,21 @@ fn encode_page(
             };
             let link_id = if cell.hyperlink.is_some() {
                 linked_cells += 1;
-                let link = Link::from_cell(cell).unwrap();
-                *link_ids.entry(link.clone()).or_insert_with(|| {
-                    links.push(link);
-                    links.len()
-                })
+                if cell.link_id != 0 {
+                    usize::from(cell.link_id)
+                } else {
+                    owned_links = false;
+                    let link = Link::from_cell(cell).unwrap();
+                    *link_ids.entry(link.clone()).or_insert_with(|| {
+                        let id = links.last().map_or(1, |(id, _)| id + 1);
+                        links.push((id, link));
+                        id
+                    })
+                }
             } else {
                 0
             };
-            if style_id > u16::MAX as usize || link_id > 511 {
+            if style_id > u16::MAX as usize || link_id > u16::MAX as usize {
                 return Err(invalid("snapshot page exceeds native table capacity"));
             }
             let width = if cell.spacer_head {
@@ -532,10 +500,15 @@ fn encode_page(
     } else {
         styles.iter().map(|(_, style)| *style).collect()
     };
+    let fallback_links: Vec<_> = if owned_links {
+        Vec::new()
+    } else {
+        links.iter().map(|(_, link)| link.clone()).collect()
+    };
     let capacity = encoding_capacity(
         capacity,
         (!owned_styles).then_some(fallback_styles.as_slice()),
-        &links,
+        (!owned_links).then_some(fallback_links.as_slice()),
         linked_cells,
         &suffixes,
     )?;
@@ -552,8 +525,8 @@ fn encode_page(
         u16_bytes(&mut out, id)?;
         style(&mut out, value);
     }
-    for (i, value) in links.into_iter().enumerate() {
-        u16_bytes(&mut out, i + 1)?;
+    for (id, value) in links {
+        u16_bytes(&mut out, id)?;
         value.encode(&mut out)?;
     }
     for (row, words) in rows.iter().zip(page_words) {
@@ -627,7 +600,13 @@ pub fn encode(terminal: &Terminal, destination: &mut impl Write) -> io::Result<(
                 record(
                     destination,
                     3,
-                    &encode_page(&rows[start..end], page.capacity, page.columns, &page.styles)?,
+                    &encode_page(
+                        &rows[start..end],
+                        page.capacity,
+                        page.columns,
+                        &page.styles,
+                        &page.links,
+                    )?,
                 )?;
                 start = end;
             }
@@ -656,7 +635,13 @@ pub fn encode(terminal: &Terminal, destination: &mut impl Write) -> io::Result<(
                 record(
                     destination,
                     3,
-                    &encode_page(&rows[start..end], page.capacity, page.columns, &page.styles)?,
+                    &encode_page(
+                        &rows[start..end],
+                        page.capacity,
+                        page.columns,
+                        &page.styles,
+                        &page.links,
+                    )?,
                 )?;
             }
         }
@@ -854,6 +839,8 @@ struct Sequence {
 
 struct DecodedPage {
     styles: StyleAdmission,
+    graphemes: GraphemeAdmission,
+    links: HyperlinkAdmission,
     capacity: PageCapacity,
     rows: Vec<Row>,
 }
@@ -1202,8 +1189,10 @@ impl<R: Read> Decoder<R> {
             pages.append(page.capacity, page.rows.len() as u16);
             let resident = pages.pages.back_mut().unwrap();
             resident.styles = page.styles;
+            resident.graphemes = page.graphemes;
+            resident.links = page.links;
             for row in &mut page.rows {
-                row.style_page = Some(resident.serial);
+                row.resource_page = Some(resident.serial);
             }
             contents.extend(page.rows);
         }
@@ -1221,7 +1210,7 @@ impl<R: Read> Decoder<R> {
         screen.history = contents.into();
         screen.history_bytes = screen.history.iter().map(Row::storage_bytes).sum();
         screen.pages = pages;
-        screen.sync_cursor_style();
+        screen.sync_cursor_resources();
         Ok((key, screen, extent))
     }
 
@@ -1268,20 +1257,22 @@ impl<R: Read> Decoder<R> {
             }
         }
         let mut links = HashMap::new();
-        let mut link_admission =
-            HyperlinkAdmission::new(layout.hyperlink_set_layout, layout.string_alloc_layout);
+        let mut link_admission = HyperlinkAdmission::new(
+            layout.hyperlink_set_layout,
+            layout.string_alloc_layout,
+            layout.hyperlink_map_layout.capacity as usize * 80 / 100,
+        );
         for _ in 0..link_count {
             let id = r.u16()?;
             let retain = id != 0 && !links.contains_key(&id);
             let value = decode_link(&mut r, false)?
-                .filter(|link| link_admission.admit(&link.id, &link.uri, retain));
+                .and_then(|link| link_admission.decode(&link, retain).ok())
+                .unwrap_or(0);
             if retain {
                 links.insert(id, value);
             }
         }
         let mut result = Vec::with_capacity(rows);
-        let mut linked_cells = 0;
-        let link_cell_limit = layout.hyperlink_map_layout.capacity as usize * 80 / 100;
         for y in 0..rows {
             let flags = r.u8()?;
             let count = usize::from(r.u16()?);
@@ -1335,11 +1326,12 @@ impl<R: Read> Decoder<R> {
                 cell.protected = word & (1 << 44) != 0;
                 cell.semantic = decode_semantic(((word >> 46) & 3) as u8);
                 let id = (word >> 48) as u16;
-                if let Some(Some(link)) = links.get(&id)
-                    && linked_cells < link_cell_limit
+                if let Some(&id) = links.get(&id)
+                    && id != 0
+                    && link_admission.retain_cell(id).is_ok()
                 {
-                    assign_link(cell, link);
-                    linked_cells += 1;
+                    assign_link(cell, link_admission.get(id));
+                    cell.link_id = id;
                 }
             }
             for x in 0..cols {
@@ -1358,7 +1350,10 @@ impl<R: Read> Decoder<R> {
             result.push(row);
         }
         let entries = r.u32()?;
-        let mut graphemes = BitmapAllocator::<16>::new(layout.grapheme_alloc_layout);
+        let mut graphemes = GraphemeAdmission::new(
+            layout.grapheme_alloc_layout,
+            layout.grapheme_map_layout.capacity as usize,
+        );
         let mut assigned = std::collections::HashSet::new();
         for _ in 0..entries {
             let row = usize::from(r.u16()?);
@@ -1373,44 +1368,24 @@ impl<R: Read> Decoder<R> {
                 && !cell.text.is_empty()
                 && !assigned.contains(&(row, col))
             {
-                let base_len = cell.text.len();
-                let mut suffix_len = 0;
-                let mut allocation = None;
-                for bytes in bytes.as_chunks::<4>().0.iter() {
-                    if let Some(cp) = char::from_u32(u32::from_le_bytes(*bytes))
-                        && cp != '\0'
-                        && suffix_len < 64
-                    {
-                        // Appending grows in four-codepoint chunks. Reserve
-                        // the replacement before freeing its old run so native
-                        // fragmentation and mid-cluster failures are preserved.
-                        if suffix_len % 4 == 0 {
-                            let next = graphemes.alloc((suffix_len + 1) * 4);
-                            if next.is_none()
-                                || (suffix_len == 0
-                                    && assigned.len()
-                                        >= layout.grapheme_map_layout.capacity as usize)
-                            {
-                                if let Some(offset) = next {
-                                    graphemes.free(offset, (suffix_len + 1) * 4);
-                                }
-                                if let Some(offset) = allocation {
-                                    graphemes.free(offset, suffix_len * 4);
-                                }
-                                cell.text.truncate(base_len);
-                                suffix_len = 0;
-                                break;
-                            }
-                            if let Some(offset) = allocation {
-                                graphemes.free(offset, suffix_len * 4);
-                            }
-                            allocation = next;
-                        }
-                        cell.text.push(cp);
-                        suffix_len += 1;
-                    }
+                let mut suffix = ['\0'; 64];
+                let mut len = 0;
+                for cp in bytes
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .filter_map(|bytes| char::from_u32(u32::from_le_bytes(*bytes)))
+                    .filter(|&cp| cp != '\0')
+                    .take(suffix.len())
+                {
+                    suffix[len] = cp;
+                    len += 1;
                 }
-                if suffix_len > 0 {
+                if len > 0
+                    && let Ok(allocation) = graphemes.acquire(len as u8)
+                {
+                    cell.grapheme = Some(allocation);
+                    cell.text.extend(&suffix[..len]);
                     assigned.insert((row, col));
                 }
             }
@@ -1421,8 +1396,15 @@ impl<R: Read> Decoder<R> {
         for (_, id) in temporary {
             style_admission.release(id);
         }
+        let mut temporary: Vec<_> = links.into_iter().collect();
+        temporary.sort_unstable_by_key(|(wire_id, _)| *wire_id);
+        for (_, id) in temporary {
+            link_admission.release(id);
+        }
         Ok(DecodedPage {
             styles: style_admission,
+            graphemes,
+            links: link_admission,
             capacity,
             rows: result,
         })
@@ -1477,8 +1459,10 @@ impl<R: Read> Decoder<R> {
                         screen.pages.prepend(page.capacity, count as u16);
                         let resident = screen.pages.pages.front_mut().unwrap();
                         resident.styles = page.styles;
+                        resident.graphemes = page.graphemes;
+                        resident.links = page.links;
                         for row in &mut rows {
-                            row.style_page = Some(resident.serial);
+                            row.resource_page = Some(resident.serial);
                             row.id = screen.next_row;
                             screen.next_row = screen.next_row.wrapping_add(1);
                         }

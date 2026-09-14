@@ -3,7 +3,6 @@ use crate::query::{self, Query};
 use crate::screen::*;
 use crate::unicode::{self, properties};
 use crate::{clipboard, dnd};
-use base64::Engine;
 use rustty_parser::{Event, MAX_OSC_BYTES, Parser};
 
 /// Host actions are returned in input order. The terminal never accesses the OS.
@@ -328,50 +327,83 @@ impl Terminal {
         let write_enabled = handler.clipboard_write_enabled();
         parser.advance(bytes, |event| {
             self.handle(event, &mut effects, write_enabled, read_enabled);
-            for effect in effects.drain(..) {
-                match effect {
-                    Effect::DragAndDrop(event) => {
-                        handler.drag_and_drop(event, self.kitty_dnd.as_ref());
-                    }
-                    Effect::ClipboardRead(request) => {
-                        let result = if read_enabled {
-                            handler.clipboard_read(&request)
-                        } else if request.protocol == clipboard::Protocol::Osc52 {
-                            continue;
-                        } else {
-                            clipboard::ReadResult::Denied
-                        };
-                        handler.effect(Effect::Write(self.reply_clipboard_read(request, result)));
-                    }
-                    Effect::ClipboardWrite(request) => {
-                        if write_enabled {
-                            let result = handler.clipboard_write(&request);
-                            if let Some(reply) = self.reply_clipboard_write(request, result) {
-                                handler.effect(Effect::Write(reply));
-                            }
-                        }
-                    }
-                    Effect::Query(query) => {
-                        let reply = match query {
-                            Query::ColorScheme => {
-                                handler.color_scheme().map(query::ColorScheme::encode)
-                            }
-                            Query::DeviceAttributes(kind) => {
-                                handler.device_attributes().map(|a| a.encode(kind))
-                            }
-                            Query::Enquiry => query::enquiry(&handler.enquiry()),
-                            Query::Size(style) => handler.size().map(|s| s.encode(style)),
-                            Query::Xtversion => query::xtversion(&handler.xtversion()),
-                        };
-                        if let Some(reply) = reply {
+            self.dispatch_effects(effects.drain(..), handler, write_enabled, read_enabled);
+        });
+        self.parser = parser;
+    }
+
+    /// Dispatch one complete OSC payload, including its numeric prefix, without
+    /// VT stream framing. Control bytes are data; `None` represents a missing
+    /// terminator and uses ST for replies. Command capture limits still apply.
+    /// The streaming parser and any unfinished escape sequence are unchanged.
+    pub fn feed_osc_with_handler(
+        &mut self,
+        data: &[u8],
+        terminator: Option<u8>,
+        handler: &mut impl EffectHandler,
+    ) {
+        let mut effects = Vec::new();
+        let read_enabled = handler.clipboard_read_enabled();
+        let write_enabled = handler.clipboard_write_enabled();
+        self.osc(
+            data,
+            terminator == Some(0x07),
+            &mut effects,
+            write_enabled,
+            read_enabled,
+        );
+        self.dispatch_effects(effects.into_iter(), handler, write_enabled, read_enabled);
+    }
+
+    fn dispatch_effects(
+        &mut self,
+        effects: impl Iterator<Item = Effect>,
+        handler: &mut impl EffectHandler,
+        write_enabled: bool,
+        read_enabled: bool,
+    ) {
+        for effect in effects {
+            match effect {
+                Effect::DragAndDrop(event) => {
+                    handler.drag_and_drop(event, self.kitty_dnd.as_ref());
+                }
+                Effect::ClipboardRead(request) => {
+                    let result = if read_enabled {
+                        handler.clipboard_read(&request)
+                    } else if request.protocol == clipboard::Protocol::Osc52 {
+                        continue;
+                    } else {
+                        clipboard::ReadResult::Denied
+                    };
+                    handler.effect(Effect::Write(self.reply_clipboard_read(request, result)));
+                }
+                Effect::ClipboardWrite(request) => {
+                    if write_enabled {
+                        let result = handler.clipboard_write(&request);
+                        if let Some(reply) = self.reply_clipboard_write(request, result) {
                             handler.effect(Effect::Write(reply));
                         }
                     }
-                    effect => handler.effect(effect),
                 }
+                Effect::Query(query) => {
+                    let reply = match query {
+                        Query::ColorScheme => {
+                            handler.color_scheme().map(query::ColorScheme::encode)
+                        }
+                        Query::DeviceAttributes(kind) => {
+                            handler.device_attributes().map(|a| a.encode(kind))
+                        }
+                        Query::Enquiry => query::enquiry(&handler.enquiry()),
+                        Query::Size(style) => handler.size().map(|s| s.encode(style)),
+                        Query::Xtversion => query::xtversion(&handler.xtversion()),
+                    };
+                    if let Some(reply) = reply {
+                        handler.effect(Effect::Write(reply));
+                    }
+                }
+                effect => handler.effect(effect),
             }
-        });
-        self.parser = parser;
+        }
     }
 
     /// Complete a deferred clipboard request, including an optional grant.
@@ -443,10 +475,10 @@ impl Terminal {
         self.primary
             .resize(cols.into(), rows.into(), self.modes.dec(7));
         self.primary.clear_prompt_for_redraw(prompt_redraw);
-        self.primary.sync_cursor_style();
+        self.primary.sync_cursor_resources();
         if let Some(alt) = &mut self.alternate {
             alt.resize(cols.into(), rows.into(), false);
-            alt.sync_cursor_style();
+            alt.sync_cursor_resources();
         }
         if cols != self.cols {
             self.tabstops = (0..cols).map(|i| i > 0 && i % 8 == 0).collect();
@@ -655,10 +687,7 @@ impl Terminal {
     }
 
     fn end_hyperlink(&mut self) {
-        let cursor = &mut self.screen_mut().cursor;
-        cursor.hyperlink = None;
-        cursor.hyperlink_id = None;
-        cursor.hyperlink_raw = None;
+        self.screen_mut().end_hyperlink();
     }
 
     pub fn plain_text(&self) -> String {
@@ -682,7 +711,7 @@ impl Terminal {
     }
 
     pub(crate) fn changed(&mut self) {
-        self.screen_mut().sync_cursor_style();
+        self.screen_mut().sync_cursor_resources();
         self.generation = self.generation.wrapping_add(1);
     }
     fn reset_margins(&mut self) {
@@ -959,8 +988,14 @@ impl Terminal {
                 self.put_cell(String::new(), 1, right == self.cols as usize - 1);
             }
             self.print_wrap();
+            let source_col = col;
             col = self.screen().cursor.col;
-            self.put_cell(cell.text, width, false);
+            let base_len = cell.text.chars().next().map_or(0, char::len_utf8);
+            self.put_cell(cell.text[..base_len].to_owned(), width, false);
+            if base_len < cell.text.len() {
+                self.screen_mut()
+                    .move_wrapped_grapheme(source_col, &cell.text[base_len..]);
+            }
         } else if width != old_width {
             if width == 2 {
                 // Widening writes a spacer tail, which consumes the shift.
@@ -973,14 +1008,13 @@ impl Terminal {
                     if width == 2 {
                         row.cells[col + 1] = row.cells[col].clone();
                         row.cells[col + 1].text.clear();
+                        row.cells[col + 1].grapheme = None;
                         row.cells[col + 1].width = 0;
                     }
                 }
             });
         }
-        let row = self.screen().cursor.row;
-        self.screen_mut().rows[row].cells[col].text.push(cp);
-        self.screen_mut().rows[row].dirty = true;
+        let _ = self.screen_mut().append_grapheme(col, cp);
         if width != old_width {
             self.screen_mut().cursor.col = (col + width as usize).min(right);
             self.screen_mut().cursor.pending_wrap =
@@ -990,6 +1024,7 @@ impl Terminal {
     }
 
     fn put_cell(&mut self, mut text: String, width: u8, spacer_head: bool) {
+        self.screen_mut().sync_cursor_resources();
         // Map only when writing a cell. Width, combining behavior, and REP
         // use the original scalar; even an empty spacer consumes one shift.
         let charset = &mut self.screen_mut().charset;
@@ -1025,6 +1060,8 @@ impl Terminal {
         let row = &mut self.screen_mut().rows[cursor.row];
         let cell = Cell {
             style_id,
+            link_id: 0,
+            grapheme: None,
             text,
             width,
             style: cursor.style,
@@ -1044,6 +1081,15 @@ impl Terminal {
             };
         }
         row.dirty = true;
+        if self.screen().rows[cursor.row].cells[cursor.col]
+            .hyperlink
+            .is_some()
+        {
+            self.screen_mut().set_cell_cursor_hyperlink(cursor.col);
+            if width == 2 {
+                self.screen_mut().set_cell_cursor_hyperlink(cursor.col + 1);
+            }
+        }
     }
 
     fn print_wrap(&mut self) {
@@ -1216,7 +1262,7 @@ impl Terminal {
             && cursor.col >= self.margins.left
             && cursor.col <= self.margins.right
         {
-            self.scroll_down(1);
+            self.scroll_region(1, false);
         } else {
             self.cursor_vertical(1, false);
         }
@@ -1339,7 +1385,41 @@ impl Terminal {
         screen.rows.insert(m.bottom, blank);
         screen.discard_row(row.id);
         screen.install_row_copies(copies, Some(row));
-        screen.sync_style_pages(false);
+        screen.sync_resource_pages(false);
+    }
+
+    fn scrolls_above_cursor(&self) -> bool {
+        let m = self.margins;
+        m.top == 0
+            && m.left == 0
+            && m.right + 1 == usize::from(self.cols)
+            && (self.screen().limits.bytes != Some(0) || m.bottom + 1 == usize::from(self.rows))
+    }
+
+    /// SU/SD temporarily move to a margin before doing the row operation.
+    /// Even though the visible cursor returns, those page crossings migrate
+    /// its resources and renew implicit hyperlink identities.
+    fn scroll_region(&mut self, count: usize, up: bool) {
+        let cursor = &self.screen().cursor;
+        let saved = (cursor.col, cursor.row, cursor.pending_wrap);
+        let (col, row) = if up && self.scrolls_above_cursor() {
+            (0, self.margins.bottom)
+        } else {
+            (self.margins.left, self.margins.top)
+        };
+        self.ensure_row_cells(row, col + 1);
+        self.screen_mut().cursor.col = col;
+        self.screen_mut().cursor.row = row;
+        self.screen_mut().sync_cursor_resources();
+        if up {
+            self.scroll_up(count, true)
+        } else {
+            self.scroll_down(count)
+        }
+        self.ensure_row_cells(saved.1, saved.0 + 1);
+        let cursor = &mut self.screen_mut().cursor;
+        (cursor.col, cursor.row, cursor.pending_wrap) = saved;
+        self.screen_mut().sync_cursor_resources();
     }
 
     fn scroll_up(&mut self, count: usize, history: bool) {
@@ -1349,9 +1429,8 @@ impl Terminal {
         let cols = self.cols as usize;
         let bg = self.screen().cursor.style.background;
         let full = m.left == 0 && m.right == cols - 1;
-        let alternate = self.alternate_active;
-        let shift_history =
-            history && m.top == 0 && full && (!alternate || m.bottom + 1 == usize::from(self.rows));
+        let no_scrollback = self.screen().limits.bytes == Some(0);
+        let shift_history = history && self.scrolls_above_cursor();
         if !shift_history {
             self.prepare_row_shift();
         }
@@ -1374,7 +1453,7 @@ impl Terminal {
                             )
                         })
                         .collect()
-                } else if alternate {
+                } else if no_scrollback {
                     // The no-scrollback fast path clamps pins scrolled off
                     // the top to the first surviving row.
                     [(
@@ -1416,10 +1495,10 @@ impl Terminal {
                         );
                     }
                 } else {
-                    screen.release_row_styles(&row);
+                    screen.release_row_resources(&row);
                     screen.discard_row(row.id);
                 }
-                screen.sync_style_pages(false);
+                screen.sync_resource_pages(false);
             } else {
                 for y in m.top..m.bottom {
                     self.copy_row_region(y + 1, y, m.left, m.right + 1, bg);
@@ -1457,10 +1536,10 @@ impl Terminal {
                     .collect();
                 screen.remap_grid_rows(&pins);
                 let row = screen.rows.remove(m.bottom);
-                screen.release_row_styles(&row);
+                screen.release_row_resources(&row);
                 screen.discard_row(row.id);
                 screen.rows.insert(m.top, blank);
-                screen.sync_style_pages(true);
+                screen.sync_resource_pages(true);
             } else {
                 for y in (m.top + 1..=m.bottom).rev() {
                     self.copy_row_region(y - 1, y, m.left, m.right + 1, bg);
@@ -1483,26 +1562,29 @@ impl Terminal {
                 screen.history.len() + m.bottom,
             );
         }
-        for row in &mut self.screen_mut().rows[m.top..=m.bottom] {
-            if m.left == 0 && right_edge {
-                row.wrapped = false;
-                row.wrap_continuation = false;
-            }
-            if (right_edge || m.left < 2)
-                && let Some(cell) = row.cells.last_mut()
-            {
-                cell.spacer_head = false;
-            }
-            // Split glyphs lose their text, but the cells outside the moved
-            // region retain their attributes and hyperlink identity.
-            for boundary in [m.left, m.right + 1] {
-                if boundary > 0 && row.cells.get(boundary).is_some_and(|cell| cell.width == 0) {
-                    row.cells[boundary - 1].text.clear();
-                    row.cells[boundary - 1].width = 1;
-                    row.cells[boundary].width = 1;
+        for y in m.top..=m.bottom {
+            self.screen_mut().edit_row(y, |row| {
+                if m.left == 0 && right_edge {
+                    row.wrapped = false;
+                    row.wrap_continuation = false;
                 }
-            }
-            row.dirty = true;
+                if (right_edge || m.left < 2)
+                    && let Some(cell) = row.cells.last_mut()
+                {
+                    cell.spacer_head = false;
+                }
+                // Split glyphs lose their text, but the cells outside the moved
+                // region retain their attributes and hyperlink identity.
+                for boundary in [m.left, m.right + 1] {
+                    if boundary > 0 && row.cells.get(boundary).is_some_and(|cell| cell.width == 0) {
+                        row.cells[boundary - 1].text.clear();
+                        row.cells[boundary - 1].grapheme = None;
+                        row.cells[boundary - 1].width = 1;
+                        row.cells[boundary].width = 1;
+                    }
+                }
+                row.dirty = true;
+            });
         }
     }
 
@@ -1911,7 +1993,7 @@ impl Terminal {
                 };
                 self.screen_mut().release_cursor_style();
                 self.screen_mut().cursor.style = style;
-                self.screen_mut().sync_cursor_style();
+                self.screen_mut().sync_cursor_resources();
                 self.modes.set(true, 6, false);
                 self.reset_margins();
                 self.cursor_position(1, 1);
@@ -1921,7 +2003,7 @@ impl Terminal {
                 }
                 for y in 0..usize::from(self.rows) {
                     self.screen_mut().cursor.row = y;
-                    self.screen_mut().sync_cursor_style();
+                    self.screen_mut().sync_cursor_resources();
                     let count = self.screen().rows[y].cells.len();
                     let mut style_id = 0;
                     for _ in 0..count {
@@ -2085,11 +2167,7 @@ impl Terminal {
             ([], b'S' | b'T') => {
                 // Scrolling defaults to one only when the parameter is omitted.
                 if p.is_empty() || n != 0 {
-                    if byte == b'S' {
-                        self.scroll_up(count, true);
-                    } else {
-                        self.scroll_down(count);
-                    }
+                    self.scroll_region(count, byte == b'S');
                 }
             }
             ([], b'b') => {
@@ -2335,19 +2413,7 @@ impl Terminal {
                     }
                     self.end_hyperlink();
                     if !uri.is_empty() {
-                        let screen = self.screen_mut();
-                        let id = match explicit {
-                            Some(id) => HyperlinkId::Explicit(id.to_vec()),
-                            None => {
-                                let id = screen.metadata.hyperlink_implicit_id;
-                                screen.metadata.hyperlink_implicit_id = id.wrapping_add(1);
-                                HyperlinkId::Implicit(id)
-                            }
-                        };
-                        screen.cursor.hyperlink = Some(String::from_utf8_lossy(uri).into_owned());
-                        screen.cursor.hyperlink_raw =
-                            std::str::from_utf8(uri).is_err().then(|| uri.to_vec());
-                        screen.cursor.hyperlink_id = Some(id);
+                        self.screen_mut().start_hyperlink(uri, explicit);
                     }
                 }
             }
@@ -2364,12 +2430,20 @@ impl Terminal {
             }
             1337 => {
                 if let Some(split) = data.iter().position(|&byte| byte == b'=')
-                    && data[..split].eq_ignore_ascii_case(b"CurrentDir")
                     && split + 1 < data.len()
                 {
-                    let directory = &data[split + 1..];
-                    self.set_working_directory(directory);
-                    effects.push(Effect::WorkingDirectory(directory.to_vec()));
+                    let value = &data[split + 1..];
+                    if data[..split].eq_ignore_ascii_case(b"CurrentDir") {
+                        self.set_working_directory(value);
+                        effects.push(Effect::WorkingDirectory(value.to_vec()));
+                    } else if data[..split].eq_ignore_ascii_case(b"Copy")
+                        && let Some(encoded) = value.strip_prefix(b":")
+                        && !encoded.is_empty()
+                        && let Some(write) =
+                            clipboard::Write::decode_osc52(clipboard::Location::Standard, encoded)
+                    {
+                        effects.push(Effect::ClipboardWrite(write));
+                    }
                 }
             }
             52 => {
@@ -2386,30 +2460,8 @@ impl Terminal {
                                 clipboard::Terminator::St
                             },
                         )));
-                    } else {
-                        let engine = base64::engine::general_purpose::GeneralPurpose::new(
-                            &base64::alphabet::STANDARD,
-                            base64::engine::general_purpose::GeneralPurposeConfig::new()
-                                .with_decode_allow_trailing_bits(true)
-                                .with_decode_padding_mode(if encoded.ends_with(b"=") {
-                                    base64::engine::DecodePaddingMode::RequireCanonical
-                                } else {
-                                    base64::engine::DecodePaddingMode::RequireNone
-                                }),
-                        );
-                        if let Ok(data) = engine.decode(encoded) {
-                            let contents = if encoded.is_empty() {
-                                Vec::new()
-                            } else {
-                                vec![clipboard::Content {
-                                    mime: b"text/plain".to_vec(),
-                                    data: data.into(),
-                                }]
-                            };
-                            effects.push(Effect::ClipboardWrite(clipboard::Write::osc52(
-                                location, contents,
-                            )));
-                        }
+                    } else if let Some(write) = clipboard::Write::decode_osc52(location, encoded) {
+                        effects.push(Effect::ClipboardWrite(write));
                     }
                 }
             }

@@ -620,6 +620,14 @@ const TestUserData = struct {
 };
 
 test {
+    try testSearchThread(false);
+}
+
+test "search thread joins after a caller error" {
+    try testing.expectError(error.TestCallerFailure, testSearchThread(true));
+}
+
+fn testSearchThread(fail_after_spawn: bool) !void {
     const alloc = testing.allocator;
     const io = testing.io;
     var mutex: std.Io.Mutex = .init;
@@ -640,29 +648,34 @@ test {
     });
     defer thread.deinit();
 
-    var os_thread = try std.Thread.spawn(
-        .{},
-        threadMain,
-        .{&thread},
-    );
+    {
+        const os_thread = try std.Thread.spawn(
+            .{},
+            threadMain,
+            .{&thread},
+        );
+        // Timeout and setup errors must join before deinit closes the loop's
+        // descriptors or releases the terminal and callback state.
+        defer {
+            thread.stop.notify() catch unreachable;
+            os_thread.join();
+        }
+        if (fail_after_spawn) return error.TestCallerFailure;
 
-    // Start our search
-    _ = thread.mailbox.push(
-        io,
-        .{ .change_needle = try .init(
-            alloc,
-            @as([]const u8, "world"),
-        ) },
-        .forever,
-    );
-    try thread.wakeup.notify();
+        // Start our search
+        _ = thread.mailbox.push(
+            io,
+            .{ .change_needle = try .init(
+                alloc,
+                @as([]const u8, "world"),
+            ) },
+            .forever,
+        );
+        try thread.wakeup.notify();
 
-    // Wait for completion
-    try ud.reset.waitTimeout(testing.io, .{ .duration = .{ .clock = .awake, .raw = .fromMilliseconds(100) } });
-
-    // Stop the thread
-    try thread.stop.notify();
-    os_thread.join();
+        // Bound failures without treating scheduling latency as search speed.
+        try ud.reset.waitTimeout(testing.io, .{ .duration = .{ .clock = .awake, .raw = .fromSeconds(1) } });
+    }
 
     // 1 total matches
     try testing.expectEqual(1, ud.total);

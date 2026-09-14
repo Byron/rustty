@@ -1,11 +1,11 @@
 //! Page resource allocation offsets without native backing memory.
 use crate::page_layout::{BitmapLayout, SetLayout};
-use crate::screen::Style;
+use crate::screen::{Cell, Cursor, HyperlinkId, Style};
 
 /// Native PAGE set bookkeeping, shared by snapshot admission and live styles.
 /// Dead IDs retain their buckets until admission reclaims them or the page is
 /// cloned. In particular, releasing a reference does not rehash the table.
-#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SetAdmission<T> {
     table: Vec<u16>,
     entries: Vec<SetEntry<T>>,
@@ -13,6 +13,19 @@ pub(crate) struct SetAdmission<T> {
     max_psl: u8,
     psl_stats: [u16; 32],
     living: usize,
+}
+
+impl<T> Default for SetAdmission<T> {
+    fn default() -> Self {
+        Self {
+            table: Vec::new(),
+            entries: Vec::new(),
+            capacity: 0,
+            max_psl: 0,
+            psl_stats: [0; 32],
+            living: 0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -104,15 +117,21 @@ impl<T: Eq> SetAdmission<T> {
             .map(|(index, entry)| ((index + 1) as u16, entry.value.as_ref().unwrap()))
     }
 
+    #[cfg(test)]
     pub fn admit_hashed(&mut self, value: T, hash: u64) -> bool {
         self.acquire_hashed(value, hash).is_some()
     }
 
+    #[cfg(test)]
     fn acquire_hashed(&mut self, value: T, hash: u64) -> Option<u16> {
         self.add_hashed(value, hash).ok()
     }
 
     pub fn lookup_hashed(&self, value: &T, hash: u64) -> Option<u16> {
+        self.lookup_by(hash, |entry| entry == value)
+    }
+
+    fn lookup_by(&self, hash: u64, matches: impl Fn(&T) -> bool) -> Option<u16> {
         if self.table.is_empty() {
             return None;
         }
@@ -126,7 +145,10 @@ impl<T: Eq> SetAdmission<T> {
             if entry.psl < psl {
                 break;
             }
-            if entry.psl == psl && entry.references > 0 && entry.value.as_ref() == Some(value) {
+            if entry.psl == psl
+                && entry.references > 0
+                && entry.value.as_ref().is_some_and(&matches)
+            {
                 return Some(id);
             }
         }
@@ -134,15 +156,27 @@ impl<T: Eq> SetAdmission<T> {
     }
 
     pub fn add_hashed(&mut self, value: T, hash: u64) -> Result<u16, SetFull> {
+        self.add_hashed_with(value, hash, &mut |_| {})
+    }
+
+    fn add_hashed_with(
+        &mut self,
+        value: T,
+        hash: u64,
+        deleted: &mut impl FnMut(T),
+    ) -> Result<u16, SetFull> {
         while self
             .entries
             .last()
             .is_some_and(|entry| entry.references == 0)
         {
-            self.delete_item(self.entries.len() as u16);
+            if let Some(value) = self.delete_item(self.entries.len() as u16) {
+                deleted(value);
+            }
             self.entries.pop();
         }
         if let Some(id) = self.lookup_hashed(&value, hash) {
+            deleted(value);
             self.retain(id);
             return Ok(id);
         }
@@ -158,32 +192,46 @@ impl<T: Eq> SetAdmission<T> {
             });
         }
         let next = (self.entries.len() + 1) as u16;
-        Ok(self.insert(value, hash, next))
+        Ok(self.insert(value, hash, next, deleted))
     }
 
     fn add_with_id_hashed(&mut self, value: T, hash: u64, id: u16) -> Result<u16, SetFull> {
+        self.add_with_id_hashed_with(value, hash, id, &mut |_| {})
+    }
+
+    fn add_with_id_hashed_with(
+        &mut self,
+        value: T,
+        hash: u64,
+        id: u16,
+        deleted: &mut impl FnMut(T),
+    ) -> Result<u16, SetFull> {
         assert!(id != 0);
         if usize::from(id) <= self.entries.len() {
             let entry = &self.entries[usize::from(id) - 1];
             if entry.references == 0 {
                 if let Some(existing) = self.lookup_hashed(&value, hash) {
+                    deleted(value);
                     self.retain(existing);
                     return Ok(existing);
                 }
                 if self.psl_stats[31] != 0 {
                     return Err(SetFull::OutOfMemory);
                 }
-                self.delete_item(id);
-                return Ok(self.insert(value, hash, id));
+                if let Some(value) = self.delete_item(id) {
+                    deleted(value);
+                }
+                return Ok(self.insert(value, hash, id, deleted));
             } else if entry.value.as_ref() == Some(&value) {
+                deleted(value);
                 self.retain(id);
                 return Ok(id);
             }
         }
-        self.add_hashed(value, hash)
+        self.add_hashed_with(value, hash, deleted)
     }
 
-    fn insert(&mut self, value: T, hash: u64, new_id: u16) -> u16 {
+    fn insert(&mut self, value: T, hash: u64, new_id: u16, deleted: &mut impl FnMut(T)) -> u16 {
         let appended = usize::from(new_id) > self.entries.len();
         if appended {
             self.entries.push(SetEntry::default());
@@ -204,6 +252,9 @@ impl<T: Eq> SetAdmission<T> {
             if id == 0 || self.entries[usize::from(id) - 1].references == 0 {
                 if id != 0 {
                     let dead = &mut self.entries[usize::from(id) - 1];
+                    if let Some(value) = dead.value.take() {
+                        deleted(value);
+                    }
                     self.psl_stats[usize::from(dead.psl)] -= 1;
                     *dead = SetEntry::default();
                     if id < new_id {
@@ -252,7 +303,7 @@ impl<T: Eq> SetAdmission<T> {
         entry.references = entry
             .references
             .checked_add(1)
-            .expect("native style reference overflow");
+            .expect("native page resource reference overflow");
     }
 
     pub fn release(&mut self, id: u16) {
@@ -295,6 +346,7 @@ impl<T: Eq> SetAdmission<T> {
         entry.value
     }
 
+    #[cfg(test)]
     fn pop_unused(&mut self) -> Option<T> {
         while self
             .entries
@@ -311,91 +363,387 @@ impl<T: Eq> SetAdmission<T> {
     }
 }
 
-/// PAGE LINK decoding reserves new strings before reclaiming a discarded
-/// final set entry, exactly as native decodePage/addContext do.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct Hyperlink {
+    pub id: HyperlinkId,
+    pub uri: Vec<u8>,
+}
+
+impl Hyperlink {
+    pub fn from_cell(cell: &Cell) -> Option<Self> {
+        cell.hyperlink.as_ref().map(|uri| Self {
+            id: cell
+                .hyperlink_id
+                .clone()
+                .unwrap_or(HyperlinkId::Implicit(0)),
+            uri: cell
+                .hyperlink_raw
+                .clone()
+                .unwrap_or_else(|| uri.as_bytes().to_vec()),
+        })
+    }
+
+    pub fn from_cursor(cursor: &Cursor) -> Option<Self> {
+        cursor.hyperlink.as_ref().map(|uri| Self {
+            id: cursor
+                .hyperlink_id
+                .clone()
+                .unwrap_or(HyperlinkId::Implicit(0)),
+            uri: cursor
+                .hyperlink_raw
+                .clone()
+                .unwrap_or_else(|| uri.as_bytes().to_vec()),
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HyperlinkFull {
+    Strings,
+    Set(SetFull),
+    Map,
+}
+
+/// Native hyperlink references, cell-map capacity and retained string runs.
+/// Dead set entries keep their strings until insertion actually reaps them.
+#[derive(Clone, Debug, Default)]
 pub(crate) struct HyperlinkAdmission {
     set: SetAdmission<HyperlinkEntry>,
     strings: BitmapAllocator<32>,
+    cells: usize,
+    capacity: usize,
 }
 
+#[derive(Clone, Debug)]
 struct HyperlinkEntry {
-    id: crate::screen::HyperlinkId,
-    uri: Vec<u8>,
+    link: Hyperlink,
     id_allocation: Option<(usize, usize)>,
     uri_allocation: (usize, usize),
 }
 
 impl PartialEq for HyperlinkEntry {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id && self.uri == other.uri
+        self.link == other.link
     }
 }
 
 impl Eq for HyperlinkEntry {}
 
 impl HyperlinkAdmission {
-    pub fn new(set: SetLayout, strings: BitmapLayout) -> Self {
+    pub fn new(set: SetLayout, strings: BitmapLayout, capacity: usize) -> Self {
         Self {
             set: SetAdmission::new(set),
             strings: BitmapAllocator::new(strings),
+            cells: 0,
+            capacity,
         }
     }
 
-    /// `retain` is false for zero or duplicate wire IDs. Those entries are
-    /// still decoded/admitted before their temporary reference is released.
-    pub fn admit(&mut self, id: &crate::screen::HyperlinkId, uri: &[u8], retain: bool) -> bool {
-        use crate::screen::HyperlinkId;
-        if uri.is_empty() || matches!(id, HyperlinkId::Explicit(value) if value.is_empty()) {
-            return false;
-        }
-        let id_allocation = if let HyperlinkId::Explicit(value) = id {
-            let Some(offset) = self.strings.alloc(value.len()) else {
-                return false;
-            };
-            Some((offset, value.len()))
-        } else {
-            None
-        };
-        let Some(offset) = self.strings.alloc(uri.len()) else {
-            if let Some((offset, len)) = id_allocation {
-                self.strings.free(offset, len);
-            }
-            return false;
-        };
-        let uri_allocation = (offset, uri.len());
+    pub fn get(&self, id: u16) -> &Hyperlink {
+        &self.set.get(id).link
+    }
 
-        while let Some(entry) = self.set.pop_unused() {
-            self.free_strings(entry.id_allocation, entry.uri_allocation);
+    pub fn iter(&self) -> impl Iterator<Item = (u16, &Hyperlink)> {
+        self.set.iter().map(|(id, entry)| (id, &entry.link))
+    }
+
+    pub fn release(&mut self, id: u16) {
+        self.set.release(id);
+    }
+
+    /// A row rotation temporarily has both copies alive, then releases the
+    /// displaced rows. Its net cell count cannot require additional capacity.
+    pub fn retain_moved_cell(&mut self, id: u16) {
+        if id != 0 {
+            self.set.retain(id);
+            self.cells += 1;
         }
-        let prior_entries = self.set.entries.len();
-        let acquired = self.set.acquire_hashed(
-            HyperlinkEntry {
+    }
+
+    pub fn retain_cell(&mut self, id: u16) -> Result<(), HyperlinkFull> {
+        if id != 0 {
+            if self.cells == self.capacity {
+                return Err(HyperlinkFull::Map);
+            }
+            self.set.retain(id);
+            self.cells += 1;
+        }
+        Ok(())
+    }
+
+    pub fn release_cell(&mut self, id: u16) {
+        if id != 0 {
+            self.set.release(id);
+            self.cells -= 1;
+        }
+    }
+
+    /// Cursor insertion reserves URI then ID, even for an existing value.
+    pub fn insert(&mut self, link: &Hyperlink) -> Result<u16, HyperlinkFull> {
+        self.allocate(link, false, None)
+    }
+
+    /// PAGE LINK records reserve ID before URI. Zero/duplicate wire IDs still
+    /// allocate a temporary set reference before the decoder releases it.
+    pub fn decode(&mut self, link: &Hyperlink, retain: bool) -> Result<u16, HyperlinkFull> {
+        let id = self.allocate(link, true, None)?;
+        if !retain {
+            self.release(id);
+        }
+        Ok(id)
+    }
+
+    /// Page copies check the cell map, then reuse a live value before trying
+    /// any string allocation. A new value prefers its source page's ID.
+    pub fn copy_cell(&mut self, link: &Hyperlink, preferred: u16) -> Result<u16, HyperlinkFull> {
+        if self.cells == self.capacity {
+            return Err(HyperlinkFull::Map);
+        }
+        let hash = hyperlink_hash(&link.id, &link.uri);
+        let id = if let Some(id) = self.set.lookup_by(hash, |entry| entry.link == *link) {
+            self.set.retain(id);
+            id
+        } else {
+            self.allocate(link, false, Some(preferred))?
+        };
+        self.cells += 1;
+        Ok(id)
+    }
+
+    /// Native reflow duplicates the strings before checking the set, unlike
+    /// ordinary page copies. The temporary copy can itself require growth.
+    pub fn reflow_cell(&mut self, link: &Hyperlink, preferred: u16) -> Result<u16, HyperlinkFull> {
+        if self.cells == self.capacity {
+            return Err(HyperlinkFull::Map);
+        }
+        let id = self.allocate(link, false, Some(preferred))?;
+        self.cells += 1;
+        Ok(id)
+    }
+
+    /// Native cursor-map growth probes an extra URI copy before rebuilding.
+    pub fn reserve_uri(&mut self, length: usize) -> bool {
+        self.strings.alloc(length).is_some()
+    }
+
+    fn allocate(
+        &mut self,
+        link: &Hyperlink,
+        id_first: bool,
+        preferred: Option<u16>,
+    ) -> Result<u16, HyperlinkFull> {
+        if link.uri.is_empty() || matches!(&link.id, HyperlinkId::Explicit(id) if id.is_empty()) {
+            return Err(HyperlinkFull::Strings);
+        }
+        let mut id_allocation = None;
+        let mut uri_allocation = None;
+        for is_id in [id_first, !id_first] {
+            let value = if is_id {
+                let HyperlinkId::Explicit(id) = &link.id else {
+                    continue;
+                };
+                id.as_slice()
+            } else {
+                &link.uri
+            };
+            let Some(offset) = self.strings.alloc(value.len()) else {
+                for (offset, length) in id_allocation.into_iter().chain(uri_allocation) {
+                    self.strings.free(offset, length);
+                }
+                return Err(HyperlinkFull::Strings);
+            };
+            if is_id {
+                id_allocation = Some((offset, value.len()));
+            } else {
+                uri_allocation = Some((offset, value.len()));
+            }
+        }
+        let uri_allocation = uri_allocation.unwrap();
+        let entry = HyperlinkEntry {
+            link: link.clone(),
+            id_allocation,
+            uri_allocation,
+        };
+        let hash = hyperlink_hash(&link.id, &link.uri);
+        let strings = &mut self.strings;
+        let mut deleted = |entry: HyperlinkEntry| {
+            Self::free_strings(strings, entry.id_allocation, entry.uri_allocation);
+        };
+        let result = if let Some(id) = preferred.filter(|&id| id != 0) {
+            self.set
+                .add_with_id_hashed_with(entry, hash, id, &mut deleted)
+        } else {
+            self.set.add_hashed_with(entry, hash, &mut deleted)
+        };
+        if result.is_err() {
+            Self::free_strings(&mut self.strings, id_allocation, uri_allocation);
+        }
+        result.map_err(HyperlinkFull::Set)
+    }
+
+    fn free_strings(
+        strings: &mut BitmapAllocator<32>,
+        id: Option<(usize, usize)>,
+        uri: (usize, usize),
+    ) {
+        if let Some((offset, len)) = id {
+            strings.free(offset, len);
+        }
+        strings.free(uri.0, uri.1);
+    }
+
+    #[cfg(test)]
+    fn admit(&mut self, id: &HyperlinkId, uri: &[u8], retain: bool) -> bool {
+        self.decode(
+            &Hyperlink {
                 id: id.clone(),
                 uri: uri.to_vec(),
-                id_allocation,
-                uri_allocation,
             },
-            hyperlink_hash(id, uri),
-        );
-        // A duplicate value or failed admission frees the incoming strings.
-        if acquired.is_none_or(|id| usize::from(id) <= prior_entries) {
-            self.free_strings(id_allocation, uri_allocation);
+            retain,
+        )
+        .is_ok()
+    }
+
+    #[cfg(test)]
+    pub fn assert_references(&self, cells: impl Iterator<Item = u16>, cursor: Option<u16>) {
+        let mut counts = std::collections::HashMap::<u16, usize>::new();
+        let mut cell_count = 0;
+        for id in cells.filter(|&id| id != 0) {
+            *counts.entry(id).or_default() += 1;
+            cell_count += 1;
         }
-        if let Some(id) = acquired {
-            if !retain {
-                self.set.release(id);
-            }
-            true
-        } else {
-            false
+        assert_eq!(self.cells, cell_count);
+        assert!(self.cells <= self.capacity);
+        if let Some(id) = cursor {
+            *counts.entry(id).or_default() += 1;
+        }
+        for (id, _) in self.set.iter() {
+            assert_eq!(
+                usize::from(self.set.reference_count(id)),
+                counts.remove(&id).unwrap_or(0)
+            );
+        }
+        assert!(counts.is_empty(), "cells referenced a dead hyperlink");
+
+        let mut runs: Vec<_> = self
+            .set
+            .entries
+            .iter()
+            .filter_map(|entry| entry.value.as_ref())
+            .flat_map(|entry| {
+                entry
+                    .id_allocation
+                    .into_iter()
+                    .chain(std::iter::once(entry.uri_allocation))
+            })
+            .collect();
+        runs.sort_unstable();
+        let mut strings = self.strings.clone();
+        let mut end = strings.chunks_start;
+        for (offset, length) in runs {
+            assert!(offset >= end, "overlapping hyperlink strings");
+            end = offset + BitmapAllocator::<32>::bytes_required(length).unwrap();
+            strings.free(offset, length);
+        }
+        assert_eq!(strings.used_bytes(), 0, "unowned hyperlink strings");
+    }
+}
+
+/// A cell's unique suffix allocation. Moves keep it; copies allocate a new run.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct GraphemeAllocation {
+    offset: std::num::NonZeroU32,
+    pub len: u8,
+}
+
+/// Native grapheme map admission and bitmap fragmentation, without backing data.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct GraphemeAdmission {
+    allocator: BitmapAllocator<16>,
+    count: usize,
+    capacity: usize,
+}
+
+impl GraphemeAdmission {
+    pub fn new(layout: BitmapLayout, capacity: usize) -> Self {
+        Self {
+            allocator: BitmapAllocator::new(layout),
+            count: 0,
+            capacity,
         }
     }
 
-    fn free_strings(&mut self, id: Option<(usize, usize)>, uri: (usize, usize)) {
-        if let Some((offset, len)) = id {
-            self.strings.free(offset, len);
+    pub fn used_bytes(&self) -> usize {
+        self.allocator.used_bytes()
+    }
+
+    pub fn acquire(&mut self, len: u8) -> Result<GraphemeAllocation, SetFull> {
+        assert!((1..=64).contains(&len));
+        let offset = self
+            .allocator
+            .alloc(usize::from(len) * 4)
+            .ok_or(SetFull::OutOfMemory)?;
+        if self.count == self.capacity {
+            self.allocator.free(offset, usize::from(len) * 4);
+            return Err(SetFull::OutOfMemory);
         }
-        self.strings.free(uri.0, uri.1);
+        self.count += 1;
+        Ok(GraphemeAllocation {
+            offset: std::num::NonZeroU32::new(offset.try_into().unwrap()).unwrap(),
+            len,
+        })
+    }
+
+    pub fn append(
+        &mut self,
+        previous: Option<GraphemeAllocation>,
+    ) -> Result<GraphemeAllocation, SetFull> {
+        let Some(mut previous) = previous else {
+            return self.acquire(1);
+        };
+        assert!(previous.len < 64);
+        if previous.len % 4 == 0 {
+            // Native allocates the replacement before releasing the old run.
+            // The existing map entry is reused even when the map is full.
+            let offset = self
+                .allocator
+                .alloc(usize::from(previous.len + 1) * 4)
+                .ok_or(SetFull::OutOfMemory)?;
+            self.allocator.free(
+                previous.offset.get() as usize,
+                usize::from(previous.len) * 4,
+            );
+            previous.offset = std::num::NonZeroU32::new(offset.try_into().unwrap()).unwrap();
+        }
+        previous.len += 1;
+        Ok(previous)
+    }
+
+    pub fn release(&mut self, allocation: GraphemeAllocation) {
+        self.allocator.free(
+            allocation.offset.get() as usize,
+            usize::from(allocation.len) * 4,
+        );
+        self.count -= 1;
+    }
+
+    #[cfg(test)]
+    pub fn assert_allocations(&self, allocations: impl Iterator<Item = GraphemeAllocation>) {
+        let mut allocations: Vec<_> = allocations.collect();
+        allocations.sort_unstable_by_key(|allocation| allocation.offset);
+        assert_eq!(allocations.len(), self.count);
+        let mut remaining = self.clone();
+        let mut end = self.allocator.chunks_start;
+        for allocation in allocations {
+            assert!(
+                allocation.offset.get() as usize >= end,
+                "overlapping grapheme allocations"
+            );
+            end = allocation.offset.get() as usize
+                + BitmapAllocator::<16>::bytes_required(usize::from(allocation.len) * 4).unwrap();
+            remaining.release(allocation);
+        }
+        assert_eq!(remaining.used_bytes(), 0, "unowned grapheme allocations");
     }
 }
 
@@ -404,7 +752,7 @@ impl HyperlinkAdmission {
 /// Offsets are relative to this allocator's region, including its bitmap header.
 /// The page ledger adds the region's page offset. Callers pass byte lengths;
 /// grapheme codepoints occupy four native bytes each.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct BitmapAllocator<const CHUNK: usize> {
     bitmaps: Vec<u64>,
     chunks_start: usize,
@@ -475,7 +823,6 @@ impl<const CHUNK: usize> BitmapAllocator<CHUNK> {
         self.bitmaps.len() * 64 * CHUNK
     }
 
-    #[cfg(test)]
     fn used_bytes(&self) -> usize {
         self.bitmaps
             .iter()
@@ -643,7 +990,11 @@ mod tests {
 
     fn hyperlink_admission() -> HyperlinkAdmission {
         let layout = PageCapacity::STANDARD.metadata().unwrap();
-        HyperlinkAdmission::new(layout.hyperlink_set_layout, layout.string_alloc_layout)
+        HyperlinkAdmission::new(
+            layout.hyperlink_set_layout,
+            layout.string_alloc_layout,
+            layout.hyperlink_map_layout.capacity as usize * 80 / 100,
+        )
     }
 
     #[test]

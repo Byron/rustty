@@ -32,8 +32,49 @@ pub const Operation = struct {
     trim_line: ?bool = null,
     semantic_prompt_boundary: ?bool = null,
     adjustment: ?vt.Selection.Adjustment = null,
-    format: ?struct { emit: vt.formatter.Format = .plain, unwrap: bool = true, trim: bool = true } = null,
+    format: ?FormatOptions = null,
+    format_map: bool = false,
+    format_content: ?[]const u8 = null,
+    screen_extra: ?ScreenExtra = null,
+    terminal_extra: ?TerminalExtra = null,
     gesture: ?GestureOptions = null,
+};
+const FormatOptions = struct {
+    emit: vt.formatter.Format = .plain,
+    unwrap: ?bool = null,
+    trim: ?bool = null,
+    background: ?[3]u8 = null,
+    foreground: ?[3]u8 = null,
+    palette: ?[]const [3]u8 = null,
+    codepoint_map: []const struct {
+        range: [2]u32,
+        replacement: union(enum) { codepoint: u32, string: []const u8 },
+    } = &.{},
+};
+const ScreenExtra = struct {
+    cursor: bool = false,
+    style: bool = false,
+    hyperlink: bool = false,
+    protection: bool = false,
+    kitty_keyboard: bool = false,
+    charsets: bool = false,
+
+    fn native(self: ScreenExtra) vt.formatter.ScreenFormatter.Extra {
+        return .{ .cursor = self.cursor, .style = self.style, .hyperlink = self.hyperlink, .protection = self.protection, .kitty_keyboard = self.kitty_keyboard, .charsets = self.charsets };
+    }
+};
+const TerminalExtra = struct {
+    palette: bool = true,
+    modes: bool = false,
+    scrolling_region: bool = false,
+    tabstops: bool = false,
+    pwd: bool = false,
+    keyboard: bool = false,
+    screen: ScreenExtra = .{ .style = true, .hyperlink = true },
+
+    fn native(self: TerminalExtra) vt.formatter.TerminalFormatter.Extra {
+        return .{ .palette = self.palette, .modes = self.modes, .scrolling_region = self.scrolling_region, .tabstops = self.tabstops, .pwd = self.pwd, .keyboard = self.keyboard, .screen = self.screen.native() };
+    }
 };
 const GestureOptions = struct {
     time: ?i64 = null,
@@ -92,6 +133,7 @@ pub const Result = struct {
     selection: ?Selection,
     selection_result: ?Bounds,
     formatted: ?[]const u8,
+    format_map: ?[]const [3]u32,
     tracked: []const Tracked,
     gesture: ?GestureState,
 };
@@ -139,6 +181,8 @@ pub const Context = struct {
             // Reading is explicit so writes retain their original boundaries.
         } else if (std.mem.eql(u8, op.action, "format_selection")) {
             if (screen.selection == null) status = "no_value";
+        } else if (std.mem.eql(u8, op.action, "format_screen") or std.mem.eql(u8, op.action, "format_terminal")) {
+            if (std.mem.eql(u8, op.format_content orelse "all", "selection") and screen.selection == null) status = "no_value";
         } else if (std.mem.eql(u8, op.action, "select")) {
             if (screen.pages.pin(op.start.native())) |start| {
                 if (screen.pages.pin(op.end.native())) |end| {
@@ -382,14 +426,73 @@ pub const Context = struct {
             }
         }
         const active = terminal.screens.active;
-        const formatted = if (std.mem.eql(u8, op.action, "format_selection")) formatted: {
-            const selection = active.selection orelse break :formatted null;
-            const opts: @TypeOf(op.format.?) = op.format orelse .{};
-            var formatter: vt.formatter.TerminalFormatter = .init(terminal, .{ .emit = opts.emit, .unwrap = opts.unwrap, .trim = opts.trim });
-            formatter.content = .{ .selection = selection };
+        var format_map: ?[]const [3]u32 = null;
+        const formatted = if (std.mem.eql(u8, op.action, "format_selection") or std.mem.eql(u8, op.action, "format_screen") or std.mem.eql(u8, op.action, "format_terminal")) formatted: {
+            const is_selection = std.mem.eql(u8, op.action, "format_selection");
+            const tag = if (is_selection) "selection" else op.format_content orelse "all";
+            const content: vt.formatter.ScreenFormatter.Content = if (std.mem.eql(u8, tag, "none")) .none else if (std.mem.eql(u8, tag, "all")) .{ .selection = null } else if (std.mem.eql(u8, tag, "selection")) .{ .selection = active.selection orelse break :formatted null } else return error.InvalidFormatContent;
+            const opts: FormatOptions = op.format orelse .{};
+            var palette: vt.color.Palette = undefined;
+            if (opts.palette) |colors| {
+                if (colors.len != palette.len) return error.InvalidFormatPalette;
+                for (colors, &palette) |value, *color| color.* = rgb(value);
+            }
+            var maps: std.MultiArrayList(vt.formatter.CodepointMap) = .{};
+            defer maps.deinit(alloc);
+            for (opts.codepoint_map) |rule| {
+                const replacement: vt.formatter.CodepointMap.Replacement = switch (rule.replacement) {
+                    .codepoint => |value| .{ .codepoint = try codepoint(value) },
+                    .string => |value| text: {
+                        if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidCodepoint;
+                        break :text .{ .string = value };
+                    },
+                };
+                try maps.append(alloc, .{ .range = .{ try codepoint(rule.range[0]), try codepoint(rule.range[1]) }, .replacement = replacement });
+            }
+            const options: vt.formatter.Options = .{
+                .emit = opts.emit,
+                .unwrap = opts.unwrap orelse is_selection,
+                .trim = opts.trim orelse true,
+                .background = if (opts.background) |value| rgb(value) else null,
+                .foreground = if (opts.foreground) |value| rgb(value) else null,
+                .palette = if (opts.palette != null) &palette else null,
+                .codepoint_map = maps,
+            };
             var output: std.Io.Writer.Allocating = .init(alloc);
             defer output.deinit();
-            try formatter.format(&output.writer);
+            var map: vt.formatter.PinMap.Map = .empty;
+            defer map.deinit(alloc);
+            const pin_map: ?vt.formatter.PinMap = if (op.format_map) .{ .alloc = alloc, .map = &map } else null;
+            if (!std.mem.eql(u8, op.action, "format_screen")) {
+                var formatter: vt.formatter.TerminalFormatter = .init(terminal, options);
+                formatter.content = content;
+                formatter.pin_map = pin_map;
+                if (!is_selection) {
+                    if (op.terminal_extra) |extra| formatter.extra = extra.native();
+                }
+                try formatter.format(&output.writer);
+            } else {
+                var formatter: vt.formatter.ScreenFormatter = .init(active, options);
+                formatter.content = content;
+                formatter.pin_map = pin_map;
+                if (op.screen_extra) |extra| formatter.extra = extra.native();
+                try formatter.format(&output.writer);
+            }
+            if (op.format_map) {
+                if (map.count() != output.written().len) return error.FormatMapLengthMismatch;
+                const positions = try alloc.alloc([3]u32, map.count());
+                for (positions, 0..) |*position, offset| {
+                    const pin = map.get(offset) orelse return error.InvalidFormatMap;
+                    var index: u32 = 0;
+                    var node = active.pages.pages.first;
+                    while (node) |page| : (node = page.next) {
+                        if (page == pin.node) break;
+                        index += 1;
+                    } else return error.InvalidFormatMap;
+                    position.* = .{ index, pin.x, pin.y };
+                }
+                format_map = positions;
+            }
             break :formatted try hex(alloc, output.written());
         } else null;
         const selection = if (active.selection) |selection| sel: {
@@ -412,6 +515,7 @@ pub const Context = struct {
             .selection = selection,
             .selection_result = selection_result,
             .formatted = formatted,
+            .format_map = format_map,
             .tracked = tracked,
             .gesture = if (self.gesture_used) .{
                 .click_count = self.gesture.left_click_count,
@@ -426,12 +530,20 @@ pub const Context = struct {
     }
 };
 
+fn rgb(value: [3]u8) vt.color.RGB {
+    return .{ .r = value[0], .g = value[1], .b = value[2] };
+}
+
+fn codepoint(value: u32) !u21 {
+    if (value > 0x10ffff or (value >= 0xd800 and value <= 0xdfff)) return error.InvalidCodepoint;
+    return @intCast(value);
+}
+
 fn codepoints(alloc: Allocator, values: ?[]const u32) !?[]const u21 {
     const source = values orelse return null;
     const result = try alloc.alloc(u21, source.len);
     for (source, result) |value, *destination| {
-        if (value > 0x10ffff or (value >= 0xd800 and value <= 0xdfff)) return error.InvalidCodepoint;
-        destination.* = @intCast(value);
+        destination.* = try codepoint(value);
     }
     return result;
 }

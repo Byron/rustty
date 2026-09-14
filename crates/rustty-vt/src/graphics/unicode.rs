@@ -19,6 +19,107 @@ pub struct Placement {
     pub width: u32,
 }
 
+/// Pixel rectangles relative to the run's terminal cell, rounded like native
+/// Kitty placeholders. An empty fragment has zero source and destination sizes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Geometry {
+    pub offset: [u32; 2],
+    pub source: [u32; 4],
+    pub pixels: [u32; 2],
+}
+
+impl Placement {
+    /// Fit a run within its resolved `placeholder_target` while preserving
+    /// aspect ratio. Invalid cell/image dimensions or an oversized grid return
+    /// None; a fragment outside the image returns an empty geometry.
+    pub fn geometry(
+        self,
+        target: &super::Placement,
+        image: &super::Image,
+        cell: [u32; 2],
+    ) -> Option<Geometry> {
+        if cell.contains(&0) || image.width == 0 || image.height == 0 {
+            return None;
+        }
+        let grid = [
+            if target.columns == 0 {
+                image.width.div_ceil(cell[0])
+            } else {
+                target.columns
+            },
+            if target.rows == 0 {
+                image.height.div_ceil(cell[1])
+            } else {
+                target.rows
+            },
+        ];
+        if grid.iter().any(|&size| size > u32::from(u16::MAX)) {
+            return None;
+        }
+        let grid_pixels = [
+            f64::from(grid[0].checked_mul(cell[0])?),
+            f64::from(grid[1].checked_mul(cell[1])?),
+        ];
+        let dimensions = [f64::from(image.width), f64::from(image.height)];
+        let (scale, padding) = if dimensions[0] * grid_pixels[1] > dimensions[1] * grid_pixels[0] {
+            let scale = grid_pixels[0] / dimensions[0];
+            (
+                scale,
+                [0.0, (grid_pixels[1] - dimensions[1] * scale) / 2.0 / scale],
+            )
+        } else {
+            let scale = grid_pixels[1] / dimensions[1];
+            (
+                scale,
+                [(grid_pixels[0] - dimensions[0] * scale) / 2.0 / scale, 0.0],
+            )
+        };
+        let scaled = [
+            dimensions[0] + padding[0] * 2.0,
+            dimensions[1] + padding[1] * 2.0,
+        ];
+        let mut source = [
+            scaled[0] * (f64::from(self.image_col) / f64::from(grid[0])),
+            scaled[1] * (f64::from(self.image_row) / f64::from(grid[1])),
+            scaled[0] * (f64::from(self.width) / f64::from(grid[0])),
+            scaled[1] * (1.0 / f64::from(grid[1])),
+        ];
+        let mut pixels = [
+            f64::from(self.width.checked_mul(cell[0])?),
+            f64::from(cell[1]),
+        ];
+        let mut offset = [0.0; 2];
+        for axis in 0..2 {
+            if source[axis] < padding[axis] {
+                let inset = padding[axis] - source[axis];
+                source[axis + 2] -= inset;
+                offset[axis] = inset * scale;
+                pixels[axis] -= inset * scale;
+                source[axis] = 0.0;
+                if source[axis + 2] > dimensions[axis] {
+                    source[axis + 2] = dimensions[axis];
+                    pixels[axis] = dimensions[axis] * scale;
+                }
+            } else if source[axis] + source[axis + 2] > scaled[axis] - padding[axis] {
+                source[axis] -= padding[axis];
+                source[axis + 2] = scaled[axis] - padding[axis] - source[axis];
+                source[axis + 2] -= padding[axis];
+                pixels[axis] = source[axis + 2] * scale;
+            } else {
+                source[axis] -= padding[axis];
+            }
+        }
+        if source[2] <= 0.0 || source[3] <= 0.0 {
+            return Some(Geometry::default());
+        }
+        Some(Geometry {
+            offset: offset.map(|value| value.round() as u32),
+            source: source.map(|value| value.round() as u32),
+            pixels: pixels.map(|value| value.round() as u32),
+        })
+    }
+}
+
 /// Adjacent cells inherit omitted indices only while their IDs remain compatible.
 pub fn placements(row: &Row) -> impl Iterator<Item = Placement> + '_ {
     let mut cells = row.cells.iter().enumerate().peekable();

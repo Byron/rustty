@@ -52,6 +52,11 @@ red errors, orange pauses and animated indeterminate progress. Reports disappear
 when removed or after 15 seconds without an update. Ghostty's `progress-style = false`
 setting disables them. Determinate bars do not schedule animation frames.
 
+For CLI compatibility, sessions advertise `TERM_PROGRAM=ghostty` and the
+bundled `TERM=xterm-ghostty`; XTVersion replies also identify as `ghostty`,
+with Rustty's package version. An existing shell can enable Cargo progress
+immediately with `TERM_PROGRAM=ghostty cargo check`.
+
 The terminal port is still undergoing differential compatibility work. A passing
 smoke test does not establish full libghostty-vt parity. The exhaustive coverage
 gate in `test/rustty/coverage.json` records unfinished protocol and snapshot work;

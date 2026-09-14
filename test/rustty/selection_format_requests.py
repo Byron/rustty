@@ -5,6 +5,8 @@ from snapshots import write
 
 
 def grid(action, **options):
+    if action.startswith("format_"):
+        options.setdefault("format_map", True)
     return {"op": "grid", "grid": {"action": action, **options}}
 
 
