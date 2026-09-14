@@ -1169,7 +1169,10 @@ impl App {
         #[cfg(target_os = "windows")]
         let attributes = attributes
             .with_skip_taskbar(quick)
-            .with_no_redirection_bitmap(true);
+            // Native menus need the normal GDI redirection surface. Keep the
+            // client alpha-aware from creation so opacity can change on reload;
+            // DirectComposition still presents the terminal over that surface.
+            .with_transparent(true);
         let window = Arc::new(event_loop.create_window(attributes)?);
         if let Some(platform) = &self.platform {
             platform.configure_window(&window, quick, self.config())?;
@@ -3127,6 +3130,20 @@ impl App {
                     let layout = active
                         .visible_tree(host.peek.is_some())
                         .layout(host.content);
+                    let [r, g, b] = config.background.to_array();
+                    let gutter = Color32::from_rgba_unmultiplied(
+                        r,
+                        g,
+                        b,
+                        (config.background_opacity * 255.0).round() as u8,
+                    );
+                    for (_, rect) in &layout {
+                        let outer = egui::Rect::from_min_size(
+                            Pos2::new(rect.x, rect.y),
+                            Vec2::new(rect.width, rect.height),
+                        );
+                        paint_pane_gutter(ui.painter(), outer, outer.shrink(1.0), gutter);
+                    }
                     host.rects = layout
                         .iter()
                         .map(|(id, r)| {
@@ -5535,6 +5552,30 @@ fn configure_ui_fonts(context: &egui::Context) {
             .unwrap()
             .insert(0, "system-ui".into());
         context.set_fonts(fonts);
+    }
+}
+
+fn paint_pane_gutter(
+    painter: &egui::Painter,
+    outer: egui::Rect,
+    inner: egui::Rect,
+    color: Color32,
+) {
+    // Paint only the gaps: filling beneath translucent terminal panes would
+    // apply background opacity twice. The four strips do not overlap.
+    for (min, max) in [
+        (outer.min, Pos2::new(inner.left(), outer.bottom())),
+        (Pos2::new(inner.right(), outer.top()), outer.max),
+        (
+            Pos2::new(inner.left(), outer.top()),
+            Pos2::new(inner.right(), inner.top()),
+        ),
+        (
+            Pos2::new(inner.left(), inner.bottom()),
+            Pos2::new(inner.right(), outer.bottom()),
+        ),
+    ] {
+        painter.rect_filled(egui::Rect::from_min_max(min, max), 0.0, color);
     }
 }
 

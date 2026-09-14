@@ -5,6 +5,10 @@ use std::fs;
 #[path = "../../../test/rustty/frame_workloads.rs"]
 mod workload;
 
+#[cfg(target_os = "windows")]
+#[path = "smoke/windows_capture.rs"]
+mod windows_capture;
+
 fn fixture_directory() -> PathBuf {
     if cfg!(target_os = "windows") {
         std::env::temp_dir()
@@ -427,6 +431,13 @@ impl Smoke {
                     }
                 }
                 if capture_path.is_file() {
+                    #[cfg(target_os = "windows")]
+                    if std::env::var_os("RUSTTY_SMOKE_NATIVE_CAPTURE").is_some() {
+                        windows_capture::capture(
+                            &host.window,
+                            &self.directory.join("native-window.png"),
+                        )?;
+                    }
                     check_pointer_targets(app, host)?;
                     check_terminal_frames(app, event_loop, host)?;
                     check_find(app, event_loop, host, &self.directory)?;
