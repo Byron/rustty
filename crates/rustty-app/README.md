@@ -1,9 +1,78 @@
-# Rustty for macOS
+# Rustty for macOS and Windows
 
-Rustty is a private Rust workspace implementing a terminal, CoreText font services,
+Rustty is a private Rust workspace implementing a terminal, native font services,
 a portable frame renderer and a WGPU desktop application. All seven crates are
-`publish = false`. WGPU uses Metal on macOS; Windows and Linux desktop integration
-and a direct Metal renderer are deferred.
+`publish = false`. WGPU uses Metal on macOS and DirectX 12 with DirectComposition
+on Windows. CoreText and DirectWrite supply the respective native font backends.
+
+## Windows 11 x64
+
+Install Rust 1.95 or later and the Visual Studio C++ build tools/Windows SDK.
+From PowerShell at the repository root:
+
+```powershell
+./crates/rustty-app/build.ps1 -Release
+./target/release/Rustty/rustty.exe
+```
+
+Omit `-Release` for a debug build. `-Offline` uses cached Cargo dependencies.
+The script builds for `x86_64-pc-windows-msvc` with a static C runtime; the portable
+folder needs no Visual C++ redistributable. It contains the executable, themes,
+shell integration, and license notices and can be moved together. `-SkipBuild`
+restages an existing script build. Cargo builds also work directly:
+`cargo run -p rustty-app --bin rustty`. Build the portable folder first for resource
+discovery during development. Zig, WSL, and an external shader compiler are not needed.
+
+To add this location to the Start Menu and enable notification activation, run
+`rustty.exe --register`, or pass `-Register` to the build script. Registration is
+per-user and requires no administrator access. Run `rustty.exe --unregister` before
+moving or deleting a registered copy, then register the new location if needed.
+Normal launches do not register or install anything.
+
+Settings live in `%APPDATA%\Rustty\rustty.txt`; workspace state lives in
+`%LOCALAPPDATA%\Rustty\workspace.json`. Explicit config files, XDG paths, and existing
+Ghostty-format settings remain supported. `rustty.exe --config-info` reports both
+the selected configuration and shell.
+
+When no Rustty command is configured, Rustty reads **only the default shell command**
+from Windows Terminal's settings and profile fragments. It preserves its arguments,
+including Git Bash's login flags. It does not import Terminal's working directory,
+environment, appearance, fonts, or shortcuts. An explicit Rustty command or `-e`
+takes precedence. An unresolved generated profile produces a diagnostic and uses
+`ComSpec` (`cmd.exe`) as fallback. Git Bash supports cwd/title and command lifecycle
+integration without editing user startup files; other commands can be launched
+explicitly. The Windows bundle uses `xterm-256color` unless a compiled terminfo
+directory is supplied.
+
+Windows defaults use Ctrl+Shift+C/V for copy/paste, Ctrl+Shift+T for a tab,
+Ctrl+Shift+D for a right split, Ctrl+Alt+D for a down split, Ctrl+Tab to switch tabs,
+Alt+Enter for fullscreen, and Ctrl-click to open links. Ctrl+C and other ordinary
+shell control keys remain available to the child. Configured bindings retain their
+literal modifier meanings.
+
+Native menus, taskbar badges, toast notifications, clipboard formats, IME, and
+AccessKit/UI Automation use Windows services. The quick terminal is a tool window;
+`quick-terminal-space-behavior = move` moves it to the foreground desktop when
+revealed. Selection clipboard storage is shared within one process. The saved-layout
+picker accepts Rustty JSON; Ghostty's macOS archived-state format requires macOS.
+
+Windows validation:
+
+```powershell
+cargo test --workspace --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test -p rustty-app --test windows_platform -- --ignored
+$env:RUSTTY_SMOKE_DIR = Join-Path $env:TEMP 'rustty-native-smoke'
+./target/debug/Rustty/rustty.exe
+Remove-Item Env:RUSTTY_SMOKE_DIR
+```
+
+The native smoke uses isolated Git Bash sessions (no profile or history writes),
+requiring Git for Windows at its standard installation path. Set `RUSTTY_SMOKE_SHELL`
+to another native Git Bash executable if needed. It writes its own workspace and
+readback image inside `RUSTTY_SMOKE_DIR` and does not restore the normal workspace.
+
+## macOS
 
 Build a native app from the repository root:
 

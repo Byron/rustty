@@ -5,6 +5,14 @@ use std::fs;
 #[path = "../../../test/rustty/frame_workloads.rs"]
 mod workload;
 
+fn fixture_directory() -> PathBuf {
+    if cfg!(target_os = "windows") {
+        std::env::temp_dir()
+    } else {
+        PathBuf::from("/tmp")
+    }
+}
+
 #[cfg(test)]
 #[test]
 fn hover_measurement_restarts_for_motion_and_leaving_but_not_duplicate_events() {
@@ -127,17 +135,49 @@ impl Smoke {
         if timing {
             loaded.config = Config::default();
             loaded.diagnostics.clear();
-            loaded.config.font_family = vec!["Menlo".into()];
+            loaded.config.font_family = vec![if cfg!(target_os = "windows") {
+                "Consolas".into()
+            } else {
+                "Menlo".into()
+            }];
             loaded.config.font_size = 13.0;
         }
+        #[cfg(not(target_os = "windows"))]
         let command = if timing {
             config::Command::Direct(vec!["/bin/sleep".into(), "120".into()])
         } else {
             config::Command::Direct(vec!["/bin/sh".into(),"-c".into(),r"printf '\033[2J\033[H\033[30;107m  ✔️\033[5G  > selected row\033[0m\n\033[1;36mRustty native smoke\033[0m\n\033]7;file://localhost/tmp\007\033]9;4;1;65\007'; exec /bin/sh -i".into()])
         };
+        #[cfg(target_os = "windows")]
+        let command = {
+            // Use a deterministic native Git Bash child for the shared POSIX
+            // fixtures; no WSL and no user startup files or history writes.
+            let shell = std::env::var_os("RUSTTY_SMOKE_SHELL")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| {
+                    PathBuf::from(
+                        std::env::var_os("ProgramFiles")
+                            .unwrap_or_else(|| "C:\\Program Files".into()),
+                    )
+                    .join("Git/bin/bash.exe")
+                });
+            if timing {
+                config::Command::Direct(vec![
+                    shell.to_string_lossy().into_owned(),
+                    "--noprofile".into(),
+                    "--norc".into(),
+                    "-c".into(),
+                    "sleep 120".into(),
+                ])
+            } else {
+                config::Command::Direct(vec![shell.to_string_lossy().into_owned(),
+                "--noprofile".into(), "--norc".into(), "-c".into(),
+                r#"export HISTFILE=/dev/null PS1='' LC_ALL=C.UTF-8; printf '\033[2J\033[H\033[30;107m  ✔️\033[5G  > selected row\033[0m\n\033[1;36mRustty native smoke\033[0m\n\033]7;kitty-shell-cwd://localhost%s\007\033]9;4;1;65\007' "$PWD"; exec bash --noprofile --norc -i"#.into()])
+            }
+        };
         loaded.config.command = Some(command.clone());
         loaded.config.initial_command = Some(command);
-        loaded.config.working_directory = Some(PathBuf::from("/tmp"));
+        loaded.config.working_directory = Some(fixture_directory());
         loaded.config.window_save_state = config::WindowSaveState::Always;
         loaded.config.cursor_style_blink = Some(false);
         loaded.config.grapheme_width_method = config::GraphemeWidthMethod::Unicode;
@@ -313,7 +353,7 @@ impl Smoke {
                 {
                     return Ok(false);
                 }
-                if app.panes.values().any(|p| p.cwd != Path::new("/tmp")) {
+                if app.panes.values().any(|p| p.cwd != fixture_directory()) {
                     return Err("OSC directory was not decoded before restoration".into());
                 }
                 if app.panes.values().any(|p| {
@@ -432,7 +472,7 @@ impl Smoke {
                     .current_monitor()
                     .and_then(|monitor| monitor.refresh_rate_millihertz())
                     .map(|rate| f64::from(rate) / 1000.0);
-                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","drag-selection-scrolling","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
+                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","native-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","drag-selection-scrolling","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
                 fs::write(
                     self.directory.join("result.json"),
                     serde_json::to_vec_pretty(&report)?,
@@ -512,7 +552,10 @@ impl Smoke {
                 if app.panes[&hidden.focused].title != "hidden-agent-19"
                     || hidden.panes[&hidden.focused].title.as_deref() != Some("hidden-agent-19")
                 {
-                    return Err("hidden-tab titles did not update live and saved state".into());
+                    // Spawning sleep through MSYS can take longer than on Unix.
+                    // Await all reports under the smoke's overall deadline.
+                    self.next = Instant::now() + Duration::from_millis(100);
+                    return Ok(false);
                 }
                 self.hidden_title_frames = host.frames.saturating_sub(self.idle_frames);
                 if self.hidden_title_frames > 4 {
@@ -549,8 +592,6 @@ impl Smoke {
                 self.stage = 9;
             }
             9 => {
-                self.header_frames = host.frames.saturating_sub(self.header_frames);
-                self.header_prepares = host.pane_prepares.saturating_sub(self.header_prepares);
                 let window = &app.workspace.windows[app.index(host.id).unwrap()];
                 let hidden = window
                     .tabs
@@ -559,8 +600,13 @@ impl Smoke {
                     .find(|(index, _)| *index != window.active_tab)
                     .unwrap()
                     .1;
-                if app.panes[&hidden.focused].title != "visible-agent-19" || self.header_frames < 10
-                {
+                if app.panes[&hidden.focused].title != "visible-agent-19" {
+                    self.next = Instant::now() + Duration::from_millis(100);
+                    return Ok(false);
+                }
+                self.header_frames = host.frames.saturating_sub(self.header_frames);
+                self.header_prepares = host.pane_prepares.saturating_sub(self.header_prepares);
+                if self.header_frames < 10 {
                     return Err("visible tab-label updates stopped repainting".into());
                 }
                 // Native focus/resize events can invalidate retained panes; title
@@ -724,7 +770,7 @@ impl Replay {
             }
         }
         if self.frame == workload::WARMUP {
-            self.process_start = Some((Instant::now(), cpu_time(libc::CLOCK_PROCESS_CPUTIME_ID)?));
+            self.process_start = Some((Instant::now(), cpu_time(CpuClock::Process)?));
         }
         let terminal_start = Instant::now();
         workload::advance(
@@ -735,12 +781,12 @@ impl Replay {
             self.size.unwrap(),
         );
         let terminal_ns = terminal_start.elapsed().as_nanos() as u64;
-        let cpu_start = cpu_time(libc::CLOCK_THREAD_CPUTIME_ID)?;
+        let cpu_start = cpu_time(CpuClock::Thread)?;
         let frame_start = Instant::now();
         let before = host.frames;
         app.draw_frame(event_loop, host, self.target.as_ref())?;
         let frame_ns = frame_start.elapsed().as_nanos() as u64;
-        let frame_cpu = cpu_time(libc::CLOCK_THREAD_CPUTIME_ID)? - cpu_start;
+        let frame_cpu = cpu_time(CpuClock::Thread)? - cpu_start;
         if host.frames != before + 1 {
             return Err("replay did not draw a frame".into());
         }
@@ -763,7 +809,7 @@ impl Replay {
         }
         let (started, cpu_started) = self.process_start.unwrap();
         let elapsed = started.elapsed().as_secs_f64();
-        let process_cpu = (cpu_time(libc::CLOCK_PROCESS_CPUTIME_ID)? - cpu_started) as f64 / 1e9;
+        let process_cpu = (cpu_time(CpuClock::Process)? - cpu_started) as f64 / 1e9;
         let report = serde_json::json!({
             "case": self.case, "font": "Menlo", "font_size_points": 13,
             "size_pixels": [host.window.inner_size().width, host.window.inner_size().height],
@@ -792,7 +838,17 @@ impl Replay {
     }
 }
 
-fn cpu_time(clock: libc::clockid_t) -> Result<u64> {
+enum CpuClock {
+    Process,
+    Thread,
+}
+
+#[cfg(target_os = "macos")]
+fn cpu_time(clock: CpuClock) -> Result<u64> {
+    let clock = match clock {
+        CpuClock::Process => libc::CLOCK_PROCESS_CPUTIME_ID,
+        CpuClock::Thread => libc::CLOCK_THREAD_CPUTIME_ID,
+    };
     let mut time: libc::timespec = unsafe { std::mem::zeroed() };
     if unsafe { libc::clock_gettime(clock, &mut time) } != 0 {
         return Err(std::io::Error::last_os_error().into());
@@ -800,6 +856,37 @@ fn cpu_time(clock: libc::clockid_t) -> Result<u64> {
     Ok(time.tv_sec as u64 * 1_000_000_000 + time.tv_nsec as u64)
 }
 
+#[cfg(target_os = "windows")]
+fn cpu_time(clock: CpuClock) -> Result<u64> {
+    use windows::Win32::{
+        Foundation::FILETIME,
+        System::Threading::{GetCurrentProcess, GetCurrentThread, GetProcessTimes, GetThreadTimes},
+    };
+    let [mut created, mut exited, mut kernel, mut user] = [FILETIME::default(); 4];
+    unsafe {
+        match clock {
+            CpuClock::Process => GetProcessTimes(
+                GetCurrentProcess(),
+                &mut created,
+                &mut exited,
+                &mut kernel,
+                &mut user,
+            ),
+            CpuClock::Thread => GetThreadTimes(
+                GetCurrentThread(),
+                &mut created,
+                &mut exited,
+                &mut kernel,
+                &mut user,
+            ),
+        }
+    }?;
+    let ticks =
+        |time: FILETIME| u64::from(time.dwHighDateTime) << 32 | u64::from(time.dwLowDateTime);
+    Ok((ticks(kernel) + ticks(user)) * 100)
+}
+
+#[cfg(target_os = "macos")]
 fn resident_bytes() -> Result<u64> {
     let mut info = std::mem::MaybeUninit::<libc::proc_taskinfo>::zeroed();
     let size = std::mem::size_of_val(&info) as i32;
@@ -816,6 +903,21 @@ fn resident_bytes() -> Result<u64> {
         return Err(format!("proc_pidinfo returned {read} bytes, expected {size}").into());
     }
     Ok(unsafe { info.assume_init() }.pti_resident_size)
+}
+
+#[cfg(target_os = "windows")]
+fn resident_bytes() -> Result<u64> {
+    use windows::Win32::System::{
+        ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS},
+        Threading::GetCurrentProcess,
+    };
+    let size = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+    let mut info = PROCESS_MEMORY_COUNTERS {
+        cb: size,
+        ..Default::default()
+    };
+    unsafe { GetProcessMemoryInfo(GetCurrentProcess(), &mut info, size)? };
+    Ok(info.WorkingSetSize as u64)
 }
 
 fn check_terminal_frames(
@@ -1903,7 +2005,17 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
             },
         );
         let position = host.rects[&hovered].center();
-        let path = Path::new("/tmp/rustty's dropped file.txt");
+        let (path, quoted) = if cfg!(target_os = "windows") {
+            (
+                Path::new("C:\\Temp\\rustty's dropped file.txt"),
+                "'/c/Temp/rustty'\\''s dropped file.txt' ",
+            )
+        } else {
+            (
+                Path::new("/tmp/rustty's dropped file.txt"),
+                "'/tmp/rustty'\\''s dropped file.txt' ",
+            )
+        };
         for bracketed in [false, true] {
             for (id, enabled) in [(focused, !bracketed), (hovered, bracketed)] {
                 app.panes[&id].session.terminal()?.feed(if enabled {
@@ -1914,16 +2026,16 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
             }
             app.drop_file(host, position, path);
             app.drop_file(host, Pos2::ZERO, path);
-            let expected: &[u8] = if bracketed {
-                b"\x1b[200~'/tmp/rustty'\\''s dropped file.txt' \x1b[201~"
+            let expected = if bracketed {
+                format!("\x1b[200~{quoted}\x1b[201~").into_bytes()
             } else {
-                b"'/tmp/rustty'\\''s dropped file.txt' "
+                quoted.as_bytes().to_vec()
             };
             if app.focused(host.id) != Some(focused) || app.panes[&focused].input.len() != 1 {
                 return Err("file drop affected the focused pane".into());
             }
             let pane = app.panes.get_mut(&hovered).unwrap();
-            if pane.input.len() != 2 || pane.input.back().unwrap() != expected {
+            if pane.input.len() != 2 || pane.input.back().unwrap() != &expected {
                 return Err(
                     "file drop did not use the target pane's paste mode and quoted path".into(),
                 );
@@ -2361,6 +2473,11 @@ fn check_click_selection(app: &mut App, host: &mut Host, focused: Id, target: Id
 
 fn check_link_hover(app: &mut App, host: &mut Host, focused: Id, hovered: Id) -> Result<()> {
     use winit::keyboard::ModifiersState;
+    let link_modifier = if cfg!(target_os = "windows") {
+        ModifiersState::CONTROL
+    } else {
+        ModifiersState::SUPER
+    };
     let scale = host.window.scale_factor() as f32;
     let metrics = host.fonts.metrics();
     let cell = Vec2::new(metrics.cell_width as f32, metrics.cell_height as f32) / scale;
@@ -2377,7 +2494,7 @@ fn check_link_hover(app: &mut App, host: &mut Host, focused: Id, hovered: Id) ->
     if host.hovered_link.is_some() || host.link_hit.is_some() {
         return Err("ordinary mouse hover started link detection".into());
     }
-    host.modifiers = ModifiersState::SUPER.into();
+    host.modifiers = link_modifier.into();
     if !app.update_hover_link(host)
         || !host.hovered_link.as_ref().is_some_and(|link| {
             link.pane == hovered
@@ -2409,7 +2526,7 @@ fn check_link_hover(app: &mut App, host: &mut Host, focused: Id, hovered: Id) ->
     if !app.update_hover_link(host) || host.hovered_link.is_some() {
         return Err("releasing Command retained a link underline".into());
     }
-    host.modifiers = ModifiersState::SUPER.into();
+    host.modifiers = link_modifier.into();
     app.update_hover_link(host);
     app.panes[&hovered]
         .session
@@ -2418,7 +2535,7 @@ fn check_link_hover(app: &mut App, host: &mut Host, focused: Id, hovered: Id) ->
     if !app.update_hover_link(host) || host.hovered_link.is_some() {
         return Err("mouse-captured text was advertised as Command-clickable".into());
     }
-    host.modifiers = (ModifiersState::SUPER | ModifiersState::SHIFT).into();
+    host.modifiers = (link_modifier | ModifiersState::SHIFT).into();
     app.panes[&hovered].session.terminal()?.feed(b"\x1b[>0s");
     if !app.update_hover_link(host) || host.hovered_link.is_none() {
         return Err("Shift did not make the locally clickable URL discoverable".into());

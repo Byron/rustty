@@ -12,6 +12,16 @@ use winit::{
     platform::modifier_supplement::KeyEventExtModifierSupplement,
 };
 
+/// Windows reserves the Super key for desktop shortcuts. Link activation uses
+/// Control there, while macOS follows its native Command-click convention.
+pub fn link_modifier(modifiers: ModifiersState) -> bool {
+    if cfg!(target_os = "windows") {
+        modifiers.control_key()
+    } else {
+        modifiers.super_key()
+    }
+}
+
 /// Share the application's Shift override between mouse buttons and scrolling.
 pub fn mouse_reporting(
     terminal: &vt::Terminal,

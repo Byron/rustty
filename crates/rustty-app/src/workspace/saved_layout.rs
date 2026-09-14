@@ -1,11 +1,19 @@
 //! Read-only layout import. Native archives are decoded as data, never as views.
-use super::{Axis, Id, Node, SavedPane, Tab, Tree, WindowState, Workspace, invalid};
+#[cfg(any(target_os = "macos", test))]
+use super::{Axis, Id, Node, SavedPane, Tab, Tree, WindowState};
+use super::{Workspace, invalid};
+#[cfg(any(target_os = "macos", test))]
 use serde::Deserialize;
+#[cfg(any(target_os = "macos", test))]
 use std::collections::BTreeMap;
+#[cfg(any(not(target_os = "windows"), test))]
 use std::fs;
-use std::io::{self, Read};
+use std::io;
+#[cfg(target_os = "macos")]
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
+#[cfg(target_os = "macos")]
 const MAX_LAYOUT_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
@@ -17,6 +25,12 @@ pub struct SavedLayout {
 
 /// Include unavailable defaults so the picker can explain where layouts live.
 pub fn saved_layouts(home: &Path, rustty_state_path: &Path) -> Vec<SavedLayout> {
+    #[cfg(target_os = "windows")]
+    let mut layouts = {
+        let _ = home;
+        Vec::new()
+    };
+    #[cfg(not(target_os = "windows"))]
     let mut layouts = [
         ("Ghostty Local", "com.mitchellh.ghostty.local"),
         ("Ghostty", "com.mitchellh.ghostty"),
@@ -59,6 +73,7 @@ pub fn saved_layouts(home: &Path, rustty_state_path: &Path) -> Vec<SavedLayout> 
     layouts
 }
 
+#[cfg(not(target_os = "windows"))]
 fn native_layout_exists(path: &Path) -> bool {
     path.join("windows.plist").is_file() && path.join("data.data").is_file()
 }
@@ -100,6 +115,7 @@ pub fn load_layout(path: &Path) -> io::Result<Workspace> {
     Ok(state)
 }
 
+#[cfg(target_os = "macos")]
 fn read_bounded(path: &Path) -> io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     fs::File::open(path)?
@@ -111,6 +127,7 @@ fn read_bounded(path: &Path) -> io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GhosttyState {
@@ -120,6 +137,7 @@ struct GhosttyState {
     tab_color: Option<u8>,
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GhosttyTree {
@@ -129,11 +147,13 @@ struct GhosttyTree {
     quadrant_zoomed: Option<GhosttyPath>,
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Deserialize)]
 struct GhosttyPath {
     path: Vec<BTreeMap<String, serde_json::Value>>,
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum GhosttyNode {
@@ -141,6 +161,7 @@ enum GhosttyNode {
     Split { split: GhosttySplit },
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GhosttyView {
@@ -151,6 +172,7 @@ struct GhosttyView {
     is_user_set_title: bool,
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Deserialize)]
 struct GhosttySplit {
     direction: BTreeMap<String, serde_json::Value>,
@@ -159,6 +181,7 @@ struct GhosttySplit {
     right: Box<GhosttyNode>,
 }
 
+#[cfg(any(target_os = "macos", test))]
 impl GhosttyState {
     fn into_tab(self, workspace: &mut Workspace) -> io::Result<Tab> {
         if self.surface_tree.version != 1 {
@@ -1084,12 +1107,16 @@ mod tests {
                 .iter()
                 .map(|entry| entry.name.as_str())
                 .collect::<Vec<_>>(),
-            ["Ghostty Local", "Ghostty", "Rustty"]
+            if cfg!(target_os = "windows") {
+                vec!["Rustty"]
+            } else {
+                vec!["Ghostty Local", "Ghostty", "Rustty"]
+            }
         );
         assert!(defaults.iter().all(|entry| !entry.available));
         assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0);
         workspace().save(&state).unwrap();
-        assert!(saved_layouts(&dir.0, &state)[2].available);
+        assert!(saved_layouts(&dir.0, &state).last().unwrap().available);
     }
 
     #[test]

@@ -1,5 +1,14 @@
 # Rustty app resources
 
+On Windows, `./crates/rustty-app/build.ps1 -Release` creates
+`target/release/Rustty` with `rustty.exe` and an adjacent `resources` directory.
+Omit `-Release` for debug; use `-Offline` for cached dependencies. Integration scripts
+are normalized to UTF-8/LF even in an `autocrlf` checkout. The Windows executable
+embeds its icon, version, and per-monitor DPI manifest; the bundle does not require
+`tic`, Zig, or a separate DXC DLL. Without a compiled terminfo directory, sessions
+advertise `xterm-256color`. Optional per-user registration is documented in the app
+README and is never performed by an ordinary build or launch.
+
 Build from the repository root with `nu crates/rustty-app/build.nu --release`.
 Omit `--release` for a debug build; add `--offline` to use cached Cargo dependencies.
 The script creates `target/release/Rustty.app` (or `target/debug/Rustty.app`)
@@ -31,4 +40,4 @@ Resource provenance:
   Ghostty's MIT notice is included in every app bundle.
 
 The Rust/WGPU executable has no link dependency on the Zig library. Native
-macOS frameworks still provide font services, menus and notifications.
+macOS frameworks or Windows APIs provide font services, menus and notifications.

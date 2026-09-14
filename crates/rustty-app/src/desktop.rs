@@ -5,6 +5,7 @@ mod smoke;
 use command_palette::CommandPalette;
 use egui::{Color32, Pos2, Sense, Vec2, ViewportId};
 use rustty::{
+    app_paths,
     config::{self, Action, Config, Direction, LoadedConfig},
     session::{Session, SessionEvent, SessionOptions},
     vt,
@@ -32,13 +33,16 @@ use std::{
     },
     time::{Duration, Instant},
 };
+#[cfg(target_os = "windows")]
+use winit::platform::windows::WindowAttributesExtWindows;
+#[cfg(target_os = "macos")]
+use winit::platform::{macos::WindowAttributesExtMacOS, scancode::PhysicalKeyExtScancode};
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalPosition, LogicalSize},
     event::{ElementState, Ime, Modifiers, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
     keyboard::PhysicalKey,
-    platform::{macos::WindowAttributesExtMacOS, scancode::PhysicalKeyExtScancode},
     window::{CursorIcon, Fullscreen, Theme, Window, WindowId},
 };
 
@@ -79,6 +83,7 @@ struct Pane {
     title: String,
     title_override: Option<String>,
     cwd: PathBuf,
+    last_directory_report: String,
     running: Option<Instant>,
     activity: Activity,
     unseen: bool,
@@ -656,7 +661,10 @@ pub fn run() -> Result<()> {
     }
     let show_config = args.iter().any(|arg| arg == "--config-info");
     args.retain(|arg| arg != "--config-info");
-    let event_loop = EventLoop::<Event>::with_user_event().build()?;
+    let mut builder = EventLoop::<Event>::with_user_event();
+    #[cfg(target_os = "windows")]
+    rustty_app::platform::configure_event_loop(&mut builder);
+    let event_loop = builder.build()?;
     let resources = resource_dir();
     let mut config_loader = config::ConfigLoader::from_env()?;
     config_loader.resources_dir = resources.clone().or(config_loader.resources_dir);
@@ -674,13 +682,21 @@ pub fn run() -> Result<()> {
         for diagnostic in &loaded.diagnostics {
             eprintln!("{diagnostic}");
         }
+        let shell = rustty::session::resolve_shell(
+            loaded
+                .config
+                .initial_command
+                .as_ref()
+                .or(loaded.config.command.as_ref()),
+        );
+        println!("Shell: {shell}");
+        if let Some(diagnostic) = shell.diagnostic() {
+            eprintln!("{diagnostic}");
+        }
         return Ok(());
     }
     let smoke = smoke::Smoke::from_env(&mut loaded)?;
-    let mut state_path = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or("HOME is unavailable")?
-        .join("Library/Application Support/com.rustty.app/workspace.json");
+    let mut state_path = app_paths::data_dir()?.join("workspace.json");
     let mut errors = loaded
         .diagnostics
         .iter()
@@ -714,6 +730,23 @@ pub fn run() -> Result<()> {
     });
     let mut gpu_config = egui_wgpu::WgpuConfiguration::default();
     gpu_config.surface = egui_wgpu::SurfaceConfig::LOW_LATENCY;
+    #[cfg(target_os = "windows")]
+    if let egui_wgpu::WgpuSetup::CreateNew(setup) = &mut gpu_config.wgpu_setup {
+        // An HWND swapchain is opaque even for a transparent Winit window.
+        // WGPU owns the DirectComposition visual and its premultiplied surface.
+        setup
+            .instance_descriptor
+            .backend_options
+            .dx12
+            .presentation_system = wgpu::Dx12SwapchainKind::DxgiFromVisual;
+        // Both current shader pipelines support FXC; this keeps the portable
+        // distribution independent of a separately installed DXC DLL.
+        setup
+            .instance_descriptor
+            .backend_options
+            .dx12
+            .shader_compiler = wgpu::Dx12Compiler::Fxc;
+    }
     if smoke.is_some() {
         let on_status = gpu_config.on_surface_status.clone();
         let reported = AtomicBool::new(false);
@@ -769,18 +802,41 @@ pub fn run() -> Result<()> {
     if let Some(error) = app.smoke_error {
         return Err(error.into());
     }
+    if app.smoke.is_some() {
+        return Err("native smoke exited before completing its checks".into());
+    }
     Ok(())
 }
 
 fn resource_dir() -> Option<PathBuf> {
     let executable = std::env::current_exe().ok()?;
-    let bundled = executable.parent()?.parent()?.join("Resources/rustty");
-    if bundled.is_dir() {
-        return Some(bundled);
+    #[cfg(target_os = "windows")]
+    {
+        let bundled = executable.parent()?.join("resources");
+        if bundled.is_dir() {
+            return Some(bundled);
+        }
+        let profile = if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        };
+        let development = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target")
+            .join(profile)
+            .join("Rustty/resources");
+        development.is_dir().then_some(development)
     }
-    let development = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/debug/Rustty.app/Contents/Resources/rustty");
-    development.is_dir().then_some(development)
+    #[cfg(not(target_os = "windows"))]
+    {
+        let bundled = executable.parent()?.parent()?.join("Resources/rustty");
+        if bundled.is_dir() {
+            return Some(bundled);
+        }
+        let development = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/debug/Rustty.app/Contents/Resources/rustty");
+        development.is_dir().then_some(development)
+    }
 }
 
 fn font_config(config: &Config, scale: f32) -> FontConfig {
@@ -939,8 +995,7 @@ impl App {
             .and_then(|id| self.panes.get(&id))
             .map(|pane| pane.cwd.clone())
             .or_else(|| self.config().working_directory.clone())
-            .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
-            .unwrap_or_else(|| PathBuf::from("/"))
+            .unwrap_or_else(|| self.config_loader.home.clone())
     }
     fn add_window(&mut self, quick: bool) -> Id {
         let directory = self.directory(self.active.unwrap_or(0));
@@ -969,7 +1024,10 @@ impl App {
         if self.panes.contains_key(&id) || self.failed_panes.contains_key(&id) {
             return Ok(());
         }
-        let directory = directory_from_osc(&directory.to_string_lossy())
+        let directory = directory
+            .is_absolute()
+            .then(|| directory.clone())
+            .or_else(|| directory_from_osc(&directory.to_string_lossy()))
             .filter(|path| path.is_dir())
             .or_else(|| {
                 self.config()
@@ -977,8 +1035,7 @@ impl App {
                     .clone()
                     .filter(|path| path.is_dir())
             })
-            .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
-            .unwrap_or_else(|| PathBuf::from("/"));
+            .unwrap_or_else(|| self.config_loader.home.clone());
         let wake_pending = Arc::new(AtomicBool::new(false));
         let pending = wake_pending.clone();
         let proxy = self.proxy.clone();
@@ -1032,6 +1089,11 @@ impl App {
                 return Err(error.into());
             }
         };
+        if let Some(diagnostic) = session.shell().diagnostic()
+            && !self.errors.iter().any(|error| error == diagnostic)
+        {
+            self.errors.push(diagnostic.to_owned());
+        }
         let saved = self
             .workspace
             .windows
@@ -1054,6 +1116,7 @@ impl App {
                 title,
                 title_override,
                 cwd: directory,
+                last_directory_report: String::new(),
                 running: None,
                 activity: Activity::default(),
                 unseen: false,
@@ -1086,10 +1149,7 @@ impl App {
         }
         let attributes = Window::default_attributes()
             .with_title("Rustty")
-            // AppKit consumes the activation click before any terminal/UI action.
-            .with_accepts_first_mouse(false)
             .with_decorations(!quick)
-            .with_nonactivating_panel(quick)
             .with_visible(false)
             .with_inner_size(LogicalSize::new(
                 frame[2].max(MIN_WINDOW_SIZE.width),
@@ -1097,10 +1157,19 @@ impl App {
             ))
             .with_position(LogicalPosition::new(frame[0], frame[1]))
             .with_min_inner_size(MIN_WINDOW_SIZE)
-            .with_transparent(self.config().background_opacity < 1.0)
+            .with_transparent(self.config().background_opacity < 1.0);
+        #[cfg(target_os = "macos")]
+        let attributes = attributes
+            // AppKit consumes the activation click before any terminal/UI action.
+            .with_accepts_first_mouse(false)
+            .with_nonactivating_panel(quick)
             .with_titlebar_transparent(true)
             .with_fullsize_content_view(true)
             .with_title_hidden(true);
+        #[cfg(target_os = "windows")]
+        let attributes = attributes
+            .with_skip_taskbar(quick)
+            .with_no_redirection_bitmap(true);
         let window = Arc::new(event_loop.create_window(attributes)?);
         if let Some(platform) = &self.platform {
             platform.configure_window(&window, quick, self.config())?;
@@ -1299,14 +1368,16 @@ impl App {
         let Some(pane) = host.pane_at(position) else {
             return;
         };
-        self.paste(
-            host,
-            PendingPaste {
-                pane,
-                data: format!("'{}' ", path.to_string_lossy().replace('\'', "'\\''")).into_bytes(),
-            },
-            true,
-        );
+        let data = match self.panes[&pane].session.shell().quote_path(path) {
+            Ok(data) => data,
+            Err(error) => {
+                self.errors
+                    .push(format!("Could not quote dropped path: {error}"));
+                host.repaint();
+                return;
+            }
+        };
+        self.paste(host, PendingPaste { pane, data }, true);
     }
     fn paste_event(
         &mut self,
@@ -1452,14 +1523,23 @@ impl App {
         {
             self.errors.push(error.to_string());
         }
-        if let Ok(mut terminal) = pane.session.terminal() {
+        let directory_report = if let Ok(mut terminal) = pane.session.terminal() {
             pane.sync_output.update(&mut terminal, Instant::now());
-            if let Some(directory) = directory_from_osc(&terminal.working_directory) {
+            Some(terminal.working_directory.clone())
+        } else {
+            pane.sync_output.deadline = None;
+            None
+        };
+        // Git/MSYS path conversion may invoke cygpath. Never hold the terminal
+        // mutex during that call, and only convert reports that actually change.
+        if let Some(report) = directory_report
+            && report != pane.last_directory_report
+        {
+            if let Some(directory) = pane.session.shell().directory_from_report(&report) {
                 content_changed |= pane.cwd != directory;
                 pane.cwd = directory;
             }
-        } else {
-            pane.sync_output.deadline = None;
+            pane.last_directory_report = report;
         }
         let events = pane.session.events().collect::<Vec<_>>();
         for event in events {
@@ -1542,6 +1622,9 @@ impl App {
                         signal.map(|s| format!(" ({s})")).unwrap_or_default()
                     );
                     pane.exit_message = Some(format!("{} — press any key to close", pane.title));
+                    if self.smoke.is_some() {
+                        eprintln!("Native smoke: pane {id} {} after {runtime:?}", pane.title);
+                    }
                     close = live && !hold_after_exit(config, runtime);
                 }
                 SessionEvent::Error(error) => self.errors.push(error),
@@ -4033,11 +4116,11 @@ impl App {
         self.refresh_selection(host, Instant::now(), false);
         host.repaint();
     }
-    /// Resolve the same target used by Command-click. Passive motion stays cheap:
-    /// without Command there is no scan, and an unchanged cell reuses its hit.
+    /// Resolve the same target used by the platform's modified link click.
+    /// Without the modifier there is no scan; an unchanged cell reuses its hit.
     fn update_hover_link(&mut self, host: &mut Host) -> bool {
         let result = (|| {
-            if !host.modifiers.state().super_key()
+            if !input::link_modifier(host.modifiers.state())
                 || !self.config().link_url
                 || host.modal_input()
                 || host.peek.is_some()
@@ -4394,7 +4477,7 @@ impl App {
             .nth(row)
             .map(|r| vt::GridPoint { row: r.id, col });
         if let Some(point) = point {
-            if host.modifiers.state().super_key() && config.link_url {
+            if input::link_modifier(host.modifiers.state()) && config.link_url {
                 pane.selection_gesture.reset(&mut terminal);
                 host.selection_drag = None;
                 if let Some(link) = &host.hovered_link
@@ -4521,44 +4604,60 @@ impl ApplicationHandler<Event> for App {
                 }
             }
             Event::Platform(event) => {
-                if let PlatformEvent::NotificationClicked(pane) = event {
-                    let target = self.workspace.windows.iter().find_map(|window| {
-                        window
-                            .tabs
-                            .iter()
-                            .position(|tab| tab.panes.contains_key(&pane))
-                            .map(|index| (window.id, index))
-                    });
-                    if let Some((id, index)) = target {
-                        if let Some(window) = self.index(id) {
-                            self.workspace.windows[window].active_tab = index;
+                match event {
+                    PlatformEvent::NotificationClicked(pane) => {
+                        let target = self.workspace.windows.iter().find_map(|window| {
+                            window
+                                .tabs
+                                .iter()
+                                .position(|tab| tab.panes.contains_key(&pane))
+                                .map(|index| (window.id, index))
+                        });
+                        if let Some((id, index)) = target {
+                            if let Some(window) = self.index(id) {
+                                self.workspace.windows[window].active_tab = index;
+                            }
+                            self.focus_pane(id, pane);
+                            if let Some(host) = self.windows.values_mut().find(|host| host.id == id)
+                            {
+                                host.peek = None;
+                                host.visible = true;
+                                host.window.set_visible(true);
+                                host.window.set_minimized(false);
+                                host.window.focus_window();
+                                host.repaint();
+                            }
                         }
-                        self.focus_pane(id, pane);
-                        if let Some(host) = self.windows.values_mut().find(|host| host.id == id) {
-                            host.peek = None;
-                            host.visible = true;
-                            host.window.set_visible(true);
-                            host.window.focus_window();
+                    }
+                    PlatformEvent::Action(action) => {
+                        self.platform_action(event_loop, action, false);
+                    }
+                    #[cfg(target_os = "windows")]
+                    PlatformEvent::GlobalHotkey(binding) => {
+                        // A config reload can remove a binding while its event is queued.
+                        if self.config().keybinds.contains(&binding) {
+                            self.platform_binding(event_loop, binding);
+                        }
+                    }
+                    #[cfg(target_os = "macos")]
+                    PlatformEvent::GlobalHotkey { id, key_code } => {
+                        self.consumed_global_keys
+                            .insert(PhysicalKey::from_scancode(u32::from(key_code)));
+                        if let Some(binding) = self
+                            .platform
+                            .as_ref()
+                            .and_then(|platform| platform.global_keybinding(id))
+                        {
+                            self.platform_binding(event_loop, binding);
+                        }
+                    }
+                    #[cfg(target_os = "macos")]
+                    PlatformEvent::Warning(message) => {
+                        self.errors.push(message);
+                        for host in self.windows.values_mut() {
+                            host.messages_open = true;
                             host.repaint();
                         }
-                    }
-                } else if let PlatformEvent::Action(action) = event {
-                    self.platform_action(event_loop, action, false);
-                } else if let PlatformEvent::GlobalHotkey { id, key_code } = event {
-                    self.consumed_global_keys
-                        .insert(PhysicalKey::from_scancode(u32::from(key_code)));
-                    if let Some(binding) = self
-                        .platform
-                        .as_ref()
-                        .and_then(|platform| platform.global_keybinding(id))
-                    {
-                        self.platform_binding(event_loop, binding);
-                    }
-                } else if let PlatformEvent::Warning(message) = event {
-                    self.errors.push(message);
-                    for host in self.windows.values_mut() {
-                        host.messages_open = true;
-                        host.repaint();
                     }
                 }
                 self.sync_host_state();
@@ -5004,6 +5103,10 @@ impl ApplicationHandler<Event> for App {
         self.reconcile(event_loop);
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_os = "windows")]
+        if let Some(platform) = &self.platform {
+            platform.tick();
+        }
         if let Some(mut smoke) = self.smoke.take() {
             match smoke.step(self, event_loop) {
                 Ok(false) => self.smoke = Some(smoke),
@@ -5099,6 +5202,10 @@ impl ApplicationHandler<Event> for App {
             )
             .chain(self.smoke.as_ref().map(|_| now + Duration::from_millis(50)))
             .min();
+        #[cfg(target_os = "windows")]
+        if let Some(deadline) = self.platform.as_ref().and_then(Platform::next_deadline) {
+            next = Some(next.map_or(deadline, |old| old.min(deadline)));
+        }
         for host in self.windows.values_mut() {
             if let Some(deadline) = host
                 .selection_drag
@@ -5410,18 +5517,23 @@ fn initial_visible_panes(window: &WindowState, native: Option<(bool, bool, bool)
 }
 
 fn configure_ui_fonts(context: &egui::Context) {
-    // Use the installed macOS UI font; egui's bundled fonts remain fallbacks.
-    if let Ok(bytes) = std::fs::read("/System/Library/Fonts/SFNS.ttf") {
+    #[cfg(target_os = "macos")]
+    let path = PathBuf::from("/System/Library/Fonts/SFNS.ttf");
+    #[cfg(target_os = "windows")]
+    let path = PathBuf::from(std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into()))
+        .join("Fonts/segoeui.ttf");
+    // Use the native UI face; egui's embedded fonts remain fallbacks.
+    if let Ok(bytes) = std::fs::read(path) {
         let mut fonts = egui::FontDefinitions::default();
         fonts.font_data.insert(
-            "macos-system".into(),
+            "system-ui".into(),
             Arc::new(egui::FontData::from_owned(bytes)),
         );
         fonts
             .families
             .get_mut(&egui::FontFamily::Proportional)
             .unwrap()
-            .insert(0, "macos-system".into());
+            .insert(0, "system-ui".into());
         context.set_fonts(fonts);
     }
 }
@@ -6387,6 +6499,7 @@ mod tests {
         std::fs::write(own.join("themes/Night"), "background = 101010\n").unwrap();
         let mut loader = config::ConfigLoader {
             home: directory.clone(),
+            app_config_home: None,
             xdg_config_home: directory.join("config"),
             resources_dir: None,
             dark_mode: true,

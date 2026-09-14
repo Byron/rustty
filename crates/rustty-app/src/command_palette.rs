@@ -296,6 +296,7 @@ mod tests {
     fn shortcuts_follow_loaded_bindings_including_remaps_unbinds_and_sequences() {
         let home = std::env::temp_dir().join(format!("rustty-palette-{}", std::process::id()));
         let loader = ConfigLoader {
+            app_config_home: None,
             xdg_config_home: home.join(".config"),
             resources_dir: None,
             dark_mode: true,
@@ -311,15 +312,20 @@ mod tests {
         let defaults = load(&[]);
         assert_eq!(
             shortcut_label(&defaults, &Action::NewWindow).as_deref(),
-            Some("⌘N")
+            Some(if cfg!(windows) { "⌃⇧N" } else { "⌘N" })
         );
         assert_eq!(
             shortcut_label(&defaults, &Action::CloseAllWindows).as_deref(),
-            Some("⌥⇧⌘W")
+            Some(if cfg!(windows) {
+                "⌃⌥⇧W"
+            } else {
+                "⌥⇧⌘W"
+            })
         );
         assert_eq!(shortcut_label(&defaults, &Action::OpenLayout), None);
         let remapped = load(&[
             "--keybind=super+n=unbind",
+            "--keybind=ctrl+shift+n=unbind",
             "--keybind=ctrl+alt+n=new_window",
             "--keybind=menu/super+p=new_window",
         ]);
@@ -328,14 +334,20 @@ mod tests {
             Some("⌃⌥N")
         );
         assert_eq!(
-            shortcut_label(&load(&["--keybind=super+n=unbind"]), &Action::NewWindow),
+            shortcut_label(
+                &load(&["--keybind=super+n=unbind", "--keybind=ctrl+shift+n=unbind"]),
+                &Action::NewWindow,
+            ),
             None
         );
         assert_eq!(
             shortcut_label(&load(&["--keybind=clear"]), &Action::NewWindow),
             None
         );
-        let sequence = load(&["--keybind=super+k>physical:shift+key_n=new_window"]);
+        let sequence = load(&[
+            "--keybind=clear",
+            "--keybind=super+k>physical:shift+key_n=new_window",
+        ]);
         assert_eq!(
             shortcut_label(&sequence, &Action::NewWindow).as_deref(),
             Some("⌘K → ⇧N")
@@ -350,11 +362,11 @@ mod tests {
         let splits = load(&[]);
         assert_eq!(
             shortcut_label(&splits, &Action::NewSplit(Direction::Right)).as_deref(),
-            Some("⌘D")
+            Some(if cfg!(windows) { "⌃⇧D" } else { "⌘D" })
         );
         assert_eq!(
             shortcut_label(&splits, &Action::NewSplit(Direction::Down)).as_deref(),
-            Some("⇧⌘D")
+            Some(if cfg!(windows) { "⌃⌥D" } else { "⇧⌘D" })
         );
         for (trigger, label) in [
             ("super+shift+enter", "⇧⌘↩"),
@@ -451,7 +463,10 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert!(labels.contains(&"New Window"), "{labels:?}");
-        assert!(labels.contains(&"⌘N"), "{labels:?}");
+        assert!(
+            labels.contains(&if cfg!(windows) { "⌃⇧N" } else { "⌘N" }),
+            "{labels:?}"
+        );
         draw(
             &context,
             &mut palette,
@@ -700,7 +715,10 @@ mod tests {
 
     #[test]
     fn palette_stays_inside_small_windows() {
-        for size in [Vec2::new(800.0, 400.0), Vec2::new(240.0, 120.0)] {
+        for (size, scale) in [Vec2::new(800.0, 400.0), Vec2::new(240.0, 120.0)]
+            .into_iter()
+            .flat_map(|size| [1.0, 1.25, 1.5, 2.0].map(|scale| (size, scale)))
+        {
             let context = egui::Context::default();
             let config = Config::default();
             let bounds = egui::Rect::from_min_size(egui::Pos2::ZERO, size);
@@ -709,22 +727,27 @@ mod tests {
             let mut focus = true;
             palette.toggle();
             for _ in 0..3 {
-                let mut output = context.run_ui(
-                    egui::RawInput {
-                        screen_rect: Some(bounds),
-                        focused: true,
-                        ..Default::default()
-                    },
-                    |root| {
-                        palette.show(root, id, &config, &mut focus);
-                    },
-                );
+                let mut input = egui::RawInput {
+                    screen_rect: Some(bounds),
+                    focused: true,
+                    ..Default::default()
+                };
+                input
+                    .viewports
+                    .get_mut(&egui::ViewportId::ROOT)
+                    .unwrap()
+                    .native_pixels_per_point = Some(scale);
+                let mut output = context.run_ui(input, |root| {
+                    palette.show(root, id, &config, &mut focus);
+                });
                 output.textures_delta.clear();
             }
             let panel = context.read_response(id).unwrap().rect;
+            // Text and container edges snap independently to native pixels.
+            let tolerance = 1.0 / context.pixels_per_point();
             assert!(
-                bounds.shrink(16.0).contains_rect(panel),
-                "{panel:?} outside {bounds:?}"
+                bounds.shrink(16.0).expand(tolerance).contains_rect(panel),
+                "{panel:?} outside {bounds:?} at {scale}x"
             );
         }
     }
