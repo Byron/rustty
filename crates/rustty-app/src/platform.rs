@@ -93,6 +93,17 @@ impl Platform {
         std::fs::File::open("/dev/urandom")?.read_exact(bytes)
     }
 
+    /// Live pointer location in logical content-view coordinates. AppKit file
+    /// drags do not emit Winit CursorMoved events, so cached positions are stale.
+    pub fn cursor_position(window: &Window) -> Result<[f32; 2], String> {
+        let native = native_window(window)?;
+        let view = native
+            .contentView()
+            .ok_or("native window has no content view")?;
+        let point = view.convertPoint_fromView(native.mouseLocationOutsideOfEventStream(), None);
+        Ok([point.x as f32, point.y as f32])
+    }
+
     /// Native state for an explicitly requested smoke-test failure report.
     pub fn window_diagnostics(window: &Window) -> Result<String, String> {
         let native = native_window(window)?;

@@ -57,7 +57,7 @@ impl From<egui_winit::accesskit_winit::Event> for Event {
 
 struct Pane {
     session: Session,
-    host_state: (bool, vt::query::ColorScheme),
+    host_state: (bool, bool, vt::query::ColorScheme),
     wake_pending: Arc<AtomicBool>,
     input: VecDeque<Vec<u8>>,
     input_bytes: usize,
@@ -72,6 +72,7 @@ struct Pane {
     exit_message: Option<String>,
     links: vt::search::LinkMatcher,
     mouse_cell: Option<[u16; 2]>,
+    sync_output: SynchronizedOutput,
 }
 impl Pane {
     fn update_saved(&self, saved: &mut SavedPane) -> bool {
@@ -111,6 +112,30 @@ impl Pane {
             }
         }
         Ok(())
+    }
+}
+
+#[derive(Default)]
+struct SynchronizedOutput {
+    generation: u64,
+    deadline: Option<Instant>,
+}
+
+impl SynchronizedOutput {
+    fn update(&mut self, terminal: &mut vt::Terminal, now: Instant) -> Option<Instant> {
+        if !terminal.modes.dec(2026) {
+            self.deadline = None;
+        } else if self.deadline.is_none()
+            || self.generation != terminal.synchronized_output_generation
+        {
+            self.generation = terminal.synchronized_output_generation;
+            // Match Ghostty's failsafe for an application that never ends a batch.
+            self.deadline = Some(now + Duration::from_secs(1));
+        } else if self.deadline.is_some_and(|deadline| deadline <= now) {
+            terminal.set_mode(true, 2026, false);
+            self.deadline = None;
+        }
+        self.deadline
     }
 }
 
@@ -174,6 +199,140 @@ enum LayoutCommand {
     Close,
 }
 
+// Host viewport and selection changes do not advance the terminal generation.
+#[derive(PartialEq)]
+struct PaneRenderKey {
+    generation: u64,
+    viewport_offset: usize,
+    selection: Option<vt::Selection>,
+    cursor: (usize, usize, vt::screen::CursorShape, bool, bool),
+    options: RenderOptions,
+    rect: egui::Rect,
+    scale: f32,
+}
+
+impl PaneRenderKey {
+    fn new(terminal: &vt::Terminal, options: RenderOptions, rect: egui::Rect, scale: f32) -> Self {
+        let screen = terminal.screen();
+        let cursor = &screen.cursor;
+        Self {
+            generation: terminal.generation,
+            viewport_offset: screen.viewport_offset,
+            selection: screen.selection,
+            cursor: (
+                cursor.col,
+                cursor.row,
+                cursor.shape,
+                cursor.visible,
+                cursor.blink,
+            ),
+            options,
+            rect,
+            scale,
+        }
+    }
+}
+
+struct PreparedPane {
+    key: PaneRenderKey,
+    frame: Arc<Frame>,
+    text: TerminalText,
+    ime_rect: egui::Rect,
+}
+
+#[derive(PartialEq)]
+struct HoveredLink {
+    pane: Id,
+    uri: String,
+    bounds: Vec<egui::Rect>,
+}
+
+impl PreparedPane {
+    fn matches(&self, key: &PaneRenderKey, fonts: &rustty_render::Renderer) -> bool {
+        self.key == *key && self.frame.generation == fonts.generation()
+    }
+
+    fn new(
+        pane: Id,
+        key: PaneRenderKey,
+        screen: &vt::Screen,
+        fonts: &mut rustty_render::Renderer,
+    ) -> std::result::Result<Self, rustty_render::RenderError> {
+        let metrics = fonts.metrics();
+        let frame = fonts.prepare(screen, &key.options)?;
+        let origin = [key.rect.left(), key.rect.top()];
+        let padding = key.options.padding;
+        let text = TerminalText::new(
+            pane,
+            screen,
+            [
+                origin[0] + padding[0] / key.scale,
+                origin[1] + padding[1] / key.scale,
+            ],
+            [
+                metrics.cell_width as f32 / key.scale,
+                metrics.cell_height as f32 / key.scale,
+            ],
+        );
+        let [x, y, width, height] = frame.ime_cursor.unwrap_or([
+            padding[0] + screen.cursor.col as f32 * metrics.cell_width as f32,
+            padding[1] + screen.cursor.row as f32 * metrics.cell_height as f32,
+            metrics.cell_width as f32,
+            metrics.cell_height as f32,
+        ]);
+        let ime_rect = egui::Rect::from_min_size(
+            Pos2::new(origin[0] + x / key.scale, origin[1] + y / key.scale),
+            Vec2::new(width / key.scale, height / key.scale),
+        );
+        Ok(Self {
+            key,
+            frame: Arc::new(frame),
+            text,
+            ime_rect,
+        })
+    }
+}
+
+struct ComposedPane {
+    frame: Arc<Frame>,
+    rect: [f32; 4],
+    dim: Option<rustty_render::Color>,
+}
+
+struct ComposedFrame {
+    panes: Vec<ComposedPane>,
+    frame: Arc<Frame>,
+}
+
+impl ComposedFrame {
+    fn matches(&self, size: [u32; 2], panes: &[ComposedPane]) -> bool {
+        self.frame.size == size
+            && self.panes.len() == panes.len()
+            && self.panes.iter().zip(panes).all(|(old, new)| {
+                Arc::ptr_eq(&old.frame, &new.frame) && old.rect == new.rect && old.dim == new.dim
+            })
+    }
+
+    fn new(
+        size: [u32; 2],
+        panes: Vec<ComposedPane>,
+    ) -> std::result::Result<Self, rustty_render::ComposeError> {
+        let mut frame = Frame::empty(size);
+        for pane in &panes {
+            frame.append_clipped(&pane.frame, [pane.rect[0], pane.rect[1]], pane.rect)?;
+            if let Some(color) = pane.dim {
+                frame
+                    .quads
+                    .push(rustty_render::Quad::solid(pane.rect, color));
+            }
+        }
+        Ok(Self {
+            panes,
+            frame: Arc::new(frame),
+        })
+    }
+}
+
 struct Host {
     id: Id,
     viewport: ViewportId,
@@ -181,7 +340,9 @@ struct Host {
     egui: egui_winit::State,
     fonts: rustty_render::Renderer,
     rects: BTreeMap<Id, egui::Rect>,
-    accessibility: BTreeMap<Id, TerminalText>,
+    prepared: BTreeMap<Id, PreparedPane>,
+    composed: Option<ComposedFrame>,
+    pane_prepares: u64,
     content: Rect,
     divider_drag: Option<(Id, Axis, Rect)>,
     modifiers: Modifiers,
@@ -195,6 +356,8 @@ struct Host {
     navigation_warning: Option<(Id, Instant)>,
     mouse: Pos2,
     deferred_pointer: Option<Pos2>,
+    link_hit: Option<(Id, u64, usize, vt::GridPoint, egui::Rect, Vec2)>,
+    hovered_link: Option<HoveredLink>,
     mouse_button: Option<vt::MouseButton>,
     selection_drag: Option<input::SelectionDrag>,
     focused: bool,
@@ -217,6 +380,18 @@ struct Host {
     frames: u64,
 }
 impl Host {
+    fn hovered_pane(&self) -> Option<Id> {
+        if !self.egui.is_pointer_in_window() {
+            return None;
+        }
+        self.pane_at(self.mouse)
+    }
+    fn pane_at(&self, position: Pos2) -> Option<Id> {
+        self.rects
+            .iter()
+            .find(|(_, rect)| rect.contains(position))
+            .map(|(&id, _)| id)
+    }
     fn ui_input(&self) -> bool {
         self.search.is_some()
             || self.palette
@@ -310,10 +485,15 @@ impl DirectoryBadge {
     }
 }
 
-struct GpuRenderers(HashMap<Id, rustty_render_wgpu::Renderer>);
+struct GpuRenderer {
+    renderer: rustty_render_wgpu::Renderer,
+    frame: Option<Arc<Frame>>,
+    prepares: u64,
+}
+struct GpuRenderers(HashMap<Id, GpuRenderer>);
 struct TerminalPaint {
     window: Id,
-    frame: Frame,
+    frame: Arc<Frame>,
     format: wgpu::TextureFormat,
 }
 impl egui_wgpu::CallbackTrait for TerminalPaint {
@@ -333,9 +513,26 @@ impl egui_wgpu::CallbackTrait for TerminalPaint {
             .unwrap()
             .0
             .entry(self.window)
-            .or_insert_with(|| rustty_render_wgpu::Renderer::new(device, self.format));
-        if let Err(error) = renderer.prepare(device, queue, &self.frame) {
-            eprintln!("Rustty renderer: {error}");
+            .or_insert_with(|| GpuRenderer {
+                renderer: rustty_render_wgpu::Renderer::new(device, self.format),
+                frame: None,
+                prepares: 0,
+            });
+        if !renderer
+            .frame
+            .as_ref()
+            .is_some_and(|frame| Arc::ptr_eq(frame, &self.frame))
+        {
+            // A failed upload can replace part of the GPU state. Retry it even
+            // when the next UI frame still retains the same terminal content.
+            renderer.frame = None;
+            match renderer.renderer.prepare(device, queue, &self.frame) {
+                Ok(()) => {
+                    renderer.frame = Some(Arc::clone(&self.frame));
+                    renderer.prepares += 1;
+                }
+                Err(error) => eprintln!("Rustty renderer: {error}"),
+            }
         }
         Vec::new()
     }
@@ -349,7 +546,7 @@ impl egui_wgpu::CallbackTrait for TerminalPaint {
             .get::<GpuRenderers>()
             .and_then(|all| all.0.get(&self.window))
         {
-            renderer.paint(pass);
+            renderer.renderer.paint(pass);
         }
     }
 }
@@ -621,6 +818,7 @@ impl App {
     }
     fn sync_host_state(&mut self) {
         let now = Instant::now();
+        let mut focused_panes = HashSet::new();
         for host in self.windows.values_mut() {
             let focused = self
                 .workspace
@@ -630,6 +828,7 @@ impl App {
                 .and_then(|window| window.tabs.get(window.active_tab))
                 .map(|tab| tab.focused)
                 .filter(|_| host.focused && host.visible);
+            focused_panes.extend(focused);
             if host.focus_hint.focus(focused, now) {
                 host.repaint();
             }
@@ -637,9 +836,12 @@ impl App {
         let visible = self.visible_panes();
         let scheme = color_scheme(self.config_loader.dark_mode);
         for (&id, pane) in &mut self.panes {
-            let state = (visible.contains(&id), scheme);
+            let state = (visible.contains(&id), focused_panes.contains(&id), scheme);
+            if !state.0 {
+                pane.activity.reset_progress_animation();
+            }
             if !pane.exited && pane.host_state != state {
-                match pane.session.set_host_state(state.0, state.1) {
+                match pane.session.set_host_state(state.0, state.1, state.2) {
                     Ok(()) => pane.host_state = state,
                     Err(error) => self.errors.push(error.to_string()),
                 }
@@ -729,15 +931,26 @@ impl App {
             )
             .contains(&id)
         });
-        let host_state = (visible, color_scheme(self.config_loader.dark_mode));
+        let focused = self.workspace.windows.iter().any(|window| {
+            let native = host
+                .filter(|host| host.id == window.id)
+                .or_else(|| self.windows.values().find(|host| host.id == window.id));
+            native.is_some_and(|host| host.focused && host.visible)
+                && window
+                    .tabs
+                    .get(window.active_tab)
+                    .is_some_and(|tab| tab.focused == id)
+        });
+        let host_state = (visible, focused, color_scheme(self.config_loader.dark_mode));
         let session = match Session::spawn(
             self.config(),
             SessionOptions {
                 working_directory: Some(directory.clone()),
                 command,
                 resources: self.resources.clone(),
-                color_scheme: Some(host_state.1),
+                color_scheme: Some(host_state.2),
                 visible: host_state.0,
+                focused: host_state.1,
                 ..Default::default()
             },
             wake,
@@ -778,6 +991,7 @@ impl App {
                 exit_message: None,
                 links: vt::search::LinkMatcher::default(),
                 mouse_cell: None,
+                sync_output: SynchronizedOutput::default(),
             },
         );
         Ok(())
@@ -849,7 +1063,9 @@ impl App {
             egui,
             fonts,
             rects: BTreeMap::new(),
-            accessibility: BTreeMap::new(),
+            prepared: BTreeMap::new(),
+            composed: None,
+            pane_prepares: 0,
             content: Rect::UNIT,
             divider_drag: None,
             modifiers: Modifiers::default(),
@@ -863,6 +1079,8 @@ impl App {
             navigation_warning: None,
             mouse: Pos2::ZERO,
             deferred_pointer: None,
+            link_hit: None,
+            hovered_link: None,
             mouse_button: None,
             selection_drag: None,
             focused: false,
@@ -991,6 +1209,27 @@ impl App {
         self.write(paste.pane, bytes);
         host.repaint();
     }
+    fn drop_file(&mut self, host: &mut Host, position: Pos2, path: &Path) {
+        if host.ui_input()
+            || self
+                .context
+                .layer_id_at(position)
+                .is_some_and(|layer| layer.order != egui::Order::Background)
+        {
+            return;
+        }
+        let Some(pane) = host.pane_at(position) else {
+            return;
+        };
+        self.paste(
+            host,
+            PendingPaste {
+                pane,
+                data: format!("'{}' ", path.to_string_lossy().replace('\'', "'\\''")).into_bytes(),
+            },
+            true,
+        );
+    }
     fn paste_event(
         &mut self,
         window: Id,
@@ -1045,40 +1284,71 @@ impl App {
         Ok(emitted)
     }
     fn focus_pane(&mut self, window: Id, pane: Id) {
-        let previous = self.focused(window);
         if let Some(tab) = self.tab_mut(window) {
             tab.focus(pane);
         }
-        for (id, focused) in previous
-            .map(|id| (id, false))
-            .into_iter()
-            .chain([(pane, true)])
-        {
-            if let Some(pane) = self.panes.get_mut(&id) {
-                if focused {
-                    pane.unseen = false;
-                    if let Some(platform) = &self.platform {
-                        platform.clear_notifications(id);
-                    }
-                }
-                let bytes = pane
-                    .session
-                    .terminal()
-                    .ok()
-                    .map(|terminal| terminal.encode_focus(focused));
-                if let Some(bytes) = bytes {
-                    let _ = pane.write(bytes);
-                }
+        if let Some(state) = self.panes.get_mut(&pane) {
+            state.unseen = false;
+            if let Some(platform) = &self.platform {
+                platform.clear_notifications(pane);
             }
         }
         self.changed();
     }
-    fn drain(&mut self, id: Id) {
-        let live = self
-            .workspace
+    fn tab_label(&self, tab: &Tab) -> (String, bool) {
+        let pane = self.panes.get(&tab.focused);
+        let title = tab
+            .title
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .or_else(|| pane.map(|p| p.title.as_str()).filter(|s| !s.is_empty()))
+            .unwrap_or("Terminal");
+        let working = tab
+            .panes
+            .keys()
+            .filter(|id| {
+                self.panes
+                    .get(id)
+                    .is_some_and(|p| p.activity.reported_active())
+            })
+            .count();
+        let attention = tab
+            .panes
+            .keys()
+            .any(|id| self.panes.get(id).is_some_and(|p| p.unseen));
+        let is_active = tab
+            .panes
+            .keys()
+            .any(|id| self.panes.get(id).is_some_and(|p| p.activity.is_active()));
+        let suffix = format!(
+            "{}{}",
+            if attention { " ●" } else { "" },
+            if working > 0 {
+                format!(" ▶ {working}")
+            } else {
+                String::new()
+            }
+        );
+        let label = format!(
+            "{}{suffix}{}",
+            title.chars().take(26).collect::<String>(),
+            if tab.zoom.is_some() { " ◩" } else { "" }
+        );
+        (label, is_active)
+    }
+
+    fn pane_tab_label(&self, pane: Id) -> Option<(String, bool)> {
+        self.workspace
             .windows
             .iter()
-            .any(|window| window.tabs.iter().any(|tab| tab.panes.contains_key(&id)));
+            .flat_map(|window| &window.tabs)
+            .find(|tab| tab.panes.contains_key(&pane))
+            .map(|tab| self.tab_label(tab))
+    }
+
+    fn drain(&mut self, event_loop: &ActiveEventLoop, id: Id) {
+        let previous_tab_label = self.pane_tab_label(id);
+        let live = previous_tab_label.is_some();
         let mut close = false;
         let mut stopped = false;
         let mut clipboard = Vec::new();
@@ -1086,26 +1356,23 @@ impl App {
             .windows
             .values()
             .any(|host| host.visible && host.focused && self.focused(host.id) == Some(id));
-        let config = self.config().clone();
+        let config = &self.loaded.config;
         let Some(pane) = self.panes.get_mut(&id) else {
             return;
         };
-        let previous_title = pane.title.clone();
-        let previous_status = (
-            pane.activity.is_active(),
-            pane.activity.reported_active(),
-            pane.unseen,
-        );
         pane.wake_pending.store(false, Ordering::Release);
         if let Err(error) = pane.flush()
             && !pane.session.has_exited()
         {
             self.errors.push(error.to_string());
         }
-        if let Ok(terminal) = pane.session.terminal()
-            && let Some(directory) = directory_from_osc(&terminal.working_directory)
-        {
-            pane.cwd = directory;
+        if let Ok(mut terminal) = pane.session.terminal() {
+            pane.sync_output.update(&mut terminal, Instant::now());
+            if let Some(directory) = directory_from_osc(&terminal.working_directory) {
+                pane.cwd = directory;
+            }
+        } else {
+            pane.sync_output.deadline = None;
         }
         let events = pane.session.events().collect::<Vec<_>>();
         for event in events {
@@ -1186,7 +1453,7 @@ impl App {
                         signal.map(|s| format!(" ({s})")).unwrap_or_default()
                     );
                     pane.exit_message = Some(format!("{} — press any key to close", pane.title));
-                    close = live && !hold_after_exit(&config, runtime);
+                    close = live && !hold_after_exit(config, runtime);
                 }
                 SessionEvent::Error(error) => self.errors.push(error),
                 _ => {}
@@ -1197,14 +1464,9 @@ impl App {
             pane.running = None;
             stopped |= pane.activity.clear();
         }
-        let indicators_changed = stopped
-            || previous_title != pane.title
-            || previous_status
-                != (
-                    pane.activity.is_active(),
-                    pane.activity.reported_active(),
-                    pane.unseen,
-                );
+        // Only a change in the rendered tab label/underline warrants a hidden-tab
+        // repaint. Raw titles can be masked by a custom title or another pane.
+        let indicators_changed = stopped || previous_tab_label != self.pane_tab_label(id);
         if stopped {
             self.activity_stopped(id, Instant::now());
         }
@@ -1241,6 +1503,11 @@ impl App {
             );
         }
         self.repaint_pane(id, indicators_changed);
+        // Output updates this pane's metadata above. Only closing a pane changes
+        // the layout and requires reconciling every window and session.
+        if close {
+            self.reconcile(event_loop);
+        }
     }
 
     fn repaint_pane(&self, pane: Id, indicators_changed: bool) {
@@ -2356,7 +2623,6 @@ impl App {
             })
             .unwrap_or_else(|| "Rustty".into());
         host.window.set_title(&format!("{title} — Rustty"));
-        host.accessibility.clear();
         let mut output = context.run_ui(raw, |root_ui| {
             let ctx = &context;
             root_ui.visuals_mut().selection.bg_fill = accent;
@@ -2377,45 +2643,7 @@ impl App {
                     ui.horizontal(|ui| {
                         ui.add_space(72.0);
                         for (index, tab) in state.tabs.iter().enumerate() {
-                            let pane = self.panes.get(&tab.focused);
-                            let title = tab
-                                .title
-                                .as_deref()
-                                .filter(|s| !s.is_empty())
-                                .or_else(|| {
-                                    pane.map(|p| p.title.as_str()).filter(|s| !s.is_empty())
-                                })
-                                .unwrap_or("Terminal");
-                            let working = tab
-                                .panes
-                                .keys()
-                                .filter(|id| {
-                                    self.panes
-                                        .get(id)
-                                        .is_some_and(|p| p.activity.reported_active())
-                                })
-                                .count();
-                            let attention = tab
-                                .panes
-                                .keys()
-                                .any(|id| self.panes.get(id).is_some_and(|p| p.unseen));
-                            let is_active = tab.panes.keys().any(|id| {
-                                self.panes.get(id).is_some_and(|p| p.activity.is_active())
-                            });
-                            let suffix = format!(
-                                "{}{}",
-                                if attention { " ●" } else { "" },
-                                if working > 0 {
-                                    format!(" ▶ {working}")
-                                } else {
-                                    String::new()
-                                }
-                            );
-                            let label = format!(
-                                "{}{suffix}{}",
-                                title.chars().take(26).collect::<String>(),
-                                if tab.zoom.is_some() { " ◩" } else { "" }
-                            );
+                            let (label, is_active) = self.tab_label(tab);
                             let selected = index == state.active_tab;
                             let colors = TabAccent::new(tab.color, platform_accent);
                             let color = Color32::from_rgb(
@@ -2562,17 +2790,17 @@ impl App {
                             )
                         })
                         .collect();
-                    let mut composed = Frame::empty([size.width, size.height]);
+                    host.prepared.retain(|id, _| host.rects.contains_key(id));
+                    let mut composed = None;
                     let mut accessible = Vec::new();
                     let mut terminal_ime_rect = None;
                     // An atlas eviction can happen halfway through a multi-pane frame.
                     // Rebuild against its new generation before handing a frame to WGPU.
                     for attempt in 0..2 {
-                        composed = Frame::empty([size.width, size.height]);
+                        let mut composition = Vec::with_capacity(host.rects.len());
                         accessible.clear();
-                        let mut retry = false;
                         for (&id, &rect) in &host.rects {
-                            let Some(pane) = self.panes.get(&id) else {
+                            let Some(pane) = self.panes.get_mut(&id) else {
                                 continue;
                             };
                             let physical = rect.size() * scale;
@@ -2608,53 +2836,70 @@ impl App {
                                 render_error = Some(error.to_string());
                                 continue;
                             }
-                            if let Ok(mut terminal) = pane.session.terminal() {
-                                let now_ms =
-                                    self.started.elapsed().as_millis().min(u64::MAX as u128) as u64;
-                                if let Some(next) = terminal.tick_graphics(now_ms) {
-                                    let deadline = Instant::now()
-                                        + Duration::from_millis(next.saturating_sub(now_ms));
-                                    animation_deadline = Some(
-                                        animation_deadline
-                                            .map_or(deadline, |old| old.min(deadline)),
-                                    );
-                                }
-                            }
-                            let snapshot = match pane.session.snapshot() {
-                                Ok(snapshot) => snapshot,
+                            let mut terminal = match pane.session.terminal() {
+                                Ok(terminal) => terminal,
                                 Err(error) => {
                                     render_error = Some(error.to_string());
                                     continue;
                                 }
                             };
+                            if terminal.modes.dec(2026)
+                                && host.prepared.get(&id).is_some_and(|prepared| {
+                                    prepared.frame.generation != host.fonts.generation()
+                                })
+                            {
+                                // Like resize, atlas replacement ends a batch: old
+                                // texture coordinates cannot mix with the new atlas.
+                                terminal.set_mode(true, 2026, false);
+                            }
+                            let synchronized =
+                                pane.sync_output.update(&mut terminal, now).is_some();
+                            let now_ms =
+                                self.started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+                            if !synchronized && let Some(next) = terminal.tick_graphics(now_ms) {
+                                let deadline = Instant::now()
+                                    + Duration::from_millis(next.saturating_sub(now_ms));
+                                animation_deadline = Some(
+                                    animation_deadline.map_or(deadline, |old| old.min(deadline)),
+                                );
+                            }
                             let is_focused = host.focused && id == focused && host.peek.is_none();
-                            needs_blink |= is_focused
+                            needs_blink |= !synchronized
+                                && is_focused
                                 && !pane.exited
                                 && !host.composing
-                                && snapshot.screen.cursor.visible
-                                && snapshot.screen.cursor.blink;
-                            let cursor_color = snapshot.cursor_color.unwrap_or(snapshot.foreground);
+                                && terminal.screen().cursor.visible
+                                && terminal
+                                    .screen()
+                                    .cursor
+                                    .row
+                                    .saturating_add(terminal.screen().viewport_offset)
+                                    < terminal.rows as usize
+                                && terminal.screen().cursor.blink;
+                            let (foreground, background) = if terminal.modes.dec(5) {
+                                (terminal.background, terminal.foreground)
+                            } else {
+                                (terminal.foreground, terminal.background)
+                            };
+                            let cursor_color = terminal.cursor_color.unwrap_or(foreground);
                             let resolve = |color: config::TerminalColor| match color {
                                 config::TerminalColor::Rgb(color) => [color.r, color.g, color.b],
-                                config::TerminalColor::CellForeground => snapshot.foreground,
-                                config::TerminalColor::CellBackground => snapshot.background,
+                                config::TerminalColor::CellForeground => foreground,
+                                config::TerminalColor::CellBackground => background,
                             };
                             let options = RenderOptions {
                                 size: [physical.x.max(1.0) as u32, physical.y.max(1.0) as u32],
                                 padding,
-                                foreground: snapshot.foreground,
-                                background: snapshot.background,
+                                foreground,
+                                background,
                                 cursor_color,
-                                cursor_text: config
-                                    .cursor_text
-                                    .map(resolve)
-                                    .unwrap_or(snapshot.background),
+                                cursor_text: config.cursor_text.map(resolve).unwrap_or(background),
                                 selection_background: config
                                     .selection_background
                                     .map(resolve)
                                     .unwrap_or([65, 85, 120]),
                                 selection_foreground: config.selection_foreground.map(resolve),
-                                palette: snapshot
+                                palette: terminal
                                     .palette
                                     .as_slice()
                                     .try_into()
@@ -2670,80 +2915,76 @@ impl App {
                                     }
                                 }),
                             };
-                            let mut ime_cursor = None;
-                            match host.fonts.prepare(&snapshot.screen, &options) {
-                                Ok(frame) => {
-                                    ime_cursor = frame.ime_cursor;
-                                    if composed
-                                        .append_clipped(
-                                            &frame,
-                                            [rect.left() * scale, rect.top() * scale],
-                                            [
-                                                rect.left() * scale,
-                                                rect.top() * scale,
-                                                physical.x,
-                                                physical.y,
-                                            ],
-                                        )
-                                        .is_err()
-                                    {
-                                        retry = true;
-                                        break;
+                            let key = PaneRenderKey::new(&terminal, options, rect, scale);
+                            let snapshot = (!synchronized
+                                && !host
+                                    .prepared
+                                    .get(&id)
+                                    .is_some_and(|pane| pane.matches(&key, &host.fonts)))
+                            .then(|| terminal.screen().snapshot_viewport());
+                            drop(terminal);
+                            if let Some(snapshot) = snapshot {
+                                match PreparedPane::new(id, key, &snapshot, &mut host.fonts) {
+                                    Ok(prepared) => {
+                                        host.prepared.insert(id, prepared);
+                                        host.pane_prepares += 1;
+                                    }
+                                    Err(error) => {
+                                        host.prepared.remove(&id);
+                                        render_error = Some(error.to_string());
+                                        continue;
                                     }
                                 }
-                                Err(error) => render_error = Some(error.to_string()),
                             }
-                            if id != focused && config.unfocused_split_opacity < 1.0 {
-                                let color =
-                                    config.unfocused_split_fill.unwrap_or(config.background);
-                                composed.quads.push(rustty_render::Quad::solid(
-                                    [
-                                        rect.left() * scale,
-                                        rect.top() * scale,
-                                        physical.x,
-                                        physical.y,
-                                    ],
-                                    rustty_render::Color::rgb([color.r, color.g, color.b])
-                                        .opacity(1.0 - config.unfocused_split_opacity),
-                                ));
-                            }
-                            host.accessibility.insert(
-                                id,
-                                TerminalText::new(
-                                    id,
-                                    &snapshot.screen,
-                                    [
-                                        rect.left() + padding[0] / scale,
-                                        rect.top() + padding[1] / scale,
-                                    ],
-                                    [
-                                        metrics.cell_width as f32 / scale,
-                                        metrics.cell_height as f32 / scale,
-                                    ],
+                            let Some(prepared) = host.prepared.get(&id) else {
+                                continue;
+                            };
+                            needs_blink |= !synchronized
+                                && is_focused
+                                && !pane.exited
+                                && prepared.frame.blinking_text;
+                            composition.push(ComposedPane {
+                                frame: Arc::clone(&prepared.frame),
+                                rect: [
+                                    rect.left() * scale,
+                                    rect.top() * scale,
+                                    physical.x,
+                                    physical.y,
+                                ],
+                                dim: (id != focused && config.unfocused_split_opacity < 1.0).then(
+                                    || {
+                                        let color = config
+                                            .unfocused_split_fill
+                                            .unwrap_or(config.background);
+                                        rustty_render::Color::rgb([color.r, color.g, color.b])
+                                            .opacity(1.0 - config.unfocused_split_opacity)
+                                    },
                                 ),
-                            );
+                            });
                             accessible.push((id, rect));
                             if id == focused && !pane.exited {
-                                let cursor = &snapshot.screen.cursor;
-                                let [x, y, width, height] = ime_cursor.unwrap_or([
-                                    padding[0] + cursor.col as f32 * metrics.cell_width as f32,
-                                    padding[1] + cursor.row as f32 * metrics.cell_height as f32,
-                                    metrics.cell_width as f32,
-                                    metrics.cell_height as f32,
-                                ]);
-                                terminal_ime_rect = Some(egui::Rect::from_min_size(
-                                    Pos2::new(rect.left() + x / scale, rect.top() + y / scale),
-                                    Vec2::new(width / scale, height / scale),
-                                ));
+                                terminal_ime_rect = Some(prepared.ime_rect);
                             }
                         }
-                        if !retry {
+                        let size = [size.width, size.height];
+                        if let Some(retained) = &host.composed
+                            && retained.matches(size, &composition)
+                        {
+                            composed = Some(Arc::clone(&retained.frame));
                             break;
                         }
-                        if attempt == 1 {
-                            render_error =
-                                Some("Visible glyphs exceed the shared atlas budget".into());
-                            composed = Frame::empty([size.width, size.height]);
+                        match ComposedFrame::new(size, composition) {
+                            Ok(retained) => {
+                                composed = Some(Arc::clone(&retained.frame));
+                                host.composed = Some(retained);
+                                break;
+                            }
+                            Err(_) if attempt == 0 => {}
+                            Err(_) => {
+                                render_error =
+                                    Some("Visible glyphs exceed the shared atlas budget".into());
+                                host.composed = None;
+                            }
                         }
                     }
                     ui.painter().add(egui_wgpu::Callback::new_paint_callback(
@@ -2753,7 +2994,9 @@ impl App {
                         ),
                         TerminalPaint {
                             window: host.id,
-                            frame: composed,
+                            frame: composed.unwrap_or_else(|| {
+                                Arc::new(Frame::empty([size.width, size.height]))
+                            }),
                             format,
                         },
                     ));
@@ -2805,20 +3048,18 @@ impl App {
                             paint_pane_frame(ui.painter(), rect, color);
                         }
                         if config.progress_style
-                            && let Some(progress) =
-                                self.panes.get(&id).and_then(|p| p.activity.progress())
-                            && paint_progress(
+                            && let Some(pane) = self.panes.get_mut(&id)
+                            && let Some(progress) = pane.activity.progress()
+                            && !paint_progress(
                                 ui,
                                 id,
                                 rect,
                                 progress,
                                 accent,
-                                now.duration_since(self.started),
+                                pane.activity.progress_offset(now),
                             )
                         {
-                            let deadline = now + Duration::from_millis(33);
-                            animation_deadline =
-                                Some(animation_deadline.map_or(deadline, |old| old.min(deadline)));
+                            pane.activity.reset_progress_animation();
                         }
                     }
                     for (&id, &rect) in &host.rects {
@@ -2852,6 +3093,25 @@ impl App {
                                 Color32::from_black_alpha(230),
                             );
                             ui.painter().galley(bounds.min, galley, Color32::WHITE);
+                        }
+                    }
+                    self.update_hover_link(host);
+                    if let Some(link) = &host.hovered_link
+                        && let Some(prepared) = host.prepared.get(&link.pane)
+                    {
+                        let metrics = host.fonts.metrics();
+                        let thickness = metrics.underline_thickness.ceil();
+                        let offset = (metrics.baseline + metrics.underline_position)
+                            .min(metrics.cell_height as f32 - thickness)
+                            / scale;
+                        let [r, g, b] = prepared.key.options.foreground;
+                        let painter = ui.painter().with_clip_rect(host.rects[&link.pane]);
+                        for bounds in &link.bounds {
+                            painter.hline(
+                                bounds.left()..=bounds.right(),
+                                bounds.top() + offset,
+                                egui::Stroke::new(thickness / scale, Color32::from_rgb(r, g, b)),
+                            );
                         }
                     }
                     let mut quadrants = BTreeMap::<Id, egui::Rect>::new();
@@ -3124,8 +3384,8 @@ impl App {
             self.layout_command(host, command);
         }
         if let Some(update) = &mut output.platform_output.accesskit_update {
-            for text in host.accessibility.values() {
-                text.append_to(update);
+            for pane in host.prepared.values() {
+                pane.text.append_to(update);
             }
         }
         host.egui.handle_platform_output_with_event_loop(
@@ -3133,6 +3393,9 @@ impl App {
             event_loop,
             output.platform_output,
         );
+        if let Some(cursor) = self.pointer_cursor(host) {
+            host.window.set_cursor(cursor);
+        }
         let primitives = self
             .context
             .tessellate(output.shapes, output.pixels_per_point);
@@ -3239,7 +3502,220 @@ impl App {
         }
         host.repaint();
     }
+    fn scroll(&mut self, host: &mut Host, delta: MouseScrollDelta) {
+        if host.ui_input()
+            || host.peek.is_some()
+            || host.divider_drag.is_some()
+            || self
+                .context
+                .layer_id_at(host.mouse)
+                .is_some_and(|layer| layer.order != egui::Order::Background)
+        {
+            return;
+        }
+        let lines = match delta {
+            MouseScrollDelta::LineDelta(_, y) => y,
+            MouseScrollDelta::PixelDelta(pos) => {
+                pos.y as f32 / host.fonts.metrics().cell_height as f32
+            }
+        };
+        if let Some(id) = host.hovered_pane() {
+            let mut cursor_keys = None;
+            let mouse = self
+                .panes
+                .get(&id)
+                .and_then(|p| {
+                    p.session.terminal().ok().map(|terminal| {
+                        input::mouse_reporting(
+                            &terminal,
+                            host.modifiers.state(),
+                            self.config().mouse_shift_capture,
+                        )
+                    })
+                })
+                .unwrap_or(false);
+            if mouse {
+                for _ in 0..lines.abs().ceil().min(128.0) as usize {
+                    self.mouse(
+                        host,
+                        vt::MouseAction::Press,
+                        Some(if lines > 0.0 {
+                            vt::MouseButton::WheelUp
+                        } else {
+                            vt::MouseButton::WheelDown
+                        }),
+                    );
+                }
+            } else if let Some(pane) = self.panes.get(&id)
+                && let Ok(mut terminal) = pane.session.terminal()
+            {
+                if terminal.is_alternate_screen()
+                    && terminal.mouse_mode == 0
+                    && terminal.modes.dec(1007)
+                {
+                    // Like Ghostty, alternate scroll emits ordinary cursor keys,
+                    // independent of Kitty keyboard flags and held modifiers.
+                    let count = (lines * 3.0).abs().round().min(128.0) as usize;
+                    let sequence = [
+                        0x1b,
+                        if terminal.modes.dec(1) { b'O' } else { b'[' },
+                        if lines > 0.0 { b'A' } else { b'B' },
+                    ];
+                    if count != 0 {
+                        terminal.screen_mut().selection = None;
+                    }
+                    cursor_keys = Some(sequence.repeat(count));
+                } else {
+                    terminal
+                        .screen_mut()
+                        .scroll_viewport((lines * 3.0).round() as isize);
+                }
+            }
+            if let Some(bytes) = cursor_keys {
+                self.write(id, bytes);
+            }
+        }
+        host.repaint();
+    }
+    /// Resolve the same target used by Command-click. Passive motion stays cheap:
+    /// without Command there is no scan, and an unchanged cell reuses its hit.
+    fn update_hover_link(&mut self, host: &mut Host) -> bool {
+        let result = (|| {
+            if !host.modifiers.state().super_key()
+                || !self.config().link_url
+                || host.ui_input()
+                || host.peek.is_some()
+                || host.divider_drag.is_some()
+                || self.platform.is_none()
+                || self
+                    .context
+                    .layer_id_at(host.mouse)
+                    .is_some_and(|layer| layer.order != egui::Order::Background)
+            {
+                return None;
+            }
+            let tab = self.tab(host.id)?;
+            if tab
+                .visible_tree(false)
+                .divider_at(host.content, [host.mouse.x, host.mouse.y], 3.0)
+                .is_some()
+            {
+                return None;
+            }
+            let header = if tab.panes.len() > 1 { 18.0 } else { 0.0 };
+            let id = host.hovered_pane()?;
+            let rect = host.rects[&id];
+            let config = &self.loaded.config;
+            let pane = self.panes.get_mut(&id)?;
+            let terminal = pane.session.terminal().ok()?;
+            if input::mouse_reporting(
+                &terminal,
+                host.modifiers.state(),
+                config.mouse_shift_capture,
+            ) || terminal.modes.dec(2026)
+            {
+                return None;
+            }
+            let text = egui::Rect::from_min_max(
+                rect.min
+                    + Vec2::new(
+                        config.window_padding_x.start,
+                        config.window_padding_y.start + header,
+                    ),
+                rect.max - Vec2::new(config.window_padding_x.end, config.window_padding_y.end),
+            );
+            if !text.contains(host.mouse) {
+                return None;
+            }
+            let metrics = host.fonts.metrics();
+            let cell = Vec2::new(metrics.cell_width as f32, metrics.cell_height as f32)
+                / host.window.scale_factor() as f32;
+            let position = host.mouse - text.min;
+            let screen = terminal.screen();
+            let row = screen.viewport().nth((position.y / cell.y) as usize)?;
+            let mut col = (position.x / cell.x) as usize;
+            if row.cells.get(col)?.spacer_head {
+                return None;
+            }
+            if row.cells[col].width == 0 && col > 0 {
+                col -= 1;
+            }
+            let point = vt::GridPoint { row: row.id, col };
+            let key = (
+                id,
+                terminal.generation,
+                screen.viewport_offset,
+                point,
+                text,
+                cell,
+            );
+            if host.link_hit == Some(key) {
+                return Some(false);
+            }
+            let screen = screen.snapshot_viewport();
+            let next = pane
+                .links
+                .links(&screen)
+                .into_iter()
+                .find(|link| link.contains(&screen, point))
+                .map(|link| HoveredLink {
+                    pane: id,
+                    bounds: link_bounds(&screen, &link, text.min, cell),
+                    uri: link.uri,
+                });
+            host.link_hit = Some(key);
+            let changed = host.hovered_link != next;
+            host.hovered_link = next;
+            Some(changed)
+        })();
+        result.unwrap_or_else(|| {
+            host.link_hit = None;
+            host.hovered_link.take().is_some()
+        })
+    }
+
+    fn pointer_cursor(&self, host: &Host) -> Option<CursorIcon> {
+        if host.ui_input()
+            || host.peek.is_some()
+            || self
+                .context
+                .layer_id_at(host.mouse)
+                .is_some_and(|layer| layer.order != egui::Order::Background)
+        {
+            return None;
+        }
+        let divider = host.divider_drag.or_else(|| {
+            self.tab(host.id)?.visible_tree(false).divider_at(
+                host.content,
+                [host.mouse.x, host.mouse.y],
+                3.0,
+            )
+        });
+        if let Some((_, axis, _)) = divider {
+            return Some(match axis {
+                Axis::Horizontal => CursorIcon::ColResize,
+                Axis::Vertical => CursorIcon::RowResize,
+            });
+        }
+        let id = host.hovered_pane()?;
+        if host
+            .hovered_link
+            .as_ref()
+            .is_some_and(|link| link.pane == id)
+        {
+            return Some(CursorIcon::Pointer);
+        }
+        let pane = self.panes.get(&id)?;
+        pane.session.terminal().ok()?.mouse_shape().parse().ok()
+    }
+
     fn mouse(&mut self, host: &mut Host, action: vt::MouseAction, button: Option<vt::MouseButton>) {
+        if self.update_hover_link(host) {
+            host.repaint();
+        }
+        if let Some(cursor) = self.pointer_cursor(host) {
+            host.window.set_cursor(cursor);
+        }
         if let Some((id, axis, bounds)) = host.divider_drag {
             if action == vt::MouseAction::Release {
                 host.divider_drag = None;
@@ -3268,11 +3744,6 @@ impl App {
                 tab.visible_tree(false)
                     .divider_at(host.content, [host.mouse.x, host.mouse.y], 3.0)
             });
-            host.window.set_cursor(match divider {
-                Some((_, Axis::Horizontal, _)) => CursorIcon::ColResize,
-                Some((_, Axis::Vertical, _)) => CursorIcon::RowResize,
-                None => CursorIcon::Default,
-            });
             if let Some(divider) = divider {
                 if action == vt::MouseAction::Press && button == Some(vt::MouseButton::Left) {
                     self.remember();
@@ -3281,11 +3752,7 @@ impl App {
                 return;
             }
         }
-        let hit = host
-            .rects
-            .iter()
-            .find(|(_, rect)| rect.contains(host.mouse))
-            .map(|(&id, _)| id);
+        let hit = host.hovered_pane();
         if hit.is_none() && (action == vt::MouseAction::Press || host.mouse_button.is_none()) {
             return;
         }
@@ -3307,12 +3774,23 @@ impl App {
             }
             return;
         }
-        if action == vt::MouseAction::Press
+        let wheel = matches!(
+            button,
+            Some(
+                vt::MouseButton::WheelUp
+                    | vt::MouseButton::WheelDown
+                    | vt::MouseButton::WheelLeft
+                    | vt::MouseButton::WheelRight
+            )
+        );
+        if !wheel
+            && action == vt::MouseAction::Press
             && let Some(id) = hit
         {
             self.focus_pane(host.id, id);
         }
-        let Some(id) = self.focused(host.id) else {
+        // Wheel reports follow the pointer without changing the keyboard target.
+        let Some(id) = (if wheel { hit } else { self.focused(host.id) }) else {
             return;
         };
         let Some(rect) = host.rects.get(&id) else {
@@ -3341,7 +3819,11 @@ impl App {
         let Ok(mut terminal) = pane.session.terminal() else {
             return;
         };
-        if terminal.mouse_mode != 0 && !host.modifiers.state().shift_key() {
+        if input::mouse_reporting(
+            &terminal,
+            host.modifiers.state(),
+            config.mouse_shift_capture,
+        ) {
             let bytes = terminal.encode_mouse(
                 vt::MouseEvent {
                     action,
@@ -3386,8 +3868,8 @@ impl App {
         if let Some(point) = point {
             if action == vt::MouseAction::Press && button == Some(vt::MouseButton::Left) {
                 if host.modifiers.state().super_key() && config.link_url {
-                    let links = pane.links.links(&screen.snapshot_viewport());
-                    if let Some(link) = links.iter().find(|link| link.contains(screen, point))
+                    if let Some(link) = &host.hovered_link
+                        && link.pane == id
                         && let Some(platform) = &self.platform
                         && let Err(error) = platform.open_url(&link.uri)
                     {
@@ -3428,6 +3910,39 @@ impl App {
         }
         host.repaint();
     }
+}
+
+fn link_bounds(
+    screen: &vt::Screen,
+    link: &vt::search::Link,
+    origin: Pos2,
+    cell: Vec2,
+) -> Vec<egui::Rect> {
+    let rows: Vec<_> = screen.viewport().collect();
+    let Some(start) = rows.iter().position(|row| row.id == link.start.row) else {
+        return Vec::new();
+    };
+    let Some(end) = rows.iter().position(|row| row.id == link.end.row) else {
+        return Vec::new();
+    };
+    (start..=end)
+        .map(|index| {
+            let left = if index == start { link.start.col } else { 0 };
+            let right = if index == end {
+                link.end.col
+                    + rows[index]
+                        .cells
+                        .get(link.end.col)
+                        .map_or(1, |cell| usize::from(cell.width.max(1)))
+            } else {
+                rows[index].cells.len()
+            };
+            egui::Rect::from_min_size(
+                origin + Vec2::new(left as f32 * cell.x, index as f32 * cell.y),
+                Vec2::new(right.saturating_sub(left) as f32 * cell.x, cell.y),
+            )
+        })
+        .collect()
 }
 
 fn rgb(color: config::Rgb) -> Color32 {
@@ -3477,8 +3992,7 @@ impl ApplicationHandler<Event> for App {
                 if let Some(smoke) = &mut self.smoke {
                     smoke.record("pty-output");
                 }
-                self.drain(id);
-                self.reconcile(event_loop);
+                self.drain(event_loop, id);
             }
             Event::Repaint(info, deadline) => {
                 let current_pass = self.context.cumulative_pass_nr_for(info.viewport_id);
@@ -3582,9 +4096,9 @@ impl ApplicationHandler<Event> for App {
                     match event.window_event {
                         AccessEvent::ActionRequested(request) => {
                             let pane = host
-                                .accessibility
+                                .prepared
                                 .iter()
-                                .find(|(_, text)| text.contains(request.target_node))
+                                .find(|(_, pane)| pane.text.contains(request.target_node))
                                 .map(|(&id, _)| id);
                             let mut handled = false;
                             if let Some(id) = pane {
@@ -3614,7 +4128,7 @@ impl ApplicationHandler<Event> for App {
                                         if let Some(ActionData::SetTextSelection(range)) =
                                             &request.data
                                             && let Some(selection) =
-                                                host.accessibility[&id].selection(*range)
+                                                host.prepared[&id].text.selection(*range)
                                             && let Some(pane) = self.panes.get(&id)
                                             && let Ok(mut terminal) = pane.session.terminal()
                                         {
@@ -3803,17 +4317,6 @@ impl ApplicationHandler<Event> for App {
                     host.preedit_selection = None;
                     host.sequence.clear();
                     host.sequence_len = 0;
-                    if let Some(pane) = self.focused(host.id).and_then(|id| self.panes.get_mut(&id))
-                    {
-                        let bytes = pane
-                            .session
-                            .terminal()
-                            .ok()
-                            .map(|terminal| terminal.encode_focus(false));
-                        if let Some(bytes) = bytes {
-                            let _ = pane.write(bytes);
-                        }
-                    }
                     if self
                         .index(host.id)
                         .is_some_and(|i| self.workspace.windows[i].quick)
@@ -3910,11 +4413,16 @@ impl ApplicationHandler<Event> for App {
                         host.composing = false;
                         host.preedit.clear();
                         host.preedit_selection = None;
-                        if let Some(pane) = self.focused(host.id) {
-                            if !text.is_empty() {
+                        if let Some(pane) = self.focused(host.id)
+                            && let Some(bytes) = self.panes.get(&pane).and_then(|pane| {
+                                let terminal = pane.session.terminal().ok()?;
+                                Some(input::terminal_text(&terminal, text))
+                            })
+                        {
+                            if !bytes.is_empty() {
                                 self.terminal_input(&mut host, pane);
                             }
-                            self.write(pane, text.into_bytes());
+                            self.write(pane, bytes);
                         }
                     }
                     Ime::Disabled => {
@@ -3958,54 +4466,13 @@ impl ApplicationHandler<Event> for App {
                     host.selection_drag = None;
                 }
             }
-            WindowEvent::MouseWheel { delta, .. } if !host.ui_input() => {
-                let lines = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => y,
-                    MouseScrollDelta::PixelDelta(pos) => {
-                        pos.y as f32 / host.fonts.metrics().cell_height as f32
-                    }
-                };
-                if let Some(id) = self.focused(host.id) {
-                    let mouse = self
-                        .panes
-                        .get(&id)
-                        .and_then(|p| p.session.terminal().ok().map(|t| t.mouse_mode != 0))
-                        .unwrap_or(false);
-                    if mouse && !host.modifiers.state().shift_key() {
-                        for _ in 0..lines.abs().ceil().min(128.0) as usize {
-                            self.mouse(
-                                &mut host,
-                                vt::MouseAction::Press,
-                                Some(if lines > 0.0 {
-                                    vt::MouseButton::WheelUp
-                                } else {
-                                    vt::MouseButton::WheelDown
-                                }),
-                            );
-                        }
-                    } else if let Some(pane) = self.panes.get(&id)
-                        && let Ok(mut terminal) = pane.session.terminal()
-                    {
-                        terminal
-                            .screen_mut()
-                            .scroll_viewport((lines * 3.0).round() as isize);
-                    }
-                }
-                host.repaint();
+            WindowEvent::MouseWheel { delta, .. } => {
+                self.scroll(&mut host, delta);
             }
-            WindowEvent::DroppedFile(path) => {
-                if let Some(id) = self.focused(host.id) {
-                    let escaped = format!("'{}' ", path.to_string_lossy().replace('\'', "'\\''"));
-                    let bytes = self
-                        .panes
-                        .get(&id)
-                        .and_then(|p| p.session.terminal().ok().map(|t| t.encode_paste(&escaped)));
-                    if let Some(bytes) = bytes {
-                        self.terminal_input(&mut host, id);
-                        self.write(id, bytes);
-                    }
-                }
-            }
+            WindowEvent::DroppedFile(path) => match Platform::cursor_position(&host.window) {
+                Ok([x, y]) => self.drop_file(&mut host, Pos2::new(x, y), &path),
+                Err(error) => self.errors.push(error),
+            },
             _ => {}
         }
         self.windows.insert(window, host);
@@ -4027,6 +4494,19 @@ impl ApplicationHandler<Event> for App {
             }
         }
         let now = Instant::now();
+        let sync_expired: Vec<_> = self
+            .panes
+            .iter()
+            .filter(|(_, pane)| {
+                pane.sync_output
+                    .deadline
+                    .is_some_and(|deadline| deadline <= now)
+            })
+            .map(|(&id, _)| id)
+            .collect();
+        for id in sync_expired {
+            self.drain(event_loop, id);
+        }
         let expired = self
             .panes
             .iter_mut()
@@ -4063,11 +4543,12 @@ impl ApplicationHandler<Event> for App {
             .save_at
             .into_iter()
             .chain(self.close_at)
-            .chain(
-                self.panes
-                    .values()
-                    .filter_map(|pane| pane.activity.deadline()),
-            )
+            .chain(self.panes.values().flat_map(|pane| {
+                pane.activity
+                    .deadline()
+                    .into_iter()
+                    .chain(pane.sync_output.deadline)
+            }))
             .chain((!self.closing.is_empty()).then_some(now + Duration::from_millis(20)))
             .chain(
                 self.history
@@ -4413,7 +4894,7 @@ fn paint_progress(
     bounds: egui::Rect,
     progress: Progress,
     accent: Color32,
-    elapsed: Duration,
+    offset: f32,
 ) -> bool {
     // Keep a static fill separate from the focused split's same-color outline.
     let bounds = bounds.shrink(2.0);
@@ -4430,18 +4911,23 @@ fn paint_progress(
     let (offset, fraction) = if let Some(value) = percentage {
         (0.0, f32::from(value) / 100.0)
     } else {
+        // Metal presentation already supplies vsync backpressure. Ask for its
+        // next frame instead of imposing a timer that caps animation at 30 FPS.
+        ui.ctx().request_repaint();
         ui.painter()
             .rect_filled(bar, 0.0, color.gamma_multiply(0.3));
-        let phase = elapsed.as_secs_f32() * std::f32::consts::PI / 1.2;
-        (0.375 * (1.0 - phase.cos()), 0.25)
+        (offset, 0.25)
     };
-    ui.painter().rect_filled(
-        egui::Rect::from_min_size(
-            bar.min + Vec2::new(offset * bar.width(), 0.0),
-            Vec2::new(fraction * bar.width(), bar.height()),
-        ),
-        0.0,
-        color,
+    ui.painter().add(
+        egui::epaint::RectShape::filled(
+            egui::Rect::from_min_size(
+                bar.min + Vec2::new(offset * bar.width(), 0.0),
+                Vec2::new(fraction * bar.width(), bar.height()),
+            ),
+            0.0,
+            color,
+        )
+        .with_round_to_pixels(percentage.is_some()),
     );
     let response = ui.interact(
         bar,
@@ -4488,6 +4974,250 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hovered_link_bounds_cover_wrapped_text_and_the_whole_wide_cell() {
+        let origin = Pos2::new(8.0, 20.0);
+        let cell = Vec2::new(7.0, 16.0);
+        let mut terminal = vt::Terminal::new(10, 4, 0);
+        terminal.feed(b"xx https://example.org/path");
+        let mut matcher = vt::search::LinkMatcher::default();
+        let link = matcher.links(terminal.screen()).pop().unwrap();
+        assert_eq!(
+            link_bounds(terminal.screen(), &link, origin, cell),
+            [
+                egui::Rect::from_min_size(Pos2::new(29.0, 20.0), Vec2::new(49.0, 16.0)),
+                egui::Rect::from_min_size(Pos2::new(8.0, 36.0), Vec2::new(70.0, 16.0)),
+                egui::Rect::from_min_size(Pos2::new(8.0, 52.0), Vec2::new(49.0, 16.0)),
+            ],
+        );
+        terminal.feed("\x1b[2J\x1b[H\x1b]8;;https://target.example\x07go你\x1b]8;;\x07".as_bytes());
+        let link = matcher.links(terminal.screen()).pop().unwrap();
+        assert_eq!(
+            link_bounds(terminal.screen(), &link, origin, cell),
+            [egui::Rect::from_min_size(origin, Vec2::new(28.0, 16.0))],
+        );
+    }
+
+    #[test]
+    fn synchronized_output_releases_on_end_and_restarts_the_bounded_timeout() {
+        let mut terminal = vt::Terminal::new(20, 3, 0);
+        let mut sync = SynchronizedOutput::default();
+        let start = Instant::now();
+        let later = start + Duration::from_millis(500);
+        assert_eq!(sync.update(&mut terminal, start), None);
+        terminal.feed(b"\x1b[?2026h\x1b[2J\x1b[H");
+        assert_eq!(
+            sync.update(&mut terminal, start),
+            Some(start + Duration::from_secs(1))
+        );
+        terminal.feed(b"partial");
+        assert_eq!(
+            sync.update(&mut terminal, later),
+            Some(start + Duration::from_secs(1))
+        );
+        terminal.feed(b"\x1b[?2026h");
+        assert_eq!(
+            sync.update(&mut terminal, later),
+            Some(later + Duration::from_secs(1))
+        );
+        terminal.feed(b" complete\x1b[?2026l");
+        assert_eq!(sync.update(&mut terminal, later), None);
+
+        terminal.feed(b"\x1b[?2026h");
+        let deadline = sync.update(&mut terminal, later).unwrap();
+        assert!(
+            sync.update(&mut terminal, deadline - Duration::from_nanos(1))
+                .is_some()
+        );
+        assert_eq!(sync.update(&mut terminal, deadline), None);
+        assert!(!terminal.modes.dec(2026));
+        terminal.feed(b"\x1b[?2026h");
+        sync.update(&mut terminal, later);
+        terminal.resize(21, 3);
+        assert_eq!(sync.update(&mut terminal, later), None);
+        terminal.feed(b"\x1b[?2026h");
+        sync.update(&mut terminal, start);
+        terminal.feed(b"\x1bc\x1b[?2026h");
+        assert_eq!(
+            sync.update(&mut terminal, later),
+            Some(later + Duration::from_secs(1))
+        );
+    }
+
+    #[test]
+    fn retained_window_frames_follow_panes_geometry_and_split_dimming() {
+        let mut frame = Frame::empty([20, 20]);
+        frame.quads.push(rustty_render::Quad::solid(
+            [0.0, 0.0, 20.0, 20.0],
+            rustty_render::Color::rgb([255; 3]),
+        ));
+        let frame = Arc::new(frame);
+        let pane = || ComposedPane {
+            frame: Arc::clone(&frame),
+            rect: [10.0, 15.0, 20.0, 20.0],
+            dim: None,
+        };
+        let retained = ComposedFrame::new([60, 60], vec![pane()]).unwrap();
+        assert_eq!(retained.frame.quads[0].rect, pane().rect);
+        assert!(retained.matches([60, 60], &[pane()]));
+        assert!(!retained.matches([61, 60], &[pane()]));
+        assert!(!retained.matches([60, 60], &[]));
+        assert!(!retained.matches([60, 60], &[pane(), pane()]));
+
+        let mut changed = pane();
+        changed.rect[0] += 1.0;
+        assert!(!retained.matches([60, 60], &[changed]));
+        let mut changed = pane();
+        changed.dim = Some(rustty_render::Color::rgb([0; 3]).opacity(0.5));
+        assert!(!retained.matches([60, 60], &[changed]));
+        let mut changed = pane();
+        changed.frame = Arc::new((*frame).clone());
+        assert!(!retained.matches([60, 60], &[changed]));
+    }
+
+    #[test]
+    fn retained_gpu_frames_skip_preparation_and_retry_after_errors() {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("GPU adapter");
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
+        let mut resources = egui_wgpu::CallbackResources::default();
+        let mut encoder = device.create_command_encoder(&Default::default());
+        let screen = egui_wgpu::ScreenDescriptor {
+            size_in_pixels: [20, 20],
+            pixels_per_point: 1.0,
+        };
+        let mut frame = Frame::empty([20, 20]);
+        frame.quads.push(rustty_render::Quad::solid(
+            [0.0, 0.0, 20.0, 20.0],
+            rustty_render::Color::rgb([255; 3]),
+        ));
+        let original = Arc::new(frame);
+        let mut prepare = |frame: Arc<Frame>| {
+            let paint = TerminalPaint {
+                window: 1,
+                frame,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            };
+            egui_wgpu::CallbackTrait::prepare(
+                &paint,
+                &device,
+                &queue,
+                &screen,
+                &mut encoder,
+                &mut resources,
+            );
+            let renderer = &resources.get::<GpuRenderers>().unwrap().0[&1];
+            (renderer.prepares, renderer.frame.is_some())
+        };
+        assert_eq!(prepare(Arc::clone(&original)), (1, true));
+        assert_eq!(prepare(Arc::clone(&original)), (1, true));
+        let replacement = Arc::new((*original).clone());
+        assert_eq!(prepare(Arc::clone(&replacement)), (2, true));
+
+        let mut invalid = (*original).clone();
+        invalid.quads[0].rect[0] = f32::NAN;
+        assert_eq!(prepare(Arc::new(invalid)), (2, false));
+        assert_eq!(prepare(replacement), (3, true));
+    }
+
+    #[test]
+    fn prepared_panes_follow_terminal_view_and_atlas_changes() {
+        let mut fonts = rustty_render::Renderer::new(font_config(&Config::default(), 1.0)).unwrap();
+        let rect = egui::Rect::from_min_size(Pos2::new(10.0, 20.0), Vec2::new(320.0, 160.0));
+        let options = RenderOptions {
+            size: [320, 160],
+            ..Default::default()
+        };
+        let key =
+            |terminal: &vt::Terminal| PaneRenderKey::new(terminal, options.clone(), rect, 1.0);
+        let mut terminal = vt::Terminal::new(20, 3, 64);
+        terminal.feed(b"first\r\nsecond\r\nthird\r\nfourth");
+        let prepared = PreparedPane::new(
+            1,
+            key(&terminal),
+            &terminal.screen().snapshot_viewport(),
+            &mut fonts,
+        )
+        .unwrap();
+        assert!(
+            prepared.matches(&key(&terminal), &fonts),
+            "an unchanged pane reuses its prepared content"
+        );
+
+        // Host scrolling and selection mutate the screen without advancing the
+        // terminal's stream generation, so both must participate in reuse.
+        terminal.screen_mut().scroll_viewport(1);
+        assert!(!prepared.matches(&key(&terminal), &fonts));
+        terminal.screen_mut().scroll_viewport(-1);
+        let point = vt::GridPoint {
+            row: terminal.screen().rows[0].id,
+            col: 0,
+        };
+        terminal.screen_mut().selection = Some(vt::Selection {
+            start: point,
+            end: point,
+            rectangular: false,
+        });
+        assert!(!prepared.matches(&key(&terminal), &fonts));
+        terminal.screen_mut().selection = None;
+        assert!(prepared.matches(&key(&terminal), &fonts));
+
+        let mut composition = key(&terminal);
+        composition.options.preedit = Some(rustty_render::Preedit {
+            text: "日本".into(),
+            selection: Some((3, 6)),
+        });
+        assert!(!prepared.matches(&composition, &fonts));
+        let moved = rect.translate(Vec2::new(30.0, 0.0));
+        let moved_key = PaneRenderKey::new(&terminal, options.clone(), moved, 1.0);
+        assert!(!prepared.matches(&moved_key, &fonts));
+        let moved_pane = PreparedPane::new(
+            1,
+            moved_key,
+            &terminal.screen().snapshot_viewport(),
+            &mut fonts,
+        )
+        .unwrap();
+        assert_eq!(
+            moved_pane.ime_rect,
+            prepared.ime_rect.translate(Vec2::new(30.0, 0.0))
+        );
+        terminal.feed(b"!");
+        assert!(!prepared.matches(&key(&terminal), &fonts));
+        let prepared = PreparedPane::new(
+            1,
+            key(&terminal),
+            &terminal.screen().snapshot_viewport(),
+            &mut fonts,
+        )
+        .unwrap();
+        fonts.clear_cache();
+        assert!(
+            !prepared.matches(&key(&terminal), &fonts),
+            "an atlas reset invalidates even unchanged panes"
+        );
+
+        terminal.feed(b"\x1b_Gi=1,s=1,v=1,f=32;/wAA/w==\x1b\\\x1b_Ga=f,i=1,s=1,v=1,f=32,z=50;AP8A/w==\x1b\\\x1b_Ga=a,i=1,r=1,z=50,s=3\x1b\\\x1b_Ga=p,i=1,C=1\x1b\\");
+        assert_eq!(terminal.tick_graphics(100), Some(150));
+        let prepared = PreparedPane::new(
+            1,
+            key(&terminal),
+            &terminal.screen().snapshot_viewport(),
+            &mut fonts,
+        )
+        .unwrap();
+        assert_eq!(terminal.tick_graphics(125), Some(150));
+        assert!(prepared.matches(&key(&terminal), &fonts));
+        assert_eq!(terminal.tick_graphics(150), Some(200));
+        assert!(
+            !prepared.matches(&key(&terminal), &fonts),
+            "a Kitty animation frame must invalidate retained graphics"
+        );
+    }
+
+    #[test]
     fn determinate_progress_does_not_blend_into_the_focused_split_outline() {
         let context = egui::Context::default();
         let bounds = egui::Rect::from_min_size(Pos2::new(20.0, 30.0), Vec2::new(200.0, 100.0));
@@ -4504,7 +5234,7 @@ mod tests {
                         value: Some(percentage)
                     },
                     accent,
-                    Duration::ZERO
+                    0.0
                 ));
             });
             output.textures_delta.clear();
@@ -4531,6 +5261,91 @@ mod tests {
     }
 
     #[test]
+    fn indefinite_progress_matches_swiftui_motion_and_requests_the_next_frame() {
+        let context = egui::Context::default();
+        let bounds = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(204.0, 100.0));
+        let started = Instant::now();
+        let mut activity = Activity::default();
+        activity.progress_reported(3, None, started);
+        // Values sampled from SwiftUI's UnitCurve.easeInOut. Ghostty traverses
+        // 75% of the pane in 1.2 seconds, then automatically reverses.
+        for (millis, position) in [
+            (0, 0.0),
+            (150, 0.0311136246),
+            (300, 0.1291618347),
+            (600, 0.5),
+            (900, 0.8708381653),
+            (1200, 1.0),
+            (1500, 0.8708381653),
+            (1800, 0.5),
+            (2400, 0.0),
+        ] {
+            let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                assert!(paint_progress(
+                    ui,
+                    1,
+                    bounds,
+                    Progress {
+                        state: 3,
+                        value: None
+                    },
+                    Color32::BLUE,
+                    activity.progress_offset(started + Duration::from_millis(millis)),
+                ));
+            });
+            output.textures_delta.clear();
+            let fill = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect) => Some(rect),
+                    _ => None,
+                })
+                .next_back()
+                .unwrap();
+            assert!(
+                (f64::from(fill.rect.left()) - (2.0 + 150.0 * position)).abs() < 0.001,
+                "position at {millis}ms differs from SwiftUI: {:?}",
+                fill.rect
+            );
+            assert_eq!(fill.rect.width(), 50.0);
+            assert_eq!(
+                output.viewport_output[&ViewportId::ROOT].repaint_delay,
+                Duration::ZERO
+            );
+        }
+        // Stop requesting frames after the bar becomes determinate or is clipped.
+        // Allow egui's already queued repaint to drain before checking idleness.
+        for visible in [true, false] {
+            for frame in 0..3 {
+                let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                    if !visible {
+                        ui.set_clip_rect(egui::Rect::NOTHING);
+                    }
+                    assert!(!paint_progress(
+                        ui,
+                        1,
+                        bounds,
+                        Progress {
+                            state: 3,
+                            value: visible.then_some(50)
+                        },
+                        Color32::BLUE,
+                        0.0,
+                    ));
+                });
+                output.textures_delta.clear();
+                if frame == 2 {
+                    assert_eq!(
+                        output.viewport_output[&ViewportId::ROOT].repaint_delay,
+                        Duration::MAX
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn progress_bars_render_percentages_and_only_animate_without_a_value() {
         let context = egui::Context::default();
         let bounds = egui::Rect::from_min_size(Pos2::new(20.0, 30.0), Vec2::new(200.0, 100.0));
@@ -4543,14 +5358,7 @@ mod tests {
         ] {
             let mut output = context.run_ui(egui::RawInput::default(), |ui| {
                 assert_eq!(
-                    paint_progress(
-                        ui,
-                        1,
-                        bounds,
-                        Progress { state, value },
-                        Color32::BLUE,
-                        Duration::ZERO
-                    ),
+                    paint_progress(ui, 1, bounds, Progress { state, value }, Color32::BLUE, 0.0),
                     animated,
                 );
             });

@@ -70,6 +70,49 @@ fn action(config: &Config, trigger: &str) -> Option<Action> {
 }
 
 #[test]
+fn grapheme_width_method_loads_ghostty_policy_and_defaults_to_unicode() {
+    let home = TestHome::new();
+    for (value, expected) in [
+        ("legacy", GraphemeWidthMethod::Legacy),
+        ("unicode", GraphemeWidthMethod::Unicode),
+        ("", GraphemeWidthMethod::Unicode),
+    ] {
+        home.local(&format!("grapheme-width-method={value}\n"));
+        let loaded = home.loader.load();
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        assert_eq!(loaded.config.grapheme_width_method, expected);
+    }
+    home.local("grapheme-width-method=invalid\n");
+    let loaded = home.loader.load();
+    assert_eq!(loaded.diagnostics.len(), 1);
+    assert_eq!(
+        loaded.config.grapheme_width_method,
+        GraphemeWidthMethod::Unicode
+    );
+}
+
+#[test]
+fn mouse_shift_capture_loads_ghostty_policy_and_resets_to_the_default() {
+    let home = TestHome::new();
+    for (value, expected) in [
+        ("false", MouseShiftCapture::False),
+        ("true", MouseShiftCapture::True),
+        ("always", MouseShiftCapture::Always),
+        ("never", MouseShiftCapture::Never),
+        ("", MouseShiftCapture::False),
+    ] {
+        home.local(&format!("mouse-shift-capture={value}\n"));
+        let loaded = home.loader.load();
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        assert_eq!(loaded.config.mouse_shift_capture, expected);
+    }
+    home.local("mouse-shift-capture=invalid\n");
+    let loaded = home.loader.load();
+    assert_eq!(loaded.diagnostics.len(), 1);
+    assert_eq!(loaded.config.mouse_shift_capture, MouseShiftCapture::False);
+}
+
+#[test]
 fn no_config_returns_defaults_without_creating_any_settings() {
     let home = TestHome::new();
     let loaded = home.loader.load();
@@ -487,12 +530,20 @@ fn cli_font_override_reset_defaults_flag_and_direct_initial_argv() {
 #[test]
 fn scalar_empty_values_reset_defaults_and_repeated_lists_append_or_reset() {
     let home = TestHome::new();
-    home.own("font-family=First\nfont-family=Second\nfont-family=\nfont-family=Third\nfont-size=20\nfont-size=\ncursor-color=#123456\ncursor-color=\nkeybind=clear\nkeybind=\n");
+    home.own("font-family=First\nfont-family=Second\nfont-family=\nfont-family=Third\nfont-size=20\nfont-size=\ncursor-color=#123456\ncursor-color=\ntitle-report=true\nkeybind=clear\nkeybind=\n");
     let loaded = home.loader.load();
     assert!(loaded.diagnostics.is_empty());
     assert_eq!(loaded.config.font_family, ["Third"]);
     assert_eq!(loaded.config.font_size, 13.0);
     assert_eq!(loaded.config.cursor_color, None);
+    assert!(loaded.config.title_report);
+    assert!(
+        !home
+            .loader
+            .load_with_args(&args(&["--title-report="]))
+            .config
+            .title_report
+    );
     assert_eq!(action(&loaded.config, "cmd+n"), Some(Action::NewWindow));
 }
 

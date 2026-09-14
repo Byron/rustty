@@ -193,6 +193,16 @@ pub struct MouseEncodeOptions<'a> {
 }
 
 impl Terminal {
+    /// Application's XTSHIFTESCAPE request; the host applies its user policy.
+    pub fn mouse_shift_capture(&self) -> Option<bool> {
+        self.metadata.mouse_shift_capture
+    }
+
+    /// W3C pointer name selected by OSC 22, also retained in terminal snapshots.
+    pub fn mouse_shape(&self) -> &'static str {
+        MOUSE_SHAPES[usize::from(self.metadata.mouse_shape)]
+    }
+
     /// Encode an event whose Alt modifier already denotes terminal Alt.
     pub fn encode_key(&self, event: &KeyEvent) -> Vec<u8> {
         self.encode_key_with_options(
@@ -422,6 +432,76 @@ impl Terminal {
             _ => Vec::new(),
         }
     }
+}
+
+// Order is part of the inherited GHOSTSNP terminal header.
+const MOUSE_SHAPES: [&str; 34] = [
+    "default",
+    "context-menu",
+    "help",
+    "pointer",
+    "progress",
+    "wait",
+    "cell",
+    "crosshair",
+    "text",
+    "vertical-text",
+    "alias",
+    "copy",
+    "move",
+    "no-drop",
+    "not-allowed",
+    "grab",
+    "grabbing",
+    "all-scroll",
+    "col-resize",
+    "row-resize",
+    "n-resize",
+    "e-resize",
+    "s-resize",
+    "w-resize",
+    "ne-resize",
+    "nw-resize",
+    "se-resize",
+    "sw-resize",
+    "ew-resize",
+    "ns-resize",
+    "nesw-resize",
+    "nwse-resize",
+    "zoom-in",
+    "zoom-out",
+];
+
+pub(crate) fn mouse_shape_index(name: &str) -> Option<u8> {
+    let name = match name {
+        "left_ptr" => "default",
+        "question_arrow" => "help",
+        "hand" => "pointer",
+        "left_ptr_watch" => "progress",
+        "watch" => "wait",
+        "cross" => "crosshair",
+        "xterm" => "text",
+        "dnd-link" => "alias",
+        "dnd-copy" => "copy",
+        "dnd-move" => "move",
+        "dnd-no-drop" => "no-drop",
+        "crossed_circle" => "not-allowed",
+        "hand1" => "grab",
+        "right_side" => "e-resize",
+        "top_side" => "n-resize",
+        "top_right_corner" => "ne-resize",
+        "top_left_corner" => "nw-resize",
+        "bottom_side" => "s-resize",
+        "bottom_right_corner" => "se-resize",
+        "bottom_left_corner" => "sw-resize",
+        "left_side" => "w-resize",
+        "fleur" => "all-scroll",
+        name => name,
+    };
+    MOUSE_SHAPES
+        .iter()
+        .position(|&shape| shape == name)
+        .map(|index| index as u8)
 }
 
 /// Check clipboard bytes before encoding. Pass `false` to reject newlines

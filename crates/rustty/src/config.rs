@@ -87,7 +87,9 @@ macro_rules! config_enum {
 }
 
 config_enum!(CursorStyle { Block => "block", Bar => "bar", Underline => "underline", BlockHollow => "block_hollow" });
+config_enum!(GraphemeWidthMethod { Unicode => "unicode", Legacy => "legacy" });
 config_enum!(CopyOnSelect { None => "none", Primary => "primary", Clipboard => "clipboard", Both => "both" });
+config_enum!(MouseShiftCapture { False => "false", True => "true", Always => "always", Never => "never" });
 config_enum!(WindowSaveState { Default => "default", Never => "never", Always => "always" });
 config_enum!(OptionAsAlt { False => "false", True => "true", Left => "left", Right => "right" });
 config_enum!(NotifyOnCommandFinish { Never => "never", Unfocused => "unfocused", Always => "always" });
@@ -241,6 +243,7 @@ pub struct Config {
     pub font_thicken: bool,
     /// Zero is the lightest thickening; `font_thicken` controls whether it is used.
     pub font_thicken_strength: u8,
+    pub grapheme_width_method: GraphemeWidthMethod,
     pub background: Rgb,
     pub foreground: Rgb,
     pub palette: [Rgb; 256],
@@ -262,8 +265,10 @@ pub struct Config {
     pub window_height: u32,
     pub window_theme: WindowTheme,
     pub window_save_state: WindowSaveState,
+    pub title_report: bool,
     pub macos_option_as_alt: OptionAsAlt,
     pub copy_on_select: CopyOnSelect,
+    pub mouse_shift_capture: MouseShiftCapture,
     pub clipboard_read: ClipboardAccess,
     pub clipboard_write: ClipboardAccess,
     pub clipboard_write_limit_bytes: Option<usize>,
@@ -320,6 +325,7 @@ impl Default for Config {
             font_synthetic_style: [true; 3],
             font_thicken: false,
             font_thicken_strength: 255,
+            grapheme_width_method: GraphemeWidthMethod::Unicode,
             background: Rgb::new(0x28, 0x2c, 0x34),
             foreground: Rgb::new(255, 255, 255),
             palette: default_palette(),
@@ -346,8 +352,10 @@ impl Default for Config {
             window_height: 0,
             window_theme: WindowTheme::Auto,
             window_save_state: WindowSaveState::Default,
+            title_report: false,
             macos_option_as_alt: OptionAsAlt::False,
             copy_on_select: CopyOnSelect::None,
+            mouse_shift_capture: MouseShiftCapture::False,
             clipboard_read: ClipboardAccess::Ask,
             clipboard_write: ClipboardAccess::Allow,
             clipboard_write_limit_bytes: Some(64 * 1024 * 1024),
@@ -449,6 +457,9 @@ impl Config {
                     .try_into()
                     .map_err(|_| "font thickening strength must be 0 through 255")?
             ),
+            "grapheme-width-method" => {
+                set!(grapheme_width_method, GraphemeWidthMethod::parse(value)?)
+            }
             "foreground" => set!(foreground, Rgb::parse(value)?),
             "background" => set!(background, Rgb::parse(value)?),
             "palette" => {
@@ -492,6 +503,7 @@ impl Config {
             ),
             "window-theme" => set!(window_theme, WindowTheme::parse(value)?),
             "window-save-state" => set!(window_save_state, WindowSaveState::parse(value)?),
+            "title-report" => set!(title_report, parse_bool(value)?),
             "macos-option-as-alt" => set!(macos_option_as_alt, OptionAsAlt::parse(value)?),
             "copy-on-select" => set!(copy_on_select, CopyOnSelect::parse(value)?),
             "clipboard-read" => set!(clipboard_read, ClipboardAccess::parse(value)?),
@@ -564,6 +576,9 @@ impl Config {
             "scrollback-limit-lines" => set!(scrollback_limit_lines, parse_limit(value, None)?),
             "scrollback-compression" => set!(scrollback_compression, parse_bool(value)?),
             "link-url" => set!(link_url, parse_bool(value)?),
+            "mouse-shift-capture" => {
+                set!(mouse_shift_capture, MouseShiftCapture::parse(value)?)
+            }
             "command" => set!(command, Some(Command::parse(value)?)),
             "initial-command" => set!(initial_command, Some(Command::parse(value)?)),
             "working-directory" => set!(

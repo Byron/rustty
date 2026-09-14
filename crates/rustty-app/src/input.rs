@@ -9,6 +9,21 @@ use winit::{
     platform::modifier_supplement::KeyEventExtModifierSupplement,
 };
 
+/// Share the application's Shift override between mouse buttons and scrolling.
+pub fn mouse_reporting(
+    terminal: &vt::Terminal,
+    modifiers: ModifiersState,
+    policy: config::MouseShiftCapture,
+) -> bool {
+    use config::MouseShiftCapture::{Always, False, Never, True};
+    let capture = match policy {
+        Always => true,
+        Never => false,
+        False | True => terminal.mouse_shift_capture().unwrap_or(policy == True),
+    };
+    terminal.mouse_mode != 0 && (!modifiers.shift_key() || capture)
+}
+
 /// Selection begins on pointer movement, including movement within one cell.
 pub struct SelectionDrag {
     anchor: vt::GridPoint,
@@ -183,6 +198,13 @@ pub fn terminal_modifiers(m: ModifiersState) -> vt::Modifiers {
     }
 }
 
+/// IME commits have text but no physical key; use the shared terminal encoder.
+pub fn terminal_text(terminal: &vt::Terminal, text: String) -> Vec<u8> {
+    let mut event = vt::KeyEvent::new(vt::Key::Unidentified);
+    event.text = Some(text);
+    terminal.encode_key(&event)
+}
+
 pub fn terminal_key(
     event: &KeyEvent,
     modifiers: Modifiers,
@@ -197,15 +219,16 @@ pub fn terminal_key(
         &unmodified
     };
     let key = terminal_key_code(logical, event.physical_key, event.location);
-    if key == vt::Key::Unidentified && event.text.as_ref().is_none_or(|text| text.is_empty()) {
+    let text = terminal_key_text(event.text.as_deref());
+    if key == vt::Key::Unidentified && text.is_none() {
         return None;
     }
     let mods = key_modifiers(key, event.state, modifiers);
     Some(vt::KeyEvent {
         key,
-        text: event.text.as_ref().map(|text| text.to_string()),
+        text: text.map(str::to_owned),
         modifiers: terminal_modifiers(mods),
-        consumed_modifiers: consumed_modifiers(&unmodified, event.text.as_deref(), mods, options),
+        consumed_modifiers: consumed_modifiers(&unmodified, text, mods, options),
         action: if event.state == ElementState::Released {
             vt::KeyAction::Release
         } else if event.repeat {
@@ -215,6 +238,16 @@ pub fn terminal_key(
         },
         unshifted: unmodified.to_text().and_then(|text| text.chars().next()),
         composing,
+    })
+}
+
+fn terminal_key_text(text: Option<&str>) -> Option<&str> {
+    // Winit attaches control text to Tab/Enter/Backspace. Let the VT encoder
+    // encode these keys with their modifiers, matching Ghostty's keyEventText.
+    text.filter(|text| {
+        text.as_bytes()
+            .first()
+            .is_some_and(|b| !b.is_ascii_control())
     })
 }
 
@@ -443,6 +476,34 @@ pub fn chord_held(chord: config::Modifiers, current: config::Modifiers) -> bool 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shift_mouse_capture_follows_application_requests_and_user_overrides() {
+        use config::MouseShiftCapture::{Always, False, Never, True};
+        for (policy, expected) in [
+            (False, [false, false, true]),
+            (True, [true, false, true]),
+            (Never, [false, false, false]),
+            (Always, [true, true, true]),
+        ] {
+            for (request, expected) in [b"".as_slice(), b"\x1b[>0s", b"\x1b[>1s"]
+                .into_iter()
+                .zip(expected)
+            {
+                let mut terminal = vt::Terminal::new(10, 6, 0);
+                terminal.feed(b"\x1b[?1002h\x1b[?1006h");
+                terminal.feed(request);
+                assert_eq!(
+                    mouse_reporting(&terminal, ModifiersState::SHIFT, policy),
+                    expected,
+                    "{policy:?} {request:?}",
+                );
+                assert!(mouse_reporting(&terminal, ModifiersState::empty(), policy));
+                terminal.feed(b"\x1b[?1002l");
+                assert!(!mouse_reporting(&terminal, ModifiersState::SHIFT, policy));
+            }
+        }
+    }
 
     #[test]
     fn passive_pointer_motion_does_not_restart_egui_repaints_or_discard_clicks() {
@@ -925,6 +986,20 @@ mod tests {
     }
 
     #[test]
+    fn composed_text_obeys_keyboard_lock_in_legacy_and_kitty_modes() {
+        for mode in [b"".as_slice(), b"\x1b[>31u"] {
+            let mut terminal = vt::Terminal::new(20, 2, 0);
+            terminal.feed(mode);
+            let text = "日本語 e\u{301} ";
+            assert_eq!(terminal_text(&terminal, text.into()), text.as_bytes());
+            terminal.feed(b"\x1b[2h");
+            assert!(terminal_text(&terminal, text.into()).is_empty());
+            terminal.feed(b"\x1b[2l");
+            assert_eq!(terminal_text(&terminal, text.into()), text.as_bytes());
+        }
+    }
+
+    #[test]
     fn named_keys_and_right_modifiers_keep_their_terminal_identity() {
         let unknown = PhysicalKey::Unidentified(winit::keyboard::NativeKeyCode::Unidentified);
         let mut terminal = vt::Terminal::new(20, 2, 0);
@@ -1125,6 +1200,51 @@ mod tests {
             key_modifiers(vt::Key::Char('x'), ElementState::Released, held.into()),
             held
         );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn shifted_control_keys_retain_modifiers_in_kitty_mode() {
+        let options = vt::KeyEncodeOptions::default();
+        for (named, text, code) in [
+            (NamedKey::Tab, "\t", 9),
+            (NamedKey::Enter, "\r", 13),
+            (NamedKey::Backspace, "\u{8}", 127),
+        ] {
+            let unmodified = Key::Named(named);
+            let text = terminal_key_text(Some(text));
+            let mut event = vt::KeyEvent::new(terminal_named_key(named).unwrap());
+            event.text = text.map(str::to_owned);
+            event.modifiers = terminal_modifiers(ModifiersState::SHIFT);
+            event.consumed_modifiers =
+                consumed_modifiers(&unmodified, text, ModifiersState::SHIFT, options);
+            let mut terminal = vt::Terminal::new(20, 2, 0);
+            if named == NamedKey::Tab {
+                assert_eq!(terminal.encode_key(&event), b"\x1b[Z");
+            }
+            terminal.feed(b"\x1b[>1u");
+            assert_eq!(
+                terminal.encode_key_with_options(&event, options),
+                format!("\x1b[{code};2u").as_bytes(),
+                "{named:?} must retain Shift instead of producing an unmodified key"
+            );
+        }
+        // Shift still contributes to printable text, including space and Unicode.
+        for (base, shifted) in [('a', "A"), (' ', " "), ('é', "É")] {
+            let text = terminal_key_text(Some(shifted));
+            let mut event = vt::KeyEvent::new(vt::Key::Char(base));
+            event.text = text.map(str::to_owned);
+            event.modifiers = terminal_modifiers(ModifiersState::SHIFT);
+            event.consumed_modifiers = consumed_modifiers(
+                &Key::Character(base.to_string().into()),
+                text,
+                ModifiersState::SHIFT,
+                options,
+            );
+            let mut terminal = vt::Terminal::new(20, 2, 0);
+            terminal.feed(b"\x1b[>1u");
+            assert_eq!(terminal.encode_key(&event), shifted.as_bytes());
+        }
     }
 
     #[cfg(target_os = "macos")]
