@@ -367,7 +367,7 @@ impl Default for Config {
             wait_after_command: false,
             abnormal_command_exit_runtime: 250,
             undo_timeout: Duration::from_secs(5),
-            quit_after_last_window_closed: false,
+            quit_after_last_window_closed: cfg!(windows),
             bell_features: BellFeatures::default(),
             progress_style: true,
             notify_on_command_finish: NotifyOnCommandFinish::Never,
@@ -661,6 +661,9 @@ pub struct LoadedConfig {
 pub struct ConfigLoader {
     pub home: PathBuf,
     pub xdg_config_home: PathBuf,
+    /// Native Windows roaming configuration root. Explicit loaders can leave
+    /// this unset to use the historical directory layout in isolated fixtures.
+    pub app_config_home: Option<PathBuf>,
     /// The directory containing bundled `themes/` and other app resources.
     pub resources_dir: Option<PathBuf>,
     pub dark_mode: bool,
@@ -669,10 +672,7 @@ pub struct ConfigLoader {
 
 impl ConfigLoader {
     pub fn from_env() -> io::Result<Self> {
-        let home = env::var_os("HOME")
-            .filter(|h| !h.is_empty())
-            .map(PathBuf::from)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is unavailable"))?;
+        let home = crate::app_paths::home_dir()?;
         let xdg = env::var_os("XDG_CONFIG_HOME")
             .map(PathBuf::from)
             .filter(|p| p.is_absolute());
@@ -682,6 +682,11 @@ impl ConfigLoader {
         });
         Ok(Self {
             xdg_config_home: xdg.unwrap_or_else(|| home.join(".config")),
+            app_config_home: if cfg!(windows) {
+                crate::app_paths::config_dir()?.parent().map(Path::to_owned)
+            } else {
+                None
+            },
             home,
             resources_dir,
             dark_mode: true,
@@ -694,7 +699,10 @@ impl ConfigLoader {
     }
 
     pub fn load_with_args(&self, args: &[String]) -> LoadedConfig {
-        let own_app = self.home.join("Library/Application Support/com.rustty.app");
+        let own_app = self.app_config_home.as_ref().map_or_else(
+            || self.home.join("Library/Application Support/com.rustty.app"),
+            |root| root.join("Rustty"),
+        );
         let own = candidates(&self.xdg_config_home.join("rustty"), &own_app, "rustty");
         let own_config_path = own
             .iter()
@@ -767,12 +775,20 @@ impl ConfigLoader {
             result.family = ConfigFamily::Rustty;
             own
         } else {
-            let local = self
-                .home
-                .join("Library/Application Support/com.mitchellh.ghostty.local");
-            let stable = self
-                .home
-                .join("Library/Application Support/com.mitchellh.ghostty");
+            let local = self.app_config_home.as_ref().map_or_else(
+                || {
+                    self.home
+                        .join("Library/Application Support/com.mitchellh.ghostty.local")
+                },
+                |root| root.join("ghostty.local"),
+            );
+            let stable = self.app_config_home.as_ref().map_or_else(
+                || {
+                    self.home
+                        .join("Library/Application Support/com.mitchellh.ghostty")
+                },
+                |root| root.join("ghostty"),
+            );
             let local_exists = [local.join("config"), local.join("config.ghostty")]
                 .iter()
                 .any(|p| present(p));
@@ -1036,6 +1052,19 @@ impl ConfigLoader {
             .join(name);
         if present(&user_path) {
             return Some(user_path);
+        }
+        if let Some(root) = &self.app_config_home {
+            let path = root
+                .join(if user_dir == "rustty" {
+                    "Rustty"
+                } else {
+                    user_dir
+                })
+                .join("themes")
+                .join(name);
+            if present(&path) {
+                return Some(path);
+            }
         }
         self.resources_dir
             .as_ref()

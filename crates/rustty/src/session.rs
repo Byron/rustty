@@ -11,6 +11,9 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
+mod shell;
+pub use shell::{ShellInfo, ShellKind, default_shell, resolve_shell};
+
 const MAX_PENDING_INPUT: usize = 16 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
@@ -79,6 +82,7 @@ pub struct Snapshot {
 }
 
 pub struct Session {
+    shell: ShellInfo,
     terminal: Arc<Mutex<Terminal>>,
     input: mpsc::Sender<IoCommand>,
     events: mpsc::Receiver<SessionEvent>,
@@ -109,7 +113,7 @@ impl Session {
                 ..PtySize::default()
             })
             .map_err(error)?;
-        let command = command(config, &options)?;
+        let (command, shell) = command(config, &options)?;
         let terminfo_name = command
             .get_env("TERM")
             .map(|name| name.as_encoded_bytes().to_vec());
@@ -140,7 +144,11 @@ impl Session {
             .as_ref()
             .or(config.working_directory.as_ref())
             .map_or_else(
-                || std::env::var("HOME").unwrap_or_default(),
+                || {
+                    crate::app_paths::home_dir()
+                        .map(|path| path.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                },
                 |path| path.to_string_lossy().into_owned(),
             );
         let terminal = Arc::new(Mutex::new(terminal));
@@ -249,6 +257,8 @@ impl Session {
             })?;
 
         let wait_exited = exited.clone();
+        #[cfg(windows)]
+        let wait_input = input.clone();
         // Spawn the process only after all three workers exist. Its owner never
         // crosses a fallible thread-spawn boundary and always performs the wait.
         thread::Builder::new()
@@ -275,6 +285,11 @@ impl Session {
                     },
                     Err(e) => SessionEvent::Error(e.to_string()),
                 };
+                // Unlike a Unix slave, an idle ConPTY stays open after its last
+                // process exits. Release the master while the reader still drains
+                // its final output, so EOF can reach the host.
+                #[cfg(windows)]
+                let _ = wait_input.send(IoCommand::Close);
                 wait_exited.store(true, Ordering::Release);
                 wake();
                 let _ = events_tx.send(event);
@@ -292,6 +307,7 @@ impl Session {
             })??;
 
         Ok(Self {
+            shell,
             terminal,
             input,
             events,
@@ -305,6 +321,10 @@ impl Session {
         self.terminal
             .lock()
             .map_err(|_| error("terminal worker panicked"))
+    }
+
+    pub fn shell(&self) -> &ShellInfo {
+        &self.shell
     }
 
     /// Queues the entire input or returns an error without sending any prefix.
@@ -699,8 +719,9 @@ fn apply_appearance(terminal: &mut Terminal, config: &Config) {
     terminal.set_default_cursor(shape, config.cursor_style_blink);
 }
 
-fn command(config: &Config, options: &SessionOptions) -> io::Result<CommandBuilder> {
+fn command(config: &Config, options: &SessionOptions) -> io::Result<(CommandBuilder, ShellInfo)> {
     let selected = options.command.as_ref().or(config.command.as_ref());
+    let mut shell = resolve_shell(selected);
     let mut cmd = match selected {
         Some(Command::Direct(args)) => {
             let Some(program) = args.first() else {
@@ -711,14 +732,36 @@ fn command(config: &Config, options: &SessionOptions) -> io::Result<CommandBuild
             cmd
         }
         Some(Command::Shell(text)) => {
-            let mut cmd = CommandBuilder::new("/bin/sh");
-            cmd.args(["-c", text]);
-            cmd
+            #[cfg(windows)]
+            {
+                shell.command_text(text)?
+            }
+            #[cfg(not(windows))]
+            {
+                let mut cmd = CommandBuilder::new("/bin/sh");
+                cmd.args(["-c", text]);
+                cmd
+            }
         }
-        None => CommandBuilder::new_default_prog(),
+        None => {
+            #[cfg(windows)]
+            {
+                let mut cmd = CommandBuilder::new(shell.program());
+                cmd.args(&shell.argv[1..]);
+                cmd
+            }
+            #[cfg(not(windows))]
+            CommandBuilder::new_default_prog()
+        }
     };
     for (key, value) in &config.env {
         cmd.env(key, value);
+    }
+    #[cfg(not(windows))]
+    if selected.is_none() {
+        // portable-pty resolves the login shell from the child's environment,
+        // which can include an explicit SHELL override in Rustty settings.
+        shell = ShellInfo::new(vec![cmd.get_shell()], "system login shell".into());
     }
     if let Some(path) = options
         .working_directory
@@ -726,7 +769,7 @@ fn command(config: &Config, options: &SessionOptions) -> io::Result<CommandBuild
         .or(config.working_directory.as_ref())
     {
         cmd.cwd(path);
-    } else if let Some(home) = std::env::var_os("HOME") {
+    } else if let Ok(home) = crate::app_paths::home_dir() {
         cmd.cwd(home);
     }
     // Programs such as Cargo gate OSC progress on the terminal's identity.
@@ -736,34 +779,44 @@ fn command(config: &Config, options: &SessionOptions) -> io::Result<CommandBuild
     cmd.env("TERM", "xterm-256color");
     cmd.env_remove("GHOSTTY_SURFACE_ID");
     if let Some(resources) = &options.resources {
-        cmd.env("RUSTTY_RESOURCES_DIR", resources);
-        cmd.env("GHOSTTY_RESOURCES_DIR", resources);
+        let shell_resources = shell.path_for_shell(resources)?;
+        cmd.env("RUSTTY_RESOURCES_DIR", &shell_resources);
+        cmd.env("GHOSTTY_RESOURCES_DIR", &shell_resources);
         let terminfo = resources.join("terminfo");
         if terminfo.is_dir() {
-            cmd.env("TERMINFO", terminfo);
+            cmd.env("TERMINFO", shell.path_for_shell(&terminfo)?);
             cmd.env("TERM", "xterm-ghostty");
         }
         if config.shell_integration != ShellIntegration::None && selected.is_none() {
-            let shell = cmd.get_shell();
-            let shell_name = Path::new(&shell)
-                .file_name()
+            let shell_program = shell.program().to_owned();
+            let shell_name = Path::new(&shell_program)
+                .file_stem()
                 .and_then(|name| name.to_str())
                 .unwrap_or("");
-            cmd.get_argv_mut().push(shell.clone().into());
-            cmd.arg("-l");
+            // The inherited Windows command already includes its own flags.
+            // Never turn cmd.exe into "cmd.exe -l".
+            if cmd.is_default_prog() {
+                cmd.get_argv_mut().push(shell_program.clone().into());
+                cmd.arg("-l");
+            }
             let scripts = resources.join("shell-integration");
             cmd.env("GHOSTTY_SHELL_FEATURES", "cursor:steady,path,title");
             if let Ok(exe) = std::env::current_exe()
                 && let Some(parent) = exe.parent()
             {
-                cmd.env("GHOSTTY_BIN_DIR", parent);
+                cmd.env("GHOSTTY_BIN_DIR", shell.path_for_shell(parent)?);
             }
             match shell_name {
+                "bash" if shell.kind() == &ShellKind::GitBash => {
+                    if let Err(error) = inject_bash(&mut cmd, &shell, &scripts) {
+                        shell.warn(format!("Bash shell integration is unavailable: {error}"));
+                    }
+                }
                 "zsh" if scripts.join("zsh").is_dir() => {
                     if let Some(old) = cmd.get_env("ZDOTDIR").map(ToOwned::to_owned) {
                         cmd.env("GHOSTTY_ZSH_ZDOTDIR", old);
                     }
-                    cmd.env("ZDOTDIR", scripts.join("zsh"));
+                    cmd.env("ZDOTDIR", shell.path_for_shell(&scripts.join("zsh"))?);
                 }
                 "fish" | "nu" | "elvish" => {
                     let old = cmd
@@ -780,13 +833,115 @@ fn command(config: &Config, options: &SessionOptions) -> io::Result<CommandBuild
             }
         }
     }
-    Ok(cmd)
+    Ok((cmd, shell))
+}
+
+/// Reuse Ghostty's Bash bootstrap, which recreates ordinary startup files before
+/// installing its prompt hooks. No user profile is modified.
+fn inject_bash(cmd: &mut CommandBuilder, shell: &ShellInfo, scripts: &Path) -> io::Result<()> {
+    let script = scripts.join("bash/ghostty.bash");
+    if !script.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "bash/ghostty.bash is missing",
+        ));
+    }
+    let mut args = vec![cmd.get_argv()[0].clone(), "--posix".into()];
+    let mut inject = String::from("1");
+    let mut rcfile = None;
+    let mut iter = cmd.get_argv().iter().skip(1);
+    while let Some(arg) = iter.next() {
+        let value = arg.to_string_lossy();
+        match value.as_ref() {
+            "--posix" => return Ok(()),
+            "--norc" | "--noprofile" => {
+                inject.push(' ');
+                inject.push_str(&value);
+            }
+            "--rcfile" | "--init-file" => {
+                rcfile = Some(
+                    iter.next()
+                        .cloned()
+                        .ok_or_else(|| error("Bash rcfile option is missing its path"))?,
+                );
+            }
+            "--" | "-" => {
+                args.push(arg.clone());
+                args.extend(iter.cloned());
+                break;
+            }
+            value if value.starts_with('-') && !value.starts_with("--") && value.contains('c') => {
+                return Ok(());
+            }
+            _ => args.push(arg.clone()),
+        }
+    }
+    // Resolve fallible paths before modifying either arguments or environment.
+    let script = shell.path_for_shell(&script)?;
+    let histfile = if cmd.get_env("HISTFILE").is_none() {
+        let home = cmd
+            .get_env("HOME")
+            .map(PathBuf::from)
+            .map_or_else(crate::app_paths::home_dir, Ok)?;
+        Some(shell.path_for_shell(&home.join(".bash_history"))?)
+    } else {
+        None
+    };
+    if let Some(previous) = cmd.get_env("ENV").map(ToOwned::to_owned) {
+        cmd.env("GHOSTTY_BASH_ENV", previous);
+    }
+    cmd.env("ENV", script);
+    cmd.env("GHOSTTY_BASH_INJECT", inject);
+    if let Some(rcfile) = rcfile {
+        cmd.env("GHOSTTY_BASH_RCFILE", rcfile);
+    }
+    if let Some(histfile) = histfile {
+        cmd.env("HISTFILE", histfile);
+        cmd.env("GHOSTTY_BASH_UNEXPORT_HISTFILE", "1");
+    }
+    *cmd.get_argv_mut() = args;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn bash_bootstrap_preserves_login_flags_environment_and_history() {
+        let root =
+            std::env::temp_dir().join(format!("rustty-bash-bootstrap-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("bash")).unwrap();
+        std::fs::write(root.join("bash/ghostty.bash"), "# test resource\n").unwrap();
+        let shell = ShellInfo::new(vec!["test-bash".into()], "test".into());
+        let mut cmd = CommandBuilder::new("test-bash");
+        cmd.args(["-i", "-l", "--norc", "--rcfile", "custom profile"]);
+        cmd.env("HOME", &root);
+        cmd.env("ENV", "old-env");
+        cmd.env_remove("HISTFILE");
+        inject_bash(&mut cmd, &shell, &root).unwrap();
+        assert_eq!(
+            cmd.get_argv(),
+            &["test-bash", "--posix", "-i", "-l"].map(std::ffi::OsString::from)
+        );
+        assert_eq!(cmd.get_env("GHOSTTY_BASH_INJECT").unwrap(), "1 --norc");
+        assert_eq!(cmd.get_env("GHOSTTY_BASH_ENV").unwrap(), "old-env");
+        assert_eq!(
+            cmd.get_env("GHOSTTY_BASH_RCFILE").unwrap(),
+            "custom profile"
+        );
+        assert_eq!(cmd.get_env("HISTFILE").unwrap(), root.join(".bash_history"));
+        assert_eq!(cmd.get_env("GHOSTTY_BASH_UNEXPORT_HISTFILE").unwrap(), "1");
+        assert_eq!(cmd.get_env("ENV").unwrap(), root.join("bash/ghostty.bash"));
+        let mut command = CommandBuilder::new("test-bash");
+        command.args(["-ic", "echo command"]);
+        let original = command.get_argv().clone();
+        inject_bash(&mut command, &shell, &root).unwrap();
+        assert_eq!(command.get_argv(), &original);
+        assert!(command.get_env("GHOSTTY_BASH_INJECT").is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[cfg(unix)]
     #[test]
@@ -1279,7 +1434,17 @@ mod tests {
             &config,
             SessionOptions {
                 rows: 2,
-                command: Some(Command::Direct(vec!["/bin/sleep".into(), "30".into()])),
+                command: Some(Command::Direct(if cfg!(windows) {
+                    vec![
+                        "cmd.exe".into(),
+                        "/d".into(),
+                        "/q".into(),
+                        "/c".into(),
+                        "pause >nul".into(),
+                    ]
+                } else {
+                    vec!["/bin/sleep".into(), "30".into()]
+                })),
                 ..SessionOptions::default()
             },
             Arc::new(|| {}),
@@ -1315,11 +1480,20 @@ mod tests {
         let session = Session::spawn(
             &config,
             SessionOptions {
-                command: Some(Command::Direct(vec![
-                    "/bin/sh".into(),
-                    "-c".into(),
-                    "printf 'rustty-ready'; exit 7".into(),
-                ])),
+                command: Some(Command::Direct(if cfg!(windows) {
+                    vec![
+                        "cmd.exe".into(),
+                        "/d".into(),
+                        "/c".into(),
+                        "echo rustty-ready & exit 7".into(),
+                    ]
+                } else {
+                    vec![
+                        "/bin/sh".into(),
+                        "-c".into(),
+                        "printf 'rustty-ready'; exit 7".into(),
+                    ]
+                })),
                 ..SessionOptions::default()
             },
             Arc::new(|| {}),
@@ -1360,6 +1534,9 @@ mod tests {
                 .plain_text()
                 .contains("rustty-ready")
         );
+        // Shells differ in final newline behavior. Start the scrollback-limit
+        // check at the same cursor position after verifying all child output.
+        session.terminal().unwrap().reset();
         session
             .terminal()
             .unwrap()
@@ -1385,6 +1562,68 @@ mod tests {
                 .next()
                 .is_none()
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_conpty_input_resize_exit_and_close() {
+        let config = Config::default();
+        let options = || SessionOptions {
+            command: Some(Command::Direct(vec![
+                "cmd.exe".into(),
+                "/d".into(),
+                "/q".into(),
+            ])),
+            ..SessionOptions::default()
+        };
+        let session = Session::spawn(&config, options(), Arc::new(|| {})).unwrap();
+        session.resize(100, 30, 900, 600).unwrap();
+        session.write(b"echo rustty-^response\r").unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !session
+            .terminal()
+            .unwrap()
+            .plain_text()
+            .contains("rustty-response")
+        {
+            assert!(
+                Instant::now() < deadline,
+                "ConPTY did not return typed input"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        {
+            let terminal = session.terminal().unwrap();
+            assert_eq!((terminal.cols, terminal.rows), (100, 30));
+        }
+        session.write(b"exit 7\r").unwrap();
+        while !session.has_exited() {
+            assert!(Instant::now() < deadline, "ConPTY child did not exit");
+            thread::sleep(Duration::from_millis(10));
+        }
+        loop {
+            if session
+                .events()
+                .any(|event| matches!(event, SessionEvent::Exited { code: 7, .. }))
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "ConPTY exit status was not delivered"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        let session = Session::spawn(&config, options(), Arc::new(|| {})).unwrap();
+        session.close();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !session.has_exited() {
+            assert!(
+                Instant::now() < deadline,
+                "closing the session did not reap its child"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
     }
 
     #[test]

@@ -19,6 +19,7 @@ impl TestHome {
         let home = root.join("home");
         let loader = ConfigLoader {
             xdg_config_home: home.join(".config"),
+            app_config_home: None,
             resources_dir: Some(root.join("resources")),
             dark_mode: true,
             working_directory: root.clone(),
@@ -62,6 +63,25 @@ impl Drop for TestHome {
 
 fn args(values: &[&str]) -> Vec<String> {
     values.iter().map(|v| (*v).to_owned()).collect()
+}
+
+#[test]
+fn windows_roaming_config_root_is_explicit_and_does_not_read_terminal_settings() {
+    let mut home = TestHome::new();
+    let roaming = home.root.join("roaming");
+    fs::create_dir_all(roaming.join("Rustty/themes")).unwrap();
+    fs::write(
+        roaming.join("Rustty/rustty.txt"),
+        "font-size=17\ntheme=Native\n",
+    )
+    .unwrap();
+    fs::write(roaming.join("Rustty/themes/Native"), "background=#123456\n").unwrap();
+    home.loader.app_config_home = Some(roaming.clone());
+    let loaded = home.loader.load();
+    assert_eq!(loaded.family, ConfigFamily::Rustty);
+    assert_eq!(loaded.own_config_path, roaming.join("Rustty/rustty.txt"));
+    assert_eq!(loaded.config.font_size, 17.0);
+    assert_eq!(loaded.config.background, Rgb::new(0x12, 0x34, 0x56));
 }
 fn action(config: &Config, trigger: &str) -> Option<Action> {
     config
@@ -457,16 +477,27 @@ fn include_order_is_breadth_first_and_empty_directive_clears_pending_includes() 
 #[test]
 fn optional_tilde_and_quoted_question_mark_includes() {
     let home = TestHome::new();
-    home.own("config-file=?missing\nconfig-file=~/shared\nconfig-file=\"?literal\"\n");
+    home.own("config-file=?missing\nconfig-file=~/shared\n");
     home.write("shared", "font-size=20\n");
-    home.write(
-        "Library/Application Support/com.rustty.app/?literal",
-        "font-size=21\n",
-    );
     let loaded = home.loader.load();
-    assert_eq!(loaded.config.font_size, 21.0);
-    assert_eq!(loaded.sources.len(), 3);
+    assert_eq!(loaded.config.font_size, 20.0);
+    assert_eq!(loaded.sources.len(), 2);
     assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    home.own("config-file=\"?literal\"\n");
+    #[cfg(not(windows))]
+    {
+        home.write(
+            "Library/Application Support/com.rustty.app/?literal",
+            "font-size=21\n",
+        );
+        let loaded = home.loader.load();
+        assert_eq!(loaded.config.font_size, 21.0);
+        assert!(loaded.diagnostics.is_empty());
+    }
+    // Windows cannot create a '?' filename, but quoting must still make the
+    // include required rather than suppress its invalid-filename diagnostic.
+    #[cfg(windows)]
+    assert_eq!(home.loader.load().diagnostics.len(), 1);
     home.own("config-file=required-missing\n");
     assert_eq!(home.loader.load().diagnostics.len(), 1);
 }
@@ -569,7 +600,17 @@ fn scalar_empty_values_reset_defaults_and_repeated_lists_append_or_reset() {
             .config
             .title_report
     );
-    assert_eq!(action(&loaded.config, "cmd+n"), Some(Action::NewWindow));
+    assert_eq!(
+        action(
+            &loaded.config,
+            if cfg!(windows) {
+                "ctrl+shift+n"
+            } else {
+                "cmd+n"
+            }
+        ),
+        Some(Action::NewWindow)
+    );
 }
 
 #[test]
@@ -769,10 +810,15 @@ fn global_wildcards_are_rejected_without_replacing_local_bindings() {
 #[test]
 fn bad_keys_actions_and_values_are_diagnostics_not_silent_overrides() {
     let home = TestHome::new();
-    home.own("keybind=cmd+n=not_an_action\nkeybind=ctrl+ctrl+a=new_tab\nkeybind=unknown_key=new_tab\nkeybind=global:ctrl+a>b=new_tab\nkeybind=ctrl+a=resize_split:next,10\nbackground-opacity=2\nfont-size=inf\nnotify-on-command-finish-after=5\n");
+    let new_window = if cfg!(windows) {
+        "ctrl+shift+n"
+    } else {
+        "cmd+n"
+    };
+    home.own(&format!("keybind={new_window}=not_an_action\nkeybind=ctrl+ctrl+a=new_tab\nkeybind=unknown_key=new_tab\nkeybind=global:ctrl+a>b=new_tab\nkeybind=ctrl+a=resize_split:next,10\nbackground-opacity=2\nfont-size=inf\nnotify-on-command-finish-after=5\n"));
     let loaded = home.loader.load();
     assert_eq!(loaded.diagnostics.len(), 8, "{:?}", loaded.diagnostics);
-    assert_eq!(action(&loaded.config, "cmd+n"), Some(Action::NewWindow));
+    assert_eq!(action(&loaded.config, new_window), Some(Action::NewWindow));
     assert_eq!(loaded.config.background_opacity, 1.0);
     assert_eq!(loaded.config.font_size, 13.0);
 }
