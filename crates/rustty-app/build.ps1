@@ -108,6 +108,8 @@ Run rustty.exe --unregister before removing or moving the registered application
 Configuration: %APPDATA%\Rustty\rustty.txt
 Workspace state: %LOCALAPPDATA%\Rustty\workspace.json
 Only the default shell command is read from Windows Terminal; Rustty command overrides win.
+Renderer: automatic hardware GPU selection with CPU fallback at startup.
+Use --renderer=software or --renderer=gpu to force a backend, or set renderer in rustty.txt and restart.
 '@ | Set-Content -LiteralPath (Join-Path $stage 'README.txt') -Encoding UTF8
 
     # Keep the last complete bundle recoverable until staging succeeds.

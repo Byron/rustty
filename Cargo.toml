@@ -15,6 +15,7 @@ rustty-vt = { path = "crates/rustty-vt" }
 rustty-font = { path = "crates/rustty-font" }
 rustty-render = { path = "crates/rustty-render" }
 rustty-render-wgpu = { path = "crates/rustty-render-wgpu" }
+rustty-render-software = { path = "crates/rustty-render-software" }
 rustty = { path = "crates/rustty", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

@@ -55,7 +55,9 @@ END
         ),
     )
     .expect("write Windows resources");
-    embed_resource::compile_for(&resource, ["rustty"], embed_resource::NONE)
+    // Layered child windows require the compatibility manifest in native test
+    // executables too, including the library's opt-in CPU presentation test.
+    embed_resource::compile_for_everything(&resource, embed_resource::NONE)
         .manifest_required()
         .expect("compile Windows icon and DPI manifest");
 }

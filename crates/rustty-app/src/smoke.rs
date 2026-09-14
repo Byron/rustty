@@ -137,7 +137,9 @@ impl Smoke {
     pub(super) fn configure(loaded: &mut LoadedConfig) {
         let timing = std::env::var_os("RUSTTY_SMOKE_TIMING").is_some();
         if timing {
+            let renderer = loaded.config.renderer;
             loaded.config = Config::default();
+            loaded.config.renderer = renderer;
             loaded.diagnostics.clear();
             loaded.config.font_family = vec![if cfg!(target_os = "windows") {
                 "Consolas".into()
@@ -444,6 +446,19 @@ impl Smoke {
                     self.idle_frames = host.frames;
                     self.progress_pane = Some(pane);
                     self.progress_started = Instant::now();
+                    // Find captures can take long enough on software adapters
+                    // that startup progress expires during the later idle check.
+                    // Refresh each fixture report before the timed phases so
+                    // completion flashes do not count as idle redraws.
+                    for pane in app.panes.values_mut() {
+                        if let Some(progress) = pane.activity.progress() {
+                            pane.activity.progress_reported(
+                                progress.state,
+                                progress.value,
+                                self.progress_started,
+                            );
+                        }
+                    }
                     app.panes
                         .get_mut(&pane)
                         .unwrap()
@@ -483,7 +498,7 @@ impl Smoke {
                     .current_monitor()
                     .and_then(|monitor| monitor.refresh_rate_millihertz())
                     .map(|rate| f64::from(rate) / 1000.0);
-                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","native-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","drag-selection-scrolling","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
+                let report = serde_json::json!({"passed":true,"renderer":app.painter.description(),"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","native-rendered-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","drag-selection-scrolling","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
                 fs::write(
                     self.directory.join("result.json"),
                     serde_json::to_vec_pretty(&report)?,
@@ -822,7 +837,8 @@ impl Replay {
         let elapsed = started.elapsed().as_secs_f64();
         let process_cpu = (cpu_time(CpuClock::Process)? - cpu_started) as f64 / 1e9;
         let report = serde_json::json!({
-            "case": self.case, "font": "Menlo", "font_size_points": 13,
+            "case": self.case, "font": app.loaded.config.font_family[0], "font_size_points": 13,
+            "renderer": app.painter.description(),
             "size_pixels": [host.window.inner_size().width, host.window.inner_size().height],
             "scale_factor": host.window.scale_factor(), "terminal_size": self.size.unwrap(),
             "warmup_frames": workload::WARMUP, "sample_frames": workload::SAMPLES,
@@ -1578,11 +1594,9 @@ fn check_find(
                     .into());
                 }
             }
-            app.painter
-                .render_state()
-                .ok_or("missing capture device")?
-                .device
-                .poll(wgpu::PollType::wait_indefinitely())?;
+            if let Some(state) = app.painter.render_state() {
+                state.device.poll(wgpu::PollType::wait_indefinitely())?;
+            }
             let mut events = Vec::new();
             app.painter.handle_screenshots(&mut events);
             let image = events

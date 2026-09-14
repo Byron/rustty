@@ -115,6 +115,37 @@ fn search_opacity_loads_reloads_and_rejects_invalid_values() {
 }
 
 #[test]
+fn renderer_selection_defaults_to_auto_and_validates_file_and_cli_values() {
+    let home = TestHome::new();
+    assert_eq!(home.loader.load().config.renderer, Renderer::Auto);
+    for (value, expected) in [
+        ("auto", Renderer::Auto),
+        ("gpu", Renderer::Gpu),
+        ("software", Renderer::Software),
+        ("", Renderer::Auto),
+    ] {
+        home.own(&format!("renderer=gpu\nrenderer={value}\n"));
+        let loaded = home.loader.load();
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        assert_eq!(loaded.config.renderer, expected);
+    }
+
+    home.own("renderer=software\n");
+    let loaded = home.loader.load_with_args(&args(&["--renderer=gpu"]));
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(loaded.config.renderer, Renderer::Gpu);
+
+    let loaded = home.loader.load_with_args(&args(&["--renderer=invalid"]));
+    assert_eq!(loaded.diagnostics.len(), 1);
+    assert_eq!(loaded.config.renderer, Renderer::Software);
+
+    home.own("renderer=invalid\n");
+    let loaded = home.loader.load();
+    assert_eq!(loaded.diagnostics.len(), 1);
+    assert_eq!(loaded.config.renderer, Renderer::Auto);
+}
+
+#[test]
 fn grapheme_width_method_loads_ghostty_policy_and_defaults_to_unicode() {
     let home = TestHome::new();
     for (value, expected) in [

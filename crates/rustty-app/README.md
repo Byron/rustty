@@ -1,9 +1,10 @@
 # Rustty for macOS and Windows
 
 Rustty is a private Rust workspace implementing a terminal, native font services,
-a portable frame renderer and a WGPU desktop application. All seven crates are
-`publish = false`. WGPU uses Metal on macOS and DirectX 12 with DirectComposition
-on Windows. CoreText and DirectWrite supply the respective native font backends.
+a portable frame renderer and a native desktop application. All crates are
+`publish = false`. GPU rendering uses Metal on macOS and DirectX 12 with
+DirectComposition on Windows. Windows also supports CPU rendering with GDI
+presentation. CoreText and DirectWrite supply the respective native font backends.
 
 ## Windows 11 x64
 
@@ -33,6 +34,18 @@ Settings live in `%APPDATA%\Rustty\rustty.txt`; workspace state lives in
 `%LOCALAPPDATA%\Rustty\workspace.json`. Explicit config files, XDG paths, and existing
 Ghostty-format settings remain supported. `rustty.exe --config-info` reports both
 the selected configuration and shell.
+
+Windows defaults to `renderer = auto`: use a compatible hardware GPU when one is
+available, otherwise render on the CPU. Adapter discovery excludes Microsoft's
+software render driver before graphics-device initialization. If initial GPU
+device or surface setup fails, `auto` also falls back to software. This fallback
+applies at startup; it does not recover an already-running GPU device that is lost.
+Use `renderer = software` (or `rustty.exe --renderer=software`) to force CPU
+rendering, or `renderer = gpu` to force WGPU, including Windows' emulated adapter.
+The renderer setting takes effect after restarting Rustty; macOS uses GPU rendering.
+Both Windows paths retain native menus, per-pixel background opacity, and the same
+terminal/UI drawing. Software animation follows the monitor refresh rate, with a
+60 Hz default when it is unavailable. Idle windows do not continuously repaint.
 
 When no Rustty command is configured, Rustty reads **only the default shell command**
 from Windows Terminal's settings and profile fragments. It preserves its arguments,
@@ -71,6 +84,12 @@ The native smoke uses isolated Git Bash sessions (no profile or history writes),
 requiring Git for Windows at its standard installation path. Set `RUSTTY_SMOKE_SHELL`
 to another native Git Bash executable if needed. It writes its own workspace and
 readback image inside `RUSTTY_SMOKE_DIR` and does not restore the normal workspace.
+Its report includes the selected renderer and animation frame rate. Set
+`RUSTTY_SMOKE_NATIVE_CAPTURE=1` to also save `native-window.png`, an actual desktop
+capture including the Windows frame and menu; the test window must be foreground
+and unobscured. `window.png` captures client rendering with either backend.
+The native CPU opacity/menu test is opt-in:
+`cargo test -p rustty-app --lib software_surface -- --ignored --test-threads=1`.
 
 ## macOS
 
@@ -189,7 +208,7 @@ reverse video, DEC column mode, text blinking, synchronized output, hidden-tab t
 updates, independent Find overlays without terminal resizing, and idle rendering.
 The report records animation frame rate, the monitor's reported refresh rate, and
 window redraws and pane preparations during hidden-tab title updates. It writes
-`result.json`, `workspace.json` and a WGPU readback `window.png` into the specified
+`result.json`, `workspace.json` and a rendered `window.png` into the specified
 directory and exits. It uses the selected display configuration but does not
 restore or overwrite the regular app workspace.
 Find checks also capture `find-focused.png` and `find-unfocused.png` to verify

@@ -1,5 +1,7 @@
 #[path = "command_palette.rs"]
 mod command_palette;
+#[path = "desktop_painter.rs"]
+mod painter;
 #[path = "smoke.rs"]
 mod smoke;
 use command_palette::CommandPalette;
@@ -447,6 +449,7 @@ struct Host {
     clipboard_request: VecDeque<(Id, vt::Effect)>,
     capture: bool,
     frames: u64,
+    last_frame_started: Option<Instant>,
 }
 impl Host {
     fn hovered_pane(&self) -> Option<Id> {
@@ -556,72 +559,6 @@ impl DirectoryBadge {
     }
 }
 
-struct GpuRenderer {
-    renderer: rustty_render_wgpu::Renderer,
-    frame: Option<Arc<Frame>>,
-    prepares: u64,
-}
-struct GpuRenderers(HashMap<Id, GpuRenderer>);
-struct TerminalPaint {
-    window: Id,
-    frame: Arc<Frame>,
-    format: wgpu::TextureFormat,
-}
-impl egui_wgpu::CallbackTrait for TerminalPaint {
-    fn prepare(
-        &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        _: &egui_wgpu::ScreenDescriptor,
-        _: &mut wgpu::CommandEncoder,
-        resources: &mut egui_wgpu::CallbackResources,
-    ) -> Vec<wgpu::CommandBuffer> {
-        if resources.get::<GpuRenderers>().is_none() {
-            resources.insert(GpuRenderers(HashMap::new()));
-        }
-        let renderer = resources
-            .get_mut::<GpuRenderers>()
-            .unwrap()
-            .0
-            .entry(self.window)
-            .or_insert_with(|| GpuRenderer {
-                renderer: rustty_render_wgpu::Renderer::new(device, self.format),
-                frame: None,
-                prepares: 0,
-            });
-        if !renderer
-            .frame
-            .as_ref()
-            .is_some_and(|frame| Arc::ptr_eq(frame, &self.frame))
-        {
-            // A failed upload can replace part of the GPU state. Retry it even
-            // when the next UI frame still retains the same terminal content.
-            renderer.frame = None;
-            match renderer.renderer.prepare(device, queue, &self.frame) {
-                Ok(()) => {
-                    renderer.frame = Some(Arc::clone(&self.frame));
-                    renderer.prepares += 1;
-                }
-                Err(error) => eprintln!("Rustty renderer: {error}"),
-            }
-        }
-        Vec::new()
-    }
-    fn paint(
-        &self,
-        _: egui::PaintCallbackInfo,
-        pass: &mut wgpu::RenderPass<'static>,
-        resources: &egui_wgpu::CallbackResources,
-    ) {
-        if let Some(renderer) = resources
-            .get::<GpuRenderers>()
-            .and_then(|all| all.0.get(&self.window))
-        {
-            renderer.renderer.paint(pass);
-        }
-    }
-}
-
 struct App {
     loaded: LoadedConfig,
     config_loader: config::ConfigLoader,
@@ -637,7 +574,7 @@ struct App {
     platform: Option<Platform>,
     consumed_global_keys: HashSet<PhysicalKey>,
     context: egui::Context,
-    painter: egui_wgpu::winit::Painter,
+    painter: painter::Painter,
     proxy: EventLoopProxy<Event>,
     active: Option<Id>,
     started: Instant,
@@ -649,6 +586,7 @@ struct App {
     close_at: Option<Instant>,
     smoke: Option<smoke::Smoke>,
     smoke_error: Option<String>,
+    startup_error: Option<String>,
 }
 
 pub fn run() -> Result<()> {
@@ -671,10 +609,11 @@ pub fn run() -> Result<()> {
     let mut loaded = load_config(&mut config_loader, &args, Platform::system_theme());
     if show_config {
         println!(
-            "Configuration: {:?}\nOwn settings: {}\nEdit settings: {}",
+            "Configuration: {:?}\nOwn settings: {}\nEdit settings: {}\nRenderer: {:?}",
             loaded.family,
             loaded.own_config_path.display(),
-            loaded.edit_config_path.display()
+            loaded.edit_config_path.display(),
+            loaded.config.renderer
         );
         for source in &loaded.sources {
             println!("  {}", source.display());
@@ -757,12 +696,11 @@ pub fn run() -> Result<()> {
             on_status(status)
         });
     }
-    let painter = pollster::block_on(egui_wgpu::winit::Painter::new(
+    let painter = pollster::block_on(painter::Painter::new(
         context.clone(),
         gpu_config,
-        true,
-        Default::default(),
-    ));
+        loaded.config.renderer,
+    ))?;
     let now = Instant::now();
     let close_at = std::env::var("RUSTTY_SMOKE_SECONDS")
         .ok()
@@ -795,10 +733,14 @@ pub fn run() -> Result<()> {
         close_at,
         smoke,
         smoke_error: None,
+        startup_error: None,
     };
     let result = event_loop.run_app(&mut app);
     app.shutdown();
     result?;
+    if let Some(error) = app.startup_error {
+        return Err(error.into());
+    }
     if let Some(error) = app.smoke_error {
         return Err(error.into());
     }
@@ -1178,7 +1120,7 @@ impl App {
             platform.configure_window(&window, quick, self.config())?;
         }
         let viewport = ViewportId::from_hash_of(id);
-        pollster::block_on(self.painter.set_window(viewport, Some(window.clone())))?;
+        pollster::block_on(self.painter.set_window(viewport, window.clone()))?;
         let fonts =
             rustty_render::Renderer::new(font_config(self.config(), window.scale_factor() as f32))?;
         for family in fonts.missing_families() {
@@ -1191,9 +1133,7 @@ impl App {
             &*window,
             Some(window.scale_factor() as f32),
             window.theme(),
-            self.painter
-                .render_state()
-                .map(|s| s.device.limits().max_texture_dimension_2d as usize),
+            Some(self.painter.max_texture_side()),
         );
         egui.init_accesskit(event_loop, &window, self.proxy.clone());
         for tab in &state.tabs {
@@ -1247,6 +1187,7 @@ impl App {
             clipboard_request: VecDeque::new(),
             capture: false,
             frames: 0,
+            last_frame_started: None,
         };
         self.windows.insert(window.id(), host);
         if !quick {
@@ -2466,6 +2407,7 @@ impl App {
         }
     }
     fn reload_config(&mut self, mut host: Option<&mut Host>) {
+        let previous_renderer = self.loaded.config.renderer;
         self.loaded = load_config(&mut self.config_loader, &self.config_args, None);
         if self.smoke.is_some() {
             smoke::Smoke::configure(&mut self.loaded);
@@ -2476,6 +2418,10 @@ impl App {
             .iter()
             .map(ToString::to_string)
             .collect();
+        if self.loaded.config.renderer != previous_renderer {
+            self.errors
+                .push("Restart Rustty to apply the renderer setting.".into());
+        }
         self.failed_panes.clear();
         self.context.set_theme(ui_theme(&self.loaded.config));
         if let Some(platform) = &mut self.platform
@@ -2583,17 +2529,11 @@ impl App {
                 for (pane, request) in host.clipboard_request {
                     self.finish_clipboard(pane, request, false, false);
                 }
-                self.painter
-                    .gc_viewports(&self.windows.values().map(|host| host.viewport).collect());
-                if let Some(state) = self.painter.render_state()
-                    && let Some(renderers) = state
-                        .renderer
-                        .write()
-                        .callback_resources
-                        .get_mut::<GpuRenderers>()
-                {
-                    renderers.0.remove(&host.id);
-                }
+                self.painter.remove_window(
+                    host.viewport,
+                    host.id,
+                    &self.windows.values().map(|host| host.viewport).collect(),
+                );
             }
         }
         let required = self
@@ -2984,11 +2924,6 @@ impl App {
         let mut presentation_changed = false;
         let mut retry_pane = None;
         let mut render_error = None;
-        let format = self
-            .painter
-            .render_state()
-            .ok_or("GPU unavailable")?
-            .target_format;
         let (blink_on, blink_deadline) = cursor_blink_phase(host.cursor_blink_started, now);
         let mut needs_blink = false;
         let mut animation_deadline: Option<Instant> = None;
@@ -3385,19 +3320,18 @@ impl App {
                             }
                         }
                     }
-                    ui.painter().add(egui_wgpu::Callback::new_paint_callback(
-                        egui::Rect::from_min_size(
-                            Pos2::ZERO,
-                            Vec2::new(size.width as f32 / scale, size.height as f32 / scale),
-                        ),
-                        TerminalPaint {
-                            window: host.id,
-                            frame: composed.unwrap_or_else(|| {
+                    ui.painter().add(
+                        self.painter.terminal_callback(
+                            egui::Rect::from_min_size(
+                                Pos2::ZERO,
+                                Vec2::new(size.width as f32 / scale, size.height as f32 / scale),
+                            ),
+                            host.id,
+                            composed.unwrap_or_else(|| {
                                 Arc::new(Frame::empty([size.width, size.height]))
                             }),
-                            format,
-                        },
-                    ));
+                        ),
+                    );
                     for (id, rect) in accessible {
                         let response = ui.interact(
                             rect,
@@ -3842,6 +3776,7 @@ impl App {
             .context
             .tessellate(output.shapes, output.pixels_per_point);
         if host.capture
+            && !self.painter.is_software()
             && let Some(smoke) = &self.smoke
             && smoke.offscreen
         {
@@ -3867,21 +3802,17 @@ impl App {
                 target,
             );
         } else {
-            self.painter.paint_and_update_textures(
+            self.painter.paint(
                 host.viewport,
                 output.pixels_per_point,
-                [0.0; 4],
                 &primitives,
                 &mut output.textures_delta,
-                if std::mem::take(&mut host.capture) {
-                    vec![egui::UserData::default()]
-                } else {
-                    Vec::new()
-                },
+                std::mem::take(&mut host.capture),
                 &host.window,
-            );
+            )?;
         }
         host.frames += 1;
+        host.last_frame_started = Some(now);
         host.deadline = animation_deadline;
         if let Some(deadline) = host.focus_hint.deadline(now) {
             host.deadline = Some(host.deadline.map_or(deadline, |old| old.min(deadline)));
@@ -4583,6 +4514,12 @@ impl ApplicationHandler<Event> for App {
             self.add_window(false);
         }
         self.reconcile(event_loop);
+        if self.windows.is_empty() && !self.errors.is_empty() {
+            // Initialization failed before there was a client area in which to
+            // show diagnostics. Let main report it instead of running invisibly.
+            self.startup_error = Some(self.errors.join("\n"));
+            event_loop.exit();
+        }
     }
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
         match event {
@@ -4612,6 +4549,20 @@ impl ApplicationHandler<Event> for App {
                     .values_mut()
                     .find(|host| host.viewport == info.viewport_id)
                 {
+                    // CPU presentation has no vsync backpressure. Pace egui's
+                    // animation requests; input, PTY output and resize still
+                    // request their own immediate redraws.
+                    let deadline = if self.painter.is_software() && info.delay.is_zero() {
+                        software_repaint_deadline(
+                            deadline,
+                            host.last_frame_started,
+                            host.window
+                                .current_monitor()
+                                .and_then(|m| m.refresh_rate_millihertz()),
+                        )
+                    } else {
+                        deadline
+                    };
                     if deadline <= Instant::now() {
                         host.repaint();
                     } else {
@@ -5243,7 +5194,9 @@ impl ApplicationHandler<Event> for App {
         event_loop.set_control_flow(next.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
     fn exiting(&mut self, _: &ActiveEventLoop) {
-        self.save();
+        if self.startup_error.is_none() {
+            self.save();
+        }
         for session in self
             .panes
             .values()
@@ -5493,6 +5446,20 @@ fn repaint_is_current(requested_pass: u64, current_pass: u64) -> bool {
     current_pass == requested_pass || requested_pass.checked_add(1) == Some(current_pass)
 }
 
+fn software_repaint_deadline(
+    requested: Instant,
+    last_frame: Option<Instant>,
+    refresh_millihertz: Option<u32>,
+) -> Instant {
+    // Some remote displays report no refresh rate. Bound unreasonable values
+    // and use 60 Hz in that case; do not schedule any independent idle timer.
+    let rate = refresh_millihertz
+        .filter(|rate| (10_000..=240_000).contains(rate))
+        .unwrap_or(60_000);
+    let interval = Duration::from_secs_f64(1000.0 / f64::from(rate));
+    last_frame.map_or(requested, |last| requested.max(last + interval))
+}
+
 fn load_config(
     loader: &mut config::ConfigLoader,
     args: &[String],
@@ -5612,8 +5579,8 @@ fn paint_progress(
     let (offset, fraction) = if let Some(value) = percentage {
         (0.0, f32::from(value) / 100.0)
     } else {
-        // Metal presentation already supplies vsync backpressure. Ask for its
-        // next frame instead of imposing a timer that caps animation at 30 FPS.
+        // GPU presentation supplies vsync backpressure; the CPU backend paces
+        // these requests in the event handler.
         ui.ctx().request_repaint();
         ui.painter()
             .rect_filled(bar, 0.0, color.gamma_multiply(0.3));
@@ -5800,54 +5767,6 @@ mod tests {
         let mut changed = pane();
         changed.frame = Arc::new((*frame).clone());
         assert!(!retained.matches([60, 60], &[changed]));
-    }
-
-    #[test]
-    fn retained_gpu_frames_skip_preparation_and_retry_after_errors() {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("GPU adapter");
-        let (device, queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
-        let mut resources = egui_wgpu::CallbackResources::default();
-        let mut encoder = device.create_command_encoder(&Default::default());
-        let screen = egui_wgpu::ScreenDescriptor {
-            size_in_pixels: [20, 20],
-            pixels_per_point: 1.0,
-        };
-        let mut frame = Frame::empty([20, 20]);
-        frame.quads.push(rustty_render::Quad::solid(
-            [0.0, 0.0, 20.0, 20.0],
-            rustty_render::Color::rgb([255; 3]),
-        ));
-        let original = Arc::new(frame);
-        let mut prepare = |frame: Arc<Frame>| {
-            let paint = TerminalPaint {
-                window: 1,
-                frame,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            };
-            egui_wgpu::CallbackTrait::prepare(
-                &paint,
-                &device,
-                &queue,
-                &screen,
-                &mut encoder,
-                &mut resources,
-            );
-            let renderer = &resources.get::<GpuRenderers>().unwrap().0[&1];
-            (renderer.prepares, renderer.frame.is_some())
-        };
-        assert_eq!(prepare(Arc::clone(&original)), (1, true));
-        assert_eq!(prepare(Arc::clone(&original)), (1, true));
-        let replacement = Arc::new((*original).clone());
-        assert_eq!(prepare(Arc::clone(&replacement)), (2, true));
-
-        let mut invalid = (*original).clone();
-        invalid.quads[0].rect[0] = f32::NAN;
-        assert_eq!(prepare(Arc::new(invalid)), (2, false));
-        assert_eq!(prepare(replacement), (3, true));
     }
 
     #[test]
@@ -6612,6 +6531,27 @@ mod tests {
             initial_visible_panes(&window, Some((true, false, true))),
             [1, 2]
         );
+    }
+
+    #[test]
+    fn software_animation_requests_are_paced_without_delaying_overdue_frames() {
+        let now = Instant::now();
+        let next = software_repaint_deadline(now, Some(now), Some(50_000));
+        assert_eq!(next, now + Duration::from_millis(20));
+        assert_eq!(software_repaint_deadline(now, None, Some(50_000)), now);
+        let overdue = now + Duration::from_millis(30);
+        assert_eq!(
+            software_repaint_deadline(overdue, Some(now), Some(50_000)),
+            overdue
+        );
+        let fallback = software_repaint_deadline(now, Some(now), None);
+        assert_eq!(fallback, software_repaint_deadline(now, Some(now), Some(0)));
+        assert_eq!(
+            fallback,
+            software_repaint_deadline(now, Some(now), Some(u32::MAX))
+        );
+        assert!((fallback - now).as_secs_f64() > 0.016);
+        assert!((fallback - now).as_secs_f64() < 0.017);
     }
 
     #[test]

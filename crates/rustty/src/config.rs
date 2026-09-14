@@ -96,6 +96,7 @@ config_enum!(NotifyOnCommandFinish { Never => "never", Unfocused => "unfocused",
 config_enum!(ClipboardAccess { Allow => "allow", Deny => "deny", Ask => "ask" });
 config_enum!(ConfirmCloseSurface { False => "false", True => "true", Always => "always" });
 config_enum!(WindowTheme { Auto => "auto", System => "system", Light => "light", Dark => "dark" });
+config_enum!(Renderer { Auto => "auto", Gpu => "gpu", Software => "software" });
 config_enum!(ShellIntegration { None => "none", Detect => "detect", Bash => "bash", Zsh => "zsh", Fish => "fish", Elvish => "elvish", Nushell => "nushell" });
 config_enum!(QuickTerminalPosition { Top => "top", Bottom => "bottom", Left => "left", Right => "right", Center => "center" });
 config_enum!(QuickTerminalScreen { Main => "main", Mouse => "mouse", MacosMenuBar => "macos-menu-bar" });
@@ -223,6 +224,8 @@ impl Theme {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Config {
+    /// Select the rendering backend when the app starts.
+    pub renderer: Renderer,
     pub font_family: Vec<String>,
     pub font_family_bold: Vec<String>,
     pub font_family_italic: Vec<String>,
@@ -308,6 +311,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            renderer: Renderer::Auto,
             font_family: vec![],
             font_family_bold: vec![],
             font_family_italic: vec![],
@@ -424,6 +428,7 @@ impl Config {
             }};
         }
         match entry.key.as_str() {
+            "renderer" => set!(renderer, Renderer::parse(value)?),
             "font-family" => append_or_clear(&mut self.font_family, value),
             "font-family-bold" => append_or_clear(&mut self.font_family_bold, value),
             "font-family-italic" => append_or_clear(&mut self.font_family_italic, value),
