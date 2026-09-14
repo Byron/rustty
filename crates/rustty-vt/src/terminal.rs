@@ -12,6 +12,8 @@ pub enum Effect {
     Title(Vec<u8>),
     WorkingDirectory(Vec<u8>),
     Bell,
+    /// PTY input translation, enabled by `Terminal::linefeed_mode_events`.
+    LinefeedMode(bool),
     ClipboardRead(clipboard::Read),
     ClipboardWrite(clipboard::Write),
     /// Drag target registration, acceptance, or drop completion changed.
@@ -111,6 +113,9 @@ pub struct Terminal {
     /// compatibility; application sessions opt in. Retained through reset,
     /// but not persisted in terminal snapshots.
     pub shell_command_events: bool,
+    /// Report ANSI mode 20 changes to the PTY writer, including RIS. Retained
+    /// through reset, but not snapshots; standalone VT clients opt in.
+    pub linefeed_mode_events: bool,
     /// Externally owned view visibility, retained through reset.
     pub visible: bool,
     /// Maximum total decoded bytes in a Kitty clipboard write transaction.
@@ -123,6 +128,9 @@ pub struct Terminal {
     pub title: String,
     pub working_directory: String,
     pub generation: u64,
+    /// Changes on every synchronized-output enable so hosts can restart their
+    /// timeout without putting a wall clock in the terminal or its snapshots.
+    pub synchronized_output_generation: u64,
     pub modify_other_keys: bool,
     pub mouse_mode: u16,
     pub mouse_format: u16,
@@ -182,6 +190,7 @@ impl Terminal {
             query_defaults: query::Defaults::default(),
             title_report: false,
             shell_command_events: false,
+            linefeed_mode_events: false,
             visible: true,
             clipboard_write_limit: 64 * 1024 * 1024,
             glyphs: crate::glyph::Glyphs::default(),
@@ -190,6 +199,7 @@ impl Terminal {
             title: String::new(),
             working_directory: String::new(),
             generation: 0,
+            synchronized_output_generation: 0,
             modify_other_keys: false,
             mouse_mode: 0,
             mouse_format: 0,
@@ -292,8 +302,8 @@ impl Terminal {
     }
 
     /// Feed input with runtime `query_defaults` and return deferred host effects.
-    /// Query replies use the current terminal geometry. For fully headless or
-    /// readonly hosts, use `feed_with_handler` and opt into the needed callbacks.
+    /// Query replies use host geometry when supplied, otherwise terminal geometry.
+    /// Readonly hosts use `feed_with_handler` and opt into the needed callbacks.
     /// DND effects carry event tags; use `feed_with_handler` to observe the state
     /// at each event instead of the final state after the complete input batch.
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<Effect> {
@@ -555,6 +565,8 @@ impl Terminal {
         let query_defaults = self.query_defaults.clone();
         let title_report = self.title_report;
         let shell_command_events = self.shell_command_events;
+        let linefeed_mode_events = self.linefeed_mode_events;
+        let synchronized_output_generation = self.synchronized_output_generation;
         let visible = self.visible;
         let clipboard = std::mem::take(&mut self.clipboard);
         // RIS interrupts chunking while retaining the drag registration and data.
@@ -597,6 +609,8 @@ impl Terminal {
         self.query_defaults = query_defaults;
         self.title_report = title_report;
         self.shell_command_events = shell_command_events;
+        self.linefeed_mode_events = linefeed_mode_events;
+        self.synchronized_output_generation = synchronized_output_generation;
         self.visible = visible;
         self.clipboard = clipboard;
         self.kitty_dnd = kitty_dnd;
@@ -1849,6 +1863,11 @@ impl Terminal {
                         }
                     }
                 }
+                40 => {
+                    if let Some(size) = self.query_defaults.size {
+                        self.resize(size.columns, size.rows);
+                    }
+                }
                 47 | 1047 | 1049 => self.switch_screen(mode, value),
                 69 if !value => {
                     self.margins.left = 0;
@@ -1863,6 +1882,10 @@ impl Terminal {
                 }
                 9 | 1000 | 1002 | 1003 => self.mouse_mode = if value { mode } else { 0 },
                 1005 | 1006 | 1015 | 1016 => self.mouse_format = if value { mode } else { 0 },
+                2026 if value => {
+                    self.synchronized_output_generation =
+                        self.synchronized_output_generation.wrapping_add(1);
+                }
                 _ => {}
             }
         }
@@ -1877,8 +1900,16 @@ impl Terminal {
         effects: &mut Vec<Effect>,
     ) {
         self.set_mode(private, mode, value);
+        if !private && mode == 20 && self.linefeed_mode_events {
+            effects.push(Effect::LinefeedMode(value));
+        }
         if private && value {
             match mode {
+                1004 => {
+                    if let Some(focused) = self.query_defaults.focused {
+                        effects.push(Effect::Write(self.encode_focus(focused)));
+                    }
+                }
                 2048 => effects.push(Effect::Query(Query::Size(query::SizeStyle::InBand))),
                 2033 => effects.push(Effect::Write(query::visibility(self.visible))),
                 _ => {}
@@ -1955,6 +1986,9 @@ impl Terminal {
             ([], b'c') => {
                 self.reset();
                 self.clipboard.clear_grants();
+                if self.linefeed_mode_events {
+                    effects.push(Effect::LinefeedMode(self.modes.get(false, 20)));
+                }
                 effects.push(Effect::Progress {
                     state: 0,
                     value: None,
@@ -2193,6 +2227,9 @@ impl Terminal {
                     self.modes.save(true, mode);
                 }
             }
+            ([b'>'], b's') if p.len() <= 1 && n <= 1 => {
+                self.metadata.mouse_shift_capture = Some(n == 1);
+            }
             ([b'?'], b'r') => {
                 for &mode in p {
                     let value = self.modes.restore(true, mode);
@@ -2364,7 +2401,7 @@ impl Terminal {
         let data = data.get(split + 1..).unwrap_or_default();
         match number {
             // These fixed captures append a NUL before dispatch.
-            0 | 2 | 7 | 8 | 777 | 1337 if !has_separator || data.len() >= 2048 => return,
+            0 | 2 | 7 | 8 | 22 | 777 | 1337 if !has_separator || data.len() >= 2048 => return,
             9 | 133 if !has_separator || data.len() > 2048 => return,
             // Allocating captures count only bytes after the numeric prefix.
             // OSC 52 and 66 reserve a byte for the parser's trailing NUL.
@@ -2418,6 +2455,13 @@ impl Terminal {
                 }
             }
             9 => self.osc9(data, effects),
+            22 => {
+                if let Ok(name) = std::str::from_utf8(data)
+                    && let Some(shape) = crate::input::mouse_shape_index(name)
+                {
+                    self.metadata.mouse_shape = shape;
+                }
+            }
             777 => {
                 if let Some(notification) = data.strip_prefix(b"notify;")
                     && let Some(split) = notification.iter().position(|&b| b == b';')
@@ -2479,7 +2523,7 @@ impl Terminal {
             ),
             72 => dnd::handle(&mut self.kitty_dnd, data, bell, effects),
             133 => self.osc133(data, effects),
-            1 | 22 => {}
+            1 => {}
             _ => effects.push(Effect::UnknownSequence(format!("OSC {number}"))),
         }
     }

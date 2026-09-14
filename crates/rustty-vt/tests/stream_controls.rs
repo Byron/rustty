@@ -1,6 +1,36 @@
 use rustty_vt::Terminal;
 
 #[test]
+fn xtshiftescape_validates_requests_and_preserves_their_lifecycle() {
+    let mut terminal = Terminal::new(10, 6, 0);
+    assert_eq!(terminal.mouse_shift_capture(), None);
+    for (command, capture) in [
+        (b"\x1b[>s".as_slice(), false),
+        (b"\x1b[>1s", true),
+        (b"\x1b[>0s", false),
+    ] {
+        terminal.feed(command);
+        assert_eq!(terminal.mouse_shift_capture(), Some(capture));
+        for invalid in [
+            b"\x1b[>2s".as_slice(),
+            b"\x1b[>1;0s",
+            b"\x1b[>1:0s",
+            b"\x1b[>1$s",
+        ] {
+            terminal.feed(invalid);
+            assert_eq!(terminal.mouse_shift_capture(), Some(capture), "{invalid:?}");
+        }
+        terminal.feed(b"\x1b[?1049h\x1b[?1049l");
+        assert_eq!(terminal.mouse_shift_capture(), Some(capture));
+        let snapshot = rustty_vt::snapshot::encode_to_vec(&terminal).unwrap();
+        terminal = rustty_vt::snapshot::decode(snapshot.as_slice(), Default::default()).unwrap();
+        assert_eq!(terminal.mouse_shift_capture(), Some(capture));
+    }
+    terminal.feed(b"\x1bc");
+    assert_eq!(terminal.mouse_shift_capture(), None);
+}
+
+#[test]
 fn raw_c1_controls_execute_cursor_and_protection_actions_inside_sequences() {
     let mut terminal = Terminal::new(10, 6, 0);
     terminal.feed(b"\x1b[3;4H\x1b[3\x8d");

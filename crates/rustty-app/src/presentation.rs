@@ -86,6 +86,7 @@ pub struct Activity {
     reported_progress: bool,
     progress: Option<Progress>,
     progress_deadline: Option<Instant>,
+    progress_started: Option<Instant>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -146,6 +147,12 @@ impl Activity {
             state,
             value: value.map(|value| value.min(100)),
         });
+        if self
+            .progress
+            .is_none_or(|progress| progress.percentage().is_some())
+        {
+            self.reset_progress_animation();
+        }
         self.progress_deadline = (state != 0).then(|| now + PROGRESS_TIMEOUT);
         self.reported_progress = matches!(state, 1 | 3);
         was_active && !self.is_active()
@@ -157,6 +164,32 @@ impl Activity {
 
     pub fn progress(&self) -> Option<Progress> {
         self.progress
+    }
+
+    pub fn reset_progress_animation(&mut self) {
+        self.progress_started = None;
+    }
+
+    /// Ghostty's bouncing view starts on appearance and retains its phase when
+    /// another indeterminate report arrives. The result is a fraction of pane width.
+    pub fn progress_offset(&mut self, now: Instant) -> f32 {
+        if self
+            .progress
+            .is_none_or(|progress| progress.percentage().is_some())
+        {
+            return 0.0;
+        }
+        let started = *self.progress_started.get_or_insert(now);
+        let elapsed = now.saturating_duration_since(started).as_secs_f64();
+        let leg = (elapsed % 2.4) / 1.2;
+        let x = if leg <= 1.0 { leg } else { 2.0 - leg };
+        // SwiftUI easeInOut is cubic-bezier(.42, 0, .58, 1). Solve its x
+        // coordinate before evaluating y; the derivative never falls below .87.
+        let mut t = x;
+        for _ in 0..5 {
+            t -= (((0.52 * t - 0.78) * t + 1.26) * t - x) / ((1.56 * t - 1.56) * t + 1.26);
+        }
+        (0.75 * (3.0 - 2.0 * t) * t * t) as f32
     }
 
     /// Call at the deadline, including for hidden panes, to expire stale progress.
@@ -297,6 +330,38 @@ impl TabAccent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn indefinite_progress_restarts_on_appearance_but_not_report_updates() {
+        let now = Instant::now();
+        let mut activity = Activity::default();
+        activity.progress_reported(3, None, now);
+        // The first displayed frame starts at the left, even after a hidden delay.
+        let shown = now + Duration::from_secs(2);
+        assert_eq!(activity.progress_offset(shown), 0.0);
+        let middle = shown + Duration::from_millis(600);
+        assert_eq!(activity.progress_offset(middle), 0.375);
+        activity.progress_reported(3, None, middle);
+        activity.progress_reported(2, None, middle);
+        assert_eq!(activity.progress_offset(middle), 0.375);
+        assert_eq!(
+            activity.progress_offset(shown + Duration::from_millis(1200)),
+            0.75
+        );
+
+        activity.reset_progress_animation(); // Tab/pane/window disappears.
+        let shown = shown + Duration::from_secs(3);
+        assert_eq!(activity.progress_offset(shown), 0.0);
+        for (state, value) in [(1, Some(50)), (4, None), (0, None)] {
+            assert_eq!(
+                activity.progress_offset(shown + Duration::from_millis(600)),
+                0.375
+            );
+            activity.progress_reported(state, value, shown);
+            activity.progress_reported(3, None, shown);
+            assert_eq!(activity.progress_offset(shown), 0.0);
+        }
+    }
 
     #[test]
     fn progress_retains_percentages_and_stops_on_removal_expiry_or_exit() {

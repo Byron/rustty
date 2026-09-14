@@ -25,7 +25,7 @@ mod graphics;
 mod preedit;
 pub use preedit::Preedit;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RenderOptions {
     pub size: [u32; 2],
     pub padding: [f32; 2],
@@ -139,6 +139,10 @@ impl Renderer {
     pub fn metrics(&self) -> FontMetrics {
         self.fonts.metrics()
     }
+    /// Atlas identity; retained frames from another generation must be rebuilt.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
     pub fn missing_families(&self) -> &[String] {
         self.fonts.missing_families()
     }
@@ -216,6 +220,14 @@ impl Renderer {
                 / metrics.cell_width as f32)
                 .ceil() as usize;
             for (col, cell) in row.cells.iter().take(visible_cols).enumerate() {
+                frame.blinking_text |= cell.style.blink
+                    && !cell.style.invisible
+                    && cell.width != 0
+                    && (cell.style.underline != Underline::None
+                        || cell.style.strikethrough
+                        || cell.style.overline
+                        || !cell.text.starts_with(graphics::PLACEHOLDER)
+                            && cell.text.chars().any(|ch| !ch.is_whitespace()));
                 let selected = selection.is_some_and(|(start, end, rectangular)| {
                     let position = (viewport_start + row_index, col);
                     if rectangular {
@@ -692,6 +704,42 @@ fn decorations(
 mod tests {
     use super::*;
     use rustty_vt::{GridPoint, Selection, Terminal};
+
+    #[test]
+    fn blink_metadata_matches_visible_text_and_decorations() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let metrics = renderer.metrics();
+        for (bytes, blinking) in [
+            (b"\x1b[5mtext".as_slice(), true),
+            (b"\x1b[6mtext", true),
+            (b"\x1b[5;8mhidden", false),
+            (b"\x1b[5m   ", false),
+            (b"\x1b[5;4m ", true),
+            (b"\x1b[5m\x1b[3;1HX", false),
+            (b"\x1b[5m\x1b[1;4HX", false),
+            (b"\x1b[5m\xf4\x8e\xbb\xae", false), // Kitty placeholder.
+        ] {
+            let mut terminal = Terminal::new(10, 3, 0);
+            terminal.feed(bytes);
+            let mut options = RenderOptions {
+                size: [metrics.cell_width * 3, metrics.cell_height * 2],
+                padding: [0.0; 2],
+                cursor_visible: false,
+                ..Default::default()
+            };
+            let shown = renderer.prepare(terminal.screen(), &options).unwrap();
+            options.blink_visible = false;
+            let hidden = renderer.prepare(terminal.screen(), &options).unwrap();
+            assert_eq!(shown.blinking_text, blinking, "{bytes:?}");
+            assert_eq!(hidden.blinking_text, blinking, "{bytes:?}");
+            assert_eq!(shown.quads != hidden.quads, blinking, "{bytes:?}");
+            let mut composed = Frame::empty(options.size);
+            composed
+                .append_clipped(&shown, [0.0; 2], [0.0, 0.0, 1000.0, 1000.0])
+                .unwrap();
+            assert_eq!(composed.blinking_text, blinking);
+        }
+    }
 
     #[test]
     fn focused_cursor_blinks_without_blinking_the_unfocused_outline() {

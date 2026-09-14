@@ -10,6 +10,53 @@ impl EffectHandler for Readonly {
 }
 
 #[test]
+fn linefeed_mode_effects_keep_stream_order_including_reset() {
+    let stream = b"\x1b[20h\x1b[5n\x1b[20l\x1b[5n\x1bc";
+    for split in 0..=stream.len() {
+        let mut terminal = Terminal::new(10, 2, 0);
+        terminal.linefeed_mode_events = true;
+        let mut effects = terminal.feed(&stream[..split]);
+        effects.extend(terminal.feed(&stream[split..]));
+        assert_eq!(
+            effects,
+            [
+                Effect::LinefeedMode(true),
+                Effect::Write(b"\x1b[0n".to_vec()),
+                Effect::LinefeedMode(false),
+                Effect::Write(b"\x1b[0n".to_vec()),
+                Effect::LinefeedMode(false),
+                Effect::Progress {
+                    state: 0,
+                    value: None
+                },
+            ]
+        );
+        assert!(terminal.linefeed_mode_events);
+    }
+}
+
+#[test]
+fn focus_reporting_sends_current_host_state_on_enable_and_restore() {
+    for focused in [false, true] {
+        let mut terminal = Terminal::new(10, 2, 0);
+        assert!(terminal.feed(b"\x1b[?1004h").is_empty());
+        terminal.query_defaults.focused = Some(focused);
+        let report = Effect::Write(if focused { b"\x1b[I" } else { b"\x1b[O" }.to_vec());
+        for sequence in [
+            b"\x1b[?1004h".as_slice(),
+            b"\x1b[?1004s\x1b[?1004l\x1b[?1004r",
+        ] {
+            assert_eq!(
+                terminal.feed(sequence).as_slice(),
+                std::slice::from_ref(&report)
+            );
+        }
+        terminal.feed(b"\x1bc");
+        assert_eq!(terminal.feed(b"\x1b[?1004h"), [report]);
+    }
+}
+
+#[test]
 fn synchronous_hosts_are_readonly_unless_callbacks_supply_answers() {
     let mut terminal = Terminal::new(10, 2, 0);
     let mut host = Readonly::default();
@@ -124,23 +171,31 @@ fn host_defaults_survive_ris_and_are_reapplied_after_snapshot_restore() {
     terminal.query_defaults.enquiry = b"answer".to_vec();
     terminal.query_defaults.color_scheme = Some(ColorScheme::Dark);
     terminal.query_defaults.device_attributes = None;
+    terminal.query_defaults.size = Some(Size {
+        columns: 20,
+        rows: 3,
+        cell_width: 9,
+        cell_height: 18,
+    });
     terminal.title_report = true;
     terminal.visible = false;
     terminal.terminfo_name = Some(vec![b'r', 255]);
     terminal.feed(b"\x1bc\x1b]2;title\x07");
     assert_eq!(
-        terminal.feed(b"\x05\x1b[c\x1b[>q\x1b[?996n\x1b[?998n\x1b[21t"),
+        terminal.feed(b"\x05\x1b[c\x1b[>q\x1b[?996n\x1b[?998n\x1b[21t\x1b[18t"),
         [
             Effect::Write(b"answer".to_vec()),
             Effect::Write(b"\x1bP>|embedder\x1b\\".to_vec()),
             Effect::Write(b"\x1b[?997;1n".to_vec()),
             Effect::Write(b"\x1b[?999;2n".to_vec()),
             Effect::Write(b"\x1b]ltitle\x1b\\".to_vec()),
+            Effect::Write(b"\x1b[8;3;20t".to_vec()),
         ]
     );
     let bytes = rustty_vt::snapshot::encode_to_vec(&terminal).unwrap();
     let restored = rustty_vt::snapshot::decode(bytes.as_slice(), Default::default()).unwrap();
     assert_ne!(restored.query_defaults, terminal.query_defaults);
+    assert_eq!(restored.query_defaults.size, None);
     assert!(!restored.title_report);
     assert!(restored.visible);
     assert_eq!(restored.terminfo_name, None);

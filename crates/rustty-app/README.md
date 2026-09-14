@@ -29,9 +29,16 @@ empty Rustty override. Settings always uses the default text editor, including
 for existing files with an unregistered extension. Light/dark theme pairs follow macOS appearance, and
 reload keeps the original command-line overrides. Terminal appearance and visibility
 queries reflect the OS scheme and whether the pane is currently shown.
+`title-report = true` enables CSI 21 t replies with the terminal title; it is
+disabled by default and follows configuration reloads.
+New terminals default to `grapheme-width-method = unicode`, matching Ghostty's
+emoji widths. The `legacy` setting remains available; changing this setting
+applies only to new terminals.
 Tabs, splits, zoom, quadrant navigation, clipboard and
 search use the configured Ghostty keybindings. Window layouts and pane directories
 are saved separately under `com.rustty.app`.
+Holding Command underlines the openable link under the pointer, including OSC 8
+links and detected URLs. Command-click opens the highlighted target.
 
 File → Open Saved Layout lists the last saved layouts from Ghostty Local,
 Ghostty and Rustty, and can browse for another Rustty workspace JSON or Ghostty
@@ -60,7 +67,8 @@ immediately with `TERM_PROGRAM=ghostty cargo check`.
 The terminal port is still undergoing differential compatibility work. A passing
 smoke test does not establish full libghostty-vt parity. The exhaustive coverage
 gate in `test/rustty/coverage.json` records unfinished protocol and snapshot work;
-see [the compatibility checks](../../test/rustty/README.md). Native global shortcuts
+see [the compatibility checks](../../test/rustty/README.md) and the
+[CSI/OSC implementation inventory](../../test/rustty/SEQUENCES.md). Native global shortcuts
 need macOS Accessibility permission. Notifications are available in the bundled
 app; permissions remain under macOS control.
 
@@ -74,14 +82,20 @@ RUSTTY_SMOKE_DIR=/tmp/rustty-native-smoke target/debug/Rustty.app/Contents/MacOS
 ```
 
 The opt-in native smoke check starts disposable `/bin/sh` sessions, checks input,
-four split panes, tabs, quadrant focus and zoom, URI directory reports, restoration
-and idle rendering. It writes `result.json`, `workspace.json` and a WGPU readback
-`window.png` into the specified directory and exits. It uses the selected display
-configuration but does not restore or overwrite the regular app workspace.
+four split panes, tabs, quadrant focus and zoom, URI directory reports, restoration,
+progress animation across pane focus changes, hover scrolling, file-drop targeting,
+reverse video, DEC column mode, text blinking, synchronized output, hidden-tab title
+updates and idle rendering.
+The report records animation frame rate, the monitor's reported refresh rate, and
+window redraws and pane preparations during hidden-tab title updates. It writes
+`result.json`, `workspace.json` and a WGPU readback `window.png` into the specified
+directory and exits. It uses the selected display configuration but does not
+restore or overwrite the regular app workspace.
 
 On a locked or headless Mac, set `RUSTTY_SMOKE_OFFSCREEN=1` for an offscreen
 Metal capture of the same host primitives. The report labels this mode; it does
 not verify that macOS presents the window on a physical display.
+Offscreen smoke checks keep the test host rendering if macOS occludes its window.
 The native smoke report includes event counts during its idle phase, distinguishing
 unchanged cursor events, actual pointer movement and egui repaint requests.
 Set `RUSTTY_SMOKE_HOVER=1` to require a stationary pointer over a shell pane
