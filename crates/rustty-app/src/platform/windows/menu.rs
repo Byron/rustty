@@ -1,33 +1,21 @@
 use super::{EventSink, PlatformEvent, err};
-use ::windows::Win32::{
-    Foundation::HWND,
-    UI::WindowsAndMessaging::{HACCEL, MSG, TranslateAcceleratorW},
-};
+use ::windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::MSG};
 use muda::{
     AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu,
     accelerator::{Key, KeyAccelerator, Modifiers},
 };
 use rustty::config::{Action, Config, Direction, KeyTrigger};
-use std::{cell::RefCell, ffi::c_void};
-
-thread_local! { static ACTIVE_MENU: RefCell<Option<Menu>> = const { RefCell::new(None) }; }
+use std::ffi::c_void;
 
 pub(super) fn message_hook(message: *const c_void) -> bool {
     if message.is_null() {
         return false;
     }
+    // Winit lends MSG for the duration of its synchronous hook.
     let message = unsafe { &*message.cast::<MSG>() };
-    if super::notifications::message_hook(message) {
-        return true;
-    }
-    ACTIVE_MENU.with(|slot| {
-        let slot = slot.borrow();
-        let Some(menu) = slot.as_ref() else {
-            return false;
-        };
-        // Winit lends MSG for the duration of its synchronous hook.
-        unsafe { TranslateAcceleratorW(message.hwnd, HACCEL(menu.haccel() as _), message) != 0 }
-    })
+    // Menu accelerators provide labels; the app router owns keyboard handling,
+    // including unconsumed bindings, physical overrides, and key sequences.
+    super::notifications::message_hook(message)
 }
 
 pub(super) struct NativeMenu {
@@ -122,7 +110,6 @@ impl NativeMenu {
                 callback(PlatformEvent::Action(action.clone()));
             }
         }));
-        ACTIVE_MENU.with(|slot| *slot.borrow_mut() = Some(menu.clone()));
         Ok(Self { menu, actions })
     }
     pub fn attach(&self, hwnd: HWND) -> Result<(), String> {
@@ -148,11 +135,6 @@ impl NativeMenu {
             item.set_key_accelerator(accelerator).map_err(err)?;
         }
         Ok(())
-    }
-}
-impl Drop for NativeMenu {
-    fn drop(&mut self) {
-        ACTIVE_MENU.with(|slot| slot.borrow_mut().take());
     }
 }
 fn append(
@@ -209,4 +191,176 @@ fn accelerator(trigger: &KeyTrigger) -> Option<KeyAccelerator> {
         _ => return None,
     };
     Some(KeyAccelerator::new(Some(modifiers), key))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::windows::{
+        Win32::{
+            Foundation::{LPARAM, WPARAM},
+            UI::{Input::KeyboardAndMouse::*, WindowsAndMessaging::*},
+        },
+        core::w,
+    };
+    use rustty::config::KeyBinding;
+    use std::sync::{Arc, Mutex};
+
+    struct HiddenWindow(HWND);
+    impl HiddenWindow {
+        fn new(style: WINDOW_STYLE) -> Self {
+            Self(unsafe {
+                CreateWindowExW(
+                    WINDOW_EX_STYLE::default(),
+                    w!("STATIC"),
+                    w!("Rustty menu regression"),
+                    style,
+                    0,
+                    0,
+                    320,
+                    200,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .unwrap()
+            })
+        }
+    }
+    impl Drop for HiddenWindow {
+        fn drop(&mut self) {
+            let _ = unsafe { DestroyWindow(self.0) };
+        }
+    }
+    struct Fixture {
+        menu: NativeMenu,
+        normal: HiddenWindow,
+        quick: HiddenWindow,
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            self.menu.detach(self.normal.0);
+        }
+    }
+    struct KeyboardState([u8; 256]);
+    impl KeyboardState {
+        fn control_shift() -> Self {
+            let mut saved = [0; 256];
+            unsafe { GetKeyboardState(&mut saved) }.unwrap();
+            let mut state = [0; 256];
+            state[VK_CONTROL.0 as usize] = 0x80;
+            state[VK_SHIFT.0 as usize] = 0x80;
+            // SetKeyboardState affects this thread's queue, never the user's global input.
+            unsafe { SetKeyboardState(&state) }.unwrap();
+            Self(saved)
+        }
+    }
+    impl Drop for KeyboardState {
+        fn drop(&mut self) {
+            let _ = unsafe { SetKeyboardState(&self.0) };
+        }
+    }
+
+    #[test]
+    fn native_menu_labels_do_not_intercept_host_shortcuts() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let sink = events.clone();
+        let fixture = Fixture {
+            menu: NativeMenu::new(Arc::new(move |event| {
+                if let PlatformEvent::Action(action) = event {
+                    sink.lock().unwrap().push(action);
+                }
+            }))
+            .unwrap(),
+            normal: HiddenWindow::new(WS_OVERLAPPEDWINDOW),
+            quick: HiddenWindow::new(WS_POPUP),
+        };
+        let mut config = Config::default();
+        config.keybinds.clear();
+        config.keybinds.extend(
+            [
+                "unconsumed:ctrl+shift+n=new_window",
+                "ctrl+shift+t=new_tab",
+                "ctrl+k>ctrl+shift+t=text:sequence",
+                "physical:ctrl+shift+t=text:physical",
+            ]
+            .map(|text| KeyBinding::parse(text).unwrap()),
+        );
+        fixture.menu.update(&config).unwrap();
+        // Muda 0.19 does not populate the root accelerator store when children
+        // precede their submenu's attachment. Reinsert these items after attachment
+        // so this regression exercises a real table, including after future upgrades.
+        let muda::MenuItemKind::Submenu(submenu) = fixture.menu.menu.items().remove(0) else {
+            panic!("File submenu");
+        };
+        for index in 0..2 {
+            let item = &fixture.menu.actions[index].0;
+            submenu.remove(item).unwrap();
+            submenu.insert(item, index).unwrap();
+        }
+        fixture.menu.attach(fixture.normal.0).unwrap();
+        let file = unsafe { GetSubMenu(GetMenu(fixture.normal.0), 0) };
+        let mut text = [0u16; 128];
+        let length = unsafe { GetMenuStringW(file, 0, Some(&mut text), MF_BYPOSITION) };
+        let label = String::from_utf16(&text[..length as usize]).unwrap();
+        let (title, shortcut) = label.split_once('\t').expect("native shortcut label");
+        assert_eq!(title, "New Window");
+        assert!(!shortcut.is_empty());
+        assert!(unsafe { GetMenu(fixture.quick.0) }.0.is_null());
+
+        let _keyboard = KeyboardState::control_shift();
+        assert_eq!(
+            unsafe { CopyAcceleratorTableW(HACCEL(fixture.menu.menu.haccel() as _), None) },
+            2
+        );
+        for (hwnd, name) in [(fixture.normal.0, "ordinary"), (fixture.quick.0, "quick")] {
+            for (key, reason) in [
+                (b'N', "unconsumed binding"),
+                (b'T', "physical override or sequence continuation"),
+            ] {
+                for kind in [WM_KEYDOWN, WM_KEYUP] {
+                    let message = MSG {
+                        hwnd,
+                        message: kind,
+                        wParam: WPARAM(key as usize),
+                        ..Default::default()
+                    };
+                    assert!(
+                        !message_hook((&message as *const MSG).cast()),
+                        "{name}: {reason} must reach host routing"
+                    );
+                }
+            }
+            let alt = MSG {
+                hwnd,
+                message: WM_SYSKEYDOWN,
+                wParam: WPARAM(VK_MENU.0 as usize),
+                ..Default::default()
+            };
+            assert!(
+                !message_hook((&alt as *const MSG).cast()),
+                "Alt menu navigation must reach Windows"
+            );
+        }
+        assert!(
+            events.lock().unwrap().is_empty(),
+            "keyboard routing must not emit native menu actions"
+        );
+
+        let command = unsafe { GetMenuItemID(file, 0) };
+        unsafe {
+            SendMessageW(
+                fixture.normal.0,
+                WM_COMMAND,
+                Some(WPARAM(command as usize)),
+                Some(LPARAM(0)),
+            );
+        }
+        assert_eq!(
+            *events.lock().unwrap(),
+            [Action::NewWindow],
+            "native menu clicks still dispatch actions"
+        );
+    }
 }
