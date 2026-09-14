@@ -12,6 +12,11 @@ mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::FontSystem;
 
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+pub use windows::FontSystem;
+
 /// A stable identifier within the `FontSystem` that produced it.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct FontId(pub(crate) usize);

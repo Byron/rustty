@@ -7,9 +7,9 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod prepare;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use prepare::{Preedit, RenderOptions, Renderer};
 
 /// A search match clipped to one visible row, identified by its stable row ID.
