@@ -94,6 +94,23 @@ pub fn build(b: *std.Build) !void {
         vt_oracle.root_module.addImport("wuffs", wuffs);
     }
     vt_oracle_step.dependOn(&b.addInstallArtifact(vt_oracle, .{}).step);
+    // Unit-level Rustty comparisons use only libghostty-vt, avoiding the
+    // app dependencies and platform signposts of the main benchmark binary.
+    const vt_primitives_step = b.step("vt-primitives", "Build portable terminal primitive benchmarks");
+    const vt_primitives_module = b.createModule(.{
+        .root_source_file = b.path("test/rustty/zig-primitives.zig"),
+        .target = config.target,
+        .optimize = config.optimize,
+        .imports = &.{.{ .name = "ghostty-vt", .module = mod.vt }},
+    });
+    const vt_primitives = b.addExecutable(.{
+        .name = "vt-primitives",
+        .root_module = vt_primitives_module,
+    });
+    vt_primitives_step.dependOn(&b.addInstallArtifact(vt_primitives, .{}).step);
+    const test_vt_primitives_step = b.step("test-vt-primitives", "Test portable terminal primitive workloads");
+    const test_vt_primitives = b.addTest(.{ .root_module = vt_primitives_module });
+    test_vt_primitives_step.dependOn(&b.addRunArtifact(test_vt_primitives).step);
     const test_valgrind_step = b.step(
         "test-valgrind",
         "Run tests under valgrind",

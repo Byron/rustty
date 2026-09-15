@@ -226,8 +226,11 @@ impl Renderer {
                     && (cell.style.underline != Underline::None
                         || cell.style.strikethrough
                         || cell.style.overline
-                        || !cell.text.starts_with(graphics::PLACEHOLDER)
-                            && cell.text.chars().any(|ch| !ch.is_whitespace()));
+                        || cell.codepoint != Some(graphics::PLACEHOLDER)
+                            && screen
+                                .cell_text(row, col)
+                                .chars()
+                                .any(|ch| !ch.is_whitespace()));
                 let selected = selection.is_some_and(|(start, end, rectangular)| {
                     let position = (viewport_start + row_index, col);
                     if rectangular {
@@ -270,7 +273,7 @@ impl Renderer {
                 let fg = Color::rgb(fg).opacity(if cell.style.faint { 0.5 } else { 1.0 });
                 paints.push(fg);
             }
-            self.row_text(row, &paints, top, options, &mut foreground)?;
+            self.row_text(screen, row, &paints, top, options, &mut foreground)?;
             for (col, cell) in row.cells.iter().take(visible_cols).enumerate() {
                 if cell.width == 0 {
                     continue;
@@ -330,6 +333,7 @@ impl Renderer {
 
     fn row_text(
         &mut self,
+        screen: &Screen,
         row: &Row,
         paints: &[Color],
         top: f32,
@@ -343,14 +347,14 @@ impl Renderer {
             if cell.width == 0
                 || cell.style.invisible
                 || cell.style.blink && !options.blink_visible
-                || cell.text.starts_with(graphics::PLACEHOLDER)
+                || cell.codepoint == Some(graphics::PLACEHOLDER)
             {
                 col += 1;
                 continue;
             }
             let style = cell.style;
             let color = paints[col];
-            if let Some(cp) = self.sprite_codepoint(&cell.text) {
+            if let Some(cp) = self.sprite_codepoint(&screen.cell_text(row, col)) {
                 let cached = self.sprite(cp, cell.width)?;
                 frame.quads.push(Quad {
                     rect: [
@@ -372,17 +376,17 @@ impl Renderer {
             while col < paints.len()
                 && row.cells[col].style == style
                 && paints[col] == color
-                && self.sprite_codepoint(&row.cells[col].text).is_none()
-                && !row.cells[col].text.starts_with(graphics::PLACEHOLDER)
+                && self.sprite_codepoint(&screen.cell_text(row, col)).is_none()
+                && row.cells[col].codepoint != Some(graphics::PLACEHOLDER)
             {
                 let cell = &row.cells[col];
                 if cell.width != 0 {
                     sources.push((text.len(), col));
-                    text.push_str(if cell.text.is_empty() {
-                        " "
+                    if cell.codepoint.is_none() {
+                        text.push(' ');
                     } else {
-                        &cell.text
-                    });
+                        text.push_str(&screen.cell_text(row, col));
+                    }
                 }
                 col += 1;
             }

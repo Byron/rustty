@@ -48,9 +48,18 @@ fn omitted_line_edit_counts_still_move_one_line() {
     let mut terminal = Terminal::new(8, 4, 0);
     terminal.feed(b"one\r\ntwo\r\nthree\x1b[2;4H\x1b[L");
     assert_eq!(terminal.screen().cursor.col, 0);
-    assert_eq!(terminal.screen().rows[1].text(), "");
-    assert_eq!(terminal.screen().rows[2].text(), "two");
+    assert_eq!(terminal.screen().row_text(&terminal.screen().rows[1]), "");
+    assert_eq!(
+        terminal.screen().row_text(&terminal.screen().rows[2]),
+        "two"
+    );
     terminal.feed(b"\x1b[M");
-    assert_eq!(terminal.screen().rows[1].text(), "two");
-    assert_eq!(terminal.screen().rows[2].text(), "three");
+    assert_eq!(
+        terminal.screen().row_text(&terminal.screen().rows[1]),
+        "two"
+    );
+    assert_eq!(
+        terminal.screen().row_text(&terminal.screen().rows[2]),
+        "three"
+    );
 }

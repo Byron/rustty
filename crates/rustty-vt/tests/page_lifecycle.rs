@@ -148,12 +148,12 @@ fn snapshot_keeps_page_groups_and_charges_restored_pages_at_pool_size() {
         restored
             .screen()
             .all_rows()
-            .map(|row| row.text())
+            .map(|row| restored.screen().row_text(row))
             .collect::<Vec<_>>(),
         terminal
             .screen()
             .all_rows()
-            .map(|row| row.text())
+            .map(|row| terminal.screen().row_text(row))
             .collect::<Vec<_>>()
     );
     restored.feed(b"x\r\n");

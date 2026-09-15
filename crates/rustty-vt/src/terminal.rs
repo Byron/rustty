@@ -3,7 +3,7 @@ use crate::query::{self, Query};
 use crate::screen::*;
 use crate::unicode::{self, properties};
 use crate::{clipboard, dnd};
-use rustty_parser::{Event, MAX_OSC_BYTES, Parser};
+use rustty_parser::{BatchEvent, Event, MAX_OSC_BYTES, Parser};
 
 /// Host actions are returned in input order. The terminal never accesses the OS.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -310,7 +310,18 @@ impl Terminal {
         let mut effects = Vec::new();
         let mut pending = Vec::new();
         let mut parser = std::mem::take(&mut self.parser);
-        parser.advance(bytes, |event| {
+        parser.advance_batched(bytes, |event| {
+            let event = match event {
+                BatchEvent::PrintAscii(bytes) => {
+                    self.print_ascii(bytes);
+                    return;
+                }
+                BatchEvent::PrintUtf8(text) => {
+                    self.print_utf8(text);
+                    return;
+                }
+                BatchEvent::Event(event) => event,
+            };
             self.handle(event, &mut pending, true, true);
             for effect in pending.drain(..) {
                 match effect {
@@ -335,7 +346,18 @@ impl Terminal {
         let mut parser = std::mem::take(&mut self.parser);
         let read_enabled = handler.clipboard_read_enabled();
         let write_enabled = handler.clipboard_write_enabled();
-        parser.advance(bytes, |event| {
+        parser.advance_batched(bytes, |event| {
+            let event = match event {
+                BatchEvent::PrintAscii(bytes) => {
+                    self.print_ascii(bytes);
+                    return;
+                }
+                BatchEvent::PrintUtf8(text) => {
+                    self.print_utf8(text);
+                    return;
+                }
+                BatchEvent::Event(event) => event,
+            };
             self.handle(event, &mut effects, write_enabled, read_enabled);
             self.dispatch_effects(effects.drain(..), handler, write_enabled, read_enabled);
         });
@@ -436,6 +458,7 @@ impl Terminal {
         request.reply(result)
     }
 
+    #[inline(always)]
     fn ensure_row_cells(&mut self, row: usize, end: usize) {
         let columns = usize::from(self.cols);
         if self.screen().rows[row].cells.len() < end.min(columns) {
@@ -470,6 +493,21 @@ impl Terminal {
     /// Update both policies and prune the oldest history immediately.
     pub fn set_limits(&mut self, limits: ScrollbackLimits) {
         self.primary.set_limits(limits);
+        self.changed();
+    }
+
+    /// Bound owned history-row storage independently of native page limits.
+    /// Counts Rust cell/vector capacities and text/hyperlink allocations, but
+    /// excludes active rows, graphics, page tables and deque spare capacity.
+    /// Shared hyperlink payloads are charged once per row, again across rows.
+    /// Retained through reset; hosts reapply it after decoding a snapshot.
+    pub fn set_scrollback_memory_limit(&mut self, bytes: Option<usize>) {
+        for screen in std::iter::once(&mut self.primary).chain(self.alternate.iter_mut()) {
+            // Hosts can replace public rows or restore independently allocated data.
+            screen.history_bytes = screen.history.iter().map(Row::storage_bytes).sum();
+            screen.memory_limit = bytes;
+            screen.enforce_memory_limit();
+        }
         self.changed();
     }
 
@@ -560,6 +598,7 @@ impl Terminal {
             self.string_overflow,
         );
         let limits = self.primary.limits;
+        let memory_limit = self.primary.memory_limit;
         let primary_identity = self.primary.metadata.identity;
         let terminfo_name = self.terminfo_name.take();
         let query_defaults = self.query_defaults.clone();
@@ -594,6 +633,7 @@ impl Terminal {
         let mut modes = self.modes.clone();
         modes.reset();
         *self = Self::with_limits(self.cols, self.rows, limits);
+        self.primary.memory_limit = memory_limit;
         (
             self.parser,
             self.dcs,
@@ -707,7 +747,7 @@ impl Terminal {
     pub fn plain_text(&self) -> String {
         let mut result = String::new();
         for row in self.screen().viewport() {
-            result.push_str(&row.text());
+            result.push_str(&self.screen().row_text(row));
             if !row.wrapped {
                 result.push('\n');
             }
@@ -861,31 +901,130 @@ impl Terminal {
         }
     }
 
+    /// Fill ordinary row spans without repeating cursor and page lookup per cell.
+    fn print_ascii(&mut self, mut bytes: &[u8]) {
+        if self.status_display {
+            return;
+        }
+        let screen = self.screen();
+        if self.modes.get(false, 4)
+            || !self.modes.dec(7)
+            || screen.charset.single.is_some()
+            || !matches!(
+                screen.charset.slots[screen.charset.gl],
+                Charset::Utf8 | Charset::Ascii
+            )
+            || screen.cursor.hyperlink.is_some()
+        {
+            for &byte in bytes {
+                self.print(char::from(byte));
+            }
+            return;
+        }
+        while !bytes.is_empty() {
+            self.ensure_row_cells(self.screen().cursor.row, usize::from(self.cols));
+            self.clamp_cursor();
+            // Reuse scalar wrapping, including margins, scrolling and prompt state.
+            if self.screen().cursor.pending_wrap {
+                self.print(char::from(bytes[0]));
+                bytes = &bytes[1..];
+                continue;
+            }
+            let col = self.screen().cursor.col;
+            let right = if col > self.margins.right {
+                usize::from(self.cols) - 1
+            } else {
+                self.margins.right
+            };
+            let count = bytes.len().min(right - col + 1);
+            let written = self.screen_mut().write_cursor_ascii(&bytes[..count]);
+            if written == 0 {
+                // Wide cells, graphemes and links retain the scalar replacement rules.
+                self.print(char::from(bytes[0]));
+                bytes = &bytes[1..];
+                continue;
+            }
+            self.previous_char = Some(char::from(bytes[written - 1]));
+            let cursor = &mut self.screen_mut().cursor;
+            cursor.pending_wrap = col + written > right;
+            cursor.col = (col + written).min(right);
+            self.generation = self.generation.wrapping_add(written as u64);
+            bytes = &bytes[written..];
+        }
+    }
+
+    fn print_utf8(&mut self, mut text: &str) {
+        if self.status_display {
+            return;
+        }
+        let screen = self.screen();
+        if self.modes.get(false, 4)
+            || !self.modes.dec(7)
+            || screen.charset.single.is_some()
+            || !matches!(
+                screen.charset.slots[screen.charset.gl],
+                Charset::Utf8 | Charset::Ascii
+            )
+            || screen.cursor.hyperlink.is_some()
+            || self.margins.left != 0
+            || self.margins.right != usize::from(self.cols) - 1
+        {
+            for cp in text.chars() {
+                self.print(cp);
+            }
+            return;
+        }
+        let right = usize::from(self.cols) - 1;
+        let graphemes = self.modes.dec(2027);
+        while let Some(cp) = text.chars().next() {
+            // Anchor each span with the full scalar path, including wrapping,
+            // page growth and grapheme joins across input chunk boundaries.
+            self.print(cp);
+            text = &text[cp.len_utf8()..];
+            if text.is_empty() || self.screen().cursor.pending_wrap {
+                continue;
+            }
+            let mut state = self.grapheme_state;
+            let (bytes, scalars) = self
+                .screen_mut()
+                .write_cursor_utf8(text, right, graphemes, &mut state);
+            if bytes != 0 {
+                self.grapheme_state = state;
+                self.previous_char = text[..bytes].chars().next_back();
+                self.generation = self.generation.wrapping_add(scalars as u64);
+                text = &text[bytes..];
+            }
+        }
+    }
+
     pub fn print(&mut self, cp: char) {
         if self.status_display {
             return;
         }
         self.ensure_row_cells(self.screen().cursor.row, usize::from(self.cols));
         self.clamp_cursor();
-        let current = self.screen().cursor.clone();
-        let right = if current.col > self.margins.right {
+        let cursor = &self.screen().cursor;
+        let (row, col, pending_wrap) = (cursor.row, cursor.col, cursor.pending_wrap);
+        let right = if col > self.margins.right {
             self.cols as usize - 1
         } else {
             self.margins.right
         };
-        let previous_col = if current.pending_wrap && self.modes.dec(7) {
-            Some(current.col)
+        let previous_col = if cp as u32 <= 255 {
+            None
+        } else if pending_wrap && self.modes.dec(7) {
+            Some(col)
         } else if self.modes.dec(2027)
             && !self.modes.dec(7)
-            && current.col == right
-            && !self.screen().rows[current.row].cells[right].text.is_empty()
+            && col == right
+            && self.screen().rows[row].cells[right].codepoint.is_some()
         {
             Some(right)
         } else {
-            current.col.checked_sub(1)
+            col.checked_sub(1)
         };
         let previous_col = previous_col.map(|col| {
-            if self.screen().rows[current.row].cells[col].width == 0 {
+            if self.screen().rows[row].cells[col].width == 0 {
                 col.saturating_sub(1)
             } else {
                 col
@@ -894,14 +1033,23 @@ impl Terminal {
 
         if cp as u32 > 255
             && self.modes.dec(2027)
-            && current.col > 0
+            && col > 0
             && let Some(col) = previous_col
         {
-            let prev = self.screen().rows[current.row].cells[col].clone();
-            if let Some(last) = prev.text.chars().last() {
+            let previous = &self.screen().rows[row].cells[col];
+            let previous_width = previous.width;
+            let last = if previous.grapheme.is_some() {
+                self.screen()
+                    .cell_text(&self.screen().rows[row], col)
+                    .chars()
+                    .last()
+            } else {
+                previous.codepoint
+            };
+            if let Some(last) = last {
                 let old_state = self.grapheme_state;
                 if !unicode::grapheme_break(last, cp, &mut self.grapheme_state) {
-                    let mut width = prev.width;
+                    let mut width = previous_width;
                     if matches!(cp, '\u{fe0f}' | '\u{fe0e}') {
                         if !properties(last).emoji_vs_base {
                             self.grapheme_state = old_state;
@@ -926,15 +1074,13 @@ impl Terminal {
                 return;
             }
             if let Some(col) = previous_col {
-                let previous = &self.screen().rows[current.row].cells[col];
-                if previous.text.is_empty() {
+                let previous = &self.screen().rows[row].cells[col];
+                if previous.codepoint.is_none() {
                     return;
                 }
                 if matches!(cp, '\u{fe0f}' | '\u{fe0e}')
                     && previous
-                        .text
-                        .chars()
-                        .next()
+                        .codepoint
                         .is_none_or(|p| properties(p).grapheme != 11)
                 {
                     return;
@@ -944,7 +1090,7 @@ impl Terminal {
             return;
         }
         self.previous_char = Some(cp);
-        if current.pending_wrap && self.modes.dec(7) {
+        if pending_wrap && self.modes.dec(7) {
             self.print_wrap();
         }
         if self.modes.get(false, 4)
@@ -953,22 +1099,23 @@ impl Terminal {
             self.insert_blanks(width.into());
         }
         if width == 2 && right.saturating_sub(self.margins.left) < 1 {
-            self.put_cell(String::new(), 1, false);
+            self.put_cell(None, 1, false);
         } else {
             if width == 2 && self.screen().cursor.col == right {
                 if !self.modes.dec(7) {
                     return;
                 }
-                self.put_cell(String::new(), 1, right == self.cols as usize - 1);
+                self.put_cell(None, 1, right == self.cols as usize - 1);
                 self.print_wrap();
             }
-            self.put_cell(cp.to_string(), width, false);
+            self.put_cell(Some(cp), width, false);
         }
         let x = self.screen().cursor.col;
-        self.ensure_row_cells(self.screen().cursor.row, x + usize::from(width) + 1);
         self.screen_mut().cursor.pending_wrap = x + width as usize > right;
         self.screen_mut().cursor.col = (x + width as usize).min(right);
-        self.changed();
+        // put_cell synchronized the cursor's resources. Advancing within this
+        // row changes neither its owning page nor its style or hyperlink.
+        self.generation = self.generation.wrapping_add(1);
     }
 
     fn append_grapheme(&mut self, mut col: usize, cp: char, width: u8, right: usize) {
@@ -976,10 +1123,8 @@ impl Terminal {
         self.ensure_row_cells(cursor.row, col + usize::from(width));
         let old_width = self.screen().rows[cursor.row].cells[col].width;
         if self.screen().rows[cursor.row].cells[col]
-            .text
-            .chars()
-            .count()
-            >= 65
+            .grapheme
+            .is_some_and(|allocation| allocation.len >= 64)
         {
             return;
         }
@@ -988,27 +1133,36 @@ impl Terminal {
                 return;
             }
             let cell = self.screen().rows[cursor.row].cells[col].clone();
+            let text = cell.grapheme.map(|allocation| {
+                let screen = self.screen();
+                screen
+                    .pages
+                    .page_at(screen.history.len() + cursor.row)
+                    .0
+                    .graphemes
+                    .text_arc(allocation)
+            });
             self.screen_mut().cursor.col = col;
-            if cell.text.chars().nth(1).is_some() {
+            if text.is_some() {
                 // Native moves existing grapheme data without printing a
                 // spacer head, so the pending single shift reaches the base.
                 let spacer_head = right == self.cols as usize - 1;
                 let row = &mut self.screen_mut().rows[cursor.row];
-                row.cells[col].text.clear();
+                row.cells[col].codepoint = None;
                 row.cells[col].width = 1;
                 row.cells[col].spacer_head = spacer_head;
                 row.dirty = true;
             } else {
-                self.put_cell(String::new(), 1, right == self.cols as usize - 1);
+                self.put_cell(None, 1, right == self.cols as usize - 1);
             }
             self.print_wrap();
             let source_col = col;
             col = self.screen().cursor.col;
-            let base_len = cell.text.chars().next().map_or(0, char::len_utf8);
-            self.put_cell(cell.text[..base_len].to_owned(), width, false);
-            if base_len < cell.text.len() {
+            self.put_cell(cell.codepoint, width, false);
+            if let Some(text) = text {
+                let base_len = cell.codepoint.map_or(0, char::len_utf8);
                 self.screen_mut()
-                    .move_wrapped_grapheme(source_col, &cell.text[base_len..]);
+                    .move_wrapped_grapheme(source_col, &text[base_len..]);
             }
         } else if width != old_width {
             if width == 2 {
@@ -1021,7 +1175,7 @@ impl Terminal {
                     row.cells[col + 1] = Cell::blank(cursor.style.background);
                     if width == 2 {
                         row.cells[col + 1] = row.cells[col].clone();
-                        row.cells[col + 1].text.clear();
+                        row.cells[col + 1].codepoint = None;
                         row.cells[col + 1].grapheme = None;
                         row.cells[col + 1].width = 0;
                     }
@@ -1037,73 +1191,19 @@ impl Terminal {
         self.changed();
     }
 
-    fn put_cell(&mut self, mut text: String, width: u8, spacer_head: bool) {
-        self.screen_mut().sync_cursor_resources();
+    fn put_cell(&mut self, codepoint: Option<char>, width: u8, spacer_head: bool) {
         // Map only when writing a cell. Width, combining behavior, and REP
         // use the original scalar; even an empty spacer consumes one shift.
         let charset = &mut self.screen_mut().charset;
         let slot = charset.single.take().unwrap_or(charset.gl);
-        if let Some(cp) = text.chars().next() {
-            let mapped = map_charset(cp, charset.slots[slot]);
-            if mapped == '\0' {
-                // Native cells reserve codepoint zero for empty content.
-                text.clear();
-            } else if cp != mapped {
-                text.replace_range(..cp.len_utf8(), &mapped.to_string());
-            }
-        }
-        let cursor = self.screen().cursor.clone();
-        self.ensure_row_cells(cursor.row, cursor.col + usize::from(width));
-        let old_width = self.screen().rows[cursor.row].cells[cursor.col].width;
-        if cursor.row > 0 && cursor.col <= 1 && old_width != width && old_width != 1 {
-            let previous = &mut self.screen_mut().rows[cursor.row - 1];
-            previous.cells.last_mut().unwrap().spacer_head = false;
-            previous.dirty = true;
-        }
-        self.screen_mut().erase_row_cells(
-            cursor.row,
-            cursor.col,
-            cursor.col + width as usize,
-            cursor.style.background,
-            false,
-        );
-        let style_id = self.screen_mut().retain_cursor_style_for_cell();
-        if width == 2 {
-            self.screen_mut().retain_cursor_style_for_cell();
-        }
-        let row = &mut self.screen_mut().rows[cursor.row];
-        let cell = Cell {
-            style_id,
-            link_id: 0,
-            grapheme: None,
-            text,
-            width,
-            style: cursor.style,
-            hyperlink: cursor.hyperlink,
-            hyperlink_id: cursor.hyperlink_id,
-            hyperlink_raw: cursor.hyperlink_raw,
-            protected: cursor.protected,
-            semantic: cursor.semantic,
-            spacer_head,
-        };
-        row.cells[cursor.col] = cell.clone();
-        if width == 2 && cursor.col + 1 < row.cells.len() {
-            row.cells[cursor.col + 1] = Cell {
-                text: String::new(),
-                width: 0,
-                ..cell
-            };
-        }
-        row.dirty = true;
-        if self.screen().rows[cursor.row].cells[cursor.col]
-            .hyperlink
-            .is_some()
-        {
-            self.screen_mut().set_cell_cursor_hyperlink(cursor.col);
-            if width == 2 {
-                self.screen_mut().set_cell_cursor_hyperlink(cursor.col + 1);
-            }
-        }
+        // Native cells reserve codepoint zero for empty content.
+        let codepoint = codepoint
+            .map(|cp| map_charset(cp, charset.slots[slot]))
+            .filter(|&cp| cp != '\0');
+        // print and append_grapheme extend the source row; print_wrap extends
+        // the destination row before any wrapped write reaches this helper.
+        self.screen_mut()
+            .write_cursor_cell(codepoint, width, spacer_head);
     }
 
     fn print_wrap(&mut self) {
@@ -1283,11 +1383,11 @@ impl Terminal {
     }
 
     fn index_scroll(&mut self) {
-        self.ensure_active_columns();
         let m = self.margins;
         let cols = usize::from(self.cols);
         let full = m.left == 0 && m.right == cols - 1;
         if full && self.rows == 1 && self.screen().limits.bytes == Some(0) {
+            self.ensure_active_columns();
             let screen = self.screen_mut();
             let background = screen.cursor.style.background;
             screen.edit_row(0, |row| {
@@ -1296,6 +1396,7 @@ impl Terminal {
             return;
         }
         if !full || (m.top == 0 && (self.screen().limits.bytes != Some(0) || m.bottom == 0)) {
+            // scroll_up widens the active rows before moving them.
             self.scroll_up(1, true);
             if full && self.screen().limits.bytes != Some(0) {
                 let screen = self.screen_mut();
@@ -1349,6 +1450,7 @@ impl Terminal {
 
         // Full-width IND rotates complete rows, unlike SU/DL which detach
         // wrapped lines and keep pins at their physical coordinates.
+        self.ensure_active_columns();
         let screen = self.screen_mut();
         let top = screen.history.len() + m.top;
         let bottom = screen.history.len() + m.bottom;
@@ -1399,7 +1501,7 @@ impl Terminal {
         screen.rows.insert(m.bottom, blank);
         screen.discard_row(row.id);
         screen.install_row_copies(copies, Some(row));
-        screen.sync_resource_pages(false);
+        screen.sync_resource_pages(false, m.bottom);
     }
 
     fn scrolls_above_cursor(&self) -> bool {
@@ -1512,7 +1614,7 @@ impl Terminal {
                     screen.release_row_resources(&row);
                     screen.discard_row(row.id);
                 }
-                screen.sync_resource_pages(false);
+                screen.sync_resource_pages(false, m.bottom);
             } else {
                 for y in m.top..m.bottom {
                     self.copy_row_region(y + 1, y, m.left, m.right + 1, bg);
@@ -1553,7 +1655,7 @@ impl Terminal {
                 screen.release_row_resources(&row);
                 screen.discard_row(row.id);
                 screen.rows.insert(m.top, blank);
-                screen.sync_resource_pages(true);
+                screen.sync_resource_pages(true, m.top);
             } else {
                 for y in (m.top + 1..=m.bottom).rev() {
                     self.copy_row_region(y - 1, y, m.left, m.right + 1, bg);
@@ -1591,7 +1693,7 @@ impl Terminal {
                 // region retain their attributes and hyperlink identity.
                 for boundary in [m.left, m.right + 1] {
                     if boundary > 0 && row.cells.get(boundary).is_some_and(|cell| cell.width == 0) {
-                        row.cells[boundary - 1].text.clear();
+                        row.cells[boundary - 1].codepoint = None;
                         row.cells[boundary - 1].grapheme = None;
                         row.cells[boundary - 1].width = 1;
                         row.cells[boundary].width = 1;
@@ -1778,7 +1880,7 @@ impl Terminal {
             .iter()
             .rposition(|row| {
                 row.cells.iter().take(cols).any(|cell| {
-                    !cell.text.is_empty()
+                    cell.codepoint.is_some()
                         || cell.width != 1
                         || cell.spacer_head
                         || cell.style.background != Color::Default
@@ -1940,11 +2042,10 @@ impl Terminal {
         let charset = self.screen().charset.clone();
         self.end_hyperlink();
         if enabled && self.alternate.is_none() {
-            self.alternate = Some(Screen::new(
-                self.cols.into(),
-                self.rows.into(),
-                ScrollbackLimits::NONE,
-            ));
+            let mut alternate =
+                Screen::new(self.cols.into(), self.rows.into(), ScrollbackLimits::NONE);
+            alternate.memory_limit = self.primary.memory_limit;
+            self.alternate = Some(alternate);
         }
         self.alternate_active = enabled;
         self.screen_mut().charset = charset;
@@ -2047,7 +2148,7 @@ impl Terminal {
                     let row = &mut self.screen_mut().rows[y];
                     row.cells.fill(Cell {
                         style_id,
-                        text: "E".into(),
+                        codepoint: Some('E'),
                         style,
                         ..Cell::default()
                     });

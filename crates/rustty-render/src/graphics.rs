@@ -186,7 +186,7 @@ fn geometry(screen: &Screen, metrics: FontMetrics, options: &RenderOptions) -> V
         .any(|p| p.virtual_placement)
     {
         for (row_index, row) in screen.viewport().enumerate() {
-            for run in unicode::placements(row) {
+            for run in unicode::placements(screen, row) {
                 virtual_geometry(
                     run,
                     row_index,
@@ -642,8 +642,7 @@ mod tests {
         image.pixels = vec![255; 500 * 306 * 4].into();
         for row in 0..2 {
             for col in 0..4 {
-                let cell = &mut terminal.screen_mut().rows[row].cells[col];
-                cell.text = if col == 0 {
+                let text = if col == 0 {
                     format!(
                         "{PLACEHOLDER}{}\u{305}",
                         if row == 0 { '\u{305}' } else { '\u{30d}' }
@@ -651,7 +650,9 @@ mod tests {
                 } else {
                     PLACEHOLDER.to_string()
                 };
-                cell.style.foreground = TerminalColor::Indexed(1);
+                terminal.screen_mut().set_cell_text(row, col, &text);
+                terminal.screen_mut().rows[row].cells[col].style.foreground =
+                    TerminalColor::Indexed(1);
             }
         }
         let rendered = geometry(terminal.screen(), metrics, &options);
@@ -679,8 +680,7 @@ mod tests {
             .enumerate()
         {
             for col in 0..width {
-                let cell = &mut terminal.screen_mut().rows[row].cells[col];
-                cell.text = if col == 0 {
+                let text = if col == 0 {
                     format!(
                         "{PLACEHOLDER}{}{}",
                         diacritics[image_row], diacritics[image_col]
@@ -688,7 +688,9 @@ mod tests {
                 } else {
                     PLACEHOLDER.to_string()
                 };
-                cell.style.foreground = TerminalColor::Indexed(1);
+                terminal.screen_mut().set_cell_text(row, col, &text);
+                terminal.screen_mut().rows[row].cells[col].style.foreground =
+                    TerminalColor::Indexed(1);
             }
         }
         let expected = geometry(terminal.screen(), renderer.metrics(), &options);
@@ -719,9 +721,10 @@ mod tests {
             .flat_map(|y| (0..5).flat_map(move |x| [x * 33, y * 27, 128, 255]))
             .collect::<Vec<_>>()
             .into();
-        let cell = &mut terminal.screen_mut().rows[0].cells[0];
-        cell.text = format!("{PLACEHOLDER}\u{30d}\u{30d}");
-        cell.style.foreground = TerminalColor::Indexed(1);
+        terminal
+            .screen_mut()
+            .set_cell_text(0, 0, &format!("{PLACEHOLDER}\u{30d}\u{30d}"));
+        terminal.screen_mut().rows[0].cells[0].style.foreground = TerminalColor::Indexed(1);
         let expected = geometry(terminal.screen(), renderer.metrics(), &options);
         assert_eq!(expected.len(), 1);
         assert_eq!(expected[0].source, [3.0, 3.0, 3.0, 3.0]);
@@ -798,8 +801,7 @@ mod tests {
         image.pixels = vec![255; image.width as usize * image.height as usize * 4].into();
         for row in 0..2 {
             for col in 0..2 {
-                let cell = &mut terminal.screen_mut().rows[row].cells[col];
-                cell.text = if col == 0 {
+                let text = if col == 0 {
                     format!(
                         "{PLACEHOLDER}{}\u{305}",
                         if row == 0 { '\u{305}' } else { '\u{30d}' }
@@ -807,7 +809,9 @@ mod tests {
                 } else {
                     PLACEHOLDER.to_string()
                 };
-                cell.style.foreground = TerminalColor::Indexed(1);
+                terminal.screen_mut().set_cell_text(row, col, &text);
+                terminal.screen_mut().rows[row].cells[col].style.foreground =
+                    TerminalColor::Indexed(1);
             }
         }
         let frame = renderer.prepare(terminal.screen(), &options).unwrap();

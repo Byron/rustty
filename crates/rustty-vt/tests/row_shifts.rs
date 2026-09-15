@@ -16,10 +16,16 @@ fn index_scrolling_preserves_complete_row_metadata() {
             }
             terminal.feed(b"abcdefghijklmnopqrstuvwxy\x1b[2;4r\x1b[4;3H\x1b[44m");
             let before = terminal.screen().rows.clone();
+            let before_cells = serde_json::to_value(terminal.screen()).unwrap()["rows"].clone();
             terminal.feed(command);
+            let after_cells = serde_json::to_value(terminal.screen()).unwrap()["rows"].clone();
             let after = &terminal.screen().rows;
             for row in 1..3 {
-                assert_eq!(after[row].cells, before[row + 1].cells, "{mode}");
+                assert_eq!(
+                    after_cells[row]["cells"],
+                    before_cells[row + 1]["cells"],
+                    "{mode}"
+                );
                 assert_eq!(after[row].wrapped, before[row + 1].wrapped, "{mode}");
                 assert_eq!(
                     after[row].wrap_continuation,
@@ -28,7 +34,7 @@ fn index_scrolling_preserves_complete_row_metadata() {
                 );
             }
             assert!(!after[3].wrapped && !after[3].wrap_continuation);
-            assert!(after[3].cells.iter().all(|cell| cell.text.is_empty()
+            assert!(after[3].cells.iter().all(|cell| cell.codepoint.is_none()
                 && cell.style.background == rustty_vt::screen::Color::Indexed(4)));
         }
     }
@@ -135,11 +141,11 @@ fn scroll_up_without_history_preserves_pins_and_detaches_partial_regions() {
         let screen = terminal.screen();
         assert!(screen.history.is_empty());
         assert_eq!(screen.resolve(tracked), screen.point(0, 2));
-        assert_eq!(screen.rows[0].cells[2].text, "k");
+        assert_eq!(&*screen.cell_text(&screen.rows[0], 2), "k");
         assert_eq!(screen.rows[0].wrapped, bottom == 4);
         assert_eq!(screen.rows[0].wrap_continuation, bottom == 4);
         assert_eq!(
-            screen.rows[3].cells[0].text,
+            &*screen.cell_text(&screen.rows[3], 0),
             if bottom == 3 { "y" } else { "" }
         );
     }
@@ -174,7 +180,10 @@ fn moving_rows_removes_orphaned_wide_wrap_padding() {
     let mut terminal = Terminal::new(8, 4, 10);
     terminal.feed("\x1b[8G界\x1b[T".as_bytes());
     assert!(!terminal.screen().rows[1].cells[7].spacer_head);
-    assert_eq!(terminal.screen().rows[2].cells[0].text, "界");
+    assert_eq!(
+        &*terminal.screen().cell_text(&terminal.screen().rows[2], 0),
+        "界"
+    );
 }
 
 #[test]
@@ -191,10 +200,16 @@ fn margin_splits_clear_wide_text_and_preserve_surviving_attributes() {
         for row in &terminal.screen().rows {
             for col in [1, 5] {
                 let cell = &row.cells[col];
-                assert!(cell.text.is_empty());
+                assert!(cell.codepoint.is_none());
                 assert_eq!(cell.width, 1);
                 assert_eq!(cell.style, before[col].style);
-                assert_eq!(cell.hyperlink_id, before[col].hyperlink_id);
+                assert_eq!(
+                    cell.hyperlink.as_ref().and_then(|link| link.id.as_ref()),
+                    before[col]
+                        .hyperlink
+                        .as_ref()
+                        .and_then(|link| link.id.as_ref())
+                );
             }
         }
     }

@@ -569,8 +569,8 @@ impl Context {
             let screen = if handle.alternate { terminal.alternate_screen() } else { Some(terminal.primary_screen()) };
             let point = screen.and_then(|screen| screen.resolve(handle.point));
             let value = screen.zip(point).map(|(screen, point)| {
-                let text = screen.row_by_id(point.row).and_then(|row| row.cells.get(point.col))
-                    .map(|cell| cell.text.chars().map(u32::from).collect::<Vec<_>>());
+                let text = screen.row_by_id(point.row).filter(|row| point.col < row.cells.len())
+                    .map(|row| screen.cell_text(row, point.col).chars().map(u32::from).collect::<Vec<_>>());
                 json!({"location": location(screen, point), "text": text})
             });
             json!({"id": handle.id, "screen": if handle.alternate { "alternate" } else { "primary" }, "value": value})

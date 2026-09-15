@@ -40,5 +40,8 @@ fn tab_motion_preserves_pending_wrap() {
     terminal.feed(b"\x1b[I");
     assert!(terminal.screen().cursor.pending_wrap);
     terminal.feed(b"Y");
-    assert_eq!(terminal.screen().rows[1].cells[0].text, "Y");
+    assert_eq!(
+        &*terminal.screen().cell_text(&terminal.screen().rows[1], 0),
+        "Y"
+    );
 }
