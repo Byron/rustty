@@ -16,7 +16,10 @@ fn backward_aliases_move_left_and_up_with_default_counts() {
 
     let mut terminal = Terminal::new(16, 3, 0);
     terminal.feed(b"o\x1b[j\\\x1b[I");
-    assert_eq!(terminal.screen().rows[0].cells[0].text, "\\");
+    assert_eq!(
+        &*terminal.screen().cell_text(&terminal.screen().rows[0], 0),
+        "\\"
+    );
     assert_eq!(terminal.screen().cursor.col, 8);
 }
 

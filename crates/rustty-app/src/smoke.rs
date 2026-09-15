@@ -199,7 +199,7 @@ impl Smoke {
                 {
                     let terminal = app.panes[&pane].session.terminal()?;
                     let cells = &terminal.screen().rows[0].cells;
-                    if cells[2].text != "✔️"
+                    if &*terminal.screen().cell_text(&terminal.screen().rows[0], 2) != "✔️"
                         || (cells[2].width, cells[3].width) != (2, 0)
                         || cells[3].style.background != vt::Color::Indexed(15)
                     {

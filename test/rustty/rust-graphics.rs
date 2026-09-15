@@ -31,7 +31,7 @@ fn placeholders(screen: &Screen, cell: [u32; 2]) -> Vec<Value> {
     screen
         .viewport()
         .flat_map(|row| {
-            unicode::placements(row).map(|p| {
+            unicode::placements(screen, row).map(|p| {
                 let target = screen
                     .graphics
                     .placeholder_target(p.image_id, p.placement_id);

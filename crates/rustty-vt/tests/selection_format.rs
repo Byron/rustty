@@ -187,7 +187,10 @@ fn full_vt_export_restores_pending_wrap_before_the_active_cursor_attributes() {
     assert_eq!(replayed.screen().kitty_keyboard.current(), 21);
     terminal.feed(b"e");
     replayed.feed(b"e");
-    assert_eq!(replayed.screen().rows, terminal.screen().rows);
+    assert_eq!(
+        serde_json::to_value(replayed.screen()).unwrap()["rows"],
+        serde_json::to_value(terminal.screen()).unwrap()["rows"],
+    );
     assert_eq!(replayed.screen().cursor, terminal.screen().cursor);
 }
 
@@ -205,7 +208,7 @@ fn state_only_vt_export_restores_terminal_settings_without_printing_content() {
             .screen()
             .rows
             .iter()
-            .all(|row| row.text().is_empty())
+            .all(|row| replayed.screen().row_text(row).is_empty())
     );
     assert_eq!(replayed.screen().cursor, terminal.screen().cursor);
     for mode in [1, 7, 69] {

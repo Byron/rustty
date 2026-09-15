@@ -328,7 +328,7 @@ impl Window {
         let rows: Vec<_> = (start..start + count)
             .map(|row| screen_row(screen, row))
             .collect();
-        let line = literal_text(&rows);
+        let line = literal_text(screen, &rows);
         let len = line.text.len();
         if len == 0 {
             return 0;
@@ -893,10 +893,11 @@ mod tests {
         drop(search);
         terminal.resize(5, 4);
         expected.resize(5, 4);
-        assert_eq!(
-            terminal.screen().all_rows().collect::<Vec<_>>(),
-            expected.screen().all_rows().collect::<Vec<_>>()
-        );
+        let actual = serde_json::to_value(terminal.screen()).unwrap();
+        let expected = serde_json::to_value(expected.screen()).unwrap();
+        for field in ["history", "rows"] {
+            assert_eq!(actual[field], expected[field]);
+        }
     }
 
     #[test]

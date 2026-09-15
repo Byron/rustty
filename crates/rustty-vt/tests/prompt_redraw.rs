@@ -16,11 +16,11 @@ fn resizing_applies_all_none_and_last_prompt_redraw_policies() {
         let mut terminal = snapshot::decode(bytes.as_slice(), Default::default()).unwrap();
         terminal.resize(20, 4);
         assert_eq!(
-            terminal.screen().rows[0].text(),
+            terminal.screen().row_text(&terminal.screen().rows[0]),
             if policy == "1" { "" } else { "first" }
         );
         assert_eq!(
-            terminal.screen().rows[1].text(),
+            terminal.screen().row_text(&terminal.screen().rows[1]),
             if policy == "0" { "secondinput" } else { "" }
         );
         assert_eq!(terminal.screen().cursor.style.background, Color::Indexed(4));
@@ -50,13 +50,26 @@ fn primary_prompt_redraw_runs_while_the_alternate_screen_is_active() {
     let mut terminal = Terminal::new(16, 4, 20);
     terminal.feed(b"\x1b]133;A\x07prompt\x1b[?1049hALT");
     terminal.resize(20, 4);
-    assert!(terminal.primary_screen().rows[0].text().is_empty());
-    assert!(terminal.screen().rows[0].text().contains("ALT"));
+    assert!(
+        terminal
+            .primary_screen()
+            .row_text(&terminal.primary_screen().rows[0])
+            .is_empty()
+    );
+    assert!(
+        terminal
+            .screen()
+            .row_text(&terminal.screen().rows[0])
+            .contains("ALT")
+    );
 
     let mut terminal = Terminal::new(16, 4, 20);
     terminal.feed(b"\x1b[?1049h\x1b]133;A\x07prompt");
     terminal.resize(20, 4);
-    assert_eq!(terminal.screen().rows[0].text(), "prompt");
+    assert_eq!(
+        terminal.screen().row_text(&terminal.screen().rows[0]),
+        "prompt"
+    );
 }
 
 #[test]
@@ -68,10 +81,13 @@ fn last_redraw_clears_unmarked_input_and_same_size_resize_keeps_it() {
                 .as_bytes(),
         );
         terminal.resize(16, 4);
-        assert_eq!(terminal.screen().rows[0].text(), "input");
+        assert_eq!(
+            terminal.screen().row_text(&terminal.screen().rows[0]),
+            "input"
+        );
         terminal.resize(20, 4);
         assert_eq!(
-            terminal.screen().rows[0].text(),
+            terminal.screen().row_text(&terminal.screen().rows[0]),
             if policy == "last" { "" } else { "input" }
         );
     }
@@ -87,7 +103,7 @@ fn all_redraw_reaches_prompt_history_and_rows_below_the_cursor() {
         terminal
             .screen()
             .all_rows()
-            .all(|row| row.text().is_empty())
+            .all(|row| terminal.screen().row_text(row).is_empty())
     );
 
     let mut terminal = Terminal::new(16, 4, 20);
@@ -97,6 +113,6 @@ fn all_redraw_reaches_prompt_history_and_rows_below_the_cursor() {
         terminal
             .screen()
             .all_rows()
-            .all(|row| row.text().is_empty())
+            .all(|row| terminal.screen().row_text(row).is_empty())
     );
 }

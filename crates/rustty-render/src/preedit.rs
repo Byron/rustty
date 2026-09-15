@@ -130,7 +130,7 @@ mod tests {
     fn multilingual_preedit_tracks_native_caret_without_mutating_terminal() {
         let mut terminal = Terminal::new(12, 3, 100);
         terminal.feed(b"unchanged\r\nabc");
-        let before = terminal.screen().rows.clone();
+        let before = rustty_vt::snapshot::encode_to_vec(&terminal).unwrap();
         let mut renderer = Renderer::new(FontConfig::default()).unwrap();
         let metrics = renderer.metrics();
         let text = "にほんe\u{301}🙂";
@@ -153,7 +153,10 @@ mod tests {
             )
             .unwrap();
         let frame = renderer.prepare(terminal.screen(), &options).unwrap();
-        assert_eq!(terminal.screen().rows, before);
+        assert_eq!(
+            rustty_vt::snapshot::encode_to_vec(&terminal).unwrap(),
+            before
+        );
         let caret = frame.ime_cursor.unwrap();
         assert_eq!(caret[1], options.padding[1] + metrics.cell_height as f32);
         assert!(
@@ -179,7 +182,10 @@ mod tests {
         options.preedit = None;
         let restored = renderer.prepare(terminal.screen(), &options).unwrap();
         assert!(restored.ime_cursor.is_none());
-        assert_eq!(terminal.screen().rows, before);
+        assert_eq!(
+            rustty_vt::snapshot::encode_to_vec(&terminal).unwrap(),
+            before
+        );
     }
 
     #[test]

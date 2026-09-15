@@ -120,6 +120,7 @@ impl Session {
         let mut writer = pair.master.take_writer().map_err(error)?;
 
         let mut terminal = Terminal::with_limits(cols, rows, scrollback_limits(config));
+        terminal.set_scrollback_memory_limit(config.scrollback_limit_bytes);
         // Like Ghostty, this policy applies to new sessions, not config reloads.
         terminal.set_default_mode(
             true,
@@ -436,6 +437,7 @@ impl Session {
     pub fn apply_config(&self, config: &Config) -> io::Result<()> {
         let mut terminal = self.terminal()?;
         terminal.set_limits(scrollback_limits(config));
+        terminal.set_scrollback_memory_limit(config.scrollback_limit_bytes);
         apply_appearance(&mut terminal, config);
         Ok(())
     }
@@ -824,7 +826,10 @@ mod tests {
                         rustty_vt::Color::Default
                     },
                 );
-                assert_eq!(cells[2].text, "✔️");
+                assert_eq!(
+                    &*terminal.screen().cell_text(&terminal.screen().rows[0], 2),
+                    "✔️"
+                );
                 assert_eq!(
                     (cells[2].width, cells[3].width),
                     if wide { (2, 0) } else { (1, 1) }
@@ -1264,6 +1269,41 @@ mod tests {
                 .is_ok()
         );
         assert_eq!(idle_checks, 1, "an idle child must not be polled");
+    }
+
+    #[test]
+    fn configured_scrollback_memory_is_bounded_across_reload_and_reset() {
+        let mut config = Config::default();
+        config.scrollback_limit_bytes = Some(24 * 1024);
+        let session = Session::spawn(
+            &config,
+            SessionOptions {
+                rows: 2,
+                command: Some(Command::Direct(vec!["/bin/sleep".into(), "30".into()])),
+                ..SessionOptions::default()
+            },
+            Arc::new(|| {}),
+        )
+        .unwrap();
+        let output = b"line\r\n".repeat(40);
+        let before_reload = {
+            let mut terminal = session.terminal().unwrap();
+            terminal.feed(&output);
+            assert!(!terminal.screen().history.is_empty());
+            assert!(terminal.screen().history_bytes() <= 24 * 1024);
+            terminal.screen().history_bytes()
+        };
+
+        config.scrollback_limit_bytes = Some(12 * 1024);
+        session.apply_config(&config).unwrap();
+        let mut terminal = session.terminal().unwrap();
+        assert!(!terminal.screen().history.is_empty());
+        assert!(terminal.screen().history_bytes() < before_reload);
+        assert!(terminal.screen().history_bytes() <= 12 * 1024);
+        terminal.feed(b"\x1bc");
+        terminal.feed(&output);
+        assert!(!terminal.screen().history.is_empty());
+        assert!(terminal.screen().history_bytes() <= 12 * 1024);
     }
 
     #[test]

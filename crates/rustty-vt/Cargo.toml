@@ -18,6 +18,13 @@ flate2.workspace = true
 lz4_flex.workspace = true
 crc32c.workspace = true
 
+[dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+
 [[example]]
 name = "parity"
 path = "../../test/rustty/rust-oracle.rs"
+
+[[bench]]
+name = "primitives"
+harness = false

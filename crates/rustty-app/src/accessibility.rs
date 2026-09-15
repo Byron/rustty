@@ -35,10 +35,11 @@ impl TerminalText {
                     if content.width == 0 || content.spacer_head {
                         continue;
                     }
-                    let text = if content.text.is_empty() {
+                    let content_text = screen.cell_text(row, col);
+                    let text = if content_text.is_empty() {
                         " "
                     } else {
-                        &content.text
+                        &content_text
                     };
                     // AccessKit uses u8 byte lengths. Exceptionally long graphemes
                     // need several units, all of which still select the same cell.

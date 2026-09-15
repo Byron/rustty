@@ -169,6 +169,7 @@ fn complete_display_erasure_scrolls_a_bottom_prompt_into_history() {
     assert_eq!(terminal.screen().cursor.col, 0);
     assert!(!terminal.screen().history.is_empty());
     assert!(terminal.screen().rows.iter().all(|row| {
-        row.semantic == SemanticContent::Output && row.cells.iter().all(|cell| cell.text.is_empty())
+        row.semantic == SemanticContent::Output
+            && row.cells.iter().all(|cell| cell.codepoint.is_none())
     }));
 }

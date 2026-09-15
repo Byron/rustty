@@ -414,5 +414,5 @@ impl Grid<'_> {
 }
 
 fn codepoint(cell: &Cell) -> Option<char> {
-    cell.text.chars().next().filter(|&c| c != '\0')
+    cell.codepoint.filter(|&c| c != '\0')
 }

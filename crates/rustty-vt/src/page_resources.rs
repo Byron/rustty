@@ -1,6 +1,8 @@
 //! Page resource allocation offsets without native backing memory.
 use crate::page_layout::{BitmapLayout, SetLayout};
 use crate::screen::{Cell, Cursor, HyperlinkId, Style};
+use std::num::NonZeroU32;
+use std::sync::Arc;
 
 /// Native PAGE set bookkeeping, shared by snapshot admission and live styles.
 /// Dead IDs retain their buckets until admission reclaims them or the page is
@@ -371,28 +373,16 @@ pub(crate) struct Hyperlink {
 
 impl Hyperlink {
     pub fn from_cell(cell: &Cell) -> Option<Self> {
-        cell.hyperlink.as_ref().map(|uri| Self {
-            id: cell
-                .hyperlink_id
-                .clone()
-                .unwrap_or(HyperlinkId::Implicit(0)),
-            uri: cell
-                .hyperlink_raw
-                .clone()
-                .unwrap_or_else(|| uri.as_bytes().to_vec()),
+        cell.hyperlink.as_ref().map(|link| Self {
+            id: link.id.clone().unwrap_or(HyperlinkId::Implicit(0)),
+            uri: link.uri_bytes().to_vec(),
         })
     }
 
     pub fn from_cursor(cursor: &Cursor) -> Option<Self> {
-        cursor.hyperlink.as_ref().map(|uri| Self {
-            id: cursor
-                .hyperlink_id
-                .clone()
-                .unwrap_or(HyperlinkId::Implicit(0)),
-            uri: cursor
-                .hyperlink_raw
-                .clone()
-                .unwrap_or_else(|| uri.as_bytes().to_vec()),
+        cursor.hyperlink.as_ref().map(|link| Self {
+            id: link.id.clone().unwrap_or(HyperlinkId::Implicit(0)),
+            uri: link.uri_bytes().to_vec(),
         })
     }
 }
@@ -652,16 +642,19 @@ impl HyperlinkAdmission {
 /// A cell's unique suffix allocation. Moves keep it; copies allocate a new run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct GraphemeAllocation {
-    offset: std::num::NonZeroU32,
+    offset: NonZeroU32,
     pub len: u8,
 }
 
-/// Native grapheme map admission and bitmap fragmentation, without backing data.
+/// Native grapheme admission and shared text for the cells that own each run.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct GraphemeAdmission {
     allocator: BitmapAllocator<16>,
     count: usize,
     capacity: usize,
+    // Only allocation starts own text; continuation chunks stay empty. Grow
+    // lazily so scalar-only pages and admission probes allocate no text slots.
+    texts: Vec<Option<Arc<str>>>,
 }
 
 impl GraphemeAdmission {
@@ -670,11 +663,69 @@ impl GraphemeAdmission {
             allocator: BitmapAllocator::new(layout),
             count: 0,
             capacity,
+            texts: Vec::new(),
         }
     }
 
     pub fn used_bytes(&self) -> usize {
         self.allocator.used_bytes()
+    }
+
+    pub fn text(&self, allocation: GraphemeAllocation) -> &str {
+        self.texts[self.text_index(allocation)]
+            .as_deref()
+            .expect("grapheme allocation has text")
+    }
+
+    pub fn text_arc(&self, allocation: GraphemeAllocation) -> Arc<str> {
+        self.texts[self.text_index(allocation)]
+            .as_ref()
+            .expect("grapheme allocation has text")
+            .clone()
+    }
+
+    fn text_index(&self, allocation: GraphemeAllocation) -> usize {
+        (allocation.offset.get() as usize - self.allocator.chunks_start) / 16
+    }
+
+    fn text_slot(&mut self, allocation: GraphemeAllocation) -> &mut Option<Arc<str>> {
+        let index = self.text_index(allocation);
+        if self.texts.len() <= index {
+            self.texts.resize_with(index + 1, || None);
+        }
+        &mut self.texts[index]
+    }
+
+    pub fn set_text(&mut self, allocation: GraphemeAllocation, text: Arc<str>) {
+        debug_assert_eq!(text.chars().count(), usize::from(allocation.len) + 1);
+        *self.text_slot(allocation) = Some(text);
+    }
+
+    /// Copy visible owners without repacking runs into a different layout.
+    pub fn clone_subset(&self, allocations: impl Iterator<Item = GraphemeAllocation>) -> Self {
+        let mut result = Self {
+            allocator: BitmapAllocator {
+                bitmaps: vec![0; self.allocator.bitmaps.len()],
+                chunks_start: self.allocator.chunks_start,
+                search_start: 0,
+            },
+            count: 0,
+            capacity: self.capacity,
+            texts: Vec::new(),
+        };
+        for allocation in allocations {
+            let chunk = (allocation.offset.get() as usize - result.allocator.chunks_start) / 16;
+            let chunks = usize::from(allocation.len).div_ceil(4);
+            result.allocator.set_bits(chunk, chunks, true);
+            assert!(
+                result
+                    .text_slot(allocation)
+                    .replace(self.text_arc(allocation))
+                    .is_none()
+            );
+            result.count += 1;
+        }
+        result
     }
 
     pub fn acquire(&mut self, len: u8) -> Result<GraphemeAllocation, SetFull> {
@@ -689,7 +740,7 @@ impl GraphemeAdmission {
         }
         self.count += 1;
         Ok(GraphemeAllocation {
-            offset: std::num::NonZeroU32::new(offset.try_into().unwrap()).unwrap(),
+            offset: NonZeroU32::new(offset.try_into().unwrap()).unwrap(),
             len,
         })
     }
@@ -713,7 +764,11 @@ impl GraphemeAdmission {
                 previous.offset.get() as usize,
                 usize::from(previous.len) * 4,
             );
-            previous.offset = std::num::NonZeroU32::new(offset.try_into().unwrap()).unwrap();
+            let old_index = self.text_index(previous);
+            previous.offset = NonZeroU32::new(offset.try_into().unwrap()).unwrap();
+            if let Some(text) = self.texts.get_mut(old_index).and_then(Option::take) {
+                assert!(self.text_slot(previous).replace(text).is_none());
+            }
         }
         previous.len += 1;
         Ok(previous)
@@ -725,6 +780,10 @@ impl GraphemeAdmission {
             usize::from(allocation.len) * 4,
         );
         self.count -= 1;
+        let index = self.text_index(allocation);
+        if let Some(slot) = self.texts.get_mut(index) {
+            *slot = None;
+        }
     }
 
     #[cfg(test)]
@@ -744,6 +803,10 @@ impl GraphemeAdmission {
             remaining.release(allocation);
         }
         assert_eq!(remaining.used_bytes(), 0, "unowned grapheme allocations");
+        assert!(
+            remaining.texts.iter().all(Option::is_none),
+            "unowned grapheme text"
+        );
     }
 }
 
@@ -1317,6 +1380,139 @@ mod tests {
         arena.free(first, 6 * 4);
         assert_eq!(arena.used_bytes(), 16);
         assert_eq!(arena.alloc(4), Some(first));
+    }
+
+    #[test]
+    fn grapheme_text_survives_failed_growth_and_follows_its_allocation() {
+        let mut graphemes = GraphemeAdmission {
+            allocator: allocator::<16>(1),
+            capacity: 64,
+            ..Default::default()
+        };
+        let first = graphemes.acquire(4).unwrap();
+        let text: Arc<str> = "a\u{301}\u{302}\u{303}\u{304}".into();
+        graphemes.set_text(first, text.clone());
+        let mut occupied: Vec<_> = (1..64).map(|_| graphemes.acquire(1).unwrap()).collect();
+
+        assert_eq!(graphemes.append(Some(first)), Err(SetFull::OutOfMemory));
+        assert_eq!(graphemes.used_bytes(), 1024);
+        assert_eq!(graphemes.text(first), &*text);
+        assert!(Arc::ptr_eq(&graphemes.text_arc(first), &text));
+
+        graphemes.release(occupied.pop().unwrap());
+        graphemes.release(occupied.pop().unwrap());
+        let grown = graphemes.append(Some(first)).unwrap();
+        assert_ne!(grown.offset, first.offset);
+        assert_eq!(grown.len, 5);
+        assert!(graphemes.texts[graphemes.text_index(first)].is_none());
+        assert!(Arc::ptr_eq(&graphemes.text_arc(grown), &text));
+
+        let extended: Arc<str> = format!("{text}\u{305}").into();
+        graphemes.set_text(grown, extended.clone());
+        let snapshot = graphemes.clone();
+        graphemes.release(grown);
+        assert!(graphemes.texts.iter().all(Option::is_none));
+        assert!(Arc::ptr_eq(&snapshot.text_arc(grown), &extended));
+        for allocation in occupied {
+            graphemes.release(allocation);
+        }
+        assert_eq!(graphemes.used_bytes(), 0);
+        let reused = graphemes.acquire(4).unwrap();
+        assert_eq!(reused.offset, first.offset);
+        assert!(graphemes.texts.iter().all(Option::is_none));
+        graphemes.release(reused);
+    }
+
+    #[test]
+    fn grapheme_subset_keeps_offsets_when_repacking_would_exhaust_capacity() {
+        let mut source = GraphemeAdmission {
+            allocator: allocator::<16>(2),
+            capacity: 128,
+            ..Default::default()
+        };
+        let allocations: Vec<_> = [15, 15, 15, 15, 4, 15, 15, 15, 15, 4]
+            .into_iter()
+            .map(|chunks| {
+                let allocation = source.acquire(chunks * 4).unwrap();
+                source.set_text(
+                    allocation,
+                    format!("a{}", "\u{301}".repeat(usize::from(allocation.len))).into(),
+                );
+                allocation
+            })
+            .collect();
+        let reordered: Vec<_> = [4, 9, 0, 1, 2, 3, 5, 6, 7, 8]
+            .map(|index| allocations[index])
+            .into();
+        let mut repacked = GraphemeAdmission {
+            allocator: allocator::<16>(2),
+            capacity: 128,
+            ..Default::default()
+        };
+        assert!(
+            reordered
+                .iter()
+                .any(|allocation| repacked.acquire(allocation.len).is_err())
+        );
+
+        let snapshot = source.clone_subset(reordered.iter().copied());
+        snapshot.assert_allocations(reordered.iter().copied());
+        for allocation in &reordered {
+            assert!(Arc::ptr_eq(
+                &source.text_arc(*allocation),
+                &snapshot.text_arc(*allocation)
+            ));
+        }
+        let mut subset = source.clone_subset(std::iter::once(reordered[0]));
+        subset.assert_allocations(std::iter::once(reordered[0]));
+        assert_eq!(subset.texts.iter().flatten().count(), 1);
+        subset.release(reordered[0]);
+        assert_eq!(subset.used_bytes(), 0);
+        assert!(subset.texts.iter().all(Option::is_none));
+        source.assert_allocations(allocations.into_iter());
+    }
+
+    #[test]
+    fn sparse_grapheme_slots_follow_chunks_not_map_capacity() {
+        let layout = PageCapacity {
+            grapheme_bytes: 48,
+            ..PageCapacity::STANDARD
+        }
+        .metadata()
+        .unwrap();
+        let mut graphemes = GraphemeAdmission::new(
+            layout.grapheme_alloc_layout,
+            layout.grapheme_map_layout.capacity as usize,
+        );
+        assert_eq!(graphemes.capacity, 4);
+        assert_eq!(graphemes.allocator.chunks_start, 8);
+        let allocations = std::array::from_fn::<_, 4, _>(|_| graphemes.acquire(64).unwrap());
+        assert!(
+            graphemes.texts.is_empty(),
+            "admission probes need no text slots"
+        );
+        assert_eq!(
+            allocations.map(|a| graphemes.text_index(a)),
+            [0, 16, 32, 48]
+        );
+        let text: Arc<str> = format!("a{}", "\u{301}".repeat(64)).into();
+        for allocation in allocations {
+            graphemes.set_text(allocation, text.clone());
+            assert_eq!(graphemes.text(allocation), &*text);
+        }
+        assert_eq!(graphemes.texts.len(), 49);
+        assert_eq!(graphemes.texts.iter().flatten().count(), 4);
+        let snapshot = graphemes.clone_subset(std::iter::once(allocations[3]));
+        graphemes.release(allocations[3]);
+        let reused = graphemes.acquire(64).unwrap();
+        assert_eq!(reused, allocations[3]);
+        assert!(graphemes.texts[48].is_none());
+        assert!(Arc::ptr_eq(&snapshot.text_arc(reused), &text));
+        graphemes.release(reused);
+        for allocation in &allocations[..3] {
+            graphemes.release(*allocation);
+        }
+        graphemes.assert_allocations(std::iter::empty());
     }
 
     #[test]

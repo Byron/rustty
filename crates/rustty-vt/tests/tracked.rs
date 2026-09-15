@@ -145,7 +145,7 @@ fn scroll_pins_follow_native_history_insertion_and_no_history_clamping() {
         );
         let last = screen.resolve(last).unwrap();
         assert_eq!(
-            screen.row_by_id(last.row).unwrap().cells[last.col].text,
+            &*screen.cell_text(screen.row_by_id(last.row).unwrap(), last.col),
             if alternate { "d" } else { "" }
         );
     }

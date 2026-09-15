@@ -50,10 +50,10 @@ fn snapshot_grapheme_capacity_drops_whole_clusters_and_limits_suffix_length() {
             }
         }
         let terminal = decode(frame(&parts).as_slice(), DecodeOptions::default()).unwrap();
-        let actual = terminal.screen().rows[0]
-            .cells
-            .iter()
-            .map(|cell| cell.text.chars().count())
+        let screen = terminal.screen();
+        let row = &screen.rows[0];
+        let actual = (0..row.cells.len())
+            .map(|col| screen.cell_text(row, col).chars().count())
             .collect::<Vec<_>>();
         assert_eq!(actual, expected, "capacity={capacity}");
     }
@@ -141,10 +141,13 @@ fn repeated_nul_prints_empty_cells_with_the_current_pen() {
         }
         assert_eq!(terminal.screen().cursor.col, 6, "restored={restored}");
         for cell in &terminal.screen().rows[0].cells[3..6] {
-            assert!(cell.text.is_empty(), "restored={restored}");
+            assert!(cell.codepoint.is_none(), "restored={restored}");
             assert_eq!(cell.width, 1);
             assert_eq!(cell.style.foreground, Color::Indexed(1));
-            assert_eq!(cell.hyperlink.as_deref(), Some("https://example.org"));
+            assert_eq!(
+                cell.hyperlink.as_deref().map(|link| link.uri.as_str()),
+                Some("https://example.org")
+            );
         }
     }
 }
@@ -271,8 +274,8 @@ fn raised_decode_budget_keeps_the_normal_capture_limit() {
     assert!(encode_to_vec(&terminal).is_ok());
 }
 
-fn text<'a>(rows: impl IntoIterator<Item = &'a Row>) -> Vec<String> {
-    rows.into_iter().map(Row::text).collect()
+fn text<'a>(screen: &Screen, rows: impl IntoIterator<Item = &'a Row>) -> Vec<String> {
+    rows.into_iter().map(|row| screen.row_text(row)).collect()
 }
 
 fn same_screen(expected: &Screen, actual: &Screen) {
@@ -283,7 +286,29 @@ fn same_screen(expected: &Screen, actual: &Screen) {
         .chain(&expected.rows)
         .zip(actual.history.iter().chain(&actual.rows))
     {
-        assert_eq!(a.cells, b.cells);
+        assert_eq!(a.cells.len(), b.cells.len());
+        for col in 0..a.cells.len() {
+            assert_eq!(&*expected.cell_text(a, col), &*actual.cell_text(b, col));
+            let (a, b) = (&a.cells[col], &b.cells[col]);
+            assert_eq!(
+                (
+                    a.width,
+                    a.style,
+                    &a.hyperlink,
+                    a.protected,
+                    a.semantic,
+                    a.spacer_head
+                ),
+                (
+                    b.width,
+                    b.style,
+                    &b.hyperlink,
+                    b.protected,
+                    b.semantic,
+                    b.spacer_head
+                ),
+            );
+        }
         assert_eq!(a.wrapped, b.wrapped);
         assert_eq!(a.wrap_continuation, b.wrap_continuation);
         assert_eq!(a.semantic, b.semantic);
@@ -323,20 +348,38 @@ fn ghostty_fixture_streams_history_and_leaves_transport_unread() {
     assert_eq!(terminal.working_directory, "file:///tmp/snapshot");
     assert_eq!(terminal.palette[7], [1, 2, 3]);
     assert!(terminal.is_alternate_screen());
-    assert_eq!(text(&terminal.primary_screen().rows), ["C", "D", "E"]);
-    assert_eq!(text(&terminal.screen().rows), ["rn", "at", "e"]);
+    assert_eq!(
+        text(terminal.primary_screen(), &terminal.primary_screen().rows),
+        ["C", "D", "E"]
+    );
+    assert_eq!(
+        text(terminal.screen(), &terminal.screen().rows),
+        ["rn", "at", "e"]
+    );
     assert_eq!(decoder.history_rows(), [4, 0]);
     assert!(terminal.primary_screen().history.is_empty());
     assert_eq!(
         decoder.next_history(&mut terminal).unwrap().unwrap().rows,
         2
     );
-    assert_eq!(text(&terminal.primary_screen().history), ["B", ""]);
+    assert_eq!(
+        text(
+            terminal.primary_screen(),
+            &terminal.primary_screen().history
+        ),
+        ["B", ""]
+    );
     assert_eq!(
         decoder.next_history(&mut terminal).unwrap().unwrap().rows,
         2
     );
-    assert_eq!(text(&terminal.primary_screen().history), ["A", "", "B", ""]);
+    assert_eq!(
+        text(
+            terminal.primary_screen(),
+            &terminal.primary_screen().history
+        ),
+        ["A", "", "B", ""]
+    );
     assert!(decoder.next_history(&mut terminal).unwrap().is_none());
     let mut tail = String::new();
     decoder.into_inner().read_to_string(&mut tail).unwrap();
@@ -491,7 +534,13 @@ fn streaming_restore_uses_the_minimum_scrollback_budget() {
             rows += progress.rows;
         }
         assert_eq!(rows, expected.len());
-        assert_eq!(text(&terminal.primary_screen().history), expected);
+        assert_eq!(
+            text(
+                terminal.primary_screen(),
+                &terminal.primary_screen().history
+            ),
+            expected
+        );
     }
 }
 
@@ -512,7 +561,13 @@ fn streaming_restore_obeys_page_budget_and_discards_history_after_resize() {
         }
         let expected = if resize { vec![] } else { vec!["B", ""] };
         assert_eq!(rows, expected.len());
-        assert_eq!(text(&terminal.primary_screen().history), expected);
+        assert_eq!(
+            text(
+                terminal.primary_screen(),
+                &terminal.primary_screen().history
+            ),
+            expected
+        );
     }
 }
 
@@ -547,7 +602,13 @@ fn streaming_history_checks_width_when_each_page_arrives() {
             } else {
                 vec![]
             };
-            assert_eq!(text(&terminal.primary_screen().history), expected);
+            assert_eq!(
+                text(
+                    terminal.primary_screen(),
+                    &terminal.primary_screen().history
+                ),
+                expected
+            );
         }
     }
 }
@@ -562,23 +623,29 @@ fn ghostty_sparse_page_preserves_styles_links_graphemes_and_wide_cells() {
     let terminal = decode(frame(&stream).as_slice(), DecodeOptions::default()).unwrap();
     let rows = &terminal.screen().rows;
     let first = &rows[0].cells[0];
-    assert_eq!(first.text, "A");
+    assert_eq!(first.codepoint, Some('A'));
     assert_eq!(first.width, 2);
     assert!(first.protected && first.style.bold);
     assert_eq!(first.semantic, SemanticContent::Prompt);
-    assert_eq!(first.hyperlink.as_deref(), Some("alpha"));
     assert_eq!(
-        first.hyperlink_id,
+        first.hyperlink.as_deref().map(|link| link.uri.as_str()),
+        Some("alpha")
+    );
+    assert_eq!(
+        first.hyperlink.as_ref().unwrap().id,
         Some(HyperlinkId::Explicit(b"a".to_vec()))
     );
     assert_eq!(rows[0].cells[1].width, 0);
     assert_eq!(rows[0].cells[1].style.background, Color::Indexed(42));
     assert_eq!(
-        rows[0].cells[1].hyperlink_id,
+        rows[0].cells[1].hyperlink.as_ref().unwrap().id,
         Some(HyperlinkId::Implicit(0x01020304))
     );
     assert_eq!(rows[0].cells[2].style.background, Color::Indexed(7));
-    assert_eq!(rows[1].cells[0].text, "x\u{301}\u{302}");
+    assert_eq!(
+        &*terminal.screen().cell_text(&rows[1], 0),
+        "x\u{301}\u{302}"
+    );
     assert_eq!(
         rows[1].cells[1].style.background,
         Color::Rgb(0xaa, 0xbb, 0xcc)
@@ -637,7 +704,12 @@ fn invalid_utf8_metadata_and_links_survive_without_loss() {
         records(&encode_to_vec(&restored).unwrap())[0]
     );
     assert_eq!(
-        restored.screen().cursor.hyperlink_raw.as_deref(),
+        restored
+            .screen()
+            .cursor
+            .hyperlink
+            .as_deref()
+            .and_then(|link| link.raw.as_deref()),
         Some(b"https://x/\xfd".as_slice())
     );
 }
@@ -729,7 +801,10 @@ fn mixed_physical_widths_survive_observation_and_grow_before_mutation() {
     assert_eq!(terminal.screen().rows[0].cells.len(), 4);
     terminal.feed(b"mX");
     assert_eq!(terminal.screen().rows[0].cells.len(), 8);
-    assert_eq!(text(&terminal.screen().rows), ["abcd", "X"]);
+    assert_eq!(
+        text(terminal.screen(), &terminal.screen().rows),
+        ["abcd", "X"]
+    );
     assert!(!terminal.screen().rows[0].wrapped);
     assert_eq!(
         terminal.screen().rows[1].cells[0].style.foreground,
@@ -742,7 +817,7 @@ fn mixed_physical_widths_survive_observation_and_grow_before_mutation() {
     assert_eq!(query.screen().cursor.col, 3);
     query.feed(b"\x1b[1;8H!");
     assert_eq!(query.screen().rows[0].cells.len(), 8);
-    assert_eq!(query.screen().rows[0].cells[7].text, "!");
+    assert_eq!(query.screen().rows[0].cells[7].codepoint, Some('!'));
     assert_eq!(query.screen().page_allocations().next().unwrap().columns, 8);
     let restored = decode(
         encode_to_vec(&query).unwrap().as_slice(),
@@ -769,7 +844,10 @@ fn mixed_physical_widths_survive_observation_and_grow_before_mutation() {
         b"\x1b[?1049hY\x1b[?1049lZ",
     ] {
         let mut terminal = decode(bytes.as_slice(), DecodeOptions::default()).unwrap();
-        assert_eq!(terminal.screen().rows[0].text(), "abcdef");
+        assert_eq!(
+            terminal.screen().row_text(&terminal.screen().rows[0]),
+            "abcdef"
+        );
         terminal.feed(input);
         assert!(terminal.screen().all_rows().all(|row| row.cells.len() >= 4));
         assert!(terminal.screen().cursor.col < 4);
@@ -780,10 +858,13 @@ fn mixed_physical_widths_survive_observation_and_grow_before_mutation() {
     let mut terminal = decode(bytes.as_slice(), DecodeOptions::default()).unwrap();
     terminal.feed(b"X");
     assert_eq!(terminal.screen().rows[0].cells.len(), 8);
-    assert_eq!(terminal.screen().rows[0].text(), "Xbcdef");
+    assert_eq!(
+        terminal.screen().row_text(&terminal.screen().rows[0]),
+        "Xbcdef"
+    );
     terminal.feed(b"\x1b[2J");
     assert_eq!(terminal.screen().rows[0].cells.len(), 8);
-    assert_eq!(terminal.screen().rows[0].text(), "");
+    assert_eq!(terminal.screen().row_text(&terminal.screen().rows[0]), "");
 }
 
 #[test]
@@ -808,7 +889,7 @@ fn narrow_restored_pages_support_direct_cursor_and_row_edits() {
         let mut terminal = decode(bytes.as_slice(), DecodeOptions::default()).unwrap();
         assert_eq!(terminal.screen().rows[0].cells.len(), 4);
         terminal.feed(input);
-        assert_eq!(text(&terminal.screen().rows), expected);
+        assert_eq!(text(terminal.screen(), &terminal.screen().rows), expected);
         assert_eq!(terminal.screen().rows[0].cells.len(), 8);
         let restored = decode(
             encode_to_vec(&terminal).unwrap().as_slice(),
@@ -867,6 +948,67 @@ fn multirow_page_snapshots_keep_all_owned_resources() {
 }
 
 #[test]
+fn distinct_grapheme_payloads_survive_page_transfer_reflow_and_live_erase() {
+    let expected = ["a\u{301}", "b\u{302}", "c\u{303}"];
+    let mut stream = records(&encode_to_vec(&Terminal::new(4, 3, 10)).unwrap());
+    let pages = expected.map(|cluster| {
+        let mut source = Terminal::new(4, 1, 10);
+        source.feed(cluster.as_bytes());
+        records(&encode_to_vec(&source).unwrap())[2].clone()
+    });
+    stream.splice(2..3, pages);
+    stream[1].1[2..4].copy_from_slice(&3u16.to_le_bytes());
+    let mut terminal = decode(frame(&stream).as_slice(), DecodeOptions::default()).unwrap();
+    assert_eq!(terminal.screen().page_allocations().count(), 3);
+    assert_eq!(text(terminal.screen(), &terminal.screen().rows), expected);
+    let original = terminal.screen().snapshot_viewport();
+
+    // Scroll only the first two rows, transferring b's payload to a's page.
+    terminal.feed(b"\x1b[1;2r\x1b[2;1H\n\x1b[r\x1b[H");
+    let moved = ["b\u{302}", "", "c\u{303}"];
+    assert_eq!(text(terminal.screen(), &terminal.screen().rows), moved);
+    terminal.resize(2, 3);
+    assert_eq!(text(terminal.screen(), &terminal.screen().rows), moved);
+    let viewport = terminal.screen().snapshot_viewport();
+    let restored = decode(
+        encode_to_vec(&terminal).unwrap().as_slice(),
+        DecodeOptions::default(),
+    )
+    .unwrap();
+    same_terminal(&terminal, &restored);
+
+    terminal.feed(b"\x1b[2J");
+    assert_eq!(text(terminal.screen(), &terminal.screen().rows), [""; 3]);
+    assert_eq!(text(&original, &original.rows), expected);
+    assert_eq!(text(&viewport, &viewport.rows), moved);
+}
+
+#[test]
+fn maximum_four_byte_grapheme_preserves_snapshot_and_suffix_limit() {
+    let mut terminal = Terminal::new(4, 2, 0);
+    terminal.feed(b"\x1b[?2027h");
+    let prefix = format!("😀{}", "\u{e0100}".repeat(63));
+    terminal.feed(prefix.as_bytes());
+    let snapshot = terminal.screen().snapshot_viewport();
+
+    terminal.print('\u{e0100}');
+    let full = format!("{prefix}\u{e0100}");
+    assert_eq!(full.len(), 260);
+    terminal.print('\u{e0100}');
+    let screen = terminal.screen();
+    assert_eq!(&*screen.cell_text(&screen.rows[0], 0), full);
+    assert_eq!(&*snapshot.cell_text(&snapshot.rows[0], 0), prefix);
+    let restored = decode(
+        encode_to_vec(&terminal).unwrap().as_slice(),
+        DecodeOptions::default(),
+    )
+    .unwrap();
+    same_terminal(&terminal, &restored);
+    terminal.feed(b"\x1b[2J");
+    assert_eq!(&*snapshot.cell_text(&snapshot.rows[0], 0), prefix);
+}
+
+#[test]
 fn snapshot_rejects_empty_link_strings_before_resource_admission() {
     for (uri, id) in [
         ("", HyperlinkId::Implicit(1)),
@@ -874,8 +1016,10 @@ fn snapshot_rejects_empty_link_strings_before_resource_admission() {
     ] {
         let mut terminal = Terminal::new(2, 1, 10);
         let cell = &mut terminal.screen_mut().rows[0].cells[0];
-        cell.hyperlink = Some(uri.into());
-        cell.hyperlink_id = Some(id);
+        cell.hyperlink = Some(std::sync::Arc::new(rustty_vt::HyperlinkData::new(
+            uri.as_bytes(),
+            Some(id),
+        )));
         assert_eq!(
             encode_to_vec(&terminal).unwrap_err().kind(),
             std::io::ErrorKind::InvalidData
@@ -899,12 +1043,12 @@ fn index_scroll_widens_mixed_pages_before_moving_rows() {
         let mut pages = Vec::new();
         for (page, columns) in widths.into_iter().enumerate() {
             let mut source = Terminal::new(columns, 2, 10);
-            for (row, contents) in source.screen_mut().rows.iter_mut().enumerate() {
-                let value = char::from(b'A' + (page * 2 + row) as u8);
-                for cell in &mut contents.cells {
-                    cell.text = value.to_string();
+            for row in 0..2 {
+                let value = char::from(b'A' + (page * 2 + row) as u8).to_string();
+                for col in 0..usize::from(columns) {
+                    source.screen_mut().set_cell_text(row, col, &value);
                 }
-                contents.wrapped = row == 0;
+                source.screen_mut().rows[row].wrapped = row == 0;
             }
             pages.push(records(&encode_to_vec(&source).unwrap())[2].clone());
         }
@@ -918,7 +1062,7 @@ fn index_scroll_widens_mixed_pages_before_moving_rows() {
             terminal.screen_mut().track(point)
         });
         terminal.feed(b"\x1b[2;6r\x1b[6;2H\x1bD");
-        assert_eq!(text(&terminal.screen().rows), expected);
+        assert_eq!(text(terminal.screen(), &terminal.screen().rows), expected);
         assert_eq!(terminal.screen().rows[1].wrapped, widths[0] < widths[1]);
         assert_eq!(
             terminal
@@ -951,7 +1095,7 @@ fn index_scroll_widens_mixed_pages_before_moving_rows() {
         let pin = history.screen_mut().track(point);
         history.feed(b"\x1b[1;3r\x1b[3;2H\x1bD");
         assert_eq!(
-            text(&history.screen().rows),
+            text(history.screen(), &history.screen().rows),
             if widths[0] == 8 {
                 ["BBBBBBBB", "CCCC", "", "DDDD", "EEEEEEEE", "FFFFFFFF"]
             } else {
@@ -962,7 +1106,7 @@ fn index_scroll_widens_mixed_pages_before_moving_rows() {
         assert_eq!(history.screen().resolve(pin), history.screen().point(3, 1));
         history.feed(b"\x1b[2;6r\x1b[6;2H\x1bD");
         assert_eq!(
-            text(&history.screen().rows),
+            text(history.screen(), &history.screen().rows),
             if widths[0] == 8 {
                 ["BBBBBBBB", "", "DDDD", "EEEEEEEE", "FFFFFFFF", ""]
             } else {
@@ -1029,7 +1173,13 @@ fn terminal_reset_keeps_the_primary_history_restore_destination() {
         } else {
             vec!["A", ""]
         };
-        assert_eq!(text(&terminal.primary_screen().history), expected);
+        assert_eq!(
+            text(
+                terminal.primary_screen(),
+                &terminal.primary_screen().history
+            ),
+            expected
+        );
         assert!(terminal.alternate_screen().is_none());
     }
 }
