@@ -1,8 +1,5 @@
 //! Kitty Unicode placeholder decoding, shared with renderers.
-use crate::{
-    Row,
-    screen::{Cell, Color as TerminalColor},
-};
+use crate::{Row, Screen, screen::Color as TerminalColor};
 
 pub const PLACEHOLDER: char = '\u{10eeee}';
 
@@ -121,20 +118,20 @@ impl Placement {
 }
 
 /// Adjacent cells inherit omitted indices only while their IDs remain compatible.
-pub fn placements(row: &Row) -> impl Iterator<Item = Placement> + '_ {
+pub fn placements<'a>(screen: &'a Screen, row: &'a Row) -> impl Iterator<Item = Placement> + 'a {
     let mut cells = row.cells.iter().enumerate().peekable();
     std::iter::from_fn(move || {
         let (col, mut current) = loop {
-            let (col, cell) = cells.next()?;
-            if let Some(placeholder) = Placeholder::from_cell(cell) {
+            let (col, _) = cells.next()?;
+            if let Some(placeholder) = Placeholder::from_cell(screen, row, col) {
                 break (col, placeholder);
             }
         };
         current.row.get_or_insert(0);
         current.col.get_or_insert(0);
         let mut width = 1;
-        while let Some((_, cell)) = cells.peek() {
-            let Some(next) = Placeholder::from_cell(cell) else {
+        while let Some((next_col, _)) = cells.peek() {
+            let Some(next) = Placeholder::from_cell(screen, row, *next_col) else {
                 break;
             };
             if current.low != next.low
@@ -168,11 +165,13 @@ struct Placeholder {
     col: Option<u32>,
 }
 impl Placeholder {
-    fn from_cell(cell: &Cell) -> Option<Self> {
-        let mut chars = cell.text.chars();
-        if chars.next()? != PLACEHOLDER {
+    fn from_cell(screen: &Screen, row: &Row, col: usize) -> Option<Self> {
+        let cell = &row.cells[col];
+        if cell.codepoint != Some(PLACEHOLDER) {
             return None;
         }
+        let text = screen.cell_text(row, col);
+        let mut chars = text.chars().skip(1);
         let mut next = || {
             chars
                 .next()

@@ -54,7 +54,7 @@ fn raw_c1_controls_execute_cursor_and_protection_actions_inside_sequences() {
     assert!(!screen.rows[3].cells[1].protected);
     assert!(!screen.cursor.protected);
     terminal.feed(b"\x1b[2K");
-    assert_eq!(terminal.screen().rows[3].text(), "X");
+    assert_eq!(terminal.screen().row_text(&terminal.screen().rows[3]), "X");
 }
 
 #[test]
@@ -66,7 +66,10 @@ fn ground_state_c1_bytes_keep_utf8_decoding_semantics() {
         (2, 6)
     );
     assert!(!terminal.screen().cursor.protected);
-    assert_eq!(terminal.screen().rows[2].text(), "   X\u{fffd}\u{fffd}");
+    assert_eq!(
+        terminal.screen().row_text(&terminal.screen().rows[2]),
+        "   X\u{fffd}\u{fffd}"
+    );
 }
 
 #[test]
@@ -175,11 +178,17 @@ fn explicit_zero_scrolling_preserves_the_direct_scroll_path() {
         terminal.feed(b"\x1b[0S\x1b[;S\x1b[0T\x1b[;T");
         assert!(rustty_vt::snapshot::encode_to_vec(&terminal).unwrap() == before);
         terminal.feed(b"\x1b[S");
-        assert_eq!(terminal.screen().rows[0].text(), "b    X");
+        assert_eq!(
+            terminal.screen().row_text(&terminal.screen().rows[0]),
+            "b    X"
+        );
         assert!(terminal.screen().cursor.pending_wrap);
         terminal.feed(b"\x1b[T");
-        assert_eq!(terminal.screen().rows[0].text(), "");
-        assert_eq!(terminal.screen().rows[1].text(), "b    X");
+        assert_eq!(terminal.screen().row_text(&terminal.screen().rows[0]), "");
+        assert_eq!(
+            terminal.screen().row_text(&terminal.screen().rows[1]),
+            "b    X"
+        );
         assert!(terminal.screen().cursor.pending_wrap);
     }
 }
@@ -201,7 +210,7 @@ fn explicit_zero_scrolling_preserves_partial_regions() {
             .screen()
             .rows
             .iter()
-            .map(|row| row.text())
+            .map(|row| terminal.screen().row_text(row))
             .collect();
         assert_eq!(rows, ["a", "b", "c", "d"]);
     }
@@ -218,7 +227,10 @@ fn scroll_clear_omits_empty_rows_and_follows_the_cursor_row() {
     );
     terminal.feed(b"\x1b[Habc\x1b[4;4H\x1b[22J");
     assert_eq!(terminal.screen().history.len(), 1);
-    assert_eq!(terminal.screen().history[0].text(), "abc");
+    assert_eq!(
+        terminal.screen().row_text(&terminal.screen().history[0]),
+        "abc"
+    );
     assert_eq!(
         (terminal.screen().cursor.row, terminal.screen().cursor.col),
         (2, 3)
@@ -240,7 +252,10 @@ fn scroll_clear_counts_background_cells_and_preserves_cursor_attributes() {
     assert_eq!((cursor.row, cursor.col), (1, 3));
     assert_eq!(cursor.style.background, rustty_vt::Color::Indexed(4));
     assert!(cursor.protected);
-    assert_eq!(cursor.hyperlink.as_deref(), Some("https://example.org"));
+    assert_eq!(
+        cursor.hyperlink.as_deref().map(|link| link.uri.as_str()),
+        Some("https://example.org")
+    );
     assert!(
         terminal
             .screen()
@@ -248,7 +263,7 @@ fn scroll_clear_counts_background_cells_and_preserves_cursor_attributes() {
             .iter()
             .flat_map(|row| &row.cells)
             .all(|cell| {
-                cell.text.is_empty() && cell.style.background == rustty_vt::Color::Default
+                cell.codepoint.is_none() && cell.style.background == rustty_vt::Color::Default
             })
     );
     assert_eq!(terminal.margins.top, 1);

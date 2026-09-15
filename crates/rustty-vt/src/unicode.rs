@@ -1,9 +1,13 @@
 //! Unicode 17 properties and tailored grapheme rules from Ghostty's pinned uucode.
 //! Regenerate the data with `tools/generate_unicode.py`; no build-time generator.
 
-const DATA: &[u8] = include_bytes!("unicode.bin");
+// One byte selects a deduplicated 128-scalar block of little-endian u16 values.
+const BLOCK_SHIFT: usize = 7;
+const BLOCK_SIZE: usize = 1 << BLOCK_SHIFT;
+const INDEX_LEN: usize = 0x110000 / BLOCK_SIZE;
+const DATA: &[u8] = include_bytes!("unicode_table.bin");
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Properties {
     pub width: u8,
     pub zero_in_grapheme: bool,
@@ -11,21 +15,11 @@ pub(crate) struct Properties {
     pub emoji_vs_base: bool,
 }
 
+#[inline]
 pub(crate) fn properties(cp: char) -> Properties {
-    let cp = cp as u32;
-    let mut lo = 0;
-    let mut hi = DATA.len() / 6;
-    while lo + 1 < hi {
-        let mid = lo + (hi - lo) / 2;
-        let i = mid * 6;
-        let start = u32::from_le_bytes(DATA[i..i + 4].try_into().unwrap());
-        if start <= cp {
-            lo = mid;
-        } else {
-            hi = mid;
-        }
-    }
-    let i = lo * 6 + 4;
+    let cp = cp as usize;
+    let block = usize::from(DATA[cp >> BLOCK_SHIFT]);
+    let i = INDEX_LEN + (block * BLOCK_SIZE + (cp & (BLOCK_SIZE - 1))) * 2;
     let value = u16::from_le_bytes([DATA[i], DATA[i + 1]]);
     Properties {
         width: (value & 3) as u8,
@@ -36,6 +30,7 @@ pub(crate) fn properties(cp: char) -> Properties {
 }
 
 /// Display width using exactly the baseline terminal's single-codepoint policy.
+#[inline]
 pub fn codepoint_width(cp: char) -> u8 {
     properties(cp).width
 }
@@ -69,6 +64,8 @@ fn indic_extend(g: u8) -> bool {
 }
 
 /// Controls are handled by the VT parser before this tailored segmentation.
+// Sharing this with run printing must not add a call per scalar print.
+#[inline(always)]
 pub(crate) fn grapheme_break(a: char, b: char, state: &mut u8) -> bool {
     let a = properties(a).grapheme;
     let b = properties(b).grapheme;
@@ -86,6 +83,10 @@ pub(crate) fn grapheme_break(a: char, b: char, state: &mut u8) -> bool {
             *state = 0
         }
         _ => {}
+    }
+    // Ordinary characters, including CJK ideographs, need no further joining rules.
+    if a == 0 && b == 0 {
+        return true;
     }
     if a == L && matches!(b, L | V | LV | LVT)
         || matches!(a, LV | V) && matches!(b, V | T)
@@ -177,6 +178,59 @@ pub fn grapheme_width(text: &str) -> (usize, u8) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn indexed_properties_match_every_unicode_scalar() {
+        // Retain the previous range representation as an independent oracle.
+        let ranges: Vec<_> = include_bytes!("unicode.bin")
+            .chunks_exact(6)
+            .map(|range| {
+                (
+                    u32::from_le_bytes(range[..4].try_into().unwrap()),
+                    u16::from_le_bytes(range[4..].try_into().unwrap()),
+                )
+            })
+            .collect();
+        assert_eq!(ranges[0].0, 0);
+        assert_eq!((DATA.len() - INDEX_LEN) % (BLOCK_SIZE * 2), 0);
+        let blocks = (DATA.len() - INDEX_LEN) / (BLOCK_SIZE * 2);
+        assert!(DATA[..INDEX_LEN].iter().all(|&id| usize::from(id) < blocks));
+        for (i, &(start, value)) in ranges.iter().enumerate() {
+            let end = ranges.get(i + 1).map_or(0x110000, |&(start, _)| start);
+            assert!(start < end);
+            let expected = Properties {
+                width: (value & 3) as u8,
+                zero_in_grapheme: value & 4 != 0,
+                grapheme: ((value >> 3) & 31) as u8,
+                emoji_vs_base: value & 256 != 0,
+            };
+            for cp in (start..end).filter_map(char::from_u32) {
+                assert_eq!(properties(cp), expected, "{cp:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn ordinary_boundaries_preserve_state_transitions_and_special_joins() {
+        for (a, b) in [('天', '地'), ('a', '界'), ('é', 'Ｘ')] {
+            for initial in 0..=u8::MAX {
+                let mut state = initial;
+                assert!(grapheme_break(a, b, &mut state));
+                assert_eq!(
+                    state,
+                    if (1..=4).contains(&initial) {
+                        0
+                    } else {
+                        initial
+                    }
+                );
+            }
+        }
+        let mut state = 0;
+        assert!(!grapheme_break('\u{0600}', '天', &mut state));
+        assert!(!grapheme_break('天', '\u{0301}', &mut state));
+    }
+
     #[test]
     fn baseline_width_rules() {
         for cp in [

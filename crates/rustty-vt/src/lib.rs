@@ -30,7 +30,7 @@ pub use input::{
 pub use page_layout::PageCapacity;
 pub use page_list::PageAllocationInfo;
 pub use screen::{
-    Cell, Color, Cursor, CursorShape, GridPoint, HyperlinkId, Row, Screen, ScrollbackLimits,
-    Selection, SemanticContent, Style, TrackedPoint, Underline,
+    Cell, Color, Cursor, CursorShape, GridPoint, HyperlinkData, HyperlinkId, Row, Screen,
+    ScrollbackLimits, Selection, SemanticContent, Style, TrackedPoint, Underline,
 };
 pub use terminal::{Effect, EffectHandler, Margins, Terminal, default_palette};

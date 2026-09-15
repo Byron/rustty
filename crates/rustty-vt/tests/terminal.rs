@@ -1,7 +1,11 @@
 use rustty_vt::{Color, CursorShape, Effect, ScrollbackLimits, Selection, Terminal, Underline};
 
 fn lines(t: &Terminal) -> Vec<String> {
-    t.screen().rows.iter().map(|row| row.text()).collect()
+    t.screen()
+        .rows
+        .iter()
+        .map(|row| t.screen().row_text(row))
+        .collect()
 }
 
 fn invariant(t: &Terminal) {
@@ -18,7 +22,7 @@ fn invariant(t: &Terminal) {
             if cell.width == 2 {
                 assert!(i + 1 < row.cells.len() && row.cells[i + 1].width == 0);
             }
-            assert!(cell.text.chars().count() <= 65);
+            assert!(screen.cell_text(row, i).chars().count() <= 65);
         }
     }
 }
@@ -33,7 +37,7 @@ fn wrapping_scrolling_and_tracked_references() {
     let pin = t.screen_mut().track(point);
     t.feed(b"efghijkl");
     assert_eq!(lines(&t), ["efgh", "ijkl"]);
-    assert_eq!(t.screen().history[0].text(), "abcd");
+    assert_eq!(t.screen().row_text(&t.screen().history[0]), "abcd");
     assert_eq!(t.screen().resolve(pin), Some(point));
     t.feed(b"mnopqrstuvwx");
     assert_eq!(t.screen().resolve(pin), Some(point));
@@ -49,8 +53,8 @@ fn vt_overwrites_wide_cells_as_a_unit() {
     assert!(t.screen().rows[0].wrapped);
     assert_eq!(t.screen().rows[1].cells[0].width, 2);
     t.feed(b"\x1b[2;2HX");
-    assert!(t.screen().rows[1].cells[0].text.is_empty());
-    assert_eq!(t.screen().rows[1].cells[1].text, "X");
+    assert!(t.screen().rows[1].cells[0].codepoint.is_none());
+    assert_eq!(&*t.screen().cell_text(&t.screen().rows[1], 1), "X");
     invariant(&t);
     t.feed("\x1b[H界\x1b[2GX".as_bytes());
     invariant(&t);
@@ -60,10 +64,10 @@ fn vt_overwrites_wide_cells_as_a_unit() {
 fn graphemes_have_bounded_storage_and_track_width() {
     let mut t = Terminal::new(6, 2, 10);
     t.feed("a\u{301}".as_bytes());
-    assert_eq!(t.screen().rows[0].cells[0].text, "a\u{301}");
+    assert_eq!(&*t.screen().cell_text(&t.screen().rows[0], 0), "a\u{301}");
     t.feed(b"\x1b[?2027h");
     t.feed("👩🏽‍🚀".as_bytes());
-    assert_eq!(t.screen().rows[0].cells[1].text, "👩🏽‍🚀");
+    assert_eq!(&*t.screen().cell_text(&t.screen().rows[0], 1), "👩🏽‍🚀");
     assert_eq!(t.screen().rows[0].cells[1].width, 2);
     for _ in 0..200 {
         t.feed("\u{301}".as_bytes());
@@ -71,7 +75,7 @@ fn graphemes_have_bounded_storage_and_track_width() {
     invariant(&t);
     let mut t = Terminal::new(3, 3, 10);
     t.feed("\x1b[?2027hab❤\u{fe0f}".as_bytes());
-    assert_eq!(t.screen().rows[1].cells[0].text, "❤\u{fe0f}");
+    assert_eq!(&*t.screen().cell_text(&t.screen().rows[1], 0), "❤\u{fe0f}");
     assert_eq!(t.screen().rows[1].cells[0].width, 2);
     invariant(&t);
 }
@@ -84,13 +88,24 @@ fn combining_at_right_edge_respects_grapheme_and_wrap_modes() {
             terminal.set_mode(true, 7, wrap);
             terminal.set_mode(true, 2027, grapheme);
             terminal.feed("ab\u{596}".as_bytes());
-            let cells = &terminal.screen().rows[0].cells;
             if wrap || grapheme {
-                assert_eq!(cells[0].text, "a");
-                assert_eq!(cells[1].text, "b\u{596}");
+                assert_eq!(
+                    &*terminal.screen().cell_text(&terminal.screen().rows[0], 0),
+                    "a"
+                );
+                assert_eq!(
+                    &*terminal.screen().cell_text(&terminal.screen().rows[0], 1),
+                    "b\u{596}"
+                );
             } else {
-                assert_eq!(cells[0].text, "a\u{596}");
-                assert_eq!(cells[1].text, "b");
+                assert_eq!(
+                    &*terminal.screen().cell_text(&terminal.screen().rows[0], 0),
+                    "a\u{596}"
+                );
+                assert_eq!(
+                    &*terminal.screen().cell_text(&terminal.screen().rows[0], 1),
+                    "b"
+                );
             }
         }
     }
@@ -100,7 +115,10 @@ fn combining_at_right_edge_respects_grapheme_and_wrap_modes() {
 fn legacy_combining_without_wrap_is_ignored_at_column_zero() {
     let mut terminal = Terminal::new(1, 2, 0);
     terminal.feed("\x1b[?7la\u{596}".as_bytes());
-    assert_eq!(terminal.screen().rows[0].cells[0].text, "a");
+    assert_eq!(
+        &*terminal.screen().cell_text(&terminal.screen().rows[0], 0),
+        "a"
+    );
 }
 
 #[test]
@@ -113,8 +131,8 @@ fn erase_retains_background_but_clears_other_style_and_protects_cells() {
         assert_eq!(c.style.foreground, Color::Default);
     }
     t.feed(b"\x1b[H\x1b[1\"qA\x1b[0\"qB\x1b[?2K");
-    assert_eq!(t.screen().rows[0].cells[0].text, "A");
-    assert!(t.screen().rows[0].cells[1].text.is_empty());
+    assert_eq!(&*t.screen().cell_text(&t.screen().rows[0], 0), "A");
+    assert!(t.screen().rows[0].cells[1].codepoint.is_none());
 }
 
 #[test]
@@ -138,7 +156,7 @@ fn margins_scroll_only_the_defined_region() {
     assert_eq!(lines(&t), ["one", "three", "", "four"]);
     assert!(t.screen().history.is_empty());
     t.feed(b"\x1b[?6h\x1b[1;2HX");
-    assert_eq!(t.screen().rows[1].cells[1].text, "X");
+    assert_eq!(&*t.screen().cell_text(&t.screen().rows[1], 1), "X");
     invariant(&t);
 }
 
@@ -175,9 +193,13 @@ fn resize_reflows_cursor_blanks_and_keeps_wide_padding_at_the_edge() {
     t.feed("abc界".as_bytes());
     t.resize(4, 4);
     assert!(t.screen().rows[0].cells[3].spacer_head);
-    assert_eq!(t.screen().rows[1].cells[0].text, "界");
+    assert_eq!(&*t.screen().cell_text(&t.screen().rows[1], 0), "界");
     t.resize(1, 4);
-    assert!(t.screen().all_rows().all(|r| r.cells[0].text != "界"));
+    assert!(
+        t.screen()
+            .all_rows()
+            .all(|r| &*t.screen().cell_text(r, 0) != "界")
+    );
     invariant(&t);
 }
 
@@ -215,7 +237,10 @@ fn resize_retains_blank_cells_copied_from_a_wrapped_source_row() {
     terminal.feed(b"\x1b[H");
     terminal.resize(6, 2);
     assert_eq!(terminal.screen().history.len(), 1);
-    assert_eq!(terminal.screen().history[0].text(), "abcdef");
+    assert_eq!(
+        terminal.screen().row_text(&terminal.screen().history[0]),
+        "abcdef"
+    );
     assert_eq!(lines(&terminal), ["gh", ""]);
     assert!(terminal.screen().rows[0].wrapped);
     assert!(terminal.screen().rows[1].wrap_continuation);
@@ -262,12 +287,16 @@ fn widening_without_reflow_preserves_spacer_attributes() {
         terminal.feed(b"\x1b[?1049h");
         terminal.resize(4, 3);
         terminal.feed("\x1b[1;31;44m\x1b]8;id=wide;https://example.org\x1b\\abc界".as_bytes());
-        let mut expected = terminal.screen().rows[0].cells[3].clone();
-        assert!(expected.spacer_head);
-        expected.spacer_head = false;
+        let mut expected =
+            serde_json::to_value(terminal.screen()).unwrap()["rows"][0]["cells"][3].clone();
+        assert_eq!(expected["spacer_head"], true);
+        expected["spacer_head"] = false.into();
 
         terminal.resize(6, 3);
-        assert_eq!(terminal.screen().rows[0].cells[3], expected);
+        assert_eq!(
+            serde_json::to_value(terminal.screen()).unwrap()["rows"][0]["cells"][3],
+            expected
+        );
         assert!(!terminal.screen().rows[1].wrap_continuation);
         invariant(&terminal);
     }
@@ -347,7 +376,10 @@ fn chunk_boundaries_do_not_change_terminal_results() {
             invariant(&split);
         }
         assert_eq!(actual, effects);
-        assert_eq!(split.screen().rows, full.screen().rows);
+        assert_eq!(
+            serde_json::to_value(split.screen()).unwrap()["rows"],
+            serde_json::to_value(full.screen()).unwrap()["rows"],
+        );
         assert_eq!(split.screen().cursor, full.screen().cursor);
     }
 }
@@ -380,7 +412,11 @@ fn viewport_snapshot_excludes_history_and_hides_scrolled_cursor() {
     let snapshot = t.screen().snapshot_viewport();
     assert!(snapshot.history.is_empty());
     assert_eq!(
-        snapshot.rows.iter().map(|r| r.text()).collect::<Vec<_>>(),
+        snapshot
+            .rows
+            .iter()
+            .map(|r| snapshot.row_text(r))
+            .collect::<Vec<_>>(),
         ["one", "two"]
     );
     assert!(!snapshot.cursor.visible);

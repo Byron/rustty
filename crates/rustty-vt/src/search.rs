@@ -126,6 +126,7 @@ impl ViewportSearch {
         let wrapped = |index: usize, start: usize| row(start + row_count(index) - 1).wrapped;
         let page_text = |index: usize, start: usize| {
             literal_text(
+                screen,
                 &(start..start + row_count(index))
                     .map(row)
                     .collect::<Vec<_>>(),
@@ -272,10 +273,10 @@ fn logical_lines(screen: &Screen) -> Vec<Line> {
                 continue;
             }
             let start = line.text.len();
-            if cell.text.is_empty() {
+            if cell.codepoint.is_none() {
                 line.text.push(' ');
             } else {
-                line.text.push_str(&cell.text);
+                line.text.push_str(&screen.cell_text(row, col));
             }
             line.offsets
                 .push((start, line.text.len(), GridPoint { row: row.id, col }));
@@ -297,7 +298,7 @@ fn logical_lines(screen: &Screen) -> Vec<Line> {
 /// Plain, trimmed, unwrapped text and point mapping used by native search.
 /// Regex links deliberately use logical_lines instead: their whitespace and
 /// hard-line boundaries are part of the regex matching contract.
-fn literal_text(rows: &[&Row]) -> Line {
+fn literal_text(screen: &Screen, rows: &[&Row]) -> Line {
     let mut line = Line::default();
     let Some(first) = rows.first() else {
         return line;
@@ -306,7 +307,7 @@ fn literal_text(rows: &[&Row]) -> Line {
     let mut blank_rows = 0;
     let mut blank_cells = 0;
     for (y, row) in rows.iter().enumerate() {
-        if row.cells.iter().all(|cell| cell.text.is_empty()) {
+        if row.cells.iter().all(|cell| cell.codepoint.is_none()) {
             blank_rows += 1;
             continue;
         }
@@ -334,7 +335,7 @@ fn literal_text(rows: &[&Row]) -> Line {
             if cell.width == 0 || cell.spacer_head {
                 continue;
             }
-            if cell.text.is_empty() || cell.text.starts_with(' ') {
+            if cell.codepoint.is_none() || cell.codepoint == Some(' ') {
                 blank_cells += 1;
                 continue;
             }
@@ -357,7 +358,7 @@ fn literal_text(rows: &[&Row]) -> Line {
                 );
             }
             blank_cells = 0;
-            line.push(&cell.text, GridPoint { row: row.id, col });
+            line.push(&screen.cell_text(row, col), GridPoint { row: row.id, col });
             last = (y, col);
         }
     }
@@ -412,7 +413,7 @@ impl Screen {
             if start <= self.history.len() && end > self.history.len() {
                 boundary = (index, start);
             }
-            pages.push((literal_text(&rows[start..end]), rows[end - 1].wrapped));
+            pages.push((literal_text(self, &rows[start..end]), rows[end - 1].wrapped));
             start = end;
         }
 
@@ -529,13 +530,14 @@ impl LinkMatcher {
         for row in screen.all_rows() {
             let mut col = 0;
             while col < row.cells.len() {
-                let Some(uri) = &row.cells[col].hyperlink else {
+                let Some(link) = &row.cells[col].hyperlink else {
                     col += 1;
                     continue;
                 };
                 let start = col;
                 while col + 1 < row.cells.len()
-                    && row.cells[col + 1].hyperlink.as_ref() == Some(uri)
+                    && row.cells[col + 1].hyperlink.as_ref().map(|link| &link.uri)
+                        == Some(&link.uri)
                 {
                     col += 1;
                 }
@@ -555,7 +557,7 @@ impl LinkMatcher {
                         row: row.id,
                         col: end,
                     },
-                    uri: uri.clone(),
+                    uri: link.uri.clone(),
                 });
                 col += 1;
             }
@@ -688,6 +690,20 @@ mod tests {
         assert_eq!(links[0].uri, "https://actual");
         assert!(links[0].contains(terminal.screen(), links[0].end));
     }
+    #[test]
+    fn explicit_links_group_by_display_uri_across_distinct_ids_and_raw_bytes() {
+        let mut terminal = Terminal::new(8, 1, 0);
+        terminal.feed(
+            b"\x1b]8;id=first;https://x/\xff\x07A\x1b]8;id=second;https://x/\xfe\x07B\x1b]8;;https://other\x07C\x1b]8;;\x07",
+        );
+        let links = LinkMatcher::default().links(terminal.screen());
+        assert_eq!(links.len(), 2);
+        assert_eq!(links[0].uri, "https://x/\u{fffd}");
+        assert_eq!((links[0].start.col, links[0].end.col), (0, 1));
+        assert_eq!(links[1].uri, "https://other");
+        assert_eq!((links[1].start.col, links[1].end.col), (2, 2));
+    }
+
     #[test]
     fn matching_crosses_soft_wraps_and_keeps_cell_coordinates() {
         let mut t = Terminal::new(8, 4, 10);

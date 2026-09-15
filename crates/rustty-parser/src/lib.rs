@@ -102,6 +102,16 @@ pub enum Event<'a> {
     OscOverflow,
 }
 
+/// Parser events with printable runs borrowed directly from the input.
+/// Controls and text split across input boundaries retain scalar [`Event`]s.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BatchEvent<'a> {
+    PrintAscii(&'a [u8]),
+    /// Valid printable UTF-8, which may also contain ASCII characters.
+    PrintUtf8(&'a str),
+    Event(Event<'a>),
+}
+
 #[derive(Clone, Debug)]
 pub struct Parser {
     state: State,
@@ -280,6 +290,57 @@ impl Parser {
             self.advance_byte(byte, &mut handler);
         }
         self.retain_continuation(bytes);
+    }
+
+    /// Like [`Self::advance`], but emit printable text as borrowed runs.
+    /// Pending UTF-8 and escape sequences keep their scalar path.
+    pub fn advance_batched(&mut self, bytes: &[u8], mut handler: impl FnMut(BatchEvent<'_>)) {
+        let mut remaining = bytes;
+        while let Some(&byte) = remaining.first() {
+            if (b' '..=b'~').contains(&byte) && self.is_ground() {
+                let len = remaining
+                    .iter()
+                    .position(|byte| !(b' '..=b'~').contains(byte))
+                    .unwrap_or(remaining.len());
+                handler(BatchEvent::PrintAscii(&remaining[..len]));
+                remaining = &remaining[len..];
+            } else {
+                if (0xc2..=0xf4).contains(&byte) && self.is_ground() {
+                    let text = remaining.utf8_chunks().next().unwrap().valid();
+                    if !text.is_empty() {
+                        self.advance_valid_utf8(text, &mut handler);
+                        remaining = &remaining[text.len()..];
+                        continue;
+                    }
+                }
+                self.advance_byte(byte, &mut |event| handler(BatchEvent::Event(event)));
+                remaining = &remaining[1..];
+            }
+        }
+        self.retain_continuation(bytes);
+    }
+
+    fn advance_valid_utf8(&mut self, text: &str, handler: &mut impl FnMut(BatchEvent<'_>)) {
+        // Consume the validated prefix completely, including control sequences,
+        // so a stream of short runs never revalidates overlapping suffixes.
+        let mut offset = 0;
+        while offset < text.len() {
+            if self.is_ground()
+                // Raw VT parsing can reach ground inside a UTF-8 codepoint.
+                && let Some(remaining) = text.get(offset..)
+            {
+                let len = remaining.find(char::is_control).unwrap_or(remaining.len());
+                if len > 0 {
+                    handler(BatchEvent::PrintUtf8(&remaining[..len]));
+                    offset += len;
+                    continue;
+                }
+            }
+            self.advance_byte(text.as_bytes()[offset], &mut |event| {
+                handler(BatchEvent::Event(event))
+            });
+            offset += 1;
+        }
     }
 
     fn advance_byte(&mut self, byte: u8, handler: &mut impl FnMut(Event<'_>)) {
@@ -504,6 +565,68 @@ mod tests {
         );
         assert!(result.iter().any(|s| s.contains("params: [31]")));
         assert_eq!(result.last().unwrap(), "Print('X')");
+    }
+
+    #[test]
+    fn printable_batches_preserve_scalar_events_and_continuations() {
+        let bytes = [
+            b"hello\x7f world\x80\xc2\x9b\xf0\x9fASCII\xed\xa0\x80\xf0\x9f\x1b[31mred\x1b[0m\x07\x1b]2;title\x07\x1bP1;2qraw ascii\x1b\\\x1b_Ga=t;AAAA\x1b\\end".as_slice(),
+            "世界 café العربية e\u{301} 👩\u{200d}💻\u{85}after C1\u{7f}".as_bytes(),
+            // ST inside these valid codepoints leaves raw ESC/APC parsing in
+            // ground, where the remaining continuation byte must decode alone.
+            b"\x1b\xe2\x9c\x80ground\x1b_\xe2\x9c\x80after APC",
+            b"\xe0\xa0\xf0\x9f\x98\x84\x1b[38:2::1:2",
+        ].concat();
+        for limit in [MAX_OSC_BYTES, 4] {
+            for split in 0..=bytes.len() {
+                let mut scalar = Parser::new();
+                scalar.set_osc_limit(limit);
+                scalar.set_continuation_limit(limit);
+                let mut batched = scalar.clone();
+                let mut expected = Vec::new();
+                let mut actual = Vec::new();
+                let mut runs = Vec::new();
+                let mut unicode_runs = 0;
+                for chunk in [&bytes[..split], &bytes[split..]] {
+                    scalar.advance(chunk, |event| expected.push(format!("{event:?}")));
+                    batched.advance_batched(chunk, |event| match event {
+                        BatchEvent::PrintAscii(run) => {
+                            assert!(!run.is_empty());
+                            assert!(run.iter().all(|byte| (b' '..=b'~').contains(byte)));
+                            assert!(run.as_ptr() >= chunk.as_ptr());
+                            assert!(run.as_ptr_range().end <= chunk.as_ptr_range().end);
+                            runs.push(run.to_vec());
+                            actual.extend(
+                                run.iter()
+                                    .map(|&byte| format!("{:?}", Event::Print(byte as char))),
+                            );
+                        }
+                        BatchEvent::PrintUtf8(run) => {
+                            assert!(!run.is_empty());
+                            assert!(!run.chars().any(char::is_control));
+                            assert!(run.as_ptr() >= chunk.as_ptr());
+                            assert!(run.as_bytes().as_ptr_range().end <= chunk.as_ptr_range().end);
+                            unicode_runs += usize::from(!run.is_ascii());
+                            actual.extend(run.chars().map(|cp| format!("{:?}", Event::Print(cp))));
+                        }
+                        BatchEvent::Event(event) => actual.push(format!("{event:?}")),
+                    });
+                    assert_eq!(actual, expected, "split={split}");
+                    assert_eq!(batched.state(), scalar.state(), "split={split}");
+                    assert_eq!(batched.is_ground(), scalar.is_ground(), "split={split}");
+                    assert_eq!(
+                        batched.continuation(),
+                        scalar.continuation(),
+                        "split={split}"
+                    );
+                }
+                if split == 0 {
+                    assert_eq!(runs[0], b"hello");
+                    assert_eq!(runs[1], b" world");
+                }
+                assert!(unicode_runs > 0);
+            }
+        }
     }
 
     #[test]

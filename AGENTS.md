@@ -31,6 +31,25 @@ A file for [guiding coding agents](https://agents.md/).
 - macOS app: `macos/`
 - GTK (Linux and FreeBSD) app: `src/apprt/gtk`
 
+## Rustty Scope
+
+- When working on Rustty, treat Ghostty's production code as a read-only
+  reference. Do not modify it unless explicitly asked.
+- Ghostty tools and utilities may be added or updated to support inspection,
+  profiling, and comparisons with Rustty.
+
+## Commit Guidelines
+
+- After completing and validating each semantic change, create a commit
+  before starting the next semantic change.
+- Keep distinct semantic changes in separate commits.
+- Amend follow-up work that belongs to the same semantic change into its
+  existing commit instead of creating another commit.
+- Use a descriptive commit subject and message that explain the motivation
+  for the change, including the problem with the previous behavior and why
+  the new behavior is preferable. Do not merely summarize the edited files
+  or implementation mechanics.
+
 ## Issue and PR Guidelines
 
 - Never create an issue.

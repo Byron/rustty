@@ -24,7 +24,7 @@ fn hyperlink_options_keep_the_last_nonempty_id_until_traversal_stops() {
         let mut terminal = Terminal::new(10, 2, 0);
         terminal.feed(&link(params, b"https://example.org"));
         assert_eq!(
-            terminal.screen().cursor.hyperlink_id,
+            terminal.screen().cursor.hyperlink.as_ref().unwrap().id,
             Some(expected.map_or(HyperlinkId::Implicit(0), |id| {
                 HyperlinkId::Explicit(id.to_vec())
             })),
@@ -32,7 +32,7 @@ fn hyperlink_options_keep_the_last_nonempty_id_until_traversal_stops() {
         );
         terminal.feed(&link(b"", b"https://next.example.org"));
         assert_eq!(
-            terminal.screen().cursor.hyperlink_id,
+            terminal.screen().cursor.hyperlink.as_ref().unwrap().id,
             Some(HyperlinkId::Implicit(u32::from(expected.is_none())))
         );
     }
@@ -50,16 +50,18 @@ fn invalid_link_endings_preserve_the_prior_link_and_snapshot_identity() {
         rustty_vt::snapshot::decode(snapshot.as_slice(), Default::default()).unwrap();
     for cell in &terminal.screen().rows[0].cells[..2] {
         assert_eq!(
-            cell.hyperlink_raw.as_deref(),
+            cell.hyperlink
+                .as_deref()
+                .and_then(|link| link.raw.as_deref()),
             Some(b"https://raw/\xff".as_slice())
         );
         assert_eq!(
-            cell.hyperlink_id,
+            cell.hyperlink.as_ref().unwrap().id,
             Some(HyperlinkId::Explicit(b"retained".to_vec()))
         );
     }
     assert_eq!(
-        terminal.screen().cursor.hyperlink_id,
+        terminal.screen().cursor.hyperlink.as_ref().unwrap().id,
         Some(HyperlinkId::Explicit(b"retained".to_vec()))
     );
     // The incomplete option stops traversal before the ID, so this is a
@@ -82,11 +84,14 @@ fn restoring_a_cursor_preserves_the_active_hyperlink() {
         terminal.feed(restore);
         terminal.feed(b"A");
         assert_eq!(
-            terminal.screen().rows[0].cells[0].hyperlink_raw.as_deref(),
+            terminal.screen().rows[0].cells[0]
+                .hyperlink
+                .as_deref()
+                .and_then(|link| link.raw.as_deref()),
             Some(b"current/\xff".as_slice()),
         );
         assert_eq!(
-            terminal.screen().cursor.hyperlink_id,
+            terminal.screen().cursor.hyperlink.as_ref().unwrap().id,
             Some(HyperlinkId::Explicit(b"current".to_vec())),
         );
         terminal.feed(&link(b"", b""));
@@ -126,7 +131,7 @@ fn screen_cursor_copies_carry_the_next_implicit_hyperlink_id() {
         terminal.feed(format!("\x1b[?{mode}h").as_bytes());
         terminal.feed(&link(b"", b"alternate"));
         assert_eq!(
-            terminal.screen().cursor.hyperlink_id,
+            terminal.screen().cursor.hyperlink.as_ref().unwrap().id,
             Some(HyperlinkId::Implicit(1))
         );
         let bytes = rustty_vt::snapshot::encode_to_vec(&terminal).unwrap();
@@ -134,13 +139,13 @@ fn screen_cursor_copies_carry_the_next_implicit_hyperlink_id() {
             rustty_vt::snapshot::decode(bytes.as_slice(), Default::default()).unwrap();
         terminal.feed(&link(b"", b"after snapshot"));
         assert_eq!(
-            terminal.screen().cursor.hyperlink_id,
+            terminal.screen().cursor.hyperlink.as_ref().unwrap().id,
             Some(HyperlinkId::Implicit(2))
         );
         terminal.feed(format!("\x1b[?{mode}l").as_bytes());
         terminal.feed(&link(b"", b"returned"));
         assert_eq!(
-            terminal.screen().cursor.hyperlink_id,
+            terminal.screen().cursor.hyperlink.as_ref().unwrap().id,
             Some(HyperlinkId::Implicit(if mode == 1049 { 1 } else { 3 }))
         );
     }
@@ -158,20 +163,25 @@ fn same_screen_switches_preserve_active_hyperlinks() {
             terminal.feed(b"A");
             terminal.feed(format!("\x1b[?{mode}{}", if alternate { 'h' } else { 'l' }).as_bytes());
             assert_eq!(
-                terminal.screen().cursor.hyperlink_raw.as_deref(),
+                terminal
+                    .screen()
+                    .cursor
+                    .hyperlink
+                    .as_deref()
+                    .and_then(|link| link.raw.as_deref()),
                 Some(b"current/\xff".as_slice())
             );
             assert_eq!(
-                terminal.screen().cursor.hyperlink_id,
+                terminal.screen().cursor.hyperlink.as_ref().unwrap().id,
                 Some(HyperlinkId::Implicit(0))
             );
             terminal.feed(&link(b"", b"next"));
             assert_eq!(
-                terminal.screen().cursor.hyperlink_id,
+                terminal.screen().cursor.hyperlink.as_ref().unwrap().id,
                 Some(HyperlinkId::Implicit(1))
             );
             assert_eq!(
-                terminal.screen().rows[0].cells[0].text,
+                &*terminal.screen().cell_text(&terminal.screen().rows[0], 0),
                 if alternate && mode == 1049 { "" } else { "A" }
             );
         }
@@ -189,7 +199,7 @@ fn repeated_1049_exit_still_restores_the_saved_cursor() {
         (1, 2)
     );
     assert_eq!(
-        terminal.screen().cursor.hyperlink_id,
+        terminal.screen().cursor.hyperlink.as_ref().unwrap().id,
         Some(HyperlinkId::Explicit(b"current".to_vec()))
     );
 }
@@ -205,16 +215,24 @@ fn resizing_renews_implicit_cursor_links_without_changing_printed_links() {
         terminal.feed(b"A");
         terminal.resize(20, 3);
         assert_eq!(
-            terminal.screen().cursor.hyperlink_id,
+            terminal.screen().cursor.hyperlink.as_ref().unwrap().id,
             Some(HyperlinkId::Implicit(1))
         );
         assert_eq!(
-            terminal.screen().rows[0].cells[0].hyperlink_id,
+            terminal.screen().rows[0].cells[0]
+                .hyperlink
+                .as_ref()
+                .unwrap()
+                .id,
             Some(HyperlinkId::Implicit(0))
         );
         terminal.feed(b"B");
         assert_eq!(
-            terminal.screen().rows[0].cells[1].hyperlink_id,
+            terminal.screen().rows[0].cells[1]
+                .hyperlink
+                .as_ref()
+                .unwrap()
+                .id,
             Some(HyperlinkId::Implicit(1))
         );
         let snapshot = rustty_vt::snapshot::encode_to_vec(&terminal).unwrap();
@@ -223,16 +241,21 @@ fn resizing_renews_implicit_cursor_links_without_changing_printed_links() {
         terminal.resize(20, 4);
         terminal.resize(20, 4);
         assert_eq!(
-            terminal.screen().cursor.hyperlink_id,
+            terminal.screen().cursor.hyperlink.as_ref().unwrap().id,
             Some(HyperlinkId::Implicit(2))
         );
         assert_eq!(
-            terminal.screen().cursor.hyperlink_raw.as_deref(),
+            terminal
+                .screen()
+                .cursor
+                .hyperlink
+                .as_deref()
+                .and_then(|link| link.raw.as_deref()),
             Some(b"current/\xff".as_slice())
         );
         terminal.feed(&link(b"", b"next"));
         assert_eq!(
-            terminal.screen().cursor.hyperlink_id,
+            terminal.screen().cursor.hyperlink.as_ref().unwrap().id,
             Some(HyperlinkId::Implicit(3))
         );
     }
@@ -245,12 +268,12 @@ fn resizing_keeps_explicit_links_and_the_next_implicit_id() {
     terminal.resize(20, 3);
     terminal.resize(20, 4);
     assert_eq!(
-        terminal.screen().cursor.hyperlink_id,
+        terminal.screen().cursor.hyperlink.as_ref().unwrap().id,
         Some(HyperlinkId::Explicit(b"stable".to_vec()))
     );
     terminal.feed(&link(b"", b"next"));
     assert_eq!(
-        terminal.screen().cursor.hyperlink_id,
+        terminal.screen().cursor.hyperlink.as_ref().unwrap().id,
         Some(HyperlinkId::Implicit(0))
     );
 }

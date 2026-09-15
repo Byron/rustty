@@ -998,36 +998,30 @@ fn screen(screen: &Screen) -> Value {
         "shape":match c.shape {
             CursorShape::Block => "block", CursorShape::Bar => "bar",
             CursorShape::Underline => "underline", CursorShape::HollowBlock => "block_hollow",
-        },"style":style(c.style),"hyperlink":hyperlink(&c.hyperlink, &c.hyperlink_raw, &c.hyperlink_id),
+        },"style":style(c.style),"hyperlink":hyperlink(c.hyperlink.as_deref()),
         "protected":c.protected,"semantic":semantic(c.semantic)},
-        "rows":screen.rows.iter().map(row).collect::<Vec<_>>(),
-        "history":screen.history.iter().map(row).collect::<Vec<_>>()})
+        "rows":screen.rows.iter().map(|r| row(screen, r)).collect::<Vec<_>>(),
+        "history":screen.history.iter().map(|r| row(screen, r)).collect::<Vec<_>>()})
 }
 
-fn row(row: &rustty_vt::Row) -> Value {
-    json!({"wrapped":row.wrapped,"cells":row.cells.iter().map(|cell| json!({
-        "text":cell.text.chars().map(u32::from).collect::<Vec<_>>(),
+fn row(screen: &Screen, row: &rustty_vt::Row) -> Value {
+    json!({"wrapped":row.wrapped,"cells":row.cells.iter().enumerate().map(|(col, cell)| json!({
+        "text":screen.cell_text(row, col).chars().map(u32::from).collect::<Vec<_>>(),
         "width":cell.width,"spacer_head":cell.spacer_head,"style":style(cell.style),
-        "hyperlink":hyperlink(&cell.hyperlink, &cell.hyperlink_raw, &cell.hyperlink_id),
+        "hyperlink":hyperlink(cell.hyperlink.as_deref()),
         "protected":cell.protected,
         "semantic":semantic(cell.semantic)})).collect::<Vec<_>>()})
 }
 
-fn hyperlink(
-    text: &Option<String>,
-    raw: &Option<Vec<u8>>,
-    id: &Option<HyperlinkId>,
-) -> Option<Value> {
-    raw.as_deref()
-        .or_else(|| text.as_deref().map(str::as_bytes))
-        .map(|uri| {
-            let (explicit, implicit) = match id {
-                Some(HyperlinkId::Explicit(bytes)) => (Some(hex(bytes)), None),
-                Some(HyperlinkId::Implicit(number)) => (None, Some(*number)),
-                None => (None, None),
-            };
-            json!({"uri":hex(uri),"explicit":explicit,"implicit":implicit})
-        })
+fn hyperlink(link: Option<&rustty_vt::HyperlinkData>) -> Option<Value> {
+    link.map(|link| {
+        let (explicit, implicit) = match &link.id {
+            Some(HyperlinkId::Explicit(bytes)) => (Some(hex(bytes)), None),
+            Some(HyperlinkId::Implicit(number)) => (None, Some(*number)),
+            None => (None, None),
+        };
+        json!({"uri":hex(link.uri_bytes()),"explicit":explicit,"implicit":implicit})
+    })
 }
 
 fn semantic(value: SemanticContent) -> &'static str {

@@ -62,6 +62,7 @@ for line in (ucd / "emoji/emoji-variation-sequences.txt").read_text().splitlines
 
 names = ["Other", "Prepend", "Regional_Indicator", "SpacingMark", "L", "V", "T", "LV", "LVT", "ZWJ", "ZWNJ", "Pictographic", "ModifierBase", "Modifier", "IndicExtend", "IndicLinker", "IndicConsonant"]
 out = bytearray()
+values = bytearray()
 previous = None
 for cp in range(count):
     prop = gb[cp]
@@ -86,9 +87,30 @@ for cp in range(count):
     width = 0 if zero and not modifier[cp] and prop != "Prepend" else min(2, standalone)
     if prop in ("Control", "CR", "LF"): prop = "Other"
     value = width | (int(bool(zero)) << 2) | (names.index(prop) << 3) | (variation[cp] << 8)
+    values += struct.pack("<H", value)
     if value != previous:
         out += struct.pack("<IH", cp, value)
         previous = value
+
+# Runtime lookup uses one byte per 128-scalar block, followed by deduplicated
+# blocks of little-endian u16 properties. Keep the ranges as a test-only oracle.
+block_size = 128
+index = bytearray()
+blocks = {}
+for offset in range(0, len(values), block_size * 2):
+    block = bytes(values[offset:offset + block_size * 2])
+    block_id = blocks.setdefault(block, len(blocks))
+    assert block_id < 256, "Unicode table needs wider block indices"
+    index.append(block_id)
+table = index + b"".join(blocks)
+assert len(index) == count // block_size
+for cp in range(count):
+    offset = len(index) + (table[cp // block_size] * block_size + cp % block_size) * 2
+    assert table[offset:offset + 2] == values[cp * 2:cp * 2 + 2]
+
 dest = Path(__file__).resolve().parents[1] / "src" / "unicode.bin"
 dest.write_bytes(out)
 print(f"{len(out) // 6} property ranges, {len(out)} bytes: {dest}")
+dest = dest.with_name("unicode_table.bin")
+dest.write_bytes(table)
+print(f"{len(blocks)} property blocks, {len(table)} bytes: {dest}")

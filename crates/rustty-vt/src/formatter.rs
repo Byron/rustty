@@ -498,10 +498,10 @@ impl Screen {
                     map.current_page = page_index;
                 }
                 trailing = format_page(
+                    self,
                     out,
                     &rows[offset..offset + count],
-                    top,
-                    bottom,
+                    (top, bottom),
                     selection.rectangular,
                     options,
                     trailing,
@@ -569,15 +569,15 @@ fn screen_extra(out: &mut Vec<u8>, screen: &Screen, options: Options<'_>, extra:
         style_open(out, cursor.style, Format::Vt, None);
     }
     if extra.hyperlink
-        && let Some(uri) = &cursor.hyperlink
+        && let Some(link) = &cursor.hyperlink
     {
         out.extend_from_slice(b"\x1b]8;");
-        if let Some(crate::HyperlinkId::Explicit(id)) = &cursor.hyperlink_id {
+        if let Some(crate::HyperlinkId::Explicit(id)) = &link.id {
             out.extend_from_slice(b"id=");
             out.extend_from_slice(id);
         }
         out.push(b';');
-        out.extend_from_slice(cursor.hyperlink_raw.as_deref().unwrap_or(uri.as_bytes()));
+        out.extend_from_slice(link.uri_bytes());
         out.extend_from_slice(b"\x1b\\");
     }
     if extra.protection && cursor.protected {
@@ -613,14 +613,15 @@ fn screen_extra(out: &mut Vec<u8>, screen: &Screen, options: Options<'_>, extra:
 }
 
 fn format_page(
+    screen: &Screen,
     out: &mut Output<'_>,
     rows: &[&Row],
-    start: (usize, usize),
-    mut end: (usize, usize),
+    bounds: ((usize, usize), (usize, usize)),
     rectangle: bool,
     options: Options<'_>,
     trailing: (usize, usize),
 ) -> (usize, usize) {
+    let (start, mut end) = bounds;
     let (mut blank_rows, mut blank_cells) = if start == (0, 0) { trailing } else { (0, 0) };
     let width = rows[0].cells.len();
     if start.1 >= width {
@@ -683,7 +684,7 @@ fn format_page(
             }
         }
         let cells = &row.cells[left..right];
-        if cells.iter().all(|cell| cell.text.is_empty()) {
+        if cells.iter().all(|cell| cell.codepoint.is_none()) {
             blank_rows += 1;
             continue;
         }
@@ -726,9 +727,9 @@ fn format_page(
                 continue;
             }
             let blank = if options.emit == Format::Plain {
-                cell.text.is_empty() || (options.trim && cell.text.starts_with(' '))
+                cell.codepoint.is_none() || (options.trim && cell.codepoint == Some(' '))
             } else {
-                cell.text.is_empty() && cell.width == 1 && cell.style == Style::default()
+                cell.codepoint.is_none() && cell.width == 1 && cell.style == Style::default()
             };
             if blank {
                 blank_cells += 1;
@@ -764,12 +765,10 @@ fn format_page(
                 }
             }
             if options.emit == Format::Html {
-                let link = cell.hyperlink.as_ref().map(|uri| {
-                    (
-                        cell.hyperlink_id.as_ref(),
-                        cell.hyperlink_raw.as_deref().unwrap_or(uri.as_bytes()),
-                    )
-                });
+                let link = cell
+                    .hyperlink
+                    .as_ref()
+                    .map(|link| (link.id.as_ref(), link.uri_bytes()));
                 if link != hyperlink {
                     if hyperlink.is_some() {
                         out.bytes.extend_from_slice(b"</a>");
@@ -786,10 +785,10 @@ fn format_page(
                     }
                 }
             }
-            if cell.text.is_empty() {
+            if cell.codepoint.is_none() {
                 out.bytes.push(b' ');
             } else if !options.codepoint_map.is_empty() || options.emit == Format::Html {
-                for cp in cell.text.chars() {
+                for cp in screen.cell_text(row, left + index).chars() {
                     let replacement = options
                         .codepoint_map
                         .iter()
@@ -807,7 +806,8 @@ fn format_page(
                     }
                 }
             } else {
-                out.bytes.extend_from_slice(cell.text.as_bytes());
+                out.bytes
+                    .extend_from_slice(screen.cell_text(row, left + index).as_bytes());
             }
             out.map_to(point);
         }

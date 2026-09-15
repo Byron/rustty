@@ -11,8 +11,8 @@ fn alignment_pattern_retains_colors_and_resets_other_style_attributes() {
     };
     assert_eq!(terminal.screen().cursor.style, expected);
     for row in &terminal.screen().rows {
-        for cell in &row.cells {
-            assert_eq!(cell.text, "E");
+        for (col, cell) in row.cells.iter().enumerate() {
+            assert_eq!(&*terminal.screen().cell_text(row, col), "E");
             assert_eq!(cell.style, expected);
         }
     }
@@ -34,8 +34,11 @@ fn alignment_pattern_resets_margins_and_row_metadata_but_keeps_cursor_state() {
     for row in &terminal.screen().rows {
         assert!(!row.wrapped && !row.wrap_continuation);
         assert_eq!(row.semantic, SemanticContent::Output);
-        assert!(row.cells.iter().all(|cell| {
-            cell.text == "E" && cell.width == 1 && !cell.protected && cell.hyperlink.is_none()
+        assert!(row.cells.iter().enumerate().all(|(col, cell)| {
+            &*terminal.screen().cell_text(row, col) == "E"
+                && cell.width == 1
+                && !cell.protected
+                && cell.hyperlink.is_none()
         }));
     }
     terminal.feed(b"X");
