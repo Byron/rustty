@@ -13,6 +13,92 @@ pub const MAX_PARAMS: usize = 24;
 pub const MAX_INTERMEDIATES: usize = 4;
 pub const MAX_OSC_BYTES: usize = 8 * 1024 * 1024;
 
+#[inline]
+fn printable_ascii_prefix(bytes: &[u8]) -> usize {
+    #[cfg(all(
+        target_arch = "aarch64",
+        target_feature = "neon",
+        not(feature = "scalar-kernels")
+    ))]
+    let prefix = {
+        use wide::u8x16;
+        16 * bytes
+            .as_chunks::<16>()
+            .0
+            .iter()
+            .take_while(|&&chunk| {
+                let offset = u8x16::new(chunk) - u8x16::splat(b' ');
+                !offset.simd_gt(u8x16::splat(b'~' - b' ')).any()
+            })
+            .count()
+    };
+    #[cfg(not(all(
+        target_arch = "aarch64",
+        target_feature = "neon",
+        not(feature = "scalar-kernels")
+    )))]
+    let prefix = 0;
+    prefix
+        + bytes[prefix..]
+            .iter()
+            .position(|byte| !(b' '..=b'~').contains(byte))
+            .unwrap_or(bytes.len() - prefix)
+}
+
+#[inline]
+fn valid_utf8_prefix(bytes: &[u8]) -> &str {
+    // The compat validator stops at the first error, so malformed streams do
+    // not repeatedly scan their entire remaining suffix. Keep the existing
+    // prefix recovery for errors and the scalar reference implementation.
+    #[cfg(all(
+        target_arch = "aarch64",
+        target_feature = "neon",
+        not(feature = "scalar-kernels")
+    ))]
+    if let Ok(text) = simdutf8::compat::from_utf8(bytes) {
+        return text;
+    }
+    bytes.utf8_chunks().next().map_or("", |chunk| chunk.valid())
+}
+
+#[inline]
+fn printable_utf8_prefix(text: &str) -> usize {
+    #[cfg(all(
+        target_arch = "aarch64",
+        target_feature = "neon",
+        not(feature = "scalar-kernels")
+    ))]
+    let prefix = {
+        use wide::u8x16;
+        16 * text
+            .as_bytes()
+            .as_chunks::<16>()
+            .0
+            .iter()
+            .take_while(|&&chunk| {
+                let bytes = u8x16::new(chunk);
+                // C0 and DEL are single bytes; encoded C1 controls start with C2.
+                !(bytes.simd_lt(u8x16::splat(0x20))
+                    | bytes.simd_eq(u8x16::splat(0x7f))
+                    | bytes.simd_eq(u8x16::splat(0xc2)))
+                .any()
+            })
+            .count()
+    };
+    #[cfg(not(all(
+        target_arch = "aarch64",
+        target_feature = "neon",
+        not(feature = "scalar-kernels")
+    )))]
+    let prefix = 0;
+    // A byte group may end within a scalar. Keep the mixed group and tail scalar.
+    let prefix = text.floor_char_boundary(prefix);
+    prefix
+        + text[prefix..]
+            .find(char::is_control)
+            .unwrap_or(text.len() - prefix)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ContinuationError {
     LimitExceeded,
@@ -298,15 +384,12 @@ impl Parser {
         let mut remaining = bytes;
         while let Some(&byte) = remaining.first() {
             if (b' '..=b'~').contains(&byte) && self.is_ground() {
-                let len = remaining
-                    .iter()
-                    .position(|byte| !(b' '..=b'~').contains(byte))
-                    .unwrap_or(remaining.len());
+                let len = printable_ascii_prefix(remaining);
                 handler(BatchEvent::PrintAscii(&remaining[..len]));
                 remaining = &remaining[len..];
             } else {
                 if (0xc2..=0xf4).contains(&byte) && self.is_ground() {
-                    let text = remaining.utf8_chunks().next().unwrap().valid();
+                    let text = valid_utf8_prefix(remaining);
                     if !text.is_empty() {
                         self.advance_valid_utf8(text, &mut handler);
                         remaining = &remaining[text.len()..];
@@ -329,7 +412,7 @@ impl Parser {
                 // Raw VT parsing can reach ground inside a UTF-8 codepoint.
                 && let Some(remaining) = text.get(offset..)
             {
-                let len = remaining.find(char::is_control).unwrap_or(remaining.len());
+                let len = printable_utf8_prefix(remaining);
                 if len > 0 {
                     handler(BatchEvent::PrintUtf8(&remaining[..len]));
                     offset += len;
@@ -626,6 +709,83 @@ mod tests {
                 }
                 assert!(unicode_runs > 0);
             }
+        }
+    }
+
+    #[test]
+    fn ascii_prefix_matches_all_bytes_and_boundaries() {
+        let mut bytes = [b'x'; 96];
+        for offset in 0..80 {
+            for byte in 0..=u8::MAX {
+                bytes[offset] = byte;
+                for start in 0..=offset.min(15) {
+                    let input = &bytes[start..];
+                    let expected = if (b' '..=b'~').contains(&byte) {
+                        input.len()
+                    } else {
+                        offset - start
+                    };
+                    assert_eq!(printable_ascii_prefix(input), expected);
+                }
+            }
+            bytes[offset] = b'x';
+        }
+        for len in 0..=bytes.len() {
+            assert_eq!(printable_ascii_prefix(&bytes[..len]), len);
+        }
+    }
+
+    #[test]
+    fn printable_utf8_prefix_matches_controls_boundaries_and_tails() {
+        for offset in 0..48 {
+            for cp in (0..=255).filter_map(char::from_u32).chain([
+                '界',
+                '💻',
+                '\u{200d}',
+                '\u{2028}',
+                '\u{2029}',
+                '\u{feff}',
+                '\u{10ffff}',
+            ]) {
+                let mut text = "x".repeat(offset);
+                text.push(cp);
+                text.push_str("a界💻a界💻a界💻a界💻a界💻a界💻");
+                for end in text.char_indices().map(|(i, _)| i).chain([text.len()]) {
+                    let input = &text[..end];
+                    assert_eq!(
+                        printable_utf8_prefix(input),
+                        input.find(char::is_control).unwrap_or(input.len()),
+                        "offset={offset}, cp={cp:?}, end={end}",
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn utf8_prefix_matches_scalar_across_block_edges_and_errors() {
+        let mut bytes = "aé界👩\u{200d}💻\u{9b}\x1b[0m".repeat(24).into_bytes();
+        for start in 0..=65 {
+            for end in start..=bytes.len() {
+                let input = &bytes[start..end];
+                assert_eq!(
+                    valid_utf8_prefix(input),
+                    input.utf8_chunks().next().map_or("", |chunk| chunk.valid()),
+                    "start={start}, end={end}"
+                );
+            }
+        }
+        for offset in 0..bytes.len() {
+            let original = bytes[offset];
+            for byte in [0x80, 0xc0, 0xc1, 0xe0, 0xed, 0xf4, 0xf5, 0xff] {
+                bytes[offset] = byte;
+                assert_eq!(
+                    valid_utf8_prefix(&bytes),
+                    bytes.utf8_chunks().next().unwrap().valid(),
+                    "offset={offset}, byte={byte}"
+                );
+            }
+            bytes[offset] = original;
         }
     }
 

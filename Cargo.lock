@@ -3207,6 +3207,10 @@ dependencies = [
 [[package]]
 name = "rustty-parser"
 version = "0.1.0"
+dependencies = [
+ "simdutf8",
+ "wide",
+]
 
 [[package]]
 name = "rustty-render"

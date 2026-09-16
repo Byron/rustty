@@ -97,12 +97,14 @@ impl PageList {
     }
 
     /// Locate a row by its distance from the last row, skipping history pages.
-    pub fn page_index_from_end(&self, mut distance: usize) -> usize {
-        for (index, page) in self.pages.iter().enumerate().rev() {
-            if distance < usize::from(page.rows) {
-                return index;
+    pub fn locate_from_end(&self, mut distance: usize) -> (usize, usize) {
+        // Keep the logical index instead of recovering it from iterator pointers.
+        for index in (0..self.pages.len()).rev() {
+            let rows = usize::from(self.pages[index].rows);
+            if distance < rows {
+                return (index, rows - distance - 1);
             }
-            distance -= usize::from(page.rows);
+            distance -= rows;
         }
         panic!("row is outside the page list");
     }
@@ -184,13 +186,23 @@ impl PageList {
         id: u64,
         background: Color,
     ) -> Vec<u64> {
-        let effective = Self::effective_limits(columns, active_rows, limits);
-        let mut removed = Vec::new();
-        if self
+        let has_room = self
             .pages
             .back()
-            .is_some_and(|page| page.rows < page.capacity.rows)
+            .is_some_and(|page| page.rows < page.capacity.rows);
+        // Byte limits matter at allocation; the line floor only matters after
+        // crossing the requested limit. Otherwise no page layout is needed.
+        let effective = if !has_room
+            || limits
+                .lines
+                .is_some_and(|limit| (self.total_rows() + 1).saturating_sub(active_rows) > limit)
         {
+            Self::effective_limits(columns, active_rows, limits)
+        } else {
+            limits
+        };
+        let mut removed = Vec::new();
+        if has_room {
             self.pages.back_mut().unwrap().expose(id, background);
         } else {
             let capacity = PageCapacity::initial(columns).expect("validated screen dimensions");
@@ -444,8 +456,8 @@ mod tests {
             let total = pages.total_rows();
             for row in 0..total {
                 assert_eq!(
-                    pages.page_index_from_end(total - row - 1),
-                    pages.page_index(row),
+                    pages.locate_from_end(total - row - 1),
+                    pages.locate(row),
                     "row={row}, total={total}"
                 );
             }
@@ -457,5 +469,11 @@ mod tests {
         compare(&pages);
         pages.remove_prefix(2);
         compare(&pages);
+        pages.truncate(2);
+        compare(&pages);
+        for _ in 0..2 {
+            pages.append(capacity, 1);
+            compare(&pages);
+        }
     }
 }
