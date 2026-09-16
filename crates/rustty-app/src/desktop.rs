@@ -648,6 +648,7 @@ pub fn run() -> Result<()> {
         }
     });
     let mut gpu_config = egui_wgpu::WgpuConfiguration::default();
+    gpu_config.surface = egui_wgpu::SurfaceConfig::LOW_LATENCY;
     if smoke.is_some() {
         let on_status = gpu_config.on_surface_status.clone();
         let reported = AtomicBool::new(false);

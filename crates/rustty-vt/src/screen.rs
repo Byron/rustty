@@ -671,8 +671,6 @@ pub struct Screen {
     /// Host memory policy, separate from native page accounting and snapshots.
     #[serde(skip)]
     pub(crate) memory_limit: Option<usize>,
-    #[serde(skip)]
-    cursor_location: std::cell::Cell<Option<(u64, u64, u64, usize, usize, usize)>>,
     pub(crate) pages: PageList,
     #[serde(skip)]
     pub(crate) cursor_style: Option<(u64, u16)>,
@@ -712,7 +710,6 @@ impl Screen {
             pages,
             cursor_style: None,
             cursor_link: None,
-            cursor_location: std::cell::Cell::new(None),
             next_row: rows as u64,
             tracked: TrackedPoints::default(),
         }
@@ -743,20 +740,10 @@ impl Screen {
     }
     #[inline]
     pub(crate) fn row_columns(&self, y: usize) -> usize {
-        let index = if y == self.cursor.row {
-            self.cursor_location().0
-        } else {
-            self.pages.page_index(self.history_len() + y)
-        };
+        let (index, _) = self.pages.locate_from_end(self.height - 1 - y);
         usize::from(self.pages.pages[index].columns)
     }
-    #[inline]
-    pub(crate) fn cursor_cell(&self, col: usize) -> Cell {
-        let (index, row) = self.cursor_location();
-        let page = &self.pages.pages[index];
-        page.cells[page.slot(row, col)]
-    }
-    #[inline]
+    #[inline(always)]
     pub(crate) fn cursor_row(&self) -> Row<'_> {
         let (index, row) = self.cursor_location();
         self.pages.pages[index].row(row)
@@ -807,7 +794,6 @@ impl Screen {
             iso_protection: self.iso_protection,
             limits: ScrollbackLimits::NONE,
             memory_limit: None,
-            cursor_location: std::cell::Cell::new(None),
             pages: self.pages.clone_range(
                 self.history_len().saturating_sub(self.viewport_offset),
                 self.height,
@@ -830,40 +816,9 @@ impl Screen {
     }
 
     #[inline]
-    fn cursor_location(&self) -> (usize, usize) {
-        let absolute = self.history_len() + self.cursor.row;
-        if let Some((list, serial, generation, index, row, old_absolute)) =
-            self.cursor_location.get()
-            && list == self.pages.identity()
-            && absolute == old_absolute
-            && self
-                .pages
-                .pages
-                .get(index)
-                .is_some_and(|page| page.serial == serial && page.layout_generation == generation)
-        {
-            return (index, row);
-        }
-        let index = self
-            .pages
-            .page_index_from_end(self.height - 1 - self.cursor.row);
-        let after: usize = self
-            .pages
-            .pages
-            .range(index + 1..)
-            .map(|page| usize::from(page.rows))
-            .sum();
-        let page = &self.pages.pages[index];
-        let row = usize::from(page.rows) - (self.height - self.cursor.row - after);
-        self.cursor_location.set(Some((
-            self.pages.identity(),
-            page.serial,
-            page.layout_generation,
-            index,
-            row,
-            absolute,
-        )));
-        (index, row)
+    pub(crate) fn cursor_location(&self) -> (usize, usize) {
+        self.pages
+            .locate_from_end(self.height - 1 - self.cursor.row)
     }
 
     fn cursor_page_index(&self) -> usize {
@@ -1026,6 +981,10 @@ impl Screen {
         let (index, row) = location;
         let page = &mut self.pages.pages[index];
         let slot = page.slot(row, col);
+        let payload_changed = page.cells[slot].has_grapheme()
+            || page.cells[slot].has_hyperlink()
+            || copy.text.is_some()
+            || copy.link.is_some();
         page.clear_cell(slot, Color::Default);
         let mut result = Ok(());
         let mut cell = copy.cell;
@@ -1103,7 +1062,9 @@ impl Screen {
                 result = Err(SetFull::OutOfMemory);
             }
         }
-        self.pages.pages[location.0].refresh_charge();
+        if payload_changed {
+            self.pages.pages[location.0].refresh_charge();
+        }
         result
     }
 
@@ -1236,8 +1197,15 @@ impl Screen {
         codepoint: Option<char>,
         width: u8,
         spacer_head: bool,
+        location: (usize, usize),
     ) {
-        let (index, row) = self.sync_cursor_resources();
+        debug_assert_eq!(location, self.cursor_location());
+        let (index, row) = if self.cursor_resources_match(location.0) {
+            location
+        } else {
+            self.sync_cursor_resources_slow();
+            self.cursor_location()
+        };
         let y = self.cursor.row;
         let col = self.cursor.col;
         let page = &self.pages.pages[index];
@@ -1267,7 +1235,8 @@ impl Screen {
         let mut released_payload = false;
         for x in clear_start..clear_end {
             let slot = offset + x;
-            released_payload |= page.cells[slot].has_grapheme() || page.cells[slot].has_hyperlink();
+            let has_payload = page.cells[slot].has_grapheme() || page.cells[slot].has_hyperlink();
+            released_payload |= has_payload;
             let old_style = page.cells[slot].style_id();
             let replacement = if x < col || x >= end {
                 Cell::blank(self.cursor.style.background)
@@ -1280,8 +1249,10 @@ impl Screen {
                 tail
             };
             // Preserve a homogeneous style's references without a release/retain pair.
-            page.cells[slot].set_style_id(0);
-            page.clear_cell(slot, Color::Default);
+            if has_payload {
+                page.cells[slot].set_style_id(0);
+                page.clear_cell(slot, Color::Default);
+            }
             if old_style != replacement.style_id() {
                 page.styles.release(old_style);
                 page.styles.retain(replacement.style_id());
@@ -1336,6 +1307,9 @@ impl Screen {
         state: &mut u8,
     ) -> usize {
         use crate::{printing, unicode};
+        if self.cursor.pending_wrap || self.cursor.col > right {
+            return 0;
+        }
         let Some(&first) = codepoints.first() else {
             return 0;
         };
@@ -1350,7 +1324,8 @@ impl Screen {
         }
         let (index, row) = self.cursor_location();
         let page = &self.pages.pages[index];
-        if self.cursor_link.is_some() {
+        // The scalar fallback extends partial-reflow rows before any write.
+        if usize::from(page.columns) <= right || self.cursor_link.is_some() {
             return 0;
         }
         match self.cursor_style {
@@ -1454,8 +1429,12 @@ impl Screen {
         let (index, row) = self.locate(absolute);
         let page = &mut self.pages.pages[index];
         let offset = page.slot(row, 0);
+        let released_payload = page.headers[row].has(RowHeader::GRAPHEME | RowHeader::HYPERLINK);
         for slot in offset..offset + count {
             page.clear_cell(slot, Color::Default);
+        }
+        if released_payload {
+            page.refresh_charge();
         }
         for (col, mut cell) in copy.cells.into_iter().take(count).enumerate() {
             if col + 1 == source_width && width > source_width {
@@ -2057,20 +2036,24 @@ impl Screen {
     #[inline]
     pub(crate) fn sync_cursor_resources(&mut self) -> (usize, usize) {
         let location = self.cursor_location();
-        if self.cursor_link.is_none() && self.cursor.hyperlink.is_none() {
-            let page = &self.pages.pages[location.0];
-            let style_matches = match self.cursor_style {
-                None => self.cursor.style == Style::default(),
-                Some((owner, id)) => {
-                    owner == page.serial && *page.styles.get(id) == self.cursor.style
-                }
-            };
-            if style_matches {
-                return location;
-            }
+        if self.cursor_resources_match(location.0) {
+            return location;
         }
         self.sync_cursor_resources_slow();
         self.cursor_location()
+    }
+
+    #[inline(always)]
+    fn cursor_resources_match(&self, index: usize) -> bool {
+        self.cursor_link.is_none()
+            && self.cursor.hyperlink.is_none()
+            && match self.cursor_style {
+                None => self.cursor.style == Style::default(),
+                Some((owner, id)) => {
+                    let page = &self.pages.pages[index];
+                    owner == page.serial && *page.styles.get(id) == self.cursor.style
+                }
+            }
     }
 
     fn sync_cursor_resources_slow(&mut self) {

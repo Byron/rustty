@@ -150,6 +150,7 @@ impl Screen {
                 let capacity = source_page.adjusted_capacity(cols as u16, true);
                 for source_row in 0..usize::from(source_page.rows) {
                     let old = source_page.row(source_row);
+                    let unmanaged = !source_page.headers[source_row].has(RowHeader::MANAGED);
                     wanted.clear();
                     let mut used = if old.wrapped {
                         old.cells.len()
@@ -259,21 +260,40 @@ impl Screen {
                                 col: x,
                             }),
                         );
-                        let mut copy = old.copy_cell(old_col);
-                        let source_link = copy.link_id;
-                        if cols == 1 && copy.cell.width() == 2 {
-                            copy.cell.set_codepoint(None);
-                            copy.text = None;
-                        }
-                        copy.cell.set_width(width as u8);
-                        let _ = self.install_cell(output.len(), x, copy, true);
-                        if width == 2 {
-                            let mut tail = self.physical_row(output.len()).copy_cell(x);
-                            tail.cell.set_codepoint(None);
-                            tail.cell.set_width(0);
-                            tail.text = None;
-                            tail.link_id = source_link;
-                            let _ = self.install_cell(output.len(), x + 1, tail, true);
+                        if unmanaged {
+                            // Reflow writes each fresh destination slot once.
+                            let mut copy = *cell;
+                            if cols == 1 && copy.width() == 2 {
+                                copy.set_codepoint(None);
+                            }
+                            copy.set_width(width as u8);
+                            let page = self.pages.pages.back_mut().unwrap();
+                            let row = usize::from(page.rows) - 1;
+                            let slot = page.slot(row, x);
+                            page.cells[slot] = copy;
+                            if width == 2 {
+                                copy.set_codepoint(None);
+                                copy.set_width(0);
+                                page.cells[slot + 1] = copy;
+                            }
+                            page.mark_cell(row, page.cells[slot]);
+                        } else {
+                            let mut copy = old.copy_cell(old_col);
+                            let source_link = copy.link_id;
+                            if cols == 1 && copy.cell.width() == 2 {
+                                copy.cell.set_codepoint(None);
+                                copy.text = None;
+                            }
+                            copy.cell.set_width(width as u8);
+                            let _ = self.install_cell(output.len(), x, copy, true);
+                            if width == 2 {
+                                let mut tail = self.physical_row(output.len()).copy_cell(x);
+                                tail.cell.set_codepoint(None);
+                                tail.cell.set_width(0);
+                                tail.text = None;
+                                tail.link_id = source_link;
+                                let _ = self.install_cell(output.len(), x + 1, tail, true);
+                            }
                         }
                         wide_tail = Some(GridPoint {
                             row: line.id,
@@ -516,6 +536,42 @@ impl Screen {
                     self.pages.pages[index].repair_wide(row, Color::Default);
                 }
                 spare = Some(page);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Terminal, snapshot};
+
+    #[test]
+    fn unmanaged_reflow_matches_resource_copying() {
+        let mut source = Terminal::new(17, 4, 400);
+        source.feed(b"\x1b[?2027h");
+        for _ in 0..8 {
+            source.feed("abcdefghijklmnopqr\r\nabc界界xyz\r\n".as_bytes());
+            source.feed(b"\x1b[44m\x1b[2K\x1b[0m\r\n");
+            source.feed("\x1b[31mstyled\x1b[0m a\u{301}👩\u{200d}💻\r\n".as_bytes());
+        }
+        for width in [1, 2, 3, 8, 32] {
+            let mut actual = source.clone();
+            let mut reference = source.clone();
+            for target in [width, 17] {
+                // Conservative hints force the existing resource-copy path.
+                for page in &mut reference.screen_mut().pages.pages {
+                    for header in &mut page.headers[..usize::from(page.rows)] {
+                        header.set(RowHeader::STYLED, true);
+                    }
+                }
+                actual.resize(target, 4);
+                reference.resize(target, 4);
+                assert_eq!(
+                    snapshot::encode_to_vec(&actual).unwrap(),
+                    snapshot::encode_to_vec(&reference).unwrap(),
+                    "width={width}, target={target}",
+                );
             }
         }
     }

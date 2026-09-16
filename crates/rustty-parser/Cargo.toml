@@ -6,3 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 description = "Streaming UTF-8 and VT escape parsing."
+
+[features]
+scalar-kernels = []
+
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+simdutf8 = "0.1.5"
+wide = "1.7"

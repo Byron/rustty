@@ -10,7 +10,7 @@ description = "Headless terminal state and protocol handling."
 [features]
 allocation-probe = []
 # Use reference kernels without disabling normal compiler optimization.
-scalar-kernels = []
+scalar-kernels = ["rustty-parser/scalar-kernels"]
 
 [dependencies]
 rustty-parser.workspace = true
@@ -40,4 +40,8 @@ path = "../../test/rustty/allocations.rs"
 
 [[bench]]
 name = "primitives"
+harness = false
+
+[[bench]]
+name = "page_spans"
 harness = false
