@@ -21,15 +21,15 @@ fn reverse_index_outside_horizontal_margins_uses_bounded_cursor_up() {
 fn reverse_index_preserves_pending_wrap_when_it_scrolls() {
     let mut terminal = Terminal::new(4, 3, 20);
     terminal.feed(b"abcd\x1bM");
-    assert_eq!(terminal.screen().row_text(&terminal.screen().rows[0]), "");
+    assert_eq!(terminal.screen().row_text(&terminal.screen().row(0)), "");
     assert_eq!(
-        terminal.screen().row_text(&terminal.screen().rows[1]),
+        terminal.screen().row_text(&terminal.screen().row(1)),
         "abcd"
     );
     assert!(terminal.screen().cursor.pending_wrap);
     terminal.feed(b"X");
     assert_eq!(
-        terminal.screen().row_text(&terminal.screen().rows[1]),
+        terminal.screen().row_text(&terminal.screen().row(1)),
         "Xbcd"
     );
 }

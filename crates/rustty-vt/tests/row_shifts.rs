@@ -4,7 +4,7 @@ use rustty_vt::{ScrollbackLimits, Selection, Terminal};
 fn index_scrolling_preserves_complete_row_metadata() {
     let mut corpus = Terminal::new(80, 24, 10);
     corpus.feed(b"\x1b[5W\x1b[4r\x1b[\t33BhD");
-    assert!(corpus.screen().rows[22].wrapped);
+    assert!(corpus.screen().row(22).wrapped);
 
     for mode in ["primary", "no-history", "alternate"] {
         for command in [b"\n".as_slice(), b"\x1bD", b"\x1bE"] {
@@ -15,11 +15,12 @@ fn index_scrolling_preserves_complete_row_metadata() {
                 terminal.feed(b"\x1b[?47h");
             }
             terminal.feed(b"abcdefghijklmnopqrstuvwxy\x1b[2;4r\x1b[4;3H\x1b[44m");
-            let before = terminal.screen().rows.clone();
+            let detached = terminal.screen().snapshot_viewport();
+            let before: Vec<_> = detached.rows().collect();
             let before_cells = serde_json::to_value(terminal.screen()).unwrap()["rows"].clone();
             terminal.feed(command);
             let after_cells = serde_json::to_value(terminal.screen()).unwrap()["rows"].clone();
-            let after = &terminal.screen().rows;
+            let after: Vec<_> = terminal.screen().rows().collect();
             for row in 1..3 {
                 assert_eq!(
                     after_cells[row]["cells"],
@@ -34,8 +35,14 @@ fn index_scrolling_preserves_complete_row_metadata() {
                 );
             }
             assert!(!after[3].wrapped && !after[3].wrap_continuation);
-            assert!(after[3].cells.iter().all(|cell| cell.codepoint.is_none()
-                && cell.style.background == rustty_vt::screen::Color::Indexed(4)));
+            assert!(
+                after[3]
+                    .cells
+                    .iter()
+                    .enumerate()
+                    .all(|(col, cell)| cell.codepoint().is_none()
+                        && after[3].style(col).background == rustty_vt::screen::Color::Indexed(4))
+            );
         }
     }
 }
@@ -55,7 +62,7 @@ fn index_scrolling_moves_pins_and_clamps_erased_page_start() {
         if history {
             terminal.feed(b"A\x1b[22J");
         }
-        let offset = terminal.screen().history.len();
+        let offset = terminal.screen().history_len();
         let original = (0..usize::from(rows))
             .map(|row| terminal.screen().point(offset + row, 2).unwrap())
             .collect::<Vec<_>>();
@@ -120,14 +127,14 @@ fn full_width_line_shifts_detach_wrapped_rows() {
         terminal.feed(b"abcdefghijklmnopqr\r\nlast\x1b[H");
         terminal.feed(command.as_bytes());
         let start = usize::from(command.contains('r'));
-        for row in &terminal.screen().rows[start..] {
+        for row in terminal.screen().rows().skip(start) {
             assert!(!row.wrapped && !row.wrap_continuation, "{command:?}");
         }
     }
     let mut terminal = Terminal::new(8, 4, 10);
     terminal.feed(b"abcdefghijklmnopqr\r\nlast\x1b[S");
-    assert!(terminal.screen().history[0].wrapped);
-    assert!(terminal.screen().rows[0].wrapped);
+    assert!(terminal.screen().physical_row(0).wrapped);
+    assert!(terminal.screen().row(0).wrapped);
 }
 
 #[test]
@@ -139,13 +146,13 @@ fn scroll_up_without_history_preserves_pins_and_detaches_partial_regions() {
         let tracked = terminal.screen_mut().track(start);
         terminal.feed(format!("\x1b[1;{bottom}r\x1b[S").as_bytes());
         let screen = terminal.screen();
-        assert!(screen.history.is_empty());
+        assert!(screen.history().next().is_none());
         assert_eq!(screen.resolve(tracked), screen.point(0, 2));
-        assert_eq!(&*screen.cell_text(&screen.rows[0], 2), "k");
-        assert_eq!(screen.rows[0].wrapped, bottom == 4);
-        assert_eq!(screen.rows[0].wrap_continuation, bottom == 4);
+        assert_eq!(&*screen.cell_text(&screen.row(0), 2), "k");
+        assert_eq!(screen.row(0).wrapped, bottom == 4);
+        assert_eq!(screen.row(0).wrap_continuation, bottom == 4);
         assert_eq!(
-            &*screen.cell_text(&screen.rows[3], 0),
+            &*screen.cell_text(&screen.row(3), 0),
             if bottom == 3 { "y" } else { "" }
         );
     }
@@ -158,16 +165,14 @@ fn partial_width_line_shifts_preserve_row_wrap_metadata() {
         terminal.feed(b"abcdefghijklmnopqr\r\nlast\x1b[?69h\x1b[3;6s\x1b[1;3H");
         let wraps: Vec<_> = terminal
             .screen()
-            .rows
-            .iter()
+            .rows()
             .map(|row| (row.wrapped, row.wrap_continuation))
             .collect();
         terminal.feed(&[0x1b, b'[', *command]);
         assert_eq!(
             terminal
                 .screen()
-                .rows
-                .iter()
+                .rows()
                 .map(|row| (row.wrapped, row.wrap_continuation))
                 .collect::<Vec<_>>(),
             wraps
@@ -179,9 +184,9 @@ fn partial_width_line_shifts_preserve_row_wrap_metadata() {
 fn moving_rows_removes_orphaned_wide_wrap_padding() {
     let mut terminal = Terminal::new(8, 4, 10);
     terminal.feed("\x1b[8G界\x1b[T".as_bytes());
-    assert!(!terminal.screen().rows[1].cells[7].spacer_head);
+    assert!(!terminal.screen().row(1).cells[7].spacer_head());
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().rows[2], 0),
+        &*terminal.screen().cell_text(&terminal.screen().row(2), 0),
         "界"
     );
 }
@@ -194,21 +199,19 @@ fn margin_splits_clear_wide_text_and_preserve_surviving_attributes() {
         for row in 1..=4 {
             terminal.feed(format!("\x1b[{row};1Ha界b界cd").as_bytes());
         }
-        let before = terminal.screen().rows[0].cells.clone();
+        let detached = terminal.screen().snapshot_viewport();
+        let before = detached.row(0);
         terminal.feed(b"\x1b[?69h\x1b[3;5s\x1b[1;3H");
         terminal.feed(&[0x1b, b'[', *command]);
-        for row in &terminal.screen().rows {
+        for row in terminal.screen().rows() {
             for col in [1, 5] {
                 let cell = &row.cells[col];
-                assert!(cell.codepoint.is_none());
-                assert_eq!(cell.width, 1);
-                assert_eq!(cell.style, before[col].style);
+                assert!(cell.codepoint().is_none());
+                assert_eq!(cell.width(), 1);
+                assert_eq!(row.style(col), before.style(col));
                 assert_eq!(
-                    cell.hyperlink.as_ref().and_then(|link| link.id.as_ref()),
-                    before[col]
-                        .hyperlink
-                        .as_ref()
-                        .and_then(|link| link.id.as_ref())
+                    row.hyperlink(col).and_then(|link| link.id.as_ref()),
+                    before.hyperlink(col).and_then(|link| link.id.as_ref())
                 );
             }
         }

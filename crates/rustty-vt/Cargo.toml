@@ -7,6 +7,11 @@ license.workspace = true
 publish = false
 description = "Headless terminal state and protocol handling."
 
+[features]
+allocation-probe = []
+# Use reference kernels without disabling normal compiler optimization.
+scalar-kernels = []
+
 [dependencies]
 rustty-parser.workspace = true
 serde.workspace = true
@@ -17,6 +22,10 @@ png.workspace = true
 flate2.workspace = true
 lz4_flex.workspace = true
 crc32c.workspace = true
+bytemuck = { version = "1.25", features = ["derive"] }
+
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+wide = "1.7"
 
 [dev-dependencies]
 criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
@@ -24,6 +33,10 @@ criterion = { version = "0.8.2", default-features = false, features = ["cargo_be
 [[example]]
 name = "parity"
 path = "../../test/rustty/rust-oracle.rs"
+
+[[example]]
+name = "allocations"
+path = "../../test/rustty/allocations.rs"
 
 [[bench]]
 name = "primitives"

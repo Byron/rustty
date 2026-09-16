@@ -44,9 +44,9 @@ impl Renderer {
         let clip = [
             options.padding[0],
             options.padding[1],
-            (screen.rows.first().map_or(0, |r| r.cells.len()) as f32 * metrics.cell_width as f32)
+            (screen.rows().next().map_or(0, |r| r.cells.len()) as f32 * metrics.cell_width as f32)
                 .min((options.size[0] as f32 - 2.0 * options.padding[0]).max(0.0)),
-            (screen.rows.len() as f32 * metrics.cell_height as f32)
+            (screen.height() as f32 * metrics.cell_height as f32)
                 .min((options.size[1] as f32 - 2.0 * options.padding[1]).max(0.0)),
         ];
         for mut placement in placements {
@@ -205,7 +205,7 @@ fn geometry(screen: &Screen, metrics: FontMetrics, options: &RenderOptions) -> V
         .iter()
         .map(|p| ((p.image_id, p.placement_id), p))
         .collect();
-    let first = screen.history.len().saturating_sub(screen.viewport_offset) as i64;
+    let first = screen.history_len().saturating_sub(screen.viewport_offset) as i64;
     let rows: HashMap<_, _> = if screen
         .graphics
         .placements
@@ -505,7 +505,7 @@ mod tests {
         terminal.feed(b"\r\n\r\n");
         let snapshot = terminal.screen().snapshot_viewport();
         assert_eq!(snapshot.graphics.placements[0].viewport_row, Some(-1));
-        assert!(snapshot.history.is_empty());
+        assert_eq!(snapshot.history_len(), 0);
         let (mut renderer, options) = renderer();
         let direct = renderer.prepare(terminal.screen(), &options).unwrap();
         let projected = renderer.prepare(&snapshot, &options).unwrap();
@@ -651,8 +651,14 @@ mod tests {
                     PLACEHOLDER.to_string()
                 };
                 terminal.screen_mut().set_cell_text(row, col, &text);
-                terminal.screen_mut().rows[row].cells[col].style.foreground =
-                    TerminalColor::Indexed(1);
+                terminal.screen_mut().set_cell_style(
+                    row,
+                    col,
+                    rustty_vt::Style {
+                        foreground: TerminalColor::Indexed(1),
+                        ..rustty_vt::Style::default()
+                    },
+                );
             }
         }
         let rendered = geometry(terminal.screen(), metrics, &options);
@@ -689,8 +695,14 @@ mod tests {
                     PLACEHOLDER.to_string()
                 };
                 terminal.screen_mut().set_cell_text(row, col, &text);
-                terminal.screen_mut().rows[row].cells[col].style.foreground =
-                    TerminalColor::Indexed(1);
+                terminal.screen_mut().set_cell_style(
+                    row,
+                    col,
+                    rustty_vt::Style {
+                        foreground: TerminalColor::Indexed(1),
+                        ..rustty_vt::Style::default()
+                    },
+                );
             }
         }
         let expected = geometry(terminal.screen(), renderer.metrics(), &options);
@@ -724,7 +736,14 @@ mod tests {
         terminal
             .screen_mut()
             .set_cell_text(0, 0, &format!("{PLACEHOLDER}\u{30d}\u{30d}"));
-        terminal.screen_mut().rows[0].cells[0].style.foreground = TerminalColor::Indexed(1);
+        terminal.screen_mut().set_cell_style(
+            0,
+            0,
+            rustty_vt::Style {
+                foreground: TerminalColor::Indexed(1),
+                ..rustty_vt::Style::default()
+            },
+        );
         let expected = geometry(terminal.screen(), renderer.metrics(), &options);
         assert_eq!(expected.len(), 1);
         assert_eq!(expected[0].source, [3.0, 3.0, 3.0, 3.0]);
@@ -810,8 +829,14 @@ mod tests {
                     PLACEHOLDER.to_string()
                 };
                 terminal.screen_mut().set_cell_text(row, col, &text);
-                terminal.screen_mut().rows[row].cells[col].style.foreground =
-                    TerminalColor::Indexed(1);
+                terminal.screen_mut().set_cell_style(
+                    row,
+                    col,
+                    rustty_vt::Style {
+                        foreground: TerminalColor::Indexed(1),
+                        ..rustty_vt::Style::default()
+                    },
+                );
             }
         }
         let frame = renderer.prepare(terminal.screen(), &options).unwrap();

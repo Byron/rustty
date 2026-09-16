@@ -3173,6 +3173,7 @@ dependencies = [
  "egui",
  "egui-wgpu",
  "egui-winit",
+ "libc",
  "muda",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
@@ -3213,6 +3214,7 @@ version = "0.1.0"
 dependencies = [
  "rustty-font",
  "rustty-vt",
+ "serde_json",
 ]
 
 [[package]]
@@ -3230,6 +3232,7 @@ name = "rustty-vt"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "bytemuck",
  "crc32c",
  "criterion",
  "flate2",
@@ -3239,6 +3242,7 @@ dependencies = [
  "rustty-parser",
  "serde",
  "serde_json",
+ "wide",
 ]
 
 [[package]]
@@ -3246,6 +3250,15 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+
+[[package]]
+name = "safe_arch"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42c6efa15875e6ecb39ca61fb0b0c1a40b84fac5a5ffe71eef7d1000c8eb3f5f"
+dependencies = [
+ "bytemuck",
+]
 
 [[package]]
 name = "same-file"
@@ -4316,6 +4329,16 @@ dependencies = [
  "raw-window-handle",
  "static_assertions",
  "web-sys",
+]
+
+[[package]]
+name = "wide"
+version = "1.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8cf05ca94c9fba0c51316899caa1d1e74a064fc310a5efa7375e614343d415be"
+dependencies = [
+ "bytemuck",
+ "safe_arch",
 ]
 
 [[package]]

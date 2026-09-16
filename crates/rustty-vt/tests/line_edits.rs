@@ -6,17 +6,19 @@ fn erasing_a_wrapped_row_disconnects_the_following_row() {
         for command in [b"\x1b[X".as_slice(), b"\x1b[K", b"\x1b[2K", b"\x1b[P"] {
             let mut terminal = Terminal::new(4, 3, 10);
             terminal.feed(setup.as_bytes());
-            assert!(terminal.screen().rows[0].wrapped);
-            assert!(terminal.screen().rows[1].wrap_continuation);
+            assert!(terminal.screen().row(0).wrapped);
+            assert!(terminal.screen().row(1).wrap_continuation);
             terminal.feed(b"\x1b[H");
             terminal.feed(command);
-            assert!(!terminal.screen().rows[0].wrapped);
-            assert!(!terminal.screen().rows[1].wrap_continuation);
+            assert!(!terminal.screen().row(0).wrapped);
+            assert!(!terminal.screen().row(1).wrap_continuation);
             assert!(
-                terminal.screen().rows[0]
+                terminal
+                    .screen()
+                    .row(0)
                     .cells
                     .iter()
-                    .all(|cell| !cell.spacer_head)
+                    .all(|cell| !cell.spacer_head())
             );
         }
     }
@@ -48,18 +50,12 @@ fn omitted_line_edit_counts_still_move_one_line() {
     let mut terminal = Terminal::new(8, 4, 0);
     terminal.feed(b"one\r\ntwo\r\nthree\x1b[2;4H\x1b[L");
     assert_eq!(terminal.screen().cursor.col, 0);
-    assert_eq!(terminal.screen().row_text(&terminal.screen().rows[1]), "");
-    assert_eq!(
-        terminal.screen().row_text(&terminal.screen().rows[2]),
-        "two"
-    );
+    assert_eq!(terminal.screen().row_text(&terminal.screen().row(1)), "");
+    assert_eq!(terminal.screen().row_text(&terminal.screen().row(2)), "two");
     terminal.feed(b"\x1b[M");
+    assert_eq!(terminal.screen().row_text(&terminal.screen().row(1)), "two");
     assert_eq!(
-        terminal.screen().row_text(&terminal.screen().rows[1]),
-        "two"
-    );
-    assert_eq!(
-        terminal.screen().row_text(&terminal.screen().rows[2]),
+        terminal.screen().row_text(&terminal.screen().row(2)),
         "three"
     );
 }

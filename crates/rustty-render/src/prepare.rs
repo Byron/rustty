@@ -3,7 +3,7 @@ use rustty_font::{
     BitmapFormat, FontConfig, FontError, FontId, FontMetrics, FontStyle, FontSystem, GlyphBitmap,
     ShapedGlyph, sprite,
 };
-use rustty_vt::screen::{Color as TerminalColor, CursorShape, Row, Screen, Style, Underline};
+use rustty_vt::screen::{Color as TerminalColor, CursorShape, RowView, Screen, Style, Underline};
 use std::{
     collections::HashMap,
     sync::{
@@ -193,7 +193,7 @@ impl Renderer {
             self.prepare_graphics(screen, options, omit_excess_images)?;
         frame.quads.extend(below_background);
         let mut foreground = Frame::empty(options.size);
-        let viewport_start = screen.history.len().saturating_sub(screen.viewport_offset);
+        let viewport_start = screen.history_len().saturating_sub(screen.viewport_offset);
         let selection = screen.selection.and_then(|selection| {
             let start = screen
                 .all_rows()
@@ -215,22 +215,19 @@ impl Renderer {
                     && options.preedit.as_ref().is_some_and(|p| !p.text.is_empty()))
                 && screen.viewport_offset == 0
                 && screen.cursor.row == row_index;
-            let mut paints = Vec::with_capacity(row.cells.len());
+            let mut paints = Vec::with_capacity(row.cells().len());
             let visible_cols = ((options.size[0] as f32 - options.padding[0]).max(0.0)
                 / metrics.cell_width as f32)
                 .ceil() as usize;
-            for (col, cell) in row.cells.iter().take(visible_cols).enumerate() {
-                frame.blinking_text |= cell.style.blink
-                    && !cell.style.invisible
-                    && cell.width != 0
-                    && (cell.style.underline != Underline::None
-                        || cell.style.strikethrough
-                        || cell.style.overline
-                        || cell.codepoint != Some(graphics::PLACEHOLDER)
-                            && screen
-                                .cell_text(row, col)
-                                .chars()
-                                .any(|ch| !ch.is_whitespace()));
+            for (col, cell) in row.cells().iter().take(visible_cols).enumerate() {
+                frame.blinking_text |= row.style(col).blink
+                    && !row.style(col).invisible
+                    && cell.width() != 0
+                    && (row.style(col).underline != Underline::None
+                        || row.style(col).strikethrough
+                        || row.style(col).overline
+                        || cell.codepoint() != Some(graphics::PLACEHOLDER)
+                            && row.text(col).chars().any(|ch| !ch.is_whitespace()));
                 let selected = selection.is_some_and(|(start, end, rectangular)| {
                     let position = (viewport_start + row_index, col);
                     if rectangular {
@@ -242,9 +239,9 @@ impl Renderer {
                         position >= start && position <= end
                     }
                 });
-                let mut fg = resolve(cell.style.foreground, options.foreground, options);
-                let mut bg = resolve(cell.style.background, options.background, options);
-                if cell.style.inverse {
+                let mut fg = resolve(row.style(col).foreground, options.foreground, options);
+                let mut bg = resolve(row.style(col).background, options.background, options);
+                if row.style(col).inverse {
                     std::mem::swap(&mut fg, &mut bg);
                 }
                 if selected {
@@ -270,29 +267,29 @@ impl Renderer {
                         Color::rgb(bg),
                     ));
                 }
-                let fg = Color::rgb(fg).opacity(if cell.style.faint { 0.5 } else { 1.0 });
+                let fg = Color::rgb(fg).opacity(if row.style(col).faint { 0.5 } else { 1.0 });
                 paints.push(fg);
             }
-            self.row_text(screen, row, &paints, top, options, &mut foreground)?;
-            for (col, cell) in row.cells.iter().take(visible_cols).enumerate() {
-                if cell.width == 0 {
+            self.row_text(row, &paints, top, options, &mut foreground)?;
+            for (col, cell) in row.cells().iter().take(visible_cols).enumerate() {
+                if cell.width() == 0 {
                     continue;
                 }
                 let x = options.padding[0] + col as f32 * metrics.cell_width as f32;
-                let width = f32::from(cell.width) * metrics.cell_width as f32;
-                let line_color = if cell.style.underline_color == TerminalColor::Default {
+                let width = f32::from(cell.width()) * metrics.cell_width as f32;
+                let line_color = if row.style(col).underline_color == TerminalColor::Default {
                     paints[col]
                 } else {
                     Color::rgb(resolve(
-                        cell.style.underline_color,
+                        row.style(col).underline_color,
                         options.foreground,
                         options,
                     ))
                 };
-                if !cell.style.invisible && (!cell.style.blink || options.blink_visible) {
+                if !row.style(col).invisible && (!row.style(col).blink || options.blink_visible) {
                     decorations(
                         &mut foreground,
-                        &cell.style,
+                        &row.style(col),
                         [x, top, width],
                         metrics,
                         paints[col],
@@ -333,8 +330,7 @@ impl Renderer {
 
     fn row_text(
         &mut self,
-        screen: &Screen,
-        row: &Row,
+        row: RowView<'_>,
         paints: &[Color],
         top: f32,
         options: &RenderOptions,
@@ -343,19 +339,19 @@ impl Renderer {
         let metrics = self.metrics();
         let mut col = 0;
         while col < paints.len() {
-            let cell = &row.cells[col];
-            if cell.width == 0
-                || cell.style.invisible
-                || cell.style.blink && !options.blink_visible
-                || cell.codepoint == Some(graphics::PLACEHOLDER)
+            let cell = &row.cells()[col];
+            if cell.width() == 0
+                || row.style(col).invisible
+                || row.style(col).blink && !options.blink_visible
+                || cell.codepoint() == Some(graphics::PLACEHOLDER)
             {
                 col += 1;
                 continue;
             }
-            let style = cell.style;
+            let style = row.style(col);
             let color = paints[col];
-            if let Some(cp) = self.sprite_codepoint(&screen.cell_text(row, col)) {
-                let cached = self.sprite(cp, cell.width)?;
+            if let Some(cp) = self.sprite_codepoint(&row.text(col)) {
+                let cached = self.sprite(cp, cell.width())?;
                 frame.quads.push(Quad {
                     rect: [
                         options.padding[0] + col as f32 * metrics.cell_width as f32,
@@ -374,18 +370,18 @@ impl Renderer {
             let mut text = String::new();
             let mut sources = Vec::new();
             while col < paints.len()
-                && row.cells[col].style == style
+                && row.style(col) == style
                 && paints[col] == color
-                && self.sprite_codepoint(&screen.cell_text(row, col)).is_none()
-                && row.cells[col].codepoint != Some(graphics::PLACEHOLDER)
+                && self.sprite_codepoint(&row.text(col)).is_none()
+                && row.cells()[col].codepoint() != Some(graphics::PLACEHOLDER)
             {
-                let cell = &row.cells[col];
-                if cell.width != 0 {
+                let cell = &row.cells()[col];
+                if cell.width() != 0 {
                     sources.push((text.len(), col));
-                    if cell.codepoint.is_none() {
+                    if cell.codepoint().is_none() {
                         text.push(' ');
                     } else {
-                        text.push_str(&screen.cell_text(row, col));
+                        text.push_str(&row.text(col));
                     }
                 }
                 col += 1;
@@ -846,7 +842,7 @@ mod tests {
     fn selection_and_unfocused_cursor_have_explicit_geometry() {
         let mut terminal = Terminal::new(10, 2, 10);
         terminal.feed(b"hello");
-        let row = terminal.screen().rows[0].id;
+        let row = terminal.screen().row(0).id;
         terminal.screen_mut().selection = Some(Selection {
             start: GridPoint { row, col: 1 },
             end: GridPoint { row, col: 3 },

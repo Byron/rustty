@@ -2,6 +2,9 @@
 use super::*;
 use std::fs;
 
+#[path = "../../../test/rustty/frame_workloads.rs"]
+mod workload;
+
 #[cfg(test)]
 #[test]
 fn hover_measurement_restarts_for_motion_and_leaving_but_not_duplicate_events() {
@@ -25,6 +28,7 @@ fn hover_measurement_restarts_for_motion_and_leaving_but_not_duplicate_events() 
         header_frames: 0,
         header_prepares: 0,
         events: BTreeMap::new(),
+        timing: None,
     };
     let position = Some(Pos2::new(100.0, 100.0));
     smoke.pointer(position, 5);
@@ -57,6 +61,7 @@ pub(super) struct Smoke {
     header_frames: u64,
     header_prepares: u64,
     events: BTreeMap<&'static str, u64>,
+    timing: Option<Replay>,
 }
 impl Smoke {
     pub fn from_env(loaded: &mut LoadedConfig) -> Result<Option<Self>> {
@@ -65,13 +70,17 @@ impl Smoke {
         };
         let directory = PathBuf::from(directory);
         fs::create_dir_all(&directory)?;
-        for name in ["window.png", "result.json"] {
+        for name in ["window.png", "result.json", "timing.json"] {
             match fs::remove_file(directory.join(name)) {
                 Ok(()) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => return Err(error.into()),
             }
         }
+        let timing = std::env::var("RUSTTY_SMOKE_TIMING")
+            .ok()
+            .map(|name| Replay::new(&name))
+            .transpose()?;
         Self::configure(loaded);
         Ok(Some(Self {
             directory,
@@ -92,10 +101,22 @@ impl Smoke {
             header_frames: 0,
             header_prepares: 0,
             events: BTreeMap::new(),
+            timing,
         }))
     }
     pub(super) fn configure(loaded: &mut LoadedConfig) {
-        let command = config::Command::Direct(vec!["/bin/sh".into(),"-c".into(),r"printf '\033[2J\033[H\033[30;107m  ✔️\033[5G  > selected row\033[0m\n\033[1;36mRustty native smoke\033[0m\n\033]7;file://localhost/tmp\007\033]9;4;1;65\007'; exec /bin/sh -i".into()]);
+        let timing = std::env::var_os("RUSTTY_SMOKE_TIMING").is_some();
+        if timing {
+            loaded.config = Config::default();
+            loaded.diagnostics.clear();
+            loaded.config.font_family = vec!["Menlo".into()];
+            loaded.config.font_size = 13.0;
+        }
+        let command = if timing {
+            config::Command::Direct(vec!["/bin/sleep".into(), "120".into()])
+        } else {
+            config::Command::Direct(vec!["/bin/sh".into(),"-c".into(),r"printf '\033[2J\033[H\033[30;107m  ✔️\033[5G  > selected row\033[0m\n\033[1;36mRustty native smoke\033[0m\n\033]7;file://localhost/tmp\007\033]9;4;1;65\007'; exec /bin/sh -i".into()])
+        };
         loaded.config.command = Some(command.clone());
         loaded.config.initial_command = Some(command);
         loaded.config.working_directory = Some(PathBuf::from("/tmp"));
@@ -184,6 +205,11 @@ impl Smoke {
         event_loop: &ActiveEventLoop,
         host: &mut Host,
     ) -> Result<bool> {
+        if let Some(timing) = &mut self.timing {
+            let result = timing.step(app, event_loop, host, &self.directory, self.offscreen);
+            self.next = Instant::now() + Duration::from_millis(50);
+            return result;
+        }
         let text = |app: &App, id: Id| {
             app.panes
                 .get(&id)
@@ -198,10 +224,12 @@ impl Smoke {
                 }
                 {
                     let terminal = app.panes[&pane].session.terminal()?;
-                    let cells = &terminal.screen().rows[0].cells;
-                    if &*terminal.screen().cell_text(&terminal.screen().rows[0], 2) != "✔️"
-                        || (cells[2].width, cells[3].width) != (2, 0)
-                        || cells[3].style.background != vt::Color::Indexed(15)
+                    let screen = terminal.screen();
+                    let row = screen.row(0);
+                    let cells = row.cells;
+                    if &*row.text(2) != "✔️"
+                        || (cells[2].width(), cells[3].width()) != (2, 0)
+                        || row.style(3).background != vt::Color::Indexed(15)
                     {
                         return Err("emoji checkmark lost its second cell's background".into());
                     }
@@ -534,6 +562,164 @@ impl Smoke {
     }
 }
 
+struct Replay {
+    case: &'static str,
+    size: Option<[u16; 2]>,
+    input: Vec<u8>,
+    frame: usize,
+    last_frame: Option<Instant>,
+    process_start: Option<(Instant, u64)>,
+    samples: Vec<[u64; 5]>,
+    target: Option<wgpu::Texture>,
+}
+
+impl Replay {
+    fn new(name: &str) -> Result<Self> {
+        let name = if name == "1" { "mixed_unicode" } else { name };
+        let case = workload::CASES
+            .into_iter()
+            .find(|&case| case == name)
+            .ok_or_else(|| format!("unknown replay {name:?}; expected {:?}", workload::CASES))?;
+        Ok(Self {
+            case,
+            size: None,
+            input: Vec::new(),
+            frame: 0,
+            last_frame: None,
+            process_start: None,
+            samples: Vec::with_capacity(workload::SAMPLES),
+            target: None,
+        })
+    }
+
+    fn step(
+        &mut self,
+        app: &mut App,
+        event_loop: &ActiveEventLoop,
+        host: &mut Host,
+        directory: &Path,
+        offscreen: bool,
+    ) -> Result<bool> {
+        if host.frames == 0 || !host.visible || host.occluded {
+            return Ok(false);
+        }
+        let pane = app.focused(host.id).ok_or("replay has no pane")?;
+        if self.size.is_none() {
+            let wanted = winit::dpi::PhysicalSize::new(1200, 850);
+            if host.window.inner_size() != wanted {
+                let _ = host.window.request_inner_size(wanted);
+                return Ok(false);
+            }
+            let mut terminal = app.panes[&pane].session.terminal()?;
+            let size = [terminal.cols, terminal.rows];
+            let mut fixture = vt::Terminal::new(size[0], size[1], 4096);
+            fixture.set_pixel_size(terminal.width_px, terminal.height_px);
+            self.input = workload::setup(&mut fixture, self.case);
+            *terminal = fixture;
+            self.size = Some(size);
+            host.prepared.clear();
+            host.composed = None;
+            host.focus_hint.dismiss();
+            if offscreen {
+                let state = app.painter.render_state().ok_or("GPU unavailable")?;
+                self.target = Some(offscreen_texture(&state, [1200, 850]));
+            }
+        }
+        if self.frame == workload::WARMUP {
+            self.process_start = Some((Instant::now(), cpu_time(libc::CLOCK_PROCESS_CPUTIME_ID)?));
+        }
+        let terminal_start = Instant::now();
+        workload::advance(
+            &mut *app.panes[&pane].session.terminal()?,
+            self.case,
+            &self.input,
+            self.frame,
+            self.size.unwrap(),
+        );
+        let terminal_ns = terminal_start.elapsed().as_nanos() as u64;
+        let cpu_start = cpu_time(libc::CLOCK_THREAD_CPUTIME_ID)?;
+        let frame_start = Instant::now();
+        let before = host.frames;
+        app.draw_frame(event_loop, host, self.target.as_ref())?;
+        let frame_ns = frame_start.elapsed().as_nanos() as u64;
+        let frame_cpu = cpu_time(libc::CLOCK_THREAD_CPUTIME_ID)? - cpu_start;
+        if host.frames != before + 1 {
+            return Err("replay did not draw a frame".into());
+        }
+        let interval = self
+            .last_frame
+            .replace(frame_start)
+            .map_or(0, |last| frame_start.duration_since(last).as_nanos() as u64);
+        if self.frame >= workload::WARMUP {
+            self.samples.push([
+                terminal_ns,
+                frame_ns,
+                frame_cpu,
+                interval,
+                resident_bytes()?,
+            ]);
+        }
+        self.frame += 1;
+        if self.samples.len() != workload::SAMPLES {
+            return Ok(false);
+        }
+        let (started, cpu_started) = self.process_start.unwrap();
+        let elapsed = started.elapsed().as_secs_f64();
+        let process_cpu = (cpu_time(libc::CLOCK_PROCESS_CPUTIME_ID)? - cpu_started) as f64 / 1e9;
+        let report = serde_json::json!({
+            "case": self.case, "font": "Menlo", "font_size_points": 13,
+            "size_pixels": [host.window.inner_size().width, host.window.inner_size().height],
+            "scale_factor": host.window.scale_factor(), "terminal_size": self.size.unwrap(),
+            "warmup_frames": workload::WARMUP, "sample_frames": workload::SAMPLES,
+            "minimum_replay_pause_ms": 50, "offscreen": offscreen,
+            "offscreen_gpu_submission": self.target.is_some(),
+            "gpu_completion_measured": false, "visible_presentation_measured": false,
+            "columns": ["terminal_ns", "frame_wall_ns", "frame_thread_cpu_ns", "frame_interval_ns", "rss_bytes"],
+            "statistics": {
+                "terminal_ns": workload::stats(self.samples.iter().map(|s| s[0])),
+                "frame_wall_ns": workload::stats(self.samples.iter().map(|s| s[1])),
+                "frame_thread_cpu_ns": workload::stats(self.samples.iter().map(|s| s[2])),
+                "frame_interval_ns": workload::stats(self.samples.iter().map(|s| s[3])),
+                "rss_bytes": workload::stats(self.samples.iter().map(|s| s[4])),
+            },
+            "process_cpu_seconds": process_cpu, "elapsed_seconds": elapsed,
+            "process_cpu_percent_of_one_core": 100.0 * process_cpu / elapsed,
+            "samples": self.samples,
+        });
+        fs::write(
+            directory.join("timing.json"),
+            serde_json::to_vec_pretty(&report)?,
+        )?;
+        Ok(true)
+    }
+}
+
+fn cpu_time(clock: libc::clockid_t) -> Result<u64> {
+    let mut time: libc::timespec = unsafe { std::mem::zeroed() };
+    if unsafe { libc::clock_gettime(clock, &mut time) } != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    Ok(time.tv_sec as u64 * 1_000_000_000 + time.tv_nsec as u64)
+}
+
+fn resident_bytes() -> Result<u64> {
+    let mut info = std::mem::MaybeUninit::<libc::proc_taskinfo>::zeroed();
+    let size = std::mem::size_of_val(&info) as i32;
+    let read = unsafe {
+        libc::proc_pidinfo(
+            std::process::id() as i32,
+            libc::PROC_PIDTASKINFO,
+            0,
+            info.as_mut_ptr().cast(),
+            size,
+        )
+    };
+    if read != size {
+        return Err(format!("proc_pidinfo returned {read} bytes, expected {size}").into());
+    }
+    Ok(unsafe { info.assume_init() }.pti_resident_size)
+}
+
 fn check_terminal_frames(
     app: &mut App,
     event_loop: &ActiveEventLoop,
@@ -774,6 +960,7 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
             std::mem::take(&mut pane.input),
             std::mem::take(&mut pane.input_bytes),
             pane.mouse_cell.take(),
+            std::mem::take(&mut pane.scroll),
         ));
         // Hold encoded reports in the existing queue instead of sending them to a shell.
         pane.input.push_back(Vec::new());
@@ -805,6 +992,24 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
         }
         check_link_hover(app, host, focused, hovered)?;
         host.mouse = host.rects[&hovered].center();
+        let pixels = f64::from(host.fonts.metrics().cell_height) * host.window.scale_factor() / 2.0;
+        // Fractional movement, a reversal, then a decaying native momentum tail.
+        // The final reverse scroll returns the viewport and remainder to zero.
+        let trackpad = [
+            (0.25, 0_isize),
+            (0.25, 0),
+            (0.0, 0),
+            (-0.125, 0),
+            (0.25, 0),
+            (0.375, 1),
+            (1.5, 1),
+            (0.75, 1),
+            (0.375, 0),
+            (0.1875, 0),
+            (0.125, 0),
+            (0.0625, 1),
+            (-4.0, -4),
+        ];
         for (focused_mode, hovered_mode, shift, capture) in [
             (0, 0, false, false),
             (1000, 0, false, false),
@@ -831,13 +1036,30 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
                 });
             }
             let reporting = hovered_mode != 0 && (!shift || capture);
-            let pixels = f64::from(host.fonts.metrics().cell_height);
-            for (delta, offset, code) in [
-                (MouseScrollDelta::LineDelta(0.0, 1.0), 3, 64),
-                (MouseScrollDelta::PixelDelta((0.0, pixels).into()), 6, 64),
-                (MouseScrollDelta::LineDelta(0.0, -1.0), 3, 65),
-                (MouseScrollDelta::PixelDelta((0.0, -pixels).into()), 0, 65),
-            ] {
+            let mut offset = 0;
+            for (delta, rows, reports, code) in [
+                (MouseScrollDelta::LineDelta(0.0, 1.0), 3, 1, 64),
+                (MouseScrollDelta::PixelDelta((0.0, pixels).into()), 1, 1, 64),
+                (MouseScrollDelta::LineDelta(0.0, -1.0), -3, 1, 65),
+                (
+                    MouseScrollDelta::PixelDelta((0.0, -pixels).into()),
+                    -1,
+                    1,
+                    65,
+                ),
+                (MouseScrollDelta::LineDelta(0.0, 0.1), 0, 1, 64),
+                (MouseScrollDelta::LineDelta(0.0, -0.1), 0, 1, 65),
+            ]
+            .into_iter()
+            .chain(trackpad.into_iter().map(|(fraction, rows)| {
+                (
+                    MouseScrollDelta::PixelDelta((0.0, fraction * pixels).into()),
+                    rows,
+                    rows.unsigned_abs(),
+                    if rows > 0 { 64 } else { 65 },
+                )
+            })) {
+                offset += rows;
                 app.scroll(host, delta);
                 let focused_pane = &app.panes[&focused];
                 if app.focused(host.id) != Some(focused)
@@ -850,17 +1072,33 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
                 }
                 let pane = app.panes.get_mut(&hovered).unwrap();
                 if pane.session.terminal()?.screen().viewport_offset
-                    != if reporting { 0 } else { offset }
-                    || pane.input.len() != if reporting { 2 } else { 1 }
+                    != if reporting { 0 } else { offset as usize }
+                    || pane.input.len() != if reporting { 1 + reports } else { 1 }
                     || reporting
-                        && !pane.input.back().unwrap().starts_with(
-                            format!("\x1b[<{};", code + if shift { 4 } else { 0 }).as_bytes(),
-                        )
+                        && pane.input.iter().skip(1).any(|bytes| {
+                            !bytes.starts_with(
+                                format!("\x1b[<{};", code + if shift { 4 } else { 0 }).as_bytes(),
+                            )
+                        })
                 {
                     return Err(format!("hovered pane did not scroll correctly: {delta:?}, mouse modes {focused_mode}/{hovered_mode}, shift={shift}").into());
                 }
                 if reporting {
-                    pane.input.pop_back();
+                    pane.input.truncate(1);
+                    pane.input_bytes = 0;
+                }
+            }
+            if reporting {
+                for sign in [1.0, -1.0] {
+                    app.scroll(
+                        host,
+                        MouseScrollDelta::PixelDelta((0.0, sign * pixels * 200.0).into()),
+                    );
+                    let pane = app.panes.get_mut(&hovered).unwrap();
+                    if pane.input.len() != 129 {
+                        return Err("precise scroll exceeded the mouse-report limit".into());
+                    }
+                    pane.input.truncate(1);
                     pane.input_bytes = 0;
                 }
             }
@@ -878,16 +1116,40 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
                 terminal.set_mode(true, 1007, enabled);
                 terminal.set_mode(true, 1, application);
             }
-            for (lines, key) in [(1.0, b'A'), (-1.0, b'B')] {
-                app.scroll(host, MouseScrollDelta::LineDelta(0.0, lines));
+            for (delta, rows) in [
+                (MouseScrollDelta::LineDelta(0.0, 1.0), 3),
+                (MouseScrollDelta::LineDelta(0.0, -1.0), -3),
+                (
+                    MouseScrollDelta::PixelDelta((0.0, pixels * 200.0).into()),
+                    128,
+                ),
+                (
+                    MouseScrollDelta::PixelDelta((0.0, -pixels * 200.0).into()),
+                    -128,
+                ),
+            ]
+            .into_iter()
+            .chain(trackpad.into_iter().map(|(fraction, rows)| {
+                (
+                    MouseScrollDelta::PixelDelta((0.0, fraction * pixels).into()),
+                    rows,
+                )
+            })) {
+                app.scroll(host, delta);
                 let pane = app.panes.get_mut(&hovered).unwrap();
-                let expected = [0x1b, if application { b'O' } else { b'[' }, key].repeat(3);
-                if pane.input.len() != if enabled { 2 } else { 1 }
-                    || enabled && pane.input.back() != Some(&expected)
+                let expected = [
+                    0x1b,
+                    if application { b'O' } else { b'[' },
+                    if rows > 0 { b'A' } else { b'B' },
+                ]
+                .repeat(rows.unsigned_abs());
+                let emitted = enabled && rows != 0;
+                if pane.input.len() != if emitted { 2 } else { 1 }
+                    || emitted && pane.input.back() != Some(&expected)
                 {
                     return Err("alternate scroll ignored mode 1007 or cursor-key mode".into());
                 }
-                if enabled {
+                if emitted {
                     pane.input.pop_back();
                     pane.input_bytes = 0;
                 }
@@ -961,12 +1223,13 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
         }
         Ok(())
     })();
-    for (id, terminal, input, input_bytes, mouse_cell) in saved {
+    for (id, terminal, input, input_bytes, mouse_cell, scroll) in saved {
         let pane = app.panes.get_mut(&id).unwrap();
         *pane.session.terminal()? = terminal;
         pane.input = input;
         pane.input_bytes = input_bytes;
         pane.mouse_cell = mouse_cell;
+        pane.scroll = scroll;
     }
     host.mouse = mouse;
     host.modifiers = modifiers;
@@ -985,7 +1248,9 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
     };
     let _ = host.egui.on_window_event(&host.window, &event);
     result?;
-    eprintln!("Native smoke: scrolling and file drops followed the pointer without changing focus");
+    eprintln!(
+        "Native smoke: trackpad momentum, scrolling, and file drops followed the pointer without changing focus"
+    );
     Ok(())
 }
 
@@ -1071,17 +1336,8 @@ fn check_link_hover(app: &mut App, host: &mut Host, focused: Id, hovered: Id) ->
 
 /// Render the same host primitives to a texture when no drawable is available
 /// (e.g. a locked CI Mac). This does not claim visible surface presentation.
-pub(super) fn capture(
-    state: &egui_wgpu::RenderState,
-    primitives: &[egui::ClippedPrimitive],
-    delta: &egui::TexturesDelta,
-    size: [u32; 2],
-    scale: f32,
-    path: &Path,
-) -> Result<()> {
-    let device = &state.device;
-    let queue = &state.queue;
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
+fn offscreen_texture(state: &egui_wgpu::RenderState, size: [u32; 2]) -> wgpu::Texture {
+    state.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("Rustty host capture"),
         size: wgpu::Extent3d {
             width: size[0],
@@ -1094,14 +1350,19 @@ pub(super) fn capture(
         format: state.target_format,
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
-    });
-    let stride = (size[0] * 4).div_ceil(256) * 256;
-    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Rustty host readback"),
-        size: u64::from(stride) * u64::from(size[1]),
-        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
+    })
+}
+
+fn offscreen_commands(
+    state: &egui_wgpu::RenderState,
+    primitives: &[egui::ClippedPrimitive],
+    delta: &egui::TexturesDelta,
+    size: [u32; 2],
+    scale: f32,
+    texture: &wgpu::Texture,
+) -> (wgpu::CommandEncoder, Vec<wgpu::CommandBuffer>) {
+    let device = &state.device;
+    let queue = &state.queue;
     let mut encoder = device.create_command_encoder(&Default::default());
     let descriptor = egui_wgpu::ScreenDescriptor {
         size_in_pixels: size,
@@ -1135,6 +1396,47 @@ pub(super) fn capture(
         renderer.render(&mut pass.forget_lifetime(), primitives, &descriptor);
     }
     drop(renderer);
+    (encoder, commands)
+}
+
+pub(super) fn submit_offscreen(
+    state: &egui_wgpu::RenderState,
+    primitives: &[egui::ClippedPrimitive],
+    delta: &egui::TexturesDelta,
+    size: [u32; 2],
+    scale: f32,
+    target: &wgpu::Texture,
+) {
+    let (encoder, commands) = offscreen_commands(state, primitives, delta, size, scale, target);
+    state
+        .queue
+        .submit(commands.into_iter().chain([encoder.finish()]));
+    let mut renderer = state.renderer.write();
+    for id in &delta.free {
+        renderer.free_texture(id);
+    }
+}
+
+pub(super) fn capture(
+    state: &egui_wgpu::RenderState,
+    primitives: &[egui::ClippedPrimitive],
+    delta: &egui::TexturesDelta,
+    size: [u32; 2],
+    scale: f32,
+    path: &Path,
+) -> Result<()> {
+    let device = &state.device;
+    let queue = &state.queue;
+    let texture = offscreen_texture(state, size);
+    let stride = (size[0] * 4).div_ceil(256) * 256;
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Rustty host readback"),
+        size: u64::from(stride) * u64::from(size[1]),
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let (mut encoder, commands) =
+        offscreen_commands(state, primitives, delta, size, scale, &texture);
     encoder.copy_texture_to_buffer(
         texture.as_image_copy(),
         wgpu::TexelCopyBufferInfo {

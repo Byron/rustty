@@ -236,5 +236,5 @@ fn conemu_commands_are_distinct_from_notifications_and_progress_at_capture_limit
         (0, 1)
     );
     assert_eq!(terminal.screen().cursor.semantic, SemanticContent::Prompt);
-    assert_eq!(terminal.screen().rows[1].semantic, SemanticContent::Prompt);
+    assert_eq!(terminal.screen().row(1).semantic, SemanticContent::Prompt);
 }

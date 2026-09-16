@@ -84,9 +84,9 @@ impl ViewportSearch {
             return false;
         }
         let pages = &screen.pages;
-        let top = screen.history.len().saturating_sub(screen.viewport_offset);
+        let top = screen.history_len().saturating_sub(screen.viewport_offset);
         let first = pages.page_index(top);
-        let last = pages.page_index(top + screen.rows.len() - 1);
+        let last = pages.page_index(top + screen.height() - 1);
         let entries = || {
             pages
                 .pages
@@ -96,7 +96,7 @@ impl ViewportSearch {
         let unchanged = self.list_identity == Some(pages.identity())
             && self.fingerprint.iter().copied().eq(entries());
         if unchanged {
-            let active_first = pages.page_index(screen.history.len());
+            let active_first = pages.page_index(screen.history_len());
             let active_last = pages.pages.len() - 1;
             if !active_dirty
                 || !((first..=last).contains(&active_first)
@@ -115,13 +115,7 @@ impl ViewportSearch {
             .take(first)
             .map(|page| usize::from(page.rows))
             .sum();
-        let row = |y: usize| {
-            if y < screen.history.len() {
-                &screen.history[y]
-            } else {
-                &screen.rows[y - screen.history.len()]
-            }
-        };
+        let row = |y: usize| screen.physical_row(y);
         let row_count = |index: usize| usize::from(pages.pages[index].rows);
         let wrapped = |index: usize, start: usize| row(start + row_count(index) - 1).wrapped;
         let page_text = |index: usize, start: usize| {
@@ -269,11 +263,11 @@ fn logical_lines(screen: &Screen) -> Vec<Line> {
             row.used()
         };
         for (col, cell) in row.cells.iter().enumerate().take(used) {
-            if cell.width == 0 || cell.spacer_head {
+            if cell.width() == 0 || cell.spacer_head() {
                 continue;
             }
             let start = line.text.len();
-            if cell.codepoint.is_none() {
+            if cell.codepoint().is_none() {
                 line.text.push(' ');
             } else {
                 line.text.push_str(&screen.cell_text(row, col));
@@ -298,7 +292,7 @@ fn logical_lines(screen: &Screen) -> Vec<Line> {
 /// Plain, trimmed, unwrapped text and point mapping used by native search.
 /// Regex links deliberately use logical_lines instead: their whitespace and
 /// hard-line boundaries are part of the regex matching contract.
-fn literal_text(screen: &Screen, rows: &[&Row]) -> Line {
+fn literal_text(screen: &Screen, rows: &[Row<'_>]) -> Line {
     let mut line = Line::default();
     let Some(first) = rows.first() else {
         return line;
@@ -307,7 +301,7 @@ fn literal_text(screen: &Screen, rows: &[&Row]) -> Line {
     let mut blank_rows = 0;
     let mut blank_cells = 0;
     for (y, row) in rows.iter().enumerate() {
-        if row.cells.iter().all(|cell| cell.codepoint.is_none()) {
+        if row.cells.iter().all(|cell| cell.codepoint().is_none()) {
             blank_rows += 1;
             continue;
         }
@@ -332,10 +326,10 @@ fn literal_text(screen: &Screen, rows: &[&Row]) -> Line {
             blank_cells = 0;
         }
         for (col, cell) in row.cells.iter().enumerate() {
-            if cell.width == 0 || cell.spacer_head {
+            if cell.width() == 0 || cell.spacer_head() {
                 continue;
             }
-            if cell.codepoint.is_none() || cell.codepoint == Some(' ') {
+            if cell.codepoint().is_none() || cell.codepoint() == Some(' ') {
                 blank_cells += 1;
                 continue;
             }
@@ -410,7 +404,7 @@ impl Screen {
         let mut boundary = (0, 0);
         for (index, page) in self.pages.pages.iter().enumerate() {
             let end = start + usize::from(page.rows);
-            if start <= self.history.len() && end > self.history.len() {
+            if start <= self.history_len() && end > self.history_len() {
                 boundary = (index, start);
             }
             pages.push((literal_text(self, &rows[start..end]), rows[end - 1].wrapped));
@@ -439,7 +433,7 @@ impl Screen {
             let prefix = matches
                 .iter()
                 .take_while(|found| {
-                    (row_positions[&found.end.row], found.end.col) <= (self.history.len(), 0)
+                    (row_positions[&found.end.row], found.end.col) <= (self.history_len(), 0)
                 })
                 .count();
             matches.drain(..prefix);
@@ -530,14 +524,13 @@ impl LinkMatcher {
         for row in screen.all_rows() {
             let mut col = 0;
             while col < row.cells.len() {
-                let Some(link) = &row.cells[col].hyperlink else {
+                let Some(link) = row.hyperlink(col) else {
                     col += 1;
                     continue;
                 };
                 let start = col;
                 while col + 1 < row.cells.len()
-                    && row.cells[col + 1].hyperlink.as_ref().map(|link| &link.uri)
-                        == Some(&link.uri)
+                    && row.hyperlink(col + 1).map(|link| &link.uri) == Some(&link.uri)
                 {
                     col += 1;
                 }
@@ -678,8 +671,8 @@ mod tests {
         assert_eq!(original[0].start.col, 2);
         let mut changed = terminal.screen().clone();
         // Same logical text and row identity, but a different leading-cell width.
-        changed.rows[0].cells.remove(1);
-        changed.rows[0].cells[0].width = 1;
+        changed.cell_mut(0, 0).set_width(1);
+        changed.shift_cells(0, 1..40, 1, false, crate::Color::Default);
         let moved = matcher.links(&changed);
         assert_eq!(moved[0].start.col, 1);
         assert_eq!(moved[0].end.col + 1, original[0].end.col);
