@@ -102,7 +102,8 @@ for offset in range(0, len(values), block_size * 2):
     block_id = blocks.setdefault(block, len(blocks))
     assert block_id < 256, "Unicode table needs wider block indices"
     index.append(block_id)
-table = index + b"".join(blocks)
+# Every u8 block index is in bounds, so lookup needs no runtime bounds checks.
+table = index + b"".join(blocks) + bytes((256 - len(blocks)) * block_size * 2)
 assert len(index) == count // block_size
 for cp in range(count):
     offset = len(index) + (table[cp // block_size] * block_size + cp % block_size) * 2

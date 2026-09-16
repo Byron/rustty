@@ -381,7 +381,16 @@ impl Page {
 
     pub fn expose(&mut self, id: u64, background: Color) {
         assert!(self.rows < self.capacity.rows);
-        self.reset_row(usize::from(self.rows), id, background);
+        let row = usize::from(self.rows);
+        // New, truncated, and recycled rows already have default cells and
+        // reset, dirty headers. Exposing them only assigns their identity.
+        debug_assert!(self.row_cells(row).iter().all(|cell| cell.bits() == 0));
+        debug_assert!(self.headers[row].has(RowHeader::DIRTY));
+        if background == Color::Default {
+            self.row_ids[row] = id;
+        } else {
+            self.reset_row(row, id, background);
+        }
         self.rows += 1;
     }
 

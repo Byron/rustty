@@ -124,6 +124,127 @@ fn resource_ownership_survives_edits_reflow_snapshots_and_eviction() {
 }
 
 #[test]
+fn scrolling_widens_all_active_pages_after_restore() {
+    let mut terminal = Terminal::new(128, 64, 1000);
+    let screen = terminal.screen_mut();
+    screen.pages = PageList::default();
+    for rows in [1, 32, 33] {
+        screen.pages.append(
+            PageCapacity {
+                cols: 4,
+                rows,
+                ..PageCapacity::STANDARD
+            },
+            rows,
+        );
+    }
+    let mut id = 0;
+    for page in &mut screen.pages.pages {
+        for row in 0..usize::from(page.rows) {
+            page.row_ids[row] = id;
+            let slot = page.slot(row, 0);
+            page.cells[slot].set_codepoint(char::from_u32('A' as u32 + id as u32));
+            page.mark_cell(row, page.cells[slot]);
+            id += 1;
+        }
+    }
+    screen.next_row = id;
+    let wire = snapshot::encode_to_vec(&terminal).unwrap();
+    let mut terminal = snapshot::decode(wire.as_slice(), Default::default()).unwrap();
+    terminal.feed(b"\x1b[T");
+
+    let screen = terminal.screen();
+    assert_eq!(screen.history_len(), 2);
+    assert_eq!(screen.physical_row(0).cells.len(), 4);
+    assert!(screen.rows().all(|row| row.cells.len() == 128));
+    assert_eq!(screen.row(0).cells[0].codepoint(), None);
+    for row in 1..64 {
+        assert_eq!(
+            screen.row(row).cells[0].codepoint(),
+            char::from_u32('A' as u32 + row as u32 + 1)
+        );
+    }
+    assert_references(screen);
+}
+
+#[test]
+fn printing_widens_before_clamping_public_cursor_edits() {
+    for alternate in [false, true] {
+        for batched in [false, true] {
+            for col in [3, usize::MAX] {
+                let mut terminal = Terminal::new(8, 2, 0);
+                if alternate {
+                    terminal.feed(b"\x1b[?1049h");
+                }
+                let screen = terminal.screen_mut();
+                screen.pages = PageList::default();
+                screen.pages.append(
+                    PageCapacity {
+                        cols: 4,
+                        rows: 2,
+                        ..PageCapacity::STANDARD
+                    },
+                    2,
+                );
+                screen.pages.pages[0].row_ids[..2].copy_from_slice(&[0, 1]);
+                screen.cursor.col = col;
+                if batched {
+                    for text in ["éé", "界界"] {
+                        let mut reference = terminal.clone();
+                        for cp in text.chars() {
+                            reference.print(cp);
+                        }
+                        let mut actual = terminal.clone();
+                        actual.feed(text.as_bytes());
+                        assert_eq!(actual.generation, reference.generation);
+                        assert!(
+                            snapshot::encode_to_vec(&actual).unwrap()
+                                == snapshot::encode_to_vec(&reference).unwrap()
+                        );
+                        assert_references(actual.screen());
+                    }
+                    terminal.feed(b"X");
+                } else {
+                    terminal.print('X');
+                }
+                let screen = terminal.screen();
+                assert_eq!(screen.row(0).cells.len(), 8);
+                assert_eq!(screen.row(0).cells[col.min(7)].codepoint(), Some('X'));
+                assert_eq!(screen.cursor.col, col.min(7).saturating_add(1).min(7));
+                assert_eq!(screen.cursor.pending_wrap, col >= 7);
+                assert_references(screen);
+            }
+        }
+    }
+}
+
+#[test]
+fn plain_copies_release_payload_charges() {
+    for whole_row in [false, true] {
+        let mut terminal = Terminal::new(8, 2, 0);
+        terminal.feed("\x1b]8;id=link;https://example.org\x07a\u{301}\x1b]8;;\x07\r\np".as_bytes());
+        let screen = terminal.screen_mut();
+        let before = screen.pages.pages[0].storage_bytes();
+        if whole_row {
+            let mut copy = RowCopy::from_view(screen.row(1));
+            copy.id = screen.row(0).id;
+            screen.install_row(0, copy, usize::MAX);
+        } else {
+            let copy = screen.row(1).copy_cell(0);
+            screen.install_cell(0, 0, copy, false).unwrap();
+        }
+        assert_eq!(&*screen.row(0).text(0), "p");
+        assert!(screen.row(0).hyperlink(0).is_none());
+        let page = &mut screen.pages.pages[0];
+        let charged = page.storage_bytes();
+        assert!(charged < before);
+        page.refresh_charge();
+        assert_eq!(charged, page.storage_bytes(), "whole row: {whole_row}");
+        assert_references(screen);
+    }
+}
+
+#[test]
 fn detached_resources_outlive_source_mutation_and_destruction() {
     let (detached, json) = {
         let mut terminal = Terminal::new(8, 2, 1000);
@@ -289,7 +410,7 @@ fn wrapped_transfers_share_unchanged_text_and_preserve_detached_snapshots() {
         screen.cell_mut(0, 2).set_codepoint(None);
         screen.cursor.row = 1;
         screen.cursor.col = 0;
-        screen.write_cursor_cell(Some(base), 2, false);
+        screen.write_cursor_cell(Some(base), 2, false, screen.cursor_location());
         screen.move_wrapped_grapheme(2, "\u{200d}");
         let (moved, len) = screen.row(1).copy_cell(0).text.unwrap();
         assert_eq!(len, 1);
@@ -304,5 +425,48 @@ fn wrapped_transfers_share_unchanged_text_and_preserve_detached_snapshots() {
         assert_eq!(&*shared, "☺\u{200d}");
         assert_references(&screen);
         assert_references(&detached);
+    }
+}
+
+#[test]
+fn exposed_rows_are_blank_after_truncation_rotation_and_recycling() {
+    let mut terminal = Terminal::new(8, 4, 0);
+    for row in 1..=4 {
+        terminal.feed(format!("\x1b[{row};1H\x1b[31m\x1b]8;id=test;https://example.org\x07a\u{301}界\x1b]8;;\x07\x1b[0m").as_bytes());
+    }
+    let original = &terminal.screen().pages.pages[0];
+    for background in [Color::Default, Color::Indexed(4), Color::Rgb(12, 34, 56)] {
+        for operation in 0..4 {
+            let mut page = original.clone();
+            match operation {
+                0 => {}
+                1 => page.truncate(2),
+                2 => {
+                    page.rotate_rows(0..4, true);
+                    page.remove_prefix(2);
+                }
+                _ => page.recycle(page.capacity, page.serial + 1),
+            }
+            let row = usize::from(page.rows);
+            page.expose(100, background);
+            assert_eq!(page.row_ids[row], 100);
+            assert!(page.headers[row].has(RowHeader::DIRTY));
+            assert!(!page.headers[row].has(
+                RowHeader::MANAGED
+                    | RowHeader::WRAPPED
+                    | RowHeader::CONTINUATION
+                    | RowHeader::PLACEHOLDER
+            ));
+            assert_eq!(page.headers[row].semantic(), SemanticContent::Output);
+            assert!(
+                page.row_cells(row)
+                    .iter()
+                    .all(|cell| *cell == Cell::blank(background))
+            );
+            page.graphemes
+                .assert_allocations(page.grapheme_map.values().copied());
+            page.links
+                .assert_references(page.link_map.values().copied(), None);
+        }
     }
 }
