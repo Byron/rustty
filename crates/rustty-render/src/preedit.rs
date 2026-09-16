@@ -33,7 +33,7 @@ impl Renderer {
         let top = options.padding[1] + screen.cursor.row as f32 * metrics.cell_height as f32;
         let left = options.padding[0];
         let right = (options.size[0] as f32 - options.padding[0]).min(
-            left + screen.rows.first().map_or(0, |r| r.cells.len()) as f32
+            left + screen.rows().next().map_or(0, |r| r.cells.len()) as f32
                 * metrics.cell_width as f32,
         );
         let height =

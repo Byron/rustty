@@ -129,7 +129,7 @@ fn byte_maps_keep_native_blank_line_coordinates_without_resolving_invalid_cells(
     assert!(map.point(last_newline).is_none());
     assert_eq!(
         map.point(bytes.len() - 1),
-        screen.point(screen.history.len() + 2, 3)
+        screen.point(screen.history_len() + 2, 3)
     );
 }
 
@@ -206,8 +206,7 @@ fn state_only_vt_export_restores_terminal_settings_without_printing_content() {
     assert!(
         replayed
             .screen()
-            .rows
-            .iter()
+            .rows()
             .all(|row| replayed.screen().row_text(row).is_empty())
     );
     assert_eq!(replayed.screen().cursor, terminal.screen().cursor);

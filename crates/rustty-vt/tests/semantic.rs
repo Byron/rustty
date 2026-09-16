@@ -25,7 +25,7 @@ fn semantic_fresh_lines_respect_the_cursor_and_left_margin() {
     terminal.feed(b"abc\x1b]133;P;k=s\x07");
     assert_eq!(terminal.screen().cursor.col, 3);
     assert_eq!(terminal.screen().cursor.row, 0);
-    assert_eq!(terminal.screen().rows[0].semantic, SemanticContent::Input);
+    assert_eq!(terminal.screen().row(0).semantic, SemanticContent::Input);
     assert_eq!(terminal.screen().cursor.semantic, SemanticContent::Prompt);
 }
 
@@ -34,14 +34,14 @@ fn input_terminated_by_eol_survives_wrap_snapshot_and_screen_copy() {
     let mut terminal = Terminal::new(3, 3, 0);
     terminal.feed(b"\x1b]133;P\x07\x1b]133;I\x07abcd");
     assert_eq!(
-        terminal.screen().rows[1].cells[0].semantic,
+        terminal.screen().row(1).cells[0].semantic(),
         SemanticContent::Input
     );
     let bytes = snapshot::encode_to_vec(&terminal).unwrap();
     let mut terminal = snapshot::decode(bytes.as_slice(), Default::default()).unwrap();
     terminal.feed(b"\r\nX");
     assert_eq!(
-        terminal.screen().rows[2].cells[0].semantic,
+        terminal.screen().row(2).cells[0].semantic(),
         SemanticContent::Output
     );
 
@@ -51,11 +51,11 @@ fn input_terminated_by_eol_survives_wrap_snapshot_and_screen_copy() {
         terminal.feed(switch);
         terminal.feed(b"A\r\nB");
         assert_eq!(
-            terminal.screen().rows[0].cells[0].semantic,
+            terminal.screen().row(0).cells[0].semantic(),
             SemanticContent::Input
         );
         assert_eq!(
-            terminal.screen().rows[1].cells[0].semantic,
+            terminal.screen().row(1).cells[0].semantic(),
             SemanticContent::Output
         );
     }
@@ -67,7 +67,7 @@ fn output_markers_reset_semantics_independently_of_host_events() {
         let mut terminal = Terminal::new(8, 3, 0);
         terminal.shell_command_events = enabled;
         terminal.feed(b"\x1b]133;P\x07prompt\r\n");
-        assert_eq!(terminal.screen().rows[1].semantic, SemanticContent::Input);
+        assert_eq!(terminal.screen().row(1).semantic, SemanticContent::Input);
         let effects = terminal.feed(b"\x1b]133;C\x07A");
         assert_eq!(
             effects,
@@ -77,14 +77,14 @@ fn output_markers_reset_semantics_independently_of_host_events() {
                 vec![]
             }
         );
-        assert_eq!(terminal.screen().rows[1].semantic, SemanticContent::Output);
+        assert_eq!(terminal.screen().row(1).semantic, SemanticContent::Output);
         terminal.feed(b"\x1b]133;B\x07B\x1b]133;D;2\x07C");
         assert_eq!(
-            terminal.screen().rows[1].cells[1].semantic,
+            terminal.screen().row(1).cells[1].semantic(),
             SemanticContent::Input
         );
         assert_eq!(
-            terminal.screen().rows[1].cells[2].semantic,
+            terminal.screen().row(1).cells[2].semantic(),
             SemanticContent::Output
         );
     }
@@ -113,7 +113,7 @@ fn prompt_options_keep_native_priority_and_snapshot_click_modes() {
         terminal.screen().semantic_click(),
         SemanticClick::Events { relative: true }
     );
-    assert_eq!(terminal.screen().rows[0].semantic, SemanticContent::Input);
+    assert_eq!(terminal.screen().row(0).semantic, SemanticContent::Input);
     terminal.feed(b"\x1b]133;N;redraw=bad;redraw=1;click_events=0;cl=w;cl=line\x07");
     assert_eq!(terminal.shell_prompt_redraw(), PromptRedraw::Last);
     assert_eq!(
@@ -142,7 +142,7 @@ fn prompt_options_keep_native_priority_and_snapshot_click_modes() {
             motion: ClickMotion::SmartVertical
         }
     );
-    assert_eq!(terminal.screen().rows[0].semantic, SemanticContent::Prompt);
+    assert_eq!(terminal.screen().row(0).semantic, SemanticContent::Prompt);
     assert!(!terminal.screen().input_clears_at_eol());
 }
 
@@ -150,13 +150,13 @@ fn prompt_options_keep_native_priority_and_snapshot_click_modes() {
 fn whole_row_erasure_clears_prompt_markers_only_when_unprotected() {
     let mut terminal = Terminal::new(4, 3, 0);
     terminal.feed(b"\x1b[?47h\x1b]133;P\x07abcde\x1b[2;1H\x1b[2K");
-    assert_eq!(terminal.screen().rows[1].semantic, SemanticContent::Input);
+    assert_eq!(terminal.screen().row(1).semantic, SemanticContent::Input);
     terminal.feed(b"\x1b[?2J");
-    assert!(terminal.screen().rows[0].wrapped);
-    assert!(terminal.screen().rows[1].wrap_continuation);
-    assert_eq!(terminal.screen().rows[0].semantic, SemanticContent::Prompt);
+    assert!(terminal.screen().row(0).wrapped);
+    assert!(terminal.screen().row(1).wrap_continuation);
+    assert_eq!(terminal.screen().row(0).semantic, SemanticContent::Prompt);
     terminal.feed(b"\x1b[2J");
-    assert!(terminal.screen().rows.iter().all(|row| {
+    assert!(terminal.screen().rows().all(|row| {
         row.semantic == SemanticContent::Output && !row.wrapped && !row.wrap_continuation
     }));
 }
@@ -167,9 +167,9 @@ fn complete_display_erasure_scrolls_a_bottom_prompt_into_history() {
     terminal.feed(b"\x1b]133;P\x07one\r\ntwo\r\nthree\x1b[2;2H\x1b[2J");
     assert_eq!(terminal.screen().cursor.row, 0);
     assert_eq!(terminal.screen().cursor.col, 0);
-    assert!(!terminal.screen().history.is_empty());
-    assert!(terminal.screen().rows.iter().all(|row| {
+    assert!(!terminal.screen().history().next().is_none());
+    assert!(terminal.screen().rows().all(|row| {
         row.semantic == SemanticContent::Output
-            && row.cells.iter().all(|cell| cell.codepoint.is_none())
+            && row.cells.iter().all(|cell| cell.codepoint().is_none())
     }));
 }

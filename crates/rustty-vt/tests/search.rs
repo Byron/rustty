@@ -72,7 +72,7 @@ fn no_scrollback_prunes_a_prefix_without_filtering_later_page_results() {
     );
     terminal.feed(b"X\x1b[64;1HX\x1b[22J\x1b[HX\x1b[64;1HX");
     let screen = terminal.screen();
-    assert_eq!(screen.history.len(), 64);
+    assert_eq!(screen.history_len(), 64);
     let positions: Vec<_> = screen
         .search_literal(b"X")
         .iter()

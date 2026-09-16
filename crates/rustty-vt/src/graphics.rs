@@ -208,7 +208,7 @@ impl Placement {
         let y = screen.all_rows().position(|row| row.id == self.row)?;
         let end_y = y
             .saturating_add(rows as usize - 1)
-            .min(screen.history.len() + screen.rows.len() - 1);
+            .min(screen.history_len() + screen.height() - 1);
         let end_x = self
             .col
             .saturating_add(columns as usize - 1)
@@ -327,7 +327,7 @@ impl Graphics {
     pub(crate) fn snapshot(&self, screen: &Screen) -> Self {
         let mut placements = self.placements.clone();
         if !placements.is_empty() {
-            let start = screen.history.len().saturating_sub(screen.viewport_offset) as i64;
+            let start = screen.history_len().saturating_sub(screen.viewport_offset) as i64;
             let anchors: HashSet<_> = placements.iter().map(|p| p.row).collect();
             let offsets: HashMap<_, _> = screen
                 .all_rows()
@@ -801,7 +801,7 @@ impl Terminal {
             None
         };
         let cursor = self.screen().cursor.clone();
-        let row = self.screen().rows[cursor.row].id;
+        let row = self.screen().row(cursor.row).id;
         let mut placement = Placement {
             image_id: id,
             placement_id: PlacementId::External(cmd.n(b'p')),
@@ -1054,7 +1054,7 @@ impl Terminal {
             .graphics()
             .resolve_id(cmd.n(b'i'), cmd.n(b'I'))
             .unwrap_or(0);
-        let row_ids: Vec<_> = self.screen().rows.iter().map(|r| r.id).collect();
+        let row_ids: Vec<_> = self.screen().rows().map(|r| r.id).collect();
         let cursor = self.screen().cursor.clone();
         let cell = [
             self.width_px / u32::from(self.cols),
@@ -1354,7 +1354,7 @@ fn blend(dst: &mut [u8], src: &[u8], overwrite: bool) {
 
 impl Screen {
     fn visible_placements(&self, cell: [u32; 2]) -> HashSet<(u32, PlacementId)> {
-        let ids: HashSet<_> = self.rows.iter().map(|r| r.id).collect();
+        let ids: HashSet<_> = self.rows().map(|r| r.id).collect();
         self.graphics
             .placements
             .iter()

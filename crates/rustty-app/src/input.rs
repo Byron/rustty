@@ -24,6 +24,23 @@ pub fn mouse_reporting(
     terminal.mouse_mode != 0 && (!modifiers.shift_key() || capture)
 }
 
+/// Convert precise scrolling to terminal rows without losing the momentum tail.
+#[derive(Default)]
+pub struct ScrollAccumulator {
+    pending_rows: f64,
+}
+
+impl ScrollAccumulator {
+    pub fn take_pixels(&mut self, pixels: f64, scale_factor: f64, cell_height: u32) -> isize {
+        // Winit scales AppKit's logical deltas to physical pixels. Ghostty
+        // instead doubles the logical delta before dividing by the cell height.
+        self.pending_rows += pixels / scale_factor * 2.0 / f64::from(cell_height);
+        let rows = self.pending_rows.trunc();
+        self.pending_rows -= rows;
+        rows as isize
+    }
+}
+
 /// Selection begins on pointer movement, including movement within one cell.
 pub struct SelectionDrag {
     anchor: vt::GridPoint,
@@ -203,6 +220,35 @@ pub fn terminal_text(terminal: &vt::Terminal, text: String) -> Vec<u8> {
     let mut event = vt::KeyEvent::new(vt::Key::Unidentified);
     event.text = Some(text);
     terminal.encode_key(&event)
+}
+
+/// Encode keyboard input and reveal the prompt when typing into the terminal.
+pub fn encode_terminal_key(
+    terminal: &mut vt::Terminal,
+    event: &vt::KeyEvent,
+    options: vt::KeyEncodeOptions,
+) -> Vec<u8> {
+    let bytes = terminal.encode_key_with_options(event, options);
+    // Modifier reports are useful to applications, but do not imply typing.
+    if !bytes.is_empty()
+        && event.action != vt::KeyAction::Release
+        && !matches!(
+            event.key,
+            vt::Key::Shift
+                | vt::Key::ShiftRight
+                | vt::Key::Control
+                | vt::Key::ControlRight
+                | vt::Key::Alt
+                | vt::Key::AltRight
+                | vt::Key::Super
+                | vt::Key::SuperRight
+        )
+    {
+        let screen = terminal.screen_mut();
+        screen.viewport_offset = 0;
+        screen.selection = None;
+    }
+    bytes
 }
 
 pub fn terminal_key(
@@ -476,6 +522,56 @@ pub fn chord_held(chord: config::Modifiers, current: config::Modifiers) -> bool 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn precise_scroll_preserves_small_deltas_and_the_decaying_tail() {
+        let cell_height = 32;
+        for sign in [1.0, -1.0] {
+            let mut scroll = ScrollAccumulator::default();
+            for (rows, expected) in [
+                (0.25, 0),
+                (0.25, 0),
+                (0.0, 0), // Finger release must not discard the pending half row.
+                (-0.125, 0),
+                (0.25, 0),
+                (0.375, 1),
+                (1.5, 1),
+                (0.75, 1),
+                (0.375, 0),
+                (0.1875, 0),
+                (0.125, 0),
+                (0.0625, 1), // The smallest momentum event still completes a row.
+                (0.0, 0),
+            ] {
+                assert_eq!(
+                    scroll.take_pixels(sign * rows * f64::from(cell_height), 2.0, cell_height),
+                    expected * sign as isize,
+                    "{sign} {rows}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn precise_scroll_matches_ghostty_scaling_and_keeps_panes_independent() {
+        for scale in [1.0, 2.0] {
+            let mut first = ScrollAccumulator::default();
+            let mut second = ScrollAccumulator::default();
+            let cell_height = (16.0 * scale) as u32;
+            // Winit supplies physical pixels; Ghostty doubles logical points.
+            let pixels = 6.0 * scale;
+            assert_eq!(first.take_pixels(pixels, scale, cell_height), 0);
+            assert_eq!(second.take_pixels(0.0, scale, cell_height), 0);
+            assert_eq!(second.take_pixels(pixels, scale, cell_height), 0);
+            assert_eq!(
+                first.take_pixels(pixels, scale, cell_height),
+                if scale == 1.0 { 1 } else { 0 }
+            );
+            assert_eq!(first.take_pixels(pixels, scale, cell_height), 1);
+            assert_eq!(second.take_pixels(-pixels, scale, cell_height), 0);
+            assert_eq!(second.take_pixels(0.0, scale, cell_height), 0);
+        }
+    }
 
     #[test]
     fn shift_mouse_capture_follows_application_requests_and_user_overrides() {
@@ -996,6 +1092,101 @@ mod tests {
             assert!(terminal_text(&terminal, text.into()).is_empty());
             terminal.feed(b"\x1b[2l");
             assert_eq!(terminal_text(&terminal, text.into()), text.as_bytes());
+        }
+    }
+
+    fn scrolled_terminal() -> vt::Terminal {
+        let mut terminal = vt::Terminal::new(20, 3, 100);
+        terminal.feed(b"1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n7\r\n8\r\n9\r\n10\r\n");
+        let screen = terminal.screen_mut();
+        screen.viewport_offset = 5;
+        let point = vt::GridPoint {
+            row: screen.row(0).id,
+            col: 0,
+        };
+        screen.selection = Some(vt::Selection {
+            start: point,
+            end: point,
+            rectangular: false,
+        });
+        terminal
+    }
+
+    #[test]
+    fn modifier_keys_preserve_scrollback_and_selection() {
+        for flags in [0, 5, 7, 11] {
+            for key in [
+                vt::Key::Shift,
+                vt::Key::ShiftRight,
+                vt::Key::Control,
+                vt::Key::ControlRight,
+                vt::Key::Alt,
+                vt::Key::AltRight,
+                vt::Key::Super,
+                vt::Key::SuperRight,
+            ] {
+                for action in [
+                    vt::KeyAction::Press,
+                    vt::KeyAction::Repeat,
+                    vt::KeyAction::Release,
+                ] {
+                    let mut terminal = scrolled_terminal();
+                    terminal.feed(format!("\x1b[>{flags}u").as_bytes());
+                    let selection = terminal.screen().selection;
+                    let mut event = vt::KeyEvent::new(key);
+                    event.action = action;
+                    let options = vt::KeyEncodeOptions::default();
+                    let expected = terminal.encode_key_with_options(&event, options);
+                    let bytes = encode_terminal_key(&mut terminal, &event, options);
+                    assert_eq!(bytes, expected, "{flags} {key:?} {action:?}");
+                    assert_eq!(bytes.is_empty(), flags != 11);
+                    assert_eq!(
+                        terminal.screen().viewport_offset,
+                        5,
+                        "{flags} {key:?} {action:?}"
+                    );
+                    assert_eq!(terminal.screen().selection, selection);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn only_encoded_key_presses_reset_scrollback_and_selection() {
+        for flags in [0, 5, 7, 11] {
+            for locked in [false, true] {
+                for (action, typing) in [
+                    (vt::KeyAction::Press, true),
+                    (vt::KeyAction::Repeat, true),
+                    (vt::KeyAction::Release, false),
+                ] {
+                    let mut terminal = scrolled_terminal();
+                    terminal.feed(format!("\x1b[>{flags}u").as_bytes());
+                    if locked {
+                        terminal.feed(b"\x1b[2h");
+                    }
+                    let selection = terminal.screen().selection;
+                    let mut event = vt::KeyEvent::new(vt::Key::Char('x'));
+                    event.action = action;
+                    let options = vt::KeyEncodeOptions::default();
+                    let expected = terminal.encode_key_with_options(&event, options);
+                    let bytes = encode_terminal_key(&mut terminal, &event, options);
+                    assert_eq!(bytes, expected, "{flags} {locked} {action:?}");
+                    if locked {
+                        assert!(bytes.is_empty());
+                    } else if typing || flags == 11 {
+                        assert!(!bytes.is_empty());
+                    }
+                    let screen = terminal.screen();
+                    if typing && !locked {
+                        assert_eq!(screen.viewport_offset, 0);
+                        assert_eq!(screen.selection, None);
+                    } else {
+                        assert_eq!(screen.viewport_offset, 5, "{flags} {locked} {action:?}");
+                        assert_eq!(screen.selection, selection);
+                    }
+                }
+            }
         }
     }
 

@@ -296,8 +296,8 @@ impl<'a> ScreenFormatter<'a> {
                 Selection {
                     start: self.screen.point(0, 0)?,
                     end: self.screen.point(
-                        self.screen.history.len() + self.screen.rows.len() - 1,
-                        self.screen.rows.last()?.cells.len() - 1,
+                        self.screen.history_len() + self.screen.height() - 1,
+                        self.screen.rows().last()?.cells.len() - 1,
                     )?,
                     rectangular: false,
                 },
@@ -540,7 +540,7 @@ fn screen_extra(out: &mut Vec<u8>, screen: &Screen, options: Options<'_>, extra:
     let cursor = &screen.cursor;
     if extra.cursor {
         let wrapped = cursor.pending_wrap && cursor.col == screen.columns - 1;
-        let col = if wrapped && screen.rows[cursor.row].cells[cursor.col].width == 0 {
+        let col = if wrapped && screen.row(cursor.row).cells[cursor.col].width() == 0 {
             cursor.col - 1
         } else {
             cursor.col
@@ -548,7 +548,7 @@ fn screen_extra(out: &mut Vec<u8>, screen: &Screen, options: Options<'_>, extra:
         out.extend_from_slice(format!("\x1b[{};{}H", cursor.row + 1, col + 1).as_bytes());
         if wrapped {
             let point = crate::GridPoint {
-                row: screen.rows[cursor.row].id,
+                row: screen.row(cursor.row).id,
                 col: cursor.col,
             };
             // CUP clears pending wrap. Replay the edge cell, including a wide
@@ -615,7 +615,7 @@ fn screen_extra(out: &mut Vec<u8>, screen: &Screen, options: Options<'_>, extra:
 fn format_page(
     screen: &Screen,
     out: &mut Output<'_>,
-    rows: &[&Row],
+    rows: &[Row<'_>],
     bounds: ((usize, usize), (usize, usize)),
     rectangle: bool,
     options: Options<'_>,
@@ -630,7 +630,7 @@ fn format_page(
     end.1 = end.1.min(width - 1);
     if options.unwrap
         && !rectangle
-        && rows[end.0].cells[end.1].spacer_head
+        && rows[end.0].cells[end.1].spacer_head()
         && end.0 + 1 < rows.len()
     {
         end = (end.0 + 1, 0);
@@ -676,15 +676,15 @@ fn format_page(
             0
         };
         if left > 0 {
-            if row.cells[left].spacer_head {
+            if row.cells[left].spacer_head() {
                 continue;
             }
-            if row.cells[left].width == 0 {
+            if row.cells[left].width() == 0 {
                 left -= 1;
             }
         }
         let cells = &row.cells[left..right];
-        if cells.iter().all(|cell| cell.codepoint.is_none()) {
+        if cells.iter().all(|cell| cell.codepoint().is_none()) {
             blank_rows += 1;
             continue;
         }
@@ -723,13 +723,15 @@ fn format_page(
         }
         for (index, cell) in cells.iter().enumerate() {
             let point = [(left + index) as u32, y as u32];
-            if cell.width == 0 || cell.spacer_head {
+            if cell.width() == 0 || cell.spacer_head() {
                 continue;
             }
             let blank = if options.emit == Format::Plain {
-                cell.codepoint.is_none() || (options.trim && cell.codepoint == Some(' '))
+                cell.codepoint().is_none() || (options.trim && cell.codepoint() == Some(' '))
             } else {
-                cell.codepoint.is_none() && cell.width == 1 && cell.style == Style::default()
+                cell.codepoint().is_none()
+                    && cell.width() == 1
+                    && row.style(left + index) == Style::default()
             };
             if blank {
                 blank_cells += 1;
@@ -751,23 +753,22 @@ fn format_page(
                 }
             }
             blank_cells = 0;
-            if options.emit != Format::Plain && cell.style != style {
+            if options.emit != Format::Plain && row.style(left + index) != style {
                 if style != Style::default()
-                    && (options.emit == Format::Html || cell.style == Style::default())
+                    && (options.emit == Format::Html || row.style(left + index) == Style::default())
                 {
                     style_close(&mut out.bytes, options.emit);
                     out.map_last();
                 }
-                style = cell.style;
+                style = row.style(left + index);
                 if style != Style::default() {
                     style_open(&mut out.bytes, style, options.emit, options.palette);
                     out.map_to(point);
                 }
             }
             if options.emit == Format::Html {
-                let link = cell
-                    .hyperlink
-                    .as_ref()
+                let link = row
+                    .hyperlink(left + index)
                     .map(|link| (link.id.as_ref(), link.uri_bytes()));
                 if link != hyperlink {
                     if hyperlink.is_some() {
@@ -785,7 +786,7 @@ fn format_page(
                     }
                 }
             }
-            if cell.codepoint.is_none() {
+            if cell.codepoint().is_none() {
                 out.bytes.push(b' ');
             } else if !options.codepoint_map.is_empty() || options.emit == Format::Html {
                 for cp in screen.cell_text(row, left + index).chars() {

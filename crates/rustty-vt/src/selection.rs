@@ -86,12 +86,12 @@ impl Selection {
             Adjustment::End => last_written(),
             Adjustment::PageUp => original
                 .0
-                .checked_sub(screen.rows.len())
+                .checked_sub(screen.height())
                 .map(at_row)
                 .unwrap_or((0, 0)),
             Adjustment::PageDown => original
                 .0
-                .checked_add(screen.rows.len())
+                .checked_add(screen.height())
                 .filter(|&y| y < grid.len())
                 .map(at_row)
                 .unwrap_or_else(last_written),
@@ -165,13 +165,13 @@ impl Screen {
         let clicked = grid.position(point)?;
         let semantic = options
             .semantic_prompt_boundary
-            .then(|| grid.cell(clicked).semantic);
+            .then(|| grid.cell(clicked).semantic());
 
         let mut start = (clicked.0, 0);
         'start: {
             if let Some(semantic) = semantic {
                 for x in (0..=clicked.1).rev() {
-                    if grid.row(clicked.0).cells[x].semantic != semantic {
+                    if grid.row(clicked.0).cells[x].semantic() != semantic {
                         start.1 = x + 1;
                         break 'start;
                     }
@@ -185,7 +185,7 @@ impl Screen {
                 }
                 if let Some(semantic) = semantic {
                     for x in (0..row.cells.len()).rev() {
-                        if row.cells[x].semantic != semantic {
+                        if row.cells[x].semantic() != semantic {
                             break 'start;
                         }
                         start = (y, x);
@@ -202,7 +202,7 @@ impl Screen {
             let from = if y == clicked.0 { clicked.1 } else { 0 };
             if let Some(semantic) = semantic {
                 for x in from..row.cells.len() {
-                    if row.cells[x].semantic != semantic {
+                    if row.cells[x].semantic() != semantic {
                         break 'end grid.previous((y, x))?;
                     }
                 }
@@ -267,7 +267,7 @@ impl Screen {
     pub fn select_output(&self, point: GridPoint) -> Option<Selection> {
         let grid = Grid(self);
         let clicked = grid.position(point)?;
-        if grid.cell(clicked).semantic != SemanticContent::Output {
+        if grid.cell(clicked).semantic() != SemanticContent::Output {
             return None;
         }
 
@@ -317,7 +317,7 @@ impl Screen {
         let mut bounds = None;
         'output: for y in prompt..limit {
             for (x, cell) in grid.row(y).cells.iter().enumerate() {
-                if cell.semantic != SemanticContent::Output {
+                if cell.semantic() != SemanticContent::Output {
                     if bounds.is_some() {
                         break 'output;
                     }
@@ -338,15 +338,11 @@ struct Grid<'a>(&'a Screen);
 
 impl Grid<'_> {
     fn len(&self) -> usize {
-        self.0.history.len() + self.0.rows.len()
+        self.0.history_len() + self.0.height()
     }
 
-    fn row(&self, y: usize) -> &Row {
-        if y < self.0.history.len() {
-            &self.0.history[y]
-        } else {
-            &self.0.rows[y - self.0.history.len()]
-        }
+    fn row(&self, y: usize) -> Row<'_> {
+        self.0.physical_row(y)
     }
 
     fn cell(&self, point: Position) -> &Cell {
@@ -414,5 +410,5 @@ impl Grid<'_> {
 }
 
 fn codepoint(cell: &Cell) -> Option<char> {
-    cell.codepoint.filter(|&c| c != '\0')
+    cell.codepoint().filter(|&c| c != '\0')
 }

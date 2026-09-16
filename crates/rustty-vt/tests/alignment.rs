@@ -10,10 +10,10 @@ fn alignment_pattern_retains_colors_and_resets_other_style_attributes() {
         ..Style::default()
     };
     assert_eq!(terminal.screen().cursor.style, expected);
-    for row in &terminal.screen().rows {
-        for (col, cell) in row.cells.iter().enumerate() {
+    for row in terminal.screen().rows() {
+        for col in 0..row.cells.len() {
             assert_eq!(&*terminal.screen().cell_text(row, col), "E");
-            assert_eq!(cell.style, expected);
+            assert_eq!(row.style(col), expected);
         }
     }
 }
@@ -31,17 +31,17 @@ fn alignment_pattern_resets_margins_and_row_metadata_but_keeps_cursor_state() {
     assert!(cursor.protected);
     assert!(cursor.hyperlink.is_some());
     assert_eq!(cursor.semantic, SemanticContent::Prompt);
-    for row in &terminal.screen().rows {
+    for row in terminal.screen().rows() {
         assert!(!row.wrapped && !row.wrap_continuation);
         assert_eq!(row.semantic, SemanticContent::Output);
         assert!(row.cells.iter().enumerate().all(|(col, cell)| {
             &*terminal.screen().cell_text(row, col) == "E"
-                && cell.width == 1
-                && !cell.protected
-                && cell.hyperlink.is_none()
+                && cell.width() == 1
+                && !cell.protected()
+                && row.hyperlink(col).is_none()
         }));
     }
     terminal.feed(b"X");
-    assert!(terminal.screen().rows[0].cells[0].protected);
-    assert!(terminal.screen().rows[0].cells[0].hyperlink.is_some());
+    assert!(terminal.screen().row(0).cells[0].protected());
+    assert!(terminal.screen().row(0).hyperlink(0).is_some());
 }

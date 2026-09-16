@@ -3,8 +3,9 @@ use std::collections::VecDeque;
 
 use serde::{Deserialize, Serialize};
 
+pub(crate) use crate::page::Page;
 use crate::page_layout::PageCapacity;
-use crate::page_resources::{GraphemeAdmission, HyperlinkAdmission, StyleAdmission};
+use crate::screen::Color;
 use crate::screen::ScrollbackLimits;
 
 /// A live list differs from its clones and replacements even when page serials
@@ -39,53 +40,10 @@ pub struct PageAllocationInfo {
     pub allocation_bytes: usize,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct Page {
-    pub capacity: PageCapacity,
-    pub columns: u16,
-    pub rows: u16,
-    pub serial: u64,
-    #[serde(skip)]
-    pub layout_generation: u64,
-    pub styles: StyleAdmission,
-    #[serde(skip)]
-    pub graphemes: GraphemeAdmission,
-    #[serde(skip)]
-    pub links: HyperlinkAdmission,
-}
-
-impl Page {
-    fn allocation(&self) -> PageAllocationInfo {
-        let layout = self.capacity.layout().expect("validated page capacity");
-        PageAllocationInfo {
-            columns: self.columns,
-            rows: self.rows,
-            capacity: self.capacity,
-            pooled: layout.pooled(false),
-            allocation_bytes: layout.allocation_bytes(false),
-        }
-    }
-
-    pub fn adjusted_capacity(&self, columns: u16, reflow: bool) -> PageCapacity {
-        self.capacity.adjust_columns(columns).unwrap_or_else(|_| {
-            let rows = if reflow {
-                self.rows.min(PageCapacity::STANDARD.rows)
-            } else {
-                self.rows.min(self.capacity.rows)
-            };
-            PageCapacity {
-                cols: columns,
-                rows,
-                ..self.capacity
-            }
-        })
-    }
-}
-
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct PageList {
     pub pages: VecDeque<Page>,
-    next_serial: u64,
+    pub(crate) next_serial: u64,
     #[serde(skip)]
     identity: ListIdentity,
 }
@@ -119,20 +77,19 @@ impl PageList {
         self.allocations().map(|page| page.allocation_bytes).sum()
     }
 
-    pub fn page_at(&self, mut row: usize) -> (&Page, usize) {
-        for page in &self.pages {
-            if row < usize::from(page.rows) {
-                return (page, row);
-            }
-            row -= usize::from(page.rows);
-        }
-        panic!("row is outside the page list");
+    pub fn page_at(&self, row: usize) -> (&Page, usize) {
+        let (index, row) = self.locate(row);
+        (&self.pages[index], row)
     }
 
-    pub fn page_index(&self, mut row: usize) -> usize {
+    pub fn page_index(&self, row: usize) -> usize {
+        self.locate(row).0
+    }
+
+    pub fn locate(&self, mut row: usize) -> (usize, usize) {
         for (index, page) in self.pages.iter().enumerate() {
             if row < usize::from(page.rows) {
-                return index;
+                return (index, row);
             }
             row -= usize::from(page.rows);
         }
@@ -160,70 +117,40 @@ impl PageList {
     }
 
     pub fn append(&mut self, capacity: PageCapacity, rows: u16) {
-        assert!(rows <= capacity.rows);
-        let layout = capacity.metadata().unwrap();
-        self.pages.push_back(Page {
-            capacity,
-            columns: capacity.cols,
-            rows,
-            serial: self.next_serial,
-            layout_generation: 0,
-            styles: StyleAdmission::new(layout.styles_layout),
-            links: HyperlinkAdmission::new(
-                layout.hyperlink_set_layout,
-                layout.string_alloc_layout,
-                layout.hyperlink_map_layout.capacity as usize * 80 / 100,
-            ),
-            graphemes: GraphemeAdmission::new(
-                layout.grapheme_alloc_layout,
-                layout.grapheme_map_layout.capacity as usize,
-            ),
-        });
-        self.next_serial = self.next_serial.wrapping_add(1);
+        let serial = self.fresh_serial();
+        self.pages.push_back(Page::new(capacity, rows, serial));
     }
 
-    pub fn prepend(&mut self, capacity: PageCapacity, rows: u16) {
-        assert!(rows <= capacity.rows);
-        let layout = capacity.metadata().unwrap();
-        self.pages.push_front(Page {
-            capacity,
-            columns: capacity.cols,
-            rows,
-            serial: self.next_serial,
-            layout_generation: 0,
-            styles: StyleAdmission::new(layout.styles_layout),
-            links: HyperlinkAdmission::new(
-                layout.hyperlink_set_layout,
-                layout.string_alloc_layout,
-                layout.hyperlink_map_layout.capacity as usize * 80 / 100,
-            ),
-            graphemes: GraphemeAdmission::new(
-                layout.grapheme_alloc_layout,
-                layout.grapheme_map_layout.capacity as usize,
-            ),
-        });
-        self.next_serial = self.next_serial.wrapping_add(1);
+    pub fn fresh_serial(&mut self) -> u64 {
+        let serial = self.next_serial;
+        self.next_serial = self
+            .next_serial
+            .checked_add(1)
+            .expect("page identities exhausted");
+        serial
     }
 
-    pub fn split(&mut self, index: usize, row: u16) -> bool {
-        let source = &self.pages[index];
-        if source.rows <= 1 {
-            return false;
-        }
-        if row == 0 {
-            return true;
-        }
-        assert!(row < source.rows);
-        let columns = source.columns;
-        let count = source.rows - row;
-        let capacity = source.capacity;
-        self.append(capacity, count);
-        let mut target = self.pages.pop_back().unwrap();
-        target.columns = columns;
-        self.pages[index].rows = row;
-        self.pages[index].layout_generation = self.pages[index].layout_generation.wrapping_add(1);
-        self.pages.insert(index + 1, target);
-        true
+    pub fn push(&mut self, mut page: Page) {
+        page.serial = self.fresh_serial();
+        self.pages.push_back(page);
+    }
+
+    pub fn prepend_page(&mut self, mut page: Page) {
+        page.serial = self.fresh_serial();
+        self.pages.push_front(page);
+    }
+
+    pub fn owned_history_bytes(&self, active_rows: usize) -> usize {
+        let history = self.total_rows().saturating_sub(active_rows);
+        let mut end = 0;
+        self.pages
+            .iter()
+            .take_while(|page| {
+                end += usize::from(page.rows);
+                end <= history
+            })
+            .map(Page::storage_bytes)
+            .sum()
     }
 
     pub fn effective_limits(
@@ -247,72 +174,91 @@ impl PageList {
         }
     }
 
-    /// Grow one physical row and return the number of recycled history rows.
-    pub fn grow(&mut self, columns: u16, active_rows: usize, limits: ScrollbackLimits) -> usize {
-        let last = self.pages.back_mut().expect("a screen has pages");
-        if last.rows < last.capacity.rows {
-            last.rows += 1;
-            // Existing allocations ignore byte limits. The native line floor
-            // only raises the requested limit, so normalize it only on overflow.
-            if limits
-                .lines
-                .is_none_or(|limit| self.total_rows().saturating_sub(active_rows) <= limit)
-            {
-                return 0;
-            }
-            return self.prune(
-                active_rows,
-                Self::effective_limits(
-                    columns,
-                    active_rows,
-                    ScrollbackLimits {
-                        bytes: None,
-                        ..limits
-                    },
-                ),
-            );
-        }
-
+    /// Expose initialized storage, recycling one eligible historical page at growth.
+    pub fn grow(
+        &mut self,
+        columns: u16,
+        active_rows: usize,
+        limits: ScrollbackLimits,
+        memory: Option<usize>,
+        id: u64,
+        background: Color,
+    ) -> Vec<u64> {
         let effective = Self::effective_limits(columns, active_rows, limits);
-        let capacity = PageCapacity::initial(columns).expect("validated screen dimensions");
-        let mut removed = 0;
-        if self.pages.len() > 1
-            && effective.bytes.is_some_and(|limit| {
-                let standard_bytes = PageCapacity::STANDARD.layout().unwrap().total_size;
-                self.allocation_bytes() + standard_bytes > limit
-            })
+        let mut removed = Vec::new();
+        if self
+            .pages
+            .back()
+            .is_some_and(|page| page.rows < page.capacity.rows)
         {
-            let first_rows = usize::from(self.pages.front().unwrap().rows);
-            if self.total_rows() - first_rows + 1 >= active_rows {
-                self.pages.pop_front();
-                removed += first_rows;
-            }
+            self.pages.back_mut().unwrap().expose(id, background);
+        } else {
+            let capacity = PageCapacity::initial(columns).expect("validated screen dimensions");
+            let history = (self.total_rows() + 1).saturating_sub(active_rows);
+            let recycle = self.pages.len() > 1
+                && self.pages.front().is_some_and(|page| {
+                    usize::from(page.rows) <= history
+                        && (effective.bytes.is_some_and(|limit| {
+                            self.allocation_bytes()
+                                + capacity.layout().unwrap().allocation_bytes(false)
+                                > limit
+                        }) || effective.lines.is_some_and(|limit| history > limit)
+                            || memory.is_some_and(|limit| {
+                                self.owned_history_bytes(active_rows.saturating_sub(1)) > limit
+                            }))
+                });
+            let mut spare = if recycle {
+                let page = self.pages.pop_front().unwrap();
+                removed.extend_from_slice(&page.row_ids[..usize::from(page.rows)]);
+                page.recyclable(capacity).then_some(page)
+            } else {
+                None
+            };
+            let serial = self.fresh_serial();
+            let mut page = spare
+                .take()
+                .map(|mut page| {
+                    page.recycle(capacity, serial);
+                    page
+                })
+                .unwrap_or_else(|| Page::new(capacity, 0, serial));
+            page.expose(id, background);
+            self.pages.push_back(page);
         }
-        self.append(capacity, 1);
+        removed.extend(self.prune(
+            active_rows,
+            ScrollbackLimits {
+                bytes: None,
+                ..effective
+            },
+            memory,
+        ));
         removed
-            + self.prune(
-                active_rows,
-                ScrollbackLimits {
-                    bytes: None,
-                    ..effective
-                },
-            )
     }
 
-    /// Remove only pages lying wholly before the active boundary.
-    pub fn prune(&mut self, active_rows: usize, limits: ScrollbackLimits) -> usize {
-        let mut removed = 0;
+    /// Return discarded identities before releasing complete historical pages.
+    pub fn prune(
+        &mut self,
+        active_rows: usize,
+        limits: ScrollbackLimits,
+        memory: Option<usize>,
+    ) -> Vec<u64> {
+        let mut removed = Vec::new();
         loop {
             let history = self.total_rows().saturating_sub(active_rows);
             let exceeded = limits.lines.is_some_and(|limit| history > limit)
                 || limits
                     .bytes
-                    .is_some_and(|limit| self.allocation_bytes() > limit);
-            let first = self.pages.front().expect("a screen has pages");
+                    .is_some_and(|limit| self.allocation_bytes() > limit)
+                || memory.is_some_and(|limit| self.owned_history_bytes(active_rows) > limit);
+            let Some(first) = self.pages.front() else {
+                break;
+            };
             if !exceeded || usize::from(first.rows) > history || self.pages.len() == 1 {
                 break;
             }
-            removed += usize::from(self.pages.pop_front().unwrap().rows);
+            let page = self.pages.pop_front().unwrap();
+            removed.extend_from_slice(&page.row_ids[..usize::from(page.rows)]);
         }
         removed
     }
@@ -325,8 +271,7 @@ impl PageList {
             if count >= usize::from(page.rows) {
                 count -= usize::from(self.pages.pop_front().unwrap().rows);
             } else {
-                page.rows -= count as u16;
-                page.layout_generation = page.layout_generation.wrapping_add(1);
+                page.remove_prefix(count);
                 count = 0;
             }
         }
@@ -340,15 +285,12 @@ impl PageList {
             if remove >= usize::from(page.rows) {
                 remove -= usize::from(self.pages.pop_back().unwrap().rows);
             } else {
-                page.rows -= remove as u16;
-                page.layout_generation = page.layout_generation.wrapping_add(1);
+                page.truncate(usize::from(page.rows) - remove);
                 remove = 0;
             }
         }
     }
 
-    /// Copy allocation metadata for a detached viewport, preserving its page
-    /// boundaries without allocating the live page's resource tables.
     pub fn clone_range(&self, start: usize, rows: usize) -> Self {
         let mut result = Self {
             next_serial: self.next_serial,
@@ -359,101 +301,47 @@ impl PageList {
             let end = offset + usize::from(page.rows);
             let count = end.min(start + rows).saturating_sub(offset.max(start));
             if count > 0 {
-                result.pages.push_back(Page {
-                    capacity: page.capacity,
-                    columns: page.columns,
-                    rows: count as u16,
-                    serial: page.serial,
-                    layout_generation: 0,
-                    styles: StyleAdmission::default(),
-                    links: HyperlinkAdmission::default(),
-                    graphemes: GraphemeAdmission::default(),
-                });
+                let mut copy = page.clone();
+                copy.remove_prefix(start.saturating_sub(offset));
+                copy.truncate(count);
+                result.pages.push_back(copy);
             }
             offset = end;
         }
         assert_eq!(result.total_rows(), rows);
         result
     }
-
-    /// Emit a reflow row using the current source page's native capacity.
-    pub fn reflow_row(&mut self, capacity: PageCapacity) {
-        if let Some(last) = self.pages.back_mut()
-            && last.rows < last.capacity.rows
-        {
-            last.rows += 1;
-        } else {
-            self.append(capacity, 1);
-        }
-    }
-
-    pub fn resize_columns(&mut self, columns: u16, spacer_heads: &[bool]) {
-        let old = std::mem::take(&mut self.pages);
-        for (index, mut page) in old.into_iter().enumerate() {
-            if columns <= page.columns || (columns <= page.capacity.cols && !spacer_heads[index]) {
-                page.columns = columns;
-                self.pages.push_back(page);
-                continue;
-            }
-            let capacity = page.adjusted_capacity(columns, false);
-            let mut remaining = page.rows;
-            if let Some(previous) = self.pages.back_mut() {
-                // ponytail: backfill assumes resources fit; integrate managed
-                // resource exhaustion with the live resource mutation hooks.
-                let count = remaining.min(previous.capacity.rows - previous.rows);
-                previous.rows += count;
-                remaining -= count;
-            }
-            while remaining > 0 {
-                let count = remaining.min(capacity.rows);
-                self.append(capacity, count);
-                remaining -= count;
-            }
-        }
-    }
-
-    /// Safely widen a restored narrow page when an edit reaches outside it.
-    pub fn extend_page(
-        &mut self,
-        row: usize,
-        columns: u16,
-        spacer_head: bool,
-    ) -> std::ops::Range<usize> {
-        let mut start = 0;
-        let index = self
-            .pages
-            .iter()
-            .position(|page| {
-                if row < start + usize::from(page.rows) {
-                    true
-                } else {
-                    start += usize::from(page.rows);
-                    false
-                }
-            })
-            .expect("row is inside the page list");
-        let page = &self.pages[index];
-        let end = start + usize::from(page.rows);
-        if columns > page.columns {
-            let page = self.pages.remove(index).unwrap();
-            let mut expanded = Self {
-                pages: [page].into(),
-                next_serial: self.next_serial,
-                identity: ListIdentity::default(),
-            };
-            expanded.resize_columns(columns, &[spacer_head]);
-            self.next_serial = expanded.next_serial;
-            for page in expanded.pages.into_iter().rev() {
-                self.pages.insert(index, page);
-            }
-        }
-        start..end
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn growth_reuses_the_evicted_standard_allocation_without_a_cache() {
+        let columns = 80;
+        let capacity = PageCapacity::initial(columns).unwrap();
+        let mut pages = PageList::new(columns, 2);
+        let limits = ScrollbackLimits {
+            bytes: Some(1),
+            lines: None,
+        };
+        for id in 2..u64::from(capacity.rows) * 2 {
+            pages.grow(columns, 2, limits, None, id, Color::Default);
+        }
+        assert_eq!(pages.pages.len(), 2);
+        let pointer = pages.pages[0].cells.as_ptr();
+        let old_serial = pages.pages[0].serial;
+        let removed = pages.grow(columns, 2, limits, None, 100_000, Color::Default);
+        assert_eq!(removed.len(), usize::from(capacity.rows));
+        assert_eq!(pages.pages.len(), 2);
+        let reused = pages.pages.back().unwrap();
+        assert_eq!(reused.cells.as_ptr(), pointer);
+        assert_ne!(reused.serial, old_serial);
+        assert_eq!(reused.rows, 1);
+        assert_eq!(reused.row_ids[0], 100_000);
+        assert!(reused.cells.iter().all(|cell| cell.bits() == 0));
+    }
 
     #[test]
     fn growth_preserves_native_line_and_byte_floors() {
@@ -469,11 +357,18 @@ mod tests {
             let limits = ScrollbackLimits { bytes: None, lines };
             let mut pages = PageList::new(columns, 2);
             for _ in 0..minimum {
-                assert_eq!(pages.grow(columns, 2, limits), 0);
+                assert_eq!(
+                    pages
+                        .grow(columns, 2, limits, None, 0, Color::Default)
+                        .len(),
+                    0
+                );
             }
             assert_eq!(pages.total_rows(), minimum + 2);
             assert_eq!(
-                pages.grow(columns, 2, limits),
+                pages
+                    .grow(columns, 2, limits, None, 0, Color::Default)
+                    .len(),
                 if lines.is_some_and(|limit| limit <= minimum) {
                     minimum
                 } else {
@@ -481,7 +376,9 @@ mod tests {
                 },
             );
             assert_eq!(
-                pages.grow(columns, 2, limits),
+                pages
+                    .grow(columns, 2, limits, None, 0, Color::Default)
+                    .len(),
                 if lines == Some(minimum + 1) {
                     minimum
                 } else {
@@ -506,11 +403,18 @@ mod tests {
             // The two-page floor permits filling both existing allocations;
             // only requesting a third page can recycle the oldest one.
             for _ in 2..2 * minimum {
-                assert_eq!(pages.grow(columns, 2, limits), 0);
+                assert_eq!(
+                    pages
+                        .grow(columns, 2, limits, None, 0, Color::Default)
+                        .len(),
+                    0
+                );
             }
             let recycled = bytes.is_some_and(|limit| limit < 3 * standard_bytes);
             assert_eq!(
-                pages.grow(columns, 2, limits),
+                pages
+                    .grow(columns, 2, limits, None, 0, Color::Default)
+                    .len(),
                 if recycled { minimum } else { 0 }
             );
             assert_eq!(pages.pages.len(), if recycled { 2 } else { 3 });
@@ -547,7 +451,7 @@ mod tests {
             }
         };
         compare(&pages);
-        assert!(pages.split(2, 1));
+        pages.append(capacity, 1);
         compare(&pages);
         pages.remove_prefix(3);
         compare(&pages);

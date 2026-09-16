@@ -1,8 +1,5 @@
-//! The JSON text field needs its owning page; metadata uses derived adapters.
-use super::{
-    Arc, Cell, CellText, GraphemeAdmission, HashSet, Hyperlink, HyperlinkAdmission, HyperlinkData,
-    HyperlinkId, Row, Screen, StyleAdmission,
-};
+//! Stable JSON fields, resolved through each row's owning page.
+use super::*;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
 
 #[derive(Serialize)]
@@ -13,13 +10,11 @@ struct ScreenRef<'a> {
     history: RowsRef<'a>,
     history_bytes: usize,
 }
-
 struct RowsRef<'a> {
     screen: &'a Screen,
     start: usize,
     len: usize,
 }
-
 impl Serialize for RowsRef<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.collect_seq(
@@ -28,55 +23,66 @@ impl Serialize for RowsRef<'_> {
                 .skip(self.start)
                 .take(self.len)
                 .map(|row| RowRef {
-                    row,
-                    cells: CellsRef {
-                        screen: self.screen,
-                        row,
-                    },
+                    id: row.id,
+                    wrapped: row.wrapped,
+                    wrap_continuation: row.wrap_continuation,
+                    semantic: row.semantic,
+                    dirty: row.dirty,
+                    cells: CellsRef(row),
                 }),
         )
     }
 }
-
 #[derive(Serialize)]
 struct RowRef<'a> {
-    #[serde(flatten, with = "Row")]
-    row: &'a Row,
+    id: u64,
+    wrapped: bool,
+    wrap_continuation: bool,
+    semantic: SemanticContent,
+    dirty: bool,
     cells: CellsRef<'a>,
 }
-
-struct CellsRef<'a> {
-    screen: &'a Screen,
-    row: &'a Row,
-}
-
+struct CellsRef<'a>(RowView<'a>);
 impl Serialize for CellsRef<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.collect_seq(
-            self.row
-                .cells
+            self.0
+                .cells()
                 .iter()
                 .enumerate()
                 .map(|(col, cell)| CellRef {
-                    cell,
-                    text: self.screen.cell_text(self.row, col),
+                    text: self.0.text(col),
+                    width: cell.width(),
+                    style: self.0.style(col),
+                    hyperlink: self.0.hyperlink(col),
+                    protected: cell.protected(),
+                    semantic: cell.semantic(),
+                    spacer_head: cell.spacer_head(),
                 }),
         )
     }
 }
-
 #[derive(Serialize)]
 struct CellRef<'a> {
-    #[serde(flatten, with = "Cell")]
-    cell: &'a Cell,
     #[serde(serialize_with = "serialize_text")]
     text: CellText<'a>,
+    width: u8,
+    style: Style,
+    #[serde(flatten, serialize_with = "serialize_link")]
+    hyperlink: Option<&'a HyperlinkData>,
+    protected: bool,
+    semantic: SemanticContent,
+    spacer_head: bool,
 }
-
 fn serialize_text<S: Serializer>(text: &CellText<'_>, serializer: S) -> Result<S::Ok, S::Error> {
     serializer.serialize_str(text)
 }
-
+fn serialize_link<S: Serializer>(
+    link: &Option<&HyperlinkData>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    hyperlink_serde::serialize_data(*link, serializer)
+}
 impl Serialize for Screen {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         ScreenRef {
@@ -84,19 +90,18 @@ impl Serialize for Screen {
             history_bytes: self.history_bytes(),
             rows: RowsRef {
                 screen: self,
-                start: self.history.len(),
-                len: self.rows.len(),
+                start: self.history_len(),
+                len: self.height,
             },
             history: RowsRef {
                 screen: self,
                 start: 0,
-                len: self.history.len(),
+                len: self.history_len(),
             },
         }
         .serialize(serializer)
     }
 }
-
 #[derive(Deserialize)]
 struct ScreenWire {
     #[serde(flatten, with = "Screen")]
@@ -104,35 +109,45 @@ struct ScreenWire {
     rows: Vec<RowWire>,
     history: Vec<RowWire>,
 }
-
 #[derive(Deserialize)]
 struct RowWire {
-    #[serde(flatten, with = "Row")]
-    row: Row,
+    id: u64,
+    wrapped: bool,
+    wrap_continuation: bool,
+    semantic: SemanticContent,
+    dirty: bool,
     cells: Vec<CellWire>,
 }
-
 #[derive(Deserialize)]
 struct CellWire {
-    #[serde(flatten, with = "Cell")]
-    cell: Cell,
     text: String,
+    width: u8,
+    style: Style,
+    #[serde(flatten, with = "hyperlink_serde")]
+    hyperlink: Option<Arc<HyperlinkData>>,
+    protected: bool,
+    semantic: SemanticContent,
+    spacer_head: bool,
 }
-
 fn valid_hyperlink(link: &HyperlinkData) -> bool {
     !link.uri_bytes().is_empty()
         && !matches!(&link.id, Some(HyperlinkId::Explicit(id)) if id.is_empty())
 }
-
 impl<'de> Deserialize<'de> for Screen {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let wire = ScreenWire::deserialize(deserializer)?;
         let mut screen = wire.screen;
-        if screen.columns == 0 || screen.columns > usize::from(u16::MAX) || wire.rows.is_empty() {
+        if screen.columns == 0
+            || screen.columns > usize::from(u16::MAX)
+            || wire.rows.is_empty()
+            || wire.rows.len() > usize::from(u16::MAX)
+        {
             return Err(D::Error::custom("invalid screen dimensions"));
         }
-        let history = wire.history.len();
-        let total = history
+        screen.height = wire.rows.len();
+        let total = wire
+            .history
+            .len()
             .checked_add(wire.rows.len())
             .ok_or_else(|| D::Error::custom("screen row count overflow"))?;
         let mut count = 0usize;
@@ -142,51 +157,28 @@ impl<'de> Deserialize<'de> for Screen {
                 || page.rows > page.capacity.rows
                 || page.columns == 0
                 || page.columns > page.capacity.cols
+                || page.serial >= screen.pages.next_serial
                 || !serials.insert(page.serial)
             {
                 return Err(D::Error::custom("invalid screen page"));
             }
-            let layout = page
-                .capacity
+            page.capacity
                 .layout()
                 .map_err(|_| D::Error::custom("invalid screen page capacity"))?;
             count = count
                 .checked_add(usize::from(page.rows))
-                .ok_or_else(|| D::Error::custom("screen page row count overflow"))?;
-            page.styles = StyleAdmission::new(layout.styles_layout);
-            page.links = HyperlinkAdmission::new(
-                layout.hyperlink_set_layout,
-                layout.string_alloc_layout,
-                layout.hyperlink_map_layout.capacity as usize * 80 / 100,
-            );
-            page.graphemes = GraphemeAdmission::new(
-                layout.grapheme_alloc_layout,
-                layout.grapheme_map_layout.capacity as usize,
-            );
+                .ok_or_else(|| D::Error::custom("screen row count overflow"))?;
+            let columns = page.columns;
+            *page = Page::new(page.capacity, page.rows, page.serial);
+            page.columns = columns;
         }
         if count != total {
             return Err(D::Error::custom("screen pages do not cover its rows"));
         }
-
-        let mut contents = Vec::with_capacity(total);
-        let mut pending = Vec::with_capacity(total);
-        for (absolute, wire) in wire.history.into_iter().chain(wire.rows).enumerate() {
-            let page = screen.pages.page_at(absolute).0;
-            if wire.cells.len() != usize::from(page.columns) {
-                return Err(D::Error::custom("screen row width differs from its page"));
-            }
-            let mut row = wire.row;
-            row.resource_page = Some(page.serial);
-            row.cells.resize(wire.cells.len(), Cell::default());
-            pending.push(wire.cells);
-            contents.push(row);
-        }
-        screen.rows = contents.split_off(history);
-        screen.history = contents.into();
-        if screen.cursor.row >= screen.rows.len()
+        if screen.cursor.row >= screen.height
             || screen.cursor.col >= screen.columns
-            || screen.cursor.col >= screen.rows[screen.cursor.row].cells.len()
-            || screen.viewport_offset > screen.history.len()
+            || screen.cursor.col >= screen.row(screen.cursor.row).cells.len()
+            || screen.viewport_offset > screen.history_len()
         {
             return Err(D::Error::custom(
                 "screen cursor or viewport is outside its rows",
@@ -200,61 +192,71 @@ impl<'de> Deserialize<'de> for Screen {
         {
             return Err(D::Error::custom("invalid screen cursor hyperlink"));
         }
-
-        for (absolute, cells) in pending.into_iter().enumerate() {
-            for (col, wire) in cells.into_iter().enumerate() {
-                let mut cell = wire.cell;
+        let mut row_ids = HashSet::new();
+        for (absolute, row) in wire.history.into_iter().chain(wire.rows).enumerate() {
+            if row.id >= screen.next_row || !row_ids.insert(row.id) {
+                return Err(D::Error::custom("invalid screen row identity"));
+            }
+            if row.cells.len() != screen.physical_row(absolute).cells.len() {
+                return Err(D::Error::custom("screen row width differs from its page"));
+            }
+            for (col, wire) in row.cells.into_iter().enumerate() {
+                if wire.width > 2
+                    || wire
+                        .hyperlink
+                        .as_deref()
+                        .is_some_and(|link| !valid_hyperlink(link))
+                {
+                    return Err(D::Error::custom("invalid screen cell"));
+                }
                 let mut chars = wire.text.chars();
-                cell.codepoint = chars.next();
-                let len = chars.count();
-                if len > 64 {
+                let cp = chars.next();
+                let suffix = chars.count();
+                if suffix > 64 {
                     return Err(D::Error::custom(
                         "screen grapheme exceeds 64 suffix scalars",
                     ));
                 }
-                let style = std::mem::take(&mut cell.style);
-                let hyperlink = cell.hyperlink.take();
-                if hyperlink
-                    .as_deref()
-                    .is_some_and(|link| !valid_hyperlink(link))
-                {
-                    return Err(D::Error::custom("invalid screen hyperlink"));
+                let mut cell = Cell::default();
+                cell.set_codepoint(cp);
+                cell.set_width(wire.width);
+                cell.set_spacer_head(wire.spacer_head);
+                cell.set_protected(wire.protected);
+                cell.set_semantic(wire.semantic);
+                let inline = cp.is_none()
+                    && cell.width() == 1
+                    && !cell.spacer_head()
+                    && wire.style
+                        == (Style {
+                            background: wire.style.background,
+                            ..Style::default()
+                        });
+                if inline {
+                    cell.set_background(wire.style.background);
+                } else if wire.style != Style::default() {
+                    cell.set_style_id(1);
                 }
-                // Admission may split and rehome a page. Expose only resources
-                // whose references have already been acquired.
-                screen.physical_row_mut(absolute).cells[col] = cell;
-                let id = screen
-                    .acquire_style(absolute, style, None)
-                    .map_err(|_| D::Error::custom("screen cell style cannot fit its page"))?;
-                let cell = &mut screen.physical_row_mut(absolute).cells[col];
-                cell.style = style;
-                cell.style_id = id;
-                if let Some(hyperlink) = hyperlink {
-                    let link = Hyperlink {
-                        id: hyperlink.id.clone().unwrap_or(HyperlinkId::Implicit(0)),
-                        uri: hyperlink.uri_bytes().to_vec(),
-                    };
-                    let id = screen.acquire_link_cell(absolute, &link, 0).map_err(|_| {
-                        D::Error::custom("screen cell hyperlink cannot fit its page")
-                    })?;
-                    let cell = &mut screen.physical_row_mut(absolute).cells[col];
-                    cell.hyperlink = Some(hyperlink);
-                    cell.link_id = id;
-                }
-                if len > 0 {
-                    let allocation = screen
-                        .acquire_grapheme(absolute, len as u8)
-                        .map_err(|_| D::Error::custom("screen grapheme cannot fit its page"))?;
-                    let index = screen.pages.page_index(absolute);
-                    screen.pages.pages[index]
-                        .graphemes
-                        .set_text(allocation, Arc::from(wire.text));
-                    screen.physical_row_mut(absolute).cells[col].grapheme = Some(allocation);
-                }
+                let copy = CellCopy {
+                    cell,
+                    style: wire.style,
+                    link: wire.hyperlink,
+                    link_id: 0,
+                    text: (suffix > 0).then(|| (Arc::from(wire.text), suffix as u8)),
+                };
+                screen
+                    .install_cell(absolute, col, copy, false)
+                    .map_err(|_| D::Error::custom("screen cell resources exceed page capacity"))?;
             }
+            let (index, relative) = screen.locate(absolute);
+            let page = &mut screen.pages.pages[index];
+            page.row_ids[relative] = row.id;
+            let header = &mut page.headers[relative];
+            header.set(RowHeader::WRAPPED, row.wrapped);
+            header.set(RowHeader::CONTINUATION, row.wrap_continuation);
+            header.set_semantic(row.semantic);
+            header.set(RowHeader::DIRTY, row.dirty);
         }
         screen.sync_cursor_resources();
-        screen.history_bytes = screen.history.iter().map(Row::storage_bytes).sum();
         Ok(screen)
     }
 }

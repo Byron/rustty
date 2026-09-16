@@ -118,12 +118,12 @@ impl Placement {
 }
 
 /// Adjacent cells inherit omitted indices only while their IDs remain compatible.
-pub fn placements<'a>(screen: &'a Screen, row: &'a Row) -> impl Iterator<Item = Placement> + 'a {
+pub fn placements<'a>(screen: &'a Screen, row: Row<'a>) -> impl Iterator<Item = Placement> + 'a {
     let mut cells = row.cells.iter().enumerate().peekable();
     std::iter::from_fn(move || {
         let (col, mut current) = loop {
             let (col, _) = cells.next()?;
-            if let Some(placeholder) = Placeholder::from_cell(screen, row, col) {
+            if let Some(placeholder) = Placeholder::from_cell(screen, &row, col) {
                 break (col, placeholder);
             }
         };
@@ -131,7 +131,7 @@ pub fn placements<'a>(screen: &'a Screen, row: &'a Row) -> impl Iterator<Item = 
         current.col.get_or_insert(0);
         let mut width = 1;
         while let Some((next_col, _)) = cells.peek() {
-            let Some(next) = Placeholder::from_cell(screen, row, *next_col) else {
+            let Some(next) = Placeholder::from_cell(screen, &row, *next_col) else {
                 break;
             };
             if current.low != next.low
@@ -167,7 +167,7 @@ struct Placeholder {
 impl Placeholder {
     fn from_cell(screen: &Screen, row: &Row, col: usize) -> Option<Self> {
         let cell = &row.cells[col];
-        if cell.codepoint != Some(PLACEHOLDER) {
+        if cell.codepoint() != Some(PLACEHOLDER) {
             return None;
         }
         let text = screen.cell_text(row, col);
@@ -179,8 +179,8 @@ impl Placeholder {
                 .map(|i| i as u32)
         };
         Some(Self {
-            low: color_id(cell.style.foreground),
-            placement: color_id(cell.style.underline_color),
+            low: color_id(row.style(col).foreground),
+            placement: color_id(row.style(col).underline_color),
             row: next(),
             col: next(),
             high: next().and_then(|i| u8::try_from(i).ok()),

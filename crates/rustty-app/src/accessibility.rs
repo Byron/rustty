@@ -20,8 +20,7 @@ impl TerminalText {
     pub fn new(pane: u64, screen: &Screen, origin: [f32; 2], cell: [f32; 2]) -> Self {
         let id = egui::Id::new(("terminal", pane));
         let rows = screen
-            .rows
-            .iter()
+            .rows()
             .enumerate()
             .map(|(index, row)| {
                 let node_id = id.with(row.id).accesskit_id();
@@ -32,7 +31,7 @@ impl TerminalText {
                 let mut widths = Vec::new();
                 let mut columns = Vec::new();
                 for (col, content) in row.cells.iter().enumerate() {
-                    if content.width == 0 || content.spacer_head {
+                    if content.width() == 0 || content.spacer_head() {
                         continue;
                     }
                     let content_text = screen.cell_text(row, col);
@@ -55,7 +54,7 @@ impl TerminalText {
                         columns.push(col);
                         positions.push(col as f32 * cell[0]);
                         widths.push(if first {
-                            f32::from(content.width) * cell[0]
+                            f32::from(content.width()) * cell[0]
                         } else {
                             0.0
                         });
@@ -63,7 +62,7 @@ impl TerminalText {
                         first = false;
                     }
                 }
-                if !row.wrapped && index + 1 < screen.rows.len() {
+                if !row.wrapped && index + 1 < screen.height() {
                     value.push('\n');
                     lengths.push(1);
                     columns.push(row.cells.len());
@@ -111,7 +110,7 @@ impl TerminalText {
                 .map(|(anchor, focus)| TextSelection { anchor, focus });
         } else if screen.cursor.visible {
             let point = GridPoint {
-                row: screen.rows[screen.cursor.row].id,
+                row: screen.row(screen.cursor.row).id,
                 col: screen.cursor.col,
             };
             result.selection = result.position(point, false).map(|pos| TextSelection {

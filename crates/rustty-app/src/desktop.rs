@@ -72,6 +72,7 @@ struct Pane {
     exit_message: Option<String>,
     links: vt::search::LinkMatcher,
     mouse_cell: Option<[u16; 2]>,
+    scroll: input::ScrollAccumulator,
     sync_output: SynchronizedOutput,
 }
 impl Pane {
@@ -991,6 +992,7 @@ impl App {
                 exit_message: None,
                 links: vt::search::LinkMatcher::default(),
                 mouse_cell: None,
+                scroll: input::ScrollAccumulator::default(),
                 sync_output: SynchronizedOutput::default(),
             },
         );
@@ -1868,8 +1870,7 @@ impl App {
                     }
                 } else if let Some(target) = target {
                     if !quadrant && let Some(tab) = self.tab_mut(host.id) {
-                        // Ordinary navigation reveals the quadrant layer below full zoom.
-                        tab.zoom = tab.quadrant_zoom;
+                        tab.zoom = tab.pane_navigation_zoom(target);
                     }
                     host.navigation_warning = None;
                     self.focus_pane(host.id, target);
@@ -2118,9 +2119,9 @@ impl App {
                     && let Ok(mut terminal) = pane.session.terminal()
                 {
                     let screen = terminal.screen_mut();
-                    let rows = screen.rows.len() as isize;
+                    let rows = screen.height() as isize;
                     match action {
-                        Action::ScrollToTop => screen.viewport_offset = screen.history.len(),
+                        Action::ScrollToTop => screen.viewport_offset = screen.history_len(),
                         Action::ScrollToBottom => screen.viewport_offset = 0,
                         Action::ScrollPageUp => screen.scroll_viewport(rows),
                         Action::ScrollPageDown => screen.scroll_viewport(-rows),
@@ -2130,14 +2131,14 @@ impl App {
                             }
                         }
                         Action::JumpToPrompt(offset) => {
-                            let start = screen.history.len().saturating_sub(screen.viewport_offset);
+                            let start = screen.history_len().saturating_sub(screen.viewport_offset);
                             let prompts = screen
                                 .all_rows()
                                 .enumerate()
                                 .filter(|(_, r)| {
                                     r.cells
                                         .iter()
-                                        .any(|c| c.semantic == vt::SemanticContent::Prompt)
+                                        .any(|c| c.semantic() == vt::SemanticContent::Prompt)
                                 })
                                 .map(|(i, _)| i)
                                 .collect::<Vec<_>>();
@@ -2157,7 +2158,7 @@ impl App {
                             };
                             if let Some(target) = target {
                                 screen.viewport_offset =
-                                    screen.history.len().saturating_sub(target);
+                                    screen.history_len().saturating_sub(target);
                             }
                         }
                         _ => {}
@@ -2518,11 +2519,7 @@ impl App {
                 ),
             };
             let event = input::terminal_key(key, host.modifiers, host.composing, options)?;
-            if event.action != vt::KeyAction::Release {
-                terminal.screen_mut().viewport_offset = 0;
-                terminal.screen_mut().selection = None;
-            }
-            Some(terminal.encode_key_with_options(&event, options))
+            Some(input::encode_terminal_key(&mut terminal, &event, options))
         });
         if let Some(bytes) = bytes {
             if key.state == ElementState::Pressed && !bytes.is_empty() {
@@ -2537,12 +2534,21 @@ impl App {
 fn reveal(screen: &mut vt::Screen, point: vt::GridPoint) {
     let index = screen.all_rows().position(|row| row.id == point.row);
     if let Some(index) = index {
-        screen.viewport_offset = screen.history.len().saturating_sub(index);
+        screen.viewport_offset = screen.history_len().saturating_sub(index);
     }
 }
 
 impl App {
     fn draw(&mut self, event_loop: &ActiveEventLoop, host: &mut Host) -> Result<()> {
+        self.draw_frame(event_loop, host, None)
+    }
+
+    fn draw_frame(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        host: &mut Host,
+        offscreen: Option<&wgpu::Texture>,
+    ) -> Result<()> {
         host.messages_open = !self.errors.is_empty();
         if !host.visible || host.occluded {
             return Ok(());
@@ -3414,19 +3420,31 @@ impl App {
             )?;
             host.capture = false;
         }
-        self.painter.paint_and_update_textures(
-            host.viewport,
-            output.pixels_per_point,
-            [0.0; 4],
-            &primitives,
-            &mut output.textures_delta,
-            if std::mem::take(&mut host.capture) {
-                vec![egui::UserData::default()]
-            } else {
-                Vec::new()
-            },
-            &host.window,
-        );
+        if let Some(target) = offscreen {
+            let state = self.painter.render_state().ok_or("GPU unavailable")?;
+            smoke::submit_offscreen(
+                &state,
+                &primitives,
+                &output.textures_delta,
+                [size.width, size.height],
+                output.pixels_per_point,
+                target,
+            );
+        } else {
+            self.painter.paint_and_update_textures(
+                host.viewport,
+                output.pixels_per_point,
+                [0.0; 4],
+                &primitives,
+                &mut output.textures_delta,
+                if std::mem::take(&mut host.capture) {
+                    vec![egui::UserData::default()]
+                } else {
+                    Vec::new()
+                },
+                &host.window,
+            );
+        }
         host.frames += 1;
         host.deadline = animation_deadline;
         if let Some(deadline) = host.focus_hint.deadline(now) {
@@ -3513,12 +3531,6 @@ impl App {
         {
             return;
         }
-        let lines = match delta {
-            MouseScrollDelta::LineDelta(_, y) => y,
-            MouseScrollDelta::PixelDelta(pos) => {
-                pos.y as f32 / host.fonts.metrics().cell_height as f32
-            }
-        };
         if let Some(id) = host.hovered_pane() {
             let mut cursor_keys = None;
             let mouse = self
@@ -3534,12 +3546,23 @@ impl App {
                     })
                 })
                 .unwrap_or(false);
+            let rows = match delta {
+                MouseScrollDelta::LineDelta(_, y) if mouse => y.abs().ceil().copysign(y) as isize,
+                MouseScrollDelta::LineDelta(_, y) => (y * 3.0).round() as isize,
+                MouseScrollDelta::PixelDelta(pos) => self.panes.get_mut(&id).map_or(0, |pane| {
+                    pane.scroll.take_pixels(
+                        pos.y,
+                        host.window.scale_factor(),
+                        host.fonts.metrics().cell_height,
+                    )
+                }),
+            };
             if mouse {
-                for _ in 0..lines.abs().ceil().min(128.0) as usize {
+                for _ in 0..rows.unsigned_abs().min(128) {
                     self.mouse(
                         host,
                         vt::MouseAction::Press,
-                        Some(if lines > 0.0 {
+                        Some(if rows > 0 {
                             vt::MouseButton::WheelUp
                         } else {
                             vt::MouseButton::WheelDown
@@ -3555,20 +3578,18 @@ impl App {
                 {
                     // Like Ghostty, alternate scroll emits ordinary cursor keys,
                     // independent of Kitty keyboard flags and held modifiers.
-                    let count = (lines * 3.0).abs().round().min(128.0) as usize;
+                    let count = rows.unsigned_abs().min(128);
                     let sequence = [
                         0x1b,
                         if terminal.modes.dec(1) { b'O' } else { b'[' },
-                        if lines > 0.0 { b'A' } else { b'B' },
+                        if rows > 0 { b'A' } else { b'B' },
                     ];
                     if count != 0 {
                         terminal.screen_mut().selection = None;
                     }
                     cursor_keys = Some(sequence.repeat(count));
                 } else {
-                    terminal
-                        .screen_mut()
-                        .scroll_viewport((lines * 3.0).round() as isize);
+                    terminal.screen_mut().scroll_viewport(rows);
                 }
             }
             if let Some(bytes) = cursor_keys {
@@ -3634,10 +3655,10 @@ impl App {
             let screen = terminal.screen();
             let row = screen.viewport().nth((position.y / cell.y) as usize)?;
             let mut col = (position.x / cell.x) as usize;
-            if row.cells.get(col)?.spacer_head {
+            if row.cells.get(col)?.spacer_head() {
                 return None;
             }
-            if row.cells[col].width == 0 && col > 0 {
+            if row.cells[col].width() == 0 && col > 0 {
                 col -= 1;
             }
             let point = vt::GridPoint { row: row.id, col };
@@ -3933,7 +3954,7 @@ fn link_bounds(
                     + rows[index]
                         .cells
                         .get(link.end.col)
-                        .map_or(1, |cell| usize::from(cell.width.max(1)))
+                        .map_or(1, |cell| usize::from(cell.width().max(1)))
             } else {
                 rows[index].cells.len()
             };
@@ -5152,7 +5173,7 @@ mod tests {
         assert!(!prepared.matches(&key(&terminal), &fonts));
         terminal.screen_mut().scroll_viewport(-1);
         let point = vt::GridPoint {
-            row: terminal.screen().rows[0].id,
+            row: terminal.screen().row(0).id,
             col: 0,
         };
         terminal.screen_mut().selection = Some(vt::Selection {
