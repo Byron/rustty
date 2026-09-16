@@ -15,17 +15,38 @@ pub(crate) struct Properties {
     pub emoji_vs_base: bool,
 }
 
+impl Properties {
+    #[inline]
+    pub(crate) fn from_bits(value: u32) -> Self {
+        Self {
+            width: (value & 3) as u8,
+            zero_in_grapheme: value & 4 != 0,
+            grapheme: ((value >> 3) & 31) as u8,
+            emoji_vs_base: value & 256 != 0,
+        }
+    }
+}
+
 #[inline]
-pub(crate) fn properties(cp: char) -> Properties {
+fn property_bits(cp: char) -> u32 {
     let cp = cp as usize;
     let block = usize::from(DATA[cp >> BLOCK_SHIFT]);
     let i = INDEX_LEN + (block * BLOCK_SIZE + (cp & (BLOCK_SIZE - 1))) * 2;
-    let value = u16::from_le_bytes([DATA[i], DATA[i + 1]]);
-    Properties {
-        width: (value & 3) as u8,
-        zero_in_grapheme: value & 4 != 0,
-        grapheme: ((value >> 3) & 31) as u8,
-        emoji_vs_base: value & 256 != 0,
+    u32::from(u16::from_le_bytes([DATA[i], DATA[i + 1]]))
+}
+
+#[inline]
+pub(crate) fn properties(cp: char) -> Properties {
+    Properties::from_bits(property_bits(cp))
+}
+
+/// Scalar terminal printing treats all Latin-1 input as ordinary narrow text.
+#[inline]
+pub(crate) fn print_properties(cp: char) -> u32 {
+    if cp as u32 <= 255 {
+        1
+    } else {
+        property_bits(cp)
     }
 }
 
@@ -67,8 +88,11 @@ fn indic_extend(g: u8) -> bool {
 // Sharing this with run printing must not add a call per scalar print.
 #[inline(always)]
 pub(crate) fn grapheme_break(a: char, b: char, state: &mut u8) -> bool {
-    let a = properties(a).grapheme;
-    let b = properties(b).grapheme;
+    grapheme_break_properties(properties(a).grapheme, properties(b).grapheme, state)
+}
+
+#[inline(always)]
+pub(crate) fn grapheme_break_properties(a: u8, b: u8, state: &mut u8) -> bool {
     match *state {
         1 if a != RI || b != RI => *state = 0,
         2 if !matches!(a, EXTEND | LINKER | ZWNJ | ZWJ | PICTO | MOD_BASE | MOD)

@@ -13,16 +13,16 @@ fn host_reset_preserves_partial_utf8_and_ansi_controls() {
         terminal.feed(&input[..cut]);
         terminal.reset();
         terminal.feed(&input[cut..]);
-        let cell = &terminal.screen().rows[0].cells[0];
+        let row = terminal.screen().row(0);
         assert_eq!(
-            &*terminal.screen().cell_text(&terminal.screen().rows[0], 0),
+            &*terminal.screen().cell_text(&terminal.screen().row(0), 0),
             text
         );
-        assert_eq!(cell.style.foreground, foreground);
+        assert_eq!(row.style(0).foreground, foreground);
         assert!(
             terminal
                 .screen()
-                .row_text(&terminal.screen().rows[1])
+                .row_text(&terminal.screen().row(1))
                 .trim()
                 .is_empty()
         );
@@ -71,12 +71,9 @@ fn host_reset_keeps_capture_overflow_and_ris_still_clears_state() {
 
     terminal.feed(b"\x1b[31mold\x1bcnew");
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().rows[0], 0),
+        &*terminal.screen().cell_text(&terminal.screen().row(0), 0),
         "n"
     );
-    assert_eq!(
-        terminal.screen().rows[0].cells[0].style.foreground,
-        Color::Default
-    );
+    assert_eq!(terminal.screen().row(0).style(0).foreground, Color::Default);
     assert_eq!(terminal.screen().cursor.col, 3);
 }

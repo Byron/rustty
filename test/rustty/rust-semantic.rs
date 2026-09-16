@@ -33,12 +33,12 @@ fn screen(screen: &Screen) -> Value {
     json!({
         "input_clears_at_eol": screen.input_clears_at_eol(),
         "click": {"kind":kind,"relative":relative,"motion":motion},
-        "rows": screen.rows.iter().map(row_kind).collect::<Vec<_>>(),
-        "history": screen.history.iter().map(row_kind).collect::<Vec<_>>(),
+        "rows": screen.rows().map(row_kind).collect::<Vec<_>>(),
+        "history": screen.history().map(row_kind).collect::<Vec<_>>(),
     })
 }
 
-fn row_kind(row: &Row) -> &'static str {
+fn row_kind(row: Row<'_>) -> &'static str {
     match row.semantic {
         SemanticContent::Output => "none",
         SemanticContent::Prompt => "prompt",

@@ -10,3 +10,6 @@ description = "Portable terminal frame preparation."
 [dependencies]
 rustty-font.workspace = true
 rustty-vt.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

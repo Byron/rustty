@@ -56,7 +56,7 @@ fn tail_growth_and_byte_recycling_keep_whole_native_pages() {
             .collect::<Vec<_>>(),
         [591, 1]
     );
-    assert_eq!(terminal.screen().history.len(), capacity + 1 - 24);
+    assert_eq!(terminal.screen().history_len(), capacity + 1 - 24);
     assert_eq!(
         terminal.screen().storage_bytes(),
         initial.allocation_bytes * 2
@@ -76,7 +76,7 @@ fn line_pruning_and_history_clear_preserve_the_active_boundary_page() {
     );
     terminal.feed(b"\x1b[3J");
     let cleared = pages(&terminal);
-    assert!(terminal.screen().history.is_empty());
+    assert!(terminal.screen().history().next().is_none());
     assert_eq!(
         cleared.iter().map(|page| page.rows).collect::<Vec<_>>(),
         [17, 7]
@@ -131,7 +131,7 @@ fn snapshot_keeps_page_groups_and_charges_restored_pages_at_pool_size() {
     // is still a full native pool item, even though the layout is much smaller.
     assert_eq!(active[1].capacity.rows, 7);
     assert_eq!(active[1].allocation_bytes, 409_600);
-    assert_eq!(restored.screen().history.len(), 591 + 7 - 24);
+    assert_eq!(restored.screen().history_len(), 591 + 7 - 24);
     assert_eq!(
         decoder.next_history(&mut restored).unwrap().unwrap().rows,
         591

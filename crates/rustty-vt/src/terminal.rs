@@ -1,4 +1,5 @@
 use crate::modes::Modes;
+use crate::packed::RowHeader;
 use crate::query::{self, Query};
 use crate::screen::*;
 use crate::unicode::{self, properties};
@@ -461,7 +462,7 @@ impl Terminal {
     #[inline(always)]
     fn ensure_row_cells(&mut self, row: usize, end: usize) {
         let columns = usize::from(self.cols);
-        if self.screen().rows[row].cells.len() < end.min(columns) {
+        if self.screen().row_columns(row) < end.min(columns) {
             // A partial reflow can leave a physical row narrower than the
             // logical screen. Extend its actual page when an edit reaches
             // past it, so subsequent snapshots keep valid PAGE dimensions.
@@ -483,7 +484,7 @@ impl Terminal {
             .cursor
             .col
             .min(columns - 1)
-            .min(screen.rows[screen.cursor.row].cells.len() - 1);
+            .min(screen.row_columns(screen.cursor.row) - 1);
     }
 
     pub fn limits(&self) -> ScrollbackLimits {
@@ -496,15 +497,14 @@ impl Terminal {
         self.changed();
     }
 
-    /// Bound owned history-row storage independently of native page limits.
-    /// Counts Rust cell/vector capacities and text/hyperlink allocations, but
-    /// excludes active rows, graphics, page tables and deque spare capacity.
-    /// Shared hyperlink payloads are charged once per row, again across rows.
+    /// Bound reclaimable historical pages independently of native page limits.
+    /// Charges cached cell/header buffers, resource tables and payload capacities.
+    /// Pages intersecting the active screen are an additional minimum allowance;
+    /// eviction removes whole historical pages. Graphics have a separate budget.
+    /// `None` is unlimited; zero clears history and disables ordinary retention.
     /// Retained through reset; hosts reapply it after decoding a snapshot.
     pub fn set_scrollback_memory_limit(&mut self, bytes: Option<usize>) {
         for screen in std::iter::once(&mut self.primary).chain(self.alternate.iter_mut()) {
-            // Hosts can replace public rows or restore independently allocated data.
-            screen.history_bytes = screen.history.iter().map(Row::storage_bytes).sum();
             screen.memory_limit = bytes;
             screen.enforce_memory_limit();
         }
@@ -953,7 +953,7 @@ impl Terminal {
         }
     }
 
-    fn print_utf8(&mut self, mut text: &str) {
+    fn print_utf8(&mut self, text: &str) {
         if self.status_display {
             return;
         }
@@ -976,35 +976,66 @@ impl Terminal {
         }
         let right = usize::from(self.cols) - 1;
         let graphemes = self.modes.dec(2027);
-        while let Some(cp) = text.chars().next() {
-            // Anchor each span with the full scalar path, including wrapping,
-            // page growth and grapheme joins across input chunk boundaries.
-            self.print(cp);
-            text = &text[cp.len_utf8()..];
-            if text.is_empty() || self.screen().cursor.pending_wrap {
-                continue;
+        // Borrowed parser events stay borrowed; decode bounded chunks without
+        // a heap buffer, and reuse properties for neighboring equal scalars.
+        let mut input = text;
+        let mut codepoints = ['\0'; 256];
+        let mut properties = [0u32; 256];
+        let mut previous = ('\0', 0);
+        loop {
+            let len = crate::printing::decode_utf8(
+                &mut input,
+                &mut codepoints,
+                &mut properties,
+                &mut previous,
+            );
+            if len == 0 {
+                break;
             }
-            let mut state = self.grapheme_state;
-            let (bytes, scalars) = self
-                .screen_mut()
-                .write_cursor_utf8(text, right, graphemes, &mut state);
-            if bytes != 0 {
-                self.grapheme_state = state;
-                self.previous_char = text[..bytes].chars().next_back();
-                self.generation = self.generation.wrapping_add(scalars as u64);
-                text = &text[bytes..];
+            let mut offset = 0;
+            while offset < len {
+                // The scalar anchor resolves wrapping, joins and resource growth.
+                self.print_with_properties(
+                    codepoints[offset],
+                    unicode::Properties::from_bits(properties[offset]),
+                );
+                offset += 1;
+                if offset == len || self.screen().cursor.pending_wrap {
+                    continue;
+                }
+                let mut state = self.grapheme_state;
+                let count = self.screen_mut().write_cursor_codepoints(
+                    &codepoints[offset..len],
+                    &properties[offset..len],
+                    right,
+                    graphemes,
+                    &mut state,
+                );
+                if count != 0 {
+                    self.grapheme_state = state;
+                    self.previous_char = Some(codepoints[offset + count - 1]);
+                    self.generation = self.generation.wrapping_add(count as u64);
+                    offset += count;
+                }
             }
         }
     }
 
     pub fn print(&mut self, cp: char) {
+        self.print_with_properties(
+            cp,
+            unicode::Properties::from_bits(unicode::print_properties(cp)),
+        );
+    }
+
+    fn print_with_properties(&mut self, cp: char, prop: unicode::Properties) {
         if self.status_display {
             return;
         }
         self.ensure_row_cells(self.screen().cursor.row, usize::from(self.cols));
         self.clamp_cursor();
         let cursor = &self.screen().cursor;
-        let (row, col, pending_wrap) = (cursor.row, cursor.col, cursor.pending_wrap);
+        let (col, pending_wrap) = (cursor.col, cursor.pending_wrap);
         let right = if col > self.margins.right {
             self.cols as usize - 1
         } else {
@@ -1017,14 +1048,14 @@ impl Terminal {
         } else if self.modes.dec(2027)
             && !self.modes.dec(7)
             && col == right
-            && self.screen().rows[row].cells[right].codepoint.is_some()
+            && self.screen().cursor_cell(right).codepoint().is_some()
         {
             Some(right)
         } else {
             col.checked_sub(1)
         };
         let previous_col = previous_col.map(|col| {
-            if self.screen().rows[row].cells[col].width == 0 {
+            if self.screen().cursor_cell(col).width() == 0 {
                 col.saturating_sub(1)
             } else {
                 col
@@ -1036,27 +1067,32 @@ impl Terminal {
             && col > 0
             && let Some(col) = previous_col
         {
-            let previous = &self.screen().rows[row].cells[col];
-            let previous_width = previous.width;
-            let last = if previous.grapheme.is_some() {
+            let previous = self.screen().cursor_cell(col);
+            let previous_width = previous.width();
+            let last = if previous.has_grapheme() {
                 self.screen()
-                    .cell_text(&self.screen().rows[row], col)
+                    .cell_text(self.screen().row(self.screen().cursor.row), col)
                     .chars()
                     .last()
             } else {
-                previous.codepoint
+                previous.codepoint()
             };
             if let Some(last) = last {
                 let old_state = self.grapheme_state;
-                if !unicode::grapheme_break(last, cp, &mut self.grapheme_state) {
+                let last_prop = properties(last);
+                if !unicode::grapheme_break_properties(
+                    last_prop.grapheme,
+                    prop.grapheme,
+                    &mut self.grapheme_state,
+                ) {
                     let mut width = previous_width;
                     if matches!(cp, '\u{fe0f}' | '\u{fe0e}') {
-                        if !properties(last).emoji_vs_base {
+                        if !last_prop.emoji_vs_base {
                             self.grapheme_state = old_state;
                             return;
                         }
                         width = if cp == '\u{fe0f}' { 2 } else { 1 };
-                    } else if !properties(cp).zero_in_grapheme {
+                    } else if !prop.zero_in_grapheme {
                         width = 2;
                     }
                     self.append_grapheme(col, cp, width, right);
@@ -1064,28 +1100,24 @@ impl Terminal {
                 }
             }
         }
-        let width = if cp as u32 <= 255 {
-            1
-        } else {
-            unicode::codepoint_width(cp)
-        };
+        let width = if cp as u32 <= 255 { 1 } else { prop.width };
         if width == 0 {
             if self.modes.dec(2027) {
                 return;
             }
             if let Some(col) = previous_col {
-                let previous = &self.screen().rows[row].cells[col];
-                if previous.codepoint.is_none() {
+                let previous = self.screen().cursor_cell(col);
+                if previous.codepoint().is_none() {
                     return;
                 }
                 if matches!(cp, '\u{fe0f}' | '\u{fe0e}')
                     && previous
-                        .codepoint
+                        .codepoint()
                         .is_none_or(|p| properties(p).grapheme != 11)
                 {
                     return;
                 }
-                self.append_grapheme(col, cp, previous.width, right);
+                self.append_grapheme(col, cp, previous.width(), right);
             }
             return;
         }
@@ -1121,9 +1153,11 @@ impl Terminal {
     fn append_grapheme(&mut self, mut col: usize, cp: char, width: u8, right: usize) {
         let cursor = self.screen().cursor.clone();
         self.ensure_row_cells(cursor.row, col + usize::from(width));
-        let old_width = self.screen().rows[cursor.row].cells[col].width;
-        if self.screen().rows[cursor.row].cells[col]
-            .grapheme
+        let row = self.screen().cursor_row();
+        let cell = row.cells[col];
+        let old_width = cell.width();
+        if row
+            .grapheme(col)
             .is_some_and(|allocation| allocation.len >= 64)
         {
             return;
@@ -1132,35 +1166,26 @@ impl Terminal {
             if !self.modes.dec(7) {
                 return;
             }
-            let cell = self.screen().rows[cursor.row].cells[col].clone();
-            let text = cell.grapheme.map(|allocation| {
-                let screen = self.screen();
-                screen
-                    .pages
-                    .page_at(screen.history.len() + cursor.row)
-                    .0
-                    .graphemes
-                    .text_arc(allocation)
-            });
+            let text = row.copy_cell(col).text.map(|(text, _)| text);
             self.screen_mut().cursor.col = col;
             if text.is_some() {
                 // Native moves existing grapheme data without printing a
                 // spacer head, so the pending single shift reaches the base.
                 let spacer_head = right == self.cols as usize - 1;
-                let row = &mut self.screen_mut().rows[cursor.row];
-                row.cells[col].codepoint = None;
-                row.cells[col].width = 1;
-                row.cells[col].spacer_head = spacer_head;
-                row.dirty = true;
+                let cell = self.screen_mut().cell_mut(cursor.row, col);
+                cell.set_codepoint(None);
+                cell.set_width(1);
+                cell.set_spacer_head(spacer_head);
+                cell.set_grapheme(true);
             } else {
                 self.put_cell(None, 1, right == self.cols as usize - 1);
             }
             self.print_wrap();
             let source_col = col;
             col = self.screen().cursor.col;
-            self.put_cell(cell.codepoint, width, false);
+            self.put_cell(cell.codepoint(), width, false);
             if let Some(text) = text {
-                let base_len = cell.codepoint.map_or(0, char::len_utf8);
+                let base_len = cell.codepoint().map_or(0, char::len_utf8);
                 self.screen_mut()
                     .move_wrapped_grapheme(source_col, &text[base_len..]);
             }
@@ -1169,18 +1194,13 @@ impl Terminal {
                 // Widening writes a spacer tail, which consumes the shift.
                 self.screen_mut().charset.single = None;
             }
-            self.screen_mut().edit_row(cursor.row, |row| {
-                row.cells[col].width = width;
-                if col < right {
-                    row.cells[col + 1] = Cell::blank(cursor.style.background);
-                    if width == 2 {
-                        row.cells[col + 1] = row.cells[col].clone();
-                        row.cells[col + 1].codepoint = None;
-                        row.cells[col + 1].grapheme = None;
-                        row.cells[col + 1].width = 0;
-                    }
-                }
-            });
+            self.screen_mut().change_grapheme_width(
+                cursor.row,
+                col,
+                width,
+                right,
+                cursor.style.background,
+            );
         }
         let _ = self.screen_mut().append_grapheme(col, cp);
         if width != old_width {
@@ -1212,18 +1232,24 @@ impl Terminal {
         let clear_eol = self.screen().metadata.cursor_clear_eol;
         let mark_wrap = self.screen().cursor.col == usize::from(self.cols) - 1;
         if mark_wrap {
-            self.screen_mut().rows[y].wrapped = true;
+            self.screen_mut()
+                .row_header_mut(y)
+                .set(RowHeader::WRAPPED, true);
         }
         self.index();
         let screen = self.screen_mut();
         screen.cursor.semantic = semantic;
         screen.metadata.cursor_clear_eol = clear_eol;
         if semantic == SemanticContent::Prompt {
-            screen.rows[screen.cursor.row].semantic = SemanticContent::Input;
+            screen
+                .row_header_mut(screen.cursor.row)
+                .set_semantic(SemanticContent::Input);
         }
         if mark_wrap {
             let y = self.screen().cursor.row;
-            self.screen_mut().rows[y].wrap_continuation = true;
+            self.screen_mut()
+                .row_header_mut(y)
+                .set(RowHeader::CONTINUATION, true);
         }
         self.screen_mut().cursor.col = self.margins.left;
         self.ensure_row_cells(self.screen().cursor.row, usize::from(self.cols));
@@ -1331,7 +1357,7 @@ impl Terminal {
                     }
                     self.screen_mut().cursor.row = self.margins.bottom;
                 } else {
-                    if current.row == 0 || !extended && !self.screen().rows[current.row - 1].wrapped
+                    if current.row == 0 || !extended && !self.screen().row(current.row - 1).wrapped
                     {
                         break;
                     }
@@ -1364,7 +1390,9 @@ impl Terminal {
                 screen.cursor.semantic = SemanticContent::Output;
                 screen.metadata.cursor_clear_eol = false;
             } else {
-                screen.rows[screen.cursor.row].semantic = SemanticContent::Input;
+                screen
+                    .row_header_mut(screen.cursor.row)
+                    .set_semantic(SemanticContent::Input);
             }
         }
         self.changed();
@@ -1386,104 +1414,28 @@ impl Terminal {
         let m = self.margins;
         let cols = usize::from(self.cols);
         let full = m.left == 0 && m.right == cols - 1;
-        if full && self.rows == 1 && self.screen().limits.bytes == Some(0) {
+        let no_history =
+            self.screen().limits.bytes == Some(0) || self.screen().memory_limit == Some(0);
+        if full && self.rows == 1 && no_history {
             self.ensure_active_columns();
             let screen = self.screen_mut();
-            let background = screen.cursor.style.background;
-            screen.edit_row(0, |row| {
-                *row = Row::new(row.id, row.cells.len(), background)
-            });
+            screen.reset_row(0, screen.row(0).id, screen.cursor.style.background);
             return;
         }
-        if !full || (m.top == 0 && (self.screen().limits.bytes != Some(0) || m.bottom == 0)) {
-            // scroll_up widens the active rows before moving them.
+        if !full || m.top == 0 && (!no_history || m.bottom == 0) {
             self.scroll_up(1, true);
-            if full && self.screen().limits.bytes != Some(0) {
-                let screen = self.screen_mut();
-                let bottom = screen.history.len() + m.bottom;
-                let at_end = m.bottom + 1 == screen.rows.len();
-                let columns = usize::from(if at_end {
-                    screen.pages.pages.back().unwrap().columns
-                } else {
-                    screen.pages.page_at(bottom).0.columns
-                });
-                if screen.rows[m.bottom].cells.len() != columns {
-                    screen.rows[m.bottom] = Row::new(
-                        screen.rows[m.bottom].id,
-                        columns,
-                        screen.cursor.style.background,
-                    );
-                }
-                if at_end {
-                    return;
-                }
-                // History insertion moves the suffix down through the page
-                // list. At each boundary, native code copies into that page's
-                // recycled last row (or a fresh blank row after growing).
-                let mut page_start = 0;
-                let mut copies = Vec::new();
-                for page in &screen.pages.pages {
-                    let page_end = page_start + usize::from(page.rows);
-                    if page_start > bottom {
-                        let target = page_start - screen.history.len();
-                        let columns = usize::from(page.columns);
-                        let row = &screen.rows[target];
-                        if row.cells.len() != columns || cols < columns {
-                            copies.push((
-                                target,
-                                screen.prepare_row_copy(
-                                    target,
-                                    (page_end - screen.history.len() < screen.rows.len())
-                                        .then_some(page_end - screen.history.len()),
-                                    columns,
-                                    cols,
-                                ),
-                            ));
-                        }
-                    }
-                    page_start = page_end;
-                }
-                screen.install_row_copies(copies, None);
-            }
             return;
         }
-
-        // Full-width IND rotates complete rows, unlike SU/DL which detach
-        // wrapped lines and keep pins at their physical coordinates.
         self.ensure_active_columns();
         let screen = self.screen_mut();
-        let top = screen.history.len() + m.top;
-        let bottom = screen.history.len() + m.bottom;
+        let top = screen.history_len() + m.top;
         let (page, page_row) = screen.pages.page_at(top);
-        let mut copies = Vec::new();
-        if top - page_row + usize::from(page.rows) <= bottom {
-            let mut page_start = 0;
-            for page in &screen.pages.pages {
-                let page_end = page_start + usize::from(page.rows);
-                if page_end > bottom {
-                    break;
-                }
-                if page_end > top {
-                    let source = page_end - screen.history.len();
-                    let columns = usize::from(page.columns);
-                    let row = &screen.rows[source];
-                    if row.cells.len() != columns {
-                        let recycled = page_start.max(top) - screen.history.len();
-                        copies.push((
-                            source - 1,
-                            screen.prepare_row_copy(source, Some(recycled), columns, columns),
-                        ));
-                    }
-                }
-                page_start = page_end;
-            }
-        }
-        let erased = screen.rows[m.top].id;
-        screen.pages.invalidate_layout(top, bottom);
+        let _ = page;
+        let erased = screen.row(m.top).id;
         let replacement = if page_row == 0 {
-            screen.rows[m.top + 1].id
+            screen.row(m.top + 1).id
         } else {
-            screen.all_rows().nth(top - 1).unwrap().id
+            screen.physical_row(top - 1).id
         };
         for point in screen.grid_points_mut() {
             if point.row == erased {
@@ -1493,15 +1445,16 @@ impl Terminal {
                 }
             }
         }
-        let blank = screen.blank_row(
-            screen.rows[m.bottom].cells.len(),
+        let blank = screen.next_row_id();
+        screen.shift_rows(
+            m.top,
+            m.bottom,
+            true,
+            false,
+            blank,
             screen.cursor.style.background,
+            usize::MAX,
         );
-        let row = screen.rows.remove(m.top);
-        screen.rows.insert(m.bottom, blank);
-        screen.discard_row(row.id);
-        screen.install_row_copies(copies, Some(row));
-        screen.sync_resource_pages(false, m.bottom);
     }
 
     fn scrolls_above_cursor(&self) -> bool {
@@ -1545,7 +1498,8 @@ impl Terminal {
         let cols = self.cols as usize;
         let bg = self.screen().cursor.style.background;
         let full = m.left == 0 && m.right == cols - 1;
-        let no_scrollback = self.screen().limits.bytes == Some(0);
+        let no_scrollback =
+            self.screen().limits.bytes == Some(0) || self.screen().memory_limit == Some(0);
         let shift_history = history && self.scrolls_above_cursor();
         if !shift_history {
             self.prepare_row_shift();
@@ -1553,18 +1507,18 @@ impl Terminal {
         for _ in 0..count {
             if full {
                 let screen = self.screen_mut();
-                let blank = screen.blank_row(cols, bg);
+                let blank = screen.next_row_id();
                 let pins = if !shift_history {
                     // IL/DL-style movement copies contents between physical
                     // rows without moving their tracked coordinates.
                     (m.top..=m.bottom)
                         .map(|y| {
                             (
-                                screen.rows[y].id,
+                                screen.row(y).id,
                                 if y == m.bottom {
-                                    blank.id
+                                    blank
                                 } else {
-                                    screen.rows[y + 1].id
+                                    screen.row(y + 1).id
                                 },
                             )
                         })
@@ -1573,48 +1527,33 @@ impl Terminal {
                     // The no-scrollback fast path clamps pins scrolled off
                     // the top to the first surviving row.
                     [(
-                        screen.rows[0].id,
-                        screen.rows.get(1).map_or(blank.id, |row| row.id),
+                        screen.row(0).id,
+                        if screen.height() > 1 {
+                            screen.row(1).id
+                        } else {
+                            blank
+                        },
                     )]
                     .into_iter()
                     .collect()
                 } else {
                     // Native history insertion shifts the whole page list.
                     // Restoring content below the margin leaves pins in place.
-                    (m.bottom + 1..screen.rows.len())
+                    (m.bottom + 1..screen.height())
                         .map(|y| {
                             (
-                                screen.rows[y].id,
+                                screen.row(y).id,
                                 if y == m.bottom + 1 {
-                                    blank.id
+                                    blank
                                 } else {
-                                    screen.rows[y - 1].id
+                                    screen.row(y - 1).id
                                 },
                             )
                         })
                         .collect()
                 };
                 screen.remap_grid_rows(&pins);
-                let row = screen.rows.remove(m.top);
-                screen.rows.insert(m.bottom, blank);
-                if shift_history {
-                    screen.push_history(row);
-                    if screen.limits.bytes == Some(0) {
-                        screen.pages.invalidate_layout(
-                            screen.history.len() + m.top,
-                            screen.history.len() + m.bottom,
-                        );
-                    } else if m.bottom + 1 < screen.rows.len() {
-                        screen.pages.invalidate_layout(
-                            screen.history.len() + m.bottom + 1,
-                            screen.history.len() + screen.rows.len() - 1,
-                        );
-                    }
-                } else {
-                    screen.release_row_resources(&row);
-                    screen.discard_row(row.id);
-                }
-                screen.sync_resource_pages(false, m.bottom);
+                screen.shift_rows(m.top, m.bottom, true, shift_history, blank, bg, cols);
             } else {
                 for y in m.top..m.bottom {
                     self.copy_row_region(y + 1, y, m.left, m.right + 1, bg);
@@ -1637,25 +1576,21 @@ impl Terminal {
         for _ in 0..count {
             if m.left == 0 && m.right == cols - 1 {
                 let screen = self.screen_mut();
-                let blank = screen.blank_row(cols, bg);
+                let blank = screen.next_row_id();
                 let pins = (m.top..=m.bottom)
                     .map(|y| {
                         (
-                            screen.rows[y].id,
+                            screen.row(y).id,
                             if y == m.top {
-                                blank.id
+                                blank
                             } else {
-                                screen.rows[y - 1].id
+                                screen.row(y - 1).id
                             },
                         )
                     })
                     .collect();
                 screen.remap_grid_rows(&pins);
-                let row = screen.rows.remove(m.bottom);
-                screen.release_row_resources(&row);
-                screen.discard_row(row.id);
-                screen.rows.insert(m.top, blank);
-                screen.sync_resource_pages(true, m.top);
+                screen.shift_rows(m.top, m.bottom, false, false, blank, bg, usize::MAX);
             } else {
                 for y in (m.top + 1..=m.bottom).rev() {
                     self.copy_row_region(y - 1, y, m.left, m.right + 1, bg);
@@ -1674,33 +1609,13 @@ impl Terminal {
         if m.left == 0 && right_edge {
             let screen = self.screen_mut();
             screen.pages.invalidate_layout(
-                screen.history.len() + m.top,
-                screen.history.len() + m.bottom,
+                screen.history_len() + m.top,
+                screen.history_len() + m.bottom,
             );
         }
         for y in m.top..=m.bottom {
-            self.screen_mut().edit_row(y, |row| {
-                if m.left == 0 && right_edge {
-                    row.wrapped = false;
-                    row.wrap_continuation = false;
-                }
-                if (right_edge || m.left < 2)
-                    && let Some(cell) = row.cells.last_mut()
-                {
-                    cell.spacer_head = false;
-                }
-                // Split glyphs lose their text, but the cells outside the moved
-                // region retain their attributes and hyperlink identity.
-                for boundary in [m.left, m.right + 1] {
-                    if boundary > 0 && row.cells.get(boundary).is_some_and(|cell| cell.width == 0) {
-                        row.cells[boundary - 1].codepoint = None;
-                        row.cells[boundary - 1].grapheme = None;
-                        row.cells[boundary - 1].width = 1;
-                        row.cells[boundary].width = 1;
-                    }
-                }
-                row.dirty = true;
-            });
+            self.screen_mut()
+                .prepare_row_shift(y, m.left, m.right, right_edge);
         }
     }
 
@@ -1756,11 +1671,8 @@ impl Terminal {
         self.ensure_row_cells(cur.row, usize::from(self.cols));
         let end = self.margins.right + 1;
         let count = count.max(1).min(end - cur.col);
-        self.screen_mut().edit_row(cur.row, |row| {
-            row.cells[cur.col..end].rotate_right(count);
-            row.cells[cur.col..cur.col + count].fill(Cell::blank(cur.style.background));
-            row.repair_wide(cur.style.background);
-        });
+        self.screen_mut()
+            .shift_cells(cur.row, cur.col..end, count, true, cur.style.background);
         self.changed();
     }
 
@@ -1775,11 +1687,8 @@ impl Terminal {
         self.screen_mut().split_cell_boundary(cur.col);
         self.screen_mut().split_cell_boundary(cur.col + count);
         self.screen_mut().split_cell_boundary(end);
-        self.screen_mut().edit_row(cur.row, |row| {
-            row.cells[cur.col..end].rotate_left(count);
-            row.cells[end - count..end].fill(Cell::blank(cur.style.background));
-            row.repair_wide(cur.style.background);
-        });
+        self.screen_mut()
+            .shift_cells(cur.row, cur.col..end, count, false, cur.style.background);
         self.screen_mut().cursor_reset_wrap();
         self.changed();
     }
@@ -1829,7 +1738,7 @@ impl Terminal {
                 if !self.alternate_active
                     && self
                         .screen()
-                        .rows
+                        .rows()
                         .last()
                         .is_some_and(|row| row.semantic != SemanticContent::Output)
                 {
@@ -1856,11 +1765,10 @@ impl Terminal {
         for y in start..end {
             self.screen_mut()
                 .erase_row_cells(y, 0, usize::MAX, cursor.style.background, protected);
-            let row = &mut self.screen_mut().rows[y];
             if !protected {
-                row.wrapped = false;
-                row.wrap_continuation = false;
-                row.semantic = SemanticContent::Output;
+                let header = self.screen_mut().row_header_mut(y);
+                header.set(RowHeader::WRAPPED | RowHeader::CONTINUATION, false);
+                header.set_semantic(SemanticContent::Output);
             }
         }
         self.screen_mut().cursor.pending_wrap = false;
@@ -1876,23 +1784,22 @@ impl Terminal {
         let cols = usize::from(self.cols);
         let count = self
             .screen()
-            .rows
-            .iter()
-            .rposition(|row| {
-                row.cells.iter().take(cols).any(|cell| {
-                    cell.codepoint.is_some()
-                        || cell.width != 1
-                        || cell.spacer_head
-                        || cell.style.background != Color::Default
+            .rows()
+            .enumerate()
+            .filter(|(_, row)| {
+                row.cells.iter().take(cols).enumerate().any(|(col, cell)| {
+                    cell.codepoint().is_some()
+                        || cell.width() != 1
+                        || cell.spacer_head()
+                        || row.style(col).background != Color::Default
                 })
             })
-            .map_or(0, |row| row + 1);
+            .map(|(row, _)| row + 1)
+            .last()
+            .unwrap_or(0);
         let screen = self.screen_mut();
         for _ in 0..count {
-            let row = screen.rows.remove(0);
-            let blank = screen.blank_row(cols, Color::Default);
-            screen.rows.push(blank);
-            screen.retain_history(row);
+            screen.retain_history();
         }
         if screen.cursor.row < count {
             screen.cursor.row = 0;
@@ -2139,23 +2046,7 @@ impl Terminal {
                 for y in 0..usize::from(self.rows) {
                     self.screen_mut().cursor.row = y;
                     self.screen_mut().sync_cursor_resources();
-                    let count = self.screen().rows[y].cells.len();
-                    let mut style_id = 0;
-                    for _ in 0..count {
-                        style_id = self.screen_mut().retain_cursor_style_for_cell();
-                    }
-                    let style = self.screen().cursor.style;
-                    let row = &mut self.screen_mut().rows[y];
-                    row.cells.fill(Cell {
-                        style_id,
-                        codepoint: Some('E'),
-                        style,
-                        ..Cell::default()
-                    });
-                    row.wrapped = false;
-                    row.wrap_continuation = false;
-                    row.semantic = SemanticContent::Output;
-                    row.dirty = true;
+                    self.screen_mut().fill_alignment_row(y);
                 }
                 self.cursor_position(1, 1);
             }
@@ -2646,11 +2537,13 @@ impl Terminal {
         let screen = self.screen_mut();
         screen.cursor.semantic = SemanticContent::Prompt;
         screen.metadata.cursor_clear_eol = false;
-        screen.rows[screen.cursor.row].semantic = if continuation {
-            SemanticContent::Input
-        } else {
-            SemanticContent::Prompt
-        };
+        screen
+            .row_header_mut(screen.cursor.row)
+            .set_semantic(if continuation {
+                SemanticContent::Input
+            } else {
+                SemanticContent::Prompt
+            });
     }
 
     fn osc133(&mut self, data: &[u8], effects: &mut Vec<Effect>) {
@@ -2707,7 +2600,9 @@ impl Terminal {
                 screen.cursor.semantic = SemanticContent::Output;
                 screen.metadata.cursor_clear_eol = false;
                 if action == b'C' && screen.cursor.col == 0 {
-                    screen.rows[screen.cursor.row].semantic = SemanticContent::Output;
+                    screen
+                        .row_header_mut(screen.cursor.row)
+                        .set_semantic(SemanticContent::Output);
                 }
                 if self.shell_command_events {
                     effects.push(if action == b'C' {

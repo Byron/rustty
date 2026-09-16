@@ -232,6 +232,34 @@ fn ignored_scalars_preserve_public_cursor_edits_before_batched_printing() {
 }
 
 #[test]
+fn packed_runs_cross_scratch_and_destination_boundaries() {
+    for columns in [7, 17, 80] {
+        let mut base = Terminal::new(columns, 4, 1000);
+        base.feed(b"\x1b[?2027h");
+        for col in 0..columns * 4 {
+            base.feed(format!("\x1b[{}mX", 31 + col % 4).as_bytes());
+        }
+        base.feed("\x1b[H界a\u{301}👩\u{200d}💻\x1b[1;2H\x1b[1;34;44m".as_bytes());
+        for pattern in ["a", "é", "界", "é界a\u{301}👩\u{200d}💻"] {
+            for count in [1, 15, 16, 31, 32, 255, 256, 257, 513] {
+                let text = pattern.repeat(count);
+                let mut expected = base.clone();
+                for cp in text.chars() {
+                    expected.print(cp);
+                }
+                let mut actual = base.clone();
+                actual.feed(text.as_bytes());
+                same_state(
+                    &actual,
+                    &expected,
+                    &format!("columns={columns}, pattern={pattern:?}, count={count}"),
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn printable_runs_preserve_effect_order_and_cursor_queries() {
     let input = b"abc\x07\x1b[6nDEF\x1b]2;title\x07ghi\x1b[6njkl\x07";
     let effects = vec![
@@ -248,6 +276,37 @@ fn printable_runs_preserve_effect_order_and_cursor_queries() {
             let mut actual = Terminal::new(8, 3, 12);
             assert_eq!(deliver(&mut actual, input, chunk_size, handler), effects);
             same_state(&actual, &expected, "ordered effects");
+        }
+    }
+}
+
+#[test]
+fn long_utf8_groups_and_malformed_tails_match_byte_delivery() {
+    for pattern in ["éÿ", "水界", "😀😁", "é", "👩🏽‍💻", "界abcé"] {
+        let input = [
+            b"\x1b[?2027h\x1b[31m".as_slice(),
+            pattern.repeat(257).as_bytes(),
+            b"\xf0\x9f\x1b[0mTAIL\r\n\xc2\x85done",
+        ]
+        .concat();
+        for alternate in [false, true] {
+            let mut base = Terminal::new(73, 5, 128);
+            if alternate {
+                base.feed(b"\x1b[?1049h");
+            }
+            let mut expected = base.clone();
+            let effects = deliver(&mut expected, &input, 1, false);
+            for chunk in [8, 23, 255, 1024, usize::MAX] {
+                for handler in [false, true] {
+                    let mut actual = base.clone();
+                    assert_eq!(deliver(&mut actual, &input, chunk, handler), effects);
+                    same_state(
+                        &actual,
+                        &expected,
+                        &format!("{pattern:?}, alt={alternate}, chunk={chunk}, handler={handler}"),
+                    );
+                }
+            }
         }
     }
 }

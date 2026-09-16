@@ -581,7 +581,7 @@ impl Context {
             "formatted": formatted,
             "format_map": format_map,
             "active_screen": if terminal.is_alternate_screen() { "alternate" } else { "primary" },
-            "viewport_top": [screen.viewport_top().col, screen.history.len().saturating_sub(screen.viewport_offset)],
+            "viewport_top": [screen.viewport_top().col, screen.history_len().saturating_sub(screen.viewport_offset)],
             "selection": selection, "selection_result": selection_result, "tracked": handles,
             "gesture": self.gesture_used.then(|| json!({
                 "click_count": self.gesture.click_count(), "behavior": self.gesture.behavior(),
@@ -612,8 +612,8 @@ fn point(screen: &Screen, point: &Point, columns: u16) -> Result<Option<GridPoin
         return Ok(None);
     }
     let base = match point.tag.as_str() {
-        "active" => screen.history.len(),
-        "viewport" => screen.history.len().saturating_sub(screen.viewport_offset),
+        "active" => screen.history_len(),
+        "viewport" => screen.history_len().saturating_sub(screen.viewport_offset),
         "screen" | "history" => 0,
         _ => return Err("InvalidPointTag"),
     };
@@ -628,6 +628,6 @@ fn location(screen: &Screen, point: GridPoint) -> Value {
     };
     let relative = |base| row.checked_sub(base).map(|row| [point.col, row]);
     json!({"screen": [point.col, row], "history": [point.col, row],
-        "active": relative(screen.history.len()),
-        "viewport": relative(screen.history.len().saturating_sub(screen.viewport_offset))})
+        "active": relative(screen.history_len()),
+        "viewport": relative(screen.history_len().saturating_sub(screen.viewport_offset))})
 }

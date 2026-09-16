@@ -817,9 +817,9 @@ mod tests {
                 terminal.feed(prefix.as_bytes());
                 // A TUI skips the second cell of an emoji when positioning its next run.
                 terminal.feed("\x1b[30;107m  ✔️\x1b[5G  > selected row\x1b[0m".as_bytes());
-                let cells = &terminal.screen().rows[0].cells;
+                let cells = &terminal.screen().row(0).cells;
                 assert_eq!(
-                    cells[3].style.background,
+                    terminal.screen().row(0).style(3).background,
                     if wide {
                         rustty_vt::Color::Indexed(15)
                     } else {
@@ -827,11 +827,11 @@ mod tests {
                     },
                 );
                 assert_eq!(
-                    &*terminal.screen().cell_text(&terminal.screen().rows[0], 2),
+                    &*terminal.screen().cell_text(&terminal.screen().row(0), 2),
                     "✔️"
                 );
                 assert_eq!(
-                    (cells[2].width, cells[3].width),
+                    (cells[2].width(), cells[3].width()),
                     if wide { (2, 0) } else { (1, 1) }
                 );
             }
@@ -1274,7 +1274,7 @@ mod tests {
     #[test]
     fn configured_scrollback_memory_is_bounded_across_reload_and_reset() {
         let mut config = Config::default();
-        config.scrollback_limit_bytes = Some(24 * 1024);
+        config.scrollback_limit_bytes = Some(2 * 1024 * 1024);
         let session = Session::spawn(
             &config,
             SessionOptions {
@@ -1285,25 +1285,25 @@ mod tests {
             Arc::new(|| {}),
         )
         .unwrap();
-        let output = b"line\r\n".repeat(40);
+        let output = b"line\r\n".repeat(1400);
         let before_reload = {
             let mut terminal = session.terminal().unwrap();
             terminal.feed(&output);
-            assert!(!terminal.screen().history.is_empty());
-            assert!(terminal.screen().history_bytes() <= 24 * 1024);
+            assert!(!terminal.screen().history().next().is_none());
+            assert!(terminal.screen().history_bytes() <= 2 * 1024 * 1024);
             terminal.screen().history_bytes()
         };
 
-        config.scrollback_limit_bytes = Some(12 * 1024);
+        config.scrollback_limit_bytes = Some(512 * 1024);
         session.apply_config(&config).unwrap();
         let mut terminal = session.terminal().unwrap();
-        assert!(!terminal.screen().history.is_empty());
+        assert!(!terminal.screen().history().next().is_none());
         assert!(terminal.screen().history_bytes() < before_reload);
-        assert!(terminal.screen().history_bytes() <= 12 * 1024);
+        assert!(terminal.screen().history_bytes() <= 512 * 1024);
         terminal.feed(b"\x1bc");
         terminal.feed(&output);
-        assert!(!terminal.screen().history.is_empty());
-        assert!(terminal.screen().history_bytes() <= 12 * 1024);
+        assert!(!terminal.screen().history().next().is_none());
+        assert!(terminal.screen().history_bytes() <= 512 * 1024);
     }
 
     #[test]
@@ -1367,16 +1367,24 @@ mod tests {
         // Nonzero limits retain at least an initial page. These 17 history
         // rows fit in that page and survive both tiny configured line limits.
         assert_eq!(session.terminal().unwrap().limits().lines, Some(4));
-        assert_eq!(session.terminal().unwrap().screen().history.len(), 17);
+        assert_eq!(session.terminal().unwrap().screen().history_len(), 17);
         config.scrollback_limit_lines = Some(1);
         config.clipboard_write_limit_bytes = Some(17);
         session.apply_config(&config).unwrap();
         assert_eq!(session.terminal().unwrap().limits().lines, Some(1));
-        assert_eq!(session.terminal().unwrap().screen().history.len(), 17);
+        assert_eq!(session.terminal().unwrap().screen().history_len(), 17);
         assert_eq!(session.terminal().unwrap().clipboard_write_limit, 17);
         config.scrollback_limit_bytes = Some(0);
         session.apply_config(&config).unwrap();
-        assert!(session.terminal().unwrap().screen().history.is_empty());
+        assert!(
+            session
+                .terminal()
+                .unwrap()
+                .screen()
+                .history()
+                .next()
+                .is_none()
+        );
     }
 
     #[test]

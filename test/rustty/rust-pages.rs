@@ -12,7 +12,7 @@ pub fn observe(terminal: &Terminal) -> Value {
 fn screen(screen: &Screen) -> Value {
     json!({
         "allocation_bytes": screen.storage_bytes(),
-        "total_rows": screen.history.len() + screen.rows.len(),
+        "total_rows": screen.history_len() + screen.height(),
         "pages": screen.page_allocations().collect::<Vec<_>>(),
     })
 }

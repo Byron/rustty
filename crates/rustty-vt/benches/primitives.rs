@@ -68,18 +68,18 @@ fn input(operation: &str, name: &str, text: &str) -> String {
 
 fn stream_checksum(screen: &Screen) -> u64 {
     let mut checksum = 0_u64;
-    for row in &screen.rows {
+    for row in screen.rows() {
         for (col, cell) in row.cells.iter().enumerate() {
             checksum = checksum.wrapping_mul(16_777_619);
-            checksum = checksum.wrapping_add(cell_sum(screen, row, col));
-            if cell.codepoint.is_some() {
-                let color = match cell.style.foreground {
+            checksum = checksum.wrapping_add(cell_sum(screen, &row, col));
+            if cell.codepoint().is_some() {
+                let color = match row.style(col).foreground {
                     Color::Default => 0,
                     Color::Indexed(index) => u64::from(index) + 1,
                     Color::Rgb(..) => panic!("unexpected benchmark style"),
                 };
-                checksum =
-                    checksum.wrapping_add((color + 257 * u64::from(cell.style.bold)) * 0x11_0000);
+                checksum = checksum
+                    .wrapping_add((color + 257 * u64::from(row.style(col).bold)) * 0x11_0000);
             }
         }
     }
@@ -88,8 +88,8 @@ fn stream_checksum(screen: &Screen) -> u64 {
 
 fn check_stream(terminal: &Terminal, name: &str, styled: bool) -> u64 {
     let screen = terminal.screen();
-    assert!(!screen.history.is_empty());
-    assert!(screen.history.len() <= HISTORY_LINES);
+    assert!(!screen.history().next().is_none());
+    assert!(screen.history_len() <= HISTORY_LINES);
     assert_eq!(screen.cursor.row, usize::from(ROWS) - 1);
     assert_eq!(screen.cursor.col, 0);
     assert!(!screen.cursor.pending_wrap);
@@ -106,18 +106,23 @@ fn check_stream(terminal: &Terminal, name: &str, styled: bool) -> u64 {
         text_sum(screen),
         pattern.chars().map(u64::from).sum::<u64>() * (15 * repeats + repeats / 3),
     );
-    for (row_index, row) in screen.rows.iter().enumerate() {
+    for (row_index, row) in screen.rows().enumerate() {
         let record = 16 + row_index.div_ceil(2);
-        for cell in row.cells.iter().filter(|cell| cell.codepoint.is_some()) {
+        for (col, _) in row
+            .cells
+            .iter()
+            .enumerate()
+            .filter(|(_, cell)| cell.codepoint().is_some())
+        {
             assert_eq!(
-                cell.style.foreground,
+                row.style(col).foreground,
                 if styled {
                     Color::Indexed(1 + (record % 4) as u8)
                 } else {
                     Color::Default
                 },
             );
-            assert_eq!(cell.style.bold, styled && record % 2 == 0);
+            assert_eq!(row.style(col).bold, styled && record % 2 == 0);
         }
     }
     stream_checksum(screen)
@@ -148,25 +153,23 @@ fn cell_sum(screen: &Screen, row: &Row, col: usize) -> u64 {
 }
 
 fn scalar(cell: &Cell) -> u64 {
-    cell.codepoint.map_or(0, u64::from)
+    cell.codepoint().map_or(0, u64::from)
 }
 
 fn scalar_sum(screen: &Screen) -> u64 {
     screen
-        .rows
-        .iter()
-        .flat_map(|row| &row.cells)
+        .rows()
+        .flat_map(|row| row.cells.iter())
         .map(scalar)
         .sum()
 }
 
 fn text_sum(screen: &Screen) -> u64 {
     screen
-        .rows
-        .iter()
+        .rows()
         .map(|row| {
             (0..row.cells.len())
-                .map(|col| cell_sum(screen, row, col))
+                .map(|col| cell_sum(screen, &row, col))
                 .sum::<u64>()
         })
         .sum()
@@ -412,14 +415,14 @@ fn mixed_input(stream: bool) -> String {
 
 fn check_mixed(terminal: &Terminal, stream: bool) {
     let screen = terminal.screen();
-    assert_eq!(screen.rows.len(), usize::from(ROWS));
+    assert_eq!(screen.height(), usize::from(ROWS));
     assert_eq!(screen.cursor.row, if stream { 31 } else { 15 });
     assert_eq!(screen.cursor.col, if stream { 0 } else { 127 });
     assert_eq!(screen.cursor.pending_wrap, !stream);
     assert_eq!(screen.cursor.style, Style::default());
-    assert_eq!(screen.history.is_empty(), !stream);
-    assert!(screen.history.len() <= HISTORY_LINES);
-    let total_rows = screen.history.len() + screen.rows.len();
+    assert_eq!(screen.history().next().is_none(), !stream);
+    assert!(screen.history_len() <= HISTORY_LINES);
+    let total_rows = screen.history_len() + screen.height();
     for (index, row) in screen.all_rows().enumerate() {
         assert_eq!(row.cells.len(), usize::from(COLS));
         let columns = if stream {
@@ -449,7 +452,7 @@ fn check_mixed(terminal: &Terminal, stream: bool) {
                 if populated { MIXED_CELLS[col % 16] } else { "" }
             );
             assert_eq!(
-                cell.width,
+                cell.width(),
                 if !populated {
                     1
                 } else {
@@ -461,7 +464,7 @@ fn check_mixed(terminal: &Terminal, stream: bool) {
                 }
             );
             assert_eq!(
-                cell.style,
+                row.style(col),
                 if populated {
                     Style {
                         foreground: Color::Indexed(1 + (col / 16 % 4) as u8),
@@ -506,19 +509,19 @@ fn chunked_input(c: &mut Criterion) {
             let actual = terminal.screen();
             let expected = reference.screen();
             assert_eq!(actual.cursor, expected.cursor);
-            assert_eq!(actual.history.len(), expected.history.len());
+            assert_eq!(actual.history_len(), expected.history_len());
             for (row, expected_row) in actual.all_rows().zip(expected.all_rows()) {
                 assert_eq!(row.wrapped, expected_row.wrapped);
                 assert_eq!(row.wrap_continuation, expected_row.wrap_continuation);
                 for (col, (cell, expected_cell)) in
-                    row.cells.iter().zip(&expected_row.cells).enumerate()
+                    row.cells.iter().zip(expected_row.cells).enumerate()
                 {
                     assert_eq!(
                         &*actual.cell_text(row, col),
                         &*expected.cell_text(expected_row, col)
                     );
-                    assert_eq!(cell.width, expected_cell.width);
-                    assert_eq!(cell.style, expected_cell.style);
+                    assert_eq!(cell.width(), expected_cell.width());
+                    assert_eq!(row.style(col), expected_row.style(col));
                 }
             }
             group.bench_function(name, |b| {
@@ -543,12 +546,12 @@ fn check_history_reflow(terminal: &Terminal, name: &str, columns: usize) {
     let screen = terminal.screen();
     let records = REFLOW_BATCHES * STREAM_RECORDS;
     let record_rows = 192_usize.div_ceil(columns);
-    assert_eq!(screen.rows.len(), usize::from(ROWS));
+    assert_eq!(screen.height(), usize::from(ROWS));
     assert_eq!(
-        screen.history.len(),
+        screen.history_len(),
         records * record_rows + 1 - usize::from(ROWS)
     );
-    assert!(screen.history.len() < HISTORY_LINES);
+    assert!(screen.history_len() < HISTORY_LINES);
     assert_eq!(screen.cursor.row, usize::from(ROWS) - 1);
     assert_eq!(screen.cursor.col, 0);
     assert!(!screen.cursor.pending_wrap);
@@ -579,9 +582,9 @@ fn check_history_reflow(terminal: &Terminal, name: &str, columns: usize) {
                 ""
             };
             assert_eq!(&*screen.cell_text(row, col), text);
-            assert_eq!(cell.style, Style::default());
+            assert_eq!(row.style(col), Style::default());
             assert_eq!(
-                cell.width,
+                cell.width(),
                 if col >= used {
                     1
                 } else if text.is_empty() {
@@ -643,14 +646,14 @@ fn memory_capped_streams(c: &mut Criterion) {
             let mut terminal = setup_stream(input.as_bytes());
             terminal.set_scrollback_memory_limit(Some(MEMORY_LIMIT));
             assert_eq!(
-                terminal.screen().history.len(),
-                reference.screen().history.len()
+                terminal.screen().history_len(),
+                reference.screen().history_len()
             );
             assert!(reference.feed(input.as_bytes()).is_empty());
             assert!(terminal.feed(input.as_bytes()).is_empty());
             assert_eq!(
-                terminal.screen().history.len(),
-                reference.screen().history.len()
+                terminal.screen().history_len(),
+                reference.screen().history_len()
             );
             let checksum = check_stream(&reference, name, operation == "stream_styled");
             assert_eq!(

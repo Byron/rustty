@@ -1,6 +1,8 @@
 //! Page resource allocation offsets without native backing memory.
+#[cfg(feature = "allocation-probe")]
+use crate::allocation_probe::{self as probe, Kind, Scope};
 use crate::page_layout::{BitmapLayout, SetLayout};
-use crate::screen::{Cell, Cursor, HyperlinkId, Style};
+use crate::screen::{Cursor, HyperlinkData, HyperlinkId, Style};
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
@@ -80,6 +82,19 @@ impl StyleAdmission {
 }
 
 impl<T: Eq> SetAdmission<T> {
+    pub fn storage_bytes(&self) -> usize {
+        self.table.capacity() * size_of::<u16>()
+            + self.entries.capacity() * size_of::<SetEntry<T>>()
+    }
+
+    pub fn reset(&mut self) {
+        self.table.fill(0);
+        self.entries.clear();
+        self.max_psl = 0;
+        self.psl_stats.fill(0);
+        self.living = 0;
+    }
+
     pub fn new(layout: SetLayout) -> Self {
         Self {
             table: vec![0; layout.table_cap],
@@ -98,11 +113,6 @@ impl<T: Eq> SetAdmission<T> {
     #[cfg(test)]
     pub fn reference_count(&self, id: u16) -> u16 {
         self.entries[usize::from(id) - 1].references
-    }
-
-    #[cfg(test)]
-    pub fn allocated_buckets(&self) -> usize {
-        self.table.capacity()
     }
 
     pub fn get(&self, id: u16) -> &T {
@@ -127,10 +137,6 @@ impl<T: Eq> SetAdmission<T> {
     #[cfg(test)]
     fn acquire_hashed(&mut self, value: T, hash: u64) -> Option<u16> {
         self.add_hashed(value, hash).ok()
-    }
-
-    pub fn lookup_hashed(&self, value: &T, hash: u64) -> Option<u16> {
-        self.lookup_by(hash, |entry| entry == value)
     }
 
     fn lookup_by(&self, hash: u64, matches: impl Fn(&T) -> bool) -> Option<u16> {
@@ -167,6 +173,57 @@ impl<T: Eq> SetAdmission<T> {
         hash: u64,
         deleted: &mut impl FnMut(T),
     ) -> Result<u16, SetFull> {
+        self.add_with(value, hash, None, deleted)
+    }
+
+    fn add_with_id_hashed(&mut self, value: T, hash: u64, id: u16) -> Result<u16, SetFull> {
+        assert!(id != 0);
+        self.add_with(value, hash, Some(id), &mut |_| {})
+    }
+
+    fn add_with(
+        &mut self,
+        value: T,
+        hash: u64,
+        preferred: Option<u16>,
+        deleted: &mut impl FnMut(T),
+    ) -> Result<u16, SetFull> {
+        let (id, existing) =
+            self.prepare_insert(hash, preferred, |entry| entry == &value, deleted)?;
+        if existing {
+            deleted(value);
+            self.retain(id);
+            Ok(id)
+        } else {
+            Ok(self.insert(value, hash, id, deleted))
+        }
+    }
+
+    /// Select an ID using native cleanup/lookup order, before owning a new payload.
+    fn prepare_insert(
+        &mut self,
+        hash: u64,
+        preferred: Option<u16>,
+        matches: impl Fn(&T) -> bool,
+        deleted: &mut impl FnMut(T),
+    ) -> Result<(u16, bool), SetFull> {
+        if let Some(id) = preferred.filter(|&id| id != 0 && usize::from(id) <= self.entries.len()) {
+            let entry = &self.entries[usize::from(id) - 1];
+            if entry.references == 0 {
+                if let Some(existing) = self.lookup_by(hash, &matches) {
+                    return Ok((existing, true));
+                }
+                if self.psl_stats[31] != 0 {
+                    return Err(SetFull::OutOfMemory);
+                }
+                if let Some(value) = self.delete_item(id) {
+                    deleted(value);
+                }
+                return Ok((id, false));
+            } else if entry.value.as_ref().is_some_and(&matches) {
+                return Ok((id, true));
+            }
+        }
         while self
             .entries
             .last()
@@ -177,60 +234,24 @@ impl<T: Eq> SetAdmission<T> {
             }
             self.entries.pop();
         }
-        if let Some(id) = self.lookup_hashed(&value, hash) {
-            deleted(value);
-            self.retain(id);
-            return Ok(id);
+        if let Some(id) = self.lookup_by(hash, matches) {
+            return Ok((id, true));
         }
         if self.psl_stats[31] != 0 {
             return Err(SetFull::OutOfMemory);
         }
         if self.entries.len() + 1 >= self.capacity {
-            // Match the native floating-point conversion of cap * 0.9.
             return Err(if self.living < (self.capacity as f64 * 0.9) as usize {
                 SetFull::NeedsRehash
             } else {
                 SetFull::OutOfMemory
             });
         }
-        let next = (self.entries.len() + 1) as u16;
-        Ok(self.insert(value, hash, next, deleted))
+        Ok(((self.entries.len() + 1) as u16, false))
     }
 
-    fn add_with_id_hashed(&mut self, value: T, hash: u64, id: u16) -> Result<u16, SetFull> {
-        self.add_with_id_hashed_with(value, hash, id, &mut |_| {})
-    }
-
-    fn add_with_id_hashed_with(
-        &mut self,
-        value: T,
-        hash: u64,
-        id: u16,
-        deleted: &mut impl FnMut(T),
-    ) -> Result<u16, SetFull> {
-        assert!(id != 0);
-        if usize::from(id) <= self.entries.len() {
-            let entry = &self.entries[usize::from(id) - 1];
-            if entry.references == 0 {
-                if let Some(existing) = self.lookup_hashed(&value, hash) {
-                    deleted(value);
-                    self.retain(existing);
-                    return Ok(existing);
-                }
-                if self.psl_stats[31] != 0 {
-                    return Err(SetFull::OutOfMemory);
-                }
-                if let Some(value) = self.delete_item(id) {
-                    deleted(value);
-                }
-                return Ok(self.insert(value, hash, id, deleted));
-            } else if entry.value.as_ref() == Some(&value) {
-                deleted(value);
-                self.retain(id);
-                return Ok(id);
-            }
-        }
-        self.add_hashed_with(value, hash, deleted)
+    pub fn reserve_entries(&mut self, count: usize) {
+        self.entries.reserve(count);
     }
 
     fn insert(&mut self, value: T, hash: u64, new_id: u16, deleted: &mut impl FnMut(T)) -> u16 {
@@ -297,6 +318,10 @@ impl<T: Eq> SetAdmission<T> {
     }
 
     pub fn retain(&mut self, id: u16) {
+        self.retain_many(id, 1);
+    }
+
+    pub fn retain_many(&mut self, id: u16, count: u16) {
         if id == 0 {
             return;
         }
@@ -304,17 +329,24 @@ impl<T: Eq> SetAdmission<T> {
         assert!(entry.references > 0);
         entry.references = entry
             .references
-            .checked_add(1)
+            .checked_add(count)
             .expect("native page resource reference overflow");
     }
 
     pub fn release(&mut self, id: u16) {
+        self.release_many(id, 1);
+    }
+
+    pub fn release_many(&mut self, id: u16, count: u16) {
         if id == 0 {
             return;
         }
         let entry = &mut self.entries[usize::from(id) - 1];
         assert!(entry.references > 0);
-        entry.references -= 1;
+        entry.references = entry
+            .references
+            .checked_sub(count)
+            .expect("resource reference underflow");
         if entry.references == 0 {
             self.living -= 1;
         }
@@ -371,19 +403,69 @@ pub(crate) struct Hyperlink {
     pub uri: Vec<u8>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HyperlinkIdRef<'a> {
+    Implicit(u32),
+    Explicit(&'a [u8]),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HyperlinkKey<'a> {
+    id: HyperlinkIdRef<'a>,
+    pub uri: &'a [u8],
+}
+
+impl<'a> HyperlinkKey<'a> {
+    pub fn new(uri: &'a [u8], explicit: Option<&'a [u8]>, implicit: u32) -> Self {
+        Self {
+            id: explicit.map_or(HyperlinkIdRef::Implicit(implicit), HyperlinkIdRef::Explicit),
+            uri,
+        }
+    }
+
+    pub fn from_data(link: &'a HyperlinkData) -> Self {
+        Self::from_id(
+            link.uri_bytes(),
+            link.id.as_ref().unwrap_or(&HyperlinkId::Implicit(0)),
+        )
+    }
+
+    fn from_id(uri: &'a [u8], id: &'a HyperlinkId) -> Self {
+        match id {
+            HyperlinkId::Explicit(id) => Self::new(uri, Some(id), 0),
+            HyperlinkId::Implicit(id) => Self::new(uri, None, *id),
+        }
+    }
+
+    fn owned(self) -> Hyperlink {
+        Hyperlink {
+            id: match self.id {
+                HyperlinkIdRef::Implicit(id) => HyperlinkId::Implicit(id),
+                HyperlinkIdRef::Explicit(id) => HyperlinkId::Explicit(id.to_vec()),
+            },
+            uri: self.uri.to_vec(),
+        }
+    }
+}
+
 impl Hyperlink {
-    pub fn from_cell(cell: &Cell) -> Option<Self> {
-        cell.hyperlink.as_ref().map(|link| Self {
+    pub fn key(&self) -> HyperlinkKey<'_> {
+        HyperlinkKey::from_id(&self.uri, &self.id)
+    }
+
+    pub fn from_data(link: &HyperlinkData) -> Self {
+        #[cfg(feature = "allocation-probe")]
+        let _scope = Scope::enter(Kind::TemporaryPayload);
+        Self {
             id: link.id.clone().unwrap_or(HyperlinkId::Implicit(0)),
             uri: link.uri_bytes().to_vec(),
-        })
+        }
     }
 
     pub fn from_cursor(cursor: &Cursor) -> Option<Self> {
-        cursor.hyperlink.as_ref().map(|link| Self {
-            id: link.id.clone().unwrap_or(HyperlinkId::Implicit(0)),
-            uri: link.uri_bytes().to_vec(),
-        })
+        #[cfg(feature = "allocation-probe")]
+        let _scope = Scope::enter(Kind::TemporaryPayload);
+        cursor.hyperlink.as_deref().map(Self::from_data)
     }
 }
 
@@ -402,11 +484,13 @@ pub(crate) struct HyperlinkAdmission {
     strings: BitmapAllocator<32>,
     cells: usize,
     capacity: usize,
+    payload_bytes: usize,
 }
 
 #[derive(Clone, Debug)]
 struct HyperlinkEntry {
-    link: Hyperlink,
+    link: Arc<Hyperlink>,
+    data: Arc<HyperlinkData>,
     id_allocation: Option<(usize, usize)>,
     uri_allocation: (usize, usize),
 }
@@ -419,6 +503,19 @@ impl PartialEq for HyperlinkEntry {
 
 impl Eq for HyperlinkEntry {}
 
+impl HyperlinkEntry {
+    fn payload_bytes(&self) -> usize {
+        size_of::<Hyperlink>()
+            + 2 * size_of::<usize>()
+            + self.link.uri.capacity()
+            + match &self.link.id {
+                HyperlinkId::Explicit(id) => id.capacity(),
+                _ => 0,
+            }
+            + self.data.storage_bytes()
+    }
+}
+
 impl HyperlinkAdmission {
     pub fn new(set: SetLayout, strings: BitmapLayout, capacity: usize) -> Self {
         Self {
@@ -426,7 +523,23 @@ impl HyperlinkAdmission {
             strings: BitmapAllocator::new(strings),
             cells: 0,
             capacity,
+            payload_bytes: 0,
         }
+    }
+
+    pub fn storage_bytes(&self) -> usize {
+        self.set.storage_bytes() + self.strings.storage_bytes() + self.payload_bytes
+    }
+
+    pub fn reset(&mut self) {
+        self.set.reset();
+        self.strings.reset();
+        self.cells = 0;
+        self.payload_bytes = 0;
+    }
+
+    pub fn data(&self, id: u16) -> &Arc<HyperlinkData> {
+        &self.set.get(id).data
     }
 
     pub fn get(&self, id: u16) -> &Hyperlink {
@@ -434,20 +547,11 @@ impl HyperlinkAdmission {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (u16, &Hyperlink)> {
-        self.set.iter().map(|(id, entry)| (id, &entry.link))
+        self.set.iter().map(|(id, entry)| (id, entry.link.as_ref()))
     }
 
     pub fn release(&mut self, id: u16) {
         self.set.release(id);
-    }
-
-    /// A row rotation temporarily has both copies alive, then releases the
-    /// displaced rows. Its net cell count cannot require additional capacity.
-    pub fn retain_moved_cell(&mut self, id: u16) {
-        if id != 0 {
-            self.set.retain(id);
-            self.cells += 1;
-        }
     }
 
     pub fn retain_cell(&mut self, id: u16) -> Result<(), HyperlinkFull> {
@@ -469,14 +573,18 @@ impl HyperlinkAdmission {
     }
 
     /// Cursor insertion reserves URI then ID, even for an existing value.
-    pub fn insert(&mut self, link: &Hyperlink) -> Result<u16, HyperlinkFull> {
-        self.allocate(link, false, None)
+    pub fn insert(&mut self, link: HyperlinkKey<'_>) -> Result<u16, HyperlinkFull> {
+        #[cfg(feature = "allocation-probe")]
+        probe::event(|c| c.hyperlink_admissions += 1);
+        self.allocate(link, false, None, None)
     }
 
     /// PAGE LINK records reserve ID before URI. Zero/duplicate wire IDs still
     /// allocate a temporary set reference before the decoder releases it.
     pub fn decode(&mut self, link: &Hyperlink, retain: bool) -> Result<u16, HyperlinkFull> {
-        let id = self.allocate(link, true, None)?;
+        #[cfg(feature = "allocation-probe")]
+        probe::event(|c| c.hyperlink_admissions += 1);
+        let id = self.allocate(link.key(), true, None, None)?;
         if !retain {
             self.release(id);
         }
@@ -485,28 +593,58 @@ impl HyperlinkAdmission {
 
     /// Page copies check the cell map, then reuse a live value before trying
     /// any string allocation. A new value prefers its source page's ID.
-    pub fn copy_cell(&mut self, link: &Hyperlink, preferred: u16) -> Result<u16, HyperlinkFull> {
+    pub fn copy_cell(
+        &mut self,
+        link: HyperlinkKey<'_>,
+        preferred: u16,
+    ) -> Result<u16, HyperlinkFull> {
+        self.copy_value(link, preferred, None)
+    }
+
+    pub fn copy_from(&mut self, source: &Self, id: u16) -> Result<u16, HyperlinkFull> {
+        let entry = source.set.get(id);
+        self.copy_value(entry.link.key(), id, Some(entry))
+    }
+
+    fn copy_value(
+        &mut self,
+        link: HyperlinkKey<'_>,
+        preferred: u16,
+        shared: Option<&HyperlinkEntry>,
+    ) -> Result<u16, HyperlinkFull> {
+        #[cfg(feature = "allocation-probe")]
+        probe::event(|c| c.hyperlink_admissions += 1);
         if self.cells == self.capacity {
             return Err(HyperlinkFull::Map);
         }
-        let hash = hyperlink_hash(&link.id, &link.uri);
-        let id = if let Some(id) = self.set.lookup_by(hash, |entry| entry.link == *link) {
+        let hash = hyperlink_hash(link);
+        let id = if let Some(id) = self.set.lookup_by(hash, |entry| entry.link.key() == link) {
             self.set.retain(id);
             id
         } else {
-            self.allocate(link, false, Some(preferred))?
+            self.allocate(link, false, Some(preferred), shared)?
         };
         self.cells += 1;
         Ok(id)
     }
 
+    pub fn reserve_entries(&mut self, source: &Self) {
+        self.set.reserve_entries(source.set.count());
+    }
+
     /// Native reflow duplicates the strings before checking the set, unlike
     /// ordinary page copies. The temporary copy can itself require growth.
-    pub fn reflow_cell(&mut self, link: &Hyperlink, preferred: u16) -> Result<u16, HyperlinkFull> {
+    pub fn reflow_cell(
+        &mut self,
+        link: HyperlinkKey<'_>,
+        preferred: u16,
+    ) -> Result<u16, HyperlinkFull> {
+        #[cfg(feature = "allocation-probe")]
+        probe::event(|c| c.hyperlink_admissions += 1);
         if self.cells == self.capacity {
             return Err(HyperlinkFull::Map);
         }
-        let id = self.allocate(link, false, Some(preferred))?;
+        let id = self.allocate(link, false, Some(preferred), None)?;
         self.cells += 1;
         Ok(id)
     }
@@ -518,23 +656,26 @@ impl HyperlinkAdmission {
 
     fn allocate(
         &mut self,
-        link: &Hyperlink,
+        link: HyperlinkKey<'_>,
         id_first: bool,
         preferred: Option<u16>,
+        shared: Option<&HyperlinkEntry>,
     ) -> Result<u16, HyperlinkFull> {
-        if link.uri.is_empty() || matches!(&link.id, HyperlinkId::Explicit(id) if id.is_empty()) {
+        #[cfg(feature = "allocation-probe")]
+        probe::event(|c| c.string_reservations += 1);
+        if link.uri.is_empty() || matches!(link.id, HyperlinkIdRef::Explicit(id) if id.is_empty()) {
             return Err(HyperlinkFull::Strings);
         }
         let mut id_allocation = None;
         let mut uri_allocation = None;
         for is_id in [id_first, !id_first] {
             let value = if is_id {
-                let HyperlinkId::Explicit(id) = &link.id else {
+                let HyperlinkIdRef::Explicit(id) = link.id else {
                     continue;
                 };
-                id.as_slice()
+                id
             } else {
-                &link.uri
+                link.uri
             };
             let Some(offset) = self.strings.alloc(value.len()) else {
                 for (offset, length) in id_allocation.into_iter().chain(uri_allocation) {
@@ -549,26 +690,55 @@ impl HyperlinkAdmission {
             }
         }
         let uri_allocation = uri_allocation.unwrap();
+        let hash = hyperlink_hash(link);
+        let strings = &mut self.strings;
+        let payload_bytes = &mut self.payload_bytes;
+        let mut deleted = |entry: HyperlinkEntry| {
+            *payload_bytes -= entry.payload_bytes();
+            Self::free_strings(strings, entry.id_allocation, entry.uri_allocation);
+        };
+        let prepared = self.set.prepare_insert(
+            hash,
+            preferred,
+            |entry| entry.link.key() == link,
+            &mut deleted,
+        );
+        let (id, existing) = match prepared {
+            Ok(value) => value,
+            Err(error) => {
+                Self::free_strings(&mut self.strings, id_allocation, uri_allocation);
+                return Err(HyperlinkFull::Set(error));
+            }
+        };
+        if existing {
+            Self::free_strings(&mut self.strings, id_allocation, uri_allocation);
+            self.set.retain(id);
+            return Ok(id);
+        }
+        let (owned, data) = if let Some(shared) = shared {
+            (shared.link.clone(), shared.data.clone())
+        } else {
+            #[cfg(feature = "allocation-probe")]
+            let _scope = Scope::enter(Kind::OwnedPayload);
+            let owned = Arc::new(link.owned());
+            let data = Arc::new(HyperlinkData::new(link.uri, Some(owned.id.clone())));
+            (owned, data)
+        };
         let entry = HyperlinkEntry {
-            link: link.clone(),
+            link: owned,
+            data,
             id_allocation,
             uri_allocation,
         };
-        let hash = hyperlink_hash(&link.id, &link.uri);
+        self.payload_bytes += entry.payload_bytes();
+        let payload_bytes = &mut self.payload_bytes;
         let strings = &mut self.strings;
-        let mut deleted = |entry: HyperlinkEntry| {
-            Self::free_strings(strings, entry.id_allocation, entry.uri_allocation);
-        };
-        let result = if let Some(id) = preferred.filter(|&id| id != 0) {
-            self.set
-                .add_with_id_hashed_with(entry, hash, id, &mut deleted)
-        } else {
-            self.set.add_hashed_with(entry, hash, &mut deleted)
-        };
-        if result.is_err() {
-            Self::free_strings(&mut self.strings, id_allocation, uri_allocation);
-        }
-        result.map_err(HyperlinkFull::Set)
+        Ok(self
+            .set
+            .insert(entry, hash, id, &mut |entry: HyperlinkEntry| {
+                *payload_bytes -= entry.payload_bytes();
+                Self::free_strings(strings, entry.id_allocation, entry.uri_allocation);
+            }))
     }
 
     fn free_strings(
@@ -655,6 +825,7 @@ pub(crate) struct GraphemeAdmission {
     // Only allocation starts own text; continuation chunks stay empty. Grow
     // lazily so scalar-only pages and admission probes allocate no text slots.
     texts: Vec<Option<Arc<str>>>,
+    payload_bytes: usize,
 }
 
 impl GraphemeAdmission {
@@ -664,11 +835,25 @@ impl GraphemeAdmission {
             count: 0,
             capacity,
             texts: Vec::new(),
+            payload_bytes: 0,
         }
     }
 
     pub fn used_bytes(&self) -> usize {
         self.allocator.used_bytes()
+    }
+
+    pub fn storage_bytes(&self) -> usize {
+        self.allocator.storage_bytes()
+            + self.texts.capacity() * size_of::<Option<Arc<str>>>()
+            + self.payload_bytes
+    }
+
+    pub fn reset(&mut self) {
+        self.allocator.reset();
+        self.texts.clear();
+        self.count = 0;
+        self.payload_bytes = 0;
     }
 
     pub fn text(&self, allocation: GraphemeAllocation) -> &str {
@@ -698,37 +883,15 @@ impl GraphemeAdmission {
 
     pub fn set_text(&mut self, allocation: GraphemeAllocation, text: Arc<str>) {
         debug_assert_eq!(text.chars().count(), usize::from(allocation.len) + 1);
-        *self.text_slot(allocation) = Some(text);
-    }
-
-    /// Copy visible owners without repacking runs into a different layout.
-    pub fn clone_subset(&self, allocations: impl Iterator<Item = GraphemeAllocation>) -> Self {
-        let mut result = Self {
-            allocator: BitmapAllocator {
-                bitmaps: vec![0; self.allocator.bitmaps.len()],
-                chunks_start: self.allocator.chunks_start,
-                search_start: 0,
-            },
-            count: 0,
-            capacity: self.capacity,
-            texts: Vec::new(),
-        };
-        for allocation in allocations {
-            let chunk = (allocation.offset.get() as usize - result.allocator.chunks_start) / 16;
-            let chunks = usize::from(allocation.len).div_ceil(4);
-            result.allocator.set_bits(chunk, chunks, true);
-            assert!(
-                result
-                    .text_slot(allocation)
-                    .replace(self.text_arc(allocation))
-                    .is_none()
-            );
-            result.count += 1;
+        self.payload_bytes += text.len() + 2 * size_of::<usize>();
+        if let Some(previous) = self.text_slot(allocation).replace(text) {
+            self.payload_bytes -= previous.len() + 2 * size_of::<usize>();
         }
-        result
     }
 
     pub fn acquire(&mut self, len: u8) -> Result<GraphemeAllocation, SetFull> {
+        #[cfg(feature = "allocation-probe")]
+        probe::event(|c| c.grapheme_admissions += 1);
         assert!((1..=64).contains(&len));
         let offset = self
             .allocator
@@ -749,6 +912,8 @@ impl GraphemeAdmission {
         &mut self,
         previous: Option<GraphemeAllocation>,
     ) -> Result<GraphemeAllocation, SetFull> {
+        #[cfg(feature = "allocation-probe")]
+        probe::event(|c| c.grapheme_appends += 1);
         let Some(mut previous) = previous else {
             return self.acquire(1);
         };
@@ -781,8 +946,8 @@ impl GraphemeAdmission {
         );
         self.count -= 1;
         let index = self.text_index(allocation);
-        if let Some(slot) = self.texts.get_mut(index) {
-            *slot = None;
+        if let Some(text) = self.texts.get_mut(index).and_then(Option::take) {
+            self.payload_bytes -= text.len() + 2 * size_of::<usize>();
         }
     }
 
@@ -823,6 +988,15 @@ pub(crate) struct BitmapAllocator<const CHUNK: usize> {
 }
 
 impl<const CHUNK: usize> BitmapAllocator<CHUNK> {
+    fn storage_bytes(&self) -> usize {
+        self.bitmaps.capacity() * size_of::<u64>()
+    }
+
+    fn reset(&mut self) {
+        self.bitmaps.fill(0);
+        self.search_start = 0;
+    }
+
     pub fn new(layout: BitmapLayout) -> Self {
         assert!(CHUNK.is_power_of_two());
         let capacity = layout
@@ -955,27 +1129,57 @@ fn find_free_chunks(bitmaps: &[u64], count: usize) -> Option<usize> {
 
 /// The native page hyperlink hash includes ID kind, raw strings and their
 /// machine-sized lengths. Keep that representation for resource admission.
-pub(crate) fn hyperlink_hash(id: &crate::screen::HyperlinkId, uri: &[u8]) -> u64 {
-    let mut bytes = Vec::new();
-    match id {
-        crate::screen::HyperlinkId::Explicit(id) => {
-            bytes.push(0);
-            bytes.extend_from_slice(id);
-            bytes.extend_from_slice(&id.len().to_le_bytes());
+fn hyperlink_hash(link: HyperlinkKey<'_>) -> u64 {
+    let uri = link.uri;
+    // Hash the native byte sequence without constructing a temporary key buffer.
+    let id_len;
+    let implicit;
+    let (kind, id, length): (&[u8], &[u8], &[u8]) = match link.id {
+        HyperlinkIdRef::Explicit(id) => {
+            id_len = id.len().to_le_bytes();
+            (&[0], id, &id_len)
         }
-        crate::screen::HyperlinkId::Implicit(id) => {
-            bytes.push(1);
-            bytes.extend_from_slice(&id.to_le_bytes());
+        HyperlinkIdRef::Implicit(id) => {
+            implicit = id.to_le_bytes();
+            (&[1], &implicit, &[])
         }
-    }
-    bytes.extend_from_slice(uri);
-    bytes.extend_from_slice(&uri.len().to_le_bytes());
-    wyhash(&bytes)
+    };
+    let uri_len = uri.len().to_le_bytes();
+    let parts = [kind, id, length, uri, &uri_len];
+    let len = parts.iter().map(|part| part.len()).sum();
+    wyhash_with(len, |mut offset, count| {
+        let mut bytes = [0; 8];
+        let mut copied = 0;
+        for part in parts {
+            if offset >= part.len() {
+                offset -= part.len();
+                continue;
+            }
+            let take = (count - copied).min(part.len() - offset);
+            bytes[copied..copied + take].copy_from_slice(&part[offset..offset + take]);
+            copied += take;
+            if copied == count {
+                break;
+            }
+            offset = 0;
+        }
+        debug_assert_eq!(copied, count);
+        u64::from_le_bytes(bytes)
+    })
 }
 
 // Zig std.hash.Wyhash's one-shot path with seed zero. Reuse it for the native
 // admission hash; Rust's randomized HashMap hash would change collision limits.
+#[cfg(test)]
 fn wyhash(bytes: &[u8]) -> u64 {
+    wyhash_with(bytes.len(), |offset, count| {
+        let mut word = [0; 8];
+        word[..count].copy_from_slice(&bytes[offset..offset + count]);
+        u64::from_le_bytes(word)
+    })
+}
+
+fn wyhash_with(len: usize, read: impl Fn(usize, usize) -> u64) -> u64 {
     const SECRET: [u64; 4] = [
         0xa0761d6478bd642f,
         0xe7037ed1a0b428db,
@@ -986,27 +1190,18 @@ fn wyhash(bytes: &[u8]) -> u64 {
         let product = u128::from(a) * u128::from(b);
         product as u64 ^ (product >> 64) as u64
     }
-    fn read8(bytes: &[u8]) -> u64 {
-        u64::from_le_bytes(bytes[..8].try_into().unwrap())
-    }
-    fn read4(bytes: &[u8]) -> u64 {
-        u32::from_le_bytes(bytes[..4].try_into().unwrap()).into()
-    }
-
     let mut state = [mix(SECRET[0], SECRET[1]); 3];
-    let (mut a, mut b) = if bytes.len() <= 16 {
-        if bytes.len() >= 4 {
-            let end = bytes.len() - 4;
-            let quarter = (bytes.len() >> 3) << 2;
+    let (mut a, mut b) = if len <= 16 {
+        if len >= 4 {
+            let end = len - 4;
+            let quarter = (len >> 3) << 2;
             (
-                (read4(bytes) << 32) | read4(&bytes[quarter..]),
-                (read4(&bytes[end..]) << 32) | read4(&bytes[end - quarter..]),
+                (read(0, 4) << 32) | read(quarter, 4),
+                (read(end, 4) << 32) | read(end - quarter, 4),
             )
-        } else if !bytes.is_empty() {
+        } else if len != 0 {
             (
-                (u64::from(bytes[0]) << 16)
-                    | (u64::from(bytes[bytes.len() >> 1]) << 8)
-                    | u64::from(bytes[bytes.len() - 1]),
+                (read(0, 1) << 16) | (read(len >> 1, 1) << 8) | read(len - 1, 1),
                 0,
             )
         } else {
@@ -1014,33 +1209,30 @@ fn wyhash(bytes: &[u8]) -> u64 {
         }
     } else {
         let mut offset = 0;
-        if bytes.len() >= 48 {
-            while offset + 48 < bytes.len() {
+        if len >= 48 {
+            while offset + 48 < len {
                 for i in 0..3 {
-                    let chunk = &bytes[offset + 16 * i..];
-                    state[i] = mix(read8(chunk) ^ SECRET[i + 1], read8(&chunk[8..]) ^ state[i]);
+                    let chunk = offset + 16 * i;
+                    state[i] = mix(
+                        read(chunk, 8) ^ SECRET[i + 1],
+                        read(chunk + 8, 8) ^ state[i],
+                    );
                 }
                 offset += 48;
             }
             state[0] ^= state[1] ^ state[2];
         }
-        while offset + 16 < bytes.len() {
-            state[0] = mix(
-                read8(&bytes[offset..]) ^ SECRET[1],
-                read8(&bytes[offset + 8..]) ^ state[0],
-            );
+        while offset + 16 < len {
+            state[0] = mix(read(offset, 8) ^ SECRET[1], read(offset + 8, 8) ^ state[0]);
             offset += 16;
         }
-        (
-            read8(&bytes[bytes.len() - 16..]),
-            read8(&bytes[bytes.len() - 8..]),
-        )
+        (read(len - 16, 8), read(len - 8, 8))
     };
     a ^= SECRET[1];
     b ^= state[0];
     let product = u128::from(a) * u128::from(b);
     mix(
-        product as u64 ^ SECRET[0] ^ bytes.len() as u64,
+        product as u64 ^ SECRET[0] ^ len as u64,
         (product >> 64) as u64 ^ SECRET[1],
     )
 }
@@ -1132,8 +1324,47 @@ mod tests {
     }
 
     #[test]
+    fn borrowed_hyperlink_hash_matches_contiguous_keys_at_every_boundary() {
+        for uri_len in (0..=256).chain([511, 512, 1984, 4096]) {
+            let uri: Vec<_> = (0..uri_len).map(|i| (i * 37) as u8).collect();
+            for id_len in 0..=64 {
+                let id: Vec<_> = (0..id_len).map(|i| (i * 13) as u8).collect();
+                let mut bytes = vec![0];
+                bytes.extend_from_slice(&id);
+                bytes.extend_from_slice(&id.len().to_le_bytes());
+                bytes.extend_from_slice(&uri);
+                bytes.extend_from_slice(&uri.len().to_le_bytes());
+                assert_eq!(
+                    hyperlink_hash(HyperlinkKey::new(&uri, Some(&id), 0)),
+                    wyhash(&bytes)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn rebuilding_shares_link_payloads_but_reflow_still_reserves_strings() {
+        let mut source = hyperlink_admission();
+        let uri = vec![b'x'; 2016];
+        let key = HyperlinkKey::new(&uri, None, 1);
+        let id = source.insert(key).unwrap();
+        let mut copied = hyperlink_admission();
+        copied.capacity = 3;
+        assert_eq!(copied.copy_from(&source, id), Ok(id));
+        assert!(Arc::ptr_eq(source.data(id), copied.data(id)));
+        assert!(Arc::ptr_eq(
+            &source.set.get(id).link,
+            &copied.set.get(id).link
+        ));
+        assert_eq!(copied.copy_cell(key, id), Ok(id));
+        assert_eq!(copied.reflow_cell(key, id), Err(HyperlinkFull::Strings));
+        assert_eq!(copied.strings.used_bytes(), 2016);
+        assert_eq!(copied.cells, 2);
+        copied.assert_references([id, id].into_iter(), None);
+    }
+
+    #[test]
     fn hyperlink_hash_matches_native_page_entry_vectors() {
-        use crate::screen::HyperlinkId;
         // Native PageEntry.hash on macOS ARM64, including the 16/48-byte
         // Wyhash boundaries and raw binary URI/ID strings.
         let vectors = [
@@ -1172,10 +1403,13 @@ mod tests {
                 .map(|i| (i * 13 + 7) as u8)
                 .collect();
             assert_eq!(
-                hyperlink_hash(&HyperlinkId::Implicit(0x01020304), &uri),
+                hyperlink_hash(HyperlinkKey::new(&uri, None, 0x01020304)),
                 implicit
             );
-            assert_eq!(hyperlink_hash(&HyperlinkId::Explicit(id), &uri), explicit);
+            assert_eq!(
+                hyperlink_hash(HyperlinkKey::new(&uri, Some(&id), 0)),
+                explicit
+            );
         }
     }
 
@@ -1424,7 +1658,7 @@ mod tests {
     }
 
     #[test]
-    fn grapheme_subset_keeps_offsets_when_repacking_would_exhaust_capacity() {
+    fn grapheme_clones_keep_offsets_when_repacking_would_exhaust_capacity() {
         let mut source = GraphemeAdmission {
             allocator: allocator::<16>(2),
             capacity: 128,
@@ -1455,7 +1689,7 @@ mod tests {
                 .any(|allocation| repacked.acquire(allocation.len).is_err())
         );
 
-        let snapshot = source.clone_subset(reordered.iter().copied());
+        let snapshot = source.clone();
         snapshot.assert_allocations(reordered.iter().copied());
         for allocation in &reordered {
             assert!(Arc::ptr_eq(
@@ -1463,7 +1697,10 @@ mod tests {
                 &snapshot.text_arc(*allocation)
             ));
         }
-        let mut subset = source.clone_subset(std::iter::once(reordered[0]));
+        let mut subset = source.clone();
+        for &allocation in &reordered[1..] {
+            subset.release(allocation);
+        }
         subset.assert_allocations(std::iter::once(reordered[0]));
         assert_eq!(subset.texts.iter().flatten().count(), 1);
         subset.release(reordered[0]);
@@ -1502,7 +1739,7 @@ mod tests {
         }
         assert_eq!(graphemes.texts.len(), 49);
         assert_eq!(graphemes.texts.iter().flatten().count(), 4);
-        let snapshot = graphemes.clone_subset(std::iter::once(allocations[3]));
+        let snapshot = graphemes.clone();
         graphemes.release(allocations[3]);
         let reused = graphemes.acquire(64).unwrap();
         assert_eq!(reused, allocations[3]);

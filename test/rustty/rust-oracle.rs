@@ -1000,17 +1000,17 @@ fn screen(screen: &Screen) -> Value {
             CursorShape::Underline => "underline", CursorShape::HollowBlock => "block_hollow",
         },"style":style(c.style),"hyperlink":hyperlink(c.hyperlink.as_deref()),
         "protected":c.protected,"semantic":semantic(c.semantic)},
-        "rows":screen.rows.iter().map(|r| row(screen, r)).collect::<Vec<_>>(),
-        "history":screen.history.iter().map(|r| row(screen, r)).collect::<Vec<_>>()})
+        "rows":screen.rows().map(|r| row(screen, &r)).collect::<Vec<_>>(),
+        "history":screen.history().map(|r| row(screen, &r)).collect::<Vec<_>>()})
 }
 
 fn row(screen: &Screen, row: &rustty_vt::Row) -> Value {
     json!({"wrapped":row.wrapped,"cells":row.cells.iter().enumerate().map(|(col, cell)| json!({
         "text":screen.cell_text(row, col).chars().map(u32::from).collect::<Vec<_>>(),
-        "width":cell.width,"spacer_head":cell.spacer_head,"style":style(cell.style),
-        "hyperlink":hyperlink(cell.hyperlink.as_deref()),
-        "protected":cell.protected,
-        "semantic":semantic(cell.semantic)})).collect::<Vec<_>>()})
+        "width":cell.width(),"spacer_head":cell.spacer_head(),"style":style(row.style(col)),
+        "hyperlink":hyperlink(row.hyperlink(col)),
+        "protected":cell.protected(),
+        "semantic":semantic(cell.semantic())})).collect::<Vec<_>>()})
 }
 
 fn hyperlink(link: Option<&rustty_vt::HyperlinkData>) -> Option<Value> {

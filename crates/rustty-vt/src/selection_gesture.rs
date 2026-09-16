@@ -278,7 +278,7 @@ impl SelectionGesture {
             return None;
         }
         let screen = terminal.screen();
-        let top = screen.history.len().saturating_sub(screen.viewport_offset);
+        let top = screen.history_len().saturating_sub(screen.viewport_offset);
         let point = screen.point(top.checked_add(y as usize)?, x as usize)?;
         self.drag(
             terminal,
@@ -575,7 +575,7 @@ mod tests {
         };
         let selected = gesture.autoscroll_tick(&mut terminal, tick()).unwrap();
         assert_eq!(terminal.screen().viewport_offset, 1);
-        let row = terminal.screen().history.len() - 1 + 2;
+        let row = terminal.screen().history_len() - 1 + 2;
         assert_eq!(selected.end, terminal.screen().point(row, 2).unwrap());
         terminal.reset();
         assert_eq!(gesture.autoscroll_tick(&mut terminal, tick()), None);

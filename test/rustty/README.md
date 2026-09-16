@@ -414,16 +414,19 @@ Native scrollback limits use these dimension-dependent minimums,
 including a zero line limit. Only zero bytes disables normal scrollback.
 Storage charges and pruning use retained page allocations and complete history
 pages. Minimum-limit comparisons alone do not establish full storage compatibility.
-Rustty sessions additionally cap owned Rust history-row storage using the configured
-`scrollback-limit` bytes, trimming individual oldest rows without the native page
-minimum. This counts cell-vector capacity and text/hyperlink allocation capacities.
-Shared hyperlink records and their reference counters are charged once per row,
-conservatively again when shared across rows. Active rows, graphics, page resource
-tables, deque spare capacity and allocator
-overhead are excluded. The host cap survives reset and is reapplied on config reload;
-it does not change native snapshot accounting or the parity adapters' limits.
-Cells occupy 72 bytes on 64-bit targets and share their immutable hyperlink metadata
-with cursor and viewport copies.
+Rustty sessions additionally cap reclaimable historical pages using the configured
+`scrollback-limit` bytes. Cached conservative charges cover allocated packed cell
+and row buffers, resource tables, and text/hyperlink payload capacities. Shared
+payloads are charged once per page, conservatively again across pages. Eviction
+removes whole historical pages; pages containing required active rows are an
+additional minimum allowance, including their unused capacity and any history
+sharing those pages. `history_bytes()` reports only reclaimable historical-page
+charges; `owned_bytes()` includes active pages. Graphics retain their separate
+budget; allocator overhead and deque spare capacity are excluded. `None` remains
+unlimited, and explicit zero clears history and disables ordinary retention.
+The host cap survives reset and config reload without changing native snapshot
+accounting or the parity adapters' limits. Live cells occupy 8 bytes and resolve
+styles, hyperlinks and grapheme text through their owning page.
 
 `--pages` compares each actual storage page's logical columns, used rows,
 capacity, pooled ownership and allocation charge, plus each screen's aggregate

@@ -31,7 +31,7 @@ fn placeholders(screen: &Screen, cell: [u32; 2]) -> Vec<Value> {
     screen
         .viewport()
         .flat_map(|row| {
-            unicode::placements(screen, row).map(|p| {
+            unicode::placements(screen, row).map(move |p| {
                 let target = screen
                     .graphics
                     .placeholder_target(p.image_id, p.placement_id);
@@ -60,8 +60,8 @@ fn location(screen: &Screen, point: GridPoint) -> Option<Value> {
     let y = screen.all_rows().position(|row| row.id == point.row)?;
     let relative = |start| y.checked_sub(start).map(|y| [point.col, y]);
     Some(
-        json!({"screen":[point.col,y], "active":relative(screen.history.len()),
-        "viewport":relative(screen.history.len().saturating_sub(screen.viewport_offset))}),
+        json!({"screen":[point.col,y], "active":relative(screen.history_len()),
+        "viewport":relative(screen.history_len().saturating_sub(screen.viewport_offset))}),
     )
 }
 

@@ -48,15 +48,14 @@ fn invalid_link_endings_preserve_the_prior_link_and_snapshot_identity() {
     let snapshot = rustty_vt::snapshot::encode_to_vec(&terminal).unwrap();
     let mut terminal =
         rustty_vt::snapshot::decode(snapshot.as_slice(), Default::default()).unwrap();
-    for cell in &terminal.screen().rows[0].cells[..2] {
+    for col in 0..2 {
+        let row = terminal.screen().row(0);
         assert_eq!(
-            cell.hyperlink
-                .as_deref()
-                .and_then(|link| link.raw.as_deref()),
+            row.hyperlink(col).and_then(|link| link.raw.as_deref()),
             Some(b"https://raw/\xff".as_slice())
         );
         assert_eq!(
-            cell.hyperlink.as_ref().unwrap().id,
+            row.hyperlink(col).as_ref().unwrap().id,
             Some(HyperlinkId::Explicit(b"retained".to_vec()))
         );
     }
@@ -84,8 +83,10 @@ fn restoring_a_cursor_preserves_the_active_hyperlink() {
         terminal.feed(restore);
         terminal.feed(b"A");
         assert_eq!(
-            terminal.screen().rows[0].cells[0]
-                .hyperlink
+            terminal
+                .screen()
+                .row(0)
+                .hyperlink(0)
                 .as_deref()
                 .and_then(|link| link.raw.as_deref()),
             Some(b"current/\xff".as_slice()),
@@ -101,7 +102,7 @@ fn restoring_a_cursor_preserves_the_active_hyperlink() {
     let mut terminal = Terminal::new(10, 2, 0);
     terminal.feed(&link(b"", b"saved"));
     terminal.feed(b"A\x1b[?1049h\x1b[?1049lB");
-    assert!(terminal.screen().rows[0].cells[1].hyperlink.is_none());
+    assert!(terminal.screen().row(0).hyperlink(1).is_none());
     assert!(terminal.screen().cursor.hyperlink.is_none());
 }
 
@@ -117,7 +118,7 @@ fn restoring_a_cursor_does_not_restore_or_default_semantic_content() {
         terminal.restore_cursor();
         terminal.feed(b"A");
         assert_eq!(
-            terminal.screen().rows[0].cells[0].semantic,
+            terminal.screen().row(0).cells[0].semantic(),
             SemanticContent::Input
         );
     }
@@ -181,7 +182,7 @@ fn same_screen_switches_preserve_active_hyperlinks() {
                 Some(HyperlinkId::Implicit(1))
             );
             assert_eq!(
-                &*terminal.screen().cell_text(&terminal.screen().rows[0], 0),
+                &*terminal.screen().cell_text(&terminal.screen().row(0), 0),
                 if alternate && mode == 1049 { "" } else { "A" }
             );
         }
@@ -219,20 +220,12 @@ fn resizing_renews_implicit_cursor_links_without_changing_printed_links() {
             Some(HyperlinkId::Implicit(1))
         );
         assert_eq!(
-            terminal.screen().rows[0].cells[0]
-                .hyperlink
-                .as_ref()
-                .unwrap()
-                .id,
+            terminal.screen().row(0).hyperlink(0).as_ref().unwrap().id,
             Some(HyperlinkId::Implicit(0))
         );
         terminal.feed(b"B");
         assert_eq!(
-            terminal.screen().rows[0].cells[1]
-                .hyperlink
-                .as_ref()
-                .unwrap()
-                .id,
+            terminal.screen().row(0).hyperlink(1).as_ref().unwrap().id,
             Some(HyperlinkId::Implicit(1))
         );
         let snapshot = rustty_vt::snapshot::encode_to_vec(&terminal).unwrap();

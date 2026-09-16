@@ -38,6 +38,7 @@ base64.workspace = true
 png.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
 objc2.workspace = true
 objc2-foundation.workspace = true
 objc2-app-kit.workspace = true

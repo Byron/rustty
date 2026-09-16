@@ -498,6 +498,17 @@ impl Tab {
         self.remembered_for(pane)
             .or_else(|| quadrant.panes().first().copied())
     }
+    /// Choose the zoom layer before focusing an ordinary pane-navigation target.
+    pub fn pane_navigation_zoom(&self, target: Id) -> Option<Id> {
+        if self.quadrant_zoom.is_some()
+            && self.zoom == Some(self.focused)
+            && self.zoom != self.quadrant_zoom
+        {
+            Some(target)
+        } else {
+            self.quadrant_zoom
+        }
+    }
     pub fn unzoom_after_blocked_navigation(&mut self) -> bool {
         let Some(zoom) = self.zoom else {
             return false;
@@ -937,6 +948,77 @@ mod tests {
         assert_eq!(tab.target(9, Direction::Right), None);
         assert_eq!(tab.target(9, Direction::Next), Some(2));
         assert_eq!(tab.target(9, Direction::QuadrantRight), Some(3));
+    }
+    #[test]
+    fn pane_navigation_keeps_full_zoom_within_zoomed_quadrant() {
+        for (forward, backward) in [
+            (Direction::Right, Direction::Left),
+            (Direction::Down, Direction::Up),
+        ] {
+            let mut tab = quadrants();
+            tab.focus(2);
+            tab.split(9, 10, forward, PathBuf::from("/tmp"));
+            tab.toggle_quadrant_zoom();
+            tab.toggle_zoom();
+            assert_eq!((tab.zoom, tab.quadrant_zoom), (Some(9), Some(10)));
+            for (direction, expected) in [
+                (backward, 2),
+                (forward, 9),
+                (Direction::Next, 2),
+                (Direction::Next, 9),
+                (Direction::Previous, 2),
+                (Direction::Previous, 9),
+            ] {
+                let target = tab.target(tab.focused, direction).unwrap();
+                assert_eq!(target, expected);
+                tab.zoom = tab.pane_navigation_zoom(target);
+                tab.focus(target);
+                assert_eq!(
+                    (tab.focused, tab.zoom, tab.quadrant_zoom),
+                    (expected, Some(expected), Some(10)),
+                    "{direction:?}"
+                );
+                assert_eq!(tab.visible_tree(false).panes(), [expected]);
+            }
+            assert_eq!(tab.target(tab.focused, forward), None);
+            assert!(tab.unzoom_after_blocked_navigation());
+            assert_eq!(
+                (tab.focused, tab.zoom, tab.quadrant_zoom),
+                (9, Some(10), Some(10))
+            );
+            assert_eq!(tab.visible_tree(false).panes(), [2, 9]);
+            assert_eq!(tab.target(tab.focused, forward), None);
+            assert!(!tab.unzoom_after_blocked_navigation());
+            assert_eq!(
+                (tab.focused, tab.zoom, tab.quadrant_zoom),
+                (9, Some(10), Some(10))
+            );
+        }
+    }
+    #[test]
+    fn pane_navigation_without_combined_zoom_keeps_existing_behavior() {
+        for (zoom, quadrant_zoom, expected_zoom) in [
+            (None, None, None),
+            (Some(9), None, None),
+            (Some(10), Some(10), Some(10)),
+        ] {
+            let mut tab = quadrants();
+            tab.focus(2);
+            tab.split(9, 10, Direction::Right, PathBuf::from("/tmp"));
+            tab.zoom = zoom;
+            tab.quadrant_zoom = quadrant_zoom;
+            let target = tab.target(tab.focused, Direction::Left).unwrap();
+            tab.zoom = tab.pane_navigation_zoom(target);
+            tab.focus(target);
+            assert_eq!(
+                (tab.focused, tab.zoom, tab.quadrant_zoom),
+                (2, expected_zoom, quadrant_zoom)
+            );
+            assert_eq!(
+                tab.visible_tree(false).panes().len(),
+                if quadrant_zoom.is_some() { 2 } else { 5 }
+            );
+        }
     }
     #[test]
     fn peek_restores_full_zoom_only_within_original_quadrant() {

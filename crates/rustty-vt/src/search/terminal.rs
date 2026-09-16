@@ -223,8 +223,8 @@ impl TerminalSearch {
             return false;
         };
         if scroll == SelectScroll::IfNeeded {
-            let top = screen.history.len().saturating_sub(screen.viewport_offset);
-            let bottom = top + screen.rows.len();
+            let top = screen.history_len().saturating_sub(screen.viewport_offset);
+            let bottom = top + screen.height();
             let mut offset = 0;
             let visible = screen.pages.pages.iter().any(|page| {
                 let visible = selected.chunks.iter().any(|chunk| {
@@ -239,7 +239,7 @@ impl TerminalSearch {
                 screen.viewport_offset = if screen.limits.bytes == Some(0) {
                     0
                 } else {
-                    screen.history.len().saturating_sub(row)
+                    screen.history_len().saturating_sub(row)
                 };
                 screen.viewport_pin_column = if row > 0 && screen.viewport_offset > 0 {
                     screen.viewport_pin = Some(selected.bounds.start);
@@ -466,12 +466,8 @@ impl Window {
     }
 }
 
-fn screen_row(screen: &Screen, row: usize) -> &crate::Row {
-    if row < screen.history.len() {
-        &screen.history[row]
-    } else {
-        &screen.rows[row - screen.history.len()]
-    }
+fn screen_row(screen: &Screen, row: usize) -> crate::Row<'_> {
+    screen.physical_row(row)
 }
 
 fn row_index(screen: &Screen, point: GridPoint) -> Option<usize> {
@@ -582,7 +578,7 @@ impl ScreenSearch {
         }
         // Active pages normally lie at the newest end. Resolve only captured
         // endpoints, without allocating a map of the whole history on feed.
-        let mut offset = screen.history.len() + screen.rows.len();
+        let mut offset = screen.history_len() + screen.height();
         for page in screen.pages.pages.iter().rev() {
             offset -= usize::from(page.rows);
             if let Some(start) = pages.get_mut(&page.serial) {
@@ -619,7 +615,7 @@ impl ScreenSearch {
     fn new(screen: &mut Screen, needle: &[u8]) -> Self {
         let mut result = Self {
             identity: screen.metadata.identity,
-            dimensions: (screen.columns, screen.rows.len()),
+            dimensions: (screen.columns, screen.height()),
             state: State::History,
             active: Vec::new(),
             history_results: Vec::new(),
@@ -631,7 +627,7 @@ impl ScreenSearch {
     }
 
     fn reset_dimensions(&mut self, screen: &mut Screen, needle: &[u8]) -> bool {
-        if self.dimensions == (screen.columns, screen.rows.len()) {
+        if self.dimensions == (screen.columns, screen.height()) {
             return false;
         }
         *self = Self::new(screen, needle);
@@ -749,7 +745,7 @@ impl ScreenSearch {
             self.selected = None;
         }
 
-        let boundary = screen.pages.page_index(screen.history.len());
+        let boundary = screen.pages.page_index(screen.history_len());
         let mut active = Window::default();
         for index in (boundary..screen.pages.pages.len()).rev() {
             active.append(screen, index, false);
@@ -814,7 +810,7 @@ impl ScreenSearch {
                     (
                         row_index(screen, found.bounds.end).unwrap(),
                         found.bounds.end.col,
-                    ) <= (screen.history.len(), 0)
+                    ) <= (screen.history_len(), 0)
                 })
                 .count();
             self.active.drain(..prefix);

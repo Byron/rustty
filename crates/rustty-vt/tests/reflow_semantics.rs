@@ -14,8 +14,7 @@ fn reflow_initializes_retained_blank_gaps_and_viewport_padding() {
         );
         assert_eq!(
             screen
-                .rows
-                .iter()
+                .rows()
                 .map(|row| screen.row_text(row))
                 .collect::<Vec<_>>(),
             ["A", "", "Z", "", "", ""],
@@ -26,16 +25,16 @@ fn reflow_initializes_retained_blank_gaps_and_viewport_padding() {
     }
     // Editing a retained gap after reflow must have real cell storage.
     terminal.feed(b"\x1b[2;8HX");
-    assert_eq!(terminal.screen().rows[1].cells[7].codepoint, Some('X'));
+    assert_eq!(terminal.screen().row(1).cells[7].codepoint(), Some('X'));
 
-    // Tiny rows must keep exact capacities: history memory limits charge them.
+    // Borrowed rows expose exactly their physical width; spare storage belongs to the page.
     for width in [1, 2, 3] {
         terminal.resize(width, 6);
         assert!(
             terminal
                 .screen()
                 .all_rows()
-                .all(|row| row.cells.capacity() == usize::from(width))
+                .all(|row| row.cells.len() == usize::from(width))
         );
     }
 }
@@ -46,16 +45,17 @@ fn narrowing_with_more_active_rows_counts_continuations_at_the_active_boundary()
     terminal.feed(b"ABCDEFGHI");
     terminal.resize(2, 4);
 
-    assert_eq!(terminal.screen().history.len(), 1);
+    assert_eq!(terminal.screen().history_len(), 1);
     assert_eq!(
-        terminal.screen().row_text(&terminal.screen().history[0]),
+        terminal
+            .screen()
+            .row_text(&terminal.screen().physical_row(0)),
         "AB"
     );
     assert_eq!(
         terminal
             .screen()
-            .rows
-            .iter()
+            .rows()
             .map(|row| terminal.screen().row_text(row))
             .collect::<Vec<_>>(),
         ["CD", "EF", "GH", "I"],
@@ -74,19 +74,16 @@ fn reflow_copies_source_prompt_metadata_to_each_destination_segment() {
         terminal
             .feed(format!("\x1b]133;A;redraw=0\x07\x1b]133;P;k={kind}\x07abcdefghij").as_bytes());
         terminal.resize(4, 4);
-        for (row, text) in terminal.screen().rows[..3]
-            .iter()
-            .zip(["abcd", "efgh", "ij"])
-        {
+        for (row, text) in terminal.screen().rows().take(3).zip(["abcd", "efgh", "ij"]) {
             assert_eq!(row.semantic, expected);
             assert_eq!(terminal.screen().row_text(row), text);
         }
         let bytes = snapshot::encode_to_vec(&terminal).unwrap();
         let mut terminal = snapshot::decode(bytes.as_slice(), Default::default()).unwrap();
         terminal.resize(12, 4);
-        assert_eq!(terminal.screen().rows[0].semantic, expected);
+        assert_eq!(terminal.screen().row(0).semantic, expected);
         assert_eq!(
-            terminal.screen().row_text(&terminal.screen().rows[0]),
+            terminal.screen().row_text(&terminal.screen().row(0)),
             "abcdefghij"
         );
     }
@@ -111,8 +108,8 @@ fn reflow_remaps_duplicate_anchors_and_both_halves_of_a_wide_cell() {
     let screen = terminal.screen();
     let spacer = screen.point(0, 3).unwrap();
     let wide_tail = screen.point(1, 1).unwrap();
-    assert!(screen.rows[0].cells[3].spacer_head);
-    assert_eq!(screen.rows[1].cells[1].width, 0);
+    assert!(screen.row(0).cells[3].spacer_head());
+    assert_eq!(screen.row(1).cells[1].width(), 0);
     assert_eq!(screen.resolve(first), Some(spacer));
     assert_eq!(screen.resolve(duplicate), Some(spacer));
     assert_eq!(screen.resolve(second), Some(wide_tail));
@@ -178,7 +175,7 @@ fn reflow_maps_graphics_in_trailing_blanks_without_retaining_the_blanks() {
     ];
     terminal.resize(4, 4);
     let screen = terminal.screen();
-    assert_eq!(screen.rows[1].cells[0].codepoint, Some('Z'));
+    assert_eq!(screen.row(1).cells[0].codepoint(), Some('Z'));
     let mapped = screen.point(0, 3).unwrap();
     let placements = &screen.graphics.placements;
     assert_eq!(placements.len(), 4);

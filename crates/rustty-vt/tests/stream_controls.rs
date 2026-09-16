@@ -50,11 +50,11 @@ fn raw_c1_controls_execute_cursor_and_protection_actions_inside_sequences() {
     );
     terminal.feed(b"\x1b[3\x96X\x1b[3\x97Y");
     let screen = terminal.screen();
-    assert!(screen.rows[3].cells[0].protected);
-    assert!(!screen.rows[3].cells[1].protected);
+    assert!(screen.row(3).cells[0].protected());
+    assert!(!screen.row(3).cells[1].protected());
     assert!(!screen.cursor.protected);
     terminal.feed(b"\x1b[2K");
-    assert_eq!(terminal.screen().row_text(&terminal.screen().rows[3]), "X");
+    assert_eq!(terminal.screen().row_text(&terminal.screen().row(3)), "X");
 }
 
 #[test]
@@ -67,7 +67,7 @@ fn ground_state_c1_bytes_keep_utf8_decoding_semantics() {
     );
     assert!(!terminal.screen().cursor.protected);
     assert_eq!(
-        terminal.screen().row_text(&terminal.screen().rows[2]),
+        terminal.screen().row_text(&terminal.screen().row(2)),
         "   X\u{fffd}\u{fffd}"
     );
 }
@@ -179,14 +179,14 @@ fn explicit_zero_scrolling_preserves_the_direct_scroll_path() {
         assert!(rustty_vt::snapshot::encode_to_vec(&terminal).unwrap() == before);
         terminal.feed(b"\x1b[S");
         assert_eq!(
-            terminal.screen().row_text(&terminal.screen().rows[0]),
+            terminal.screen().row_text(&terminal.screen().row(0)),
             "b    X"
         );
         assert!(terminal.screen().cursor.pending_wrap);
         terminal.feed(b"\x1b[T");
-        assert_eq!(terminal.screen().row_text(&terminal.screen().rows[0]), "");
+        assert_eq!(terminal.screen().row_text(&terminal.screen().row(0)), "");
         assert_eq!(
-            terminal.screen().row_text(&terminal.screen().rows[1]),
+            terminal.screen().row_text(&terminal.screen().row(1)),
             "b    X"
         );
         assert!(terminal.screen().cursor.pending_wrap);
@@ -208,8 +208,7 @@ fn explicit_zero_scrolling_preserves_partial_regions() {
         terminal.feed(b"\x1b[0S\x1b[0T");
         let rows: Vec<_> = terminal
             .screen()
-            .rows
-            .iter()
+            .rows()
             .map(|row| terminal.screen().row_text(row))
             .collect();
         assert_eq!(rows, ["a", "b", "c", "d"]);
@@ -220,15 +219,17 @@ fn explicit_zero_scrolling_preserves_partial_regions() {
 fn scroll_clear_omits_empty_rows_and_follows_the_cursor_row() {
     let mut terminal = Terminal::new(8, 5, 20);
     terminal.feed(b"\x1b[4;4H\x1b[22J");
-    assert!(terminal.screen().history.is_empty());
+    assert!(terminal.screen().history().next().is_none());
     assert_eq!(
         (terminal.screen().cursor.row, terminal.screen().cursor.col),
         (3, 3)
     );
     terminal.feed(b"\x1b[Habc\x1b[4;4H\x1b[22J");
-    assert_eq!(terminal.screen().history.len(), 1);
+    assert_eq!(terminal.screen().history_len(), 1);
     assert_eq!(
-        terminal.screen().row_text(&terminal.screen().history[0]),
+        terminal
+            .screen()
+            .row_text(&terminal.screen().physical_row(0)),
         "abc"
     );
     assert_eq!(
@@ -236,7 +237,7 @@ fn scroll_clear_omits_empty_rows_and_follows_the_cursor_row() {
         (2, 3)
     );
     terminal.feed(b"xy\x1b[22J");
-    assert_eq!(terminal.screen().history.len(), 4);
+    assert_eq!(terminal.screen().history_len(), 4);
     assert_eq!(
         (terminal.screen().cursor.row, terminal.screen().cursor.col),
         (0, 0)
@@ -247,7 +248,7 @@ fn scroll_clear_omits_empty_rows_and_follows_the_cursor_row() {
 fn scroll_clear_counts_background_cells_and_preserves_cursor_attributes() {
     let mut terminal = Terminal::new(8, 5, 20);
     terminal.feed(b"\x1b[?69h\x1b[2;6s\x1b[2;4r\x1b[3;1H\x1b[44m\x1b[2K\x1b[5;4H\x1b[1\"q\x1b]8;id=cursor;https://example.org\x07\x1b[22J");
-    assert_eq!(terminal.screen().history.len(), 3);
+    assert_eq!(terminal.screen().history_len(), 3);
     let cursor = &terminal.screen().cursor;
     assert_eq!((cursor.row, cursor.col), (1, 3));
     assert_eq!(cursor.style.background, rustty_vt::Color::Indexed(4));
@@ -259,12 +260,10 @@ fn scroll_clear_counts_background_cells_and_preserves_cursor_attributes() {
     assert!(
         terminal
             .screen()
-            .rows
-            .iter()
-            .flat_map(|row| &row.cells)
-            .all(|cell| {
-                cell.codepoint.is_none() && cell.style.background == rustty_vt::Color::Default
-            })
+            .rows()
+            .all(|row| row.cells.iter().enumerate().all(|(col, cell)| {
+                cell.codepoint().is_none() && row.style(col).background == rustty_vt::Color::Default
+            }))
     );
     assert_eq!(terminal.margins.top, 1);
     assert_eq!(terminal.margins.left, 1);
