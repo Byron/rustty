@@ -6,15 +6,19 @@ window. Criterion is a development dependency only. No application build is
 needed. Timing excludes terminal construction and input generation; the `feed`
 and `stream` workloads include UTF-8 decoding and VT parsing.
 
-The latest [complete Ghostty comparison](#core-checkpoint-after-step-39)
-covers all 54 workloads with the current core, including the scalar-scan
-controls and remaining gaps. Each table identifies its measured source;
-stage ratios are not multiplied.
+The latest [complete Ghostty comparison](#step-49-reuse-cursor-preparation-after-scrolling)
+covers all 54 workloads with the retained core, including the scalar-scan
+controls and remaining gaps. The [final checkpoint](#final-checkpoint)
+summarizes the results. Each table identifies its measured source; stage ratios
+are not multiplied.
 The [step 39 renderer comparison](#step-39-reuse-the-empty-tail-boundary-for-painting)
 measures preparation at standard and Retina sizes;
 [step 40](#step-40-reuse-exact-srgb-channel-conversions) removes repeated color conversions,
 [step 41](#step-41-reuse-row-and-shaping-scratch) reuses row and shaping buffers,
-and [step 42](#step-42-assign-fallback-glyph-anchors-during-emission) removes a glyph pass. The
+and [step 42](#step-42-assign-fallback-glyph-anchors-during-emission) removes a glyph pass.
+[Step 43](#step-43-use-one-sprite-membership-match) simplifies sprite membership.
+The [application checkpoint](#application-checkpoint-after-step-42) measures
+steps 39–42 together and records the limits of the application replay. The
 [step 38 parity comparison](#step-38-execute-the-differential-runner-in-rust)
 measures the Rust runner with preserved fixture data.
 The [step 35 renderer comparison](#step-35-index-glyph-anchors-directly-during-frame-preparation)
@@ -29,6 +33,65 @@ cargo bench --offline -p rustty-vt --bench primitives -- rustty/print/chinese
 # Exercise every workload once, without collecting timing statistics:
 cargo bench --offline -p rustty-vt --bench primitives -- --test
 ```
+
+## Final checkpoint
+
+The retained core is `90930fa13` (step 49). The later wide-store, temporary-text
+and direct-character-iterator experiments did not qualify and are not retained.
+This checkpoint closes the optimization pass without adding another speculative
+candidate. Ghostty production code remains unchanged.
+
+These are Rustty / Ghostty pooled median-time ratios from the step-49 full
+comparison: **below 1 is faster for Rustty**. The frozen Rust 1.95.0 binaries use
+native ARM CPU flags on the same Apple M4 Max, serial adjacent comparisons,
+reversed order and 50 samples per direction. All 54 Rust workloads were measured;
+the table contains the 36 with native counterparts. Exact times, both orders,
+adverse results and controls remain in the linked full comparison.
+
+| Workload | ASCII | Chinese | Combining | Emoji |
+| --- | ---: | ---: | ---: | ---: |
+| Width lookup | 0.991× | 0.991× | 0.794× | 0.977× |
+| Direct printing | 1.506× | 1.366× | 0.073×* | 2.027× |
+| First-codepoint scan | 1.460× | 1.444× | 1.272× | 1.340× |
+| Full-text read | 1.459× | 1.460× | 0.553× | 1.310× |
+| Screen clone | 0.802× | 0.790× | 0.347× | 0.558× |
+| Resize/reflow | 0.750× | 0.747× | 0.915× | 1.054× |
+| Parsed feed | 0.839× | 0.005×* | 0.080×* | 1.118× |
+| Scrolling | 0.966× | 1.071× | 0.918× | 0.388× |
+| Styled scrolling | 1.121× | 0.374× | 1.060× | 0.538× |
+
+\* Chinese feed hits Ghostty's repeated wide-destination suffix scans;
+combining overwrites hit its full grapheme-map behavior. These are specific
+stress cases, not general Unicode speedups. Short first-codepoint scans and
+direct ASCII printing also vary materially in identical-binary controls;
+their exact gaps and 3% equivalence remain unresolved.
+
+The practical remaining core gaps are styled ASCII scrolling (12.1%), Chinese
+scrolling (7.1%) and emoji feed (11.8%). Full-text reads remain 31–46% slower
+outside combining text, and direct emoji printing takes about twice as long.
+Direct printing bypasses the parser's batching, so its gap does not predict the
+complete feed or scrolling result. The rejected read experiments removed work
+from generated assembly but made measured reads slower; they are not shipped.
+
+The separately measured renderer checkpoint improves preparation by 41–55%
+at standard size and 54–67% at Retina size across its workloads. Retina styled
+scrolling falls from 354.5 to 118.0 µs, with Rust allocations from 1,774 to 34
+per frame. These are aggregate steps 39–42 measurements; they are not a Ghostty
+renderer comparison or a claim about application-wide latency. Step 43 retains
+its separately measured small gain. Application replay CPU results remain
+inconclusive, and GPU completion and visible presentation were not measured.
+`LOW_LATENCY` remains enabled; dynamic switching was not added. The Rust parity
+runner with preserved fixture data is retained.
+
+The retained snapshot passes 328 VT tests per kernel configuration, 505 workspace
+tests (two opt-in platform tests ignored), and 61,587 configured differential
+comparisons with zero failures. Workspace/all-target checks, generic x86 checks
+in both kernel configurations, formatting and benchmark self-checks pass. All
+18 allocation observations match the previous retained stage, including zero
+allocations for ordinary writes and row exposure within capacity. The separate
+thorough differential coverage gate and native scheduling smoke remain incomplete.
+No production source changed after this validation; the final report was checked
+against the saved medians, sample counts and executable hashes.
 
 ## Before and after
 
@@ -5081,3 +5144,33 @@ both benchmark self-checks. Sources, binaries, assembly, matched profiles and
 the 600 measured samples are preserved under `target/packed-simplify/step51/`
 through `step51f/`. The original source is restored and formatting passes.
 The step-49 core, full Ghostty table and validation remain current.
+
+
+### Step 52 experiment: expose a direct cell-character iterator (not retained)
+
+A row-view iterator avoids constructing `CellText` when callers need only
+characters. The candidate routes renderer sprite/blink checks, oracle text
+output and the benchmark's text-read adapter through it. The read workload
+still visits every cell and sums the same complete character sequence; its
+inputs, dimensions and checksums are unchanged. Assembly removes the leftover
+encoding thresholds, but this does not produce faster reads.
+
+Frozen Rust 1.95.0 binaries use native ARM flags, 50 samples per direction and
+adjacent reversed-order comparisons. Ratios below one favor the candidate.
+
+| Workload | Before µs | Candidate µs | Ghostty µs | Candidate / before, forward / reverse |
+| --- | ---: | ---: | ---: | ---: |
+| print/ascii | 10.328 | 10.596 | 6.287 | 1.141× / 0.895× |
+| read/ascii | 2.795 | 3.252 | 1.957 | 1.163× / 1.159× |
+| read/chinese | 2.818 | 3.231 | 1.960 | 1.149× / 1.141× |
+| read/combining | 3.373 | 4.280 | 6.032 | 1.273× / 1.269× |
+| read/emoji | 3.259 | 4.108 | 2.482 | 1.260× / 1.261× |
+| feed/emoji | 19.828 | 19.928 | 17.470 | 1.011× / 1.004× |
+
+All four read workloads regress in both orders, so the source is restored.
+No frame comparison or broader sweep is needed to reject this version, and
+no renderer speedup is claimed. All 329 VT tests and both benchmark self-checks
+pass, including the new iterator's Unicode, background, invalid-codepoint and
+detached-snapshot checks. Source, binaries, assembly and all 1,800 timing
+samples remain in `target/packed-simplify/step52/`. The step-49 core and full
+Ghostty table remain current.
