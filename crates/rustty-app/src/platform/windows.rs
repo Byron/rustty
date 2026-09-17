@@ -3,7 +3,10 @@ use ::windows::{
     UI::ViewManagement::{UIColorType, UISettings},
     Win32::{
         Foundation::*,
-        Graphics::Gdi::ScreenToClient,
+        Graphics::{
+            Dwm::{DWM_BB_BLURREGION, DWM_BB_ENABLE, DWM_BLURBEHIND, DwmEnableBlurBehindWindow},
+            Gdi::{CreateRectRgn, DeleteObject, ScreenToClient},
+        },
         Security::Cryptography::{BCRYPT_USE_SYSTEM_PREFERRED_RNG, BCryptGenRandom},
         System::{
             Registry::*,
@@ -182,7 +185,12 @@ impl Platform {
         config: &Config,
     ) -> Result<(), String> {
         let native = hwnd(window)?;
-        window.set_transparent(config.background_opacity < 1.0);
+        let transparent = config.background_opacity < 1.0;
+        window.set_transparent(transparent);
+        // Winit only establishes the DWM backing at window creation; its setter
+        // changes window flags without updating DWM. Keep the actual backing
+        // in sync on reload, and leave opaque windows out of alpha composition.
+        set_transparent(native, transparent)?;
         let new = self
             .windows
             .borrow_mut()
@@ -214,6 +222,9 @@ impl Platform {
             self.menu.attach(native)?;
             let _ = window.request_inner_size(client_size);
             self.notifications.set_badge(native, *self.badge.borrow());
+        }
+        if !quick {
+            unsafe { DrawMenuBar(native) }.map_err(err)?;
         }
         Ok(())
     }
@@ -365,6 +376,29 @@ impl Platform {
             Ok(Some(result))
         }
     }
+}
+
+fn set_transparent(hwnd: HWND, transparent: bool) -> Result<(), String> {
+    let mut blur = DWM_BLURBEHIND {
+        dwFlags: DWM_BB_ENABLE,
+        fEnable: transparent.into(),
+        ..Default::default()
+    };
+    if transparent {
+        // An empty blur region enables alpha composition without a blur effect,
+        // matching Winit's initial transparent-window setup.
+        let region = unsafe { CreateRectRgn(0, 0, -1, -1) };
+        if region.is_invalid() {
+            return Err("CreateRectRgn for transparent window failed".into());
+        }
+        blur.hRgnBlur = region;
+        blur.dwFlags |= DWM_BB_BLURREGION;
+    }
+    let result = unsafe { DwmEnableBlurBehindWindow(hwnd, &blur) }.map_err(err);
+    if transparent {
+        let _ = unsafe { DeleteObject(blur.hRgnBlur.into()) };
+    }
+    result
 }
 impl Drop for Platform {
     fn drop(&mut self) {

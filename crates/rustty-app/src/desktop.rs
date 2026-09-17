@@ -1117,12 +1117,7 @@ impl App {
             .with_fullsize_content_view(true)
             .with_title_hidden(true);
         #[cfg(target_os = "windows")]
-        let attributes = attributes
-            .with_skip_taskbar(quick)
-            // Native menus need the normal GDI redirection surface. Keep the
-            // client alpha-aware from creation so opacity can change on reload;
-            // DirectComposition still presents the terminal over that surface.
-            .with_transparent(true);
+        let attributes = attributes.with_skip_taskbar(quick);
         let window = Arc::new(event_loop.create_window(attributes)?);
         if let Some(platform) = &self.platform {
             platform.configure_window(&window, quick, self.config())?;

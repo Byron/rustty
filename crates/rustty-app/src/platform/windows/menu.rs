@@ -7,6 +7,8 @@ use muda::{
 use rustty::config::{Action, Config, Direction, KeyTrigger};
 use std::ffi::c_void;
 
+mod paint;
+
 pub(super) fn message_hook(message: *const c_void) -> bool {
     if message.is_null() {
         return false;
@@ -21,9 +23,11 @@ pub(super) fn message_hook(message: *const c_void) -> bool {
 pub(super) struct NativeMenu {
     menu: Menu,
     actions: Vec<(MenuItem, Action)>,
+    _paint: paint::Runtime,
 }
 impl NativeMenu {
     pub fn new(callback: EventSink) -> Result<Self, String> {
+        let paint = paint::Runtime::new()?;
         let menu = Menu::new();
         let mut actions = Vec::new();
         let file = Submenu::new("&File", true);
@@ -110,12 +114,22 @@ impl NativeMenu {
                 callback(PlatformEvent::Action(action.clone()));
             }
         }));
-        Ok(Self { menu, actions })
+        Ok(Self {
+            menu,
+            actions,
+            _paint: paint,
+        })
     }
     pub fn attach(&self, hwnd: HWND) -> Result<(), String> {
-        unsafe { self.menu.init_for_hwnd(hwnd.0 as isize) }.map_err(err)
+        unsafe { self.menu.init_for_hwnd(hwnd.0 as isize) }.map_err(err)?;
+        if let Err(error) = paint::attach(hwnd) {
+            let _ = unsafe { self.menu.remove_for_hwnd(hwnd.0 as isize) };
+            return Err(error);
+        }
+        Ok(())
     }
     pub fn detach(&self, hwnd: HWND) {
+        paint::detach(hwnd);
         let _ = unsafe { self.menu.remove_for_hwnd(hwnd.0 as isize) };
     }
     pub fn update(&self, config: &Config) -> Result<(), String> {
