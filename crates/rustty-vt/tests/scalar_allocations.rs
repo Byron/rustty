@@ -120,6 +120,18 @@ fn grapheme_append_allocates_only_its_shared_payload() {
 }
 
 #[test]
+fn zwj_pairs_allocate_one_payload_and_preserve_detached_text() {
+    let mut terminal = Terminal::new(4, 2, 0);
+    terminal.feed("\x1b[?2027h👩\u{301}".as_bytes());
+    let snapshot = terminal.screen().snapshot_viewport();
+    ALLOCATIONS.set(Some(0));
+    terminal.feed("\u{200d}💻".as_bytes());
+    assert_eq!(ALLOCATIONS.replace(None).unwrap(), 1);
+    assert_eq!(&*terminal.screen().row(0).text(0), "👩\u{301}\u{200d}💻");
+    assert_eq!(&*snapshot.row(0).text(0), "👩\u{301}");
+}
+
+#[test]
 fn scrolling_exposes_initialized_page_rows_without_allocating() {
     let mut terminal = Terminal::with_limits(80, 2, Default::default());
     let capacity = usize::from(

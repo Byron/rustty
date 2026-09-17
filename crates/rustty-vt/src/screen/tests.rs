@@ -77,6 +77,79 @@ fn assert_references(screen: &Screen) {
 }
 
 #[test]
+fn index_preserves_cursor_resources_and_generation() {
+    for (rows, history, alternate, changes) in [
+        (1, false, false, 1),
+        (3, false, false, 1),
+        (1, true, false, 2),
+        (3, true, false, 2),
+        (1, true, true, 1),
+        (3, true, true, 1),
+    ] {
+        for linked in [false, true] {
+            let mut terminal = Terminal::with_limits(
+                8,
+                rows,
+                if history {
+                    ScrollbackLimits::default()
+                } else {
+                    ScrollbackLimits::NONE
+                },
+            );
+            if alternate {
+                terminal.feed(b"\x1b[?1049h");
+            }
+            terminal.cursor_position(usize::from(rows), 1);
+            let style = Style {
+                foreground: Color::Rgb(1, 2, 3),
+                bold: true,
+                ..Style::default()
+            };
+            // Public pen edits must still be admitted before index returns.
+            terminal.screen_mut().cursor.style = style;
+            if linked {
+                terminal.screen_mut().cursor.hyperlink = Some(Arc::new(HyperlinkData::new(
+                    b"https://example.org/\xff",
+                    None,
+                )));
+            }
+            terminal.generation = u64::MAX;
+            #[cfg(feature = "allocation-probe")]
+            crate::allocation_probe::reset();
+            terminal.index();
+            #[cfg(feature = "allocation-probe")]
+            {
+                let admissions = if !linked {
+                    0
+                } else if history && !alternate {
+                    3
+                } else if rows == 1 {
+                    1
+                } else {
+                    2
+                };
+                let counts = crate::allocation_probe::counts();
+                assert_eq!(counts.hyperlink_admissions, admissions);
+                assert_eq!(counts.string_reservations, admissions);
+            }
+            assert_eq!(terminal.generation, changes - 1);
+            let screen = terminal.screen();
+            assert_references(screen);
+            let (index, _) = screen.cursor_location();
+            let (_, id) = screen.cursor_style.expect("index admits the pen style");
+            assert_eq!(*screen.pages.pages[index].styles.get(id), style);
+            assert_eq!(screen.cursor_link.is_some(), linked);
+            if linked {
+                assert_eq!(
+                    screen.cursor.hyperlink.as_ref().unwrap().uri_bytes(),
+                    b"https://example.org/\xff"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn resource_ownership_survives_edits_reflow_snapshots_and_eviction() {
     for columns in [8, 80, 1024] {
         let mut terminal = Terminal::with_limits(columns, 4, ScrollbackLimits::default());

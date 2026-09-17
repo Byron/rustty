@@ -18,9 +18,9 @@ impl std::error::Error for RenderError {}
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
-struct Vertex {
-    position: [f32; 2],
-    uv: [f32; 2],
+struct Instance {
+    bounds: [f32; 4],
+    uv: [f32; 4],
     color: [f32; 4],
     mode: u32,
 }
@@ -33,7 +33,7 @@ struct Atlas {
 }
 struct Batch {
     atlas: usize,
-    vertices: Range<u32>,
+    instances: Range<u32>,
 }
 
 pub struct Renderer {
@@ -42,8 +42,8 @@ pub struct Renderer {
     sampler: wgpu::Sampler,
     atlases: Vec<Atlas>,
     empty_atlas: Atlas,
-    vertex_buffer: wgpu::Buffer,
-    vertex_capacity: u64,
+    instance_buffer: wgpu::Buffer,
+    instance_capacity: u64,
     batches: Vec<Batch>,
     generation: Option<u64>,
 }
@@ -95,32 +95,32 @@ impl Renderer {
             label: Some("rustty terminal pipeline"),layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState { module: &shader,entry_point: Some("vertex_main"),
                 compilation_options: Default::default(),buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: size_of::<Vertex>() as u64,step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0=>Float32x2,1=>Float32x2,2=>Float32x4,3=>Uint32],
+                    array_stride: size_of::<Instance>() as u64,step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x4,2=>Float32x4,3=>Uint32],
                 })] },
             fragment: Some(wgpu::FragmentState { module: &shader,entry_point: Some("fragment_main"),
                 compilation_options: Default::default(),targets: &[Some(wgpu::ColorTargetState {
                     format: target_format,blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),write_mask: wgpu::ColorWrites::ALL,
                 })] }),
-            primitive: Default::default(),depth_stencil: None,multisample: Default::default(),multiview_mask: None,cache: None,
+            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleStrip, ..Default::default() },depth_stencil: None,multisample: Default::default(),multiview_mask: None,cache: None,
         });
         let empty_atlas = atlas(device, &layout, &sampler, 1);
-        let vertex_capacity = 256;
-        let vertex_buffer = vertex_buffer(device, vertex_capacity);
+        let instance_capacity = 256;
+        let instance_buffer = instance_buffer(device, instance_capacity);
         Self {
             pipeline,
             layout,
             sampler,
             atlases: Vec::new(),
             empty_atlas,
-            vertex_buffer,
-            vertex_capacity,
+            instance_buffer,
+            instance_capacity,
             batches: Vec::new(),
             generation: None,
         }
     }
 
-    /// Upload changed glyphs and replace the vertex stream. Repeated preparation
+    /// Upload changed glyphs and replace the instance stream. Repeated preparation
     /// of a retained Frame does not upload unchanged atlas regions.
     pub fn prepare(
         &mut self,
@@ -191,7 +191,7 @@ impl Renderer {
             }
             atlas.revision = update.revision;
         }
-        let mut vertices = Vec::with_capacity(frame.quads.len().saturating_mul(6));
+        let mut instances = Vec::with_capacity(frame.quads.len());
         for quad in &frame.quads {
             if quad
                 .rect
@@ -213,53 +213,45 @@ impl Renderer {
             } else {
                 quad.atlas
             };
-            let start = vertices.len() as u32;
+            let start = instances.len() as u32;
             let [x, y, w, h] = quad.rect;
-            let [u0, v0, u1, v1] = quad.uv;
             let mode = match quad.paint {
                 Paint::Solid => 0,
                 Paint::Mask => 1,
                 Paint::Color => 2,
             };
-            for (position, uv) in [
-                ([x, y], [u0, v0]),
-                ([x + w, y], [u1, v0]),
-                ([x + w, y + h], [u1, v1]),
-                ([x, y], [u0, v0]),
-                ([x + w, y + h], [u1, v1]),
-                ([x, y + h], [u0, v1]),
-            ] {
-                vertices.push(Vertex {
-                    position: [
-                        position[0] * 2.0 / frame.size[0] as f32 - 1.0,
-                        1.0 - position[1] * 2.0 / frame.size[1] as f32,
-                    ],
-                    uv,
-                    color: quad.color.0,
-                    mode,
-                });
-            }
+            instances.push(Instance {
+                bounds: [
+                    x * 2.0 / frame.size[0] as f32 - 1.0,
+                    1.0 - y * 2.0 / frame.size[1] as f32,
+                    (x + w) * 2.0 / frame.size[0] as f32 - 1.0,
+                    1.0 - (y + h) * 2.0 / frame.size[1] as f32,
+                ],
+                uv: quad.uv,
+                color: quad.color.0,
+                mode,
+            });
             if let Some(batch) = self.batches.last_mut().filter(|batch| batch.atlas == page) {
-                batch.vertices.end += 6;
+                batch.instances.end += 1;
             } else {
                 self.batches.push(Batch {
                     atlas: page,
-                    vertices: start..start + 6,
+                    instances: start..start + 1,
                 });
             }
         }
-        let bytes = bytemuck::cast_slice(&vertices);
+        let bytes = bytemuck::cast_slice(&instances);
         if bytes.len() as u64 > device.limits().max_buffer_size {
             return Err(RenderError(
                 "terminal frame exceeds GPU buffer limit".into(),
             ));
         }
-        if bytes.len() as u64 > self.vertex_capacity {
-            self.vertex_capacity = (bytes.len() as u64).next_power_of_two();
-            self.vertex_buffer = vertex_buffer(device, self.vertex_capacity);
+        if bytes.len() as u64 > self.instance_capacity {
+            self.instance_capacity = (bytes.len() as u64).next_power_of_two();
+            self.instance_buffer = instance_buffer(device, self.instance_capacity);
         }
         if !bytes.is_empty() {
-            queue.write_buffer(&self.vertex_buffer, 0, bytes);
+            queue.write_buffer(&self.instance_buffer, 0, bytes);
         }
         Ok(())
     }
@@ -270,18 +262,18 @@ impl Renderer {
             return;
         }
         pass.set_pipeline(&self.pipeline);
-        pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
         for batch in &self.batches {
             let atlas = self.atlases.get(batch.atlas).unwrap_or(&self.empty_atlas);
             pass.set_bind_group(0, &atlas.bind_group, &[]);
-            pass.draw(batch.vertices.clone(), 0..1);
+            pass.draw(0..4, batch.instances.clone());
         }
     }
 }
 
-fn vertex_buffer(device: &wgpu::Device, size: u64) -> wgpu::Buffer {
+fn instance_buffer(device: &wgpu::Device, size: u64) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("rustty terminal vertices"),
+        label: Some("rustty terminal instances"),
         size,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
@@ -411,6 +403,22 @@ mod tests {
                 }
             }
         }
+        // Returning to the first atlas must start at the next instance, even
+        // when a zero-area quad was skipped between batches.
+        frame.quads.push(Quad {
+            rect: [26.0, 48.0, 0.0, 4.0],
+            uv: [0.0; 4],
+            color: Color::rgb([255; 3]),
+            paint: Paint::Mask,
+            atlas: usize::MAX,
+        });
+        frame.quads.push(Quad {
+            rect: [26.0, 48.0, 4.0, 4.0],
+            uv: [0.75, 0.25, 0.75, 0.25],
+            color: Color::rgb([255; 3]),
+            paint: Paint::Color,
+            atlas: 0,
+        });
         renderer.prepare(&device, &queue, &frame).unwrap();
         let target = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("offscreen terminal test"),
@@ -490,6 +498,8 @@ mod tests {
         assert_eq!(&bytes[20 * 4..20 * 4 + 4], &[0, 255, 0, 255]);
         assert_eq!(&bytes[28 * 4..28 * 4 + 4], &[255, 255, 255, 255]);
         let pixel = |x: usize, y: usize| &bytes[y * 256 + x * 4..y * 256 + x * 4 + 4];
+        assert_eq!(pixel(28, 50), &[0, 255, 0, 255]);
+        assert_eq!(pixel(24, 50), &[255, 255, 255, 255]);
         let interpolated = pixel(3, 9);
         assert!((1..255).contains(&interpolated[0]), "{interpolated:?}");
         for index in 0..4 {

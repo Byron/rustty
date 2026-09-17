@@ -254,6 +254,7 @@ pub struct Config {
     pub selection_foreground: Option<TerminalColor>,
     pub selection_background: Option<TerminalColor>,
     pub background_opacity: f32,
+    pub search_unfocused_opacity: f32,
     pub unfocused_split_opacity: f32,
     pub unfocused_split_fill: Option<Rgb>,
     pub split_divider_color: Option<Rgb>,
@@ -336,6 +337,7 @@ impl Default for Config {
             selection_foreground: None,
             selection_background: None,
             background_opacity: 1.0,
+            search_unfocused_opacity: 0.8,
             unfocused_split_opacity: 0.7,
             unfocused_split_fill: None,
             split_divider_color: None,
@@ -487,6 +489,7 @@ impl Config {
                 set!(selection_background, Some(TerminalColor::parse(value)?))
             }
             "background-opacity" => set!(background_opacity, parse_opacity(value)?),
+            "search-unfocused-opacity" => set!(search_unfocused_opacity, parse_opacity(value)?),
             "unfocused-split-opacity" => set!(unfocused_split_opacity, parse_opacity(value)?),
             "unfocused-split-fill" => set!(unfocused_split_fill, Some(Rgb::parse(value)?)),
             "split-divider-color" => set!(split_divider_color, Some(Rgb::parse(value)?)),

@@ -35,6 +35,11 @@ name = "parity"
 path = "../../test/rustty/rust-oracle.rs"
 
 [[example]]
+name = "parity-runner"
+path = "../../test/rustty/parity-runner.rs"
+test = true
+
+[[example]]
 name = "allocations"
 path = "../../test/rustty/allocations.rs"
 

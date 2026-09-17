@@ -1,6 +1,10 @@
 //! Portable terminal draw data. The host owns windows, scheduling and presentation.
 
-use std::{collections::BTreeMap, fmt, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    fmt,
+    sync::{Arc, LazyLock},
+};
 
 #[cfg(target_os = "macos")]
 mod prepare;
@@ -36,7 +40,15 @@ pub struct Color(pub [f32; 4]);
 
 impl Color {
     pub fn rgb(rgb: [u8; 3]) -> Self {
-        Self([linear(rgb[0]), linear(rgb[1]), linear(rgb[2]), 1.0])
+        static LINEAR: LazyLock<[f32; 256]> =
+            LazyLock::new(|| std::array::from_fn(|value| linear(value as u8)));
+        let linear = &*LINEAR;
+        Self([
+            linear[usize::from(rgb[0])],
+            linear[usize::from(rgb[1])],
+            linear[usize::from(rgb[2])],
+            1.0,
+        ])
     }
 
     pub fn opacity(mut self, alpha: f32) -> Self {
@@ -219,6 +231,13 @@ mod tests {
     use super::*;
     #[test]
     fn srgb_colors_are_linearized_before_blending() {
+        for value in 0..=255 {
+            let expected = linear(value);
+            assert_eq!(
+                Color::rgb([value; 3]).0,
+                [expected, expected, expected, 1.0]
+            );
+        }
         let color = Color::rgb([0, 128, 255]).opacity(0.5);
         assert_eq!(color.0[0], 0.0);
         assert!((color.0[1] - 0.21586).abs() < 0.0001);

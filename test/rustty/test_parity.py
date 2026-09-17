@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
-import parity
+import parity_reference as parity
 import osc_requests
 
 

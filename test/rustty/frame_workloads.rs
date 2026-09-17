@@ -2,8 +2,9 @@
 use super::vt;
 use serde_json::{Value, json};
 
-pub const CASES: [&str; 6] = [
+pub const CASES: [&str; 7] = [
     "cached_redraw",
+    "status_update",
     "scroll_ascii",
     "scroll_styled",
     "mixed_unicode",
@@ -50,6 +51,14 @@ pub fn advance(
 ) {
     match case {
         "cached_redraw" => {}
+        "status_update" => {
+            // One changed cell in a populated pane, like an agent status tick.
+            terminal.feed(if frame % 2 == 0 {
+                b"\x1b[H-"
+            } else {
+                b"\x1b[H+"
+            });
+        }
         "resize_reflow" => terminal.resize(
             if frame % 2 == 0 {
                 size[0].saturating_sub(20).max(2)

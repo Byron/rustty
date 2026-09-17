@@ -1028,6 +1028,20 @@ impl Terminal {
                     self.generation = self.generation.wrapping_add(count as u64);
                     offset += count;
                 } else {
+                    if graphemes && codepoints[offset] == '\u{200d}' && offset + 1 < len {
+                        let count = self.screen_mut().append_zwj_pair(
+                            codepoints[offset + 1],
+                            unicode::Properties::from_bits(properties[offset + 1]).grapheme,
+                            right,
+                            &mut state,
+                        );
+                        if count != 0 {
+                            self.grapheme_state = state;
+                            self.generation = self.generation.wrapping_add(count as u64);
+                            offset += count;
+                            continue;
+                        }
+                    }
                     // Scalar printing resolves wrapping, joins and resource growth.
                     self.print_with_properties(
                         codepoints[offset],
@@ -1422,16 +1436,19 @@ impl Terminal {
 
     pub fn index(&mut self) {
         let y = self.screen().cursor.row;
+        let mut cursor_ready = false;
         if y == self.margins.bottom {
             let x = self.screen().cursor.col;
             if x >= self.margins.left && x <= self.margins.right {
-                self.index_scroll();
+                cursor_ready = self.index_scroll();
             }
         } else if y + 1 < self.rows as usize {
             self.ensure_row_cells(y + 1, self.screen().cursor.col + 1);
             self.screen_mut().cursor.row += 1;
         }
-        self.clamp_cursor();
+        if !cursor_ready {
+            self.clamp_cursor();
+        }
         self.screen_mut().cursor.pending_wrap = false;
         let screen = self.screen_mut();
         if screen.cursor.semantic != SemanticContent::Output {
@@ -1444,7 +1461,11 @@ impl Terminal {
                     .set_semantic(SemanticContent::Input);
             }
         }
-        self.changed();
+        // Public hyperlinks without an ID repeat native admission on each sync.
+        if !cursor_ready || self.screen().cursor.hyperlink.is_some() {
+            self.screen_mut().sync_cursor_resources();
+        }
+        self.generation = self.generation.wrapping_add(1);
     }
 
     fn reverse_index(&mut self) {
@@ -1459,7 +1480,8 @@ impl Terminal {
         }
     }
 
-    fn index_scroll(&mut self) {
+    /// Whether the row operation also clamped the cursor and renewed its resources.
+    fn index_scroll(&mut self) -> bool {
         let m = self.margins;
         let cols = usize::from(self.cols);
         let full = m.left == 0 && m.right == cols - 1;
@@ -1469,11 +1491,11 @@ impl Terminal {
             self.ensure_active_columns();
             let screen = self.screen_mut();
             screen.reset_row(0, screen.row(0).id, screen.cursor.style.background);
-            return;
+            return false;
         }
         if !full || m.top == 0 && (!no_history || m.bottom == 0) {
             self.scroll_up(1, true);
-            return;
+            return true;
         }
         self.ensure_active_columns();
         let screen = self.screen_mut();
@@ -1504,6 +1526,8 @@ impl Terminal {
             screen.cursor.style.background,
             usize::MAX,
         );
+        self.clamp_cursor();
+        true
     }
 
     fn scrolls_above_cursor(&self) -> bool {
@@ -1612,7 +1636,11 @@ impl Terminal {
             }
         }
         self.clamp_cursor();
-        self.changed();
+        // Full-row shifts renewed resources; retain the repeated hyperlink admission.
+        if !full || self.screen().cursor.hyperlink.is_some() {
+            self.screen_mut().sync_cursor_resources();
+        }
+        self.generation = self.generation.wrapping_add(1);
     }
 
     fn scroll_down(&mut self, count: usize) {

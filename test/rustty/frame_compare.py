@@ -9,7 +9,7 @@ import platform
 import statistics
 import subprocess
 
-CASES = ["cached_redraw", "scroll_ascii", "scroll_styled", "mixed_unicode",
+CASES = ["cached_redraw", "status_update", "scroll_ascii", "scroll_styled", "mixed_unicode",
          "alternate_repaint", "resize_reflow"]
 
 

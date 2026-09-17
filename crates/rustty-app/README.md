@@ -37,6 +37,12 @@ applies only to new terminals.
 Tabs, splits, zoom, quadrant navigation, clipboard and
 search use the configured Ghostty keybindings. Window layouts and pane directories
 are saved separately under `com.rustty.app`.
+Find opens in the upper-right corner of its pane without resizing terminal content.
+Each pane keeps its own query; clicking a terminal leaves its Find overlay open.
+Enter and Shift+Enter navigate matches, and Escape closes the focused pane's Find.
+`search-unfocused-opacity = 0.8` controls the whole overlay's opacity when its
+controls or window lose focus; values from 0 through 1 are supported and reload
+immediately. This is independent of `unfocused-split-opacity` and its dimming color.
 Holding Command underlines the openable link under the pointer, including OSC 8
 links and detected URLs. Command-click opens the highlighted target.
 
@@ -77,7 +83,7 @@ Validation:
 ```sh
 cargo test --workspace --all-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-python3 test/rustty/parity.py
+cargo +1.95.0 run --release --offline -p rustty-vt --example parity-runner
 RUSTTY_SMOKE_DIR=/tmp/rustty-native-smoke target/debug/Rustty.app/Contents/MacOS/rustty
 ```
 
@@ -85,12 +91,14 @@ The opt-in native smoke check starts disposable `/bin/sh` sessions, checks input
 four split panes, tabs, quadrant focus and zoom, URI directory reports, restoration,
 progress animation across pane focus changes, hover scrolling, file-drop targeting,
 reverse video, DEC column mode, text blinking, synchronized output, hidden-tab title
-updates and idle rendering.
+updates, independent Find overlays without terminal resizing, and idle rendering.
 The report records animation frame rate, the monitor's reported refresh rate, and
 window redraws and pane preparations during hidden-tab title updates. It writes
 `result.json`, `workspace.json` and a WGPU readback `window.png` into the specified
 directory and exits. It uses the selected display configuration but does not
 restore or overwrite the regular app workspace.
+Find checks also capture `find-focused.png` and `find-unfocused.png` to verify
+the overlays and their transparency.
 
 On a locked or headless Mac, set `RUSTTY_SMOKE_OFFSCREEN=1` for an offscreen
 Metal capture of the same host primitives. The report labels this mode; it does

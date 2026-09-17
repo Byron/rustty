@@ -2,12 +2,6 @@
 use super::{Canvas, tables};
 use tiny_skia::PathBuilder;
 
-pub(super) fn contains(cp: u32) -> bool {
-    matches!(cp,0x1fb3c..=0x1fbaf|0x1fbbd..=0x1fbbf|0x1fbce..=0x1fbef|
-        0x1cc1b..=0x1cc1e|0x1cc21..=0x1cc3f|0x1ce00..=0x1ce01|
-        0x1ce0b..=0x1ce0c|0x1ce16..=0x1ce19|0x1ce51..=0x1ceaf)
-}
-
 impl Canvas {
     pub(super) fn legacy(&mut self, cp: u32) {
         let (w, h, t) = (self.w, self.h, self.t);
