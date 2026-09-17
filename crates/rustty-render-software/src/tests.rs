@@ -378,6 +378,103 @@ fn terminal_masks_colors_srgb_filtering_and_callback_viewport_match_wgsl() {
 }
 
 #[test]
+fn terminal_masks_preserve_rasterized_coverage_at_fractional_origins() {
+    let mut renderer = Renderer::default();
+    let mut delta = TexturesDelta::default();
+    // A rasterized glyph with different adjacent coverage values and the
+    // transparent border used by the atlas. RGB must not tint the mask.
+    let mut atlas = vec![0; 4 * 4 * 4];
+    for (i, alpha) in [32, 255, 128, 64].into_iter().enumerate() {
+        let offset = ((1 + i / 2) * 4 + 1 + i % 2) * 4;
+        atlas[offset..offset + 4].copy_from_slice(&[255, 0, 255, alpha]);
+    }
+    let mut source = Frame::empty([5, 5]);
+    source.atlas_uploads.push(upload(1, 4, atlas));
+    for (fx, shift_x) in [(0.0, 0), (0.25, 0), (0.5, 0), (0.75, 1)] {
+        for (fy, shift_y) in [(0.0, 0), (0.25, 0), (0.5, 0), (0.75, 1)] {
+            let mut frame = source.clone();
+            frame.quads.push(terminal_quad(
+                Paint::Mask,
+                [1.0 + fx, 1.0 + fy, 2.0, 2.0],
+                [0.25, 0.25, 0.75, 0.75],
+                Color::rgb([0, 255, 0]).opacity(0.5),
+            ));
+            let primitive = callback(frame, 1, rect(2.0, 3.0, 5.0, 5.0), Rect::EVERYTHING);
+            let pixels = render(&mut renderer, [10, 10], 1.0, &[primitive], &mut delta);
+            let mut expected = vec![0; 10 * 10 * 4];
+            for (i, alpha) in [16, 128, 64, 32].into_iter().enumerate() {
+                let x = 3 + shift_x + i % 2;
+                let y = 4 + shift_y + i / 2;
+                expected[(y * 10 + x) * 4..(y * 10 + x + 1) * 4]
+                    .copy_from_slice(&[0, alpha, 0, alpha]);
+            }
+            for (i, (actual, expected)) in pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(expected.as_chunks::<4>().0)
+                .enumerate()
+            {
+                assert_eq!(
+                    actual,
+                    expected,
+                    "pixel ({}, {}), glyph origin phase {fx}, {fy}",
+                    i % 10,
+                    i / 10
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn terminal_block_masks_have_no_seams_at_fractional_pane_origins() {
+    let mut renderer = Renderer::default();
+    let mut delta = TexturesDelta::default();
+    for fraction in [0.0, 0.25, 0.5, 0.75] {
+        let mut frame = Frame::empty([16, 12]);
+        frame.atlas_uploads.push(AtlasUpload {
+            revision: 1,
+            page: 0,
+            page_size: 8,
+            origin: [1, 1],
+            size: [4, 4],
+            pixels: Arc::from([255; 4 * 4 * 4]),
+        });
+        frame.quads.push(Quad::solid(
+            [0.0, 0.0, 16.0, 12.0],
+            Color::rgb([255, 0, 255]),
+        ));
+        for row in 0..2 {
+            for col in 0..3 {
+                frame.quads.push(terminal_quad(
+                    Paint::Mask,
+                    [
+                        1.0 + col as f32 * 4.0 + fraction,
+                        1.0 + row as f32 * 4.0 + fraction,
+                        4.0,
+                        4.0,
+                    ],
+                    [0.125, 0.125, 0.625, 0.625],
+                    Color::rgb([0, 255, 0]),
+                ));
+            }
+        }
+        let primitive = callback(frame, 1, rect(0.0, 0.0, 16.0, 12.0), Rect::EVERYTHING);
+        let pixels = render(&mut renderer, [16, 12], 1.0, &[primitive], &mut delta);
+        for y in 3..9 {
+            for x in 3..13 {
+                assert_eq!(
+                    pixel(&pixels, 16, x, y),
+                    [0, 255, 0, 255],
+                    "block seam at ({x}, {y}), pane origin phase {fraction}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn atlas_revision_generation_and_window_lifetime_are_independent() {
     let mut renderer = Renderer::default();
     let mut delta = TexturesDelta::default();

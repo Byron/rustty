@@ -27,21 +27,13 @@ impl Texture {
         self.pixels.len() * 4
     }
 
-    /// The overwhelmingly common terminal operation only needs alpha coverage,
-    /// with the atlas's fixed clamp-to-edge, linear sampler.
+    /// Glyph masks are already rasterized for the display's pixel size. Match
+    /// the GPU's clamped textureLoad so fractional pane origins don't blur text
+    /// or blend block-glyph edges with transparent atlas padding.
     pub fn alpha(&self, uv: [f32; 2]) -> f32 {
-        let x = (uv[0] * self.size[0] as f32 - 0.5).clamp(0.0, (self.size[0] - 1) as f32);
-        let y = (uv[1] * self.size[1] as f32 - 0.5).clamp(0.0, (self.size[1] - 1) as f32);
-        let ix = x as usize;
-        let iy = y as usize;
-        let nx = (ix + 1).min(self.size[0] - 1);
-        let ny = (iy + 1).min(self.size[1] - 1);
-        let tx = x - ix as f32;
-        let ty = y - iy as f32;
-        let at = |x: usize, y: usize| self.pixels[y * self.size[0] + x][3] as f32;
-        let top = at(ix, iy) + (at(nx, iy) - at(ix, iy)) * tx;
-        let bottom = at(ix, ny) + (at(nx, ny) - at(ix, ny)) * tx;
-        (top + (bottom - top) * ty) / 255.0
+        let x = (uv[0] * self.size[0] as f32).clamp(0.0, (self.size[0] - 1) as f32) as usize;
+        let y = (uv[1] * self.size[1] as f32).clamp(0.0, (self.size[1] - 1) as f32) as usize;
+        self.pixels[y * self.size[0] + x][3] as f32 / 255.0
     }
 
     pub fn filter(&self, dx: [f32; 2], dy: [f32; 2]) -> TextureFilter {
