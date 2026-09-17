@@ -67,6 +67,18 @@ Both Windows paths retain native menus, per-pixel background opacity, and the sa
 terminal/UI drawing. Software animation follows the monitor refresh rate, with a
 60 Hz default when it is unavailable. Idle windows do not continuously repaint.
 
+Windows defaults to **Cascadia Mono at 12 pt**, falling back to Consolas and then
+the embedded JetBrains Mono if those system families are unavailable. Explicit
+`font-family` and style-specific family lists take priority. Emoji and symbol
+fallbacks remain available with any terminal font.
+
+Windows `font-size` uses points: physical pixels = points × 96/72 × display scale.
+At 100% scaling the 12 pt default is 16 pixels; at 125%, 150%, and 200% it is 20,
+24, and 32 pixels. Earlier Windows builds treated points as pixels. To preserve
+the physical size of an explicit value from those builds, multiply it by 0.75
+(for example, change `font-size = 13` to `font-size = 9.75`). Existing settings
+are not rewritten. macOS sizing and defaults are unchanged.
+
 When no Rustty command is configured, Rustty reads **only the default shell command**
 from Windows Terminal's settings and profile fragments. It preserves its arguments,
 including Git Bash's login flags. It does not import Terminal's working directory,

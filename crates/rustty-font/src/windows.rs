@@ -73,6 +73,7 @@ struct Face {
 /// One font configuration and scale. Glyph identifiers are local to this instance.
 pub struct FontSystem {
     config: FontConfig,
+    pixels: f32,
     factory: IDWriteFactory7,
     collection: IDWriteFontCollection,
     styles: Vec<Style>,
@@ -87,7 +88,9 @@ pub struct FontSystem {
 
 impl FontSystem {
     pub fn new(config: FontConfig) -> Result<Self> {
-        let pixels = config.size_points * config.scale_factor;
+        // DirectWrite uses 96-DPI DIPs, while the config uses 1/72-inch points.
+        // Apply display scaling once: our layouts and masks use physical pixels.
+        let pixels = config.size_points * (96.0 / 72.0) * config.scale_factor;
         if !pixels.is_finite() || !(1.0..=1024.0).contains(&pixels) {
             return Err(error(
                 "font size must be between 1 and 1024 physical pixels",
@@ -144,6 +147,7 @@ impl FontSystem {
         .map_err(error)?;
         let mut warnings = Vec::new();
         let mut styles = Vec::new();
+        let default_family = default_family(&collection)?;
         for i in 0..4 {
             let requested = match i {
                 1 if !config.bold_families.is_empty() => &config.bold_families,
@@ -154,6 +158,11 @@ impl FontSystem {
             let mut families = available_families(&collection, requested, &mut warnings)?;
             if families.is_empty() && i > 0 {
                 families = available_families(&collection, &config.families, &mut warnings)?;
+            }
+            // Keep explicit family lists and their glyph fallbacks intact. Use
+            // the Windows default when no requested family could be loaded.
+            if families.is_empty() && default_family != "JetBrains Mono" {
+                families.push(default_family.into());
             }
             families.extend([
                 "JetBrains Mono".into(),
@@ -196,6 +205,7 @@ impl FontSystem {
         let metrics = font_metrics(&face, pixels)?;
         Ok(Self {
             config,
+            pixels,
             factory,
             collection,
             styles,
@@ -270,7 +280,6 @@ impl FontSystem {
             style as usize
         };
         let plan = &self.styles[index];
-        let pixels = self.config.size_points * self.config.scale_factor;
         let family = wide(&plan.family);
         let factory: IDWriteFactory = self.factory.cast().map_err(error)?;
         let format = unsafe {
@@ -280,7 +289,7 @@ impl FontSystem {
                 plan.weight,
                 plan.slant,
                 plan.stretch,
-                pixels,
+                self.pixels,
                 w!("en-us"),
             )
         }
@@ -545,6 +554,21 @@ fn localized(strings: &IDWriteLocalizedStrings) -> Result<String> {
     let mut value = vec![0; count as usize + 1];
     unsafe { strings.GetString(index, &mut value) }.map_err(error)?;
     Ok(String::from_utf16_lossy(&value[..count as usize]))
+}
+
+fn default_family(collection: &IDWriteFontCollection) -> Result<&'static str> {
+    // These are optional system families, not user requests. Probe their native
+    // names without emitting missing-font warnings or scanning PostScript names.
+    for name in ["Cascadia Mono", "Consolas"] {
+        let utf16_name = wide(name);
+        let (mut index, mut exists) = (0, BOOL(0));
+        unsafe { collection.FindFamilyName(PCWSTR(utf16_name.as_ptr()), &mut index, &mut exists) }?;
+        if exists.as_bool() {
+            return Ok(name);
+        }
+    }
+    // Always present in the embedded collection, including on minimal systems.
+    Ok("JetBrains Mono")
 }
 
 fn find_family(

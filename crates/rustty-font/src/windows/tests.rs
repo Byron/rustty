@@ -1,6 +1,13 @@
 use super::*;
 use crate::{CodepointMap, FontFeature};
 
+fn bundled_config() -> FontConfig {
+    FontConfig {
+        families: vec!["JetBrains Mono".into()],
+        ..Default::default()
+    }
+}
+
 fn coverage(fonts: &mut FontSystem, text: &str, style: FontStyle) -> u64 {
     fonts
         .shape(text, style)
@@ -19,8 +26,128 @@ fn coverage(fonts: &mut FontSystem, text: &str, style: FontStyle) -> u64 {
 }
 
 #[test]
+fn point_sizes_reach_native_metrics_shaping_carets_and_rasterization() {
+    for (size_points, scale_factor, pixels) in [
+        (12.0, 1.0, 16.0),
+        (12.0, 1.25, 20.0),
+        (12.0, 1.5, 24.0),
+        (12.0, 2.0, 32.0),
+        // Explicit overrides, including the old 13-pixel size in points.
+        (9.75, 1.0, 13.0),
+        (18.0, 1.25, 30.0),
+    ] {
+        let mut fonts = FontSystem::new(FontConfig {
+            families: vec!["Consolas".into()],
+            size_points,
+            scale_factor,
+            ..Default::default()
+        })
+        .unwrap();
+        let (glyphs, carets) = fonts
+            .shape_with_carets("MM", FontStyle::Regular, &[0, 1, 2])
+            .unwrap();
+        assert_eq!(glyphs.len(), 2);
+        let face = &fonts.faces[glyphs[0].font.0];
+        // Rasterization uses the em size captured from DirectWrite's glyph run.
+        assert_eq!(face.pixels, pixels, "{size_points} pt at {scale_factor}x");
+        assert_eq!(fonts.metrics(), font_metrics(&face.native, pixels).unwrap());
+        assert_eq!(fonts.metrics().cell_width, glyphs[0].advance.ceil() as u32);
+        assert_eq!(carets[0], 0.0);
+        assert!((carets[1] - glyphs[0].advance).abs() < 0.001);
+        assert!((carets[2] - glyphs.iter().map(|g| g.advance).sum::<f32>()).abs() < 0.001);
+        let bitmap = fonts.rasterize(&glyphs[0]).unwrap();
+        assert_eq!(bitmap.format, BitmapFormat::Alpha);
+        assert!(bitmap.pixels.iter().any(|alpha| *alpha != 0));
+    }
+}
+
+#[test]
+fn native_defaults_fall_back_to_available_families_without_warnings() {
+    let fonts = FontSystem::new(FontConfig::default()).unwrap();
+    assert_eq!(fonts.config.size_points, 12.0);
+    assert!(fonts.missing_families().is_empty());
+    let selected = default_family(&fonts.collection).unwrap();
+    assert!(fonts.styles.iter().all(|style| style.family == selected));
+
+    // Build real DirectWrite collections with successively more defaults. This
+    // exercises missing optional fonts without changing the machine's fonts.
+    let builder = unsafe { fonts.factory.CreateFontSetBuilder() }.unwrap();
+    for name in ["JetBrains Mono", "Consolas", "Cascadia Mono"] {
+        let Some(family) = find_family(&fonts.collection, name).unwrap() else {
+            continue;
+        };
+        let family: IDWriteFontFamily1 = family.cast().unwrap();
+        let collection: IDWriteFontCollection = unsafe {
+            builder
+                .AddFontFaceReference2(&family.GetFontFaceReference(0).unwrap())
+                .unwrap();
+            fonts
+                .factory
+                .CreateFontCollectionFromFontSet(
+                    &builder.CreateFontSet().unwrap(),
+                    DWRITE_FONT_FAMILY_MODEL_WEIGHT_STRETCH_STYLE,
+                )
+                .unwrap()
+        }
+        .cast()
+        .unwrap();
+        let selected = default_family(&collection).unwrap();
+        assert_eq!(selected, name);
+        let mut warnings = Vec::new();
+        let style = make_style(
+            &fonts.factory,
+            &collection,
+            vec![selected.into()],
+            0,
+            &FontStyleRequest::Default,
+            &[],
+            &mut warnings,
+        )
+        .unwrap();
+        assert_eq!(style.family, name);
+        assert!(warnings.is_empty());
+    }
+}
+
+#[test]
+fn explicit_family_order_and_style_overrides_precede_native_defaults() {
+    let absent = "Rustty deliberately absent family";
+    let mut fonts = FontSystem::new(FontConfig {
+        families: vec![absent.into(), "JetBrains Mono".into(), "Consolas".into()],
+        bold_families: vec!["Consolas".into()],
+        italic_families: vec![absent.into()],
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(fonts.missing_families(), [absent]);
+    for (style, family) in [
+        (FontStyle::Regular, "JetBrains Mono"),
+        (FontStyle::Bold, "Consolas"),
+        (FontStyle::Italic, "JetBrains Mono"),
+        (FontStyle::BoldItalic, "JetBrains Mono"),
+    ] {
+        assert_eq!(fonts.styles[style as usize].family, family);
+        let glyph = fonts.shape("M", style).unwrap().remove(0);
+        assert!(
+            fonts
+                .font_name(glyph.font)
+                .unwrap()
+                .starts_with(&family.replace(' ', ""))
+        );
+        assert!(
+            fonts
+                .rasterize(&glyph)
+                .unwrap()
+                .pixels
+                .iter()
+                .any(|p| *p != 0)
+        );
+    }
+}
+
+#[test]
 fn bundled_fonts_and_native_fallback_shape_and_rasterize() {
-    let mut fonts = FontSystem::new(FontConfig::default()).unwrap();
+    let mut fonts = FontSystem::new(bundled_config()).unwrap();
     assert!(fonts.metrics().cell_width > 0);
     for style in [
         FontStyle::Regular,
@@ -53,6 +180,7 @@ fn color_emoji_is_premultiplied_rgba_and_styles_change_coverage() {
     assert!(coverage(&mut fonts, "M", FontStyle::Bold) > regular);
     let glyph = fonts.shape("🙂", FontStyle::Regular).unwrap().remove(0);
     let bitmap = fonts.rasterize(&glyph).unwrap();
+    let ppem = fonts.faces[glyph.font.0].pixels.ceil() as u32;
     assert_eq!(
         bitmap.format,
         BitmapFormat::Rgba,
@@ -63,7 +191,7 @@ fn color_emoji_is_premultiplied_rgba_and_styles_change_coverage() {
                 .native
                 .cast::<IDWriteFontFace4>()
                 .unwrap()
-                .GetGlyphImageFormats(glyph.glyph, 13, 13)
+                .GetGlyphImageFormats(glyph.glyph, ppem, ppem)
         },
         unsafe {
             fonts.faces[glyph.font.0]
@@ -102,7 +230,7 @@ fn named_styles_variations_and_disabled_styles_are_applied() {
             tag: *b"wght",
             value: 800.0,
         }],
-        ..Default::default()
+        ..bundled_config()
     })
     .unwrap();
     let thin = coverage(&mut fonts, "M", FontStyle::Regular);
@@ -243,7 +371,8 @@ fn missing_fonts_and_invalid_sizes_have_stable_fallbacks() {
         ["Rustty deliberately absent family"]
     );
     let glyph = fonts.shape("M", FontStyle::Regular).unwrap().remove(0);
-    assert!(fonts.font_name(glyph.font).unwrap().contains("JetBrains"));
+    let expected = default_family(&fonts.collection).unwrap().replace(' ', "");
+    assert!(fonts.font_name(glyph.font).unwrap().starts_with(&expected));
     let scaled = FontSystem::new(FontConfig {
         scale_factor: 2.0,
         ..Default::default()
@@ -274,7 +403,7 @@ fn terminal_display_order_and_utf8_carets_survive_native_shaping() {
 
 #[test]
 fn opentype_features_reach_native_shaping() {
-    let mut fonts = FontSystem::new(FontConfig::default()).unwrap();
+    let mut fonts = FontSystem::new(bundled_config()).unwrap();
     let default = fonts.shape("->", FontStyle::Regular).unwrap();
     let mut disabled = FontSystem::new(FontConfig {
         features: vec![
@@ -287,7 +416,7 @@ fn opentype_features_reach_native_shaping() {
                 value: 0,
             },
         ],
-        ..Default::default()
+        ..bundled_config()
     })
     .unwrap();
     let without = disabled.shape("->", FontStyle::Regular).unwrap();

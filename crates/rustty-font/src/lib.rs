@@ -64,6 +64,7 @@ pub struct FontConfig {
     pub bold_families: Vec<String>,
     pub italic_families: Vec<String>,
     pub bold_italic_families: Vec<String>,
+    /// Point size before display scaling: 12 by default on Windows, 13 on macOS.
     pub size_points: f32,
     pub scale_factor: f32,
     pub features: Vec<FontFeature>,
@@ -86,7 +87,11 @@ impl Default for FontConfig {
             bold_families: Vec::new(),
             italic_families: Vec::new(),
             bold_italic_families: Vec::new(),
-            size_points: 13.0,
+            size_points: if cfg!(target_os = "windows") {
+                12.0
+            } else {
+                13.0
+            },
             scale_factor: 1.0,
             features: Vec::new(),
             variations: Vec::new(),

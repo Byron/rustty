@@ -443,11 +443,11 @@ fn empty_malformed_and_nonfile_own_config_all_suppress_ghostty_fallback() {
     let path = home.own("");
     let loaded = home.loader.load();
     assert_eq!(loaded.family, ConfigFamily::Rustty);
-    assert_eq!(loaded.config.font_size, 13.0);
+    assert_eq!(loaded.config.font_size, Config::default().font_size);
     assert!(loaded.diagnostics.is_empty());
     home.own("font-size = NaN\nfont-family = \"unfinished\ninvalid line\nunknown-setting=SECRET\nforeground=#abc\n");
     let loaded = home.loader.load();
-    assert_eq!(loaded.config.font_size, 13.0);
+    assert_eq!(loaded.config.font_size, Config::default().font_size);
     assert_eq!(loaded.config.foreground, Rgb::new(170, 187, 204));
     assert_eq!(loaded.diagnostics.len(), 4);
     assert!(loaded.diagnostics.iter().any(|d| d.line == 1));
@@ -456,7 +456,7 @@ fn empty_malformed_and_nonfile_own_config_all_suppress_ghostty_fallback() {
     fs::create_dir(&path).unwrap();
     let loaded = home.loader.load();
     assert_eq!(loaded.family, ConfigFamily::Rustty);
-    assert_eq!(loaded.config.font_size, 13.0);
+    assert_eq!(loaded.config.font_size, Config::default().font_size);
     assert_eq!(loaded.diagnostics.len(), 1);
 }
 
@@ -621,7 +621,7 @@ fn scalar_empty_values_reset_defaults_and_repeated_lists_append_or_reset() {
     let loaded = home.loader.load();
     assert!(loaded.diagnostics.is_empty());
     assert_eq!(loaded.config.font_family, ["Third"]);
-    assert_eq!(loaded.config.font_size, 13.0);
+    assert_eq!(loaded.config.font_size, Config::default().font_size);
     assert_eq!(loaded.config.cursor_color, None);
     assert!(loaded.config.title_report);
     assert!(
@@ -851,7 +851,7 @@ fn bad_keys_actions_and_values_are_diagnostics_not_silent_overrides() {
     assert_eq!(loaded.diagnostics.len(), 8, "{:?}", loaded.diagnostics);
     assert_eq!(action(&loaded.config, new_window), Some(Action::NewWindow));
     assert_eq!(loaded.config.background_opacity, 1.0);
-    assert_eq!(loaded.config.font_size, 13.0);
+    assert_eq!(loaded.config.font_size, Config::default().font_size);
 }
 
 #[test]
@@ -916,7 +916,7 @@ fn symlink_cycles_and_invalid_utf8_are_reported_without_fallback() {
     home.local("font-size=99\n");
     let loaded = home.loader.load();
     assert_eq!(loaded.family, ConfigFamily::Rustty);
-    assert_eq!(loaded.config.font_size, 13.0);
+    assert_eq!(loaded.config.font_size, Config::default().font_size);
     assert_eq!(loaded.diagnostics.len(), 1);
 }
 

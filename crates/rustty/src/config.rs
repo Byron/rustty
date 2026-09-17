@@ -231,6 +231,7 @@ pub struct Config {
     pub font_family_italic: Vec<String>,
     pub font_family_bold_italic: Vec<String>,
     pub font_feature: Vec<String>,
+    /// Font size in points, before applying the display scale.
     pub font_size: f32,
     pub font_style: FontStyleRequest,
     pub font_style_bold: FontStyleRequest,
@@ -317,7 +318,11 @@ impl Default for Config {
             font_family_italic: vec![],
             font_family_bold_italic: vec![],
             font_feature: vec![],
-            font_size: 13.0,
+            font_size: if cfg!(target_os = "windows") {
+                12.0
+            } else {
+                13.0
+            },
             font_style: FontStyleRequest::Default,
             font_style_bold: FontStyleRequest::Default,
             font_style_italic: FontStyleRequest::Default,
