@@ -107,6 +107,14 @@ struct Page {
     image: bool,
 }
 
+#[derive(Default)]
+struct RowScratch {
+    paints: Vec<Color>,
+    text: String,
+    sources: Vec<(usize, usize)>,
+    anchors: Vec<Option<f32>>,
+}
+
 /// Builds frames on the host thread. Frame values themselves contain no native
 /// handles and can be sent to another thread or retained by a UI paint callback.
 pub struct Renderer {
@@ -193,6 +201,9 @@ impl Renderer {
             self.prepare_graphics(screen, options, omit_excess_images)?;
         frame.quads.extend(below_background);
         let mut foreground = Frame::empty(options.size);
+        // ponytail: reuse scratch within the frame; retain it across frames
+        // if these remaining allocations become measurable.
+        let mut scratch = RowScratch::default();
         let viewport_start = screen.history_len().saturating_sub(screen.viewport_offset);
         let selection = screen.selection.and_then(|selection| {
             let start = screen
@@ -215,11 +226,25 @@ impl Renderer {
                     && options.preedit.as_ref().is_some_and(|p| !p.text.is_empty()))
                 && screen.viewport_offset == 0
                 && screen.cursor.row == row_index;
-            let mut paints = Vec::with_capacity(row.cells().len());
             let visible_cols = ((options.size[0] as f32 - options.padding[0]).max(0.0)
                 / metrics.cell_width as f32)
                 .ceil() as usize;
-            for (col, cell) in row.cells().iter().take(visible_cols).enumerate() {
+            let visible_cols = visible_cols.min(row.cells().len());
+            // Raw-zero tails have no text, background, blink or decorations.
+            let text_cols = row.cells()[..visible_cols]
+                .iter()
+                .rposition(|cell| cell.bits() != 0)
+                .map_or(0, |col| col + 1);
+            // ponytail: keep full rows for cursor/selection painting; bound
+            // their ranges if those redraws become a bottleneck.
+            let paint_cols = if cursor || selection.is_some() {
+                visible_cols
+            } else {
+                text_cols
+            };
+            scratch.paints.clear();
+            scratch.paints.reserve(paint_cols);
+            for (col, cell) in row.cells().iter().take(paint_cols).enumerate() {
                 frame.blinking_text |= row.style(col).blink
                     && !row.style(col).invisible
                     && cell.width() != 0
@@ -268,10 +293,12 @@ impl Renderer {
                     ));
                 }
                 let fg = Color::rgb(fg).opacity(if row.style(col).faint { 0.5 } else { 1.0 });
-                paints.push(fg);
+                scratch.paints.push(fg);
             }
-            self.row_text(row, &paints, top, options, &mut foreground)?;
-            for (col, cell) in row.cells().iter().take(visible_cols).enumerate() {
+            scratch.paints.truncate(text_cols);
+            self.row_text(row, &mut scratch, top, options, &mut foreground)?;
+            let paints = &scratch.paints;
+            for (col, cell) in row.cells().iter().take(text_cols).enumerate() {
                 if cell.width() == 0 {
                     continue;
                 }
@@ -331,12 +358,18 @@ impl Renderer {
     fn row_text(
         &mut self,
         row: RowView<'_>,
-        paints: &[Color],
+        scratch: &mut RowScratch,
         top: f32,
         options: &RenderOptions,
         frame: &mut Frame,
     ) -> Result<(), RenderError> {
         let metrics = self.metrics();
+        let RowScratch {
+            paints,
+            text,
+            sources,
+            anchors,
+        } = scratch;
         let mut col = 0;
         while col < paints.len() {
             let cell = &row.cells()[col];
@@ -367,8 +400,8 @@ impl Renderer {
                 col += 1;
                 continue;
             }
-            let mut text = String::new();
-            let mut sources = Vec::new();
+            text.clear();
+            sources.clear();
             while col < paints.len()
                 && row.style(col) == style
                 && paints[col] == color
@@ -393,29 +426,30 @@ impl Renderer {
                 (true, true) => FontStyle::BoldItalic,
             };
             let glyphs = self.shape(text, font_style)?;
-            let column = |g: &ShapedGlyph| {
-                sources[sources
+            let source = |g: &ShapedGlyph| {
+                sources
                     .partition_point(|(byte, _)| *byte <= g.cluster)
-                    .saturating_sub(1)]
-                .1
+                    .saturating_sub(1)
             };
-            let mut anchors = HashMap::new();
+            // Source indices are dense within this run, including wide cells.
+            anchors.clear();
+            anchors.resize(sources.len(), None);
             for glyph in glyphs.iter() {
                 if glyph.advance > 0.0 {
-                    anchors.entry(column(glyph)).or_insert(glyph.x);
+                    anchors[source(glyph)].get_or_insert(glyph.x);
                 }
             }
             for glyph in glyphs.iter() {
-                anchors.entry(column(glyph)).or_insert(glyph.x);
-            }
-            for glyph in glyphs.iter() {
+                let source = source(glyph);
+                // Mark-only clusters anchor at their first glyph, even an empty bitmap.
+                let anchor = *anchors[source].get_or_insert(glyph.x);
                 let cached = self.glyph(glyph)?;
                 if cached.size.contains(&0) {
                     continue;
                 }
-                let col = column(glyph);
+                let col = sources[source].1;
                 let x = options.padding[0] + col as f32 * metrics.cell_width as f32 + glyph.x
-                    - anchors[&col]
+                    - anchor
                     + cached.bearing[0] as f32;
                 let y = top + metrics.baseline - glyph.y - cached.bearing[1] as f32;
                 frame.quads.push(Quad {
@@ -434,12 +468,12 @@ impl Renderer {
         Ok(())
     }
 
-    fn shape(&mut self, text: String, style: FontStyle) -> Result<Arc<[ShapedGlyph]>, FontError> {
-        if let Some(glyphs) = self.shaped[style as usize].get(text.as_str()) {
+    fn shape(&mut self, text: &str, style: FontStyle) -> Result<Arc<[ShapedGlyph]>, FontError> {
+        if let Some(glyphs) = self.shaped[style as usize].get(text) {
             return Ok(glyphs.clone());
         }
-        let glyphs: Arc<[ShapedGlyph]> = self.fonts.shape(&text, style)?.into();
-        let bytes = text.capacity()
+        let glyphs: Arc<[ShapedGlyph]> = self.fonts.shape(text, style)?.into();
+        let bytes = text.len()
             + std::mem::size_of_val(&*glyphs)
             + std::mem::size_of::<(String, Arc<[ShapedGlyph]>)>();
         if bytes <= MAX_SHAPED_BYTES {
@@ -452,7 +486,7 @@ impl Renderer {
                 self.shaped_bytes = 0;
             }
             self.shaped_bytes += bytes;
-            self.shaped[style as usize].insert(text, glyphs.clone());
+            self.shaped[style as usize].insert(text.to_owned(), glyphs.clone());
         }
         Ok(glyphs)
     }
@@ -706,6 +740,201 @@ mod tests {
     use rustty_vt::{GridPoint, Selection, Terminal};
 
     #[test]
+    fn blank_tail_paint_matches_explicit_spaces() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        for (cursor_visible, focused, blink_visible) in [
+            (false, true, true),
+            (true, true, true),
+            (true, false, true),
+            (true, true, false),
+        ] {
+            for selected in [false, true] {
+                for colored in [false, true] {
+                    let options = RenderOptions {
+                        cursor_visible,
+                        focused,
+                        blink_visible,
+                        ..RenderOptions::default()
+                    };
+                    let frames = [false, true].map(|padded| {
+                        let mut terminal = Terminal::new(8, 2, 0);
+                        terminal.feed(if padded {
+                            b"A       \r\n        \x1b[H"
+                        } else {
+                            b"A"
+                        });
+                        if colored {
+                            // Erased colored cells have no codepoint, but
+                            // their background must remain visible.
+                            terminal.feed(b"\x1b[2;5H\x1b[44m\x1b[X\x1b[0m");
+                        }
+                        terminal.feed(b"\x1b[2;8H");
+                        terminal.screen_mut().cursor.blink = true;
+                        if selected {
+                            terminal.screen_mut().selection = Some(Selection {
+                                start: GridPoint {
+                                    row: terminal.screen().row(0).id,
+                                    col: 6,
+                                },
+                                end: GridPoint {
+                                    row: terminal.screen().row(1).id,
+                                    col: 7,
+                                },
+                                rectangular: false,
+                            });
+                        }
+                        renderer.prepare(terminal.screen(), &options).unwrap()
+                    });
+                    assert_eq!(
+                        frames[0].quads, frames[1].quads,
+                        "cursor={cursor_visible} focused={focused} blink={blink_visible} selection={selected} background={colored}"
+                    );
+                    assert_eq!(frames[0].blinking_text, frames[1].blinking_text);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn empty_tails_skip_shaping_without_moving_unicode_cursor_or_selection() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        for text in [
+            "ffi",
+            "e\u{301}界",
+            "العربية",
+            "עברית 123",
+            "abc العربية 123",
+            "👩🏽‍💻",
+        ] {
+            renderer.clear_cache();
+            let mut terminal = Terminal::new(40, 2, 0);
+            terminal.feed(format!("\x1b[?2027h{text}").as_bytes());
+            let col = terminal.screen().cursor.col;
+            terminal.screen_mut().selection = Some(Selection {
+                start: GridPoint {
+                    row: terminal.screen().row(0).id,
+                    col: 24,
+                },
+                end: GridPoint {
+                    row: terminal.screen().row(1).id,
+                    col: 16,
+                },
+                rectangular: false,
+            });
+            let options = RenderOptions::default();
+            let sparse = renderer.prepare(terminal.screen(), &options).unwrap();
+            assert!(
+                renderer
+                    .shaped
+                    .iter()
+                    .flat_map(HashMap::keys)
+                    .all(|text| !text.trim().is_empty()),
+                "empty row tails were shaped for {text:?}"
+            );
+            // Explicit spaces used to share the same shaping path as empty
+            // cells. They must still produce identical glyph positions.
+            terminal.feed(b"\x1b7");
+            terminal.feed(" ".repeat(40 - col).as_bytes());
+            terminal.feed(b"\x1b[2;1H");
+            terminal.feed(" ".repeat(40).as_bytes());
+            terminal.feed(b"\x1b8");
+            let padded = renderer.prepare(terminal.screen(), &options).unwrap();
+            assert_eq!(sparse.quads, padded.quads, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn glyph_anchors_preserve_marks_wide_cells_and_unordered_clusters() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let glyph = renderer.fonts.shape("a", FontStyle::Regular).unwrap()[0].clone();
+        let bearing = renderer.glyph(&glyph).unwrap().bearing[0] as f32;
+        // The first cluster-3 glyph is a mark before its advancing base.
+        // Cluster 6 has only marks and anchors at its first glyph, even if empty.
+        let mut glyphs: Vec<_> = [
+            (3, 20.0, 0.0),
+            (0, 80.0, 8.0),
+            (3, 24.0, 8.0),
+            (3, 27.0, 0.0),
+            (6, 11.0, 0.0),
+            (6, 12.0, 0.0),
+        ]
+        .into_iter()
+        .map(|(cluster, x, advance)| ShapedGlyph {
+            cluster,
+            x,
+            advance,
+            ..glyph.clone()
+        })
+        .collect();
+        let empty = renderer.fonts.shape(" ", FontStyle::Regular).unwrap()[0].clone();
+        assert!(renderer.glyph(&empty).unwrap().size.contains(&0));
+        glyphs.insert(
+            4,
+            ShapedGlyph {
+                cluster: 6,
+                x: 9.0,
+                advance: 0.0,
+                ..empty
+            },
+        );
+        renderer.shaped[FontStyle::Regular as usize].insert("a\u{301}界b".into(), glyphs.into());
+        let mut terminal = Terminal::new(4, 1, 0);
+        terminal.feed("\x1b[?2027ha\u{301}界b".as_bytes());
+        let options = RenderOptions::default();
+        let mut scratch = RowScratch {
+            paints: vec![Color::rgb([255; 3]); 4],
+            ..RowScratch::default()
+        };
+        let mut frame = Frame::empty(options.size);
+        renderer
+            .row_text(
+                terminal.screen().row(0),
+                &mut scratch,
+                0.0,
+                &options,
+                &mut frame,
+            )
+            .unwrap();
+        let width = renderer.metrics().cell_width as f32;
+        let positions: Vec<_> = frame
+            .quads
+            .iter()
+            .map(|q| q.rect[0] - options.padding[0] - bearing)
+            .collect();
+        assert_eq!(
+            positions,
+            [
+                width - 4.0,
+                0.0,
+                width,
+                width + 3.0,
+                3.0 * width + 2.0,
+                3.0 * width + 3.0
+            ]
+        );
+        // Reused scratch must not retain text, source offsets or glyph anchors.
+        // Shifting native run positions leaves their cell-relative geometry fixed.
+        for glyph in Arc::make_mut(
+            renderer.shaped[FontStyle::Regular as usize]
+                .get_mut("a\u{301}界b")
+                .unwrap(),
+        ) {
+            glyph.x += 100.0;
+        }
+        let mut repeated = Frame::empty(options.size);
+        renderer
+            .row_text(
+                terminal.screen().row(0),
+                &mut scratch,
+                0.0,
+                &options,
+                &mut repeated,
+            )
+            .unwrap();
+        assert_eq!(frame.quads, repeated.quads);
+    }
+
+    #[test]
     fn blink_metadata_matches_visible_text_and_decorations() {
         let mut renderer = Renderer::new(FontConfig::default()).unwrap();
         let metrics = renderer.metrics();
@@ -801,12 +1030,12 @@ mod tests {
             renderer.prepare(terminal.screen(), &options).unwrap().quads,
             updated.quads
         );
-        let regular = renderer.shape("style".into(), FontStyle::Regular).unwrap();
-        let bold = renderer.shape("style".into(), FontStyle::Bold).unwrap();
+        let regular = renderer.shape("style", FontStyle::Regular).unwrap();
+        let bold = renderer.shape("style", FontStyle::Bold).unwrap();
         assert!(!Arc::ptr_eq(&regular, &bold));
         // Exercise eviction without allocating a huge CoreText run in a unit test.
         renderer.shaped_bytes = MAX_SHAPED_BYTES;
-        renderer.shape("new".into(), FontStyle::Regular).unwrap();
+        renderer.shape("new", FontStyle::Regular).unwrap();
         assert!(renderer.shaped_bytes < MAX_SHAPED_BYTES);
         assert_eq!(renderer.shaped.iter().map(HashMap::len).sum::<usize>(), 1);
     }

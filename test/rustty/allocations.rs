@@ -160,7 +160,12 @@ fn main() {
         "\x1b[31;44;1m\x1b]8;id=probe;https://example.org\x07{}\x1b]8;;\x07\x1b[0m\r\n",
         "a\u{301}界".repeat(64)
     );
-    for (corpus, input) in [("ascii", line), ("linked_graphemes", linked)] {
+    let zwj = format!("{}\r\n", "👩\u{200d}💻👨\u{200d}🚀".repeat(48));
+    for (corpus, input) in [
+        ("ascii", line),
+        ("linked_graphemes", linked),
+        ("zwj_graphemes", zwj),
+    ] {
         for (policy, limit) in [
             ("unlimited", None),
             ("zero", Some(0)),

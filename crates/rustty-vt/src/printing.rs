@@ -105,6 +105,8 @@ mod scalar {
     not(feature = "scalar-kernels")
 ))]
 mod simd {
+    // Let LLVM choose the byte-widening group instead of fixing two cells.
+    pub(crate) use super::scalar::store_ascii;
     use super::*;
     use bytemuck::cast;
     use core::arch::aarch64::*;
@@ -268,18 +270,6 @@ mod simd {
             }
         }
         chunks.len() * 2 + scalar::destination_wide(tail, expected)
-    }
-
-    #[inline]
-    pub(crate) fn store_ascii(cells: &mut [Cell], bytes: &[u8], template: Cell) {
-        assert_eq!(cells.len(), bytes.len());
-        let packed = u64x2::splat(template.bits());
-        let (chunks, tail) = cells.as_chunks_mut::<2>();
-        let (input, rest) = bytes.as_chunks::<2>();
-        for (out, cp) in chunks.iter_mut().zip(input) {
-            *out = cast(packed | (u64x2::new(cp.map(u64::from)) << 2u32));
-        }
-        scalar::store_ascii(tail, rest, template);
     }
 
     #[inline]

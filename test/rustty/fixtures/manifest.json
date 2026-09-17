@@ -1,0 +1,134 @@
+{
+  "corpus": {
+    "bytes": 303931,
+    "cases": 3295,
+    "commit": "4ed9012962c17c26d3fe59c016a1591b0ab6b0fe",
+    "comparisons": 9885,
+    "oracles": {
+      "rust": "b0230a0771e6baec7fcc46509a02d05c20e0b1215f6c581fbd280ca516d51579",
+      "zig": "984354b61fd2e211ae017ee574a8c107017b852ac2fb6526307796b4351bc1ec"
+    },
+    "sha256": "c482df8248e604a0b59afa0b24d19317eabf2e61c7126ea796f39fd1c6c3cad0"
+  },
+  "grid": {
+    "bytes": 112727,
+    "cases": 2588,
+    "commit": "4ed9012962c17c26d3fe59c016a1591b0ab6b0fe",
+    "comparisons": 7740,
+    "oracles": {
+      "rust": "b0230a0771e6baec7fcc46509a02d05c20e0b1215f6c581fbd280ca516d51579",
+      "zig": "984354b61fd2e211ae017ee574a8c107017b852ac2fb6526307796b4351bc1ec"
+    },
+    "sha256": "6edc140be285efd7bbca5f24218e297118cd1c89896b69f063d6849a9ccdd3b6"
+  },
+  "input": {
+    "bytes": 785702,
+    "cases": 3300,
+    "commit": "4ed9012962c17c26d3fe59c016a1591b0ab6b0fe",
+    "comparisons": 9900,
+    "oracles": {
+      "rust": "b0230a0771e6baec7fcc46509a02d05c20e0b1215f6c581fbd280ca516d51579",
+      "zig": "984354b61fd2e211ae017ee574a8c107017b852ac2fb6526307796b4351bc1ec"
+    },
+    "sha256": "41bc4ce1d34a0477864b86dbd83de7da2d1f3cd560d4af17cc410739708ce9a3"
+  },
+  "osc": {
+    "bytes": 3439,
+    "cases": 216,
+    "commit": "4ed9012962c17c26d3fe59c016a1591b0ab6b0fe",
+    "comparisons": 648,
+    "oracles": {
+      "rust": "b0230a0771e6baec7fcc46509a02d05c20e0b1215f6c581fbd280ca516d51579",
+      "zig": "984354b61fd2e211ae017ee574a8c107017b852ac2fb6526307796b4351bc1ec"
+    },
+    "sha256": "9871ef1b5c10f863c3dafb18ad441a70e54116b542a9a63750aebcfcf24c768b"
+  },
+  "page-layout": {
+    "bytes": 5206,
+    "cases": 337,
+    "commit": "4ed9012962c17c26d3fe59c016a1591b0ab6b0fe",
+    "comparisons": 337,
+    "oracles": {
+      "rust": "b0230a0771e6baec7fcc46509a02d05c20e0b1215f6c581fbd280ca516d51579",
+      "zig": "984354b61fd2e211ae017ee574a8c107017b852ac2fb6526307796b4351bc1ec"
+    },
+    "sha256": "84d2ea9acfb06c835c6c5b1ad33ee7c509321e7d9587be21c7d42869531223b1"
+  },
+  "pages": {
+    "bytes": 173505,
+    "cases": 687,
+    "commit": "4ed9012962c17c26d3fe59c016a1591b0ab6b0fe",
+    "comparisons": 2061,
+    "oracles": {
+      "rust": "b0230a0771e6baec7fcc46509a02d05c20e0b1215f6c581fbd280ca516d51579",
+      "zig": "984354b61fd2e211ae017ee574a8c107017b852ac2fb6526307796b4351bc1ec"
+    },
+    "sha256": "85aa3aa742f3eb6d9e50f3b26af9ee680f451aefe7ffe56e700e64484d968d35"
+  },
+  "parser": {
+    "bytes": 614097,
+    "cases": 676,
+    "commit": "4ed9012962c17c26d3fe59c016a1591b0ab6b0fe",
+    "comparisons": 2028,
+    "oracles": {
+      "rust": "b0230a0771e6baec7fcc46509a02d05c20e0b1215f6c581fbd280ca516d51579",
+      "zig": "984354b61fd2e211ae017ee574a8c107017b852ac2fb6526307796b4351bc1ec"
+    },
+    "sha256": "f3f36f9a128d536e8ac8f37b6bbee1c633304159fe6ab7667b6aef296525aea8"
+  },
+  "protocols": {
+    "bytes": 512042,
+    "cases": 8095,
+    "commit": "4ed9012962c17c26d3fe59c016a1591b0ab6b0fe",
+    "comparisons": 24225,
+    "oracles": {
+      "rust": "b0230a0771e6baec7fcc46509a02d05c20e0b1215f6c581fbd280ca516d51579",
+      "zig": "984354b61fd2e211ae017ee574a8c107017b852ac2fb6526307796b4351bc1ec"
+    },
+    "sha256": "e764a60c635875b19007854dd696c4079a1753ffabc69d0877dfdac580e31f02"
+  },
+  "snapshot-wire": {
+    "bytes": 89840,
+    "cases": 2183,
+    "commit": "4ed9012962c17c26d3fe59c016a1591b0ab6b0fe",
+    "comparisons": 3703,
+    "oracles": {
+      "rust": "b0230a0771e6baec7fcc46509a02d05c20e0b1215f6c581fbd280ca516d51579",
+      "zig": "984354b61fd2e211ae017ee574a8c107017b852ac2fb6526307796b4351bc1ec"
+    },
+    "sha256": "1de5c7f5783936ead2eae251cd548570df2a5ae2e8b897c69408b85069db877f"
+  },
+  "snapshots": {
+    "bytes": 4092,
+    "cases": 112,
+    "commit": "4ed9012962c17c26d3fe59c016a1591b0ab6b0fe",
+    "comparisons": 336,
+    "oracles": {
+      "rust": "b0230a0771e6baec7fcc46509a02d05c20e0b1215f6c581fbd280ca516d51579",
+      "zig": "984354b61fd2e211ae017ee574a8c107017b852ac2fb6526307796b4351bc1ec"
+    },
+    "sha256": "f8385ff636a3646c0ef174223dc60011d2dbaf9ea5ac832db0f21cb02ba72c77"
+  },
+  "thorough": {
+    "bytes": 13385,
+    "cases": 79,
+    "commit": "4ed9012962c17c26d3fe59c016a1591b0ab6b0fe",
+    "comparisons": 237,
+    "oracles": {
+      "rust": "b0230a0771e6baec7fcc46509a02d05c20e0b1215f6c581fbd280ca516d51579",
+      "zig": "984354b61fd2e211ae017ee574a8c107017b852ac2fb6526307796b4351bc1ec"
+    },
+    "sha256": "1b9de3e56f522ee11e1e131f8acd701e6b5a0749fe642382dd50a352cfb62f6e"
+  },
+  "unicode": {
+    "bytes": 2360821,
+    "cases": 276,
+    "commit": "4ed9012962c17c26d3fe59c016a1591b0ab6b0fe",
+    "comparisons": 276,
+    "oracles": {
+      "rust": "b0230a0771e6baec7fcc46509a02d05c20e0b1215f6c581fbd280ca516d51579",
+      "zig": "984354b61fd2e211ae017ee574a8c107017b852ac2fb6526307796b4351bc1ec"
+    },
+    "sha256": "35b073dcac945a779b3c45a16b7e5df8422e99e802bc859852a391e32393c669"
+  }
+}
