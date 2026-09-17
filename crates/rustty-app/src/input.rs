@@ -116,6 +116,45 @@ pub fn key_is_consumed(
     }
 }
 
+/// Find keeps application navigation available while text-editing shortcuts stay in egui.
+pub fn search_shortcut(action: &config::Action) -> bool {
+    use config::Action::*;
+    matches!(
+        action,
+        StartSearch
+            | EndSearch
+            | SearchSelection
+            | NavigateSearch { .. }
+            | NewWindow
+            | NewTab
+            | NewSplit(_)
+            | CloseSurface
+            | CloseTab
+            | CloseWindow
+            | CloseAllWindows
+            | Quit
+            | GotoSplit(_)
+            | ResizeSplit { .. }
+            | EqualizeSplits
+            | ToggleSplitZoom
+            | ToggleQuadrantZoom
+            | ToggleQuickTerminal
+            | ToggleFullscreen
+            | ToggleCommandPalette
+            | NextTab
+            | PreviousTab
+            | LastTab
+            | GotoTab(_)
+            | MoveTab(_)
+            | ReloadConfig
+            | OpenConfig
+            | OpenLayout
+            | IncreaseFontSize(_)
+            | DecreaseFontSize(_)
+            | ResetFontSize
+    )
+}
+
 /// Native menu shortcuts bypass keyboard events, so feed the owning UI explicitly.
 pub fn edit_menu_action(
     raw: &mut egui::RawInput,
@@ -787,10 +826,39 @@ mod tests {
         TabTitle,
     }
 
+    #[test]
+    fn find_shortcuts_keep_navigation_available_without_stealing_editor_commands() {
+        let config = config::Config::default();
+        for trigger in [
+            "super+f",
+            "super+g",
+            "super+shift+g",
+            "escape",
+            "super+alt+arrow_left",
+            "ctrl+tab",
+        ] {
+            let binding = config
+                .binding(&config::KeyTrigger::parse(trigger).unwrap())
+                .unwrap();
+            assert!(binding.actions.iter().all(search_shortcut), "{trigger}");
+        }
+        for trigger in ["super+a", "super+c", "super+v", "super+z"] {
+            let binding = config
+                .binding(&config::KeyTrigger::parse(trigger).unwrap())
+                .unwrap();
+            assert!(!binding.actions.iter().all(search_shortcut), "{trigger}");
+        }
+        assert!(!search_shortcut(&config::Action::Text(
+            b"terminal input".to_vec()
+        )));
+    }
+
     #[derive(Default)]
     struct InputFrame {
         context: egui::Context,
         text: String,
+        search: crate::search::Search,
+        search_focus_pending: bool,
         popup_open: bool,
         time: f64,
     }
@@ -818,6 +886,10 @@ mod tests {
                 ..Default::default()
             };
             let input_panel = matches!(editor, Editor::Search | Editor::Palette);
+            if editor == Editor::Search {
+                self.search.query = std::mem::take(&mut self.text);
+                self.search_focus_pending |= focus_editor;
+            }
             filter_egui_events(&mut raw, input_panel || self.popup_open);
             let mut output = self.context.run_ui(raw, |root| {
                 egui::Panel::top("tabs").show(root, |ui| {
@@ -835,9 +907,14 @@ mod tests {
                 });
                 self.popup_open = egui::Popup::is_any_open(&self.context);
                 if editor == Editor::Search {
-                    egui::Panel::bottom("search").show(root, |ui| {
-                        text_edit(ui, &mut self.text, egui::Id::new("search"), focus_editor);
-                    });
+                    self.search.show(
+                        root,
+                        1,
+                        egui::Rect::from_min_size(egui::pos2(0.0, 40.0), egui::vec2(600.0, 360.0)),
+                        true,
+                        &mut self.search_focus_pending,
+                        &config::Config::default(),
+                    );
                 }
                 egui::CentralPanel::default().show(root, |ui| {
                     let response = ui.interact(
@@ -858,6 +935,13 @@ mod tests {
                 }
             });
             output.textures_delta.clear();
+            if editor == Editor::Search {
+                self.text = std::mem::take(&mut self.search.query);
+                // Complete the Area's initial sizing frame before inspecting its editor output.
+                if self.search_focus_pending {
+                    return self.draw(editor, false, vec![]);
+                }
+            }
             output.platform_output
         }
     }

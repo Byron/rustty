@@ -70,7 +70,13 @@ impl Smoke {
         };
         let directory = PathBuf::from(directory);
         fs::create_dir_all(&directory)?;
-        for name in ["window.png", "result.json", "timing.json"] {
+        for name in [
+            "window.png",
+            "find-focused.png",
+            "find-unfocused.png",
+            "result.json",
+            "timing.json",
+        ] {
             match fs::remove_file(directory.join(name)) {
                 Ok(()) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -364,6 +370,7 @@ impl Smoke {
                 if capture_path.is_file() {
                     check_pointer_targets(app, host)?;
                     check_terminal_frames(app, event_loop, host)?;
+                    check_find(app, event_loop, host, &self.directory)?;
                     self.idle_frames = host.frames;
                     self.progress_pane = Some(pane);
                     self.progress_started = Instant::now();
@@ -406,7 +413,7 @@ impl Smoke {
                     .current_monitor()
                     .and_then(|monitor| monitor.refresh_rate_millihertz())
                     .map(|rate| f64::from(rate) / 1000.0);
-                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","reverse-video","dec-column-mode","text-blink","synchronized-output","hidden-tab-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
+                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
                 fs::write(
                     self.directory.join("result.json"),
                     serde_json::to_vec_pretty(&report)?,
@@ -930,6 +937,259 @@ fn check_terminal_frames(
     result?;
     eprintln!(
         "Native smoke: terminal rendering and synchronized output passed; progress reused terminal content, stopped while occluded, and refreshed after reveal"
+    );
+    Ok(())
+}
+
+fn check_find(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    host: &mut Host,
+    directory: &Path,
+) -> Result<()> {
+    let original_focus = app.focused(host.id).ok_or("no Find test pane")?;
+    let other = *host
+        .rects
+        .keys()
+        .find(|&&id| id != original_focus)
+        .ok_or("no second Find test pane")?;
+    let focused = host.focused;
+    let mouse = host.mouse;
+    let pointer_in_window = host.egui.is_pointer_in_window();
+    // egui-winit queries AppKit's actual focus on macOS, so simulate both input
+    // states directly when capturing an unfocused window without switching apps.
+    let set_focus = |host: &mut Host, focused| {
+        host.focused = focused;
+        let raw = host.egui.egui_input_mut();
+        raw.focused = focused;
+        raw.events.push(egui::Event::WindowFocused(focused));
+    };
+    let mut saved = Vec::new();
+    for id in [original_focus, other] {
+        let pane = app.panes.get_mut(&id).unwrap();
+        let mut terminal = pane.session.terminal()?;
+        let mut fixture = vt::Terminal::new(terminal.cols, terminal.rows, 64);
+        fixture.set_pixel_size(terminal.width_px, terminal.height_px);
+        fixture.screen_mut().cursor.blink = false;
+        fixture.feed(
+            "Find overlay geometry\r\n"
+                .repeat(usize::from(terminal.rows) + 6)
+                .as_bytes(),
+        );
+        fixture.feed(b"alpha beta\r\nsecond alpha\r\nthird alpha beta");
+        saved.push((
+            id,
+            std::mem::replace(&mut *terminal, fixture),
+            pane.search.take(),
+            std::mem::take(&mut pane.input),
+            std::mem::take(&mut pane.input_bytes),
+        ));
+        pane.input.push_back(Vec::new());
+    }
+    let result = (|| -> Result<()> {
+        set_focus(host, true);
+        app.draw(event_loop, host)?;
+        let rects = host.rects.clone();
+        let sizes = |app: &App| -> Result<Vec<_>> {
+            rects
+                .keys()
+                .map(|id| {
+                    let terminal = app.panes[id].session.terminal()?;
+                    Ok((
+                        *id,
+                        terminal.cols,
+                        terminal.rows,
+                        terminal.width_px,
+                        terminal.height_px,
+                        terminal.query_defaults.size,
+                    ))
+                })
+                .collect()
+        };
+        let original_sizes = sizes(app)?;
+        for (id, query) in [(original_focus, "alpha"), (other, "beta")] {
+            app.focus_pane(host.id, id);
+            app.action(event_loop, host, Action::StartSearch, false);
+            app.draw(event_loop, host)?;
+            app.draw(event_loop, host)?;
+            host.egui
+                .egui_input_mut()
+                .events
+                .push(egui::Event::Text(query.into()));
+            app.draw(event_loop, host)?;
+            if app.panes[&id]
+                .search
+                .as_ref()
+                .map(|search| search.query.as_str())
+                != Some(query)
+                || app.panes[&id]
+                    .session
+                    .terminal()?
+                    .screen()
+                    .selection_text()
+                    .as_deref()
+                    != Some(query)
+            {
+                return Err(format!("Find did not search pane {id}: query={:?}, selection={:?}, editor={:?}, pending={}, modal={}",
+                    app.panes[&id].search.as_ref().map(|search| &search.query),
+                    app.panes[&id].session.terminal()?.screen().selection_text(),
+                    host.search_focus, host.focus_text_input, host.modal_input()).into());
+            }
+            if host.rects != rects || sizes(app)? != original_sizes {
+                return Err("Find changed pane geometry or terminal/PTY dimensions".into());
+            }
+        }
+        app.action(event_loop, host, Action::StartSearch, false);
+        app.draw(event_loop, host)?;
+        if app.panes[&original_focus].search.as_ref().unwrap().query != "alpha"
+            || app.panes[&other].search.as_ref().unwrap().query != "beta"
+            || host.search_rects.len() != 2
+        {
+            return Err(
+                "Find queries were shared, reset on reopening, or not drawn per pane".into(),
+            );
+        }
+        for window_focused in [true, false] {
+            set_focus(host, window_focused);
+            host.capture = true;
+            app.draw(event_loop, host)?;
+            app.painter
+                .render_state()
+                .ok_or("missing capture device")?
+                .device
+                .poll(wgpu::PollType::wait_indefinitely())?;
+            let mut events = Vec::new();
+            app.painter.handle_screenshots(&mut events);
+            let image = events
+                .into_iter()
+                .find_map(|event| match event {
+                    egui::Event::Screenshot { image, .. } => Some(image),
+                    _ => None,
+                })
+                .ok_or("missing Find screenshot")?;
+            let path = directory.join(if window_focused {
+                "find-focused.png"
+            } else {
+                "find-unfocused.png"
+            });
+            let mut encoder = png::Encoder::new(
+                fs::File::create(path)?,
+                image.width() as u32,
+                image.height() as u32,
+            );
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder.write_header()?.write_image_data(
+                &image
+                    .pixels
+                    .iter()
+                    .flat_map(|color| color.to_array())
+                    .collect::<Vec<_>>(),
+            )?;
+        }
+        set_focus(host, true);
+        host.mouse = host.search_rects[&original_focus].center();
+        let _ = host.egui.on_window_event(
+            &host.window,
+            &WindowEvent::CursorMoved {
+                device_id: winit::event::DeviceId::dummy(),
+                position: LogicalPosition::new(host.mouse.x, host.mouse.y)
+                    .to_physical(host.window.scale_factor()),
+            },
+        );
+        app.mouse(host, vt::MouseAction::Press, Some(vt::MouseButton::Left));
+        if app.focused(host.id) != Some(original_focus) || host.search_focus != Some(original_focus)
+        {
+            return Err("clicking an unfocused Find overlay did not focus its pane".into());
+        }
+        app.draw(event_loop, host)?;
+        host.mouse = host.rects[&other].center();
+        app.panes[&other]
+            .session
+            .terminal()?
+            .screen_mut()
+            .viewport_offset = 0;
+        app.scroll(host, MouseScrollDelta::LineDelta(0.0, 1.0));
+        if app.panes[&other]
+            .session
+            .terminal()?
+            .screen()
+            .viewport_offset
+            == 0
+            || host.search_focus != Some(original_focus)
+        {
+            return Err("Find blocked scrolling another pane or stole keyboard focus".into());
+        }
+        app.mouse(host, vt::MouseAction::Press, Some(vt::MouseButton::Left));
+        app.mouse(host, vt::MouseAction::Release, Some(vt::MouseButton::Left));
+        app.draw(event_loop, host)?;
+        if host.ui_input() || app.focused(host.id) != Some(other) {
+            return Err("clicking terminal content did not restore terminal input".into());
+        }
+        app.action(event_loop, host, Action::StartSearch, false);
+        app.action(event_loop, host, Action::NextTab, false);
+        app.draw(event_loop, host)?;
+        if host.ui_input() || !host.search_rects.is_empty() {
+            return Err("a hidden tab's Find retained input or remained visible".into());
+        }
+        app.action(event_loop, host, Action::PreviousTab, false);
+        app.draw(event_loop, host)?;
+        app.action(event_loop, host, Action::ToggleSplitZoom, false);
+        app.draw(event_loop, host)?;
+        if host.search_rects.len() != 1 {
+            return Err("zoom did not hide other pane overlays".into());
+        }
+        app.action(event_loop, host, Action::ToggleSplitZoom, false);
+        app.draw(event_loop, host)?;
+        for id in [original_focus, other] {
+            app.search_action(host, id, Action::EndSearch);
+            app.draw(event_loop, host)?;
+            if app.panes[&id]
+                .session
+                .terminal()?
+                .screen()
+                .selection
+                .is_some()
+            {
+                return Err("closing Find left its highlight behind".into());
+            }
+        }
+        if host.rects != rects || sizes(app)? != original_sizes || host.ui_input() {
+            return Err("closing Find changed geometry or retained editor input".into());
+        }
+        if [original_focus, other]
+            .iter()
+            .any(|id| app.panes[id].input.len() != 1 || app.panes[id].input_bytes != 0)
+        {
+            return Err("Find interaction leaked input to a terminal".into());
+        }
+        Ok(())
+    })();
+    for (id, terminal, search, input, input_bytes) in saved {
+        let pane = app.panes.get_mut(&id).unwrap();
+        *pane.session.terminal()? = terminal;
+        pane.search = search;
+        pane.input = input;
+        pane.input_bytes = input_bytes;
+        host.prepared.remove(&id);
+    }
+    app.focus_pane(host.id, original_focus);
+    host.search_focus = None;
+    host.search_rects.clear();
+    set_focus(host, focused);
+    host.mouse = mouse;
+    if !pointer_in_window {
+        let _ = host.egui.on_window_event(
+            &host.window,
+            &WindowEvent::CursorLeft {
+                device_id: winit::event::DeviceId::dummy(),
+            },
+        );
+    }
+    app.draw(event_loop, host)?;
+    result?;
+    eprintln!(
+        "Native smoke: per-pane Find preserved geometry, queries, focus, scrolling, tabs, and zoom; focused/unfocused captures saved"
     );
     Ok(())
 }

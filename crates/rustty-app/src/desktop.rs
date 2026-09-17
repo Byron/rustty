@@ -14,6 +14,7 @@ use rustty_app::{
         Activity, CompletionFlash, DirectoryLabel, FocusHint, Progress, TabAccent,
         common_directory_name, cursor_blink_phase, directory_name,
     },
+    search::{self, Search},
     workspace::{self, Axis, Id, Peek, Rect, SavedPane, Tab, WindowState, Workspace},
 };
 use rustty_font::{FontConfig, FontFeature};
@@ -74,6 +75,7 @@ struct Pane {
     mouse_cell: Option<[u16; 2]>,
     scroll: input::ScrollAccumulator,
     sync_output: SynchronizedOutput,
+    search: Option<Search>,
 }
 impl Pane {
     fn update_saved(&self, saved: &mut SavedPane) -> bool {
@@ -367,8 +369,8 @@ struct Host {
     visible: bool,
     occluded: bool,
     deadline: Option<Instant>,
-    search: Option<String>,
-    search_index: usize,
+    search_focus: Option<Id>,
+    search_rects: BTreeMap<Id, egui::Rect>,
     focus_text_input: bool,
     popup_open: bool,
     messages_open: bool,
@@ -394,8 +396,10 @@ impl Host {
             .map(|(&id, _)| id)
     }
     fn ui_input(&self) -> bool {
-        self.search.is_some()
-            || self.palette
+        self.search_focus.is_some() || self.modal_input()
+    }
+    fn modal_input(&self) -> bool {
+        self.palette
             || self.popup_open
             || self.messages_open
             || self.layout_picker.is_some()
@@ -995,6 +999,7 @@ impl App {
                 mouse_cell: None,
                 scroll: input::ScrollAccumulator::default(),
                 sync_output: SynchronizedOutput::default(),
+                search: None,
             },
         );
         Ok(())
@@ -1092,8 +1097,8 @@ impl App {
             visible: !quick,
             occluded: false,
             deadline: None,
-            search: None,
-            search_index: 0,
+            search_focus: None,
+            search_rects: BTreeMap::new(),
             focus_text_input: false,
             popup_open: false,
             messages_open: false,
@@ -1213,7 +1218,7 @@ impl App {
         host.repaint();
     }
     fn drop_file(&mut self, host: &mut Host, position: Pos2, path: &Path) {
-        if host.ui_input()
+        if host.modal_input()
             || self
                 .context
                 .layer_id_at(position)
@@ -2006,7 +2011,7 @@ impl App {
             Action::ToggleCommandPalette => {
                 host.palette = !host.palette;
                 host.palette_query.clear();
-                host.focus_text_input = host.palette || host.search.is_some();
+                host.focus_text_input = host.palette || host.search_focus.is_some();
             }
             Action::CopyToClipboard => {
                 let text = focused.and_then(|id| {
@@ -2081,34 +2086,11 @@ impl App {
                     self.write(id, b"\x0c".to_vec());
                 }
             }
-            Action::StartSearch | Action::SearchSelection => {
-                let text = if matches!(action, Action::SearchSelection) {
-                    focused
-                        .and_then(|id| {
-                            self.panes
-                                .get(&id)?
-                                .session
-                                .terminal()
-                                .ok()?
-                                .screen()
-                                .selection_text()
-                        })
-                        .unwrap_or_default()
-                } else {
-                    String::new()
-                };
-                host.search = Some(text);
-                host.search_index = 0;
-                host.focus_text_input = true;
-            }
-            Action::EndSearch => host.search = None,
-            Action::NavigateSearch { next } => {
-                host.search_index = if next {
-                    host.search_index.wrapping_add(1)
-                } else {
-                    host.search_index.wrapping_sub(1)
-                };
-                self.search(host);
+            Action::StartSearch
+            | Action::SearchSelection
+            | Action::EndSearch
+            | Action::NavigateSearch { .. } => {
+                return focused.is_some_and(|id| self.search_action(host, id, action));
             }
             Action::ScrollToTop
             | Action::ScrollToBottom
@@ -2211,6 +2193,10 @@ impl App {
                 }
             }
         }
+        if self.focused(host.id) != focused {
+            host.search_focus = None;
+            host.search_rects.clear();
+        }
         self.changed();
         host.repaint();
         true
@@ -2299,30 +2285,49 @@ impl App {
             current.repaint();
         }
     }
-    fn search(&mut self, host: &mut Host) -> usize {
-        let Some(query) = host.search.as_ref().filter(|q| !q.is_empty()) else {
-            return 0;
-        };
-        let Some(pane) = self.focused(host.id).and_then(|id| self.panes.get(&id)) else {
-            return 0;
+    fn search_action(&mut self, host: &mut Host, id: Id, action: Action) -> bool {
+        if !self
+            .tab(host.id)
+            .is_some_and(|tab| tab.panes.contains_key(&id))
+        {
+            return false;
+        }
+        let Some(pane) = self.panes.get_mut(&id) else {
+            return false;
         };
         let Ok(mut terminal) = pane.session.terminal() else {
-            return 0;
+            return false;
         };
-        let matches = terminal.screen().search_literal(query.as_bytes());
-        if matches.is_empty() {
-            return 0;
+        match action {
+            Action::StartSearch | Action::SearchSelection => {
+                let search = pane.search.get_or_insert_with(Search::default);
+                if action == Action::SearchSelection {
+                    search.query = terminal.screen().selection_text().unwrap_or_default();
+                }
+                search.refresh(&mut terminal);
+                host.search_focus = Some(id);
+                host.focus_text_input = true;
+            }
+            Action::EndSearch => {
+                let Some(mut search) = pane.search.take() else {
+                    return false;
+                };
+                search.clear_highlight(&mut terminal);
+                host.search_rects.remove(&id);
+                if host.search_focus == Some(id) {
+                    host.search_focus = None;
+                }
+            }
+            Action::NavigateSearch { next } => {
+                let Some(search) = &mut pane.search else {
+                    return false;
+                };
+                search.navigate(&mut terminal, next);
+            }
+            _ => return false,
         }
-        host.search_index %= matches.len();
-        let found = &matches[host.search_index];
-        let screen = terminal.screen_mut();
-        screen.selection = Some(vt::Selection {
-            start: found.start,
-            end: found.end,
-            rectangular: false,
-        });
-        reveal(screen, found.start);
-        matches.len()
+        host.repaint();
+        true
     }
     fn reconcile(&mut self, event_loop: &ActiveEventLoop) {
         // With no native windows there is no ThemeChanged event to observe.
@@ -2424,15 +2429,17 @@ impl App {
         event_loop: &ActiveEventLoop,
         host: &mut Host,
         key: &winit::event::KeyEvent,
-    ) {
+    ) -> bool {
         let ui_input = host.ui_input();
+        let search_input = host.search_focus.is_some() && !host.modal_input();
         if input::key_is_consumed(
             &mut host.consumed_keys,
             key.physical_key,
             key.state,
-            ui_input,
-        ) {
-            return;
+            ui_input && !search_input,
+        ) && !(search_input && key.repeat)
+        {
+            return !ui_input;
         }
         if key.state == ElementState::Pressed && !host.composing {
             let candidates = if host.sequence_len == 0 {
@@ -2445,6 +2452,7 @@ impl App {
                 .filter(|&index| {
                     let binding = &self.config().keybinds[index];
                     binding.table.is_none()
+                        && (!search_input || binding.actions.iter().all(input::search_shortcut))
                         && binding
                             .trigger
                             .get(host.sequence_len)
@@ -2488,27 +2496,36 @@ impl App {
                     }
                 }
                 if binding.flags.consumed && (!binding.flags.performable || performed) {
-                    if host.ui_input() {
+                    if ui_input || host.ui_input() {
                         host.consumed_keys.insert(key.physical_key);
                     }
-                    return;
+                    return true;
                 }
             } else if !matched.is_empty() {
                 host.sequence = matched;
                 host.sequence_len += 1;
-                return;
+                return true;
             } else {
                 host.sequence.clear();
                 host.sequence_len = 0;
             }
         }
+        let ui_input = host.ui_input();
+        if input::key_is_consumed(
+            &mut host.consumed_keys,
+            key.physical_key,
+            key.state,
+            ui_input,
+        ) {
+            return !ui_input;
+        }
         let Some(id) = self.focused(host.id) else {
-            return;
+            return true;
         };
         if self.panes.get(&id).is_some_and(|p| p.exited) && key.state == ElementState::Pressed {
             host.consumed_keys.insert(key.physical_key);
             self.action(event_loop, host, Action::CloseSurface, true);
-            return;
+            return true;
         }
         let bytes = self.panes.get(&id).and_then(|pane| {
             let mut terminal = pane.session.terminal().ok()?;
@@ -2529,6 +2546,8 @@ impl App {
             self.write(id, bytes);
         }
         host.repaint();
+        // Discard the native translation now, before a later event can open Find.
+        true
     }
 }
 
@@ -2566,6 +2585,11 @@ impl App {
         }
         let active = &state.tabs[state.active_tab];
         let focused = active.focused;
+        if host.search_focus.is_some_and(|id| {
+            id != focused || self.panes.get(&id).is_none_or(|pane| pane.search.is_none())
+        }) {
+            host.search_focus = None;
+        }
         let header_height = if active.panes.len() > 1 { 18.0 } else { 0.0 };
         let scale = host.window.scale_factor() as f32;
         let size = host.window.inner_size();
@@ -2598,6 +2622,7 @@ impl App {
         );
         self.activity_flashes.remove(&active.id);
         let mut commands = Vec::new();
+        let mut search_commands = Vec::new();
         let mut layout_command = None;
         let mut tab_selection = None;
         let mut presentation_changed = false;
@@ -2737,40 +2762,6 @@ impl App {
                 host.preedit.clear();
                 host.preedit_selection = None;
             }
-            if host.search.is_some() {
-                egui::Panel::bottom("search").show(root_ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Find");
-                        let focus = !host.palette
-                            && !ui.is_sizing_pass()
-                            && std::mem::take(&mut host.focus_text_input);
-                        let response = input::text_edit(
-                            ui,
-                            host.search.as_mut().unwrap(),
-                            egui::Id::new(("search", host.id)),
-                            focus,
-                        );
-                        if response.changed() {
-                            host.search_index = 0;
-                            self.search(host);
-                        }
-                        if ui.button("Previous").clicked() {
-                            commands.push(Action::NavigateSearch { next: false });
-                        }
-                        if ui.button("Next").clicked()
-                            || response.lost_focus()
-                                && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                        {
-                            commands.push(Action::NavigateSearch { next: true });
-                        }
-                        if ui.button("Done").clicked()
-                            || ui.input(|i| i.key_pressed(egui::Key::Escape))
-                        {
-                            commands.push(Action::EndSearch);
-                        }
-                    });
-                });
-            }
             egui::CentralPanel::default()
                 .frame(egui::Frame::NONE)
                 .show(root_ui, |ui| {
@@ -2861,6 +2852,9 @@ impl App {
                             }
                             let synchronized =
                                 pane.sync_output.update(&mut terminal, now).is_some();
+                            if !synchronized && let Some(search) = &mut pane.search {
+                                search.refresh(&mut terminal);
+                            }
                             let now_ms =
                                 self.started.elapsed().as_millis().min(u64::MAX as u128) as u64;
                             if !synchronized && let Some(next) = terminal.tick_graphics(now_ms) {
@@ -3211,6 +3205,62 @@ impl App {
                         }
                     }
                 });
+            host.search_rects.clear();
+            let modal_input = host.modal_input();
+            let requested_search = host.search_focus.filter(|_| host.focus_text_input);
+            let mut search_focus = None;
+            root_ui.scope(|ui| {
+                if modal_input {
+                    ui.disable();
+                } else if let Some(id) = requested_search {
+                    // Set the keyboard target before drawing any pane's editor. Otherwise
+                    // an earlier overlay can consume text queued for the newly opened one.
+                    let id = search::field_id(id);
+                    ui.memory_mut(|memory| {
+                        if !memory.has_focus(id) {
+                            memory.request_focus(id);
+                        }
+                    });
+                }
+                for (&id, &bounds) in &host.rects {
+                    let Some(pane) = self.panes.get_mut(&id) else {
+                        continue;
+                    };
+                    let Some(search) = &mut pane.search else {
+                        continue;
+                    };
+                    let mut focus =
+                        !modal_input && host.search_focus == Some(id) && host.focus_text_input;
+                    let requested = focus;
+                    let response = search.show(ui, id, bounds, id == focused, &mut focus, &config);
+                    if requested && !focus {
+                        host.focus_text_input = false;
+                    }
+                    if response.focused || focus {
+                        search_focus = Some(id);
+                    }
+                    host.search_rects
+                        .insert(id, response.response.rect.intersect(bounds));
+                    if response.changed {
+                        if let Ok(mut terminal) = pane.session.terminal() {
+                            search.refresh(&mut terminal);
+                        }
+                        host.repaint();
+                    }
+                    if let Some(action) = response.action {
+                        search_commands.push((id, action));
+                    }
+                }
+            });
+            if !modal_input {
+                host.search_focus = requested_search.or(search_focus);
+                if let Some(id) = host.search_focus
+                    && id != focused
+                {
+                    self.focus_pane(host.id, id);
+                    host.repaint();
+                }
+            }
             if host.palette {
                 egui::Window::new("Command palette")
                     .collapsible(false)
@@ -3233,12 +3283,12 @@ impl App {
                             {
                                 commands.push(action);
                                 host.palette = false;
-                                host.focus_text_input = host.search.is_some();
+                                host.focus_text_input = host.search_focus.is_some();
                             }
                         }
                         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                             host.palette = false;
-                            host.focus_text_input = host.search.is_some();
+                            host.focus_text_input = host.search_focus.is_some();
                         }
                     });
             }
@@ -3378,6 +3428,8 @@ impl App {
             self.workspace.windows[window].active_tab = index;
             let pane = self.workspace.windows[window].tabs[index].focused;
             self.focus_pane(host.id, pane);
+            host.search_focus = None;
+            host.search_rects.clear();
             host.peek = None;
             host.repaint();
         }
@@ -3386,6 +3438,9 @@ impl App {
         }
         for action in commands {
             self.action(event_loop, host, action, false);
+        }
+        for (id, action) in search_commands {
+            self.search_action(host, id, action);
         }
         if let Some(command) = layout_command {
             self.layout_command(host, command);
@@ -3461,7 +3516,7 @@ impl App {
         Ok(())
     }
     fn passive_mouse_motion(&self, host: &Host, position: Pos2) -> bool {
-        !host.ui_input()
+        !host.modal_input()
             && host.peek.is_none()
             && host.divider_drag.is_none()
             && host.mouse_button.is_none()
@@ -3522,7 +3577,7 @@ impl App {
         host.repaint();
     }
     fn scroll(&mut self, host: &mut Host, delta: MouseScrollDelta) {
-        if host.ui_input()
+        if host.modal_input()
             || host.peek.is_some()
             || host.divider_drag.is_some()
             || self
@@ -3605,7 +3660,7 @@ impl App {
         let result = (|| {
             if !host.modifiers.state().super_key()
                 || !self.config().link_url
-                || host.ui_input()
+                || host.modal_input()
                 || host.peek.is_some()
                 || host.divider_drag.is_some()
                 || self.platform.is_none()
@@ -3697,7 +3752,7 @@ impl App {
     }
 
     fn pointer_cursor(&self, host: &Host) -> Option<CursorIcon> {
-        if host.ui_input()
+        if host.modal_input()
             || host.peek.is_some()
             || self
                 .context
@@ -3732,6 +3787,39 @@ impl App {
     }
 
     fn mouse(&mut self, host: &mut Host, action: vt::MouseAction, button: Option<vt::MouseButton>) {
+        if !host.modal_input()
+            && action == vt::MouseAction::Press
+            && !matches!(
+                button,
+                Some(
+                    vt::MouseButton::WheelUp
+                        | vt::MouseButton::WheelDown
+                        | vt::MouseButton::WheelLeft
+                        | vt::MouseButton::WheelRight
+                )
+            )
+        {
+            if let Some((&id, _)) = host
+                .search_rects
+                .iter()
+                .find(|(_, rect)| rect.contains(host.mouse))
+            {
+                self.focus_pane(host.id, id);
+                host.search_focus = Some(id);
+                host.focus_text_input = true;
+                host.mouse_button = None;
+                host.selection_drag = None;
+                host.repaint();
+                return;
+            }
+            if self
+                .context
+                .layer_id_at(host.mouse)
+                .is_none_or(|layer| layer.order == egui::Order::Background)
+            {
+                host.search_focus = None;
+            }
+        }
         if self.update_hover_link(host) {
             host.repaint();
         }
@@ -3761,7 +3849,7 @@ impl App {
         {
             return;
         }
-        if !host.ui_input() && host.peek.is_none() {
+        if !host.modal_input() && host.peek.is_none() {
             let divider = self.tab(host.id).and_then(|tab| {
                 tab.visible_tree(false)
                     .divider_at(host.content, [host.mouse.x, host.mouse.y], 3.0)
@@ -4252,7 +4340,9 @@ impl ApplicationHandler<Event> for App {
         } else {
             false
         };
+        let egui_event_start = host.egui.egui_input_mut().events.len();
         let response = host.egui.on_window_event(&host.window, &event);
+        let egui_event_end = host.egui.egui_input_mut().events.len();
         if passive_motion {
             // Merely ignoring response.repaint leaves PointerMoved queued, which
             // restarts egui's repaint loop when the next cursor-blink frame runs.
@@ -4418,8 +4508,20 @@ impl ApplicationHandler<Event> for App {
                 event,
                 is_synthetic: false,
                 ..
-            } => self.keyboard(event_loop, &mut host, &event),
+            } => {
+                if self.keyboard(event_loop, &mut host, &event) {
+                    // Retain UI events queued by actions, but discard this key's native translation.
+                    host.egui
+                        .egui_input_mut()
+                        .events
+                        .drain(egui_event_start..egui_event_end);
+                }
+            }
             WindowEvent::Ime(ime) if !host.ui_input() => {
+                host.egui
+                    .egui_input_mut()
+                    .events
+                    .drain(egui_event_start..egui_event_end);
                 match ime {
                     Ime::Preedit(text, selection) => {
                         if !text.is_empty()
@@ -4459,12 +4561,12 @@ impl ApplicationHandler<Event> for App {
             WindowEvent::CursorMoved { position, .. } => {
                 let pos = position.to_logical::<f32>(host.window.scale_factor());
                 host.mouse = Pos2::new(pos.x, pos.y);
-                if !host.ui_input() {
+                if !host.modal_input() {
                     let button = host.mouse_button;
                     self.mouse(&mut host, vt::MouseAction::Move, button);
                 }
             }
-            WindowEvent::MouseInput { state, button, .. } if !host.ui_input() => {
+            WindowEvent::MouseInput { state, button, .. } if !host.modal_input() => {
                 let button = match button {
                     MouseButton::Left => Some(vt::MouseButton::Left),
                     MouseButton::Middle => Some(vt::MouseButton::Middle),

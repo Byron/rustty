@@ -1069,12 +1069,80 @@ impl Screen {
     }
 
     pub(crate) fn append_grapheme(&mut self, col: usize, cp: char) -> Result<(), SetFull> {
+        self.append_graphemes(col, [cp])
+    }
+
+    /// Join a ZWJ and its following scalar with one immutable payload. Both
+    /// admissions must fit in the first scalar's native chunk and preserve width.
+    pub(crate) fn append_zwj_pair(
+        &mut self,
+        cp: char,
+        grapheme: u8,
+        right: usize,
+        state: &mut u8,
+    ) -> usize {
+        use crate::unicode;
+
+        if cp as u32 <= 255
+            || matches!(cp, '\u{fe0e}' | '\u{fe0f}')
+            || self.cursor.col == 0
+            || self.cursor.col > right
+        {
+            return 0;
+        }
+        let (index, row) = self.cursor_location();
+        let page = &self.pages.pages[index];
+        if usize::from(page.columns) <= right || !self.cursor_resources_match(index) {
+            return 0;
+        }
+        let mut col = self.cursor.col - usize::from(!self.cursor.pending_wrap);
+        if page.cells[page.slot(row, col)].width() == 0 {
+            col = col.saturating_sub(1);
+        }
+        let slot = page.slot(row, col);
+        let cell = page.cells[slot];
+        if cell.width() != 2 {
+            return 0;
+        }
+        let Some(mut last) = cell.codepoint() else {
+            return 0;
+        };
+        if let Some(allocation) = page.grapheme(slot) {
+            if allocation.len > 62 || allocation.len % 4 == 3 {
+                return 0;
+            }
+            last = page.graphemes.text(allocation).chars().next_back().unwrap();
+        }
+        let zwj = unicode::properties('\u{200d}').grapheme;
+        let mut first_state = *state;
+        if unicode::grapheme_break_properties(
+            unicode::properties(last).grapheme,
+            zwj,
+            &mut first_state,
+        ) {
+            return 0;
+        }
+        let mut second_state = first_state;
+        if unicode::grapheme_break_properties(zwj, grapheme, &mut second_state) {
+            return 0;
+        }
+        let appended = self.append_graphemes(col, ['\u{200d}', cp]).is_ok();
+        self.sync_cursor_resources();
+        *state = if appended { second_state } else { first_state };
+        if appended { 2 } else { 1 }
+    }
+
+    fn append_graphemes<const N: usize>(
+        &mut self,
+        col: usize,
+        codepoints: [char; N],
+    ) -> Result<(), SetFull> {
         let mut location = self.cursor_location();
         let page = &mut self.pages.pages[location.0];
         let slot = page.slot(location.1, col);
         let previous = page.grapheme(slot);
         let mut bytes = [0; 4 * 65];
-        let len = if let Some(previous) = previous {
+        let mut len = if let Some(previous) = previous {
             let text = page.graphemes.text(previous);
             bytes[..text.len()].copy_from_slice(text.as_bytes());
             text.len()
@@ -1083,8 +1151,10 @@ impl Screen {
                 .codepoint()
                 .map_or(0, |base| base.encode_utf8(&mut bytes).len())
         };
-        let len = len + cp.encode_utf8(&mut bytes[len..]).len();
-        let allocation = match page.graphemes.append(previous) {
+        for cp in codepoints {
+            len += cp.encode_utf8(&mut bytes[len..]).len();
+        }
+        let mut allocation = match page.graphemes.append(previous) {
             Ok(allocation) => allocation,
             Err(_) => {
                 if self
@@ -1103,12 +1173,18 @@ impl Screen {
         };
         let (index, row) = location;
         let page = &mut self.pages.pages[index];
+        for _ in 1..N {
+            allocation = page
+                .graphemes
+                .append(Some(allocation))
+                .expect("paired append stays within the admitted native chunk");
+        }
         let slot = page.slot(row, col);
         page.grapheme_map.insert(slot as u32, allocation);
         page.cells[slot].set_grapheme(true);
         page.graphemes.set_text(
             allocation,
-            // The prefix is stored UTF-8; encode_utf8 appends one valid scalar.
+            // The prefix is stored UTF-8; encode_utf8 appends valid scalars.
             Arc::from(unsafe { std::str::from_utf8_unchecked(&bytes[..len]) }),
         );
         page.mark_cell(row, page.cells[slot]);

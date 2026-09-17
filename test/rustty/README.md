@@ -21,7 +21,7 @@ compared directly; snapshots are not used as a substitute for observable state.
 Run the initial suite from the repository root:
 
 ```sh
-python3 test/rustty/parity.py
+cargo +1.95.0 run --release --offline -p rustty-vt --example parity-runner
 ```
 
 It builds both adapters once, then compares whole-buffer, scalar and varied
@@ -33,31 +33,61 @@ establish full libghostty-vt compatibility.
 When the shell sandbox requires builds to run separately:
 
 ```sh
-zig build vt-oracle -Demit-lib-vt=true -Demit-macos-app=false
-cargo build --offline -p rustty-vt --example parity
-python3 test/rustty/parity.py --no-build
+zig build vt-oracle -Demit-lib-vt=true -Demit-macos-app=false -Doptimize=ReleaseSafe
+cargo +1.95.0 build --release --offline -p rustty-vt --example parity --example parity-runner
+target/release/examples/parity-runner --no-build
 ```
 
 Use deterministic generated cases and saved failures to diagnose differences:
 
 ```sh
-python3 test/rustty/parity.py --no-build --generated 100 --seed 0
-python3 test/rustty/parity.py --corpus --case corpus/stream-initial/
-python3 test/rustty/parity.py --no-build --input
-python3 test/rustty/parity.py --no-build --parser
-python3 test/rustty/parity.py --no-build --osc
-python3 test/rustty/parity.py --no-build --unicode
-python3 test/rustty/parity.py --no-build --snapshots
-python3 test/rustty/parity.py --no-build --snapshot-wire
-python3 test/rustty/parity.py --no-build --protocols
-python3 test/rustty/parity.py --no-build --grid
-python3 test/rustty/parity.py --no-build --page-layout
-python3 test/rustty/parity.py --pages
-python3 test/rustty/parity.py --no-build --replay target/parity/failures/ID/request.json
-python3 test/rustty/parity.py --no-build --replay target/parity/failures/ID/request.json --minimize
-python3 -m unittest discover -s test/rustty -p 'test_*.py'
-python3 test/rustty/transport_limits.py zig-out/bin/vt-oracle target/debug/examples/parity
+target/release/examples/parity-runner --no-build --generated 100 --seed 0
+target/release/examples/parity-runner --corpus --case corpus/stream-initial/
+target/release/examples/parity-runner --no-build --input
+target/release/examples/parity-runner --no-build --parser
+target/release/examples/parity-runner --no-build --osc
+target/release/examples/parity-runner --no-build --unicode
+target/release/examples/parity-runner --no-build --snapshots
+target/release/examples/parity-runner --no-build --snapshot-wire
+target/release/examples/parity-runner --no-build --protocols
+target/release/examples/parity-runner --no-build --grid
+target/release/examples/parity-runner --no-build --page-layout
+target/release/examples/parity-runner --pages
+target/release/examples/parity-runner --no-build --replay target/parity/failures/ID/request.json
+target/release/examples/parity-runner --no-build --replay target/parity/failures/ID/request.json --minimize
+cargo +1.95.0 test --offline -p rustty-vt --example parity-runner
+python3 test/rustty/transport_limits.py zig-out/bin/vt-oracle target/release/examples/parity
 ```
+
+Suite execution runs entirely in Rust: process transport, delivery variants,
+strict JSON comparison, snapshot cross-decoding, coverage, failure artifacts and
+minimization. `parity.py` remains a compatibility launcher that replaces itself
+with the Rust executable. `--no-build` requires a prebuilt runner; the default
+Rust oracle is now `target/release/examples/parity`. Both the launcher and oracle
+build respect `CARGO_TARGET_DIR`.
+
+Extended generator output is preserved in `fixtures/*.jsonl.gz` (about 5 MiB).
+The runner checks source checksums, corpus membership and recorded native
+reference queries before using each group, so stale page capacities or snapshot
+assumptions cannot silently pass. Rust-produced snapshot payloads remain
+historical compatibility fixtures. Seeded random cases are generated in Rust
+with Python's integer-seeded MT19937 behavior, including negative and large
+seeds. The configured groups plus `--generated 100` retain 61,587 comparisons;
+`--thorough` also adds exhaustive splits and the separate coverage gate.
+
+Fixture regeneration and reference-runner checks are offline Python tools:
+
+```sh
+python3 test/rustty/preserve_parity_fixtures.py --zig-bin zig-out/bin/vt-oracle --rust-bin target/release/examples/parity
+python3 -m unittest discover -s test/rustty -p 'test_*.py'
+```
+
+Use `--group pages` (or another group name) for selective regeneration. The
+manifest records counts, source revision and oracle hashes. `parity_reference.py`
+retains the original generators and execution logic for migration verification;
+it is not imported by the normal runner or launcher. The Rust runner tests cover
+state loss, metadata exclusions, transport deadlines (including blocked writes),
+fixture staleness, minimization and preserving earlier failure artifacts.
 
 `--input` adds matrices for legacy/Kitty keyboard modes, modifiers and key
 actions, consumed text modifiers, IME, mouse formats, focus and paste. Use
@@ -344,7 +374,7 @@ Run the page suite independently with:
 ```sh
 zig build vt-oracle -Demit-lib-vt=true -Demit-macos-app=false -Doptimize=ReleaseSafe
 python3 test/rustty/search_pages.py > target/search-pages.json
-python3 test/rustty/parity.py --no-build --fixtures target/search-pages.json --max-failures 10000
+target/release/examples/parity-runner --no-build --fixtures target/search-pages.json --max-failures 10000
 ```
 
 These direct search cases use `kind=input` to avoid serializing hundreds of

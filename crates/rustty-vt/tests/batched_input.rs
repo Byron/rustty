@@ -201,6 +201,58 @@ fn printable_runs_match_scalar_printing() {
 }
 
 #[test]
+fn zwj_pairs_preserve_scalar_admission_and_wrapping() {
+    for columns in [1, 2, 7] {
+        for alternate in [false, true] {
+            for suffixes in [0, 1, 2, 3, 4, 7, 60, 61, 62, 63, 64] {
+                for (prefix, input) in [
+                    ("a", "\u{200d}界Z"),
+                    ("☺", "\u{200d}❤Z"),
+                    ("👩", "\u{200d}💻Z"),
+                    ("👩", "\u{200d}\u{301}Z"),
+                    ("👩", "\u{200d}AZ"),
+                    ("👩", "\u{200d}\u{fe0e}Z"),
+                    ("👩", "\u{200d}\u{fe0f}Z"),
+                    ("👩", "\u{fe0e}\u{200d}💻Z"),
+                ] {
+                    let mut base = Terminal::new(columns, 1, 128);
+                    base.feed(b"\x1b[?2027h");
+                    if alternate {
+                        base.feed(b"\x1b[?1049h");
+                    }
+                    base.feed(
+                        "x".repeat(usize::from(columns.saturating_sub(2)))
+                            .as_bytes(),
+                    );
+                    base.feed(prefix.as_bytes());
+                    base.feed("\u{301}".repeat(suffixes).as_bytes());
+                    base.generation = u64::MAX - 1;
+                    let mut expected = base.clone();
+                    for cp in input.chars() {
+                        expected.print(cp);
+                    }
+                    for chunk in [1, 3, 7, usize::MAX] {
+                        let mut actual = base.clone();
+                        deliver(&mut actual, input.as_bytes(), chunk, false);
+                        same_state(
+                            &actual,
+                            &expected,
+                            &format!(
+                                "cols={columns}, alt={alternate}, prefix={prefix}, suffixes={suffixes}, chunk={chunk}"
+                            ),
+                        );
+                        assert_eq!(
+                            actual.screen().owned_bytes(),
+                            expected.screen().owned_bytes()
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn ignored_scalars_preserve_public_cursor_edits_before_batched_printing() {
     assert_eq!(unicode::codepoint_width('\u{200b}'), 0);
     for (ignored, suffixes) in [('\u{301}', 64), ('\u{200b}', 0)] {

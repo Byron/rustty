@@ -70,6 +70,31 @@ fn action(config: &Config, trigger: &str) -> Option<Action> {
 }
 
 #[test]
+fn search_opacity_loads_reloads_and_rejects_invalid_values() {
+    let home = TestHome::new();
+    assert_eq!(home.loader.load().config.search_unfocused_opacity, 0.8);
+    for (value, expected) in [("0", 0.0), ("0.35", 0.35), ("1", 1.0), ("", 0.8)] {
+        home.own(&format!("search-unfocused-opacity={value}\n"));
+        let loaded = home.loader.load();
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        assert_eq!(loaded.config.search_unfocused_opacity, expected);
+        assert_eq!(loaded.config.unfocused_split_opacity, 0.7);
+    }
+    for value in ["-0.1", "1.1", "NaN", "inf", "invalid"] {
+        home.own(&format!(
+            "search-unfocused-opacity=0.4\nsearch-unfocused-opacity={value}\n"
+        ));
+        let loaded = home.loader.load();
+        assert_eq!(loaded.diagnostics.len(), 1, "{value}");
+        assert_eq!(loaded.config.search_unfocused_opacity, 0.4);
+    }
+    let loaded = home
+        .loader
+        .load_with_args(&args(&["--search-unfocused-opacity=0.6"]));
+    assert_eq!(loaded.config.search_unfocused_opacity, 0.6);
+}
+
+#[test]
 fn grapheme_width_method_loads_ghostty_policy_and_defaults_to_unicode() {
     let home = TestHome::new();
     for (value, expected) in [
