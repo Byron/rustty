@@ -5055,3 +5055,29 @@ frozen binaries, assembly, matched profiles and all 1,200 timing samples are
 preserved in `target/packed-simplify/step50/`. The step-49 core, full Ghostty
 table and validation remain current. The native Chinese-feed cliff retains
 the workload-specific limitation described above.
+
+### Step 51 experiments: simplify the temporary text layout (not retained)
+
+Fresh matched ASCII/Chinese read profiles place 97.1–97.2% of Rustty samples
+in the cell-text loop and 2.8% in row iteration. Ghostty's loop extracts scalar
+values directly. Rustty's generated loop retains UTF-8 range checks from the
+temporary `CellText` constructor, although the caller only requests characters.
+
+Removing the cached byte length shrinks that temporary from 24 to 16 bytes,
+but LLVM then retains more encoding work while packing the enum fields.
+The two adjacent comparisons use frozen Rust 1.95.0 binaries, native ARM flags
+and 50 samples per direction, with automatic waits for competing builds.
+
+| Workload | Before µs | Candidate µs | Ghostty µs | Candidate / before, forward / reverse |
+| --- | ---: | ---: | ---: | ---: |
+| read/ascii | 2.885 | 3.787 | 1.954 | 1.317× / 1.305× |
+| read/chinese | 2.829 | 4.203 | 1.959 | 1.482× / 1.474× |
+
+That candidate is rejected. Further code-generation probes try an explicit
+enum tag, separate scalar storage, a flat adapter and an outlined encoder.
+They retain unwanted checks or an encoding call in the scalar loop, so none
+is retained or assigned a timing-based speedup. Each passes 328 VT tests and
+both benchmark self-checks. Sources, binaries, assembly, matched profiles and
+the 600 measured samples are preserved under `target/packed-simplify/step51/`
+through `step51f/`. The original source is restored and formatting passes.
+The step-49 core, full Ghostty table and validation remain current.
