@@ -72,6 +72,38 @@ impl SelectionDrag {
     }
 }
 
+/// Use terminal word boundaries, except that a double-click selects a whole link.
+pub fn selection_press(
+    terminal: &mut vt::Terminal,
+    gesture: &mut vt::selection_gesture::SelectionGesture,
+    links: &mut vt::search::LinkMatcher,
+    mut press: vt::selection_gesture::Press<'_>,
+) -> Option<vt::Selection> {
+    let cell = terminal
+        .screen()
+        .row_by_id(press.point.row)?
+        .cells
+        .get(press.point.col)?;
+    if cell.width() == 0 && press.point.col > 0 {
+        press.point.col -= 1;
+    }
+    let point = press.point;
+    let selection = gesture.press(terminal, press);
+    if gesture.click_count() == 2
+        && let Some(link) = links
+            .links(terminal.screen())
+            .into_iter()
+            .find(|link| link.contains(terminal.screen(), point))
+    {
+        return Some(vt::Selection {
+            start: link.start,
+            end: link.end,
+            rectangular: false,
+        });
+    }
+    selection
+}
+
 /// Keep egui-winit's native pointer position without waking egui for terminal hover.
 pub fn defer_pointer_move(raw: &mut egui::RawInput) -> Option<egui::Pos2> {
     let Some(egui::Event::PointerMoved(position)) = raw.events.last() else {
@@ -749,6 +781,81 @@ mod tests {
                 rectangular: true
             })
         );
+    }
+
+    #[test]
+    fn double_click_selects_words_paths_and_links_across_wraps() {
+        use vt::selection_gesture::{DEFAULT_BEHAVIORS, Press, SelectionGesture};
+        for (cols, text, row, col, expected) in [
+            (60, "alpha beta gamma", 0, 7, "beta"),
+            (
+                60,
+                "see /tmp/rustty-app/src/input.rs now",
+                0,
+                17,
+                "/tmp/rustty-app/src/input.rs",
+            ),
+            (
+                12,
+                "see /tmp/rustty-app/src/input.rs now",
+                1,
+                5,
+                "/tmp/rustty-app/src/input.rs",
+            ),
+            (
+                60,
+                "https://example.org:8443/a-b?q=word#part tail",
+                0,
+                4,
+                "https://example.org:8443/a-b?q=word#part",
+            ),
+            (
+                12,
+                "https://example.org:8443/a-b?q=word#part tail",
+                2,
+                3,
+                "https://example.org:8443/a-b?q=word#part",
+            ),
+            (
+                60,
+                "\x1b]8;;https://example.org\x07click here你\x1b]8;;\x07 tail",
+                0,
+                11,
+                "click here你",
+            ),
+            (60, "word你 tail", 0, 5, "word你"),
+        ] {
+            let mut terminal = vt::Terminal::new(cols, 6, 100);
+            terminal.feed(text.as_bytes());
+            let point = terminal.screen().point(row, col).unwrap();
+            let mut gesture = SelectionGesture::default();
+            let mut links = vt::search::LinkMatcher::default();
+            for time in [0, 100] {
+                let selection = selection_press(
+                    &mut terminal,
+                    &mut gesture,
+                    &mut links,
+                    Press {
+                        time: Some(time),
+                        point,
+                        xpos: col as f64 * 10.0,
+                        ypos: row as f64 * 20.0,
+                        max_distance: 10.0,
+                        repeat_interval: 500,
+                        word_boundaries: vt::selection::DEFAULT_WORD_BOUNDARIES,
+                        behaviors: DEFAULT_BEHAVIORS,
+                    },
+                );
+                terminal.screen_mut().selection = selection;
+                gesture.release(&terminal, Some(point));
+                assert_eq!(
+                    terminal.screen().selection_text().as_deref(),
+                    (time != 0).then_some(expected),
+                    "{text:?} at ({row}, {col}) with {cols} columns",
+                );
+            }
+            gesture.deinit(&mut terminal);
+        }
     }
 
     #[test]

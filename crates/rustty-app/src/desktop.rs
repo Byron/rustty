@@ -72,12 +72,19 @@ struct Pane {
     started: Instant,
     exit_message: Option<String>,
     links: vt::search::LinkMatcher,
+    selection_gesture: vt::selection_gesture::SelectionGesture,
     mouse_cell: Option<[u16; 2]>,
     scroll: input::ScrollAccumulator,
     sync_output: SynchronizedOutput,
     search: Option<Search>,
 }
 impl Pane {
+    fn reset_selection_gesture(&mut self) {
+        if let Ok(mut terminal) = self.session.terminal() {
+            self.selection_gesture.reset(&mut terminal);
+        }
+    }
+
     fn update_saved(&self, saved: &mut SavedPane) -> bool {
         let title = (!self.title.is_empty()).then_some(self.title.as_str());
         if saved.working_directory == self.cwd
@@ -843,6 +850,9 @@ impl App {
         let scheme = color_scheme(self.config_loader.dark_mode);
         for (&id, pane) in &mut self.panes {
             let state = (visible.contains(&id), focused_panes.contains(&id), scheme);
+            if pane.host_state.1 && !state.1 {
+                pane.reset_selection_gesture();
+            }
             if !state.0 {
                 pane.activity.reset_progress_animation();
             }
@@ -996,6 +1006,7 @@ impl App {
                 started,
                 exit_message: None,
                 links: vt::search::LinkMatcher::default(),
+                selection_gesture: vt::selection_gesture::SelectionGesture::default(),
                 mouse_cell: None,
                 scroll: input::ScrollAccumulator::default(),
                 sync_output: SynchronizedOutput::default(),
@@ -1292,6 +1303,11 @@ impl App {
         Ok(emitted)
     }
     fn focus_pane(&mut self, window: Id, pane: Id) {
+        if let Some(previous) = self.focused(window).filter(|&id| id != pane)
+            && let Some(state) = self.panes.get_mut(&previous)
+        {
+            state.reset_selection_gesture();
+        }
         if let Some(tab) = self.tab_mut(window) {
             tab.focus(pane);
         }
@@ -2383,7 +2399,8 @@ impl App {
                     .flat_map(|tab| tab.panes.keys().copied()),
             );
         }
-        for (_, pane) in self.panes.extract_if(|id, _| !retained.contains(id)) {
+        for (_, mut pane) in self.panes.extract_if(|id, _| !retained.contains(id)) {
+            pane.reset_selection_gesture();
             pane.session.close();
             self.closing.push(pane.session);
         }
@@ -2755,6 +2772,9 @@ impl App {
             // Cache this viewport's popup state for native events between frames.
             host.popup_open = egui::Popup::is_any_open(ctx);
             if host.ui_input() {
+                if let Some(pane) = self.panes.get_mut(&focused) {
+                    pane.reset_selection_gesture();
+                }
                 host.mouse_button = None;
                 host.selection_drag = None;
                 host.divider_drag = None;
@@ -3939,6 +3959,8 @@ impl App {
             host.modifiers.state(),
             config.mouse_shift_capture,
         ) {
+            pane.selection_gesture.reset(&mut terminal);
+            host.selection_drag = None;
             let bytes = terminal.encode_mouse(
                 vt::MouseEvent {
                     action,
@@ -3975,14 +3997,16 @@ impl App {
             .min(terminal.cols as usize - 1);
         let row = (position.y.max(0.0) as usize / metrics.cell_height as usize)
             .min(terminal.rows as usize - 1);
-        let screen = terminal.screen_mut();
-        let point = screen
+        let point = terminal
+            .screen()
             .viewport()
             .nth(row)
             .map(|r| vt::GridPoint { row: r.id, col });
         if let Some(point) = point {
             if action == vt::MouseAction::Press && button == Some(vt::MouseButton::Left) {
                 if host.modifiers.state().super_key() && config.link_url {
+                    pane.selection_gesture.reset(&mut terminal);
+                    host.selection_drag = None;
                     if let Some(link) = &host.hovered_link
                         && link.pane == id
                         && let Some(platform) = &self.platform
@@ -3992,7 +4016,22 @@ impl App {
                     }
                 } else {
                     host.selection_drag = Some(input::SelectionDrag::new(point, host.mouse));
-                    screen.selection = None;
+                    let selection = input::selection_press(
+                        &mut terminal,
+                        &mut pane.selection_gesture,
+                        &mut pane.links,
+                        vt::selection_gesture::Press {
+                            time: Some(pane.started.elapsed().as_nanos() as i128),
+                            point,
+                            xpos: f64::from(surface.x),
+                            ypos: f64::from(surface.y),
+                            max_distance: f64::from(metrics.cell_width),
+                            repeat_interval: Platform::double_click_interval().as_nanos() as u64,
+                            word_boundaries: vt::selection::DEFAULT_WORD_BOUNDARIES,
+                            behaviors: vt::selection_gesture::DEFAULT_BEHAVIORS,
+                        },
+                    );
+                    terminal.screen_mut().selection = selection;
                 }
             } else if action == vt::MouseAction::Move
                 && host.mouse_button == Some(vt::MouseButton::Left)
@@ -4001,11 +4040,35 @@ impl App {
                     && let Some(selection) =
                         drag.update(host.mouse, point, host.modifiers.state().alt_key())
                 {
-                    screen.selection = Some(selection);
+                    // Ordinary dragging keeps its existing cell boundaries;
+                    // repeated clicks extend by whole words or lines.
+                    terminal.screen_mut().selection = if pane.selection_gesture.behavior()
+                        == vt::selection_gesture::Behavior::Cell
+                    {
+                        Some(selection)
+                    } else {
+                        pane.selection_gesture.drag(
+                            &terminal,
+                            vt::selection_gesture::Drag {
+                                point,
+                                xpos: f64::from(surface.x),
+                                ypos: f64::from(surface.y),
+                                rectangle: host.modifiers.state().alt_key(),
+                                word_boundaries: vt::selection::DEFAULT_WORD_BOUNDARIES,
+                                geometry: vt::selection_gesture::Geometry {
+                                    columns: u32::from(terminal.cols),
+                                    cell_width: metrics.cell_width,
+                                    padding_left: padding[0] as u32,
+                                    screen_height: (rect.height() * scale) as u32,
+                                },
+                            },
+                        )
+                    };
                 }
             } else if action == vt::MouseAction::Release && host.selection_drag.take().is_some() {
+                pane.selection_gesture.release(&terminal, Some(point));
                 let copy = config.copy_on_select;
-                let text = screen.selection_text();
+                let text = terminal.screen().selection_text();
                 drop(terminal);
                 if let Some(text) = text {
                     if matches!(

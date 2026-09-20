@@ -413,7 +413,7 @@ impl Smoke {
                     .current_monitor()
                     .and_then(|monitor| monitor.refresh_rate_millihertz())
                     .map(|rate| f64::from(rate) / 1000.0);
-                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
+                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
                 fs::write(
                     self.directory.join("result.json"),
                     serde_json::to_vec_pretty(&report)?,
@@ -1275,6 +1275,7 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
             std::mem::take(&mut pane.input_bytes),
             pane.mouse_cell.take(),
             std::mem::take(&mut pane.scroll),
+            std::mem::take(&mut pane.selection_gesture),
         ));
         // Hold encoded reports in the existing queue instead of sending them to a shell.
         pane.input.push_back(Vec::new());
@@ -1304,6 +1305,7 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
         if app.pointer_cursor(host) != Some(CursorIcon::Wait) {
             return Err("OSC 22 pointer shape leaked into another pane".into());
         }
+        check_click_selection(app, host, focused, hovered)?;
         check_link_hover(app, host, focused, hovered)?;
         host.mouse = host.rects[&hovered].center();
         let pixels = f64::from(host.fonts.metrics().cell_height) * host.window.scale_factor() / 2.0;
@@ -1537,13 +1539,15 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
         }
         Ok(())
     })();
-    for (id, terminal, input, input_bytes, mouse_cell, scroll) in saved {
+    for (id, terminal, input, input_bytes, mouse_cell, scroll, selection_gesture) in saved {
         let pane = app.panes.get_mut(&id).unwrap();
+        pane.reset_selection_gesture();
         *pane.session.terminal()? = terminal;
         pane.input = input;
         pane.input_bytes = input_bytes;
         pane.mouse_cell = mouse_cell;
         pane.scroll = scroll;
+        pane.selection_gesture = selection_gesture;
     }
     host.mouse = mouse;
     host.modifiers = modifiers;
@@ -1564,6 +1568,134 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
     result?;
     eprintln!(
         "Native smoke: trackpad momentum, scrolling, and file drops followed the pointer without changing focus"
+    );
+    Ok(())
+}
+
+fn check_click_selection(app: &mut App, host: &mut Host, focused: Id, target: Id) -> Result<()> {
+    use winit::keyboard::ModifiersState;
+    let scale = host.window.scale_factor() as f32;
+    let metrics = host.fonts.metrics();
+    let cell = Vec2::new(metrics.cell_width as f32, metrics.cell_height as f32) / scale;
+    let padding = host.prepared[&target].key.options.padding;
+    let origin = host.rects[&target].min + Vec2::new(padding[0], padding[1]) / scale;
+    let cols = app.panes[&target].session.terminal()?.cols;
+    let url = format!(
+        "https://example.org:8443/{}?q=one#two",
+        "path/".repeat(usize::from(cols) / 5)
+    );
+    let click = |app: &mut App, host: &mut Host| {
+        host.mouse_button = Some(vt::MouseButton::Left);
+        app.mouse(host, vt::MouseAction::Press, host.mouse_button);
+        // AppKit repeats the cursor position immediately before mouse-up.
+        app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+        app.mouse(host, vt::MouseAction::Release, host.mouse_button);
+        host.mouse_button = None;
+    };
+    host.modifiers = ModifiersState::empty().into();
+    for (text, row, expected) in [
+        ("word next", 0, "word"),
+        ("/tmp/source-file.rs next", 0, "/tmp/source-file.rs"),
+        (url.as_str(), 1, url.as_str()),
+        (
+            "\x1b]8;;https://example.org\x07open link\x1b]8;;\x07",
+            0,
+            "open link",
+        ),
+    ] {
+        let pane = app.panes.get_mut(&target).unwrap();
+        pane.reset_selection_gesture();
+        pane.session
+            .terminal()?
+            .feed(format!("\x1b[H\x1b[2J{text}").as_bytes());
+        host.mouse = origin + Vec2::new(2.5 * cell.x, (row as f32 + 0.5) * cell.y);
+        for count in 1..=2 {
+            click(app, host);
+            let selection = app.panes[&target]
+                .session
+                .terminal()?
+                .screen()
+                .selection_text();
+            if selection.as_deref() != (count == 2).then_some(expected)
+                || app.focused(host.id) != Some(target)
+            {
+                return Err(
+                    format!("click {count} selected {selection:?}, expected {expected:?}").into(),
+                );
+            }
+        }
+        // A click in another pane breaks the repeated-click sequence.
+        app.focus_pane(host.id, focused);
+        click(app, host);
+        if app.panes[&target]
+            .session
+            .terminal()?
+            .screen()
+            .selection
+            .is_some()
+        {
+            return Err("pane focus change retained a repeated click".into());
+        }
+    }
+    let pane = app.panes.get_mut(&target).unwrap();
+    pane.reset_selection_gesture();
+    pane.session.terminal()?.feed(b"\x1b[H\x1b[2Jword next");
+    host.mouse = origin + Vec2::new(2.5 * cell.x, 0.5 * cell.y);
+    click(app, host);
+    host.mouse_button = Some(vt::MouseButton::Left);
+    app.mouse(host, vt::MouseAction::Press, host.mouse_button);
+    host.mouse.x += 4.0 * cell.x;
+    app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+    app.mouse(host, vt::MouseAction::Release, host.mouse_button);
+    host.mouse_button = None;
+    if app.panes[&target]
+        .session
+        .terminal()?
+        .screen()
+        .selection_text()
+        .as_deref()
+        != Some("word next")
+    {
+        return Err("double-click dragging did not extend by whole words".into());
+    }
+    app.panes[&target]
+        .session
+        .terminal()?
+        .feed(b"\x1b[H\x1b[2Jword next\x1b[?1000h\x1b[?1006h");
+    host.mouse = origin + Vec2::new(2.5 * cell.x, 0.5 * cell.y);
+    for shift in [false, true] {
+        host.modifiers = if shift {
+            ModifiersState::SHIFT
+        } else {
+            ModifiersState::empty()
+        }
+        .into();
+        let reports = app.panes[&target].input.len();
+        click(app, host);
+        click(app, host);
+        let pane = &app.panes[&target];
+        if pane
+            .session
+            .terminal()?
+            .screen()
+            .selection_text()
+            .as_deref()
+            != Some(if shift { "word" } else { "word next" })
+            || pane.input.len() != reports + if shift { 0 } else { 4 }
+        {
+            return Err(
+                "double-click ignored application mouse capture or its Shift override".into(),
+            );
+        }
+    }
+    let pane = app.panes.get_mut(&target).unwrap();
+    pane.session.terminal()?.feed(b"\x1b[?1000l\x1b[?1006l");
+    pane.input.truncate(1);
+    pane.input_bytes = 0;
+    host.modifiers = ModifiersState::empty().into();
+    app.focus_pane(host.id, focused);
+    eprintln!(
+        "Native smoke: double-click selected words, paths, and links without losing selections on mouse-up"
     );
     Ok(())
 }

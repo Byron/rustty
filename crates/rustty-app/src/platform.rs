@@ -88,6 +88,10 @@ pub struct Platform {
 }
 
 impl Platform {
+    pub fn double_click_interval() -> Duration {
+        Duration::from_secs_f64(NSEvent::doubleClickInterval())
+    }
+
     /// The kernel supplies cryptographic entropy; failures must not mint a paste grant.
     pub fn secure_random(bytes: &mut [u8]) -> io::Result<()> {
         std::fs::File::open("/dev/urandom")?.read_exact(bytes)
