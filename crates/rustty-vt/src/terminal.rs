@@ -278,10 +278,10 @@ impl Terminal {
 
     /// Replace raw host state without stream length limits or host effects.
     /// An empty value clears the title; `title` remains its display string.
+    /// Title changes do not invalidate prepared terminal content.
     pub fn set_title(&mut self, title: &[u8]) {
         self.title = String::from_utf8_lossy(title).into_owned();
         self.metadata.title_raw = std::str::from_utf8(title).is_err().then(|| title.to_vec());
-        self.changed();
     }
 
     /// Replace the raw working directory without parsing or decoding its URI.

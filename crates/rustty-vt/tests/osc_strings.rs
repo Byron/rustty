@@ -154,6 +154,33 @@ fn title_validation_precedes_byte_truncation_and_raw_setters_preserve_data() {
 }
 
 #[test]
+fn title_updates_report_host_effects_without_invalidating_terminal_content() {
+    let mut terminal = Terminal::new(20, 2, 0);
+    terminal.feed(b"visible text");
+    let generation = terminal.generation;
+    for number in ["0", "2"] {
+        for title in ["working", "working", "finished", ""] {
+            assert_eq!(
+                terminal.feed(&osc(number, title.as_bytes())),
+                [Effect::Title(title.as_bytes().to_vec())]
+            );
+            assert_eq!(terminal.title_bytes(), title.as_bytes());
+            assert_eq!(terminal.generation, generation);
+        }
+    }
+    terminal.set_title(b"raw\xff");
+    assert_eq!(terminal.title_bytes(), b"raw\xff");
+    assert_eq!(terminal.generation, generation);
+    terminal.title_report = true;
+    assert_eq!(
+        terminal.feed(b"\x1b[21t"),
+        [Effect::Write(b"\x1b]lraw\xff\x1b\\".to_vec())]
+    );
+    terminal.feed(b"!");
+    assert_ne!(terminal.generation, generation);
+}
+
+#[test]
 fn pwd_aliases_preserve_bytes_and_require_exact_command_framing() {
     let mut terminal = Terminal::new(80, 24, 0);
     for (number, body) in [

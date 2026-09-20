@@ -1,5 +1,8 @@
+#[path = "command_palette.rs"]
+mod command_palette;
 #[path = "smoke.rs"]
 mod smoke;
+use command_palette::CommandPalette;
 use egui::{Color32, Pos2, Sense, Vec2, ViewportId};
 use rustty::{
     config::{self, Action, Config, Direction, LoadedConfig},
@@ -35,7 +38,7 @@ use winit::{
     event::{ElementState, Ime, Modifiers, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
     keyboard::PhysicalKey,
-    platform::macos::WindowAttributesExtMacOS,
+    platform::{macos::WindowAttributesExtMacOS, scancode::PhysicalKeyExtScancode},
     window::{CursorIcon, Fullscreen, Theme, Window, WindowId},
 };
 
@@ -56,6 +59,17 @@ impl From<egui_winit::accesskit_winit::Event> for Event {
     }
 }
 
+fn dispatch_binding(
+    binding: config::KeyBinding,
+    mut dispatch: impl FnMut(Action, bool) -> bool,
+) -> bool {
+    let mut performed = false;
+    for action in binding.actions {
+        performed |= dispatch(action, binding.flags.all);
+    }
+    performed
+}
+
 struct Pane {
     session: Session,
     host_state: (bool, bool, vt::query::ColorScheme),
@@ -72,12 +86,19 @@ struct Pane {
     started: Instant,
     exit_message: Option<String>,
     links: vt::search::LinkMatcher,
+    selection_gesture: vt::selection_gesture::SelectionGesture,
     mouse_cell: Option<[u16; 2]>,
     scroll: input::ScrollAccumulator,
     sync_output: SynchronizedOutput,
     search: Option<Search>,
 }
 impl Pane {
+    fn reset_selection_gesture(&mut self) {
+        if let Ok(mut terminal) = self.session.terminal() {
+            self.selection_gesture.reset(&mut terminal);
+        }
+    }
+
     fn update_saved(&self, saved: &mut SavedPane) -> bool {
         let title = (!self.title.is_empty()).then_some(self.title.as_str());
         if saved.working_directory == self.cwd
@@ -215,6 +236,22 @@ struct PaneRenderKey {
 }
 
 impl PaneRenderKey {
+    fn matches_terminal(&self, terminal: &vt::Terminal) -> bool {
+        let screen = terminal.screen();
+        let cursor = &screen.cursor;
+        self.generation == terminal.generation
+            && self.viewport_offset == screen.viewport_offset
+            && self.selection == screen.selection
+            && self.cursor
+                == (
+                    cursor.col,
+                    cursor.row,
+                    cursor.shape,
+                    cursor.visible,
+                    cursor.blink,
+                )
+    }
+
     fn new(terminal: &vt::Terminal, options: RenderOptions, rect: egui::Rect, scale: f32) -> Self {
         let screen = terminal.screen();
         let cursor = &screen.cursor;
@@ -239,7 +276,10 @@ impl PaneRenderKey {
 struct PreparedPane {
     key: PaneRenderKey,
     frame: Arc<Frame>,
-    text: TerminalText,
+    // Accessibility may first be requested while synchronized output holds this frame.
+    screen: vt::Screen,
+    cell: [f32; 2],
+    text: Option<TerminalText>,
     ime_rect: egui::Rect,
 }
 
@@ -251,32 +291,32 @@ struct HoveredLink {
 }
 
 impl PreparedPane {
-    fn matches(&self, key: &PaneRenderKey, fonts: &rustty_render::Renderer) -> bool {
+    fn matches(&mut self, key: &PaneRenderKey, fonts: &rustty_render::Renderer) -> bool {
+        let options = &mut self.key.options;
+        let cursor = &self.screen.cursor;
+        let blinking_cursor = options.focused
+            && options.cursor_visible
+            && cursor.visible
+            && cursor.blink
+            && self.screen.viewport_offset == 0
+            && options.preedit.as_ref().is_none_or(|p| p.text.is_empty());
+        if !blinking_cursor && !self.frame.blinking_text {
+            // Only normalize the retained key. New content may introduce blink
+            // and must still be prepared with the incoming, actual phase.
+            options.blink_visible = key.options.blink_visible;
+        }
         self.key == *key && self.frame.generation == fonts.generation()
     }
 
     fn new(
-        pane: Id,
         key: PaneRenderKey,
-        screen: &vt::Screen,
+        screen: vt::Screen,
         fonts: &mut rustty_render::Renderer,
     ) -> std::result::Result<Self, rustty_render::RenderError> {
         let metrics = fonts.metrics();
-        let frame = fonts.prepare(screen, &key.options)?;
+        let frame = fonts.prepare(&screen, &key.options)?;
         let origin = [key.rect.left(), key.rect.top()];
         let padding = key.options.padding;
-        let text = TerminalText::new(
-            pane,
-            screen,
-            [
-                origin[0] + padding[0] / key.scale,
-                origin[1] + padding[1] / key.scale,
-            ],
-            [
-                metrics.cell_width as f32 / key.scale,
-                metrics.cell_height as f32 / key.scale,
-            ],
-        );
         let [x, y, width, height] = frame.ime_cursor.unwrap_or([
             padding[0] + screen.cursor.col as f32 * metrics.cell_width as f32,
             padding[1] + screen.cursor.row as f32 * metrics.cell_height as f32,
@@ -287,11 +327,32 @@ impl PreparedPane {
             Pos2::new(origin[0] + x / key.scale, origin[1] + y / key.scale),
             Vec2::new(width / key.scale, height / key.scale),
         );
+        let cell = [
+            metrics.cell_width as f32 / key.scale,
+            metrics.cell_height as f32 / key.scale,
+        ];
         Ok(Self {
             key,
             frame: Arc::new(frame),
-            text,
+            screen,
+            cell,
+            text: None,
             ime_rect,
+        })
+    }
+
+    fn accessibility(&mut self, pane: Id) -> &TerminalText {
+        self.text.get_or_insert_with(|| {
+            let key = &self.key;
+            TerminalText::new(
+                pane,
+                &self.screen,
+                [
+                    key.rect.left() + key.options.padding[0] / key.scale,
+                    key.rect.top() + key.options.padding[1] / key.scale,
+                ],
+                self.cell,
+            )
         })
     }
 }
@@ -341,6 +402,7 @@ struct Host {
     viewport: ViewportId,
     window: Arc<Window>,
     egui: egui_winit::State,
+    accesskit_active: bool,
     fonts: rustty_render::Renderer,
     rects: BTreeMap<Id, egui::Rect>,
     prepared: BTreeMap<Id, PreparedPane>,
@@ -362,7 +424,7 @@ struct Host {
     link_hit: Option<(Id, u64, usize, vt::GridPoint, egui::Rect, Vec2)>,
     hovered_link: Option<HoveredLink>,
     mouse_button: Option<vt::MouseButton>,
-    selection_drag: Option<input::SelectionDrag>,
+    selection_drag: Option<(Id, input::SelectionDrag)>,
     focused: bool,
     focus_hint: FocusHint,
     cursor_blink_started: Instant,
@@ -375,8 +437,7 @@ struct Host {
     popup_open: bool,
     messages_open: bool,
     layout_picker: Option<LayoutPicker>,
-    palette: bool,
-    palette_query: String,
+    palette: CommandPalette,
     confirm: Option<Confirmation>,
     clipboard_request: VecDeque<(Id, vt::Effect)>,
     capture: bool,
@@ -399,7 +460,7 @@ impl Host {
         self.search_focus.is_some() || self.modal_input()
     }
     fn modal_input(&self) -> bool {
-        self.palette
+        self.palette.open
             || self.popup_open
             || self.messages_open
             || self.layout_picker.is_some()
@@ -569,6 +630,7 @@ struct App {
     closing: Vec<Session>,
     windows: HashMap<WindowId, Host>,
     platform: Option<Platform>,
+    consumed_global_keys: HashSet<PhysicalKey>,
     context: egui::Context,
     painter: egui_wgpu::winit::Painter,
     proxy: EventLoopProxy<Event>,
@@ -642,7 +704,6 @@ pub fn run() -> Result<()> {
     };
     let proxy = event_loop.create_proxy();
     let context = egui::Context::default();
-    context.enable_accesskit();
     context.set_theme(ui_theme(&loaded.config));
     configure_ui_fonts(&context);
     let repaint = proxy.clone();
@@ -687,6 +748,7 @@ pub fn run() -> Result<()> {
         closing: Vec::new(),
         windows: HashMap::new(),
         platform: None,
+        consumed_global_keys: HashSet::new(),
         context,
         painter,
         proxy,
@@ -843,6 +905,9 @@ impl App {
         let scheme = color_scheme(self.config_loader.dark_mode);
         for (&id, pane) in &mut self.panes {
             let state = (visible.contains(&id), focused_panes.contains(&id), scheme);
+            if pane.host_state.1 && !state.1 {
+                pane.reset_selection_gesture();
+            }
             if !state.0 {
                 pane.activity.reset_progress_animation();
             }
@@ -996,6 +1061,7 @@ impl App {
                 started,
                 exit_message: None,
                 links: vt::search::LinkMatcher::default(),
+                selection_gesture: vt::selection_gesture::SelectionGesture::default(),
                 mouse_cell: None,
                 scroll: input::ScrollAccumulator::default(),
                 sync_output: SynchronizedOutput::default(),
@@ -1069,6 +1135,7 @@ impl App {
             viewport,
             window: window.clone(),
             egui,
+            accesskit_active: false,
             fonts,
             rects: BTreeMap::new(),
             prepared: BTreeMap::new(),
@@ -1103,8 +1170,7 @@ impl App {
             popup_open: false,
             messages_open: false,
             layout_picker: None,
-            palette: false,
-            palette_query: String::new(),
+            palette: CommandPalette::default(),
             confirm: None,
             clipboard_request: VecDeque::new(),
             capture: false,
@@ -1131,6 +1197,9 @@ impl App {
         match result {
             Ok(()) => {
                 host.visible = visible;
+                if !visible {
+                    self.cancel_selection_drag(host);
+                }
                 self.remember_quick_frame(host);
                 host.repaint();
             }
@@ -1173,7 +1242,8 @@ impl App {
             self.errors.push(error.to_string());
         }
     }
-    fn terminal_input(&self, host: &mut Host, pane: Id) {
+    fn terminal_input(&mut self, host: &mut Host, pane: Id) {
+        self.cancel_selection_drag(host);
         let now = Instant::now();
         let focused = self
             .focused(host.id)
@@ -1292,6 +1362,11 @@ impl App {
         Ok(emitted)
     }
     fn focus_pane(&mut self, window: Id, pane: Id) {
+        if let Some(previous) = self.focused(window).filter(|&id| id != pane)
+            && let Some(state) = self.panes.get_mut(&previous)
+        {
+            state.reset_selection_gesture();
+        }
         if let Some(tab) = self.tab_mut(window) {
             tab.focus(pane);
         }
@@ -1357,6 +1432,9 @@ impl App {
     fn drain(&mut self, event_loop: &ActiveEventLoop, id: Id) {
         let previous_tab_label = self.pane_tab_label(id);
         let live = previous_tab_label.is_some();
+        let previous_errors = self.errors.len();
+        let mut content_changed = false;
+        let mut title_changed = false;
         let mut close = false;
         let mut stopped = false;
         let mut clipboard = Vec::new();
@@ -1377,6 +1455,7 @@ impl App {
         if let Ok(mut terminal) = pane.session.terminal() {
             pane.sync_output.update(&mut terminal, Instant::now());
             if let Some(directory) = directory_from_osc(&terminal.working_directory) {
+                content_changed |= pane.cwd != directory;
                 pane.cwd = directory;
             }
         } else {
@@ -1384,11 +1463,13 @@ impl App {
         }
         let events = pane.session.events().collect::<Vec<_>>();
         for event in events {
+            content_changed |= !matches!(&event, SessionEvent::Effect(vt::Effect::Title(_)));
             match event {
                 SessionEvent::Effect(vt::Effect::Title(title)) => {
                     let title = String::from_utf8_lossy(&title);
                     pane.activity.title_changed(&title);
                     if pane.title_override.is_none() {
+                        title_changed |= pane.title != title;
                         pane.title = title.into_owned();
                     }
                 }
@@ -1510,7 +1591,56 @@ impl App {
                     .count(),
             );
         }
-        self.repaint_pane(id, indicators_changed);
+        for host in self.windows.values() {
+            let Some(window) = self
+                .index(host.id)
+                .map(|index| &self.workspace.windows[index])
+            else {
+                continue;
+            };
+            let Some(tab) = window
+                .tabs
+                .iter()
+                .position(|tab| tab.panes.contains_key(&id))
+            else {
+                continue;
+            };
+            if window.tabs[window.active_tab].focused == id {
+                self.sync_window_title(host);
+            }
+            // OSC 22 changes native cursor metadata without changing terminal pixels.
+            if host.hovered_pane() == Some(id)
+                && let Some(cursor) = self.pointer_cursor(host)
+            {
+                host.window.set_cursor(cursor);
+            }
+            let title_in_ui = title_changed
+                && (host.accesskit_active && host.prepared.contains_key(&id)
+                    || matches!(&host.confirm, Some(Confirmation::Paste(paste)) if paste.pane == id)
+                    || host
+                        .clipboard_request
+                        .front()
+                        .is_some_and(|(pane, _)| *pane == id));
+            let terminal_changed = tab == window.active_tab
+                && (content_changed
+                    || !self.panes.get(&id).is_some_and(|pane| {
+                        pane.session.terminal().ok().is_some_and(|terminal| {
+                            host.prepared.get(&id).is_some_and(|prepared| {
+                                prepared.key.matches_terminal(&terminal)
+                                    && prepared.frame.generation == host.fonts.generation()
+                            })
+                        })
+                    }));
+            // Empty reader/writer wakes use the same check as title-only output.
+            // All effects and saved metadata have already been processed above.
+            if indicators_changed
+                || self.errors.len() != previous_errors
+                || title_in_ui
+                || terminal_changed
+            {
+                host.repaint();
+            }
+        }
         // Output updates this pane's metadata above. Only closing a pane changes
         // the layout and requires reconciling every window and session.
         if close {
@@ -1530,6 +1660,24 @@ impl App {
                 // Plain output in hidden tabs does not invalidate the visible terminals.
                 host.repaint();
             }
+        }
+    }
+
+    fn sync_window_title(&self, host: &Host) {
+        let title = self
+            .focused(host.id)
+            .and_then(|id| self.panes.get(&id))
+            .map(|pane| {
+                if pane.title.is_empty() {
+                    pane.cwd.display().to_string()
+                } else {
+                    pane.title.clone()
+                }
+            })
+            .unwrap_or_else(|| "Rustty".into());
+        let title = format!("{title} — Rustty");
+        if host.window.title() != title {
+            host.window.set_title(&title);
         }
     }
 
@@ -2009,9 +2157,8 @@ impl App {
                     })
             }
             Action::ToggleCommandPalette => {
-                host.palette = !host.palette;
-                host.palette_query.clear();
-                host.focus_text_input = host.palette || host.search_focus.is_some();
+                host.palette.toggle();
+                host.focus_text_input = host.palette.open || host.search_focus.is_some();
             }
             Action::CopyToClipboard => {
                 let text = focused.and_then(|id| {
@@ -2059,6 +2206,7 @@ impl App {
                 }
             }
             Action::SelectAll => {
+                self.cancel_selection_drag(host);
                 if let Some(pane) = focused.and_then(|id| self.panes.get(&id))
                     && let Ok(mut terminal) = pane.session.terminal()
                 {
@@ -2383,7 +2531,8 @@ impl App {
                     .flat_map(|tab| tab.panes.keys().copied()),
             );
         }
-        for (_, pane) in self.panes.extract_if(|id, _| !retained.contains(id)) {
+        for (_, mut pane) in self.panes.extract_if(|id, _| !retained.contains(id)) {
+            pane.reset_selection_gesture();
             pane.session.close();
             self.closing.push(pane.session);
         }
@@ -2424,6 +2573,111 @@ impl App {
             event_loop.exit();
         }
     }
+    fn binding_action(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        host: &mut Host,
+        action: Action,
+        all: bool,
+    ) -> bool {
+        if all && let Action::Text(bytes) = action {
+            if !bytes.is_empty()
+                && let Some(id) = self.focused(host.id)
+            {
+                self.terminal_input(host, id);
+            }
+            for id in self
+                .workspace
+                .windows
+                .iter()
+                .flat_map(|window| &window.tabs)
+                .flat_map(|tab| tab.panes.keys().copied())
+                .collect::<Vec<_>>()
+            {
+                self.write(id, bytes.clone());
+            }
+            true
+        } else {
+            self.action(event_loop, host, action, false)
+        }
+    }
+
+    fn take_active_host(&mut self) -> Option<(WindowId, Host)> {
+        let key = self
+            .windows
+            .iter()
+            .find(|(_, host)| Some(host.id) == self.active)
+            .or_else(|| self.windows.iter().next())
+            .map(|(id, _)| *id)?;
+        self.windows.remove_entry(&key)
+    }
+
+    fn platform_binding(&mut self, event_loop: &ActiveEventLoop, binding: config::KeyBinding) {
+        let mut target = self.take_active_host();
+        dispatch_binding(binding, |action, all| {
+            if let Some((_, host)) = &mut target {
+                self.binding_action(event_loop, host, action, all)
+            } else {
+                let performed = self.platform_action(event_loop, action, all);
+                // A native action can create the first window. Keep that host
+                // for the remaining chain, just as the focused keyboard does.
+                target = self.take_active_host();
+                performed
+            }
+        });
+        if let Some((key, host)) = target {
+            self.windows.insert(key, host);
+            // Reconcile after the chain: closing every window may be followed
+            // by creating a new one, which must not exit the event loop midway.
+            self.reconcile(event_loop);
+        }
+    }
+
+    fn platform_action(&mut self, event_loop: &ActiveEventLoop, action: Action, all: bool) -> bool {
+        if action == Action::OpenLayout && self.windows.is_empty() {
+            let id = self.add_window(false);
+            self.reconcile(event_loop);
+            self.active = Some(id);
+        }
+        if let Some((key, mut host)) = self.take_active_host() {
+            let performed = self.binding_action(event_loop, &mut host, action, all);
+            self.windows.insert(key, host);
+            self.reconcile(event_loop);
+            performed
+        } else if matches!(action, Action::Undo | Action::Redo) {
+            let performed = self.undo_layout(action == Action::Redo);
+            if performed {
+                self.reconcile(event_loop);
+            }
+            performed
+        } else if action == Action::ToggleQuickTerminal {
+            let id = self.add_window(true);
+            self.reconcile(event_loop);
+            let key = self
+                .windows
+                .iter()
+                .find(|(_, host)| host.id == id)
+                .map(|(key, _)| *key);
+            if let Some(key) = key
+                && let Some(mut host) = self.windows.remove(&key)
+            {
+                self.quick_visible(&mut host, true, true);
+                self.windows.insert(key, host);
+            }
+            true
+        } else if matches!(action, Action::NewWindow | Action::NewTab) {
+            self.add_window(false);
+            self.reconcile(event_loop);
+            true
+        } else if action == Action::Quit {
+            self.save();
+            event_loop.exit();
+            true
+        } else {
+            false
+        }
+    }
+
     fn keyboard(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -2470,32 +2724,11 @@ impl App {
                 host.sequence.clear();
                 host.sequence_len = 0;
                 let binding = self.config().keybinds[index].clone();
-                let mut performed = false;
-                for action in binding.actions {
-                    if binding.flags.all
-                        && let Action::Text(bytes) = action
-                    {
-                        if !bytes.is_empty()
-                            && let Some(id) = self.focused(host.id)
-                        {
-                            self.terminal_input(host, id);
-                        }
-                        for id in self
-                            .workspace
-                            .windows
-                            .iter()
-                            .flat_map(|window| &window.tabs)
-                            .flat_map(|tab| tab.panes.keys().copied())
-                            .collect::<Vec<_>>()
-                        {
-                            self.write(id, bytes.clone());
-                        }
-                        performed = true;
-                    } else {
-                        performed |= self.action(event_loop, host, action, false);
-                    }
-                }
-                if binding.flags.consumed && (!binding.flags.performable || performed) {
+                let flags = binding.flags;
+                let performed = dispatch_binding(binding, |action, all| {
+                    self.binding_action(event_loop, host, action, all)
+                });
+                if flags.consumed && (!flags.performable || performed) {
                     if ui_input || host.ui_input() {
                         host.consumed_keys.insert(key.physical_key);
                     }
@@ -2558,6 +2791,35 @@ fn reveal(screen: &mut vt::Screen, point: vt::GridPoint) {
     }
 }
 
+fn selection_pointer(
+    terminal: &vt::Terminal,
+    mouse: Pos2,
+    rect: egui::Rect,
+    scale: f32,
+    padding: [f32; 2],
+    cell: [u32; 2],
+    rectangle: bool,
+) -> vt::selection_gesture::AutoscrollTick<'static> {
+    let surface = (mouse - rect.min) * scale;
+    let position = surface - Vec2::new(padding[0], padding[1]);
+    vt::selection_gesture::AutoscrollTick {
+        viewport: [
+            (position.x.max(0.0) as u32 / cell[0]).min(u32::from(terminal.cols) - 1),
+            (position.y.max(0.0) as u32 / cell[1]).min(u32::from(terminal.rows) - 1),
+        ],
+        xpos: f64::from(surface.x),
+        ypos: f64::from(surface.y),
+        rectangle,
+        word_boundaries: vt::selection::DEFAULT_WORD_BOUNDARIES,
+        geometry: vt::selection_gesture::Geometry {
+            columns: u32::from(terminal.cols),
+            cell_width: cell[0],
+            padding_left: padding[0] as u32,
+            screen_height: (rect.height() * scale) as u32,
+        },
+    }
+}
+
 impl App {
     fn draw(&mut self, event_loop: &ActiveEventLoop, host: &mut Host) -> Result<()> {
         self.draw_frame(event_loop, host, None)
@@ -2571,6 +2833,7 @@ impl App {
     ) -> Result<()> {
         host.messages_open = !self.errors.is_empty();
         if !host.visible || host.occluded {
+            self.cancel_selection_drag(host);
             return Ok(());
         }
         let Some(index) = self.index(host.id) else {
@@ -2585,6 +2848,13 @@ impl App {
         }
         let active = &state.tabs[state.active_tab];
         let focused = active.focused;
+        if host
+            .selection_drag
+            .as_ref()
+            .is_some_and(|(id, _)| *id != focused)
+        {
+            self.cancel_selection_drag(host);
+        }
         if host.search_focus.is_some_and(|id| {
             id != focused || self.panes.get(&id).is_none_or(|pane| pane.search.is_none())
         }) {
@@ -2643,18 +2913,13 @@ impl App {
             host.navigation_warning = None;
         }
 
-        let title = self
-            .panes
-            .get(&focused)
-            .map(|pane| {
-                if pane.title.is_empty() {
-                    pane.cwd.display().to_string()
-                } else {
-                    pane.title.clone()
-                }
-            })
-            .unwrap_or_else(|| "Rustty".into());
-        host.window.set_title(&format!("{title} — Rustty"));
+        self.sync_window_title(host);
+        // The context is shared, but native accessibility activation is per window.
+        if host.accesskit_active {
+            context.enable_accesskit();
+        } else {
+            context.disable_accesskit();
+        }
         let mut output = context.run_ui(raw, |root_ui| {
             let ctx = &context;
             root_ui.visuals_mut().selection.bg_fill = accent;
@@ -2755,6 +3020,10 @@ impl App {
             // Cache this viewport's popup state for native events between frames.
             host.popup_open = egui::Popup::is_any_open(ctx);
             if host.ui_input() {
+                self.cancel_selection_drag(host);
+                if let Some(pane) = self.panes.get_mut(&focused) {
+                    pane.reset_selection_gesture();
+                }
                 host.mouse_button = None;
                 host.selection_drag = None;
                 host.divider_drag = None;
@@ -2855,6 +3124,29 @@ impl App {
                             if !synchronized && let Some(search) = &mut pane.search {
                                 search.refresh(&mut terminal);
                             }
+                            if !synchronized
+                                && let Some((owner, drag)) = &mut host.selection_drag
+                                && *owner == id
+                            {
+                                let pointer = selection_pointer(
+                                    &terminal,
+                                    host.mouse,
+                                    rect,
+                                    scale,
+                                    padding,
+                                    [metrics.cell_width, metrics.cell_height],
+                                    host.modifiers.state().alt_key(),
+                                );
+                                if !drag.refresh(
+                                    &mut terminal,
+                                    &mut pane.selection_gesture,
+                                    host.mouse,
+                                    pointer,
+                                    now,
+                                ) {
+                                    host.selection_drag = None;
+                                }
+                            }
                             let now_ms =
                                 self.started.elapsed().as_millis().min(u64::MAX as u128) as u64;
                             if !synchronized && let Some(next) = terminal.tick_graphics(now_ms) {
@@ -2900,6 +3192,11 @@ impl App {
                                     .map(resolve)
                                     .unwrap_or([65, 85, 120]),
                                 selection_foreground: config.selection_foreground.map(resolve),
+                                search_highlights: pane
+                                    .search
+                                    .as_mut()
+                                    .map(|search| search.highlights(&mut terminal))
+                                    .unwrap_or_default(),
                                 palette: terminal
                                     .palette
                                     .as_slice()
@@ -2920,12 +3217,12 @@ impl App {
                             let snapshot = (!synchronized
                                 && !host
                                     .prepared
-                                    .get(&id)
+                                    .get_mut(&id)
                                     .is_some_and(|pane| pane.matches(&key, &host.fonts)))
                             .then(|| terminal.screen().snapshot_viewport());
                             drop(terminal);
                             if let Some(snapshot) = snapshot {
-                                match PreparedPane::new(id, key, &snapshot, &mut host.fonts) {
+                                match PreparedPane::new(key, snapshot, &mut host.fonts) {
                                     Ok(prepared) => {
                                         host.prepared.insert(id, prepared);
                                         host.pane_prepares += 1;
@@ -3261,36 +3558,18 @@ impl App {
                     host.repaint();
                 }
             }
-            if host.palette {
-                egui::Window::new("Command palette")
-                    .collapsible(false)
-                    .resizable(false)
-                    .anchor(egui::Align2::CENTER_TOP, [0.0, 60.0])
-                    .show(ctx, |ui| {
-                        let focus =
-                            !ui.is_sizing_pass() && std::mem::take(&mut host.focus_text_input);
-                        input::text_edit(
-                            ui,
-                            &mut host.palette_query,
-                            egui::Id::new(("palette", host.id)),
-                            focus,
-                        );
-                        for (label, action) in palette_actions() {
-                            if label
-                                .to_lowercase()
-                                .contains(&host.palette_query.to_lowercase())
-                                && ui.button(label).clicked()
-                            {
-                                commands.push(action);
-                                host.palette = false;
-                                host.focus_text_input = host.search_focus.is_some();
-                            }
-                        }
-                        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                            host.palette = false;
-                            host.focus_text_input = host.search_focus.is_some();
-                        }
-                    });
+            if host.palette.open {
+                if let Some(action) = host.palette.show(
+                    root_ui,
+                    egui::Id::new(("palette", host.id)),
+                    &config,
+                    &mut host.focus_text_input,
+                ) {
+                    commands.push(action);
+                }
+                if !host.palette.open {
+                    host.focus_text_input = host.search_focus.is_some();
+                }
             }
             let mut confirmed = None;
             if let Some(confirmation) = &host.confirm {
@@ -3389,7 +3668,8 @@ impl App {
                             "A terminal program wants to read the clipboard."
                         });
                         ui.horizontal(|ui| {
-                            if ui.button("Deny").clicked()
+                            if (ui.button("Deny").clicked()
+                                || ui.input(|input| input.key_pressed(egui::Key::Escape)))
                                 && let Some((pane, request)) = host.clipboard_request.pop_front()
                             {
                                 self.finish_clipboard(pane, request, false, false);
@@ -3446,8 +3726,8 @@ impl App {
             self.layout_command(host, command);
         }
         if let Some(update) = &mut output.platform_output.accesskit_update {
-            for pane in host.prepared.values() {
-                pane.text.append_to(update);
+            for (&id, pane) in &mut host.prepared {
+                pane.accessibility(id).append_to(update);
             }
         }
         host.egui.handle_platform_output_with_event_loop(
@@ -3524,7 +3804,8 @@ impl App {
             && !self.context.egui_is_using_pointer()
             && [host.mouse, position].into_iter().all(|position| {
                 host.rects.iter().any(|(id, rect)| {
-                    rect.contains(position) && !self.failed_panes.contains_key(id)
+                    // Undo the painting inset: split gaps only change the native cursor.
+                    rect.expand(1.0).contains(position) && !self.failed_panes.contains_key(id)
                 }) && self
                     .context
                     .layer_id_at(position)
@@ -3576,32 +3857,129 @@ impl App {
         }
         host.repaint();
     }
+    fn cancel_selection_drag(&mut self, host: &mut Host) {
+        if let Some((id, _)) = host.selection_drag.take() {
+            if let Some(pane) = self.panes.get_mut(&id) {
+                pane.reset_selection_gesture();
+            }
+            host.mouse_button = None;
+        }
+    }
+
+    fn selection_scroll(&mut self, host: &mut Host, now: Instant) {
+        self.refresh_selection(host, now, true);
+    }
+
+    /// User input resolves its endpoint immediately, including during a batch;
+    /// background ticks wait for synchronized output to become visible.
+    fn refresh_selection(&mut self, host: &mut Host, now: Instant, defer_synchronized: bool) {
+        let Some(&(id, _)) = host.selection_drag.as_ref() else {
+            return;
+        };
+        if host.mouse_button != Some(vt::MouseButton::Left)
+            || !host.visible
+            || host.occluded
+            || host.ui_input()
+            || host.peek.is_some()
+            || self.focused(host.id) != Some(id)
+            || !host.rects.contains_key(&id)
+        {
+            self.cancel_selection_drag(host);
+            return;
+        }
+        let scale = host.window.scale_factor() as f32;
+        let metrics = host.fonts.metrics();
+        let padding = [
+            self.config().window_padding_x.start * scale,
+            (self.config().window_padding_y.start
+                + if self.tab(host.id).is_some_and(|tab| tab.panes.len() > 1) {
+                    18.0
+                } else {
+                    0.0
+                })
+                * scale,
+        ];
+        let Some(pane) = self.panes.get_mut(&id) else {
+            self.cancel_selection_drag(host);
+            return;
+        };
+        let Ok(mut terminal) = pane.session.terminal() else {
+            host.selection_drag = None;
+            return;
+        };
+        let drag = &mut host.selection_drag.as_mut().unwrap().1;
+        if defer_synchronized && let Some(deadline) = pane.sync_output.update(&mut terminal, now) {
+            if drag.deadline.is_some() {
+                drag.deadline = Some(deadline);
+            }
+            return;
+        }
+        let pointer = selection_pointer(
+            &terminal,
+            host.mouse,
+            host.rects[&id],
+            scale,
+            padding,
+            [metrics.cell_width, metrics.cell_height],
+            host.modifiers.state().alt_key(),
+        );
+        let previous = (
+            terminal.screen().viewport_offset,
+            terminal.screen().selection,
+        );
+        if !drag.refresh(
+            &mut terminal,
+            &mut pane.selection_gesture,
+            host.mouse,
+            pointer,
+            now,
+        ) {
+            host.selection_drag = None;
+        }
+        if previous
+            != (
+                terminal.screen().viewport_offset,
+                terminal.screen().selection,
+            )
+        {
+            host.repaint();
+        }
+    }
+
     fn scroll(&mut self, host: &mut Host, delta: MouseScrollDelta) {
+        self.refresh_selection(host, Instant::now(), false);
         if host.modal_input()
             || host.peek.is_some()
             || host.divider_drag.is_some()
-            || self
-                .context
-                .layer_id_at(host.mouse)
-                .is_some_and(|layer| layer.order != egui::Order::Background)
+            || host.selection_drag.is_none()
+                && self
+                    .context
+                    .layer_id_at(host.mouse)
+                    .is_some_and(|layer| layer.order != egui::Order::Background)
         {
             return;
         }
-        if let Some(id) = host.hovered_pane() {
+        if let Some(id) = host
+            .selection_drag
+            .as_ref()
+            .map(|(id, _)| *id)
+            .or_else(|| host.hovered_pane())
+        {
             let mut cursor_keys = None;
-            let mouse = self
-                .panes
-                .get(&id)
-                .and_then(|p| {
-                    p.session.terminal().ok().map(|terminal| {
-                        input::mouse_reporting(
-                            &terminal,
-                            host.modifiers.state(),
-                            self.config().mouse_shift_capture,
-                        )
+            let mouse = host.selection_drag.is_none()
+                && self
+                    .panes
+                    .get(&id)
+                    .and_then(|p| {
+                        p.session.terminal().ok().map(|terminal| {
+                            input::mouse_reporting(
+                                &terminal,
+                                host.modifiers.state(),
+                                self.config().mouse_shift_capture,
+                            )
+                        })
                     })
-                })
-                .unwrap_or(false);
+                    .unwrap_or(false);
             let rows = match delta {
                 MouseScrollDelta::LineDelta(_, y) if mouse => y.abs().ceil().copysign(y) as isize,
                 MouseScrollDelta::LineDelta(_, y) => (y * 3.0).round() as isize,
@@ -3640,7 +4018,7 @@ impl App {
                         if terminal.modes.dec(1) { b'O' } else { b'[' },
                         if rows > 0 { b'A' } else { b'B' },
                     ];
-                    if count != 0 {
+                    if count != 0 && host.selection_drag.is_none() {
                         terminal.screen_mut().selection = None;
                     }
                     cursor_keys = Some(sequence.repeat(count));
@@ -3652,6 +4030,7 @@ impl App {
                 self.write(id, bytes);
             }
         }
+        self.refresh_selection(host, Instant::now(), false);
         host.repaint();
     }
     /// Resolve the same target used by Command-click. Passive motion stays cheap:
@@ -3752,12 +4131,15 @@ impl App {
     }
 
     fn pointer_cursor(&self, host: &Host) -> Option<CursorIcon> {
+        if host.selection_drag.is_some() {
+            return Some(CursorIcon::Text);
+        }
         if host.modal_input()
             || host.peek.is_some()
-            || self
-                .context
-                .layer_id_at(host.mouse)
-                .is_some_and(|layer| layer.order != egui::Order::Background)
+            || host
+                .search_rects
+                .values()
+                .any(|rect| rect.contains(host.mouse))
         {
             return None;
         }
@@ -3787,6 +4169,42 @@ impl App {
     }
 
     fn mouse(&mut self, host: &mut Host, action: vt::MouseAction, button: Option<vt::MouseButton>) {
+        if host.selection_drag.is_some() && action != vt::MouseAction::Press {
+            self.refresh_selection(host, Instant::now(), false);
+            let text = if action == vt::MouseAction::Release
+                && button == Some(vt::MouseButton::Left)
+                && let Some((id, _)) = host.selection_drag.take()
+                && let Some(pane) = self.panes.get_mut(&id)
+                && let Ok(terminal) = pane.session.terminal()
+            {
+                // Refresh above has already marked movement and resolved the
+                // endpoint, including content that moved just before mouse-up.
+                let point = terminal
+                    .screen()
+                    .selection
+                    .map(|selection| selection.end)
+                    .or_else(|| pane.selection_gesture.anchor(&terminal));
+                pane.selection_gesture.release(&terminal, point);
+                terminal.screen().selection_text()
+            } else {
+                None
+            };
+            if let Some(text) = text {
+                if matches!(
+                    self.config().copy_on_select,
+                    config::CopyOnSelect::Clipboard | config::CopyOnSelect::Both
+                ) {
+                    host.egui.set_clipboard_text(text.clone());
+                }
+                if matches!(
+                    self.config().copy_on_select,
+                    config::CopyOnSelect::Primary | config::CopyOnSelect::Both
+                ) {
+                    self.set_selection_text(text);
+                }
+            }
+            return;
+        }
         if !host.modal_input()
             && action == vt::MouseAction::Press
             && !matches!(
@@ -3934,6 +4352,8 @@ impl App {
             host.modifiers.state(),
             config.mouse_shift_capture,
         ) {
+            pane.selection_gesture.reset(&mut terminal);
+            host.selection_drag = None;
             let bytes = terminal.encode_mouse(
                 vt::MouseEvent {
                     action,
@@ -3961,61 +4381,47 @@ impl App {
             }
             return;
         }
-        if action == vt::MouseAction::Move
-            && (host.mouse_button != Some(vt::MouseButton::Left) || host.selection_drag.is_none())
-        {
+        if action != vt::MouseAction::Press || button != Some(vt::MouseButton::Left) {
             return;
         }
         let col = (position.x.max(0.0) as usize / metrics.cell_width as usize)
             .min(terminal.cols as usize - 1);
         let row = (position.y.max(0.0) as usize / metrics.cell_height as usize)
             .min(terminal.rows as usize - 1);
-        let screen = terminal.screen_mut();
-        let point = screen
+        let point = terminal
+            .screen()
             .viewport()
             .nth(row)
             .map(|r| vt::GridPoint { row: r.id, col });
         if let Some(point) = point {
-            if action == vt::MouseAction::Press && button == Some(vt::MouseButton::Left) {
-                if host.modifiers.state().super_key() && config.link_url {
-                    if let Some(link) = &host.hovered_link
-                        && link.pane == id
-                        && let Some(platform) = &self.platform
-                        && let Err(error) = platform.open_url(&link.uri)
-                    {
-                        self.errors.push(error);
-                    }
-                } else {
-                    host.selection_drag = Some(input::SelectionDrag::new(point, host.mouse));
-                    screen.selection = None;
-                }
-            } else if action == vt::MouseAction::Move
-                && host.mouse_button == Some(vt::MouseButton::Left)
-            {
-                if let Some(drag) = &mut host.selection_drag
-                    && let Some(selection) =
-                        drag.update(host.mouse, point, host.modifiers.state().alt_key())
+            if host.modifiers.state().super_key() && config.link_url {
+                pane.selection_gesture.reset(&mut terminal);
+                host.selection_drag = None;
+                if let Some(link) = &host.hovered_link
+                    && link.pane == id
+                    && let Some(platform) = &self.platform
+                    && let Err(error) = platform.open_url(&link.uri, &pane.cwd)
                 {
-                    screen.selection = Some(selection);
+                    self.errors.push(error);
                 }
-            } else if action == vt::MouseAction::Release && host.selection_drag.take().is_some() {
-                let copy = config.copy_on_select;
-                let text = screen.selection_text();
-                drop(terminal);
-                if let Some(text) = text {
-                    if matches!(
-                        copy,
-                        config::CopyOnSelect::Clipboard | config::CopyOnSelect::Both
-                    ) {
-                        host.egui.set_clipboard_text(text.clone());
-                    }
-                    if matches!(
-                        copy,
-                        config::CopyOnSelect::Primary | config::CopyOnSelect::Both
-                    ) {
-                        self.set_selection_text(text);
-                    }
-                }
+            } else {
+                host.selection_drag = Some((id, input::SelectionDrag::new(point, host.mouse)));
+                let selection = input::selection_press(
+                    &mut terminal,
+                    &mut pane.selection_gesture,
+                    &mut pane.links,
+                    vt::selection_gesture::Press {
+                        time: Some(pane.started.elapsed().as_nanos() as i128),
+                        point,
+                        xpos: f64::from(surface.x),
+                        ypos: f64::from(surface.y),
+                        max_distance: f64::from(metrics.cell_width),
+                        repeat_interval: Platform::double_click_interval().as_nanos() as u64,
+                        word_boundaries: vt::selection::DEFAULT_WORD_BOUNDARIES,
+                        behaviors: vt::selection_gesture::DEFAULT_BEHAVIORS,
+                    },
+                );
+                terminal.screen_mut().selection = selection;
             }
         }
         host.repaint();
@@ -4057,24 +4463,6 @@ fn link_bounds(
 
 fn rgb(color: config::Rgb) -> Color32 {
     Color32::from_rgb(color.r, color.g, color.b)
-}
-fn palette_actions() -> Vec<(&'static str, Action)> {
-    vec![
-        ("New window", Action::NewWindow),
-        ("New tab", Action::NewTab),
-        ("Split right", Action::NewSplit(Direction::Right)),
-        ("Split down", Action::NewSplit(Direction::Down)),
-        ("Zoom pane", Action::ToggleSplitZoom),
-        ("Zoom quadrant", Action::ToggleQuadrantZoom),
-        ("Equalize splits", Action::EqualizeSplits),
-        ("Find", Action::StartSearch),
-        ("Open configuration", Action::OpenConfig),
-        ("Open saved layout", Action::OpenLayout),
-        ("Reload configuration", Action::ReloadConfig),
-        ("Toggle quick terminal", Action::ToggleQuickTerminal),
-        ("Undo layout change", Action::Undo),
-        ("Redo layout change", Action::Redo),
-    ]
 }
 
 impl ApplicationHandler<Event> for App {
@@ -4155,47 +4543,22 @@ impl ApplicationHandler<Event> for App {
                         }
                     }
                 } else if let PlatformEvent::Action(action) = event {
-                    if action == Action::OpenLayout && self.windows.is_empty() {
-                        let id = self.add_window(false);
-                        self.reconcile(event_loop);
-                        self.active = Some(id);
-                    }
-                    let key = self
-                        .windows
-                        .iter()
-                        .find(|(_, host)| Some(host.id) == self.active)
-                        .or_else(|| self.windows.iter().next())
-                        .map(|(id, _)| *id);
-                    if let Some(key) = key
-                        && let Some(mut host) = self.windows.remove(&key)
+                    self.platform_action(event_loop, action, false);
+                } else if let PlatformEvent::GlobalHotkey { id, key_code } = event {
+                    self.consumed_global_keys
+                        .insert(PhysicalKey::from_scancode(u32::from(key_code)));
+                    if let Some(binding) = self
+                        .platform
+                        .as_ref()
+                        .and_then(|platform| platform.global_keybinding(id))
                     {
-                        self.action(event_loop, &mut host, action, false);
-                        self.windows.insert(key, host);
-                        self.reconcile(event_loop);
-                    } else if matches!(action, Action::Undo | Action::Redo) {
-                        if self.undo_layout(action == Action::Redo) {
-                            self.reconcile(event_loop);
-                        }
-                    } else if action == Action::ToggleQuickTerminal {
-                        let id = self.add_window(true);
-                        self.reconcile(event_loop);
-                        let key = self
-                            .windows
-                            .iter()
-                            .find(|(_, host)| host.id == id)
-                            .map(|(key, _)| *key);
-                        if let Some(key) = key
-                            && let Some(mut host) = self.windows.remove(&key)
-                        {
-                            self.quick_visible(&mut host, true, true);
-                            self.windows.insert(key, host);
-                        }
-                    } else if matches!(action, Action::NewWindow | Action::NewTab) {
-                        self.add_window(false);
-                        self.reconcile(event_loop);
-                    } else if action == Action::Quit {
-                        self.save();
-                        event_loop.exit();
+                        self.platform_binding(event_loop, binding);
+                    }
+                } else if let PlatformEvent::Warning(message) = event {
+                    self.errors.push(message);
+                    for host in self.windows.values_mut() {
+                        host.messages_open = true;
+                        host.repaint();
                     }
                 }
                 self.sync_host_state();
@@ -4208,7 +4571,11 @@ impl ApplicationHandler<Event> for App {
                             let pane = host
                                 .prepared
                                 .iter()
-                                .find(|(_, pane)| pane.text.contains(request.target_node))
+                                .find(|(_, pane)| {
+                                    pane.text
+                                        .as_ref()
+                                        .is_some_and(|text| text.contains(request.target_node))
+                                })
                                 .map(|(&id, _)| id);
                             let mut handled = false;
                             if let Some(id) = pane {
@@ -4235,10 +4602,13 @@ impl ApplicationHandler<Event> for App {
                                         handled = true;
                                     }
                                     AccessAction::SetTextSelection => {
+                                        self.cancel_selection_drag(&mut host);
                                         if let Some(ActionData::SetTextSelection(range)) =
                                             &request.data
-                                            && let Some(selection) =
-                                                host.prepared[&id].text.selection(*range)
+                                            && let Some(selection) = host.prepared[&id]
+                                                .text
+                                                .as_ref()
+                                                .and_then(|text| text.selection(*range))
                                             && let Some(pane) = self.panes.get(&id)
                                             && let Ok(mut terminal) = pane.session.terminal()
                                         {
@@ -4262,8 +4632,8 @@ impl ApplicationHandler<Event> for App {
                                 host.egui.on_accesskit_action_request(request);
                             }
                         }
-                        AccessEvent::InitialTreeRequested => self.context.enable_accesskit(),
-                        AccessEvent::AccessibilityDeactivated => {}
+                        AccessEvent::InitialTreeRequested => host.accesskit_active = true,
+                        AccessEvent::AccessibilityDeactivated => host.accesskit_active = false,
                     }
                     host.repaint();
                     self.windows.insert(event.window_id, host);
@@ -4273,10 +4643,35 @@ impl ApplicationHandler<Event> for App {
         }
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, window: WindowId, event: WindowEvent) {
+        if let WindowEvent::KeyboardInput {
+            event,
+            is_synthetic: false,
+            ..
+        } = &event
+            && input::global_key_is_consumed(
+                &mut self.consumed_global_keys,
+                event.physical_key,
+                event.state,
+                event.repeat,
+            )
+        {
+            return;
+        }
         let Some(mut host) = self.windows.remove(&window) else {
             return;
         };
         host.messages_open = !self.errors.is_empty();
+        if matches!(
+            event,
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                ..
+            }
+        ) {
+            // Clear the old hint before this click can focus another pane.
+            host.focus_hint.dismiss();
+            host.repaint();
+        }
         if let Some(smoke) = &mut self.smoke {
             let input = match &event {
                 WindowEvent::CursorMoved { position, .. } => {
@@ -4418,6 +4813,7 @@ impl ApplicationHandler<Event> for App {
                         self.focus_pane(host.id, pane);
                     }
                 } else {
+                    self.cancel_selection_drag(&mut host);
                     host.peek = None;
                     host.modifiers = Modifiers::default();
                     host.consumed_keys.clear();
@@ -4453,6 +4849,7 @@ impl ApplicationHandler<Event> for App {
             WindowEvent::Occluded(occluded) => {
                 host.occluded = occluded;
                 if occluded {
+                    self.cancel_selection_drag(&mut host);
                     host.deadline = None;
                 } else {
                     host.repaint();
@@ -4565,6 +4962,10 @@ impl ApplicationHandler<Event> for App {
                     let button = host.mouse_button;
                     self.mouse(&mut host, vt::MouseAction::Move, button);
                 }
+                // Motion cannot add or remove windows or sessions. Even divider
+                // drags update their geometry directly, without reconciliation.
+                self.windows.insert(window, host);
+                return;
             }
             WindowEvent::MouseInput { state, button, .. } if !host.modal_input() => {
                 let button = match button {
@@ -4631,6 +5032,22 @@ impl ApplicationHandler<Event> for App {
         for id in sync_expired {
             self.drain(event_loop, id);
         }
+        let scroll_windows = self
+            .windows
+            .iter()
+            .filter(|(_, host)| {
+                host.selection_drag
+                    .as_ref()
+                    .is_some_and(|(_, drag)| drag.deadline.is_some_and(|deadline| deadline <= now))
+            })
+            .map(|(&window, _)| window)
+            .collect::<Vec<_>>();
+        for window in scroll_windows {
+            if let Some(mut host) = self.windows.remove(&window) {
+                self.selection_scroll(&mut host, now);
+                self.windows.insert(window, host);
+            }
+        }
         let expired = self
             .panes
             .iter_mut()
@@ -4683,6 +5100,13 @@ impl ApplicationHandler<Event> for App {
             .chain(self.smoke.as_ref().map(|_| now + Duration::from_millis(50)))
             .min();
         for host in self.windows.values_mut() {
+            if let Some(deadline) = host
+                .selection_drag
+                .as_ref()
+                .and_then(|(_, drag)| drag.deadline)
+            {
+                next = Some(next.map_or(deadline, |old| old.min(deadline)));
+            }
             if let Some(deadline) = host.deadline {
                 if deadline <= now {
                     host.deadline = None;
@@ -5098,6 +5522,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn binding_dispatch_runs_every_action_in_order_with_broadcast_flags() {
+        for prefix in ["", "all:", "global:"] {
+            let mut binding = config::KeyBinding::parse(&format!("{prefix}ctrl+a=ignore")).unwrap();
+            let actions = vec![
+                Action::Ignore,
+                Action::Text(b"first".to_vec()),
+                Action::Text(b"second".to_vec()),
+            ];
+            binding.actions = actions.clone();
+            let mut dispatched = Vec::new();
+            assert!(dispatch_binding(binding.clone(), |action, all| {
+                dispatched.push((action, all));
+                // A successful first action must not skip later actions.
+                dispatched.len() == 1
+            }));
+            assert_eq!(
+                dispatched,
+                actions
+                    .into_iter()
+                    .map(|action| (action, !prefix.is_empty()))
+                    .collect::<Vec<_>>()
+            );
+            assert!(!dispatch_binding(binding, |_, _| false));
+        }
+    }
+
+    #[test]
     fn hovered_link_bounds_cover_wrapped_text_and_the_whole_wide_cell() {
         let origin = Pos2::new(8.0, 20.0);
         let cell = Vec2::new(7.0, 16.0);
@@ -5258,10 +5709,9 @@ mod tests {
             |terminal: &vt::Terminal| PaneRenderKey::new(terminal, options.clone(), rect, 1.0);
         let mut terminal = vt::Terminal::new(20, 3, 64);
         terminal.feed(b"first\r\nsecond\r\nthird\r\nfourth");
-        let prepared = PreparedPane::new(
-            1,
+        let mut prepared = PreparedPane::new(
             key(&terminal),
-            &terminal.screen().snapshot_viewport(),
+            terminal.screen().snapshot_viewport(),
             &mut fonts,
         )
         .unwrap();
@@ -5288,6 +5738,17 @@ mod tests {
         terminal.screen_mut().selection = None;
         assert!(prepared.matches(&key(&terminal), &fonts));
 
+        let mut searching = key(&terminal);
+        searching
+            .options
+            .search_highlights
+            .push(rustty_render::SearchHighlight {
+                row: point.row,
+                columns: 0..=2,
+                selected: false,
+            });
+        assert!(!prepared.matches(&searching, &fonts));
+
         let mut composition = key(&terminal);
         composition.options.preedit = Some(rustty_render::Preedit {
             text: "日本".into(),
@@ -5297,23 +5758,18 @@ mod tests {
         let moved = rect.translate(Vec2::new(30.0, 0.0));
         let moved_key = PaneRenderKey::new(&terminal, options.clone(), moved, 1.0);
         assert!(!prepared.matches(&moved_key, &fonts));
-        let moved_pane = PreparedPane::new(
-            1,
-            moved_key,
-            &terminal.screen().snapshot_viewport(),
-            &mut fonts,
-        )
-        .unwrap();
+        let moved_pane =
+            PreparedPane::new(moved_key, terminal.screen().snapshot_viewport(), &mut fonts)
+                .unwrap();
         assert_eq!(
             moved_pane.ime_rect,
             prepared.ime_rect.translate(Vec2::new(30.0, 0.0))
         );
         terminal.feed(b"!");
         assert!(!prepared.matches(&key(&terminal), &fonts));
-        let prepared = PreparedPane::new(
-            1,
+        let mut prepared = PreparedPane::new(
             key(&terminal),
-            &terminal.screen().snapshot_viewport(),
+            terminal.screen().snapshot_viewport(),
             &mut fonts,
         )
         .unwrap();
@@ -5325,10 +5781,9 @@ mod tests {
 
         terminal.feed(b"\x1b_Gi=1,s=1,v=1,f=32;/wAA/w==\x1b\\\x1b_Ga=f,i=1,s=1,v=1,f=32,z=50;AP8A/w==\x1b\\\x1b_Ga=a,i=1,r=1,z=50,s=3\x1b\\\x1b_Ga=p,i=1,C=1\x1b\\");
         assert_eq!(terminal.tick_graphics(100), Some(150));
-        let prepared = PreparedPane::new(
-            1,
+        let mut prepared = PreparedPane::new(
             key(&terminal),
-            &terminal.screen().snapshot_viewport(),
+            terminal.screen().snapshot_viewport(),
             &mut fonts,
         )
         .unwrap();
@@ -5339,6 +5794,185 @@ mod tests {
             !prepared.matches(&key(&terminal), &fonts),
             "a Kitty animation frame must invalidate retained graphics"
         );
+    }
+
+    #[test]
+    fn output_metadata_distinguishes_titles_and_pointer_shapes_from_terminal_changes() {
+        let mut terminal = vt::Terminal::new(20, 3, 64);
+        let key = |terminal: &vt::Terminal| {
+            PaneRenderKey::new(terminal, RenderOptions::default(), egui::Rect::ZERO, 1.0)
+        };
+        let displayed = key(&terminal);
+        terminal.feed(b"\x1b]2;new title\x07\x1b]22;pointer\x07");
+        assert!(displayed.matches_terminal(&terminal));
+        assert_eq!(terminal.mouse_shape(), "pointer");
+        for bytes in [
+            b"\x1b]2;title plus text\x07text".as_slice(),
+            b"\x1b[?5h",                      // reverse video
+            b"\x1b]4;1;#123456\x07",          // palette
+            b"\x1b[?25l",                     // cursor visibility
+            b"\x1b[2 q",                      // cursor style
+            b"\x1b[?2026hpartial\x1b[?2026l", // completed batch
+        ] {
+            let displayed = key(&terminal);
+            terminal.feed(bytes);
+            assert!(!displayed.matches_terminal(&terminal), "{bytes:?}");
+        }
+        let displayed = key(&terminal);
+        terminal.screen_mut().cursor.col += 1;
+        assert!(!displayed.matches_terminal(&terminal));
+        let displayed = key(&terminal);
+        let point = vt::GridPoint {
+            row: terminal.screen().row(0).id,
+            col: 0,
+        };
+        terminal.screen_mut().selection = Some(vt::Selection {
+            start: point,
+            end: point,
+            rectangular: false,
+        });
+        assert!(!displayed.matches_terminal(&terminal));
+        terminal.feed(b"\r\na\r\nb\r\nc\r\nd");
+        let displayed = key(&terminal);
+        terminal.screen_mut().scroll_viewport(1);
+        assert!(!displayed.matches_terminal(&terminal));
+    }
+
+    #[test]
+    fn prepared_panes_ignore_blink_phase_only_for_steady_content() {
+        let mut fonts = rustty_render::Renderer::new(font_config(&Config::default(), 1.0)).unwrap();
+        let rect = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(320.0, 160.0));
+        let key = |terminal: &vt::Terminal, blink_visible| {
+            PaneRenderKey::new(
+                terminal,
+                RenderOptions {
+                    size: [320, 160],
+                    blink_visible,
+                    ..Default::default()
+                },
+                rect,
+                1.0,
+            )
+        };
+        let mut terminal = vt::Terminal::new(20, 3, 64);
+        // A steady cursor and a hidden blinking cursor both ignore the phase.
+        for cursor in [b"\x1b[2 q".as_slice(), b"\x1b[1 q\x1b[?25l"] {
+            terminal.feed(cursor);
+            let mut prepared = PreparedPane::new(
+                key(&terminal, true),
+                terminal.screen().snapshot_viewport(),
+                &mut fonts,
+            )
+            .unwrap();
+            assert!(prepared.matches(&key(&terminal, false), &fonts));
+            assert!(prepared.matches(&key(&terminal, true), &fonts));
+        }
+        terminal.feed(b"\x1b[?25h");
+        let mut prepared = PreparedPane::new(
+            key(&terminal, true),
+            terminal.screen().snapshot_viewport(),
+            &mut fonts,
+        )
+        .unwrap();
+        assert!(!prepared.matches(&key(&terminal, false), &fonts));
+
+        terminal.feed(b"a\r\nb\r\nc\r\nd\x1b[H");
+        terminal.screen_mut().scroll_viewport(1);
+        let mut prepared = PreparedPane::new(
+            key(&terminal, true),
+            terminal.screen().snapshot_viewport(),
+            &mut fonts,
+        )
+        .unwrap();
+        assert!(prepared.screen.cursor.visible);
+        assert!(!prepared.matches(&key(&terminal, false), &fonts));
+        terminal.screen_mut().scroll_viewport(-1);
+        terminal.feed(b"\x1b[?25l");
+        let mut prepared = PreparedPane::new(
+            key(&terminal, true),
+            terminal.screen().snapshot_viewport(),
+            &mut fonts,
+        )
+        .unwrap();
+        // New blinking text must use the current phase even if the previous
+        // frame was steady. Matching must not normalize the incoming options.
+        terminal.feed(b"\x1b[5mblink\x1b[0m");
+        let hidden = key(&terminal, false);
+        assert!(!prepared.matches(&hidden, &fonts));
+        let mut prepared =
+            PreparedPane::new(hidden, terminal.screen().snapshot_viewport(), &mut fonts).unwrap();
+        assert!(prepared.frame.blinking_text);
+        assert!(prepared.matches(&key(&terminal, false), &fonts));
+        assert!(!prepared.matches(&key(&terminal, true), &fonts));
+        let shown = PreparedPane::new(
+            key(&terminal, true),
+            terminal.screen().snapshot_viewport(),
+            &mut fonts,
+        )
+        .unwrap();
+        assert_ne!(prepared.frame.quads, shown.frame.quads);
+    }
+
+    #[test]
+    fn accessibility_is_lazy_and_uses_the_displayed_snapshot() {
+        use egui::accesskit::{self as ak, Node, TextPosition, TextSelection};
+
+        let mut fonts = rustty_render::Renderer::new(font_config(&Config::default(), 2.0)).unwrap();
+        let metrics = fonts.metrics();
+        let mut terminal = vt::Terminal::new(12, 2, 0);
+        terminal.feed("A界e\u{301}B".as_bytes());
+        let row = terminal.screen().row(0).id;
+        let key = PaneRenderKey::new(
+            &terminal,
+            RenderOptions {
+                size: [400, 160],
+                padding: [8.0, 12.0],
+                ..Default::default()
+            },
+            egui::Rect::from_min_size(Pos2::new(10.0, 20.0), Vec2::new(200.0, 80.0)),
+            2.0,
+        );
+        let mut prepared =
+            PreparedPane::new(key, terminal.screen().snapshot_viewport(), &mut fonts).unwrap();
+        assert!(prepared.text.is_none());
+        let frame = Arc::clone(&prepared.frame);
+
+        terminal.feed(b"\x1b[?2026h\x1b[2J\x1b[Hpartial frame");
+        let text = prepared.accessibility(7);
+        let mut update = ak::TreeUpdate {
+            nodes: vec![(text.id.accesskit_id(), Node::new(ak::Role::Terminal))],
+            tree: None,
+            tree_id: ak::TreeId::ROOT,
+            focus: text.id.accesskit_id(),
+        };
+        text.append_to(&mut update);
+        let (node_id, node) = &update.nodes[1];
+        assert!(node.value().unwrap().starts_with("A界e\u{301}B"));
+        assert_eq!(node.bounds().unwrap().x0, 14.0);
+        assert_eq!(node.bounds().unwrap().y0, 26.0);
+        assert_eq!(
+            node.character_positions().unwrap()[1],
+            metrics.cell_width as f32 / 2.0
+        );
+        assert!(text.contains(*node_id));
+        assert_eq!(
+            text.selection(TextSelection {
+                anchor: TextPosition {
+                    node: *node_id,
+                    character_index: 1,
+                },
+                focus: TextPosition {
+                    node: *node_id,
+                    character_index: 3,
+                },
+            }),
+            Some(Some(vt::Selection {
+                start: vt::GridPoint { row, col: 1 },
+                end: vt::GridPoint { row, col: 3 },
+                rectangular: false,
+            }))
+        );
+        assert!(Arc::ptr_eq(&frame, &prepared.frame));
     }
 
     #[test]
@@ -5585,20 +6219,19 @@ mod tests {
         };
         let mut frame = |events| {
             let mut command = None;
-            let mut output = context.run_ui(
-                egui::RawInput {
-                    screen_rect: Some(egui::Rect::from_min_size(
-                        Pos2::ZERO,
-                        Vec2::new(800.0, 600.0),
-                    )),
-                    focused: true,
-                    events,
-                    ..Default::default()
-                },
-                |_| {
-                    command = show_layout_picker(&context, &mut picker).or(command.take());
-                },
-            );
+            let mut raw = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    Pos2::ZERO,
+                    Vec2::new(800.0, 600.0),
+                )),
+                focused: true,
+                events,
+                ..Default::default()
+            };
+            input::filter_egui_events(&mut raw, true);
+            let mut output = context.run_ui(raw, |_| {
+                command = show_layout_picker(&context, &mut picker).or(command.take());
+            });
             let open = output
                 .platform_output
                 .accesskit_update
@@ -5643,6 +6276,15 @@ mod tests {
         }])
         .0;
         assert!(matches!(command, Some(LayoutCommand::Close)));
+        let command = frame(vec![egui::Event::Key {
+            key: egui::Key::OpenBracket,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::CTRL,
+        }])
+        .0;
+        assert!(matches!(command, Some(LayoutCommand::Close)));
     }
 
     #[test]
@@ -5679,12 +6321,12 @@ mod tests {
             dismiss
         }
 
-        for click in [true, false] {
+        for dismissal in ["click", "escape", "control-bracket"] {
             let context = egui::Context::default();
             let mut errors = vec!["The text editor could not open settings".to_owned()];
             frame(&context, &mut errors, vec![]);
             let button = frame(&context, &mut errors, vec![]).unwrap();
-            if click {
+            if dismissal == "click" {
                 let point = button.center();
                 for pressed in [true, false] {
                     frame(
@@ -5706,15 +6348,23 @@ mod tests {
                     &context,
                     &mut errors,
                     vec![egui::Event::Key {
-                        key: egui::Key::Escape,
+                        key: if dismissal == "escape" {
+                            egui::Key::Escape
+                        } else {
+                            egui::Key::OpenBracket
+                        },
                         physical_key: None,
                         pressed: true,
                         repeat: false,
-                        modifiers: egui::Modifiers::default(),
+                        modifiers: if dismissal == "escape" {
+                            egui::Modifiers::NONE
+                        } else {
+                            egui::Modifiers::CTRL
+                        },
                     }],
                 );
             }
-            assert!(errors.is_empty(), "dismiss by click={click}");
+            assert!(errors.is_empty(), "dismiss by {dismissal}");
             assert!(frame(&context, &mut errors, vec![]).is_none());
         }
     }

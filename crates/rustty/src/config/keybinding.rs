@@ -399,6 +399,11 @@ impl KeyBinding {
             .split('>')
             .map(KeyTrigger::parse)
             .collect::<Result<Vec<_>, _>>()?;
+        if flags.global && trigger.iter().any(|trigger| trigger.key == "catch_all") {
+            return Err(
+                "global bindings require an explicit key; catch_all is only supported locally",
+            );
+        }
         if trigger.len() > 1 && flags.all {
             return Err("global and all bindings cannot use key sequences");
         }
