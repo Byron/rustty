@@ -1,4 +1,4 @@
-use crate::{AtlasUpload, Color, Frame, Paint, Quad, RenderError};
+use crate::{AtlasUpload, Color, Frame, Paint, Quad, RenderError, SearchHighlight};
 use rustty_font::{
     BitmapFormat, FontConfig, FontError, FontId, FontMetrics, FontStyle, FontSystem, GlyphBitmap,
     ShapedGlyph, sprite,
@@ -35,6 +35,7 @@ pub struct RenderOptions {
     pub cursor_text: [u8; 3],
     pub selection_background: [u8; 3],
     pub selection_foreground: Option<[u8; 3]>,
+    pub search_highlights: Vec<SearchHighlight>,
     pub palette: [[u8; 3]; 256],
     pub focused: bool,
     pub cursor_visible: bool,
@@ -80,6 +81,7 @@ impl Default for RenderOptions {
             cursor_text: [24, 24, 24],
             selection_background: [65, 85, 120],
             selection_foreground: None,
+            search_highlights: Vec::new(),
             palette,
             focused: true,
             cursor_visible: true,
@@ -110,6 +112,7 @@ struct Page {
 #[derive(Default)]
 struct RowScratch {
     paints: Vec<Color>,
+    search: Vec<Option<bool>>,
     text: String,
     sources: Vec<(usize, usize)>,
     anchors: Vec<Option<f32>>,
@@ -230,14 +233,25 @@ impl Renderer {
                 / metrics.cell_width as f32)
                 .ceil() as usize;
             let visible_cols = visible_cols.min(row.cells().len());
+            scratch.search.clear();
+            for highlight in options.search_highlights.iter().filter(|h| h.row == row.id) {
+                scratch.search.resize(visible_cols, None);
+                let start = (*highlight.columns.start()).min(visible_cols);
+                let end = highlight.columns.end().saturating_add(1).min(visible_cols);
+                if let Some(cells) = scratch.search.get_mut(start..end) {
+                    for cell in cells {
+                        *cell = Some(cell.unwrap_or(false) || highlight.selected);
+                    }
+                }
+            }
             // Raw-zero tails have no text, background, blink or decorations.
             let text_cols = row.cells()[..visible_cols]
                 .iter()
                 .rposition(|cell| cell.bits() != 0)
                 .map_or(0, |col| col + 1);
-            // ponytail: keep full rows for cursor/selection painting; bound
+            // ponytail: keep full rows for cursor/selection/search painting; bound
             // their ranges if those redraws become a bottleneck.
-            let paint_cols = if cursor || selection.is_some() {
+            let paint_cols = if cursor || selection.is_some() || !scratch.search.is_empty() {
                 visible_cols
             } else {
                 text_cols
@@ -273,6 +287,21 @@ impl Renderer {
                     bg = options.selection_background;
                     fg = options.selection_foreground.unwrap_or(fg);
                 }
+                // A wide glyph's trailing cell shares its leading cell's highlight.
+                let search_col = if cell.width() == 0 {
+                    col.saturating_sub(1)
+                } else {
+                    col
+                };
+                let search = scratch.search.get(search_col).copied().flatten();
+                if let Some(selected) = search {
+                    bg = if selected {
+                        [242, 165, 126]
+                    } else {
+                        [255, 224, 130]
+                    };
+                    fg = [0; 3];
+                }
                 let block_cursor = cursor
                     && options.focused
                     && screen.cursor.shape == CursorShape::Block
@@ -281,7 +310,7 @@ impl Renderer {
                     bg = options.cursor_color;
                     fg = options.cursor_text;
                 }
-                if bg != options.background || selected || block_cursor {
+                if bg != options.background || selected || search.is_some() || block_cursor {
                     frame.quads.push(Quad::solid(
                         [
                             options.padding[0] + col as f32 * metrics.cell_width as f32,
@@ -369,6 +398,7 @@ impl Renderer {
             text,
             sources,
             anchors,
+            ..
         } = scratch;
         let mut col = 0;
         while col < paints.len() {

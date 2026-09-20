@@ -40,6 +40,7 @@ are saved separately under `com.rustty.app`.
 Find opens in the upper-right corner of its pane without resizing terminal content.
 Each pane keeps its own query; clicking a terminal leaves its Find overlay open.
 Enter and Shift+Enter navigate matches, and Escape closes the focused pane's Find.
+All matches stay highlighted in yellow, with the selected match in peach.
 `search-unfocused-opacity = 0.8` controls the whole overlay's opacity when its
 controls or window lose focus; values from 0 through 1 are supported and reload
 immediately. This is independent of `unfocused-split-opacity` and its dimming color.

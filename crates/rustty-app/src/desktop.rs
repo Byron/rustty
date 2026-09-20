@@ -2900,6 +2900,11 @@ impl App {
                                     .map(resolve)
                                     .unwrap_or([65, 85, 120]),
                                 selection_foreground: config.selection_foreground.map(resolve),
+                                search_highlights: pane
+                                    .search
+                                    .as_mut()
+                                    .map(|search| search.highlights(&mut terminal))
+                                    .unwrap_or_default(),
                                 palette: terminal
                                     .palette
                                     .as_slice()
@@ -5287,6 +5292,17 @@ mod tests {
         assert!(!prepared.matches(&key(&terminal), &fonts));
         terminal.screen_mut().selection = None;
         assert!(prepared.matches(&key(&terminal), &fonts));
+
+        let mut searching = key(&terminal);
+        searching
+            .options
+            .search_highlights
+            .push(rustty_render::SearchHighlight {
+                row: point.row,
+                columns: 0..=2,
+                selected: false,
+            });
+        assert!(!prepared.matches(&searching, &fonts));
 
         let mut composition = key(&terminal);
         composition.options.preedit = Some(rustty_render::Preedit {

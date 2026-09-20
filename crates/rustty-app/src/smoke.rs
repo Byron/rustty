@@ -1053,6 +1053,25 @@ fn check_find(
             set_focus(host, window_focused);
             host.capture = true;
             app.draw(event_loop, host)?;
+            for (id, expected) in [(original_focus, [10, 5]), (other, [4, 4])] {
+                let frame = &host.prepared[&id].frame;
+                let actual = [[255, 224, 130], [242, 165, 126]].map(|color| {
+                    frame
+                        .quads
+                        .iter()
+                        .filter(|quad| {
+                            quad.paint == rustty_render::Paint::Solid
+                                && quad.color == rustty_render::Color::rgb(color)
+                        })
+                        .count()
+                });
+                if actual != expected {
+                    return Err(format!(
+                        "Find highlights in pane {id}: {actual:?}, expected {expected:?}"
+                    )
+                    .into());
+                }
+            }
             app.painter
                 .render_state()
                 .ok_or("missing capture device")?
@@ -1150,6 +1169,7 @@ fn check_find(
                 .screen()
                 .selection
                 .is_some()
+                || !host.prepared[&id].key.options.search_highlights.is_empty()
             {
                 return Err("closing Find left its highlight behind".into());
             }

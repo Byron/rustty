@@ -3,6 +3,7 @@
 use std::{
     collections::BTreeMap,
     fmt,
+    ops::RangeInclusive,
     sync::{Arc, LazyLock},
 };
 
@@ -10,6 +11,14 @@ use std::{
 mod prepare;
 #[cfg(target_os = "macos")]
 pub use prepare::{Preedit, RenderOptions, Renderer};
+
+/// A search match clipped to one visible row, identified by its stable row ID.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SearchHighlight {
+    pub row: u64,
+    pub columns: RangeInclusive<usize>,
+    pub selected: bool,
+}
 
 #[derive(Debug)]
 pub enum RenderError {

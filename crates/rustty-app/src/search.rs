@@ -8,6 +8,8 @@ use rustty::{
         search::{Direction, SelectScroll, TerminalSearch},
     },
 };
+use rustty_render::SearchHighlight;
+use std::collections::HashMap;
 
 #[derive(Default)]
 pub struct Search {
@@ -15,6 +17,8 @@ pub struct Search {
     matches: TerminalSearch,
     generation: Option<u64>,
     highlight: Option<[vt::TrackedPoint; 2]>,
+    render_highlights: Vec<SearchHighlight>,
+    highlight_viewport: Option<usize>,
 }
 
 pub struct OverlayResponse {
@@ -35,6 +39,7 @@ impl Search {
             return;
         }
         let highlighted = self.clear_highlight(terminal);
+        self.highlight_viewport = None;
         self.matches.run(terminal);
         self.generation = Some(terminal.generation);
         if changed {
@@ -49,6 +54,7 @@ impl Search {
     pub fn navigate(&mut self, terminal: &mut vt::Terminal, next: bool) -> bool {
         self.refresh(terminal);
         self.clear_highlight(terminal);
+        self.highlight_viewport = None;
         let found = self.matches.select(
             terminal,
             if next {
@@ -60,6 +66,61 @@ impl Search {
         );
         self.highlight_selected(terminal);
         found
+    }
+
+    pub fn highlights(&mut self, terminal: &mut vt::Terminal) -> Vec<SearchHighlight> {
+        let screen = terminal.screen();
+        if self.highlight_viewport == Some(screen.viewport_offset) {
+            return self.render_highlights.clone();
+        }
+        // Navigation can scroll after feeding search, without changing generation.
+        self.matches.feed(terminal, false);
+        let screen = terminal.screen();
+        self.highlight_viewport = Some(screen.viewport_offset);
+        self.render_highlights.clear();
+        if self.matches.viewport_matches().is_empty() && self.matches.selected_match().is_none() {
+            return Vec::new();
+        }
+        // ponytail: rebuild row indices with highlights; retain an index if
+        // very large histories make Find slow.
+        let positions: HashMap<_, _> = screen
+            .all_rows()
+            .enumerate()
+            .map(|(index, row)| (row.id, index))
+            .collect();
+        let top = screen.history_len().saturating_sub(screen.viewport_offset);
+        let rows: Vec<_> = screen.viewport().collect();
+        for (found, selected) in self
+            .matches
+            .viewport_matches()
+            .iter()
+            .copied()
+            .map(|found| (found, false))
+            .chain(self.matches.selected_match().map(|found| (found, true)))
+        {
+            let Some((&start, &end)) = positions
+                .get(&found.start.row)
+                .zip(positions.get(&found.end.row))
+            else {
+                continue;
+            };
+            let a = (start, found.start.col);
+            let b = (end, found.end.col);
+            let (start, end) = (a.min(b), a.max(b));
+            for index in start.0.max(top)..=end.0.min(top + rows.len() - 1) {
+                let row = rows[index - top];
+                self.render_highlights.push(SearchHighlight {
+                    row: row.id,
+                    columns: (if index == start.0 { start.1 } else { 0 })..=(if index == end.0 {
+                        end.1
+                    } else {
+                        row.cells().len() - 1
+                    }),
+                    selected,
+                });
+            }
+        }
+        self.render_highlights.clone()
     }
 
     /// Clear only the selection that Find owns; a subsequent mouse selection survives.
@@ -350,6 +411,152 @@ mod tests {
         a.clear_highlight(&mut first);
         first.feed(b"\x1b[?1049l");
         assert!(first.screen().selection.is_none());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn all_search_matches_render_with_a_distinct_selected_color() {
+        use rustty_render::{Color, Paint, Quad, RenderOptions, Renderer};
+        use std::ops::Range;
+
+        fn check(
+            renderer: &mut Renderer,
+            terminal: &mut vt::Terminal,
+            search: &mut Search,
+            expected: &[(usize, Range<usize>, bool)],
+        ) -> rustty_render::Frame {
+            search.refresh(terminal);
+            let options = RenderOptions {
+                cursor_visible: false,
+                search_highlights: search.highlights(terminal),
+                ..Default::default()
+            };
+            let frame = renderer
+                .prepare(&terminal.screen().snapshot_viewport(), &options)
+                .unwrap();
+            let colors = [Color::rgb([255, 224, 130]), Color::rgb([242, 165, 126])];
+            let actual: Vec<_> = frame
+                .quads
+                .iter()
+                .filter(|quad| quad.paint == Paint::Solid && colors.contains(&quad.color))
+                .cloned()
+                .collect();
+            let metrics = renderer.metrics();
+            let expected: Vec<_> = expected
+                .iter()
+                .flat_map(|(row, columns, selected)| {
+                    columns.clone().map(|col| {
+                        Quad::solid(
+                            [
+                                options.padding[0] + col as f32 * metrics.cell_width as f32,
+                                options.padding[1] + *row as f32 * metrics.cell_height as f32,
+                                metrics.cell_width as f32,
+                                metrics.cell_height as f32,
+                            ],
+                            colors[usize::from(*selected)],
+                        )
+                    })
+                })
+                .collect();
+            assert_eq!(actual, expected);
+            frame
+        }
+
+        let mut renderer = Renderer::new(rustty_font::FontConfig::default()).unwrap();
+        let mut terminal = vt::Terminal::new(20, 3, 1000);
+        terminal.feed("alpha\r\n".repeat(499).as_bytes());
+        terminal.feed(b"alpha");
+        let mut search = Search {
+            query: "alpha".into(),
+            ..Default::default()
+        };
+        let frame = check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..5, false), (1, 0..5, false), (2, 0..5, true)],
+        );
+        assert!(
+            frame
+                .quads
+                .iter()
+                .filter(|q| q.paint == Paint::Mask)
+                .all(|q| q.color == Color::rgb([0; 3]))
+        );
+        search.navigate(&mut terminal, true);
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..5, false), (1, 0..5, true), (2, 0..5, false)],
+        );
+        terminal.screen_mut().scroll_viewport(200);
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..5, false), (1, 0..5, false), (2, 0..5, false)],
+        );
+        terminal.screen_mut().scroll_viewport(-200);
+        terminal.feed(b"\r\x1b[2Kother");
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..5, false), (1, 0..5, true)],
+        );
+        search.query = "missing".into();
+        check(&mut renderer, &mut terminal, &mut search, &[]);
+        search.query.clear();
+        check(&mut renderer, &mut terminal, &mut search, &[]);
+
+        let mut terminal = vt::Terminal::new(4, 2, 100);
+        terminal.feed("xx界a\r\nxx界a".as_bytes());
+        search.query = "界a".into();
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 2..4, true), (1, 0..1, true)],
+        );
+        terminal.screen_mut().scroll_viewport(1);
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..1, false), (1, 2..4, true)],
+        );
+        search.query = "界".into();
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(1, 2..4, true)],
+        );
+
+        let mut terminal = vt::Terminal::new(6, 1, 0);
+        terminal.feed(b"aaaaa");
+        search.query = "aaa".into();
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..2, false), (0, 2..5, true)],
+        );
+        terminal.screen_mut().selection = None;
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..2, false), (0, 2..5, true)],
+        );
+        search.navigate(&mut terminal, true);
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..1, false), (0, 1..4, true), (0, 4..5, false)],
+        );
     }
 
     struct UiFrame {
