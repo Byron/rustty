@@ -239,14 +239,15 @@ impl Search {
                                     )
                                 });
                                 changed = response.changed();
-                                // TextEdit surrenders focus on Enter; return it to Find for repeated navigation.
+                                // Plain Enter returns focus to the terminal. Keep Shift+Enter
+                                // in Find for previous-match navigation.
                                 if ui.is_enabled()
                                     && response.lost_focus()
-                                    && ui.input(|input| input.key_pressed(Key::Enter))
+                                    && ui.input(|input| {
+                                        input.key_pressed(Key::Enter) && input.modifiers.shift
+                                    })
                                 {
-                                    action = Some(Action::NavigateSearch {
-                                        next: !ui.input(|input| input.modifiers.shift),
-                                    });
+                                    action = Some(Action::NavigateSearch { next: false });
                                     response.request_focus();
                                 }
                                 ui.monospace(format!(
@@ -741,7 +742,7 @@ mod tests {
     }
 
     #[test]
-    fn find_overlay_keeps_focus_for_navigation_and_routes_composition_to_its_field() {
+    fn find_overlay_routes_composition_and_returns_focus_on_enter() {
         let mut frame = UiFrame::default();
         assert!(frame.open().focused);
         assert!(!frame.request_focus);
@@ -760,15 +761,19 @@ mod tests {
             vec![egui::Event::Ime(egui::ImeEvent::Commit("名".into()))],
         );
         assert_eq!(frame.search.query, "find 名");
-        for shift in [false, true] {
-            let (_, overlay, _) = frame.draw(true, vec![key(Key::Enter, shift)]);
-            let overlay = overlay.unwrap();
-            assert_eq!(
-                overlay.action,
-                Some(Action::NavigateSearch { next: !shift })
-            );
-            assert!(overlay.focused);
-        }
+        let (_, overlay, _) = frame.draw(true, vec![key(Key::Enter, true)]);
+        let overlay = overlay.unwrap();
+        assert_eq!(overlay.action, Some(Action::NavigateSearch { next: false }));
+        assert!(overlay.focused);
+
+        let (_, overlay, _) = frame.draw(true, vec![key(Key::Enter, false)]);
+        let overlay = overlay.unwrap();
+        assert_eq!(overlay.action, None);
+        assert!(!overlay.focused);
+        assert!(!frame.context.text_edit_focused());
+        let (_, overlay, _) = frame.draw(true, vec![egui::Event::Text("terminal input".into())]);
+        assert!(!overlay.unwrap().focused);
+        assert_eq!(frame.search.query, "find 名");
     }
 
     fn card_fill(output: &egui::FullOutput) -> Color32 {

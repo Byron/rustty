@@ -1107,6 +1107,40 @@ fn check_find(
             )?;
         }
         set_focus(host, true);
+        app.action(event_loop, host, Action::StartSearch, false);
+        app.draw(event_loop, host)?;
+        app.draw(event_loop, host)?;
+        let selection = app.panes[&other].session.terminal()?.screen().selection;
+        let highlights = host.prepared[&other].key.options.search_highlights.clone();
+        let raw = host.egui.egui_input_mut();
+        raw.events
+            .push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+        for pressed in [true, false] {
+            raw.events.push(egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            });
+        }
+        app.draw(event_loop, host)?;
+        app.draw(event_loop, host)?;
+        if host.ui_input()
+            || app.focused(host.id) != Some(other)
+            || host.search_rects.len() != 2
+            || app.panes[&other].search.as_ref().unwrap().query != "beta"
+            || app.panes[&other].session.terminal()?.screen().selection != selection
+            || host.prepared[&other].key.options.search_highlights != highlights
+            || !app
+                .context
+                .memory(|memory| memory.has_focus(egui::Id::new(("terminal", other))))
+        {
+            return Err(
+                "Enter in Find did not restore terminal focus and preserve the current match"
+                    .into(),
+            );
+        }
         host.mouse = host.search_rects[&original_focus].center();
         let _ = host.egui.on_window_event(
             &host.window,
