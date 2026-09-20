@@ -8,6 +8,8 @@ use rustty::{
         search::{Direction, SelectScroll, TerminalSearch},
     },
 };
+use rustty_render::SearchHighlight;
+use std::collections::HashMap;
 
 #[derive(Default)]
 pub struct Search {
@@ -15,6 +17,8 @@ pub struct Search {
     matches: TerminalSearch,
     generation: Option<u64>,
     highlight: Option<[vt::TrackedPoint; 2]>,
+    render_highlights: Vec<SearchHighlight>,
+    highlight_viewport: Option<usize>,
 }
 
 pub struct OverlayResponse {
@@ -35,6 +39,7 @@ impl Search {
             return;
         }
         let highlighted = self.clear_highlight(terminal);
+        self.highlight_viewport = None;
         self.matches.run(terminal);
         self.generation = Some(terminal.generation);
         if changed {
@@ -49,6 +54,7 @@ impl Search {
     pub fn navigate(&mut self, terminal: &mut vt::Terminal, next: bool) -> bool {
         self.refresh(terminal);
         self.clear_highlight(terminal);
+        self.highlight_viewport = None;
         let found = self.matches.select(
             terminal,
             if next {
@@ -60,6 +66,61 @@ impl Search {
         );
         self.highlight_selected(terminal);
         found
+    }
+
+    pub fn highlights(&mut self, terminal: &mut vt::Terminal) -> Vec<SearchHighlight> {
+        let screen = terminal.screen();
+        if self.highlight_viewport == Some(screen.viewport_offset) {
+            return self.render_highlights.clone();
+        }
+        // Navigation can scroll after feeding search, without changing generation.
+        self.matches.feed(terminal, false);
+        let screen = terminal.screen();
+        self.highlight_viewport = Some(screen.viewport_offset);
+        self.render_highlights.clear();
+        if self.matches.viewport_matches().is_empty() && self.matches.selected_match().is_none() {
+            return Vec::new();
+        }
+        // ponytail: rebuild row indices with highlights; retain an index if
+        // very large histories make Find slow.
+        let positions: HashMap<_, _> = screen
+            .all_rows()
+            .enumerate()
+            .map(|(index, row)| (row.id, index))
+            .collect();
+        let top = screen.history_len().saturating_sub(screen.viewport_offset);
+        let rows: Vec<_> = screen.viewport().collect();
+        for (found, selected) in self
+            .matches
+            .viewport_matches()
+            .iter()
+            .copied()
+            .map(|found| (found, false))
+            .chain(self.matches.selected_match().map(|found| (found, true)))
+        {
+            let Some((&start, &end)) = positions
+                .get(&found.start.row)
+                .zip(positions.get(&found.end.row))
+            else {
+                continue;
+            };
+            let a = (start, found.start.col);
+            let b = (end, found.end.col);
+            let (start, end) = (a.min(b), a.max(b));
+            for index in start.0.max(top)..=end.0.min(top + rows.len() - 1) {
+                let row = rows[index - top];
+                self.render_highlights.push(SearchHighlight {
+                    row: row.id,
+                    columns: (if index == start.0 { start.1 } else { 0 })..=(if index == end.0 {
+                        end.1
+                    } else {
+                        row.cells().len() - 1
+                    }),
+                    selected,
+                });
+            }
+        }
+        self.render_highlights.clone()
     }
 
     /// Clear only the selection that Find owns; a subsequent mouse selection survives.
@@ -130,6 +191,12 @@ impl Search {
             .enabled(root.is_enabled())
             .fade_in(false)
             .show(root.ctx(), |ui| {
+                if selected
+                    && ui.is_enabled()
+                    && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::Escape))
+                {
+                    action = Some(Action::EndSearch);
+                }
                 // Claim focus even during initial sizing so another pane cannot consume
                 // queued text, but keep the request for the first visible frame's IME area.
                 let focus = ui.is_enabled() && *request_focus;
@@ -178,14 +245,15 @@ impl Search {
                                     )
                                 });
                                 changed = response.changed();
-                                // TextEdit surrenders focus on Enter; return it to Find for repeated navigation.
+                                // Plain Enter returns focus to the terminal. Keep Shift+Enter
+                                // in Find for previous-match navigation.
                                 if ui.is_enabled()
                                     && response.lost_focus()
-                                    && ui.input(|input| input.key_pressed(Key::Enter))
+                                    && ui.input(|input| {
+                                        input.key_pressed(Key::Enter) && input.modifiers.shift
+                                    })
                                 {
-                                    action = Some(Action::NavigateSearch {
-                                        next: !ui.input(|input| input.modifiers.shift),
-                                    });
+                                    action = Some(Action::NavigateSearch { next: false });
                                     response.request_focus();
                                 }
                                 ui.monospace(format!(
@@ -352,6 +420,152 @@ mod tests {
         assert!(first.screen().selection.is_none());
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn all_search_matches_render_with_a_distinct_selected_color() {
+        use rustty_render::{Color, Paint, Quad, RenderOptions, Renderer};
+        use std::ops::Range;
+
+        fn check(
+            renderer: &mut Renderer,
+            terminal: &mut vt::Terminal,
+            search: &mut Search,
+            expected: &[(usize, Range<usize>, bool)],
+        ) -> rustty_render::Frame {
+            search.refresh(terminal);
+            let options = RenderOptions {
+                cursor_visible: false,
+                search_highlights: search.highlights(terminal),
+                ..Default::default()
+            };
+            let frame = renderer
+                .prepare(&terminal.screen().snapshot_viewport(), &options)
+                .unwrap();
+            let colors = [Color::rgb([255, 224, 130]), Color::rgb([242, 165, 126])];
+            let actual: Vec<_> = frame
+                .quads
+                .iter()
+                .filter(|quad| quad.paint == Paint::Solid && colors.contains(&quad.color))
+                .cloned()
+                .collect();
+            let metrics = renderer.metrics();
+            let expected: Vec<_> = expected
+                .iter()
+                .flat_map(|(row, columns, selected)| {
+                    columns.clone().map(|col| {
+                        Quad::solid(
+                            [
+                                options.padding[0] + col as f32 * metrics.cell_width as f32,
+                                options.padding[1] + *row as f32 * metrics.cell_height as f32,
+                                metrics.cell_width as f32,
+                                metrics.cell_height as f32,
+                            ],
+                            colors[usize::from(*selected)],
+                        )
+                    })
+                })
+                .collect();
+            assert_eq!(actual, expected);
+            frame
+        }
+
+        let mut renderer = Renderer::new(rustty_font::FontConfig::default()).unwrap();
+        let mut terminal = vt::Terminal::new(20, 3, 1000);
+        terminal.feed("alpha\r\n".repeat(499).as_bytes());
+        terminal.feed(b"alpha");
+        let mut search = Search {
+            query: "alpha".into(),
+            ..Default::default()
+        };
+        let frame = check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..5, false), (1, 0..5, false), (2, 0..5, true)],
+        );
+        assert!(
+            frame
+                .quads
+                .iter()
+                .filter(|q| q.paint == Paint::Mask)
+                .all(|q| q.color == Color::rgb([0; 3]))
+        );
+        search.navigate(&mut terminal, true);
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..5, false), (1, 0..5, true), (2, 0..5, false)],
+        );
+        terminal.screen_mut().scroll_viewport(200);
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..5, false), (1, 0..5, false), (2, 0..5, false)],
+        );
+        terminal.screen_mut().scroll_viewport(-200);
+        terminal.feed(b"\r\x1b[2Kother");
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..5, false), (1, 0..5, true)],
+        );
+        search.query = "missing".into();
+        check(&mut renderer, &mut terminal, &mut search, &[]);
+        search.query.clear();
+        check(&mut renderer, &mut terminal, &mut search, &[]);
+
+        let mut terminal = vt::Terminal::new(4, 2, 100);
+        terminal.feed("xx界a\r\nxx界a".as_bytes());
+        search.query = "界a".into();
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 2..4, true), (1, 0..1, true)],
+        );
+        terminal.screen_mut().scroll_viewport(1);
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..1, false), (1, 2..4, true)],
+        );
+        search.query = "界".into();
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(1, 2..4, true)],
+        );
+
+        let mut terminal = vt::Terminal::new(6, 1, 0);
+        terminal.feed(b"aaaaa");
+        search.query = "aaa".into();
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..2, false), (0, 2..5, true)],
+        );
+        terminal.screen_mut().selection = None;
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..2, false), (0, 2..5, true)],
+        );
+        search.navigate(&mut terminal, true);
+        check(
+            &mut renderer,
+            &mut terminal,
+            &mut search,
+            &[(0, 0..1, false), (0, 1..4, true), (0, 4..5, false)],
+        );
+    }
+
     struct UiFrame {
         context: egui::Context,
         search: Search,
@@ -394,7 +608,7 @@ mod tests {
                 })
                 .unwrap_or_default();
             events.insert(0, egui::Event::ModifiersChanged(modifiers));
-            let raw = egui::RawInput {
+            let mut raw = egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(
                     egui::Pos2::ZERO,
                     Vec2::new(800.0, 600.0),
@@ -404,6 +618,7 @@ mod tests {
                 events,
                 ..Default::default()
             };
+            input::filter_egui_events(&mut raw, show);
             let mut content = Rect::NOTHING;
             let mut overlay = None;
             let mut output = self.context.run_ui(raw, |root| {
@@ -534,7 +749,58 @@ mod tests {
     }
 
     #[test]
-    fn find_overlay_keeps_focus_for_navigation_and_routes_composition_to_its_field() {
+    fn find_dismisses_with_escape_or_control_bracket_only_when_enabled_and_selected() {
+        for (key, modifiers) in [
+            (Key::Escape, Modifiers::NONE),
+            (Key::OpenBracket, Modifiers::CTRL),
+        ] {
+            let mut frame = UiFrame::default();
+            frame.open();
+            frame.draw(true, vec![egui::Event::Text("query".into())]);
+            let event = egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers,
+            };
+            frame.selected = false;
+            assert_eq!(
+                frame.draw(true, vec![event.clone()]).1.unwrap().action,
+                None
+            );
+            frame.selected = true;
+            let (_, response, _) = frame.draw(true, vec![event]);
+            assert_eq!(response.unwrap().action, Some(Action::EndSearch));
+            assert_eq!(frame.search.query, "query");
+
+            let mut action = None;
+            let mut raw = egui::RawInput {
+                focused: true,
+                events: vec![egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers,
+                }],
+                ..Default::default()
+            };
+            input::filter_egui_events(&mut raw, true);
+            let mut output = frame.context.run_ui(raw, |root| {
+                root.disable();
+                action = frame
+                    .search
+                    .show(root, 1, frame.bounds, true, &mut false, &frame.config)
+                    .action;
+            });
+            output.textures_delta.clear();
+            assert_eq!(action, None);
+        }
+    }
+
+    #[test]
+    fn find_overlay_routes_composition_and_returns_focus_on_enter() {
         let mut frame = UiFrame::default();
         assert!(frame.open().focused);
         assert!(!frame.request_focus);
@@ -553,15 +819,19 @@ mod tests {
             vec![egui::Event::Ime(egui::ImeEvent::Commit("名".into()))],
         );
         assert_eq!(frame.search.query, "find 名");
-        for shift in [false, true] {
-            let (_, overlay, _) = frame.draw(true, vec![key(Key::Enter, shift)]);
-            let overlay = overlay.unwrap();
-            assert_eq!(
-                overlay.action,
-                Some(Action::NavigateSearch { next: !shift })
-            );
-            assert!(overlay.focused);
-        }
+        let (_, overlay, _) = frame.draw(true, vec![key(Key::Enter, true)]);
+        let overlay = overlay.unwrap();
+        assert_eq!(overlay.action, Some(Action::NavigateSearch { next: false }));
+        assert!(overlay.focused);
+
+        let (_, overlay, _) = frame.draw(true, vec![key(Key::Enter, false)]);
+        let overlay = overlay.unwrap();
+        assert_eq!(overlay.action, None);
+        assert!(!overlay.focused);
+        assert!(!frame.context.text_edit_focused());
+        let (_, overlay, _) = frame.draw(true, vec![egui::Event::Text("terminal input".into())]);
+        assert!(!overlay.unwrap().focused);
+        assert_eq!(frame.search.query, "find 名");
     }
 
     fn card_fill(output: &egui::FullOutput) -> Color32 {
