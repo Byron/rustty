@@ -741,6 +741,32 @@ fn keybind_sequences_prefix_replacement_chains_and_tables() {
 }
 
 #[test]
+fn global_wildcards_are_rejected_without_replacing_local_bindings() {
+    let home = TestHome::new();
+    for trigger in ["catch_all", "ctrl+catch_all", "physical:ctrl+catch_all"] {
+        home.own(&format!(
+            "keybind=clear\nkeybind={trigger}=new_tab\nkeybind=global:{trigger}=quit\nkeybind=global:ctrl+a=new_window\n"
+        ));
+        let loaded = home.loader.load();
+        assert_eq!(loaded.diagnostics.len(), 1, "{trigger}");
+        assert!(loaded.diagnostics[0].message.contains("explicit key"));
+        assert_eq!(loaded.config.keybinds.len(), 2);
+        let local = loaded
+            .config
+            .binding(&KeyTrigger::parse(trigger).unwrap())
+            .unwrap();
+        assert!(!local.flags.global);
+        assert_eq!(local.actions, [Action::NewTab]);
+        let global = loaded
+            .config
+            .binding(&KeyTrigger::parse("ctrl+a").unwrap())
+            .unwrap();
+        assert!(global.flags.global);
+        assert_eq!(global.actions, [Action::NewWindow]);
+    }
+}
+
+#[test]
 fn bad_keys_actions_and_values_are_diagnostics_not_silent_overrides() {
     let home = TestHome::new();
     home.own("keybind=cmd+n=not_an_action\nkeybind=ctrl+ctrl+a=new_tab\nkeybind=unknown_key=new_tab\nkeybind=global:ctrl+a>b=new_tab\nkeybind=ctrl+a=resize_split:next,10\nbackground-opacity=2\nfont-size=inf\nnotify-on-command-finish-after=5\n");

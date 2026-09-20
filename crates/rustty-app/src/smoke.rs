@@ -27,6 +27,10 @@ fn hover_measurement_restarts_for_motion_and_leaving_but_not_duplicate_events() 
         hidden_title_frames: 0,
         header_frames: 0,
         header_prepares: 0,
+        active_title_frames: 0,
+        active_title_prepares: 0,
+        active_title_tab: None,
+        active_title_accesskit: false,
         events: BTreeMap::new(),
         timing: None,
     };
@@ -60,6 +64,10 @@ pub(super) struct Smoke {
     hidden_title_frames: u64,
     header_frames: u64,
     header_prepares: u64,
+    active_title_frames: u64,
+    active_title_prepares: u64,
+    active_title_tab: Option<String>,
+    active_title_accesskit: bool,
     events: BTreeMap<&'static str, u64>,
     timing: Option<Replay>,
 }
@@ -106,6 +114,10 @@ impl Smoke {
             hidden_title_frames: 0,
             header_frames: 0,
             header_prepares: 0,
+            active_title_frames: 0,
+            active_title_prepares: 0,
+            active_title_tab: None,
+            active_title_accesskit: false,
             events: BTreeMap::new(),
             timing,
         }))
@@ -136,7 +148,7 @@ impl Smoke {
         loaded.config.keybinds.retain(|b| !b.flags.global);
     }
     pub fn record(&mut self, event: &'static str) {
-        if matches!(self.stage, 4 | 8) {
+        if matches!(self.stage, 4 | 8 | 11 | 12) {
             *self.events.entry(event).or_default() += 1;
         }
     }
@@ -199,11 +211,18 @@ impl Smoke {
         else {
             return Ok(false);
         };
+        let stage = self.stage;
         let mut host = app.windows.remove(&key).unwrap();
         let result = self.step_window(app, event_loop, &mut host);
         app.windows.insert(key, host);
         app.reconcile(event_loop);
-        result
+        let done = result?;
+        if stage == 3 && self.stage == 7 {
+            // Dispatch through the window handler with the host back in its map.
+            check_passive_pointer_motion(app, event_loop, key)?;
+            check_focus_hint_clicks(app, event_loop, key)?;
+        }
+        Ok(done)
     }
     fn step_window(
         &mut self,
@@ -413,7 +432,7 @@ impl Smoke {
                     .current_monitor()
                     .and_then(|monitor| monitor.refresh_rate_millihertz())
                     .map(|rate| f64::from(rate) / 1000.0);
-                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
+                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","drag-selection-scrolling","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
                 fs::write(
                     self.directory.join("result.json"),
                     serde_json::to_vec_pretty(&report)?,
@@ -544,8 +563,8 @@ impl Smoke {
                 {
                     return Err("visible tab-label updates stopped repainting".into());
                 }
-                // The focused pane can rebuild as its blink phase changes; the
-                // other panes must retain their content throughout title updates.
+                // Native focus/resize events can invalidate retained panes; title
+                // updates must otherwise keep reusing their terminal content.
                 if self.header_prepares > 8 {
                     return Err(format!(
                         "{} tab-header frames rebuilt panes {} times",
@@ -557,6 +576,78 @@ impl Smoke {
                     "Native smoke: {} tab-header frames needed only {} pane preparations",
                     self.header_frames, self.header_prepares
                 );
+                self.active_title_tab = app
+                    .tab_mut(host.id)
+                    .unwrap()
+                    .title
+                    .replace("Foreground agent".into());
+                self.active_title_accesskit = std::mem::replace(&mut host.accesskit_active, false);
+                for pane in app.panes.values_mut() {
+                    pane.activity.progress_reported(0, None, Instant::now());
+                }
+                app.activity_flashes.clear();
+                // The reads keep shell setup and cleanup outside the measured interval.
+                app.write(pane, b"stty -echo; printf '\\033[?25l\\033]2;active-title-ready\\007'; read rustty_smoke_go; sleep 0.2; i=0; while [ \"$i\" -lt 50 ]; do printf '\\033]2;active-agent-%s\\007' \"$i\"; i=$((i+1)); sleep 0.04; done; sleep 0.2; read rustty_smoke_done; printf '\\033[?25h'; stty echo\r".to_vec());
+                host.repaint();
+                self.next = Instant::now() + Duration::from_millis(500);
+                self.stage = 10;
+            }
+            10 => {
+                if app.panes[&pane].title != "active-title-ready" {
+                    return Ok(false);
+                }
+                // The ready effect can arrive before its initial redraw or the
+                // shell's final setup bytes. Settle before starting the counter.
+                self.next = Instant::now() + Duration::from_millis(200);
+                self.stage = 13;
+            }
+            13 => {
+                if !host.prepared.get(&pane).is_some_and(|prepared| {
+                    app.panes[&pane]
+                        .session
+                        .terminal()
+                        .is_ok_and(|terminal| prepared.key.matches_terminal(&terminal))
+                }) {
+                    host.repaint();
+                    return Ok(false);
+                }
+                self.active_title_frames = host.frames;
+                self.active_title_prepares = host.pane_prepares;
+                self.events.clear();
+                app.write(pane, b"\n".to_vec());
+                self.stage = 11;
+            }
+            11 => {
+                if app.panes[&pane].title != "active-agent-49" {
+                    return Ok(false);
+                }
+                self.next = Instant::now() + Duration::from_millis(300);
+                self.stage = 12;
+            }
+            12 => {
+                self.active_title_frames = host.frames.saturating_sub(self.active_title_frames);
+                self.active_title_prepares = host
+                    .pane_prepares
+                    .saturating_sub(self.active_title_prepares);
+                if self.active_title_frames != 0 || self.active_title_prepares != 0 {
+                    return Err(format!(
+                        "50 active masked titles at 25 Hz caused {} frames and {} pane preparations; events: {:?}",
+                        self.active_title_frames, self.active_title_prepares, self.events
+                    )
+                    .into());
+                }
+                if host.window.title() != "active-agent-49 — Rustty"
+                    || app.tab(host.id).unwrap().panes[&pane].title.as_deref()
+                        != Some("active-agent-49")
+                {
+                    return Err("active titles did not update native and saved title state".into());
+                }
+                eprintln!(
+                    "Native smoke: 50 active masked titles at 25 Hz updated native/saved titles with zero frames and pane preparations"
+                );
+                app.tab_mut(host.id).unwrap().title = self.active_title_tab.take();
+                host.accesskit_active = self.active_title_accesskit;
+                app.write(pane, b"\n".to_vec());
                 host.repaint();
                 self.idle_frames = host.frames;
                 self.events.clear();
@@ -750,9 +841,13 @@ fn check_terminal_frames(
     let blink_started = host.cursor_blink_started;
     let focus_hint = host.focus_hint;
     let navigation_warning = host.navigation_warning.take();
+    let accesskit_active = std::mem::replace(&mut host.accesskit_active, false);
     host.focus_hint.dismiss();
     let result = (|| -> Result<()> {
         app.draw(event_loop, host)?;
+        if host.prepared[&id].text.is_some() {
+            return Err("inactive accessibility built terminal text".into());
+        }
         let normal = host.prepared[&id].key.options.clone();
         for (sequence, foreground, background) in [
             (b"\x1b[?5h".as_slice(), normal.background, normal.foreground),
@@ -799,6 +894,7 @@ fn check_terminal_frames(
         let generation = previous.key.generation;
         let cursor = previous.key.cursor;
         let ime_rect = previous.ime_rect;
+        let frame = Arc::clone(&previous.frame);
         for chunk in [
             b"\x1b[?2026h\x1b[2J\x1b[H".as_slice(),
             b"\x1b[3;1Hpartial frame",
@@ -813,6 +909,18 @@ fn check_terminal_frames(
                 return Err("synchronized output displayed a partial frame or cursor".into());
             }
         }
+        host.accesskit_active = true;
+        app.draw(event_loop, host)?;
+        let held = &host.prepared[&id];
+        if held.text.is_none()
+            || held.key.generation != generation
+            || !Arc::ptr_eq(&held.frame, &frame)
+        {
+            return Err("accessibility activation did not retain the synchronized frame".into());
+        }
+        host.accesskit_active = false;
+        // Another window can leave the shared context enabled between this window's draws.
+        app.context.enable_accesskit();
         for chunk in [b"\x1b[Hfinished\x1b[?2026l".as_slice(), b"!"] {
             let generation = {
                 let mut terminal = app.panes[&id].session.terminal()?;
@@ -824,6 +932,11 @@ fn check_terminal_frames(
                 || app.panes[&id].sync_output.deadline.is_some()
             {
                 return Err("completed or ordinary output waited for another frame".into());
+            }
+            if host.prepared[&id].text.is_some() {
+                return Err(
+                    "inactive window inherited another window's accessibility state".into(),
+                );
             }
         }
         app.panes[&id]
@@ -933,10 +1046,290 @@ fn check_terminal_frames(
     host.cursor_blink_started = blink_started;
     host.focus_hint = focus_hint;
     host.navigation_warning = navigation_warning;
+    host.accesskit_active = accesskit_active;
     host.repaint();
     result?;
     eprintln!(
         "Native smoke: terminal rendering and synchronized output passed; progress reused terminal content, stopped while occluded, and refreshed after reveal"
+    );
+    Ok(())
+}
+
+fn check_passive_pointer_motion(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    key: WindowId,
+) -> Result<()> {
+    use winit::event::DeviceId;
+
+    let host = &app.windows[&key];
+    let mut positions: Vec<_> = host.rects.values().map(egui::Rect::center).collect();
+    let bounds = host.content;
+    let workspace::Node::Split { axis, ratio, .. } = app.tab(host.id).unwrap().root.kind else {
+        return Err("no divider for passive pointer check".into());
+    };
+    let mut divider = Pos2::from(bounds.center());
+    match axis {
+        Axis::Horizontal => divider.x = bounds.x + bounds.width * ratio,
+        Axis::Vertical => divider.y = bounds.y + bounds.height * ratio,
+    }
+    positions.insert(1, divider);
+    let scale = host.window.scale_factor();
+    let pointer_in_window = host.egui.is_pointer_in_window();
+    let motion = |position: Pos2| WindowEvent::CursorMoved {
+        device_id: DeviceId::dummy(),
+        position: LogicalPosition::new(position.x, position.y).to_physical(scale),
+    };
+    let host = app.windows.get_mut(&key).unwrap();
+    let saved = (host.mouse, host.modifiers, host.deferred_pointer);
+    let link_hit = host.link_hit.take();
+    let hovered_link = host.hovered_link.take();
+    let events = std::mem::take(&mut host.egui.egui_input_mut().events);
+    host.mouse = positions[0];
+    host.modifiers = Modifiers::default();
+    let _ = host.egui.on_window_event(&host.window, &motion(host.mouse));
+    host.egui.egui_input_mut().events.clear();
+    let result = (|| -> Result<()> {
+        // Crossing a split gap changes the native cursor, but no terminal pixels.
+        for position in positions.into_iter().cycle().take(256) {
+            app.window_event(event_loop, key, motion(position));
+            let host = app.windows.get_mut(&key).unwrap();
+            if host.deferred_pointer != Some(position)
+                || !host.egui.egui_input_mut().events.is_empty()
+            {
+                return Err(format!("passive pointer motion at {position:?} reached egui").into());
+            }
+        }
+        Ok(())
+    })();
+    let host = app.windows.get_mut(&key).unwrap();
+    (host.mouse, host.modifiers, host.deferred_pointer) = saved;
+    host.link_hit = link_hit;
+    host.hovered_link = hovered_link;
+    let restore_pointer = if pointer_in_window {
+        motion(host.mouse)
+    } else {
+        WindowEvent::CursorLeft {
+            device_id: DeviceId::dummy(),
+        }
+    };
+    let _ = host.egui.on_window_event(&host.window, &restore_pointer);
+    host.egui.egui_input_mut().events = events;
+    result?;
+    eprintln!("Native smoke: repeated pointer motion across panes and split gaps stayed deferred");
+    Ok(())
+}
+
+fn check_focus_hint_clicks(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    key: WindowId,
+) -> Result<()> {
+    use winit::event::{
+        DeviceId,
+        ElementState::{Pressed, Released},
+        MouseButton::{Back, Forward, Left, Middle, Other, Right},
+        TouchPhase,
+    };
+
+    let host = &app.windows[&key];
+    let window = host.id;
+    let original_focus = app.focused(window).ok_or("no focus-hint test pane")?;
+    let other = *host
+        .rects
+        .keys()
+        .find(|&&id| id != original_focus)
+        .ok_or("no second focus-hint test pane")?;
+    let positions = [original_focus, other].map(|id| {
+        // Focused directory labels are centered; click near the bottom instead.
+        (id, host.rects[&id].left_bottom() + Vec2::new(24.0, -24.0))
+    });
+    let scale = host.window.scale_factor();
+    let pointer_in_window = host.egui.is_pointer_in_window();
+    let saved_host = (host.focused, host.focus_hint, host.mouse, host.modifiers);
+    let bounds = host.content;
+    let workspace::Node::Split { axis, ratio, .. } = app.tab(window).unwrap().root.kind else {
+        return Err("no divider for focus-hint check".into());
+    };
+    let mut divider = Pos2::from(bounds.center());
+    match axis {
+        Axis::Horizontal => divider.x = bounds.x + bounds.width * ratio,
+        Axis::Vertical => divider.y = bounds.y + bounds.height * ratio,
+    }
+    let host = app.windows.get_mut(&key).unwrap();
+    let events = std::mem::take(&mut host.egui.egui_input_mut().events);
+    host.modifiers = Modifiers::default();
+    let mut saved = Vec::new();
+    for id in [original_focus, other] {
+        let pane = app.panes.get_mut(&id).unwrap();
+        let mut terminal = pane.session.terminal()?;
+        let mut fixture = vt::Terminal::new(terminal.cols, terminal.rows, 0);
+        fixture.mouse_mode = 1000;
+        fixture.mouse_format = 1006;
+        saved.push((
+            id,
+            std::mem::replace(&mut *terminal, fixture),
+            std::mem::take(&mut pane.input),
+            std::mem::take(&mut pane.input_bytes),
+            pane.mouse_cell.take(),
+            std::mem::take(&mut pane.selection_gesture),
+        ));
+        // Capture reports instead of sending the simulated clicks to a shell.
+        pane.input.push_back(Vec::new());
+    }
+    let motion = |position: Pos2| WindowEvent::CursorMoved {
+        device_id: DeviceId::dummy(),
+        position: LogicalPosition::new(position.x, position.y).to_physical(scale),
+    };
+    let button = |state, button| WindowEvent::MouseInput {
+        device_id: DeviceId::dummy(),
+        state,
+        button,
+    };
+    let dispatch = |app: &mut App, event, pane, visible| -> Result<()> {
+        app.window_event(event_loop, key, event);
+        let hint = app.windows[&key].focus_hint;
+        let now = Instant::now();
+        if app.focused(window) != Some(pane)
+            || hint.visible(pane, now) != visible
+            || hint.deadline(now).is_some() != visible
+        {
+            return Err(
+                format!("focus hint expected pane {pane}, visible={visible}: {hint:?}").into(),
+            );
+        }
+        Ok(())
+    };
+    let result = (|| -> Result<()> {
+        // AppKit consumes activation mouse-down; its release must retain the hint.
+        dispatch(app, WindowEvent::Focused(false), original_focus, false)?;
+        dispatch(app, WindowEvent::Focused(true), original_focus, true)?;
+        dispatch(app, motion(positions[0].1), original_focus, true)?;
+        dispatch(app, button(Released, Left), original_focus, true)?;
+        dispatch(app, button(Pressed, Left), original_focus, false)?;
+        dispatch(app, button(Released, Left), original_focus, false)?;
+
+        for (index, mouse_button) in [Left, Middle, Right, Back, Forward, Other(4)]
+            .into_iter()
+            .enumerate()
+        {
+            let (previous, _) = positions[index % 2];
+            let (pane, position) = positions[(index + 1) % 2];
+            dispatch(app, motion(position), previous, false)?;
+            dispatch(app, button(Pressed, mouse_button), pane, true)?;
+            dispatch(app, button(Released, mouse_button), pane, true)?;
+            dispatch(app, motion(position + Vec2::splat(1.0)), pane, true)?;
+            dispatch(
+                app,
+                WindowEvent::MouseWheel {
+                    device_id: DeviceId::dummy(),
+                    delta: MouseScrollDelta::LineDelta(0.0, 1.0),
+                    phase: TouchPhase::Moved,
+                },
+                pane,
+                true,
+            )?;
+            let reports = app.panes[&pane].input.len();
+            dispatch(app, button(Pressed, mouse_button), pane, false)?;
+            if index < 3 && app.panes[&pane].input.len() != reports + 1 {
+                return Err("dismissing the hint swallowed the terminal mouse report".into());
+            }
+            dispatch(app, button(Released, mouse_button), pane, false)?;
+        }
+
+        for (target, position) in [
+            ("search", positions[0].1),
+            ("divider", divider),
+            ("modal", positions[0].1),
+        ] {
+            dispatch(app, WindowEvent::Focused(false), original_focus, false)?;
+            dispatch(app, WindowEvent::Focused(true), original_focus, true)?;
+            let host = app.windows.get_mut(&key).unwrap();
+            if target == "search" {
+                host.search_rects.insert(
+                    original_focus,
+                    egui::Rect::from_center_size(position, Vec2::splat(20.0)),
+                );
+            }
+            host.palette.open = target == "modal";
+            dispatch(app, motion(position), original_focus, true)?;
+            dispatch(app, button(Pressed, Left), original_focus, false)?;
+            let host = &app.windows[&key];
+            if target == "search" && host.search_focus != Some(original_focus)
+                || target == "divider" && host.divider_drag.is_none()
+            {
+                return Err(format!("dismissing the hint swallowed the {target} click").into());
+            }
+            if let Some((id, axis, _)) = host.divider_drag {
+                let workspace::Node::Split { ratio, .. } =
+                    app.tab(window).unwrap().root.node(id).unwrap().kind
+                else {
+                    unreachable!("dragging a split divider");
+                };
+                let offset = match axis {
+                    Axis::Horizontal => Vec2::new(24.0, 0.0),
+                    Axis::Vertical => Vec2::new(0.0, 24.0),
+                };
+                let moved = dispatch(app, motion(position + offset), original_focus, false);
+                let changed = matches!(
+                    app.tab(window).unwrap().root.node(id).unwrap().kind,
+                    workspace::Node::Split { ratio: current, .. } if current != ratio
+                );
+                app.tab_mut(window).unwrap().root.set_ratio(id, ratio);
+                moved?;
+                if !changed {
+                    return Err("held pointer motion did not resize the split".into());
+                }
+            }
+            dispatch(app, button(Released, Left), original_focus, false)?;
+            let host = app.windows.get_mut(&key).unwrap();
+            host.search_rects.clear();
+            host.search_focus = None;
+            host.focus_text_input = false;
+            host.palette.open = false;
+        }
+        dispatch(app, WindowEvent::Focused(false), original_focus, false)?;
+        dispatch(app, WindowEvent::Focused(true), original_focus, true)?;
+        dispatch(
+            app,
+            WindowEvent::Ime(Ime::Commit("x".into())),
+            original_focus,
+            false,
+        )?;
+        Ok(())
+    })();
+    for (id, terminal, input, input_bytes, mouse_cell, selection_gesture) in saved {
+        let pane = app.panes.get_mut(&id).unwrap();
+        *pane.session.terminal()? = terminal;
+        pane.input = input;
+        pane.input_bytes = input_bytes;
+        pane.mouse_cell = mouse_cell;
+        pane.selection_gesture = selection_gesture;
+    }
+    app.focus_pane(window, original_focus);
+    let host = app.windows.get_mut(&key).unwrap();
+    (host.focused, host.focus_hint, host.mouse, host.modifiers) = saved_host;
+    host.search_rects.clear();
+    host.search_focus = None;
+    host.focus_text_input = false;
+    host.palette.open = false;
+    host.mouse_button = None;
+    host.selection_drag = None;
+    host.divider_drag = None;
+    let restore_pointer = if pointer_in_window {
+        motion(host.mouse)
+    } else {
+        WindowEvent::CursorLeft {
+            device_id: DeviceId::dummy(),
+        }
+    };
+    let _ = host.egui.on_window_event(&host.window, &restore_pointer);
+    host.egui.egui_input_mut().events = events;
+    host.egui.egui_input_mut().focused = host.focused;
+    app.sync_host_state();
+    result?;
+    eprintln!(
+        "Native smoke: focus labels survived focus clicks and dismissed on subsequent window clicks"
     );
     Ok(())
 }
@@ -1053,6 +1446,25 @@ fn check_find(
             set_focus(host, window_focused);
             host.capture = true;
             app.draw(event_loop, host)?;
+            for (id, expected) in [(original_focus, [10, 5]), (other, [4, 4])] {
+                let frame = &host.prepared[&id].frame;
+                let actual = [[255, 224, 130], [242, 165, 126]].map(|color| {
+                    frame
+                        .quads
+                        .iter()
+                        .filter(|quad| {
+                            quad.paint == rustty_render::Paint::Solid
+                                && quad.color == rustty_render::Color::rgb(color)
+                        })
+                        .count()
+                });
+                if actual != expected {
+                    return Err(format!(
+                        "Find highlights in pane {id}: {actual:?}, expected {expected:?}"
+                    )
+                    .into());
+                }
+            }
             app.painter
                 .render_state()
                 .ok_or("missing capture device")?
@@ -1088,6 +1500,40 @@ fn check_find(
             )?;
         }
         set_focus(host, true);
+        app.action(event_loop, host, Action::StartSearch, false);
+        app.draw(event_loop, host)?;
+        app.draw(event_loop, host)?;
+        let selection = app.panes[&other].session.terminal()?.screen().selection;
+        let highlights = host.prepared[&other].key.options.search_highlights.clone();
+        let raw = host.egui.egui_input_mut();
+        raw.events
+            .push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+        for pressed in [true, false] {
+            raw.events.push(egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            });
+        }
+        app.draw(event_loop, host)?;
+        app.draw(event_loop, host)?;
+        if host.ui_input()
+            || app.focused(host.id) != Some(other)
+            || host.search_rects.len() != 2
+            || app.panes[&other].search.as_ref().unwrap().query != "beta"
+            || app.panes[&other].session.terminal()?.screen().selection != selection
+            || host.prepared[&other].key.options.search_highlights != highlights
+            || !app
+                .context
+                .memory(|memory| memory.has_focus(egui::Id::new(("terminal", other))))
+        {
+            return Err(
+                "Enter in Find did not restore terminal focus and preserve the current match"
+                    .into(),
+            );
+        }
         host.mouse = host.search_rects[&original_focus].center();
         let _ = host.egui.on_window_event(
             &host.window,
@@ -1150,6 +1596,7 @@ fn check_find(
                 .screen()
                 .selection
                 .is_some()
+                || !host.prepared[&id].key.options.search_highlights.is_empty()
             {
                 return Err("closing Find left its highlight behind".into());
             }
@@ -1221,6 +1668,7 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
             std::mem::take(&mut pane.input_bytes),
             pane.mouse_cell.take(),
             std::mem::take(&mut pane.scroll),
+            std::mem::take(&mut pane.selection_gesture),
         ));
         // Hold encoded reports in the existing queue instead of sending them to a shell.
         pane.input.push_back(Vec::new());
@@ -1250,7 +1698,9 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
         if app.pointer_cursor(host) != Some(CursorIcon::Wait) {
             return Err("OSC 22 pointer shape leaked into another pane".into());
         }
+        check_click_selection(app, host, focused, hovered)?;
         check_link_hover(app, host, focused, hovered)?;
+        check_selection_scroll(app, host, focused, hovered)?;
         host.mouse = host.rects[&hovered].center();
         let pixels = f64::from(host.fonts.metrics().cell_height) * host.window.scale_factor() / 2.0;
         // Fractional movement, a reversal, then a decaying native momentum tail.
@@ -1483,13 +1933,15 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
         }
         Ok(())
     })();
-    for (id, terminal, input, input_bytes, mouse_cell, scroll) in saved {
+    for (id, terminal, input, input_bytes, mouse_cell, scroll, selection_gesture) in saved {
         let pane = app.panes.get_mut(&id).unwrap();
+        pane.reset_selection_gesture();
         *pane.session.terminal()? = terminal;
         pane.input = input;
         pane.input_bytes = input_bytes;
         pane.mouse_cell = mouse_cell;
         pane.scroll = scroll;
+        pane.selection_gesture = selection_gesture;
     }
     host.mouse = mouse;
     host.modifiers = modifiers;
@@ -1510,6 +1962,399 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
     result?;
     eprintln!(
         "Native smoke: trackpad momentum, scrolling, and file drops followed the pointer without changing focus"
+    );
+    Ok(())
+}
+
+fn check_selection_scroll(app: &mut App, host: &mut Host, focused: Id, target: Id) -> Result<()> {
+    let scale = host.window.scale_factor() as f32;
+    let metrics = host.fonts.metrics();
+    let cell = Vec2::new(metrics.cell_width as f32, metrics.cell_height as f32) / scale;
+    let rect = host.rects[&target];
+    let padding = host.prepared[&target].key.options.padding;
+    let origin = rect.min + Vec2::new(padding[0], padding[1]) / scale;
+    let saved_host = (host.focused, host.mouse, host.modifiers);
+    let pane = app.panes.get_mut(&target).unwrap();
+    pane.reset_selection_gesture();
+    let saved_scroll = std::mem::take(&mut pane.scroll);
+    let saved_terminal = {
+        let mut terminal = pane.session.terminal()?;
+        let mut fixture = vt::Terminal::new(terminal.cols, terminal.rows, 128);
+        for row in 0..usize::from(terminal.rows) + 40 {
+            fixture.feed(format!("row {row:03} text\r\n").as_bytes());
+        }
+        fixture.screen_mut().scroll_viewport(10);
+        std::mem::replace(&mut *terminal, fixture)
+    };
+    host.focused = true;
+    host.modifiers = Modifiers::default();
+    let result = (|| -> Result<()> {
+        let pointer_row = usize::from(app.panes[&target].session.terminal()?.rows) / 2;
+        host.mouse = origin + Vec2::new(2.5 * cell.x, (pointer_row as f32 + 0.5) * cell.y);
+        host.mouse_button = Some(vt::MouseButton::Left);
+        app.mouse(host, vt::MouseAction::Press, host.mouse_button);
+        host.mouse.x += 3.0 * cell.x;
+        app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+        let initial = app.panes[&target]
+            .session
+            .terminal()?
+            .screen()
+            .selection
+            .ok_or("drag did not create a selection")?;
+        let pixels = f64::from(metrics.cell_height) * f64::from(scale) / 2.0;
+        for (delta, offset) in [
+            (MouseScrollDelta::LineDelta(0.0, 1.0), 13),
+            (MouseScrollDelta::LineDelta(0.0, -1.0), 10),
+            (MouseScrollDelta::PixelDelta((0.0, pixels / 4.0).into()), 10),
+            (MouseScrollDelta::PixelDelta((0.0, pixels / 4.0).into()), 10),
+            (MouseScrollDelta::PixelDelta((0.0, pixels / 4.0).into()), 10),
+            (MouseScrollDelta::PixelDelta((0.0, pixels / 4.0).into()), 11),
+            (MouseScrollDelta::PixelDelta((0.0, -pixels).into()), 10),
+        ] {
+            app.scroll(host, delta);
+            let terminal = app.panes[&target].session.terminal()?;
+            let screen = terminal.screen();
+            let end = vt::GridPoint {
+                row: screen.viewport().nth(pointer_row).unwrap().id,
+                col: 5,
+            };
+            if screen.viewport_offset != offset
+                || screen.selection != Some(vt::Selection { end, ..initial })
+            {
+                return Err(
+                    format!("stationary drag did not follow wheel scroll: {delta:?}").into(),
+                );
+            }
+        }
+
+        let bounds = host.content;
+        let workspace::Node::Split { axis, ratio, .. } = app.tab(host.id).unwrap().root.kind else {
+            return Err("no divider for selection-scroll check".into());
+        };
+        let mut divider = Pos2::from(bounds.center());
+        match axis {
+            Axis::Horizontal => divider.x = bounds.x + bounds.width * ratio,
+            Axis::Vertical => divider.y = bounds.y + bounds.height * ratio,
+        }
+        app.panes[&focused].session.terminal()?.mouse_mode = 1000;
+        for position in [
+            host.rects[&focused].center(),
+            divider,
+            Pos2::new(-8.0, -8.0),
+        ] {
+            host.mouse = position;
+            app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+            let before = app.panes[&target]
+                .session
+                .terminal()?
+                .screen()
+                .viewport_offset;
+            app.scroll(host, MouseScrollDelta::LineDelta(0.0, 1.0));
+            if app.focused(host.id) != Some(target)
+                || app.panes[&target]
+                    .session
+                    .terminal()?
+                    .screen()
+                    .viewport_offset
+                    != before + 3
+                || app.panes[&focused]
+                    .session
+                    .terminal()?
+                    .screen()
+                    .viewport_offset
+                    != 0
+                || app.panes[&focused].input.len() != 1
+                || app.panes[&target].input.len() != 1
+            {
+                return Err(
+                    "drag scrolling lost capture across a pane, divider, or window edge".into(),
+                );
+            }
+        }
+        app.panes[&focused].session.terminal()?.mouse_mode = 0;
+
+        let now = Instant::now() + Duration::from_secs(1);
+        for (position, rows, tick) in [
+            (Pos2::new(rect.center().x, rect.top()), 1, now),
+            (
+                Pos2::new(rect.center().x, rect.bottom()),
+                -1,
+                now + Duration::from_secs(1),
+            ),
+        ] {
+            host.mouse = position;
+            app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+            let before = app.panes[&target]
+                .session
+                .terminal()?
+                .screen()
+                .viewport_offset;
+            app.selection_scroll(host, tick);
+            let terminal = app.panes[&target].session.terminal()?;
+            if terminal.screen().viewport_offset != before.saturating_add_signed(rows)
+                || terminal.screen().selection.is_none()
+            {
+                return Err("stationary edge drag did not auto-scroll one row".into());
+            }
+        }
+        app.mouse(host, vt::MouseAction::Release, host.mouse_button);
+        host.mouse_button = None;
+        let offset = app.panes[&target]
+            .session
+            .terminal()?
+            .screen()
+            .viewport_offset;
+        app.selection_scroll(host, now + Duration::from_secs(3));
+        if host.selection_drag.is_some()
+            || app.panes[&target]
+                .session
+                .terminal()?
+                .screen()
+                .viewport_offset
+                != offset
+        {
+            return Err("selection auto-scroll continued after release".into());
+        }
+
+        // A release must finalize against live rows even while rendering waits
+        // for synchronized output. Terminal input instead abandons the drag.
+        for synchronized in [true, false] {
+            app.panes
+                .get_mut(&target)
+                .unwrap()
+                .reset_selection_gesture();
+            host.mouse = origin + Vec2::new(2.5 * cell.x, (pointer_row as f32 + 0.5) * cell.y);
+            host.mouse_button = Some(vt::MouseButton::Left);
+            app.mouse(host, vt::MouseAction::Press, host.mouse_button);
+            host.mouse.x += 3.0 * cell.x;
+            app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+            if synchronized {
+                let (selected, expected) = {
+                    let mut terminal = app.panes[&target].session.terminal()?;
+                    let selected = terminal.screen().selection.ok_or("no synchronized drag")?;
+                    terminal.set_mode(true, 2026, true);
+                    terminal.screen_mut().scroll_viewport(1);
+                    let end = vt::GridPoint {
+                        row: terminal.screen().viewport().nth(pointer_row).unwrap().id,
+                        col: 5,
+                    };
+                    (selected, vt::Selection { end, ..selected })
+                };
+                app.selection_scroll(host, Instant::now());
+                if app.panes[&target].session.terminal()?.screen().selection != Some(selected) {
+                    return Err("periodic drag refresh ignored synchronized output".into());
+                }
+                app.mouse(host, vt::MouseAction::Release, host.mouse_button);
+                if app.panes[&target].session.terminal()?.screen().selection != Some(expected) {
+                    return Err("release copied a stale endpoint during synchronized output".into());
+                }
+                app.panes[&target]
+                    .session
+                    .terminal()?
+                    .set_mode(true, 2026, false);
+            } else {
+                app.panes[&target]
+                    .session
+                    .terminal()?
+                    .screen_mut()
+                    .selection = None;
+                app.terminal_input(host, target);
+                app.selection_scroll(host, Instant::now() + Duration::from_secs(1));
+                if app.panes[&target]
+                    .session
+                    .terminal()?
+                    .screen()
+                    .selection
+                    .is_some()
+                {
+                    return Err(
+                        "selection refresh restored a drag cancelled by terminal input".into(),
+                    );
+                }
+            }
+            if host.selection_drag.is_some() {
+                return Err("release or terminal input retained the selection timer".into());
+            }
+            host.mouse_button = None;
+        }
+
+        app.panes
+            .get_mut(&target)
+            .unwrap()
+            .reset_selection_gesture();
+        app.panes[&target]
+            .session
+            .terminal()?
+            .feed(b"\x1b[?1049h\x1b[?1007h\x1b[Halternate text");
+        host.mouse = origin + Vec2::new(2.5 * cell.x, 0.5 * cell.y);
+        host.mouse_button = Some(vt::MouseButton::Left);
+        app.mouse(host, vt::MouseAction::Press, host.mouse_button);
+        host.mouse.x += 3.0 * cell.x;
+        app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+        let selected = app.panes[&target].session.terminal()?.screen().selection;
+        app.scroll(host, MouseScrollDelta::LineDelta(0.0, -1.0));
+        if selected.is_none()
+            || app.panes[&target].session.terminal()?.screen().selection != selected
+            || app.panes[&target].input.back().map(Vec::as_slice) != Some(b"\x1b[B\x1b[B\x1b[B")
+        {
+            return Err("alternate scrolling cleared a held selection or lost cursor keys".into());
+        }
+        app.cancel_selection_drag(host);
+        app.panes[&target]
+            .session
+            .terminal()?
+            .feed(b"\x1b[?1000h\x1b[?1006h");
+        host.mouse_button = Some(vt::MouseButton::Left);
+        app.mouse(host, vt::MouseAction::Press, host.mouse_button);
+        host.mouse.y = rect.top();
+        app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+        app.selection_scroll(host, now + Duration::from_secs(4));
+        if host.selection_drag.is_some() || app.panes[&target].input.len() < 3 {
+            return Err("application mouse capture became a local selection drag".into());
+        }
+        Ok(())
+    })();
+    app.cancel_selection_drag(host);
+    let pane = app.panes.get_mut(&target).unwrap();
+    *pane.session.terminal()? = saved_terminal;
+    pane.scroll = saved_scroll;
+    pane.input.truncate(1);
+    pane.input_bytes = 0;
+    app.panes[&focused].session.terminal()?.mouse_mode = 0;
+    app.focus_pane(host.id, focused);
+    (host.focused, host.mouse, host.modifiers) = saved_host;
+    host.mouse_button = None;
+    result?;
+    eprintln!(
+        "Native smoke: selection followed wheel scrolling and timed pane-edge scrolling through release"
+    );
+    Ok(())
+}
+
+fn check_click_selection(app: &mut App, host: &mut Host, focused: Id, target: Id) -> Result<()> {
+    use winit::keyboard::ModifiersState;
+    let scale = host.window.scale_factor() as f32;
+    let metrics = host.fonts.metrics();
+    let cell = Vec2::new(metrics.cell_width as f32, metrics.cell_height as f32) / scale;
+    let padding = host.prepared[&target].key.options.padding;
+    let origin = host.rects[&target].min + Vec2::new(padding[0], padding[1]) / scale;
+    let cols = app.panes[&target].session.terminal()?.cols;
+    let url = format!(
+        "https://example.org:8443/{}?q=one#two",
+        "path/".repeat(usize::from(cols) / 5)
+    );
+    let click = |app: &mut App, host: &mut Host| {
+        host.mouse_button = Some(vt::MouseButton::Left);
+        app.mouse(host, vt::MouseAction::Press, host.mouse_button);
+        // AppKit repeats the cursor position immediately before mouse-up.
+        app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+        app.mouse(host, vt::MouseAction::Release, host.mouse_button);
+        host.mouse_button = None;
+    };
+    host.modifiers = ModifiersState::empty().into();
+    for (text, row, expected) in [
+        ("word next", 0, "word"),
+        ("/tmp/source-file.rs next", 0, "/tmp/source-file.rs"),
+        (url.as_str(), 1, url.as_str()),
+        (
+            "\x1b]8;;https://example.org\x07open link\x1b]8;;\x07",
+            0,
+            "open link",
+        ),
+    ] {
+        let pane = app.panes.get_mut(&target).unwrap();
+        pane.reset_selection_gesture();
+        pane.session
+            .terminal()?
+            .feed(format!("\x1b[H\x1b[2J{text}").as_bytes());
+        host.mouse = origin + Vec2::new(2.5 * cell.x, (row as f32 + 0.5) * cell.y);
+        for count in 1..=2 {
+            click(app, host);
+            let selection = app.panes[&target]
+                .session
+                .terminal()?
+                .screen()
+                .selection_text();
+            if selection.as_deref() != (count == 2).then_some(expected)
+                || app.focused(host.id) != Some(target)
+            {
+                return Err(
+                    format!("click {count} selected {selection:?}, expected {expected:?}").into(),
+                );
+            }
+        }
+        // A click in another pane breaks the repeated-click sequence.
+        app.focus_pane(host.id, focused);
+        click(app, host);
+        if app.panes[&target]
+            .session
+            .terminal()?
+            .screen()
+            .selection
+            .is_some()
+        {
+            return Err("pane focus change retained a repeated click".into());
+        }
+    }
+    let pane = app.panes.get_mut(&target).unwrap();
+    pane.reset_selection_gesture();
+    pane.session.terminal()?.feed(b"\x1b[H\x1b[2Jword next");
+    host.mouse = origin + Vec2::new(2.5 * cell.x, 0.5 * cell.y);
+    click(app, host);
+    host.mouse_button = Some(vt::MouseButton::Left);
+    app.mouse(host, vt::MouseAction::Press, host.mouse_button);
+    host.mouse.x += 4.0 * cell.x;
+    app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+    app.mouse(host, vt::MouseAction::Release, host.mouse_button);
+    host.mouse_button = None;
+    if app.panes[&target]
+        .session
+        .terminal()?
+        .screen()
+        .selection_text()
+        .as_deref()
+        != Some("word next")
+    {
+        return Err("double-click dragging did not extend by whole words".into());
+    }
+    app.panes[&target]
+        .session
+        .terminal()?
+        .feed(b"\x1b[H\x1b[2Jword next\x1b[?1000h\x1b[?1006h");
+    host.mouse = origin + Vec2::new(2.5 * cell.x, 0.5 * cell.y);
+    for shift in [false, true] {
+        host.modifiers = if shift {
+            ModifiersState::SHIFT
+        } else {
+            ModifiersState::empty()
+        }
+        .into();
+        let reports = app.panes[&target].input.len();
+        click(app, host);
+        click(app, host);
+        let pane = &app.panes[&target];
+        if pane
+            .session
+            .terminal()?
+            .screen()
+            .selection_text()
+            .as_deref()
+            != Some(if shift { "word" } else { "word next" })
+            || pane.input.len() != reports + if shift { 0 } else { 4 }
+        {
+            return Err(
+                "double-click ignored application mouse capture or its Shift override".into(),
+            );
+        }
+    }
+    let pane = app.panes.get_mut(&target).unwrap();
+    pane.session.terminal()?.feed(b"\x1b[?1000l\x1b[?1006l");
+    pane.input.truncate(1);
+    pane.input_bytes = 0;
+    host.modifiers = ModifiersState::empty().into();
+    app.focus_pane(host.id, focused);
+    eprintln!(
+        "Native smoke: double-click selected words, paths, and links without losing selections on mouse-up"
     );
     Ok(())
 }
