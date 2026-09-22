@@ -4460,6 +4460,17 @@ impl ApplicationHandler<Event> for App {
             return;
         };
         host.messages_open = !self.errors.is_empty();
+        if matches!(
+            event,
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                ..
+            }
+        ) {
+            // Clear the old hint before this click can focus another pane.
+            host.focus_hint.dismiss();
+            host.repaint();
+        }
         if let Some(smoke) = &mut self.smoke {
             let input = match &event {
                 WindowEvent::CursorMoved { position, .. } => {

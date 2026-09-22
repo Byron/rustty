@@ -211,11 +211,17 @@ impl Smoke {
         else {
             return Ok(false);
         };
+        let stage = self.stage;
         let mut host = app.windows.remove(&key).unwrap();
         let result = self.step_window(app, event_loop, &mut host);
         app.windows.insert(key, host);
         app.reconcile(event_loop);
-        result
+        let done = result?;
+        if stage == 3 && self.stage == 7 {
+            // Dispatch through the window handler with the host back in its map.
+            check_focus_hint_clicks(app, event_loop, key)?;
+        }
+        Ok(done)
     }
     fn step_window(
         &mut self,
@@ -425,7 +431,7 @@ impl Smoke {
                     .current_monitor()
                     .and_then(|monitor| monitor.refresh_rate_millihertz())
                     .map(|rate| f64::from(rate) / 1000.0);
-                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
+                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
                 fs::write(
                     self.directory.join("result.json"),
                     serde_json::to_vec_pretty(&report)?,
@@ -1044,6 +1050,199 @@ fn check_terminal_frames(
     result?;
     eprintln!(
         "Native smoke: terminal rendering and synchronized output passed; progress reused terminal content, stopped while occluded, and refreshed after reveal"
+    );
+    Ok(())
+}
+
+fn check_focus_hint_clicks(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    key: WindowId,
+) -> Result<()> {
+    use winit::event::{
+        DeviceId,
+        ElementState::{Pressed, Released},
+        MouseButton::{Back, Forward, Left, Middle, Other, Right},
+        TouchPhase,
+    };
+
+    let host = &app.windows[&key];
+    let window = host.id;
+    let original_focus = app.focused(window).ok_or("no focus-hint test pane")?;
+    let other = *host
+        .rects
+        .keys()
+        .find(|&&id| id != original_focus)
+        .ok_or("no second focus-hint test pane")?;
+    let positions = [original_focus, other].map(|id| {
+        // Focused directory labels are centered; click near the bottom instead.
+        (id, host.rects[&id].left_bottom() + Vec2::new(24.0, -24.0))
+    });
+    let scale = host.window.scale_factor();
+    let pointer_in_window = host.egui.is_pointer_in_window();
+    let saved_host = (host.focused, host.focus_hint, host.mouse, host.modifiers);
+    let bounds = host.content;
+    let workspace::Node::Split { axis, ratio, .. } = app.tab(window).unwrap().root.kind else {
+        return Err("no divider for focus-hint check".into());
+    };
+    let mut divider = Pos2::from(bounds.center());
+    match axis {
+        Axis::Horizontal => divider.x = bounds.x + bounds.width * ratio,
+        Axis::Vertical => divider.y = bounds.y + bounds.height * ratio,
+    }
+    let host = app.windows.get_mut(&key).unwrap();
+    let events = std::mem::take(&mut host.egui.egui_input_mut().events);
+    host.modifiers = Modifiers::default();
+    let mut saved = Vec::new();
+    for id in [original_focus, other] {
+        let pane = app.panes.get_mut(&id).unwrap();
+        let mut terminal = pane.session.terminal()?;
+        let mut fixture = vt::Terminal::new(terminal.cols, terminal.rows, 0);
+        fixture.mouse_mode = 1000;
+        fixture.mouse_format = 1006;
+        saved.push((
+            id,
+            std::mem::replace(&mut *terminal, fixture),
+            std::mem::take(&mut pane.input),
+            std::mem::take(&mut pane.input_bytes),
+            pane.mouse_cell.take(),
+            std::mem::take(&mut pane.selection_gesture),
+        ));
+        // Capture reports instead of sending the simulated clicks to a shell.
+        pane.input.push_back(Vec::new());
+    }
+    let motion = |position: Pos2| WindowEvent::CursorMoved {
+        device_id: DeviceId::dummy(),
+        position: LogicalPosition::new(position.x, position.y).to_physical(scale),
+    };
+    let button = |state, button| WindowEvent::MouseInput {
+        device_id: DeviceId::dummy(),
+        state,
+        button,
+    };
+    let dispatch = |app: &mut App, event, pane, visible| -> Result<()> {
+        app.window_event(event_loop, key, event);
+        let hint = app.windows[&key].focus_hint;
+        let now = Instant::now();
+        if app.focused(window) != Some(pane)
+            || hint.visible(pane, now) != visible
+            || hint.deadline(now).is_some() != visible
+        {
+            return Err(
+                format!("focus hint expected pane {pane}, visible={visible}: {hint:?}").into(),
+            );
+        }
+        Ok(())
+    };
+    let result = (|| -> Result<()> {
+        // AppKit consumes activation mouse-down; its release must retain the hint.
+        dispatch(app, WindowEvent::Focused(false), original_focus, false)?;
+        dispatch(app, WindowEvent::Focused(true), original_focus, true)?;
+        dispatch(app, motion(positions[0].1), original_focus, true)?;
+        dispatch(app, button(Released, Left), original_focus, true)?;
+        dispatch(app, button(Pressed, Left), original_focus, false)?;
+        dispatch(app, button(Released, Left), original_focus, false)?;
+
+        for (index, mouse_button) in [Left, Middle, Right, Back, Forward, Other(4)]
+            .into_iter()
+            .enumerate()
+        {
+            let (previous, _) = positions[index % 2];
+            let (pane, position) = positions[(index + 1) % 2];
+            dispatch(app, motion(position), previous, false)?;
+            dispatch(app, button(Pressed, mouse_button), pane, true)?;
+            dispatch(app, button(Released, mouse_button), pane, true)?;
+            dispatch(app, motion(position + Vec2::splat(1.0)), pane, true)?;
+            dispatch(
+                app,
+                WindowEvent::MouseWheel {
+                    device_id: DeviceId::dummy(),
+                    delta: MouseScrollDelta::LineDelta(0.0, 1.0),
+                    phase: TouchPhase::Moved,
+                },
+                pane,
+                true,
+            )?;
+            let reports = app.panes[&pane].input.len();
+            dispatch(app, button(Pressed, mouse_button), pane, false)?;
+            if index < 3 && app.panes[&pane].input.len() != reports + 1 {
+                return Err("dismissing the hint swallowed the terminal mouse report".into());
+            }
+            dispatch(app, button(Released, mouse_button), pane, false)?;
+        }
+
+        for (target, position) in [
+            ("search", positions[0].1),
+            ("divider", divider),
+            ("modal", positions[0].1),
+        ] {
+            dispatch(app, WindowEvent::Focused(false), original_focus, false)?;
+            dispatch(app, WindowEvent::Focused(true), original_focus, true)?;
+            let host = app.windows.get_mut(&key).unwrap();
+            if target == "search" {
+                host.search_rects.insert(
+                    original_focus,
+                    egui::Rect::from_center_size(position, Vec2::splat(20.0)),
+                );
+            }
+            host.palette = target == "modal";
+            dispatch(app, motion(position), original_focus, true)?;
+            dispatch(app, button(Pressed, Left), original_focus, false)?;
+            let host = &app.windows[&key];
+            if target == "search" && host.search_focus != Some(original_focus)
+                || target == "divider" && host.divider_drag.is_none()
+            {
+                return Err(format!("dismissing the hint swallowed the {target} click").into());
+            }
+            dispatch(app, button(Released, Left), original_focus, false)?;
+            let host = app.windows.get_mut(&key).unwrap();
+            host.search_rects.clear();
+            host.search_focus = None;
+            host.focus_text_input = false;
+            host.palette = false;
+        }
+        dispatch(app, WindowEvent::Focused(false), original_focus, false)?;
+        dispatch(app, WindowEvent::Focused(true), original_focus, true)?;
+        dispatch(
+            app,
+            WindowEvent::Ime(Ime::Commit("x".into())),
+            original_focus,
+            false,
+        )?;
+        Ok(())
+    })();
+    for (id, terminal, input, input_bytes, mouse_cell, selection_gesture) in saved {
+        let pane = app.panes.get_mut(&id).unwrap();
+        *pane.session.terminal()? = terminal;
+        pane.input = input;
+        pane.input_bytes = input_bytes;
+        pane.mouse_cell = mouse_cell;
+        pane.selection_gesture = selection_gesture;
+    }
+    app.focus_pane(window, original_focus);
+    let host = app.windows.get_mut(&key).unwrap();
+    (host.focused, host.focus_hint, host.mouse, host.modifiers) = saved_host;
+    host.search_rects.clear();
+    host.search_focus = None;
+    host.focus_text_input = false;
+    host.palette = false;
+    host.mouse_button = None;
+    host.selection_drag = None;
+    host.divider_drag = None;
+    let restore_pointer = if pointer_in_window {
+        motion(host.mouse)
+    } else {
+        WindowEvent::CursorLeft {
+            device_id: DeviceId::dummy(),
+        }
+    };
+    let _ = host.egui.on_window_event(&host.window, &restore_pointer);
+    host.egui.egui_input_mut().events = events;
+    host.egui.egui_input_mut().focused = host.focused;
+    app.sync_host_state();
+    result?;
+    eprintln!(
+        "Native smoke: focus labels survived focus clicks and dismissed on subsequent window clicks"
     );
     Ok(())
 }

@@ -16,7 +16,7 @@ pub fn cursor_blink_phase(started: Instant, now: Instant) -> (bool, Instant) {
     )
 }
 
-/// A focus change shows its directory once, until typing or a single expiry.
+/// A focus change shows its directory once, until typing, another click, or expiry.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FocusHint {
     pane: Option<Id>,
