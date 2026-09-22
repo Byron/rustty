@@ -2671,7 +2671,10 @@ impl App {
                 }
             })
             .unwrap_or_else(|| "Rustty".into());
-        host.window.set_title(&format!("{title} — Rustty"));
+        let title = format!("{title} — Rustty");
+        if host.window.title() != title {
+            host.window.set_title(&title);
+        }
         let mut output = context.run_ui(raw, |root_ui| {
             let ctx = &context;
             root_ui.visuals_mut().selection.bg_fill = accent;
