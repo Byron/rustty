@@ -27,6 +27,10 @@ fn hover_measurement_restarts_for_motion_and_leaving_but_not_duplicate_events() 
         hidden_title_frames: 0,
         header_frames: 0,
         header_prepares: 0,
+        active_title_frames: 0,
+        active_title_prepares: 0,
+        active_title_tab: None,
+        active_title_accesskit: false,
         events: BTreeMap::new(),
         timing: None,
     };
@@ -60,6 +64,10 @@ pub(super) struct Smoke {
     hidden_title_frames: u64,
     header_frames: u64,
     header_prepares: u64,
+    active_title_frames: u64,
+    active_title_prepares: u64,
+    active_title_tab: Option<String>,
+    active_title_accesskit: bool,
     events: BTreeMap<&'static str, u64>,
     timing: Option<Replay>,
 }
@@ -106,6 +114,10 @@ impl Smoke {
             hidden_title_frames: 0,
             header_frames: 0,
             header_prepares: 0,
+            active_title_frames: 0,
+            active_title_prepares: 0,
+            active_title_tab: None,
+            active_title_accesskit: false,
             events: BTreeMap::new(),
             timing,
         }))
@@ -136,7 +148,7 @@ impl Smoke {
         loaded.config.keybinds.retain(|b| !b.flags.global);
     }
     pub fn record(&mut self, event: &'static str) {
-        if matches!(self.stage, 4 | 8) {
+        if matches!(self.stage, 4 | 8 | 11 | 12) {
             *self.events.entry(event).or_default() += 1;
         }
     }
@@ -413,7 +425,7 @@ impl Smoke {
                     .current_monitor()
                     .and_then(|monitor| monitor.refresh_rate_millihertz())
                     .map(|rate| f64::from(rate) / 1000.0);
-                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
+                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
                 fs::write(
                     self.directory.join("result.json"),
                     serde_json::to_vec_pretty(&report)?,
@@ -544,8 +556,8 @@ impl Smoke {
                 {
                     return Err("visible tab-label updates stopped repainting".into());
                 }
-                // The focused pane can rebuild as its blink phase changes; the
-                // other panes must retain their content throughout title updates.
+                // Native focus/resize events can invalidate retained panes; title
+                // updates must otherwise keep reusing their terminal content.
                 if self.header_prepares > 8 {
                     return Err(format!(
                         "{} tab-header frames rebuilt panes {} times",
@@ -557,6 +569,78 @@ impl Smoke {
                     "Native smoke: {} tab-header frames needed only {} pane preparations",
                     self.header_frames, self.header_prepares
                 );
+                self.active_title_tab = app
+                    .tab_mut(host.id)
+                    .unwrap()
+                    .title
+                    .replace("Foreground agent".into());
+                self.active_title_accesskit = std::mem::replace(&mut host.accesskit_active, false);
+                for pane in app.panes.values_mut() {
+                    pane.activity.progress_reported(0, None, Instant::now());
+                }
+                app.activity_flashes.clear();
+                // The reads keep shell setup and cleanup outside the measured interval.
+                app.write(pane, b"stty -echo; printf '\\033[?25l\\033]2;active-title-ready\\007'; read rustty_smoke_go; sleep 0.2; i=0; while [ \"$i\" -lt 50 ]; do printf '\\033]2;active-agent-%s\\007' \"$i\"; i=$((i+1)); sleep 0.04; done; sleep 0.2; read rustty_smoke_done; printf '\\033[?25h'; stty echo\r".to_vec());
+                host.repaint();
+                self.next = Instant::now() + Duration::from_millis(500);
+                self.stage = 10;
+            }
+            10 => {
+                if app.panes[&pane].title != "active-title-ready" {
+                    return Ok(false);
+                }
+                // The ready effect can arrive before its initial redraw or the
+                // shell's final setup bytes. Settle before starting the counter.
+                self.next = Instant::now() + Duration::from_millis(200);
+                self.stage = 13;
+            }
+            13 => {
+                if !host.prepared.get(&pane).is_some_and(|prepared| {
+                    app.panes[&pane]
+                        .session
+                        .terminal()
+                        .is_ok_and(|terminal| prepared.key.matches_terminal(&terminal))
+                }) {
+                    host.repaint();
+                    return Ok(false);
+                }
+                self.active_title_frames = host.frames;
+                self.active_title_prepares = host.pane_prepares;
+                self.events.clear();
+                app.write(pane, b"\n".to_vec());
+                self.stage = 11;
+            }
+            11 => {
+                if app.panes[&pane].title != "active-agent-49" {
+                    return Ok(false);
+                }
+                self.next = Instant::now() + Duration::from_millis(300);
+                self.stage = 12;
+            }
+            12 => {
+                self.active_title_frames = host.frames.saturating_sub(self.active_title_frames);
+                self.active_title_prepares = host
+                    .pane_prepares
+                    .saturating_sub(self.active_title_prepares);
+                if self.active_title_frames != 0 || self.active_title_prepares != 0 {
+                    return Err(format!(
+                        "50 active masked titles at 25 Hz caused {} frames and {} pane preparations; events: {:?}",
+                        self.active_title_frames, self.active_title_prepares, self.events
+                    )
+                    .into());
+                }
+                if host.window.title() != "active-agent-49 — Rustty"
+                    || app.tab(host.id).unwrap().panes[&pane].title.as_deref()
+                        != Some("active-agent-49")
+                {
+                    return Err("active titles did not update native and saved title state".into());
+                }
+                eprintln!(
+                    "Native smoke: 50 active masked titles at 25 Hz updated native/saved titles with zero frames and pane preparations"
+                );
+                app.tab_mut(host.id).unwrap().title = self.active_title_tab.take();
+                host.accesskit_active = self.active_title_accesskit;
+                app.write(pane, b"\n".to_vec());
                 host.repaint();
                 self.idle_frames = host.frames;
                 self.events.clear();

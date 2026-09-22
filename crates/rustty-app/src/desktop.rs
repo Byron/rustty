@@ -222,6 +222,22 @@ struct PaneRenderKey {
 }
 
 impl PaneRenderKey {
+    fn matches_terminal(&self, terminal: &vt::Terminal) -> bool {
+        let screen = terminal.screen();
+        let cursor = &screen.cursor;
+        self.generation == terminal.generation
+            && self.viewport_offset == screen.viewport_offset
+            && self.selection == screen.selection
+            && self.cursor
+                == (
+                    cursor.col,
+                    cursor.row,
+                    cursor.shape,
+                    cursor.visible,
+                    cursor.blink,
+                )
+    }
+
     fn new(terminal: &vt::Terminal, options: RenderOptions, rect: egui::Rect, scale: f32) -> Self {
         let screen = terminal.screen();
         let cursor = &screen.cursor;
@@ -1398,6 +1414,9 @@ impl App {
     fn drain(&mut self, event_loop: &ActiveEventLoop, id: Id) {
         let previous_tab_label = self.pane_tab_label(id);
         let live = previous_tab_label.is_some();
+        let previous_errors = self.errors.len();
+        let mut content_changed = false;
+        let mut title_changed = false;
         let mut close = false;
         let mut stopped = false;
         let mut clipboard = Vec::new();
@@ -1418,6 +1437,7 @@ impl App {
         if let Ok(mut terminal) = pane.session.terminal() {
             pane.sync_output.update(&mut terminal, Instant::now());
             if let Some(directory) = directory_from_osc(&terminal.working_directory) {
+                content_changed |= pane.cwd != directory;
                 pane.cwd = directory;
             }
         } else {
@@ -1425,11 +1445,13 @@ impl App {
         }
         let events = pane.session.events().collect::<Vec<_>>();
         for event in events {
+            content_changed |= !matches!(&event, SessionEvent::Effect(vt::Effect::Title(_)));
             match event {
                 SessionEvent::Effect(vt::Effect::Title(title)) => {
                     let title = String::from_utf8_lossy(&title);
                     pane.activity.title_changed(&title);
                     if pane.title_override.is_none() {
+                        title_changed |= pane.title != title;
                         pane.title = title.into_owned();
                     }
                 }
@@ -1551,7 +1573,56 @@ impl App {
                     .count(),
             );
         }
-        self.repaint_pane(id, indicators_changed);
+        for host in self.windows.values() {
+            let Some(window) = self
+                .index(host.id)
+                .map(|index| &self.workspace.windows[index])
+            else {
+                continue;
+            };
+            let Some(tab) = window
+                .tabs
+                .iter()
+                .position(|tab| tab.panes.contains_key(&id))
+            else {
+                continue;
+            };
+            if window.tabs[window.active_tab].focused == id {
+                self.sync_window_title(host);
+            }
+            // OSC 22 changes native cursor metadata without changing terminal pixels.
+            if host.hovered_pane() == Some(id)
+                && let Some(cursor) = self.pointer_cursor(host)
+            {
+                host.window.set_cursor(cursor);
+            }
+            let title_in_ui = title_changed
+                && (host.accesskit_active && host.prepared.contains_key(&id)
+                    || matches!(&host.confirm, Some(Confirmation::Paste(paste)) if paste.pane == id)
+                    || host
+                        .clipboard_request
+                        .front()
+                        .is_some_and(|(pane, _)| *pane == id));
+            let terminal_changed = tab == window.active_tab
+                && (content_changed
+                    || !self.panes.get(&id).is_some_and(|pane| {
+                        pane.session.terminal().ok().is_some_and(|terminal| {
+                            host.prepared.get(&id).is_some_and(|prepared| {
+                                prepared.key.matches_terminal(&terminal)
+                                    && prepared.frame.generation == host.fonts.generation()
+                            })
+                        })
+                    }));
+            // Empty reader/writer wakes use the same check as title-only output.
+            // All effects and saved metadata have already been processed above.
+            if indicators_changed
+                || self.errors.len() != previous_errors
+                || title_in_ui
+                || terminal_changed
+            {
+                host.repaint();
+            }
+        }
         // Output updates this pane's metadata above. Only closing a pane changes
         // the layout and requires reconciling every window and session.
         if close {
@@ -1571,6 +1642,24 @@ impl App {
                 // Plain output in hidden tabs does not invalidate the visible terminals.
                 host.repaint();
             }
+        }
+    }
+
+    fn sync_window_title(&self, host: &Host) {
+        let title = self
+            .focused(host.id)
+            .and_then(|id| self.panes.get(&id))
+            .map(|pane| {
+                if pane.title.is_empty() {
+                    pane.cwd.display().to_string()
+                } else {
+                    pane.title.clone()
+                }
+            })
+            .unwrap_or_else(|| "Rustty".into());
+        let title = format!("{title} — Rustty");
+        if host.window.title() != title {
+            host.window.set_title(&title);
         }
     }
 
@@ -2685,21 +2774,7 @@ impl App {
             host.navigation_warning = None;
         }
 
-        let title = self
-            .panes
-            .get(&focused)
-            .map(|pane| {
-                if pane.title.is_empty() {
-                    pane.cwd.display().to_string()
-                } else {
-                    pane.title.clone()
-                }
-            })
-            .unwrap_or_else(|| "Rustty".into());
-        let title = format!("{title} — Rustty");
-        if host.window.title() != title {
-            host.window.set_title(&title);
-        }
+        self.sync_window_title(host);
         // The context is shared, but native accessibility activation is per window.
         if host.accesskit_active {
             context.enable_accesskit();
@@ -3813,10 +3888,10 @@ impl App {
     fn pointer_cursor(&self, host: &Host) -> Option<CursorIcon> {
         if host.modal_input()
             || host.peek.is_some()
-            || self
-                .context
-                .layer_id_at(host.mouse)
-                .is_some_and(|layer| layer.order != egui::Order::Background)
+            || host
+                .search_rects
+                .values()
+                .any(|rect| rect.contains(host.mouse))
         {
             return None;
         }
@@ -5451,6 +5526,48 @@ mod tests {
             !prepared.matches(&key(&terminal), &fonts),
             "a Kitty animation frame must invalidate retained graphics"
         );
+    }
+
+    #[test]
+    fn output_metadata_distinguishes_titles_and_pointer_shapes_from_terminal_changes() {
+        let mut terminal = vt::Terminal::new(20, 3, 64);
+        let key = |terminal: &vt::Terminal| {
+            PaneRenderKey::new(terminal, RenderOptions::default(), egui::Rect::ZERO, 1.0)
+        };
+        let displayed = key(&terminal);
+        terminal.feed(b"\x1b]2;new title\x07\x1b]22;pointer\x07");
+        assert!(displayed.matches_terminal(&terminal));
+        assert_eq!(terminal.mouse_shape(), "pointer");
+        for bytes in [
+            b"\x1b]2;title plus text\x07text".as_slice(),
+            b"\x1b[?5h",                      // reverse video
+            b"\x1b]4;1;#123456\x07",          // palette
+            b"\x1b[?25l",                     // cursor visibility
+            b"\x1b[2 q",                      // cursor style
+            b"\x1b[?2026hpartial\x1b[?2026l", // completed batch
+        ] {
+            let displayed = key(&terminal);
+            terminal.feed(bytes);
+            assert!(!displayed.matches_terminal(&terminal), "{bytes:?}");
+        }
+        let displayed = key(&terminal);
+        terminal.screen_mut().cursor.col += 1;
+        assert!(!displayed.matches_terminal(&terminal));
+        let displayed = key(&terminal);
+        let point = vt::GridPoint {
+            row: terminal.screen().row(0).id,
+            col: 0,
+        };
+        terminal.screen_mut().selection = Some(vt::Selection {
+            start: point,
+            end: point,
+            rectangular: false,
+        });
+        assert!(!displayed.matches_terminal(&terminal));
+        terminal.feed(b"\r\na\r\nb\r\nc\r\nd");
+        let displayed = key(&terminal);
+        terminal.screen_mut().scroll_viewport(1);
+        assert!(!displayed.matches_terminal(&terminal));
     }
 
     #[test]
