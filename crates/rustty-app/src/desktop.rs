@@ -246,7 +246,10 @@ impl PaneRenderKey {
 struct PreparedPane {
     key: PaneRenderKey,
     frame: Arc<Frame>,
-    text: TerminalText,
+    // Accessibility may first be requested while synchronized output holds this frame.
+    screen: vt::Screen,
+    cell: [f32; 2],
+    text: Option<TerminalText>,
     ime_rect: egui::Rect,
 }
 
@@ -263,27 +266,14 @@ impl PreparedPane {
     }
 
     fn new(
-        pane: Id,
         key: PaneRenderKey,
-        screen: &vt::Screen,
+        screen: vt::Screen,
         fonts: &mut rustty_render::Renderer,
     ) -> std::result::Result<Self, rustty_render::RenderError> {
         let metrics = fonts.metrics();
-        let frame = fonts.prepare(screen, &key.options)?;
+        let frame = fonts.prepare(&screen, &key.options)?;
         let origin = [key.rect.left(), key.rect.top()];
         let padding = key.options.padding;
-        let text = TerminalText::new(
-            pane,
-            screen,
-            [
-                origin[0] + padding[0] / key.scale,
-                origin[1] + padding[1] / key.scale,
-            ],
-            [
-                metrics.cell_width as f32 / key.scale,
-                metrics.cell_height as f32 / key.scale,
-            ],
-        );
         let [x, y, width, height] = frame.ime_cursor.unwrap_or([
             padding[0] + screen.cursor.col as f32 * metrics.cell_width as f32,
             padding[1] + screen.cursor.row as f32 * metrics.cell_height as f32,
@@ -294,11 +284,32 @@ impl PreparedPane {
             Pos2::new(origin[0] + x / key.scale, origin[1] + y / key.scale),
             Vec2::new(width / key.scale, height / key.scale),
         );
+        let cell = [
+            metrics.cell_width as f32 / key.scale,
+            metrics.cell_height as f32 / key.scale,
+        ];
         Ok(Self {
             key,
             frame: Arc::new(frame),
-            text,
+            screen,
+            cell,
+            text: None,
             ime_rect,
+        })
+    }
+
+    fn accessibility(&mut self, pane: Id) -> &TerminalText {
+        self.text.get_or_insert_with(|| {
+            let key = &self.key;
+            TerminalText::new(
+                pane,
+                &self.screen,
+                [
+                    key.rect.left() + key.options.padding[0] / key.scale,
+                    key.rect.top() + key.options.padding[1] / key.scale,
+                ],
+                self.cell,
+            )
         })
     }
 }
@@ -348,6 +359,7 @@ struct Host {
     viewport: ViewportId,
     window: Arc<Window>,
     egui: egui_winit::State,
+    accesskit_active: bool,
     fonts: rustty_render::Renderer,
     rects: BTreeMap<Id, egui::Rect>,
     prepared: BTreeMap<Id, PreparedPane>,
@@ -649,7 +661,6 @@ pub fn run() -> Result<()> {
     };
     let proxy = event_loop.create_proxy();
     let context = egui::Context::default();
-    context.enable_accesskit();
     context.set_theme(ui_theme(&loaded.config));
     configure_ui_fonts(&context);
     let repaint = proxy.clone();
@@ -1080,6 +1091,7 @@ impl App {
             viewport,
             window: window.clone(),
             egui,
+            accesskit_active: false,
             fonts,
             rects: BTreeMap::new(),
             prepared: BTreeMap::new(),
@@ -2675,6 +2687,12 @@ impl App {
         if host.window.title() != title {
             host.window.set_title(&title);
         }
+        // The context is shared, but native accessibility activation is per window.
+        if host.accesskit_active {
+            context.enable_accesskit();
+        } else {
+            context.disable_accesskit();
+        }
         let mut output = context.run_ui(raw, |root_ui| {
             let ctx = &context;
             root_ui.visuals_mut().selection.bg_fill = accent;
@@ -2953,7 +2971,7 @@ impl App {
                             .then(|| terminal.screen().snapshot_viewport());
                             drop(terminal);
                             if let Some(snapshot) = snapshot {
-                                match PreparedPane::new(id, key, &snapshot, &mut host.fonts) {
+                                match PreparedPane::new(key, snapshot, &mut host.fonts) {
                                     Ok(prepared) => {
                                         host.prepared.insert(id, prepared);
                                         host.pane_prepares += 1;
@@ -3474,8 +3492,8 @@ impl App {
             self.layout_command(host, command);
         }
         if let Some(update) = &mut output.platform_output.accesskit_update {
-            for pane in host.prepared.values() {
-                pane.text.append_to(update);
+            for (&id, pane) in &mut host.prepared {
+                pane.accessibility(id).append_to(update);
             }
         }
         host.egui.handle_platform_output_with_event_loop(
@@ -4279,7 +4297,11 @@ impl ApplicationHandler<Event> for App {
                             let pane = host
                                 .prepared
                                 .iter()
-                                .find(|(_, pane)| pane.text.contains(request.target_node))
+                                .find(|(_, pane)| {
+                                    pane.text
+                                        .as_ref()
+                                        .is_some_and(|text| text.contains(request.target_node))
+                                })
                                 .map(|(&id, _)| id);
                             let mut handled = false;
                             if let Some(id) = pane {
@@ -4308,8 +4330,10 @@ impl ApplicationHandler<Event> for App {
                                     AccessAction::SetTextSelection => {
                                         if let Some(ActionData::SetTextSelection(range)) =
                                             &request.data
-                                            && let Some(selection) =
-                                                host.prepared[&id].text.selection(*range)
+                                            && let Some(selection) = host.prepared[&id]
+                                                .text
+                                                .as_ref()
+                                                .and_then(|text| text.selection(*range))
                                             && let Some(pane) = self.panes.get(&id)
                                             && let Ok(mut terminal) = pane.session.terminal()
                                         {
@@ -4333,8 +4357,8 @@ impl ApplicationHandler<Event> for App {
                                 host.egui.on_accesskit_action_request(request);
                             }
                         }
-                        AccessEvent::InitialTreeRequested => self.context.enable_accesskit(),
-                        AccessEvent::AccessibilityDeactivated => {}
+                        AccessEvent::InitialTreeRequested => host.accesskit_active = true,
+                        AccessEvent::AccessibilityDeactivated => host.accesskit_active = false,
                     }
                     host.repaint();
                     self.windows.insert(event.window_id, host);
@@ -5330,9 +5354,8 @@ mod tests {
         let mut terminal = vt::Terminal::new(20, 3, 64);
         terminal.feed(b"first\r\nsecond\r\nthird\r\nfourth");
         let prepared = PreparedPane::new(
-            1,
             key(&terminal),
-            &terminal.screen().snapshot_viewport(),
+            terminal.screen().snapshot_viewport(),
             &mut fonts,
         )
         .unwrap();
@@ -5379,13 +5402,9 @@ mod tests {
         let moved = rect.translate(Vec2::new(30.0, 0.0));
         let moved_key = PaneRenderKey::new(&terminal, options.clone(), moved, 1.0);
         assert!(!prepared.matches(&moved_key, &fonts));
-        let moved_pane = PreparedPane::new(
-            1,
-            moved_key,
-            &terminal.screen().snapshot_viewport(),
-            &mut fonts,
-        )
-        .unwrap();
+        let moved_pane =
+            PreparedPane::new(moved_key, terminal.screen().snapshot_viewport(), &mut fonts)
+                .unwrap();
         assert_eq!(
             moved_pane.ime_rect,
             prepared.ime_rect.translate(Vec2::new(30.0, 0.0))
@@ -5393,9 +5412,8 @@ mod tests {
         terminal.feed(b"!");
         assert!(!prepared.matches(&key(&terminal), &fonts));
         let prepared = PreparedPane::new(
-            1,
             key(&terminal),
-            &terminal.screen().snapshot_viewport(),
+            terminal.screen().snapshot_viewport(),
             &mut fonts,
         )
         .unwrap();
@@ -5408,9 +5426,8 @@ mod tests {
         terminal.feed(b"\x1b_Gi=1,s=1,v=1,f=32;/wAA/w==\x1b\\\x1b_Ga=f,i=1,s=1,v=1,f=32,z=50;AP8A/w==\x1b\\\x1b_Ga=a,i=1,r=1,z=50,s=3\x1b\\\x1b_Ga=p,i=1,C=1\x1b\\");
         assert_eq!(terminal.tick_graphics(100), Some(150));
         let prepared = PreparedPane::new(
-            1,
             key(&terminal),
-            &terminal.screen().snapshot_viewport(),
+            terminal.screen().snapshot_viewport(),
             &mut fonts,
         )
         .unwrap();
@@ -5421,6 +5438,68 @@ mod tests {
             !prepared.matches(&key(&terminal), &fonts),
             "a Kitty animation frame must invalidate retained graphics"
         );
+    }
+
+    #[test]
+    fn accessibility_is_lazy_and_uses_the_displayed_snapshot() {
+        use egui::accesskit::{self as ak, Node, TextPosition, TextSelection};
+
+        let mut fonts = rustty_render::Renderer::new(font_config(&Config::default(), 2.0)).unwrap();
+        let metrics = fonts.metrics();
+        let mut terminal = vt::Terminal::new(12, 2, 0);
+        terminal.feed("A界e\u{301}B".as_bytes());
+        let row = terminal.screen().row(0).id;
+        let key = PaneRenderKey::new(
+            &terminal,
+            RenderOptions {
+                size: [400, 160],
+                padding: [8.0, 12.0],
+                ..Default::default()
+            },
+            egui::Rect::from_min_size(Pos2::new(10.0, 20.0), Vec2::new(200.0, 80.0)),
+            2.0,
+        );
+        let mut prepared =
+            PreparedPane::new(key, terminal.screen().snapshot_viewport(), &mut fonts).unwrap();
+        assert!(prepared.text.is_none());
+        let frame = Arc::clone(&prepared.frame);
+
+        terminal.feed(b"\x1b[?2026h\x1b[2J\x1b[Hpartial frame");
+        let text = prepared.accessibility(7);
+        let mut update = ak::TreeUpdate {
+            nodes: vec![(text.id.accesskit_id(), Node::new(ak::Role::Terminal))],
+            tree: None,
+            tree_id: ak::TreeId::ROOT,
+            focus: text.id.accesskit_id(),
+        };
+        text.append_to(&mut update);
+        let (node_id, node) = &update.nodes[1];
+        assert!(node.value().unwrap().starts_with("A界e\u{301}B"));
+        assert_eq!(node.bounds().unwrap().x0, 14.0);
+        assert_eq!(node.bounds().unwrap().y0, 26.0);
+        assert_eq!(
+            node.character_positions().unwrap()[1],
+            metrics.cell_width as f32 / 2.0
+        );
+        assert!(text.contains(*node_id));
+        assert_eq!(
+            text.selection(TextSelection {
+                anchor: TextPosition {
+                    node: *node_id,
+                    character_index: 1,
+                },
+                focus: TextPosition {
+                    node: *node_id,
+                    character_index: 3,
+                },
+            }),
+            Some(Some(vt::Selection {
+                start: vt::GridPoint { row, col: 1 },
+                end: vt::GridPoint { row, col: 3 },
+                rectangular: false,
+            }))
+        );
+        assert!(Arc::ptr_eq(&frame, &prepared.frame));
     }
 
     #[test]

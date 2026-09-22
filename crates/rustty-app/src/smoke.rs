@@ -750,9 +750,13 @@ fn check_terminal_frames(
     let blink_started = host.cursor_blink_started;
     let focus_hint = host.focus_hint;
     let navigation_warning = host.navigation_warning.take();
+    let accesskit_active = std::mem::replace(&mut host.accesskit_active, false);
     host.focus_hint.dismiss();
     let result = (|| -> Result<()> {
         app.draw(event_loop, host)?;
+        if host.prepared[&id].text.is_some() {
+            return Err("inactive accessibility built terminal text".into());
+        }
         let normal = host.prepared[&id].key.options.clone();
         for (sequence, foreground, background) in [
             (b"\x1b[?5h".as_slice(), normal.background, normal.foreground),
@@ -799,6 +803,7 @@ fn check_terminal_frames(
         let generation = previous.key.generation;
         let cursor = previous.key.cursor;
         let ime_rect = previous.ime_rect;
+        let frame = Arc::clone(&previous.frame);
         for chunk in [
             b"\x1b[?2026h\x1b[2J\x1b[H".as_slice(),
             b"\x1b[3;1Hpartial frame",
@@ -813,6 +818,18 @@ fn check_terminal_frames(
                 return Err("synchronized output displayed a partial frame or cursor".into());
             }
         }
+        host.accesskit_active = true;
+        app.draw(event_loop, host)?;
+        let held = &host.prepared[&id];
+        if held.text.is_none()
+            || held.key.generation != generation
+            || !Arc::ptr_eq(&held.frame, &frame)
+        {
+            return Err("accessibility activation did not retain the synchronized frame".into());
+        }
+        host.accesskit_active = false;
+        // Another window can leave the shared context enabled between this window's draws.
+        app.context.enable_accesskit();
         for chunk in [b"\x1b[Hfinished\x1b[?2026l".as_slice(), b"!"] {
             let generation = {
                 let mut terminal = app.panes[&id].session.terminal()?;
@@ -824,6 +841,11 @@ fn check_terminal_frames(
                 || app.panes[&id].sync_output.deadline.is_some()
             {
                 return Err("completed or ordinary output waited for another frame".into());
+            }
+            if host.prepared[&id].text.is_some() {
+                return Err(
+                    "inactive window inherited another window's accessibility state".into(),
+                );
             }
         }
         app.panes[&id]
@@ -933,6 +955,7 @@ fn check_terminal_frames(
     host.cursor_blink_started = blink_started;
     host.focus_hint = focus_hint;
     host.navigation_warning = navigation_warning;
+    host.accesskit_active = accesskit_active;
     host.repaint();
     result?;
     eprintln!(
