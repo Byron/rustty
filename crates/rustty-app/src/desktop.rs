@@ -261,7 +261,20 @@ struct HoveredLink {
 }
 
 impl PreparedPane {
-    fn matches(&self, key: &PaneRenderKey, fonts: &rustty_render::Renderer) -> bool {
+    fn matches(&mut self, key: &PaneRenderKey, fonts: &rustty_render::Renderer) -> bool {
+        let options = &mut self.key.options;
+        let cursor = &self.screen.cursor;
+        let blinking_cursor = options.focused
+            && options.cursor_visible
+            && cursor.visible
+            && cursor.blink
+            && self.screen.viewport_offset == 0
+            && options.preedit.as_ref().is_none_or(|p| p.text.is_empty());
+        if !blinking_cursor && !self.frame.blinking_text {
+            // Only normalize the retained key. New content may introduce blink
+            // and must still be prepared with the incoming, actual phase.
+            options.blink_visible = key.options.blink_visible;
+        }
         self.key == *key && self.frame.generation == fonts.generation()
     }
 
@@ -2966,7 +2979,7 @@ impl App {
                             let snapshot = (!synchronized
                                 && !host
                                     .prepared
-                                    .get(&id)
+                                    .get_mut(&id)
                                     .is_some_and(|pane| pane.matches(&key, &host.fonts)))
                             .then(|| terminal.screen().snapshot_viewport());
                             drop(terminal);
@@ -5353,7 +5366,7 @@ mod tests {
             |terminal: &vt::Terminal| PaneRenderKey::new(terminal, options.clone(), rect, 1.0);
         let mut terminal = vt::Terminal::new(20, 3, 64);
         terminal.feed(b"first\r\nsecond\r\nthird\r\nfourth");
-        let prepared = PreparedPane::new(
+        let mut prepared = PreparedPane::new(
             key(&terminal),
             terminal.screen().snapshot_viewport(),
             &mut fonts,
@@ -5411,7 +5424,7 @@ mod tests {
         );
         terminal.feed(b"!");
         assert!(!prepared.matches(&key(&terminal), &fonts));
-        let prepared = PreparedPane::new(
+        let mut prepared = PreparedPane::new(
             key(&terminal),
             terminal.screen().snapshot_viewport(),
             &mut fonts,
@@ -5425,7 +5438,7 @@ mod tests {
 
         terminal.feed(b"\x1b_Gi=1,s=1,v=1,f=32;/wAA/w==\x1b\\\x1b_Ga=f,i=1,s=1,v=1,f=32,z=50;AP8A/w==\x1b\\\x1b_Ga=a,i=1,r=1,z=50,s=3\x1b\\\x1b_Ga=p,i=1,C=1\x1b\\");
         assert_eq!(terminal.tick_graphics(100), Some(150));
-        let prepared = PreparedPane::new(
+        let mut prepared = PreparedPane::new(
             key(&terminal),
             terminal.screen().snapshot_viewport(),
             &mut fonts,
@@ -5438,6 +5451,81 @@ mod tests {
             !prepared.matches(&key(&terminal), &fonts),
             "a Kitty animation frame must invalidate retained graphics"
         );
+    }
+
+    #[test]
+    fn prepared_panes_ignore_blink_phase_only_for_steady_content() {
+        let mut fonts = rustty_render::Renderer::new(font_config(&Config::default(), 1.0)).unwrap();
+        let rect = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(320.0, 160.0));
+        let key = |terminal: &vt::Terminal, blink_visible| {
+            PaneRenderKey::new(
+                terminal,
+                RenderOptions {
+                    size: [320, 160],
+                    blink_visible,
+                    ..Default::default()
+                },
+                rect,
+                1.0,
+            )
+        };
+        let mut terminal = vt::Terminal::new(20, 3, 64);
+        // A steady cursor and a hidden blinking cursor both ignore the phase.
+        for cursor in [b"\x1b[2 q".as_slice(), b"\x1b[1 q\x1b[?25l"] {
+            terminal.feed(cursor);
+            let mut prepared = PreparedPane::new(
+                key(&terminal, true),
+                terminal.screen().snapshot_viewport(),
+                &mut fonts,
+            )
+            .unwrap();
+            assert!(prepared.matches(&key(&terminal, false), &fonts));
+            assert!(prepared.matches(&key(&terminal, true), &fonts));
+        }
+        terminal.feed(b"\x1b[?25h");
+        let mut prepared = PreparedPane::new(
+            key(&terminal, true),
+            terminal.screen().snapshot_viewport(),
+            &mut fonts,
+        )
+        .unwrap();
+        assert!(!prepared.matches(&key(&terminal, false), &fonts));
+
+        terminal.feed(b"a\r\nb\r\nc\r\nd\x1b[H");
+        terminal.screen_mut().scroll_viewport(1);
+        let mut prepared = PreparedPane::new(
+            key(&terminal, true),
+            terminal.screen().snapshot_viewport(),
+            &mut fonts,
+        )
+        .unwrap();
+        assert!(prepared.screen.cursor.visible);
+        assert!(!prepared.matches(&key(&terminal, false), &fonts));
+        terminal.screen_mut().scroll_viewport(-1);
+        terminal.feed(b"\x1b[?25l");
+        let mut prepared = PreparedPane::new(
+            key(&terminal, true),
+            terminal.screen().snapshot_viewport(),
+            &mut fonts,
+        )
+        .unwrap();
+        // New blinking text must use the current phase even if the previous
+        // frame was steady. Matching must not normalize the incoming options.
+        terminal.feed(b"\x1b[5mblink\x1b[0m");
+        let hidden = key(&terminal, false);
+        assert!(!prepared.matches(&hidden, &fonts));
+        let mut prepared =
+            PreparedPane::new(hidden, terminal.screen().snapshot_viewport(), &mut fonts).unwrap();
+        assert!(prepared.frame.blinking_text);
+        assert!(prepared.matches(&key(&terminal, false), &fonts));
+        assert!(!prepared.matches(&key(&terminal, true), &fonts));
+        let shown = PreparedPane::new(
+            key(&terminal, true),
+            terminal.screen().snapshot_viewport(),
+            &mut fonts,
+        )
+        .unwrap();
+        assert_ne!(prepared.frame.quads, shown.frame.quads);
     }
 
     #[test]
