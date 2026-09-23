@@ -21,6 +21,11 @@ name = "native_quick_animation"
 path = "tests/native_quick_animation.rs"
 harness = false
 
+[[test]]
+name = "native_global_hotkeys"
+path = "tests/native_global_hotkeys.rs"
+harness = false
+
 [dependencies]
 rustty = { workspace = true, features = ["sessions"] }
 rustty-font.workspace = true

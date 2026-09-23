@@ -148,6 +148,21 @@ pub fn key_is_consumed(
     }
 }
 
+/// Unregistering a held global hotkey can expose its repeats and release to Winit.
+pub fn global_key_is_consumed(
+    consumed: &mut HashSet<PhysicalKey>,
+    key: PhysicalKey,
+    state: ElementState,
+    repeat: bool,
+) -> bool {
+    // Carbon normally consumes the release itself. A fresh raw press therefore
+    // clears any record left behind by a completed native hotkey chord.
+    if state == ElementState::Pressed && !repeat {
+        consumed.remove(&key);
+    }
+    key_is_consumed(consumed, key, state, false)
+}
+
 /// Find keeps application navigation available while text-editing shortcuts stay in egui.
 pub fn search_shortcut(action: &config::Action) -> bool {
     use config::Action::*;
@@ -856,6 +871,38 @@ mod tests {
             }
             gesture.deinit(&mut terminal);
         }
+    }
+
+    #[test]
+    fn rebuilding_global_hotkeys_consumes_orphan_events_and_clears_stale_keys() {
+        let key = PhysicalKey::Code(KeyCode::F20);
+        let other = PhysicalKey::Code(KeyCode::KeyA);
+        let mut consumed = HashSet::from([key]);
+        for (physical, state, repeat, expected) in [
+            (other, ElementState::Pressed, false, false),
+            (key, ElementState::Pressed, true, true),
+            (key, ElementState::Pressed, true, true),
+            (key, ElementState::Released, false, true),
+            (key, ElementState::Released, false, false),
+        ] {
+            assert_eq!(
+                global_key_is_consumed(&mut consumed, physical, state, repeat),
+                expected
+            );
+        }
+        assert!(consumed.is_empty());
+
+        // Carbon consumed the previous release, then the binding was removed.
+        // The next ordinary press, its repeats, and its release must all work.
+        consumed.insert(key);
+        for (state, repeat) in [
+            (ElementState::Pressed, false),
+            (ElementState::Pressed, true),
+            (ElementState::Released, false),
+        ] {
+            assert!(!global_key_is_consumed(&mut consumed, key, state, repeat));
+        }
+        assert!(consumed.is_empty());
     }
 
     #[test]

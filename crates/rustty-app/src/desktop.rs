@@ -35,7 +35,7 @@ use winit::{
     event::{ElementState, Ime, Modifiers, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
     keyboard::PhysicalKey,
-    platform::macos::WindowAttributesExtMacOS,
+    platform::{macos::WindowAttributesExtMacOS, scancode::PhysicalKeyExtScancode},
     window::{CursorIcon, Fullscreen, Theme, Window, WindowId},
 };
 
@@ -54,6 +54,17 @@ impl From<egui_winit::accesskit_winit::Event> for Event {
     fn from(value: egui_winit::accesskit_winit::Event) -> Self {
         Self::Access(value)
     }
+}
+
+fn dispatch_binding(
+    binding: config::KeyBinding,
+    mut dispatch: impl FnMut(Action, bool) -> bool,
+) -> bool {
+    let mut performed = false;
+    for action in binding.actions {
+        performed |= dispatch(action, binding.flags.all);
+    }
+    performed
 }
 
 struct Pane {
@@ -617,6 +628,7 @@ struct App {
     closing: Vec<Session>,
     windows: HashMap<WindowId, Host>,
     platform: Option<Platform>,
+    consumed_global_keys: HashSet<PhysicalKey>,
     context: egui::Context,
     painter: egui_wgpu::winit::Painter,
     proxy: EventLoopProxy<Event>,
@@ -734,6 +746,7 @@ pub fn run() -> Result<()> {
         closing: Vec::new(),
         windows: HashMap::new(),
         platform: None,
+        consumed_global_keys: HashSet::new(),
         context,
         painter,
         proxy,
@@ -2555,6 +2568,111 @@ impl App {
             event_loop.exit();
         }
     }
+    fn binding_action(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        host: &mut Host,
+        action: Action,
+        all: bool,
+    ) -> bool {
+        if all && let Action::Text(bytes) = action {
+            if !bytes.is_empty()
+                && let Some(id) = self.focused(host.id)
+            {
+                self.terminal_input(host, id);
+            }
+            for id in self
+                .workspace
+                .windows
+                .iter()
+                .flat_map(|window| &window.tabs)
+                .flat_map(|tab| tab.panes.keys().copied())
+                .collect::<Vec<_>>()
+            {
+                self.write(id, bytes.clone());
+            }
+            true
+        } else {
+            self.action(event_loop, host, action, false)
+        }
+    }
+
+    fn take_active_host(&mut self) -> Option<(WindowId, Host)> {
+        let key = self
+            .windows
+            .iter()
+            .find(|(_, host)| Some(host.id) == self.active)
+            .or_else(|| self.windows.iter().next())
+            .map(|(id, _)| *id)?;
+        self.windows.remove_entry(&key)
+    }
+
+    fn platform_binding(&mut self, event_loop: &ActiveEventLoop, binding: config::KeyBinding) {
+        let mut target = self.take_active_host();
+        dispatch_binding(binding, |action, all| {
+            if let Some((_, host)) = &mut target {
+                self.binding_action(event_loop, host, action, all)
+            } else {
+                let performed = self.platform_action(event_loop, action, all);
+                // A native action can create the first window. Keep that host
+                // for the remaining chain, just as the focused keyboard does.
+                target = self.take_active_host();
+                performed
+            }
+        });
+        if let Some((key, host)) = target {
+            self.windows.insert(key, host);
+            // Reconcile after the chain: closing every window may be followed
+            // by creating a new one, which must not exit the event loop midway.
+            self.reconcile(event_loop);
+        }
+    }
+
+    fn platform_action(&mut self, event_loop: &ActiveEventLoop, action: Action, all: bool) -> bool {
+        if action == Action::OpenLayout && self.windows.is_empty() {
+            let id = self.add_window(false);
+            self.reconcile(event_loop);
+            self.active = Some(id);
+        }
+        if let Some((key, mut host)) = self.take_active_host() {
+            let performed = self.binding_action(event_loop, &mut host, action, all);
+            self.windows.insert(key, host);
+            self.reconcile(event_loop);
+            performed
+        } else if matches!(action, Action::Undo | Action::Redo) {
+            let performed = self.undo_layout(action == Action::Redo);
+            if performed {
+                self.reconcile(event_loop);
+            }
+            performed
+        } else if action == Action::ToggleQuickTerminal {
+            let id = self.add_window(true);
+            self.reconcile(event_loop);
+            let key = self
+                .windows
+                .iter()
+                .find(|(_, host)| host.id == id)
+                .map(|(key, _)| *key);
+            if let Some(key) = key
+                && let Some(mut host) = self.windows.remove(&key)
+            {
+                self.quick_visible(&mut host, true, true);
+                self.windows.insert(key, host);
+            }
+            true
+        } else if matches!(action, Action::NewWindow | Action::NewTab) {
+            self.add_window(false);
+            self.reconcile(event_loop);
+            true
+        } else if action == Action::Quit {
+            self.save();
+            event_loop.exit();
+            true
+        } else {
+            false
+        }
+    }
+
     fn keyboard(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -2601,32 +2719,11 @@ impl App {
                 host.sequence.clear();
                 host.sequence_len = 0;
                 let binding = self.config().keybinds[index].clone();
-                let mut performed = false;
-                for action in binding.actions {
-                    if binding.flags.all
-                        && let Action::Text(bytes) = action
-                    {
-                        if !bytes.is_empty()
-                            && let Some(id) = self.focused(host.id)
-                        {
-                            self.terminal_input(host, id);
-                        }
-                        for id in self
-                            .workspace
-                            .windows
-                            .iter()
-                            .flat_map(|window| &window.tabs)
-                            .flat_map(|tab| tab.panes.keys().copied())
-                            .collect::<Vec<_>>()
-                        {
-                            self.write(id, bytes.clone());
-                        }
-                        performed = true;
-                    } else {
-                        performed |= self.action(event_loop, host, action, false);
-                    }
-                }
-                if binding.flags.consumed && (!binding.flags.performable || performed) {
+                let flags = binding.flags;
+                let performed = dispatch_binding(binding, |action, all| {
+                    self.binding_action(event_loop, host, action, all)
+                });
+                if flags.consumed && (!flags.performable || performed) {
                     if ui_input || host.ui_input() {
                         host.consumed_keys.insert(key.physical_key);
                     }
@@ -4332,47 +4429,22 @@ impl ApplicationHandler<Event> for App {
                         }
                     }
                 } else if let PlatformEvent::Action(action) = event {
-                    if action == Action::OpenLayout && self.windows.is_empty() {
-                        let id = self.add_window(false);
-                        self.reconcile(event_loop);
-                        self.active = Some(id);
-                    }
-                    let key = self
-                        .windows
-                        .iter()
-                        .find(|(_, host)| Some(host.id) == self.active)
-                        .or_else(|| self.windows.iter().next())
-                        .map(|(id, _)| *id);
-                    if let Some(key) = key
-                        && let Some(mut host) = self.windows.remove(&key)
+                    self.platform_action(event_loop, action, false);
+                } else if let PlatformEvent::GlobalHotkey { id, key_code } = event {
+                    self.consumed_global_keys
+                        .insert(PhysicalKey::from_scancode(u32::from(key_code)));
+                    if let Some(binding) = self
+                        .platform
+                        .as_ref()
+                        .and_then(|platform| platform.global_keybinding(id))
                     {
-                        self.action(event_loop, &mut host, action, false);
-                        self.windows.insert(key, host);
-                        self.reconcile(event_loop);
-                    } else if matches!(action, Action::Undo | Action::Redo) {
-                        if self.undo_layout(action == Action::Redo) {
-                            self.reconcile(event_loop);
-                        }
-                    } else if action == Action::ToggleQuickTerminal {
-                        let id = self.add_window(true);
-                        self.reconcile(event_loop);
-                        let key = self
-                            .windows
-                            .iter()
-                            .find(|(_, host)| host.id == id)
-                            .map(|(key, _)| *key);
-                        if let Some(key) = key
-                            && let Some(mut host) = self.windows.remove(&key)
-                        {
-                            self.quick_visible(&mut host, true, true);
-                            self.windows.insert(key, host);
-                        }
-                    } else if matches!(action, Action::NewWindow | Action::NewTab) {
-                        self.add_window(false);
-                        self.reconcile(event_loop);
-                    } else if action == Action::Quit {
-                        self.save();
-                        event_loop.exit();
+                        self.platform_binding(event_loop, binding);
+                    }
+                } else if let PlatformEvent::Warning(message) = event {
+                    self.errors.push(message);
+                    for host in self.windows.values_mut() {
+                        host.messages_open = true;
+                        host.repaint();
                     }
                 }
                 self.sync_host_state();
@@ -4456,6 +4528,20 @@ impl ApplicationHandler<Event> for App {
         }
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, window: WindowId, event: WindowEvent) {
+        if let WindowEvent::KeyboardInput {
+            event,
+            is_synthetic: false,
+            ..
+        } = &event
+            && input::global_key_is_consumed(
+                &mut self.consumed_global_keys,
+                event.physical_key,
+                event.state,
+                event.repeat,
+            )
+        {
+            return;
+        }
         let Some(mut host) = self.windows.remove(&window) else {
             return;
         };
@@ -5290,6 +5376,33 @@ fn ui_theme(config: &Config) -> egui::ThemePreference {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn binding_dispatch_runs_every_action_in_order_with_broadcast_flags() {
+        for prefix in ["", "all:", "global:"] {
+            let mut binding = config::KeyBinding::parse(&format!("{prefix}ctrl+a=ignore")).unwrap();
+            let actions = vec![
+                Action::Ignore,
+                Action::Text(b"first".to_vec()),
+                Action::Text(b"second".to_vec()),
+            ];
+            binding.actions = actions.clone();
+            let mut dispatched = Vec::new();
+            assert!(dispatch_binding(binding.clone(), |action, all| {
+                dispatched.push((action, all));
+                // A successful first action must not skip later actions.
+                dispatched.len() == 1
+            }));
+            assert_eq!(
+                dispatched,
+                actions
+                    .into_iter()
+                    .map(|action| (action, !prefix.is_empty()))
+                    .collect::<Vec<_>>()
+            );
+            assert!(!dispatch_binding(binding, |_, _| false));
+        }
+    }
 
     #[test]
     fn hovered_link_bounds_cover_wrapped_text_and_the_whole_wide_cell() {

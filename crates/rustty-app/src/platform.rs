@@ -3,7 +3,7 @@
 
 use std::{
     cell::RefCell,
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     ffi::c_void,
     io::{self, Read},
     path::{Path, PathBuf},
@@ -11,7 +11,7 @@ use std::{
     rc::Rc,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU32, AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -30,23 +30,18 @@ use objc2::{
 };
 use objc2_app_kit::{
     NSAccessibility, NSAnimatablePropertyContainer, NSAnimationContext, NSApplication,
-    NSApplicationActivationOptions, NSColor, NSColorSpace, NSEvent, NSFloatingWindowLevel, NSMenu,
-    NSModalResponseCancel, NSModalResponseOK, NSOpenPanel, NSPasteboard,
-    NSPasteboardAccessBehavior, NSPasteboardItem, NSPasteboardTypeString, NSPopUpMenuWindowLevel,
-    NSRunningApplication, NSScreen, NSUserInterfaceItemIdentification, NSView, NSWindow,
-    NSWindowAnimationBehavior, NSWindowCollectionBehavior, NSWindowTabbingMode,
-    NSWindowTitleVisibility, NSWorkspace,
+    NSApplicationActivationOptions, NSColor, NSColorSpace, NSEvent, NSEventModifierFlags,
+    NSEventType, NSFloatingWindowLevel, NSMenu, NSModalResponseCancel, NSModalResponseOK,
+    NSOpenPanel, NSPasteboard, NSPasteboardAccessBehavior, NSPasteboardItem,
+    NSPasteboardTypeString, NSPopUpMenuWindowLevel, NSRunningApplication, NSScreen,
+    NSUserInterfaceItemIdentification, NSView, NSWindow, NSWindowAnimationBehavior,
+    NSWindowCollectionBehavior, NSWindowTabbingMode, NSWindowTitleVisibility, NSWorkspace,
 };
-use objc2_core_foundation::{
-    CFMachPort, CFRetained, CFRunLoop, CFRunLoopSource, kCFRunLoopCommonModes,
-};
-use objc2_core_graphics::{
-    CGDisplayBounds, CGEvent, CGEventFlags, CGEventTapLocation, CGEventTapOptions,
-    CGEventTapPlacement, CGEventTapProxy, CGEventType, CGMainDisplayID,
-};
+use objc2_core_graphics::{CGDisplayBounds, CGMainDisplayID};
 use objc2_foundation::{
-    NSArray, NSBundle, NSCopying, NSData, NSDictionary, NSError, NSNumber, NSObject,
-    NSObjectProtocol, NSPoint, NSPointInRect, NSRect, NSSize, NSString, NSTimer, NSURL,
+    NSArray, NSBundle, NSCopying, NSData, NSDistributedNotificationCenter, NSError, NSNotification,
+    NSNotificationSuspensionBehavior, NSObject, NSObjectProtocol, NSPoint, NSPointInRect, NSRect,
+    NSSize, NSString, NSURL,
 };
 use objc2_user_notifications::{
     UNAuthorizationOptions, UNMutableNotificationContent, UNNotification,
@@ -69,6 +64,8 @@ use winit::{
 pub enum PlatformEvent {
     Action(Action),
     NotificationClicked(u64),
+    GlobalHotkey { id: u32, key_code: u16 },
+    Warning(String),
 }
 
 type EventSink = Arc<dyn Fn(PlatformEvent) + Send + Sync>;
@@ -215,20 +212,24 @@ impl Platform {
             .filter(|binding| binding.flags.global && binding.table.is_none())
             .cloned()
             .collect();
-        if self
-            .global_keys
-            .as_ref()
-            .is_some_and(|keys| keys.context.bindings == bindings)
-        {
-            return Ok(());
-        }
-        // Release the old tap before installing a replacement; otherwise a key
-        // could briefly be processed twice during config reload.
+        // Release registrations before replacing them, including on an unchanged
+        // reload: another application may have released a conflicting shortcut.
         self.global_keys = None;
         if !bindings.is_empty() {
-            self.global_keys = Some(GlobalKeys::new(self.mtm, bindings, self.callback.clone()));
+            match GlobalKeys::new(self.mtm, bindings, self.callback.clone()) {
+                Ok(keys) => self.global_keys = Some(keys),
+                Err(error) => (self.callback)(PlatformEvent::Warning(error)),
+            }
         }
         Ok(())
+    }
+
+    /// Resolve at dispatch time so events queued before a reload cannot execute
+    /// removed bindings or acquire the actions of a replacement registration.
+    pub fn global_keybinding(&self, id: u32) -> Option<KeyBinding> {
+        let context = &self.global_keys.as_ref()?.context;
+        let index = context.registrations.borrow().get(&id)?.binding;
+        context.bindings.get(index).cloned()
     }
 
     /// Resolve the user's current accent into portable sRGB for tab-owned UI.
@@ -1362,187 +1363,347 @@ fn native_menu_key_equivalent<'a>(
     if configured { "" } else { key }
 }
 
-struct TapRegistration {
-    port: CFRetained<CFMachPort>,
-    source: CFRetained<CFRunLoopSource>,
-}
+// Carbon exposes registered shortcuts without access to the keyboard event stream.
+mod carbon {
+    use super::*;
 
-impl Drop for TapRegistration {
-    fn drop(&mut self) {
-        self.source.invalidate();
-        self.port.invalidate();
+    pub const SIGNATURE: u32 = u32::from_be_bytes(*b"Rsty");
+    pub const NOT_HANDLED: i32 = -9874;
+    pub const EXCLUSIVE: u32 = 1;
+
+    #[repr(C, packed(2))]
+    pub struct HotkeyId {
+        pub signature: u32,
+        pub id: u32,
+    }
+
+    #[repr(C, packed(2))]
+    pub struct EventType {
+        pub class: u32,
+        pub kind: u32,
+    }
+
+    #[link(name = "Carbon", kind = "framework")]
+    unsafe extern "C" {
+        pub fn GetApplicationEventTarget() -> *mut c_void;
+        pub fn InstallEventHandler(
+            target: *mut c_void,
+            handler: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) -> i32,
+            count: usize,
+            events: *const EventType,
+            data: *mut c_void,
+            result: *mut *mut c_void,
+        ) -> i32;
+        pub fn RemoveEventHandler(handler: *mut c_void) -> i32;
+        pub fn RegisterEventHotKey(
+            code: u32,
+            modifiers: u32,
+            id: HotkeyId,
+            target: *mut c_void,
+            options: u32,
+            result: *mut *mut c_void,
+        ) -> i32;
+        pub fn UnregisterEventHotKey(hotkey: *mut c_void) -> i32;
+        pub fn GetEventParameter(
+            event: *mut c_void,
+            name: u32,
+            kind: u32,
+            actual_kind: *mut u32,
+            size: usize,
+            actual_size: *mut usize,
+            data: *mut c_void,
+        ) -> i32;
+        pub static kTISNotifySelectedKeyboardInputSourceChanged: *const NSString;
     }
 }
 
-struct TapContext {
-    mtm: MainThreadMarker,
+struct HotkeyRegistration {
+    reference: NonNull<c_void>,
+    binding: usize,
+    key_code: u16,
+}
+
+impl Drop for HotkeyRegistration {
+    fn drop(&mut self) {
+        // SAFETY: owned successful registration, released on the main thread.
+        unsafe { carbon::UnregisterEventHotKey(self.reference.as_ptr()) };
+    }
+}
+
+struct GlobalKeyContext {
     callback: EventSink,
     bindings: Vec<KeyBinding>,
-    registration: RefCell<Option<TapRegistration>>,
+    registrations: RefCell<HashMap<u32, HotkeyRegistration>>,
 }
 
 struct GlobalKeys {
-    context: Rc<TapContext>,
-    timer: Option<Retained<NSTimer>>,
-}
-
-// These two Accessibility calls avoid repeatedly creating a failed event tap,
-// which leaks a Mach port on macOS before Accessibility access is granted.
-#[link(name = "ApplicationServices", kind = "framework")]
-unsafe extern "C" {
-    fn AXIsProcessTrusted() -> bool;
-    fn AXIsProcessTrustedWithOptions(options: *const c_void) -> bool;
-    static kAXTrustedCheckOptionPrompt: *const NSString;
+    context: Rc<GlobalKeyContext>,
+    handler: NonNull<c_void>,
+    observer: Retained<KeyboardLayoutObserver>,
 }
 
 impl GlobalKeys {
-    fn new(mtm: MainThreadMarker, bindings: Vec<KeyBinding>, callback: EventSink) -> Self {
-        let context = Rc::new(TapContext {
-            mtm,
+    fn new(
+        mtm: MainThreadMarker,
+        bindings: Vec<KeyBinding>,
+        callback: EventSink,
+    ) -> Result<Self, String> {
+        let context = Rc::new(GlobalKeyContext {
             callback,
             bindings,
-            registration: RefCell::new(None),
+            registrations: RefCell::default(),
         });
-        let timer = if unsafe { AXIsProcessTrusted() } {
-            context.enable();
-            None
-        } else {
-            unsafe {
-                let options = NSDictionary::from_slices(
-                    &[&*kAXTrustedCheckOptionPrompt],
-                    &[&*NSNumber::new_bool(true)],
-                );
-                AXIsProcessTrustedWithOptions(
-                    (&*options as *const NSDictionary<NSString, NSNumber>).cast(),
-                );
-            }
-            let poller = PermissionPoller::new(mtm, context.clone());
-            // SAFETY: selector signature below accepts one NSTimer. Scheduling is
-            // on the main run loop; the timer retains its main-thread-only target.
-            Some(unsafe {
-                NSTimer::scheduledTimerWithTimeInterval_target_selector_userInfo_repeats(
-                    1.0,
-                    &poller,
-                    sel!(poll:),
-                    None,
-                    true,
-                )
-            })
+        let event = carbon::EventType {
+            class: u32::from_be_bytes(*b"keyb"),
+            kind: 5, // kEventHotKeyPressed; releases must not execute actions.
         };
-        Self { context, timer }
+        let mut handler = std::ptr::null_mut();
+        // SAFETY: the stable Rc allocation outlives the main-thread handler.
+        // The Carbon ABI uses two-byte packing for its event records.
+        let status = unsafe {
+            carbon::InstallEventHandler(
+                carbon::GetApplicationEventTarget(),
+                global_key_event,
+                1,
+                &event,
+                Rc::as_ptr(&context).cast_mut().cast(),
+                &mut handler,
+            )
+        };
+        if status != 0 {
+            return Err(format!(
+                "Could not enable global shortcuts (OSStatus {status})"
+            ));
+        }
+        let handler =
+            NonNull::new(handler).ok_or("Could not enable global shortcuts: no event handler")?;
+        let observer = KeyboardLayoutObserver::new(mtm, context.clone());
+        // SAFETY: selector accepts an NSNotification and runs on the main thread.
+        // The selected-input-source notification is distributed even when another
+        // application owns keyboard focus. The observer is removed before drop.
+        unsafe {
+            NSDistributedNotificationCenter::defaultCenter()
+                .addObserver_selector_name_object_suspensionBehavior(
+                    &observer,
+                    sel!(keyboardLayoutChanged:),
+                    Some(&*carbon::kTISNotifySelectedKeyboardInputSourceChanged),
+                    None,
+                    NSNotificationSuspensionBehavior::DeliverImmediately,
+                );
+        }
+        let keys = Self {
+            context,
+            handler,
+            observer,
+        };
+        keys.context.rebuild();
+        Ok(keys)
     }
 }
 
 impl Drop for GlobalKeys {
     fn drop(&mut self) {
-        if let Some(timer) = &self.timer {
-            timer.invalidate();
+        // SAFETY: unregister the observer and handler while their context still
+        // exists. All callbacks and teardown run on the application's main thread.
+        unsafe {
+            NSDistributedNotificationCenter::defaultCenter().removeObserver_name_object(
+                &self.observer,
+                Some(&*carbon::kTISNotifySelectedKeyboardInputSourceChanged),
+                None,
+            );
+            self.context.registrations.borrow_mut().clear();
+            carbon::RemoveEventHandler(self.handler.as_ptr());
         }
-        self.context.registration.borrow_mut().take();
     }
 }
 
-impl TapContext {
-    fn enable(&self) {
-        // SAFETY: installed on the main run loop, with a stable Rc allocation
-        // held until GlobalKeys invalidates both the source and the Mach port.
-        let port = unsafe {
-            CGEvent::tap_create(
-                CGEventTapLocation::SessionEventTap,
-                CGEventTapPlacement::HeadInsertEventTap,
-                CGEventTapOptions::Default,
-                1u64 << CGEventType::KeyDown.0,
-                Some(global_key_event),
-                (self as *const Self).cast_mut().cast(),
-            )
-        };
-        let Some(port) = port else {
-            eprintln!("creating global key event tap failed despite Accessibility permission");
-            return;
-        };
-        let Some(source) = CFMachPort::new_run_loop_source(None, Some(&port), 0) else {
-            port.invalidate();
-            eprintln!("creating global key run-loop source failed");
-            return;
-        };
-        let Some(run_loop) = CFRunLoop::main() else {
-            return;
-        };
-        run_loop.add_source(Some(&source), unsafe { kCFRunLoopCommonModes });
-        *self.registration.borrow_mut() = Some(TapRegistration { port, source });
+// IDs are never reused, even after removing all shortcuts and adding them again.
+// This also makes already-queued PlatformEvents harmless after a rebuild.
+static NEXT_HOTKEY_ID: AtomicU32 = AtomicU32::new(1);
+
+impl GlobalKeyContext {
+    fn rebuild(&self) {
+        self.registrations.borrow_mut().clear();
+        let (resolved, warnings) = resolve_global_keys(&self.bindings, layout_character);
+        for warning in warnings {
+            (self.callback)(PlatformEvent::Warning(warning));
+        }
+        for ((code, modifiers), binding) in resolved {
+            let Ok(id) = NEXT_HOTKEY_ID
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            else {
+                (self.callback)(PlatformEvent::Warning(
+                    "Global shortcut registration IDs exhausted; restart Rustty".into(),
+                ));
+                break;
+            };
+            let mut reference = std::ptr::null_mut();
+            // SAFETY: valid key/modifier values and an out-pointer, on the main
+            // thread. A successful registration is owned by HotkeyRegistration.
+            let status = unsafe {
+                carbon::RegisterEventHotKey(
+                    u32::from(code),
+                    modifiers,
+                    carbon::HotkeyId {
+                        signature: carbon::SIGNATURE,
+                        id,
+                    },
+                    carbon::GetApplicationEventTarget(),
+                    carbon::EXCLUSIVE,
+                    &mut reference,
+                )
+            };
+            if status == 0
+                && let Some(reference) = NonNull::new(reference)
+            {
+                self.registrations.borrow_mut().insert(
+                    id,
+                    HotkeyRegistration {
+                        reference,
+                        binding,
+                        key_code: code,
+                    },
+                );
+            } else {
+                (self.callback)(PlatformEvent::Warning(format!(
+                    "Global shortcut {} could not be registered for key code {code} (OSStatus {status}); it may be reserved or used by another application. Other shortcuts remain available.",
+                    global_shortcut_label(&self.bindings[binding].trigger[0]),
+                )));
+            }
+        }
     }
+}
+
+fn global_shortcut_label(trigger: &KeyTrigger) -> String {
+    let mut label = String::from("global:");
+    if trigger.physical {
+        label.push_str("physical:");
+    }
+    for (enabled, name) in [
+        (trigger.modifiers.control, "ctrl+"),
+        (trigger.modifiers.alt, "alt+"),
+        (trigger.modifiers.shift, "shift+"),
+        (trigger.modifiers.super_key, "super+"),
+    ] {
+        if enabled {
+            label.push_str(name);
+        }
+    }
+    label.push_str(&trigger.key);
+    label
+}
+
+fn carbon_modifiers(modifiers: Modifiers) -> u32 {
+    u32::from(modifiers.super_key) << 8
+        | u32::from(modifiers.shift) << 9
+        | u32::from(modifiers.alt) << 11
+        | u32::from(modifiers.control) << 12
+}
+
+fn resolve_global_keys(
+    bindings: &[KeyBinding],
+    mut character: impl FnMut(u16, bool) -> Option<String>,
+) -> (BTreeMap<(u16, u32), usize>, Vec<String>) {
+    let mut resolved = BTreeMap::new();
+    let mut warnings = Vec::new();
+    for (index, binding) in bindings.iter().enumerate() {
+        let [trigger] = binding.trigger.as_slice() else {
+            warnings.push("Global shortcuts require a single key combination".into());
+            continue;
+        };
+        let mut matched = false;
+        if trigger.key != "catch_all" {
+            for code in 0..128 {
+                let text = character(code, trigger.modifiers.shift).unwrap_or_default();
+                if key_matches(trigger, code, &text, trigger.modifiers) {
+                    // Match the existing reverse search: a later binding wins
+                    // when logical and physical aliases resolve to the same key.
+                    resolved.insert((code, carbon_modifiers(trigger.modifiers)), index);
+                    matched = true;
+                }
+            }
+        }
+        if !matched {
+            warnings.push(format!(
+                "Global shortcut {} has no supported key in the current keyboard layout; use an explicit supported key combination",
+                global_shortcut_label(trigger),
+            ));
+        }
+    }
+    (resolved, warnings)
+}
+
+fn layout_character(code: u16, shift: bool) -> Option<String> {
+    // AppKit retranslates without changing the input method's dead-key state.
+    // Like charactersIgnoringModifiers in the old event path, retain Shift only.
+    let empty = NSString::new();
+    let event = NSEvent::keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode(
+        NSEventType::KeyDown, NSPoint::ZERO, NSEventModifierFlags::empty(), 0.0, 0,
+        None, &empty, &empty, false, code,
+    )?;
+    event
+        .charactersByApplyingModifiers(if shift {
+            NSEventModifierFlags::Shift
+        } else {
+            NSEventModifierFlags::empty()
+        })
+        .map(|text| text.to_string())
 }
 
 define_class!(
     #[unsafe(super = NSObject)]
     #[thread_kind = MainThreadOnly]
-    #[ivars = Rc<TapContext>]
-    struct PermissionPoller;
-    unsafe impl NSObjectProtocol for PermissionPoller {}
-    impl PermissionPoller {
-        #[unsafe(method(poll:))]
-        fn poll(&self, timer: &NSTimer) {
-            if unsafe { AXIsProcessTrusted() } {
-                timer.invalidate();
-                self.ivars().enable();
-            }
+    #[ivars = Rc<GlobalKeyContext>]
+    struct KeyboardLayoutObserver;
+    unsafe impl NSObjectProtocol for KeyboardLayoutObserver {}
+    impl KeyboardLayoutObserver {
+        #[unsafe(method(keyboardLayoutChanged:))]
+        fn keyboard_layout_changed(&self, _notification: &NSNotification) {
+            self.ivars().rebuild();
         }
     }
 );
 
-impl PermissionPoller {
-    fn new(mtm: MainThreadMarker, context: Rc<TapContext>) -> Retained<Self> {
+impl KeyboardLayoutObserver {
+    fn new(mtm: MainThreadMarker, context: Rc<GlobalKeyContext>) -> Retained<Self> {
         unsafe { msg_send![super(Self::alloc(mtm).set_ivars(context)), init] }
     }
 }
 
-unsafe extern "C-unwind" fn global_key_event(
-    _proxy: CGEventTapProxy,
-    kind: CGEventType,
-    event: NonNull<CGEvent>,
+unsafe extern "C" fn global_key_event(
+    _next_handler: *mut c_void,
+    event: *mut c_void,
     user_info: *mut c_void,
-) -> *mut CGEvent {
-    // SAFETY: TapContext::enable installs this pointer on the main run loop and
-    // GlobalKeys invalidates its tap before releasing the context.
-    let context = unsafe { &*user_info.cast::<TapContext>() };
-    if kind == CGEventType::TapDisabledByTimeout || kind == CGEventType::TapDisabledByUserInput {
-        if let Some(registration) = &*context.registration.borrow() {
-            CGEvent::tap_enable(&registration.port, true);
-        }
-        return event.as_ptr();
-    }
-    if kind != CGEventType::KeyDown || NSApplication::sharedApplication(context.mtm).isActive() {
-        return event.as_ptr();
-    }
-    let event_ref = unsafe { event.as_ref() };
-    let Some(native) = NSEvent::eventWithCGEvent(event_ref) else {
-        return event.as_ptr();
+) -> i32 {
+    let mut hotkey = carbon::HotkeyId {
+        signature: 0,
+        id: 0,
     };
-    let flags = CGEvent::flags(Some(event_ref));
-    let modifiers = Modifiers {
-        shift: flags.contains(CGEventFlags::MaskShift),
-        control: flags.contains(CGEventFlags::MaskControl),
-        alt: flags.contains(CGEventFlags::MaskAlternate),
-        super_key: flags.contains(CGEventFlags::MaskCommand),
+    // SAFETY: Carbon supplies the event and the stable context installed above.
+    // GetEventParameter validates the parameter type and destination buffer size.
+    let status = unsafe {
+        carbon::GetEventParameter(
+            event,
+            u32::from_be_bytes(*b"----"),
+            u32::from_be_bytes(*b"hkid"),
+            std::ptr::null_mut(),
+            std::mem::size_of_val(&hotkey),
+            std::ptr::null_mut(),
+            (&mut hotkey as *mut carbon::HotkeyId).cast(),
+        )
     };
-    let text = native
-        .charactersIgnoringModifiers()
-        .map(|s| s.to_string())
-        .unwrap_or_default();
-    if let Some(binding) = context.bindings.iter().rev().find(|binding| {
-        binding
-            .trigger
-            .first()
-            .is_some_and(|trigger| key_matches(trigger, native.keyCode(), &text, modifiers))
-    }) {
-        for action in &binding.actions {
-            (context.callback)(PlatformEvent::Action(action.clone()));
-        }
-        if binding.flags.consumed {
-            return std::ptr::null_mut();
-        }
+    if status != 0 || hotkey.signature != carbon::SIGNATURE {
+        return carbon::NOT_HANDLED;
     }
-    event.as_ptr()
+    let id = hotkey.id;
+    let context = unsafe { &*user_info.cast::<GlobalKeyContext>() };
+    if let Some(registration) = context.registrations.borrow().get(&id) {
+        (context.callback)(PlatformEvent::GlobalHotkey {
+            id,
+            key_code: registration.key_code,
+        });
+    }
+    0
 }
 
 fn key_matches(trigger: &KeyTrigger, code: u16, text: &str, modifiers: Modifiers) -> bool {
@@ -1550,9 +1711,6 @@ fn key_matches(trigger: &KeyTrigger, code: u16, text: &str, modifiers: Modifiers
         return false;
     }
     let key = trigger.key.as_str();
-    if key == "catch_all" {
-        return true;
-    }
     let physical = physical_key(code);
     let named_physical = key.starts_with("key_") || key.starts_with("digit_");
     let key = key
@@ -1952,6 +2110,51 @@ mod tests {
         }
         bindings.clear();
         assert_eq!(native_menu_key_equivalent(&bindings, "m", command), "m");
+    }
+
+    #[test]
+    fn global_hotkey_resolution_preserves_layout_modifiers_and_precedence() {
+        let bindings = [
+            "global:ctrl+a=text:logical",
+            "global:physical:ctrl+a=text:physical",
+            "global:ctrl+key_q=text:last",
+            "global:cmd+shift++=toggle_quick_terminal",
+            "global:alt+1=new_tab",
+            "global:ctrl+super+arrow_left=new_window",
+            "global:cmd+f35=new_tab",
+        ]
+        .map(|binding| KeyBinding::parse(binding).unwrap());
+        let (resolved, warnings) = resolve_global_keys(&bindings, |code, shift| {
+            Some(
+                match (code, shift) {
+                    (0, _) => "q",
+                    (12, _) => "a",
+                    (18 | 82, false) => "1",
+                    (24, true) => "+",
+                    _ => return None,
+                }
+                .into(),
+            )
+        });
+        assert_eq!(
+            resolved,
+            BTreeMap::from([
+                ((0, 4096), 1),
+                ((12, 4096), 2),
+                ((24, 768), 3),
+                ((18, 2048), 4),
+                ((82, 2048), 4),
+                ((123, 4352), 5),
+            ])
+        );
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("global:super+f35"));
+
+        // A source change moves a character shortcut but keeps physical keys fixed.
+        let (changed, warnings) =
+            resolve_global_keys(&bindings[..2], |code, _| (code == 1).then(|| "a".into()));
+        assert!(warnings.is_empty());
+        assert_eq!(changed, BTreeMap::from([((1, 4096), 0), ((0, 4096), 1)]));
     }
 
     #[test]

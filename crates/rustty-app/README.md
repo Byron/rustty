@@ -37,6 +37,18 @@ applies only to new terminals.
 Tabs, splits, zoom, quadrant navigation, clipboard and
 search use the configured Ghostty keybindings. Window layouts and pane directories
 are saved separately under `com.rustty.app`.
+
+Global shortcuts such as `keybind = global:ctrl+super+backquote=toggle_quick_terminal`
+use native macOS hotkey registration without Accessibility or Input Monitoring
+permission. Registered shortcuts take priority over local bindings in both the
+foreground and background, including when no terminal window is open. Logical
+shortcuts follow the current keyboard layout; `physical:` shortcuts keep their key
+positions. Unsupported or conflicting combinations produce a warning in Rustty's
+messages and are skipped globally; other shortcuts keep working, and failed
+shortcuts may still work in a focused Rustty window. Reloading configuration retries
+registration. Global shortcuts require explicit keys: `global:...catch_all` is
+rejected, while local `catch_all` bindings remain supported.
+
 Find opens in the upper-right corner of its pane without resizing terminal content.
 Each pane keeps its own query; clicking a terminal leaves its Find overlay open.
 Enter returns focus to the terminal while keeping Find open. Shift+Enter,
@@ -77,9 +89,8 @@ The terminal port is still undergoing differential compatibility work. A passing
 smoke test does not establish full libghostty-vt parity. The exhaustive coverage
 gate in `test/rustty/coverage.json` records unfinished protocol and snapshot work;
 see [the compatibility checks](../../test/rustty/README.md) and the
-[CSI/OSC implementation inventory](../../test/rustty/SEQUENCES.md). Native global shortcuts
-need macOS Accessibility permission. Notifications are available in the bundled
-app; permissions remain under macOS control.
+[CSI/OSC implementation inventory](../../test/rustty/SEQUENCES.md). Notifications are
+available in the bundled app; permissions remain under macOS control.
 
 Validation:
 
@@ -89,6 +100,11 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo +1.95.0 run --release --offline -p rustty-vt --example parity-runner
 RUSTTY_SMOKE_DIR=/tmp/rustty-native-smoke target/debug/Rustty.app/Contents/MacOS/rustty
 ```
+
+The windowless hotkey regression runs explicitly on a macOS desktop with
+`cargo test -p rustty-app --test native_global_hotkeys --offline -- --ignored`.
+It checks registration conflicts, reloads, stale events, layout notifications and
+cleanup using synthetic Carbon events without posting keyboard input.
 
 The opt-in native smoke check starts disposable `/bin/sh` sessions, checks input,
 four split panes, tabs, quadrant focus and zoom, URI directory reports, restoration,
