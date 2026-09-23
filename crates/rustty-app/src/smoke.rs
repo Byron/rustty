@@ -219,6 +219,7 @@ impl Smoke {
         let done = result?;
         if stage == 3 && self.stage == 7 {
             // Dispatch through the window handler with the host back in its map.
+            check_passive_pointer_motion(app, event_loop, key)?;
             check_focus_hint_clicks(app, event_loop, key)?;
         }
         Ok(done)
@@ -431,7 +432,7 @@ impl Smoke {
                     .current_monitor()
                     .and_then(|monitor| monitor.refresh_rate_millihertz())
                     .map(|rate| f64::from(rate) / 1000.0);
-                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
+                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
                 fs::write(
                     self.directory.join("result.json"),
                     serde_json::to_vec_pretty(&report)?,
@@ -1054,6 +1055,71 @@ fn check_terminal_frames(
     Ok(())
 }
 
+fn check_passive_pointer_motion(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    key: WindowId,
+) -> Result<()> {
+    use winit::event::DeviceId;
+
+    let host = &app.windows[&key];
+    let mut positions: Vec<_> = host.rects.values().map(egui::Rect::center).collect();
+    let bounds = host.content;
+    let workspace::Node::Split { axis, ratio, .. } = app.tab(host.id).unwrap().root.kind else {
+        return Err("no divider for passive pointer check".into());
+    };
+    let mut divider = Pos2::from(bounds.center());
+    match axis {
+        Axis::Horizontal => divider.x = bounds.x + bounds.width * ratio,
+        Axis::Vertical => divider.y = bounds.y + bounds.height * ratio,
+    }
+    positions.insert(1, divider);
+    let scale = host.window.scale_factor();
+    let pointer_in_window = host.egui.is_pointer_in_window();
+    let motion = |position: Pos2| WindowEvent::CursorMoved {
+        device_id: DeviceId::dummy(),
+        position: LogicalPosition::new(position.x, position.y).to_physical(scale),
+    };
+    let host = app.windows.get_mut(&key).unwrap();
+    let saved = (host.mouse, host.modifiers, host.deferred_pointer);
+    let link_hit = host.link_hit.take();
+    let hovered_link = host.hovered_link.take();
+    let events = std::mem::take(&mut host.egui.egui_input_mut().events);
+    host.mouse = positions[0];
+    host.modifiers = Modifiers::default();
+    let _ = host.egui.on_window_event(&host.window, &motion(host.mouse));
+    host.egui.egui_input_mut().events.clear();
+    let result = (|| -> Result<()> {
+        // Crossing a split gap changes the native cursor, but no terminal pixels.
+        for position in positions.into_iter().cycle().take(256) {
+            app.window_event(event_loop, key, motion(position));
+            let host = app.windows.get_mut(&key).unwrap();
+            if host.deferred_pointer != Some(position)
+                || !host.egui.egui_input_mut().events.is_empty()
+            {
+                return Err(format!("passive pointer motion at {position:?} reached egui").into());
+            }
+        }
+        Ok(())
+    })();
+    let host = app.windows.get_mut(&key).unwrap();
+    (host.mouse, host.modifiers, host.deferred_pointer) = saved;
+    host.link_hit = link_hit;
+    host.hovered_link = hovered_link;
+    let restore_pointer = if pointer_in_window {
+        motion(host.mouse)
+    } else {
+        WindowEvent::CursorLeft {
+            device_id: DeviceId::dummy(),
+        }
+    };
+    let _ = host.egui.on_window_event(&host.window, &restore_pointer);
+    host.egui.egui_input_mut().events = events;
+    result?;
+    eprintln!("Native smoke: repeated pointer motion across panes and split gaps stayed deferred");
+    Ok(())
+}
+
 fn check_focus_hint_clicks(
     app: &mut App,
     event_loop: &ActiveEventLoop,
@@ -1193,6 +1259,27 @@ fn check_focus_hint_clicks(
                 || target == "divider" && host.divider_drag.is_none()
             {
                 return Err(format!("dismissing the hint swallowed the {target} click").into());
+            }
+            if let Some((id, axis, _)) = host.divider_drag {
+                let workspace::Node::Split { ratio, .. } =
+                    app.tab(window).unwrap().root.node(id).unwrap().kind
+                else {
+                    unreachable!("dragging a split divider");
+                };
+                let offset = match axis {
+                    Axis::Horizontal => Vec2::new(24.0, 0.0),
+                    Axis::Vertical => Vec2::new(0.0, 24.0),
+                };
+                let moved = dispatch(app, motion(position + offset), original_focus, false);
+                let changed = matches!(
+                    app.tab(window).unwrap().root.node(id).unwrap().kind,
+                    workspace::Node::Split { ratio: current, .. } if current != ratio
+                );
+                app.tab_mut(window).unwrap().root.set_ratio(id, ratio);
+                moved?;
+                if !changed {
+                    return Err("held pointer motion did not resize the split".into());
+                }
             }
             dispatch(app, button(Released, Left), original_focus, false)?;
             let host = app.windows.get_mut(&key).unwrap();

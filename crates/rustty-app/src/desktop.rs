@@ -3755,7 +3755,8 @@ impl App {
             && !self.context.egui_is_using_pointer()
             && [host.mouse, position].into_iter().all(|position| {
                 host.rects.iter().any(|(id, rect)| {
-                    rect.contains(position) && !self.failed_panes.contains_key(id)
+                    // Undo the painting inset: split gaps only change the native cursor.
+                    rect.expand(1.0).contains(position) && !self.failed_panes.contains_key(id)
                 }) && self
                     .context
                     .layer_id_at(position)
@@ -4845,6 +4846,10 @@ impl ApplicationHandler<Event> for App {
                     let button = host.mouse_button;
                     self.mouse(&mut host, vt::MouseAction::Move, button);
                 }
+                // Motion cannot add or remove windows or sessions. Even divider
+                // drags update their geometry directly, without reconciliation.
+                self.windows.insert(window, host);
+                return;
             }
             WindowEvent::MouseInput { state, button, .. } if !host.modal_input() => {
                 let button = match button {
