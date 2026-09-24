@@ -59,7 +59,9 @@ All matches stay highlighted in yellow, with the selected match in peach.
 controls or window lose focus; values from 0 through 1 are supported and reload
 immediately. This is independent of `unfocused-split-opacity` and its dimming color.
 Holding Command underlines the openable link under the pointer, including OSC 8
-links and detected URLs. Command-click opens the highlighted target.
+links, detected URLs and file paths without spaces. Command-click opens the
+highlighted target with its default application. Relative paths use the pane's
+working directory, and `~/` paths use the home directory.
 
 File → Open Saved Layout lists the last saved layouts from Ghostty Local,
 Ghostty and Rustty, and can browse for another Rustty workspace JSON or Ghostty

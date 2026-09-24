@@ -4217,7 +4217,7 @@ impl App {
                     if let Some(link) = &host.hovered_link
                         && link.pane == id
                         && let Some(platform) = &self.platform
-                        && let Err(error) = platform.open_url(&link.uri)
+                        && let Err(error) = platform.open_url(&link.uri, &pane.cwd)
                     {
                         self.errors.push(error);
                     }

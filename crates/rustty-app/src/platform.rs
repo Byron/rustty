@@ -595,14 +595,8 @@ impl Platform {
             .setBadgeLabel(label.as_deref());
     }
 
-    pub fn open_url(&self, url: &str) -> Result<(), String> {
-        if url.chars().any(char::is_control) {
-            return Err("URL contains control characters".into());
-        }
-        let url = NSURL::URLWithString(&NSString::from_str(url)).ok_or("invalid URL")?;
-        if url.scheme().is_none() {
-            return Err("URL requires a scheme".into());
-        }
+    pub fn open_url(&self, target: &str, cwd: &Path) -> Result<(), String> {
+        let url = url_for_opening(target, cwd)?;
         open_native_url(&url)
     }
 
@@ -1082,6 +1076,20 @@ fn may_restore_quick_focus(
     active_space: bool,
 ) -> bool {
     explicit && key && app_active && active_space
+}
+
+fn url_for_opening(target: &str, cwd: &Path) -> Result<Retained<NSURL>, String> {
+    if target.is_empty() || target.chars().any(char::is_control) {
+        return Err("URL or file path is empty or contains control characters".into());
+    }
+    let target = NSString::from_str(target);
+    if let Some(url) = NSURL::URLWithString(&target)
+        && url.scheme().is_some()
+    {
+        return Ok(url);
+    }
+    let path = target.stringByExpandingTildeInPath().to_string();
+    NSURL::from_file_path(cwd.join(path)).ok_or_else(|| "invalid file path".into())
 }
 
 fn open_native_url(url: &NSURL) -> Result<(), String> {
@@ -1842,6 +1850,53 @@ fn physical_key(code: u16) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn link_urls_resolve_file_paths_against_the_pane_directory() {
+        let cwd = Path::new("/Users/byron/dev/github.com/zed-industries/zed");
+        let relative = "target/aarch64-apple-darwin/release-fast/Zed-aarch64.dmg";
+        let absolute = cwd.join(relative);
+        for (target, expected) in [
+            (absolute.to_str().unwrap(), absolute.clone()),
+            (relative, absolute.clone()),
+            ("./target/Zed.dmg", cwd.join("target/Zed.dmg")),
+            ("../Zed.dmg", cwd.join("../Zed.dmg")),
+            (
+                "target/Zed Dev#1?100%.dmg",
+                cwd.join("target/Zed Dev#1?100%.dmg"),
+            ),
+            (
+                "~/Downloads/Zed.dmg",
+                PathBuf::from(objc2_foundation::NSHomeDirectory().to_string())
+                    .join("Downloads/Zed.dmg"),
+            ),
+        ] {
+            let url = url_for_opening(target, cwd).unwrap();
+            assert_eq!(
+                url.to_file_path().as_deref(),
+                Some(expected.as_path()),
+                "{target}"
+            );
+            assert!(url.query().is_none());
+            assert!(url.fragment().is_none());
+        }
+        for target in [
+            "https://example.org/Zed.dmg?download=1#here",
+            "file:///tmp/Zed%20Dev.dmg",
+        ] {
+            assert_eq!(
+                url_for_opening(target, cwd)
+                    .unwrap()
+                    .absoluteString()
+                    .unwrap()
+                    .to_string(),
+                target
+            );
+        }
+        for target in ["", "/tmp/Zed\n.dmg", "file:///tmp/\0Zed.dmg"] {
+            assert!(url_for_opening(target, cwd).is_err());
+        }
+    }
 
     struct TestPasteboard(Retained<NSPasteboard>);
     impl Drop for TestPasteboard {

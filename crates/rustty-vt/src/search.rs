@@ -561,9 +561,13 @@ impl LinkMatcher {
 
 impl Default for LinkMatcher {
     fn default() -> Self {
-        Self::new([
-            r#"(?i)(?-u:\b)(?:https?|ftp|file|mailto|ssh)://[^\s<>\x00-\x1f\x7f\"']+"#.to_owned(),
-        ])
+        // Keep URLs and paths in one regex so URL paths aren't separate links.
+        // ponytail: paths stop at spaces; quoted/escaped spaces need a path parser.
+        Self::new([concat!(
+            r#"(?i)(?-u:\b)(?:https?|ftp|file|mailto|ssh)://[^\s<>\x00-\x1f\x7f\"']+"#,
+            r"|\b{start-half}(?:~?/|\.{1,2}/|[\w.-]+/)[\w./~@%+?#=-]*[\w/~@%+?#=-]",
+        )
+        .to_owned()])
         .unwrap()
     }
 }
@@ -683,6 +687,63 @@ mod tests {
         assert_eq!(links[0].uri, "https://actual");
         assert!(links[0].contains(terminal.screen(), links[0].end));
     }
+
+    #[test]
+    fn file_path_links_match_build_output_across_soft_wraps() {
+        let absolute = "/Users/byron/dev/github.com/zed-industries/zed/target/aarch64-apple-darwin/release-fast/Zed-aarch64.dmg";
+        let relative = "target/aarch64-apple-darwin/release-fast/Zed-aarch64.dmg";
+        let cases: &[(String, &[&str])] = &[
+            (format!("created: {absolute}"), &[absolute]),
+            (
+                format!(
+                    "Creating final DMG at {relative} using target/aarch64-apple-darwin/release-fast/dmg"
+                ),
+                &[relative, "target/aarch64-apple-darwin/release-fast/dmg"],
+            ),
+            (format!("created: ({absolute})."), &[absolute]),
+            (
+                "./Zed.dmg ../Zed.dmg ~/Downloads/Zed.dmg /Applications".into(),
+                &[
+                    "./Zed.dmg",
+                    "../Zed.dmg",
+                    "~/Downloads/Zed.dmg",
+                    "/Applications",
+                ],
+            ),
+            (
+                "src/main.rs:42 https://example.org/Zed.dmg".into(),
+                &["src/main.rs", "https://example.org/Zed.dmg"],
+            ),
+            ("created: Zed-aarch64.dmg".into(), &[]),
+        ];
+        for cols in [40, 200] {
+            for (text, expected) in cases {
+                let mut terminal = Terminal::new(cols, 8, 100);
+                terminal.feed(text.as_bytes());
+                let links = LinkMatcher::default().links(terminal.screen());
+                assert_eq!(
+                    links
+                        .iter()
+                        .map(|link| link.uri.as_str())
+                        .collect::<Vec<_>>(),
+                    *expected,
+                    "{text:?} at {cols} columns",
+                );
+                for link in links {
+                    terminal.screen_mut().selection = Some(crate::Selection {
+                        start: link.start,
+                        end: link.end,
+                        rectangular: false,
+                    });
+                    assert_eq!(
+                        terminal.screen().selection_text().as_deref(),
+                        Some(link.uri.as_str())
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn explicit_links_group_by_display_uri_across_distinct_ids_and_raw_bytes() {
         let mut terminal = Terminal::new(8, 1, 0);
@@ -708,7 +769,7 @@ mod tests {
         assert_eq!(links[0].start.col, 2);
         let matches = t.screen().search(&Regex::new("example").unwrap());
         assert_eq!(matches.len(), 1);
-        t.feed(b"\x1b[1;3Hnope");
+        t.feed(b"\x1b[1;3Hno link ");
         assert!(matcher.links(t.screen()).is_empty());
         t.feed(b"\x1b[2J\x1b[H\x1b]8;;https://actual\x07example\x1b]8;;\x07");
         assert_eq!(matcher.links(t.screen())[0].uri, "https://actual");
