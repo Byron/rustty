@@ -23,7 +23,7 @@ mod macos {
     use objc2::{MainThreadMarker, rc::Retained};
     use objc2_app_kit::{NSFloatingWindowLevel, NSScreen, NSView, NSWindow};
     use objc2_core_graphics::{CGDisplayBounds, CGMainDisplayID};
-    use rustty::config::{Config, QuickTerminalPosition};
+    use rustty::config::{Config, QuickTerminalPosition, QuickTerminalScreen};
     use rustty_app::platform::Platform;
     use winit::{
         application::ApplicationHandler,
@@ -56,10 +56,11 @@ mod macos {
             finished: false,
         };
         check.config.keybinds.clear();
+        check.config.quick_terminal_screen = QuickTerminalScreen::MacosMenuBar;
         event_loop.run_app_on_demand(&mut check)?;
         assert!(check.finished, "native animation test did not complete");
         println!(
-            "native_quick_animation: reversal, final frame, zero-duration cancellation and close passed"
+            "native_quick_animation: display sizing, reversal, final frame, zero-duration cancellation and close passed"
         );
         Ok(())
     }
@@ -127,7 +128,7 @@ mod macos {
                 native.alphaValue(),
                 native.frame()
             );
-            if self.stage == 7 {
+            if self.stage == 10 {
                 assert!(
                     !native.isVisible(),
                     "a closed panel was shown by an old completion"
@@ -148,17 +149,28 @@ mod macos {
                     self.config.quick_terminal_animation_duration = Duration::ZERO;
                     platform.show_quick(window, &self.config).unwrap();
                     self.frame = platform.quick_terminal_saved_frame(window).unwrap();
+                    let screen = NSScreen::screens(MainThreadMarker::new().unwrap())
+                        .firstObject()
+                        .unwrap();
+                    assert_eq!(self.frame[2], screen.visibleFrame().size.width);
                     assert_settled(native, true, self.frame);
                     platform.hide_quick(window, false, &self.config).unwrap();
                     assert_settled(native, false, self.frame);
+                    // A saved width from a smaller display must be corrected
+                    // before the first animation tick, while the panel is hidden.
+                    let mut resized = native.frame();
+                    resized.size.width *= 0.5;
+                    native.setFrame_display(resized, false);
                     self.config.quick_terminal_animation_duration = Duration::from_millis(300);
                     platform.show_quick(window, &self.config).unwrap();
                     assert_frame(
                         platform.quick_terminal_saved_frame(window).unwrap(),
                         self.frame,
                     );
+                    assert_size(native, self.frame);
                 }
                 1 => {
+                    assert_size(native, self.frame);
                     platform.hide_quick(window, false, &self.config).unwrap();
                     assert_frame(
                         platform.quick_terminal_saved_frame(window).unwrap(),
@@ -175,15 +187,41 @@ mod macos {
                 3 => {
                     assert_settled(native, true, self.frame);
                     let mut resized = native.frame();
-                    resized.size.width = 520.0;
+                    resized.size.width *= 0.5;
                     resized.size.height = 280.0;
                     native.setFrame_display(resized, false);
                     self.frame = platform.quick_terminal_saved_frame(window).unwrap();
-                    assert_eq!(&self.frame[2..], &[520.0, 280.0]);
+                    assert_eq!(&self.frame[2..], &[resized.size.width, 280.0]);
+                    platform.hide_quick(window, false, &self.config).unwrap();
+                }
+                4 => {
+                    // A changed target must also have its final size immediately
+                    // when reversing a hide that still has the panel onscreen.
+                    assert!(native.isVisible());
+                    self.frame = platform
+                        .quick_terminal_frame(&self.config, Some([self.frame[2], self.frame[3]]))
+                        .unwrap();
+                    platform.show_quick(window, &self.config).unwrap();
+                    assert_frame(
+                        platform.quick_terminal_saved_frame(window).unwrap(),
+                        self.frame,
+                    );
+                    assert_size(native, self.frame);
+                }
+                5 => {
+                    assert_size(native, self.frame);
+                    delay = Duration::from_millis(650);
+                }
+                6 => {
+                    assert_settled(native, true, self.frame);
+                    let mut resized = native.frame();
+                    resized.size.width = 520.0;
+                    native.setFrame_display(resized, false);
+                    self.frame = platform.quick_terminal_saved_frame(window).unwrap();
                     platform.hide_quick(window, false, &self.config).unwrap();
                     delay = Duration::from_millis(650);
                 }
-                4 => {
+                7 => {
                     assert_settled(native, false, self.frame);
                     self.config.quick_terminal_position = QuickTerminalPosition::Center;
                     platform.show_quick(window, &self.config).unwrap();
@@ -196,12 +234,12 @@ mod macos {
                     assert_settled(native, false, self.frame);
                     delay = Duration::from_millis(650);
                 }
-                5 => {
+                8 => {
                     assert_settled(native, false, self.frame);
                     self.config.quick_terminal_animation_duration = Duration::from_millis(300);
                     platform.show_quick(window, &self.config).unwrap();
                 }
-                6 => {
+                9 => {
                     platform.forget_window(window);
                     drop(self.window.take());
                     delay = Duration::from_millis(650);
@@ -214,6 +252,11 @@ mod macos {
         }
 
         fn window_event(&mut self, _: &ActiveEventLoop, _: WindowId, _: WindowEvent) {}
+    }
+
+    fn assert_size(native: &NSWindow, expected: [f64; 4]) {
+        let size = native.frame().size;
+        assert_eq!([size.width, size.height], [expected[2], expected[3]]);
     }
 
     fn assert_settled(native: &NSWindow, visible: bool, expected: [f64; 4]) {

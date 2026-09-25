@@ -368,7 +368,7 @@ impl Platform {
         }
     }
 
-    /// Select the screen on each reveal, retaining the user's resized dimensions.
+    /// Recompute the quick terminal's frame for the selected screen on each reveal.
     /// Winit created this window as a nonactivating NSPanel, so focusing it leaves
     /// the previously active application in control of the menu bar and its windows.
     pub fn show_quick(&self, window: &Window, config: &Config) -> Result<(), String> {
@@ -408,7 +408,9 @@ impl Platform {
         };
         let generation = state.borrow_mut().begin(frame, true);
         let fade = config.quick_terminal_position == QuickTerminalPosition::Center;
-        if !native.isVisible() {
+        // A changed target must have its final size before sliding in, even if
+        // a hide is still running. Same-frame reversals keep their live position.
+        if !native.isVisible() || saved != frame {
             let initial = if duration.is_zero() {
                 frame
             } else {
@@ -1045,15 +1047,19 @@ fn quick_frame(
     saved_size: Option<[f64; 2]>,
 ) -> [f64; 4] {
     let [x, y, screen_width, screen_height] = visible;
-    let [width, height] = saved_size.unwrap_or(match position {
-        QuickTerminalPosition::Top | QuickTerminalPosition::Bottom => {
-            [screen_width, screen_height * 0.5]
+    let [width, height] = match position {
+        QuickTerminalPosition::Top | QuickTerminalPosition::Bottom => [
+            screen_width,
+            saved_size.map_or(screen_height * 0.5, |size| size[1]),
+        ],
+        QuickTerminalPosition::Left | QuickTerminalPosition::Right => [
+            saved_size.map_or(screen_width * 0.5, |size| size[0]),
+            screen_height,
+        ],
+        QuickTerminalPosition::Center => {
+            saved_size.unwrap_or([screen_width * 0.8, screen_height * 0.7])
         }
-        QuickTerminalPosition::Left | QuickTerminalPosition::Right => {
-            [screen_width * 0.5, screen_height]
-        }
-        QuickTerminalPosition::Center => [screen_width * 0.8, screen_height * 0.7],
-    });
+    };
     let width = width.min(screen_width);
     let height = height.min(screen_height);
     let x = x + match position {
@@ -2012,7 +2018,7 @@ mod tests {
         assert_eq!(above, [-1920.0, -1080.0, 1920.0, 1040.0]);
         assert_eq!(
             quick_frame(above, QuickTerminalPosition::Right, Some([800.0, 600.0])),
-            [-800.0, -860.0, 800.0, 600.0]
+            [-800.0, -1080.0, 800.0, 1040.0]
         );
         let left = quick_frame(main, QuickTerminalPosition::Left, None);
         assert_eq!(left, [0.0, 24.0, 720.0, 812.0]);
@@ -2027,30 +2033,53 @@ mod tests {
     }
 
     #[test]
-    fn quick_terminal_restores_dimensions_when_anchoring_to_the_current_display() {
+    fn quick_terminal_fills_the_current_display_edge_when_restoring() {
         let main = [0.0, 24.0, 1440.0, 812.0];
-        let position = QuickTerminalPosition::Top;
-        let fresh = quick_frame(main, position, None);
-        assert_eq!(fresh, [0.0, 24.0, 1440.0, 406.0]);
-        assert_eq!(
-            quick_frame(main, position, Some([fresh[2], fresh[3]])),
-            fresh
-        );
-
-        // Reopening keeps a custom size, including legal sizes below 320×180.
-        assert_eq!(
-            quick_frame(main, position, Some([520.0, 280.0])),
-            [460.0, 24.0, 520.0, 280.0]
-        );
-        assert_eq!(
-            quick_frame(main, position, Some([280.0, 150.0])),
-            [580.0, 24.0, 280.0, 150.0]
-        );
         let smaller = [-480.0, -300.0, 480.0, 240.0];
-        assert_eq!(
-            quick_frame(smaller, position, Some([520.0, 280.0])),
-            smaller
-        );
+        for (position, on_smaller, on_main) in [
+            (
+                QuickTerminalPosition::Top,
+                [-480.0, -300.0, 480.0, 150.0],
+                [0.0, 24.0, 1440.0, 150.0],
+            ),
+            (
+                QuickTerminalPosition::Bottom,
+                [-480.0, -210.0, 480.0, 150.0],
+                [0.0, 686.0, 1440.0, 150.0],
+            ),
+            (
+                QuickTerminalPosition::Left,
+                [-480.0, -300.0, 280.0, 240.0],
+                [0.0, 24.0, 280.0, 812.0],
+            ),
+            (
+                QuickTerminalPosition::Right,
+                [-280.0, -300.0, 280.0, 240.0],
+                [1160.0, 24.0, 280.0, 812.0],
+            ),
+        ] {
+            let fresh = quick_frame(main, position, None);
+            assert_eq!(
+                quick_frame(main, position, Some([fresh[2], fresh[3]])),
+                fresh
+            );
+            // Only the user-sized dimension survives a round trip between
+            // displays, including legal sizes below 320×180.
+            let mut saved = [280.0, 150.0];
+            for (display, expected) in [
+                (smaller, on_smaller),
+                (main, on_main),
+                (smaller, on_smaller),
+            ] {
+                let frame = quick_frame(display, position, Some(saved));
+                assert_eq!(frame, expected, "{position:?}");
+                saved = [frame[2], frame[3]];
+            }
+            assert_eq!(
+                quick_frame(smaller, position, Some([2000.0, 2000.0])),
+                smaller
+            );
+        }
     }
 
     #[test]
