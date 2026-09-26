@@ -108,6 +108,11 @@ The windowless hotkey regression runs explicitly on a macOS desktop with
 It checks registration conflicts, reloads, stale events, layout notifications and
 cleanup using synthetic Carbon events without posting keyboard input.
 
+The native text-input regression runs with
+`cargo test -p rustty-app --test native_text_input --offline -- --ignored`.
+It checks character-picker commits, composition cleanup and subsequent typing
+through a hidden native window without posting keyboard input to other apps.
+
 The opt-in native smoke check starts disposable `/bin/sh` sessions, checks input,
 four split panes, tabs, quadrant focus and zoom, URI directory reports, restoration,
 progress animation across pane focus changes, hover scrolling, file-drop targeting,

@@ -1,4 +1,4 @@
-// Rustty modification: keep the original NSWindow/NSPanel as the weak view owner.
+// Rustty modifications: preserve native window ownership and character-picker input.
 #![allow(clippy::unnecessary_cast)]
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
@@ -131,6 +131,9 @@ pub struct ViewState {
     /// True if the current key event should be forwarded
     /// to the application, even during IME
     forward_key_to_app: Cell<bool>,
+
+    /// Whether insertText is being called while interpreting a physical key.
+    interpreting_key_event: Cell<bool>,
 
     marked_text: RefCell<Retained<NSMutableAttributedString>>,
     accepts_first_mouse: bool,
@@ -407,12 +410,31 @@ declare_class!(
             };
 
             let is_control = string.chars().next().is_some_and(|c| c.is_control());
+            let interpreting_key_event = self.ivars().interpreting_key_event.get();
+            let ime_commit = unsafe { self.hasMarkedText() } && self.is_ime_enabled();
+            let external_commit = !interpreting_key_event
+                && self.ivars().ime_allowed.get()
+                && !string.is_empty();
 
-            // Commit only if we have marked text.
-            if unsafe { self.hasMarkedText() } && self.is_ime_enabled() && !is_control {
+            // The character picker and dictation can commit without marked text
+            // or a keyDown event. Ordinary typing still belongs to KeyboardInput.
+            if (ime_commit || external_commit) && !is_control {
+                if !self.is_ime_enabled() {
+                    *self.ivars().input_source.borrow_mut() = self.current_input_source();
+                    self.queue_event(WindowEvent::Ime(Ime::Enabled));
+                }
+                if !interpreting_key_event {
+                    *self.ivars().marked_text.borrow_mut() = NSMutableAttributedString::new();
+                }
+                // Only suppress a key that is currently committing composition.
+                // An out-of-band insertion must leave the next key untouched.
+                self.ivars().ime_state.set(if interpreting_key_event {
+                    ImeState::Committed
+                } else {
+                    ImeState::Ground
+                });
                 self.queue_event(WindowEvent::Ime(Ime::Preedit(String::new(), None)));
                 self.queue_event(WindowEvent::Ime(Ime::Commit(string)));
-                self.ivars().ime_state.set(ImeState::Committed);
             }
         }
 
@@ -466,7 +488,9 @@ declare_class!(
             // is not handled by IME and should be handled by the application)
             if self.ivars().ime_allowed.get() {
                 let events_for_nsview = NSArray::from_slice(&[&*event]);
+                self.ivars().interpreting_key_event.set(true);
                 unsafe { self.interpretKeyEvents(&events_for_nsview) };
+                self.ivars().interpreting_key_event.set(false);
 
                 // If the text was committed we must treat the next keyboard event as IME related.
                 if self.ivars().ime_state.get() == ImeState::Committed {
@@ -804,6 +828,7 @@ impl WinitView {
             input_source: Default::default(),
             ime_allowed: Default::default(),
             forward_key_to_app: Default::default(),
+            interpreting_key_event: Default::default(),
             marked_text: Default::default(),
             accepts_first_mouse,
             _ns_window: WeakId::new(&window.retain()),

@@ -26,6 +26,11 @@ name = "native_global_hotkeys"
 path = "tests/native_global_hotkeys.rs"
 harness = false
 
+[[test]]
+name = "native_text_input"
+path = "tests/native_text_input.rs"
+harness = false
+
 [dependencies]
 rustty = { workspace = true, features = ["sessions"] }
 rustty-font.workspace = true
