@@ -1251,7 +1251,7 @@ fn check_focus_hint_clicks(
                     egui::Rect::from_center_size(position, Vec2::splat(20.0)),
                 );
             }
-            host.palette = target == "modal";
+            host.palette.open = target == "modal";
             dispatch(app, motion(position), original_focus, true)?;
             dispatch(app, button(Pressed, Left), original_focus, false)?;
             let host = &app.windows[&key];
@@ -1286,7 +1286,7 @@ fn check_focus_hint_clicks(
             host.search_rects.clear();
             host.search_focus = None;
             host.focus_text_input = false;
-            host.palette = false;
+            host.palette.open = false;
         }
         dispatch(app, WindowEvent::Focused(false), original_focus, false)?;
         dispatch(app, WindowEvent::Focused(true), original_focus, true)?;
@@ -1312,7 +1312,7 @@ fn check_focus_hint_clicks(
     host.search_rects.clear();
     host.search_focus = None;
     host.focus_text_input = false;
-    host.palette = false;
+    host.palette.open = false;
     host.mouse_button = None;
     host.selection_drag = None;
     host.divider_drag = None;

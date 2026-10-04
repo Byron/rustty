@@ -1996,7 +1996,7 @@ impl Screen {
         // Handles must not alias across screens, terminal resets or clones.
         static NEXT_ID: AtomicU64 = AtomicU64::new(0);
         let id = NEXT_ID
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .expect("tracked point IDs exhausted");
         let valid = self
             .row_by_id(point.row)

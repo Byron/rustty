@@ -116,7 +116,18 @@ pub fn defer_pointer_move(raw: &mut egui::RawInput) -> Option<egui::Pos2> {
 
 /// Terminal keyboard and IME events are already handled by the native event loop.
 pub fn filter_egui_events(raw: &mut egui::RawInput, ui_input: bool) {
-    if !ui_input {
+    if ui_input {
+        // Give every popup, including egui's menus, the same Escape alias.
+        for event in &mut raw.events {
+            if let egui::Event::Key { key, modifiers, .. } = event
+                && *key == egui::Key::OpenBracket
+                && modifiers.matches_logically(egui::Modifiers::CTRL)
+            {
+                *key = egui::Key::Escape;
+                *modifiers = egui::Modifiers::NONE;
+            }
+        }
+    } else {
         raw.events.retain(|event| {
             !matches!(
                 event,
@@ -610,6 +621,55 @@ mod tests {
     use super::*;
 
     #[test]
+    fn popup_escape_alias_preserves_key_lifecycle_and_other_shortcuts() {
+        let events: Vec<_> = [(true, false), (true, true), (false, false)]
+            .into_iter()
+            .map(|(pressed, repeat)| egui::Event::Key {
+                key: egui::Key::OpenBracket,
+                physical_key: Some(egui::Key::OpenBracket),
+                pressed,
+                repeat,
+                modifiers: egui::Modifiers::CTRL,
+            })
+            .collect();
+        let mut raw = egui::RawInput {
+            events: events.clone(),
+            ..Default::default()
+        };
+        filter_egui_events(&mut raw, true);
+        for (original, mapped) in events.iter().zip(&raw.events) {
+            let egui::Event::Key {
+                pressed, repeat, ..
+            } = *original
+            else {
+                unreachable!()
+            };
+            assert_eq!(
+                *mapped,
+                egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: Some(egui::Key::OpenBracket),
+                    pressed,
+                    repeat,
+                    modifiers: egui::Modifiers::NONE,
+                }
+            );
+        }
+        let ordinary_bracket = egui::Event::Key {
+            key: egui::Key::OpenBracket,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        raw.events = vec![ordinary_bracket.clone()];
+        filter_egui_events(&mut raw, true);
+        assert_eq!(raw.events, [ordinary_bracket]);
+        filter_egui_events(&mut raw, false);
+        assert!(raw.events.is_empty());
+    }
+
+    #[test]
     fn precise_scroll_preserves_small_deltas_and_the_decaying_tail() {
         let cell_height = 32;
         for sign in [1.0, -1.0] {
@@ -911,6 +971,7 @@ mod tests {
         terminal.feed(b"\x1b[>11u");
         for (physical, key) in [
             (KeyCode::Escape, vt::Key::Escape),
+            (KeyCode::BracketLeft, vt::Key::Char('[')),
             (KeyCode::Enter, vt::Key::Enter),
             (KeyCode::Space, vt::Key::Char(' ')),
         ] {
@@ -1177,6 +1238,23 @@ mod tests {
         let terminal = frame.draw(Editor::Terminal, false, vec![]).ime.unwrap();
         assert!(!frame.popup_open);
         assert_eq!(terminal.rect, InputFrame::cursor_rect());
+
+        frame.draw(Editor::TabTitle, true, vec![]);
+        frame.draw(Editor::TabTitle, true, vec![]);
+        assert!(frame.popup_open);
+        frame.draw(
+            Editor::TabTitle,
+            false,
+            vec![egui::Event::Key {
+                key: egui::Key::OpenBracket,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::CTRL,
+            }],
+        );
+        assert!(!frame.popup_open);
+        assert_eq!(frame.text, "work 日誌");
     }
 
     #[test]

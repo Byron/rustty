@@ -191,6 +191,12 @@ impl Search {
             .enabled(root.is_enabled())
             .fade_in(false)
             .show(root.ctx(), |ui| {
+                if selected
+                    && ui.is_enabled()
+                    && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::Escape))
+                {
+                    action = Some(Action::EndSearch);
+                }
                 // Claim focus even during initial sizing so another pane cannot consume
                 // queued text, but keep the request for the first visible frame's IME area.
                 let focus = ui.is_enabled() && *request_focus;
@@ -602,7 +608,7 @@ mod tests {
                 })
                 .unwrap_or_default();
             events.insert(0, egui::Event::ModifiersChanged(modifiers));
-            let raw = egui::RawInput {
+            let mut raw = egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(
                     egui::Pos2::ZERO,
                     Vec2::new(800.0, 600.0),
@@ -612,6 +618,7 @@ mod tests {
                 events,
                 ..Default::default()
             };
+            input::filter_egui_events(&mut raw, show);
             let mut content = Rect::NOTHING;
             let mut overlay = None;
             let mut output = self.context.run_ui(raw, |root| {
@@ -738,6 +745,57 @@ mod tests {
                     .action;
             }
             assert_eq!(action, Some(Action::EndSearch));
+        }
+    }
+
+    #[test]
+    fn find_dismisses_with_escape_or_control_bracket_only_when_enabled_and_selected() {
+        for (key, modifiers) in [
+            (Key::Escape, Modifiers::NONE),
+            (Key::OpenBracket, Modifiers::CTRL),
+        ] {
+            let mut frame = UiFrame::default();
+            frame.open();
+            frame.draw(true, vec![egui::Event::Text("query".into())]);
+            let event = egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers,
+            };
+            frame.selected = false;
+            assert_eq!(
+                frame.draw(true, vec![event.clone()]).1.unwrap().action,
+                None
+            );
+            frame.selected = true;
+            let (_, response, _) = frame.draw(true, vec![event]);
+            assert_eq!(response.unwrap().action, Some(Action::EndSearch));
+            assert_eq!(frame.search.query, "query");
+
+            let mut action = None;
+            let mut raw = egui::RawInput {
+                focused: true,
+                events: vec![egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers,
+                }],
+                ..Default::default()
+            };
+            input::filter_egui_events(&mut raw, true);
+            let mut output = frame.context.run_ui(raw, |root| {
+                root.disable();
+                action = frame
+                    .search
+                    .show(root, 1, frame.bounds, true, &mut false, &frame.config)
+                    .action;
+            });
+            output.textures_delta.clear();
+            assert_eq!(action, None);
         }
     }
 

@@ -1544,7 +1544,7 @@ impl GlobalKeyContext {
         }
         for ((code, modifiers), binding) in resolved {
             let Ok(id) = NEXT_HOTKEY_ID
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             else {
                 (self.callback)(PlatformEvent::Warning(
                     "Global shortcut registration IDs exhausted; restart Rustty".into(),

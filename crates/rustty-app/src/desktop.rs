@@ -1,5 +1,8 @@
+#[path = "command_palette.rs"]
+mod command_palette;
 #[path = "smoke.rs"]
 mod smoke;
+use command_palette::CommandPalette;
 use egui::{Color32, Pos2, Sense, Vec2, ViewportId};
 use rustty::{
     config::{self, Action, Config, Direction, LoadedConfig},
@@ -434,8 +437,7 @@ struct Host {
     popup_open: bool,
     messages_open: bool,
     layout_picker: Option<LayoutPicker>,
-    palette: bool,
-    palette_query: String,
+    palette: CommandPalette,
     confirm: Option<Confirmation>,
     clipboard_request: VecDeque<(Id, vt::Effect)>,
     capture: bool,
@@ -458,7 +460,7 @@ impl Host {
         self.search_focus.is_some() || self.modal_input()
     }
     fn modal_input(&self) -> bool {
-        self.palette
+        self.palette.open
             || self.popup_open
             || self.messages_open
             || self.layout_picker.is_some()
@@ -1168,8 +1170,7 @@ impl App {
             popup_open: false,
             messages_open: false,
             layout_picker: None,
-            palette: false,
-            palette_query: String::new(),
+            palette: CommandPalette::default(),
             confirm: None,
             clipboard_request: VecDeque::new(),
             capture: false,
@@ -2152,9 +2153,8 @@ impl App {
                     })
             }
             Action::ToggleCommandPalette => {
-                host.palette = !host.palette;
-                host.palette_query.clear();
-                host.focus_text_input = host.palette || host.search_focus.is_some();
+                host.palette.toggle();
+                host.focus_text_input = host.palette.open || host.search_focus.is_some();
             }
             Action::CopyToClipboard => {
                 let text = focused.and_then(|id| {
@@ -3492,36 +3492,18 @@ impl App {
                     host.repaint();
                 }
             }
-            if host.palette {
-                egui::Window::new("Command palette")
-                    .collapsible(false)
-                    .resizable(false)
-                    .anchor(egui::Align2::CENTER_TOP, [0.0, 60.0])
-                    .show(ctx, |ui| {
-                        let focus =
-                            !ui.is_sizing_pass() && std::mem::take(&mut host.focus_text_input);
-                        input::text_edit(
-                            ui,
-                            &mut host.palette_query,
-                            egui::Id::new(("palette", host.id)),
-                            focus,
-                        );
-                        for (label, action) in palette_actions() {
-                            if label
-                                .to_lowercase()
-                                .contains(&host.palette_query.to_lowercase())
-                                && ui.button(label).clicked()
-                            {
-                                commands.push(action);
-                                host.palette = false;
-                                host.focus_text_input = host.search_focus.is_some();
-                            }
-                        }
-                        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                            host.palette = false;
-                            host.focus_text_input = host.search_focus.is_some();
-                        }
-                    });
+            if host.palette.open {
+                if let Some(action) = host.palette.show(
+                    root_ui,
+                    egui::Id::new(("palette", host.id)),
+                    &config,
+                    &mut host.focus_text_input,
+                ) {
+                    commands.push(action);
+                }
+                if !host.palette.open {
+                    host.focus_text_input = host.search_focus.is_some();
+                }
             }
             let mut confirmed = None;
             if let Some(confirmation) = &host.confirm {
@@ -3620,7 +3602,8 @@ impl App {
                             "A terminal program wants to read the clipboard."
                         });
                         ui.horizontal(|ui| {
-                            if ui.button("Deny").clicked()
+                            if (ui.button("Deny").clicked()
+                                || ui.input(|input| input.key_pressed(egui::Key::Escape)))
                                 && let Some((pane, request)) = host.clipboard_request.pop_front()
                             {
                                 self.finish_clipboard(pane, request, false, false);
@@ -4332,24 +4315,6 @@ fn link_bounds(
 
 fn rgb(color: config::Rgb) -> Color32 {
     Color32::from_rgb(color.r, color.g, color.b)
-}
-fn palette_actions() -> Vec<(&'static str, Action)> {
-    vec![
-        ("New window", Action::NewWindow),
-        ("New tab", Action::NewTab),
-        ("Split right", Action::NewSplit(Direction::Right)),
-        ("Split down", Action::NewSplit(Direction::Down)),
-        ("Zoom pane", Action::ToggleSplitZoom),
-        ("Zoom quadrant", Action::ToggleQuadrantZoom),
-        ("Equalize splits", Action::EqualizeSplits),
-        ("Find", Action::StartSearch),
-        ("Open configuration", Action::OpenConfig),
-        ("Open saved layout", Action::OpenLayout),
-        ("Reload configuration", Action::ReloadConfig),
-        ("Toggle quick terminal", Action::ToggleQuickTerminal),
-        ("Undo layout change", Action::Undo),
-        ("Redo layout change", Action::Redo),
-    ]
 }
 
 impl ApplicationHandler<Event> for App {
@@ -6080,20 +6045,19 @@ mod tests {
         };
         let mut frame = |events| {
             let mut command = None;
-            let mut output = context.run_ui(
-                egui::RawInput {
-                    screen_rect: Some(egui::Rect::from_min_size(
-                        Pos2::ZERO,
-                        Vec2::new(800.0, 600.0),
-                    )),
-                    focused: true,
-                    events,
-                    ..Default::default()
-                },
-                |_| {
-                    command = show_layout_picker(&context, &mut picker).or(command.take());
-                },
-            );
+            let mut raw = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    Pos2::ZERO,
+                    Vec2::new(800.0, 600.0),
+                )),
+                focused: true,
+                events,
+                ..Default::default()
+            };
+            input::filter_egui_events(&mut raw, true);
+            let mut output = context.run_ui(raw, |_| {
+                command = show_layout_picker(&context, &mut picker).or(command.take());
+            });
             let open = output
                 .platform_output
                 .accesskit_update
@@ -6138,6 +6102,15 @@ mod tests {
         }])
         .0;
         assert!(matches!(command, Some(LayoutCommand::Close)));
+        let command = frame(vec![egui::Event::Key {
+            key: egui::Key::OpenBracket,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::CTRL,
+        }])
+        .0;
+        assert!(matches!(command, Some(LayoutCommand::Close)));
     }
 
     #[test]
@@ -6174,12 +6147,12 @@ mod tests {
             dismiss
         }
 
-        for click in [true, false] {
+        for dismissal in ["click", "escape", "control-bracket"] {
             let context = egui::Context::default();
             let mut errors = vec!["The text editor could not open settings".to_owned()];
             frame(&context, &mut errors, vec![]);
             let button = frame(&context, &mut errors, vec![]).unwrap();
-            if click {
+            if dismissal == "click" {
                 let point = button.center();
                 for pressed in [true, false] {
                     frame(
@@ -6201,15 +6174,23 @@ mod tests {
                     &context,
                     &mut errors,
                     vec![egui::Event::Key {
-                        key: egui::Key::Escape,
+                        key: if dismissal == "escape" {
+                            egui::Key::Escape
+                        } else {
+                            egui::Key::OpenBracket
+                        },
                         physical_key: None,
                         pressed: true,
                         repeat: false,
-                        modifiers: egui::Modifiers::default(),
+                        modifiers: if dismissal == "escape" {
+                            egui::Modifiers::NONE
+                        } else {
+                            egui::Modifiers::CTRL
+                        },
                     }],
                 );
             }
-            assert!(errors.is_empty(), "dismiss by click={click}");
+            assert!(errors.is_empty(), "dismiss by {dismissal}");
             assert!(frame(&context, &mut errors, vec![]).is_none());
         }
     }
