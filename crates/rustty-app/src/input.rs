@@ -1,6 +1,9 @@
 //! Route input to the active editor and keep physical keys separate from composed text.
 use rustty::{config, vt};
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    time::{Duration, Instant},
+};
 use winit::{
     event::{ElementState, KeyEvent, Modifiers},
     keyboard::{
@@ -41,34 +44,105 @@ impl ScrollAccumulator {
     }
 }
 
-/// Selection begins on pointer movement, including movement within one cell.
+/// Keep a local selection attached to the content beneath a held pointer.
 pub struct SelectionDrag {
-    anchor: vt::GridPoint,
+    point: vt::GridPoint,
     position: egui::Pos2,
+    begun: bool,
+    pub deadline: Option<Instant>,
 }
 
 impl SelectionDrag {
-    pub fn new(anchor: vt::GridPoint, position: egui::Pos2) -> Self {
-        Self { anchor, position }
+    pub fn new(point: vt::GridPoint, position: egui::Pos2) -> Self {
+        Self {
+            point,
+            position,
+            begun: false,
+            deadline: None,
+        }
     }
 
-    pub fn update(
+    /// Refresh after pointer movement, scrolling, output, or a scheduled edge tick.
+    /// Returns false when the gesture no longer belongs to a live screen anchor.
+    pub fn refresh(
         &mut self,
+        terminal: &mut vt::Terminal,
+        gesture: &mut vt::selection_gesture::SelectionGesture,
         position: egui::Pos2,
-        end: vt::GridPoint,
-        rectangular: bool,
-    ) -> Option<vt::Selection> {
+        pointer: vt::selection_gesture::AutoscrollTick<'_>,
+        now: Instant,
+    ) -> bool {
+        use vt::selection_gesture::{Autoscroll, Behavior, Drag};
+        const INTERVAL: Duration = Duration::from_millis(15);
+
+        let [col, row] = pointer.viewport;
+        let rectangular = pointer.rectangle;
+        let point_at_pointer = |terminal: &vt::Terminal| {
+            let screen = terminal.screen();
+            screen.point(
+                screen.history_len().saturating_sub(screen.viewport_offset) + row as usize,
+                col as usize,
+            )
+        };
+        let Some((anchor, point)) = gesture.anchor(terminal).zip(point_at_pointer(terminal)) else {
+            self.deadline = None;
+            gesture.reset(terminal);
+            terminal.screen_mut().selection = None;
+            return false;
+        };
         // AppKit/Winit repeats the pointer position before button release.
-        // That update alone must not turn a click into a one-cell selection.
-        if self.position == position {
-            return None;
-        }
+        // Content moving beneath the pointer does begin/extend a selection.
+        self.begun |= self.position != position || self.point != point;
         self.position = position;
-        Some(vt::Selection {
-            start: self.anchor,
-            end,
-            rectangular,
-        })
+        self.point = point;
+        if !self.begun {
+            return true;
+        }
+
+        let previous_direction = gesture.autoscroll();
+        let mut selected = gesture.drag(
+            terminal,
+            Drag {
+                point,
+                xpos: pointer.xpos,
+                ypos: pointer.ypos,
+                rectangle: pointer.rectangle,
+                word_boundaries: pointer.word_boundaries,
+                geometry: pointer.geometry,
+            },
+        );
+        let direction = gesture.autoscroll();
+        let scrollable = |terminal: &vt::Terminal| match direction {
+            Autoscroll::None => false,
+            Autoscroll::Up => terminal.screen().viewport_offset < terminal.screen().history_len(),
+            Autoscroll::Down => terminal.screen().viewport_offset > 0,
+        };
+        if direction != previous_direction {
+            self.deadline = None;
+        }
+        if scrollable(terminal) && self.deadline.is_some_and(|deadline| deadline <= now) {
+            selected = gesture.autoscroll_tick(terminal, pointer);
+            self.point = point_at_pointer(terminal).unwrap();
+            self.deadline = None;
+        }
+        // Preserve Rustty's inclusive cell endpoints instead of VT's pixel
+        // threshold, including the endpoint resolved after a scrolling tick.
+        if gesture.behavior() == Behavior::Cell {
+            selected = Some(vt::Selection {
+                start: anchor,
+                end: self.point,
+                rectangular,
+            });
+        }
+        terminal.screen_mut().selection = selected;
+        self.deadline = if scrollable(terminal) {
+            // A synchronized-output pause can defer this deadline; once the
+            // frame is available again, resume within one ordinary interval.
+            Some(self.deadline.unwrap_or(now + INTERVAL).min(now + INTERVAL))
+        } else {
+            None
+        };
+        true
     }
 }
 
@@ -823,39 +897,378 @@ mod tests {
         }]));
     }
 
+    fn selection_pointer(
+        viewport: [u32; 2],
+        position: egui::Pos2,
+    ) -> vt::selection_gesture::AutoscrollTick<'static> {
+        vt::selection_gesture::AutoscrollTick {
+            viewport,
+            xpos: f64::from(position.x),
+            ypos: f64::from(position.y),
+            rectangle: false,
+            word_boundaries: vt::selection::DEFAULT_WORD_BOUNDARIES,
+            geometry: vt::selection_gesture::Geometry {
+                columns: 20,
+                cell_width: 10,
+                padding_left: 0,
+                screen_height: 60,
+            },
+        }
+    }
+
+    fn begin_selection_drag(
+        terminal: &mut vt::Terminal,
+        viewport: [u32; 2],
+        position: egui::Pos2,
+        behavior: vt::selection_gesture::Behavior,
+    ) -> (SelectionDrag, vt::selection_gesture::SelectionGesture) {
+        use vt::selection_gesture::{Press, SelectionGesture};
+        let row = terminal
+            .screen()
+            .viewport()
+            .nth(viewport[1] as usize)
+            .unwrap()
+            .id;
+        let point = vt::GridPoint {
+            row,
+            col: viewport[0] as usize,
+        };
+        let mut gesture = SelectionGesture::default();
+        let selected = gesture.press(
+            terminal,
+            Press {
+                time: Some(0),
+                point,
+                xpos: f64::from(position.x),
+                ypos: f64::from(position.y),
+                max_distance: 10.0,
+                repeat_interval: 500,
+                word_boundaries: vt::selection::DEFAULT_WORD_BOUNDARIES,
+                behaviors: [behavior; 3],
+            },
+        );
+        terminal.screen_mut().selection = selected;
+        (SelectionDrag::new(point, position), gesture)
+    }
+
     #[test]
     fn selection_requires_pointer_movement_and_can_select_one_cell() {
-        let anchor = vt::GridPoint { row: 1, col: 2 };
-        let press = egui::pos2(20.0, 10.0);
-        let mut drag = SelectionDrag::new(anchor, press);
+        let mut terminal = vt::Terminal::new(20, 3, 100);
+        let press = egui::pos2(25.0, 30.0);
+        let (mut drag, mut gesture) = begin_selection_drag(
+            &mut terminal,
+            [2, 1],
+            press,
+            vt::selection_gesture::Behavior::Cell,
+        );
+        let anchor = gesture.anchor(&terminal).unwrap();
+        let now = Instant::now();
         // Winit's repeated mouseUp position is a click, without a drag.
-        assert_eq!(drag.update(press, anchor, false), None);
-        let within_cell = egui::pos2(21.0, 10.0);
-        assert_eq!(
-            drag.update(within_cell, anchor, false),
-            Some(vt::Selection {
-                start: anchor,
-                end: anchor,
-                rectangular: false
-            })
+        assert!(drag.refresh(
+            &mut terminal,
+            &mut gesture,
+            press,
+            selection_pointer([2, 1], press),
+            now,
+        ));
+        assert!(terminal.screen().selection.is_none());
+        let within_cell = egui::pos2(26.0, 30.0);
+        for (position, viewport, rectangular) in [
+            (within_cell, [2, 1], false),
+            (within_cell, [2, 1], false),
+            (egui::pos2(55.0, 30.0), [5, 1], true),
+            (press, [2, 1], true),
+        ] {
+            let mut pointer = selection_pointer(viewport, position);
+            pointer.rectangle = rectangular;
+            assert!(drag.refresh(&mut terminal, &mut gesture, position, pointer, now));
+            assert_eq!(
+                terminal.screen().selection,
+                Some(vt::Selection {
+                    start: anchor,
+                    end: vt::GridPoint {
+                        row: anchor.row,
+                        col: viewport[0] as usize
+                    },
+                    rectangular,
+                })
+            );
+            assert!(drag.deadline.is_none());
+        }
+        gesture.deinit(&mut terminal);
+    }
+
+    #[test]
+    fn stationary_pointer_follows_scrolled_content_for_every_selection_mode() {
+        use vt::selection_gesture::Behavior;
+        for (behavior, rectangular) in [
+            (Behavior::Cell, false),
+            (Behavior::Cell, true),
+            (Behavior::Word, false),
+            (Behavior::Line, false),
+        ] {
+            let mut terminal = vt::Terminal::new(20, 3, 100);
+            terminal.feed(b"zero one\r\ntwo three\r\nfour five\r\nsix seven\r\neight nine");
+            let position = egui::pos2(25.0, 30.0);
+            let (mut drag, mut gesture) =
+                begin_selection_drag(&mut terminal, [2, 1], position, behavior);
+            let anchor = gesture.anchor(&terminal).unwrap();
+            for offset in [2, 1, 0] {
+                let previous = terminal.screen().viewport_offset;
+                terminal
+                    .screen_mut()
+                    .scroll_viewport(offset - previous as isize);
+                let mut pointer = selection_pointer([2, 1], position);
+                pointer.rectangle = rectangular;
+                assert!(drag.refresh(
+                    &mut terminal,
+                    &mut gesture,
+                    position,
+                    pointer,
+                    Instant::now(),
+                ));
+                let selection = terminal.screen().selection.unwrap();
+                let row = terminal.screen().viewport().nth(1).unwrap().id;
+                assert!(selection.start.row == row || selection.end.row == row);
+                assert!(selection.start.row == anchor.row || selection.end.row == anchor.row);
+                assert_eq!(selection.rectangular, rectangular);
+                assert!(!terminal.screen().selection_text().unwrap().is_empty());
+            }
+            gesture.deinit(&mut terminal);
+        }
+    }
+
+    #[test]
+    fn edge_selection_ticks_without_motion_and_stops_at_scroll_limits() {
+        let mut terminal = vt::Terminal::new(20, 3, 100);
+        terminal.feed(b"zero\r\none\r\ntwo\r\nthree\r\nfour\r\nfive");
+        let (mut drag, mut gesture) = begin_selection_drag(
+            &mut terminal,
+            [2, 1],
+            egui::pos2(25.0, 30.0),
+            vt::selection_gesture::Behavior::Cell,
         );
-        assert_eq!(drag.update(within_cell, anchor, false), None);
-        let other = vt::GridPoint { row: 1, col: 5 };
-        assert_eq!(
-            drag.update(egui::pos2(50.0, 10.0), other, true)
-                .unwrap()
-                .end,
-            other
+        let anchor = gesture.anchor(&terminal).unwrap();
+        let now = Instant::now();
+        let top = egui::pos2(25.0, 0.0);
+        let refresh_top = |drag: &mut SelectionDrag,
+                           terminal: &mut vt::Terminal,
+                           gesture: &mut vt::selection_gesture::SelectionGesture,
+                           time| {
+            assert!(drag.refresh(terminal, gesture, top, selection_pointer([2, 0], top), time));
+        };
+        refresh_top(&mut drag, &mut terminal, &mut gesture, now);
+        assert_eq!(drag.deadline, Some(now + Duration::from_millis(15)));
+        refresh_top(
+            &mut drag,
+            &mut terminal,
+            &mut gesture,
+            now + Duration::from_millis(10),
         );
-        // Returning to the press position after a drag selects the anchor cell.
-        assert_eq!(
-            drag.update(press, anchor, true),
-            Some(vt::Selection {
-                start: anchor,
-                end: anchor,
-                rectangular: true
-            })
+        assert_eq!(drag.deadline, Some(now + Duration::from_millis(15)));
+        assert_eq!(terminal.screen().viewport_offset, 0);
+        drag.deadline = Some(now + Duration::from_secs(1));
+        refresh_top(
+            &mut drag,
+            &mut terminal,
+            &mut gesture,
+            now + Duration::from_millis(10),
         );
+        assert_eq!(drag.deadline, Some(now + Duration::from_millis(25)));
+        // A late wake scrolls once, without a burst of catch-up ticks.
+        refresh_top(
+            &mut drag,
+            &mut terminal,
+            &mut gesture,
+            now + Duration::from_millis(80),
+        );
+        assert_eq!(terminal.screen().viewport_offset, 1);
+        assert_eq!(drag.deadline, Some(now + Duration::from_millis(95)));
+        assert_eq!(terminal.screen().selection.unwrap().start, anchor);
+        assert_eq!(
+            terminal.screen().selection.unwrap().end.row,
+            terminal.screen().viewport().next().unwrap().id
+        );
+        while let Some(deadline) = drag.deadline {
+            refresh_top(&mut drag, &mut terminal, &mut gesture, deadline);
+        }
+        assert_eq!(
+            terminal.screen().viewport_offset,
+            terminal.screen().history_len()
+        );
+
+        let bottom = egui::pos2(25.0, 60.0);
+        let mut time = now + Duration::from_secs(1);
+        assert!(drag.refresh(
+            &mut terminal,
+            &mut gesture,
+            bottom,
+            selection_pointer([2, 2], bottom),
+            time
+        ));
+        assert!(drag.deadline.is_some());
+        while let Some(deadline) = drag.deadline {
+            time = deadline;
+            assert!(drag.refresh(
+                &mut terminal,
+                &mut gesture,
+                bottom,
+                selection_pointer([2, 2], bottom),
+                time
+            ));
+        }
+        assert_eq!(terminal.screen().viewport_offset, 0);
+        refresh_top(&mut drag, &mut terminal, &mut gesture, time);
+        assert!(drag.deadline.is_some());
+        // Moving inside cancels a pending tick, even when it is already due.
+        let inside = egui::pos2(25.0, 30.0);
+        assert!(drag.refresh(
+            &mut terminal,
+            &mut gesture,
+            inside,
+            selection_pointer([2, 1], inside),
+            time + Duration::from_secs(1)
+        ));
+        assert!(drag.deadline.is_none());
+        assert_eq!(terminal.screen().viewport_offset, 0);
+        gesture.deinit(&mut terminal);
+    }
+
+    #[test]
+    fn edge_selection_rearms_when_output_makes_history_available() {
+        let mut terminal = vt::Terminal::new(20, 3, 100);
+        terminal.feed(b"zero\r\none\r\ntwo");
+        let position = egui::pos2(25.0, 30.0);
+        let (mut drag, mut gesture) = begin_selection_drag(
+            &mut terminal,
+            [2, 1],
+            position,
+            vt::selection_gesture::Behavior::Cell,
+        );
+        let now = Instant::now();
+        let top = egui::pos2(25.0, 0.0);
+        assert!(drag.refresh(
+            &mut terminal,
+            &mut gesture,
+            top,
+            selection_pointer([2, 0], top),
+            now
+        ));
+        assert!(drag.deadline.is_none());
+        terminal.feed(b"\r\nthree");
+        assert!(drag.refresh(
+            &mut terminal,
+            &mut gesture,
+            top,
+            selection_pointer([2, 0], top),
+            now
+        ));
+        assert_eq!(drag.deadline, Some(now + Duration::from_millis(15)));
+        terminal.reset();
+        assert!(!drag.refresh(
+            &mut terminal,
+            &mut gesture,
+            top,
+            selection_pointer([2, 0], top),
+            now,
+        ));
+        assert!(drag.deadline.is_none());
+        assert!(!gesture.has_anchor());
+    }
+
+    #[test]
+    fn selection_drag_tracks_reflowed_anchor_and_replaces_deleted_endpoint() {
+        let mut terminal = vt::Terminal::new(20, 3, 100);
+        terminal.feed(b"anchor long line\r\nselected endpoint\r\nreplacement row");
+        let (mut drag, mut gesture) = begin_selection_drag(
+            &mut terminal,
+            [12, 0],
+            egui::pos2(125.0, 10.0),
+            vt::selection_gesture::Behavior::Cell,
+        );
+        let now = Instant::now();
+        let position = egui::pos2(25.0, 30.0);
+        assert!(drag.refresh(
+            &mut terminal,
+            &mut gesture,
+            position,
+            selection_pointer([2, 1], position),
+            now,
+        ));
+        let original = terminal.screen().selection.unwrap();
+        terminal.feed(b"\x1b[2;1H\x1b[M");
+        assert!(terminal.screen().row_by_id(original.end.row).is_none());
+        assert!(drag.refresh(
+            &mut terminal,
+            &mut gesture,
+            position,
+            selection_pointer([2, 1], position),
+            now,
+        ));
+        let replaced = terminal.screen().selection.unwrap();
+        assert_eq!(replaced.start, original.start);
+        assert_ne!(replaced.end, original.end);
+
+        terminal.resize(10, 4);
+        let mut pointer = selection_pointer([2, 1], position);
+        pointer.geometry.columns = 10;
+        pointer.geometry.screen_height = 80;
+        assert!(drag.refresh(&mut terminal, &mut gesture, position, pointer, now));
+        let reflowed = gesture.anchor(&terminal).unwrap();
+        assert_eq!(reflowed.col, 2);
+        assert_ne!(reflowed, original.start);
+        assert_eq!(terminal.screen().selection.unwrap().start, reflowed);
+        gesture.deinit(&mut terminal);
+    }
+
+    #[test]
+    fn stationary_word_drag_refreshes_changed_content_and_cancels_invalid_anchor() {
+        let mut terminal = vt::Terminal::new(20, 3, 100);
+        terminal.feed(b"alpha beta tail");
+        let (mut drag, mut gesture) = begin_selection_drag(
+            &mut terminal,
+            [1, 0],
+            egui::pos2(15.0, 10.0),
+            vt::selection_gesture::Behavior::Word,
+        );
+        let now = Instant::now();
+        let position = egui::pos2(75.0, 10.0);
+        assert!(drag.refresh(
+            &mut terminal,
+            &mut gesture,
+            position,
+            selection_pointer([7, 0], position),
+            now
+        ));
+        assert_eq!(
+            terminal.screen().selection_text().as_deref(),
+            Some("alpha beta")
+        );
+        let point = drag.point;
+        terminal.feed(b"\x1b[1;11Hx");
+        assert!(drag.refresh(
+            &mut terminal,
+            &mut gesture,
+            position,
+            selection_pointer([7, 0], position),
+            now
+        ));
+        assert_eq!(drag.point, point);
+        assert_eq!(
+            terminal.screen().selection_text().as_deref(),
+            Some("alpha betaxtail")
+        );
+        terminal.reset();
+        assert!(!drag.refresh(
+            &mut terminal,
+            &mut gesture,
+            position,
+            selection_pointer([7, 0], position),
+            now
+        ));
+        assert!(drag.deadline.is_none());
+        assert!(!gesture.has_anchor());
+        assert!(terminal.screen().selection.is_none());
     }
 
     #[test]
@@ -922,6 +1335,17 @@ mod tests {
                     },
                 );
                 terminal.screen_mut().selection = selection;
+                // Repeated native positions and redraws must preserve the full
+                // double-click link until actual dragging begins.
+                let position = egui::pos2(col as f32 * 10.0, row as f32 * 20.0);
+                let mut drag = SelectionDrag::new(point, position);
+                assert!(drag.refresh(
+                    &mut terminal,
+                    &mut gesture,
+                    position,
+                    selection_pointer([col as u32, row as u32], position),
+                    Instant::now(),
+                ));
                 gesture.release(&terminal, Some(point));
                 assert_eq!(
                     terminal.screen().selection_text().as_deref(),

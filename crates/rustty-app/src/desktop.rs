@@ -424,7 +424,7 @@ struct Host {
     link_hit: Option<(Id, u64, usize, vt::GridPoint, egui::Rect, Vec2)>,
     hovered_link: Option<HoveredLink>,
     mouse_button: Option<vt::MouseButton>,
-    selection_drag: Option<input::SelectionDrag>,
+    selection_drag: Option<(Id, input::SelectionDrag)>,
     focused: bool,
     focus_hint: FocusHint,
     cursor_blink_started: Instant,
@@ -1197,6 +1197,9 @@ impl App {
         match result {
             Ok(()) => {
                 host.visible = visible;
+                if !visible {
+                    self.cancel_selection_drag(host);
+                }
                 self.remember_quick_frame(host);
                 host.repaint();
             }
@@ -1239,7 +1242,8 @@ impl App {
             self.errors.push(error.to_string());
         }
     }
-    fn terminal_input(&self, host: &mut Host, pane: Id) {
+    fn terminal_input(&mut self, host: &mut Host, pane: Id) {
+        self.cancel_selection_drag(host);
         let now = Instant::now();
         let focused = self
             .focused(host.id)
@@ -2202,6 +2206,7 @@ impl App {
                 }
             }
             Action::SelectAll => {
+                self.cancel_selection_drag(host);
                 if let Some(pane) = focused.and_then(|id| self.panes.get(&id))
                     && let Ok(mut terminal) = pane.session.terminal()
                 {
@@ -2786,6 +2791,35 @@ fn reveal(screen: &mut vt::Screen, point: vt::GridPoint) {
     }
 }
 
+fn selection_pointer(
+    terminal: &vt::Terminal,
+    mouse: Pos2,
+    rect: egui::Rect,
+    scale: f32,
+    padding: [f32; 2],
+    cell: [u32; 2],
+    rectangle: bool,
+) -> vt::selection_gesture::AutoscrollTick<'static> {
+    let surface = (mouse - rect.min) * scale;
+    let position = surface - Vec2::new(padding[0], padding[1]);
+    vt::selection_gesture::AutoscrollTick {
+        viewport: [
+            (position.x.max(0.0) as u32 / cell[0]).min(u32::from(terminal.cols) - 1),
+            (position.y.max(0.0) as u32 / cell[1]).min(u32::from(terminal.rows) - 1),
+        ],
+        xpos: f64::from(surface.x),
+        ypos: f64::from(surface.y),
+        rectangle,
+        word_boundaries: vt::selection::DEFAULT_WORD_BOUNDARIES,
+        geometry: vt::selection_gesture::Geometry {
+            columns: u32::from(terminal.cols),
+            cell_width: cell[0],
+            padding_left: padding[0] as u32,
+            screen_height: (rect.height() * scale) as u32,
+        },
+    }
+}
+
 impl App {
     fn draw(&mut self, event_loop: &ActiveEventLoop, host: &mut Host) -> Result<()> {
         self.draw_frame(event_loop, host, None)
@@ -2799,6 +2833,7 @@ impl App {
     ) -> Result<()> {
         host.messages_open = !self.errors.is_empty();
         if !host.visible || host.occluded {
+            self.cancel_selection_drag(host);
             return Ok(());
         }
         let Some(index) = self.index(host.id) else {
@@ -2813,6 +2848,13 @@ impl App {
         }
         let active = &state.tabs[state.active_tab];
         let focused = active.focused;
+        if host
+            .selection_drag
+            .as_ref()
+            .is_some_and(|(id, _)| *id != focused)
+        {
+            self.cancel_selection_drag(host);
+        }
         if host.search_focus.is_some_and(|id| {
             id != focused || self.panes.get(&id).is_none_or(|pane| pane.search.is_none())
         }) {
@@ -2978,6 +3020,7 @@ impl App {
             // Cache this viewport's popup state for native events between frames.
             host.popup_open = egui::Popup::is_any_open(ctx);
             if host.ui_input() {
+                self.cancel_selection_drag(host);
                 if let Some(pane) = self.panes.get_mut(&focused) {
                     pane.reset_selection_gesture();
                 }
@@ -3080,6 +3123,29 @@ impl App {
                                 pane.sync_output.update(&mut terminal, now).is_some();
                             if !synchronized && let Some(search) = &mut pane.search {
                                 search.refresh(&mut terminal);
+                            }
+                            if !synchronized
+                                && let Some((owner, drag)) = &mut host.selection_drag
+                                && *owner == id
+                            {
+                                let pointer = selection_pointer(
+                                    &terminal,
+                                    host.mouse,
+                                    rect,
+                                    scale,
+                                    padding,
+                                    [metrics.cell_width, metrics.cell_height],
+                                    host.modifiers.state().alt_key(),
+                                );
+                                if !drag.refresh(
+                                    &mut terminal,
+                                    &mut pane.selection_gesture,
+                                    host.mouse,
+                                    pointer,
+                                    now,
+                                ) {
+                                    host.selection_drag = None;
+                                }
                             }
                             let now_ms =
                                 self.started.elapsed().as_millis().min(u64::MAX as u128) as u64;
@@ -3791,32 +3857,129 @@ impl App {
         }
         host.repaint();
     }
+    fn cancel_selection_drag(&mut self, host: &mut Host) {
+        if let Some((id, _)) = host.selection_drag.take() {
+            if let Some(pane) = self.panes.get_mut(&id) {
+                pane.reset_selection_gesture();
+            }
+            host.mouse_button = None;
+        }
+    }
+
+    fn selection_scroll(&mut self, host: &mut Host, now: Instant) {
+        self.refresh_selection(host, now, true);
+    }
+
+    /// User input resolves its endpoint immediately, including during a batch;
+    /// background ticks wait for synchronized output to become visible.
+    fn refresh_selection(&mut self, host: &mut Host, now: Instant, defer_synchronized: bool) {
+        let Some(&(id, _)) = host.selection_drag.as_ref() else {
+            return;
+        };
+        if host.mouse_button != Some(vt::MouseButton::Left)
+            || !host.visible
+            || host.occluded
+            || host.ui_input()
+            || host.peek.is_some()
+            || self.focused(host.id) != Some(id)
+            || !host.rects.contains_key(&id)
+        {
+            self.cancel_selection_drag(host);
+            return;
+        }
+        let scale = host.window.scale_factor() as f32;
+        let metrics = host.fonts.metrics();
+        let padding = [
+            self.config().window_padding_x.start * scale,
+            (self.config().window_padding_y.start
+                + if self.tab(host.id).is_some_and(|tab| tab.panes.len() > 1) {
+                    18.0
+                } else {
+                    0.0
+                })
+                * scale,
+        ];
+        let Some(pane) = self.panes.get_mut(&id) else {
+            self.cancel_selection_drag(host);
+            return;
+        };
+        let Ok(mut terminal) = pane.session.terminal() else {
+            host.selection_drag = None;
+            return;
+        };
+        let drag = &mut host.selection_drag.as_mut().unwrap().1;
+        if defer_synchronized && let Some(deadline) = pane.sync_output.update(&mut terminal, now) {
+            if drag.deadline.is_some() {
+                drag.deadline = Some(deadline);
+            }
+            return;
+        }
+        let pointer = selection_pointer(
+            &terminal,
+            host.mouse,
+            host.rects[&id],
+            scale,
+            padding,
+            [metrics.cell_width, metrics.cell_height],
+            host.modifiers.state().alt_key(),
+        );
+        let previous = (
+            terminal.screen().viewport_offset,
+            terminal.screen().selection,
+        );
+        if !drag.refresh(
+            &mut terminal,
+            &mut pane.selection_gesture,
+            host.mouse,
+            pointer,
+            now,
+        ) {
+            host.selection_drag = None;
+        }
+        if previous
+            != (
+                terminal.screen().viewport_offset,
+                terminal.screen().selection,
+            )
+        {
+            host.repaint();
+        }
+    }
+
     fn scroll(&mut self, host: &mut Host, delta: MouseScrollDelta) {
+        self.refresh_selection(host, Instant::now(), false);
         if host.modal_input()
             || host.peek.is_some()
             || host.divider_drag.is_some()
-            || self
-                .context
-                .layer_id_at(host.mouse)
-                .is_some_and(|layer| layer.order != egui::Order::Background)
+            || host.selection_drag.is_none()
+                && self
+                    .context
+                    .layer_id_at(host.mouse)
+                    .is_some_and(|layer| layer.order != egui::Order::Background)
         {
             return;
         }
-        if let Some(id) = host.hovered_pane() {
+        if let Some(id) = host
+            .selection_drag
+            .as_ref()
+            .map(|(id, _)| *id)
+            .or_else(|| host.hovered_pane())
+        {
             let mut cursor_keys = None;
-            let mouse = self
-                .panes
-                .get(&id)
-                .and_then(|p| {
-                    p.session.terminal().ok().map(|terminal| {
-                        input::mouse_reporting(
-                            &terminal,
-                            host.modifiers.state(),
-                            self.config().mouse_shift_capture,
-                        )
+            let mouse = host.selection_drag.is_none()
+                && self
+                    .panes
+                    .get(&id)
+                    .and_then(|p| {
+                        p.session.terminal().ok().map(|terminal| {
+                            input::mouse_reporting(
+                                &terminal,
+                                host.modifiers.state(),
+                                self.config().mouse_shift_capture,
+                            )
+                        })
                     })
-                })
-                .unwrap_or(false);
+                    .unwrap_or(false);
             let rows = match delta {
                 MouseScrollDelta::LineDelta(_, y) if mouse => y.abs().ceil().copysign(y) as isize,
                 MouseScrollDelta::LineDelta(_, y) => (y * 3.0).round() as isize,
@@ -3855,7 +4018,7 @@ impl App {
                         if terminal.modes.dec(1) { b'O' } else { b'[' },
                         if rows > 0 { b'A' } else { b'B' },
                     ];
-                    if count != 0 {
+                    if count != 0 && host.selection_drag.is_none() {
                         terminal.screen_mut().selection = None;
                     }
                     cursor_keys = Some(sequence.repeat(count));
@@ -3867,6 +4030,7 @@ impl App {
                 self.write(id, bytes);
             }
         }
+        self.refresh_selection(host, Instant::now(), false);
         host.repaint();
     }
     /// Resolve the same target used by Command-click. Passive motion stays cheap:
@@ -3967,6 +4131,9 @@ impl App {
     }
 
     fn pointer_cursor(&self, host: &Host) -> Option<CursorIcon> {
+        if host.selection_drag.is_some() {
+            return Some(CursorIcon::Text);
+        }
         if host.modal_input()
             || host.peek.is_some()
             || host
@@ -4002,6 +4169,42 @@ impl App {
     }
 
     fn mouse(&mut self, host: &mut Host, action: vt::MouseAction, button: Option<vt::MouseButton>) {
+        if host.selection_drag.is_some() && action != vt::MouseAction::Press {
+            self.refresh_selection(host, Instant::now(), false);
+            let text = if action == vt::MouseAction::Release
+                && button == Some(vt::MouseButton::Left)
+                && let Some((id, _)) = host.selection_drag.take()
+                && let Some(pane) = self.panes.get_mut(&id)
+                && let Ok(terminal) = pane.session.terminal()
+            {
+                // Refresh above has already marked movement and resolved the
+                // endpoint, including content that moved just before mouse-up.
+                let point = terminal
+                    .screen()
+                    .selection
+                    .map(|selection| selection.end)
+                    .or_else(|| pane.selection_gesture.anchor(&terminal));
+                pane.selection_gesture.release(&terminal, point);
+                terminal.screen().selection_text()
+            } else {
+                None
+            };
+            if let Some(text) = text {
+                if matches!(
+                    self.config().copy_on_select,
+                    config::CopyOnSelect::Clipboard | config::CopyOnSelect::Both
+                ) {
+                    host.egui.set_clipboard_text(text.clone());
+                }
+                if matches!(
+                    self.config().copy_on_select,
+                    config::CopyOnSelect::Primary | config::CopyOnSelect::Both
+                ) {
+                    self.set_selection_text(text);
+                }
+            }
+            return;
+        }
         if !host.modal_input()
             && action == vt::MouseAction::Press
             && !matches!(
@@ -4178,9 +4381,7 @@ impl App {
             }
             return;
         }
-        if action == vt::MouseAction::Move
-            && (host.mouse_button != Some(vt::MouseButton::Left) || host.selection_drag.is_none())
-        {
+        if action != vt::MouseAction::Press || button != Some(vt::MouseButton::Left) {
             return;
         }
         let col = (position.x.max(0.0) as usize / metrics.cell_width as usize)
@@ -4193,87 +4394,34 @@ impl App {
             .nth(row)
             .map(|r| vt::GridPoint { row: r.id, col });
         if let Some(point) = point {
-            if action == vt::MouseAction::Press && button == Some(vt::MouseButton::Left) {
-                if host.modifiers.state().super_key() && config.link_url {
-                    pane.selection_gesture.reset(&mut terminal);
-                    host.selection_drag = None;
-                    if let Some(link) = &host.hovered_link
-                        && link.pane == id
-                        && let Some(platform) = &self.platform
-                        && let Err(error) = platform.open_url(&link.uri, &pane.cwd)
-                    {
-                        self.errors.push(error);
-                    }
-                } else {
-                    host.selection_drag = Some(input::SelectionDrag::new(point, host.mouse));
-                    let selection = input::selection_press(
-                        &mut terminal,
-                        &mut pane.selection_gesture,
-                        &mut pane.links,
-                        vt::selection_gesture::Press {
-                            time: Some(pane.started.elapsed().as_nanos() as i128),
-                            point,
-                            xpos: f64::from(surface.x),
-                            ypos: f64::from(surface.y),
-                            max_distance: f64::from(metrics.cell_width),
-                            repeat_interval: Platform::double_click_interval().as_nanos() as u64,
-                            word_boundaries: vt::selection::DEFAULT_WORD_BOUNDARIES,
-                            behaviors: vt::selection_gesture::DEFAULT_BEHAVIORS,
-                        },
-                    );
-                    terminal.screen_mut().selection = selection;
-                }
-            } else if action == vt::MouseAction::Move
-                && host.mouse_button == Some(vt::MouseButton::Left)
-            {
-                if let Some(drag) = &mut host.selection_drag
-                    && let Some(selection) =
-                        drag.update(host.mouse, point, host.modifiers.state().alt_key())
+            if host.modifiers.state().super_key() && config.link_url {
+                pane.selection_gesture.reset(&mut terminal);
+                host.selection_drag = None;
+                if let Some(link) = &host.hovered_link
+                    && link.pane == id
+                    && let Some(platform) = &self.platform
+                    && let Err(error) = platform.open_url(&link.uri, &pane.cwd)
                 {
-                    // Ordinary dragging keeps its existing cell boundaries;
-                    // repeated clicks extend by whole words or lines.
-                    terminal.screen_mut().selection = if pane.selection_gesture.behavior()
-                        == vt::selection_gesture::Behavior::Cell
-                    {
-                        Some(selection)
-                    } else {
-                        pane.selection_gesture.drag(
-                            &terminal,
-                            vt::selection_gesture::Drag {
-                                point,
-                                xpos: f64::from(surface.x),
-                                ypos: f64::from(surface.y),
-                                rectangle: host.modifiers.state().alt_key(),
-                                word_boundaries: vt::selection::DEFAULT_WORD_BOUNDARIES,
-                                geometry: vt::selection_gesture::Geometry {
-                                    columns: u32::from(terminal.cols),
-                                    cell_width: metrics.cell_width,
-                                    padding_left: padding[0] as u32,
-                                    screen_height: (rect.height() * scale) as u32,
-                                },
-                            },
-                        )
-                    };
+                    self.errors.push(error);
                 }
-            } else if action == vt::MouseAction::Release && host.selection_drag.take().is_some() {
-                pane.selection_gesture.release(&terminal, Some(point));
-                let copy = config.copy_on_select;
-                let text = terminal.screen().selection_text();
-                drop(terminal);
-                if let Some(text) = text {
-                    if matches!(
-                        copy,
-                        config::CopyOnSelect::Clipboard | config::CopyOnSelect::Both
-                    ) {
-                        host.egui.set_clipboard_text(text.clone());
-                    }
-                    if matches!(
-                        copy,
-                        config::CopyOnSelect::Primary | config::CopyOnSelect::Both
-                    ) {
-                        self.set_selection_text(text);
-                    }
-                }
+            } else {
+                host.selection_drag = Some((id, input::SelectionDrag::new(point, host.mouse)));
+                let selection = input::selection_press(
+                    &mut terminal,
+                    &mut pane.selection_gesture,
+                    &mut pane.links,
+                    vt::selection_gesture::Press {
+                        time: Some(pane.started.elapsed().as_nanos() as i128),
+                        point,
+                        xpos: f64::from(surface.x),
+                        ypos: f64::from(surface.y),
+                        max_distance: f64::from(metrics.cell_width),
+                        repeat_interval: Platform::double_click_interval().as_nanos() as u64,
+                        word_boundaries: vt::selection::DEFAULT_WORD_BOUNDARIES,
+                        behaviors: vt::selection_gesture::DEFAULT_BEHAVIORS,
+                    },
+                );
+                terminal.screen_mut().selection = selection;
             }
         }
         host.repaint();
@@ -4454,6 +4602,7 @@ impl ApplicationHandler<Event> for App {
                                         handled = true;
                                     }
                                     AccessAction::SetTextSelection => {
+                                        self.cancel_selection_drag(&mut host);
                                         if let Some(ActionData::SetTextSelection(range)) =
                                             &request.data
                                             && let Some(selection) = host.prepared[&id]
@@ -4664,6 +4813,7 @@ impl ApplicationHandler<Event> for App {
                         self.focus_pane(host.id, pane);
                     }
                 } else {
+                    self.cancel_selection_drag(&mut host);
                     host.peek = None;
                     host.modifiers = Modifiers::default();
                     host.consumed_keys.clear();
@@ -4699,6 +4849,7 @@ impl ApplicationHandler<Event> for App {
             WindowEvent::Occluded(occluded) => {
                 host.occluded = occluded;
                 if occluded {
+                    self.cancel_selection_drag(&mut host);
                     host.deadline = None;
                 } else {
                     host.repaint();
@@ -4881,6 +5032,22 @@ impl ApplicationHandler<Event> for App {
         for id in sync_expired {
             self.drain(event_loop, id);
         }
+        let scroll_windows = self
+            .windows
+            .iter()
+            .filter(|(_, host)| {
+                host.selection_drag
+                    .as_ref()
+                    .is_some_and(|(_, drag)| drag.deadline.is_some_and(|deadline| deadline <= now))
+            })
+            .map(|(&window, _)| window)
+            .collect::<Vec<_>>();
+        for window in scroll_windows {
+            if let Some(mut host) = self.windows.remove(&window) {
+                self.selection_scroll(&mut host, now);
+                self.windows.insert(window, host);
+            }
+        }
         let expired = self
             .panes
             .iter_mut()
@@ -4933,6 +5100,13 @@ impl ApplicationHandler<Event> for App {
             .chain(self.smoke.as_ref().map(|_| now + Duration::from_millis(50)))
             .min();
         for host in self.windows.values_mut() {
+            if let Some(deadline) = host
+                .selection_drag
+                .as_ref()
+                .and_then(|(_, drag)| drag.deadline)
+            {
+                next = Some(next.map_or(deadline, |old| old.min(deadline)));
+            }
             if let Some(deadline) = host.deadline {
                 if deadline <= now {
                     host.deadline = None;

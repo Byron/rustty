@@ -432,7 +432,7 @@ impl Smoke {
                     .current_monitor()
                     .and_then(|monitor| monitor.refresh_rate_millihertz())
                     .map(|rate| f64::from(rate) / 1000.0);
-                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
+                let report = serde_json::json!({"passed":true,"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","metal-wgpu-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","drag-selection-scrolling","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
                 fs::write(
                     self.directory.join("result.json"),
                     serde_json::to_vec_pretty(&report)?,
@@ -1700,6 +1700,7 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
         }
         check_click_selection(app, host, focused, hovered)?;
         check_link_hover(app, host, focused, hovered)?;
+        check_selection_scroll(app, host, focused, hovered)?;
         host.mouse = host.rects[&hovered].center();
         let pixels = f64::from(host.fonts.metrics().cell_height) * host.window.scale_factor() / 2.0;
         // Fractional movement, a reversal, then a decaying native momentum tail.
@@ -1961,6 +1962,271 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
     result?;
     eprintln!(
         "Native smoke: trackpad momentum, scrolling, and file drops followed the pointer without changing focus"
+    );
+    Ok(())
+}
+
+fn check_selection_scroll(app: &mut App, host: &mut Host, focused: Id, target: Id) -> Result<()> {
+    let scale = host.window.scale_factor() as f32;
+    let metrics = host.fonts.metrics();
+    let cell = Vec2::new(metrics.cell_width as f32, metrics.cell_height as f32) / scale;
+    let rect = host.rects[&target];
+    let padding = host.prepared[&target].key.options.padding;
+    let origin = rect.min + Vec2::new(padding[0], padding[1]) / scale;
+    let saved_host = (host.focused, host.mouse, host.modifiers);
+    let pane = app.panes.get_mut(&target).unwrap();
+    pane.reset_selection_gesture();
+    let saved_scroll = std::mem::take(&mut pane.scroll);
+    let saved_terminal = {
+        let mut terminal = pane.session.terminal()?;
+        let mut fixture = vt::Terminal::new(terminal.cols, terminal.rows, 128);
+        for row in 0..usize::from(terminal.rows) + 40 {
+            fixture.feed(format!("row {row:03} text\r\n").as_bytes());
+        }
+        fixture.screen_mut().scroll_viewport(10);
+        std::mem::replace(&mut *terminal, fixture)
+    };
+    host.focused = true;
+    host.modifiers = Modifiers::default();
+    let result = (|| -> Result<()> {
+        let pointer_row = usize::from(app.panes[&target].session.terminal()?.rows) / 2;
+        host.mouse = origin + Vec2::new(2.5 * cell.x, (pointer_row as f32 + 0.5) * cell.y);
+        host.mouse_button = Some(vt::MouseButton::Left);
+        app.mouse(host, vt::MouseAction::Press, host.mouse_button);
+        host.mouse.x += 3.0 * cell.x;
+        app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+        let initial = app.panes[&target]
+            .session
+            .terminal()?
+            .screen()
+            .selection
+            .ok_or("drag did not create a selection")?;
+        let pixels = f64::from(metrics.cell_height) * f64::from(scale) / 2.0;
+        for (delta, offset) in [
+            (MouseScrollDelta::LineDelta(0.0, 1.0), 13),
+            (MouseScrollDelta::LineDelta(0.0, -1.0), 10),
+            (MouseScrollDelta::PixelDelta((0.0, pixels / 4.0).into()), 10),
+            (MouseScrollDelta::PixelDelta((0.0, pixels / 4.0).into()), 10),
+            (MouseScrollDelta::PixelDelta((0.0, pixels / 4.0).into()), 10),
+            (MouseScrollDelta::PixelDelta((0.0, pixels / 4.0).into()), 11),
+            (MouseScrollDelta::PixelDelta((0.0, -pixels).into()), 10),
+        ] {
+            app.scroll(host, delta);
+            let terminal = app.panes[&target].session.terminal()?;
+            let screen = terminal.screen();
+            let end = vt::GridPoint {
+                row: screen.viewport().nth(pointer_row).unwrap().id,
+                col: 5,
+            };
+            if screen.viewport_offset != offset
+                || screen.selection != Some(vt::Selection { end, ..initial })
+            {
+                return Err(
+                    format!("stationary drag did not follow wheel scroll: {delta:?}").into(),
+                );
+            }
+        }
+
+        let bounds = host.content;
+        let workspace::Node::Split { axis, ratio, .. } = app.tab(host.id).unwrap().root.kind else {
+            return Err("no divider for selection-scroll check".into());
+        };
+        let mut divider = Pos2::from(bounds.center());
+        match axis {
+            Axis::Horizontal => divider.x = bounds.x + bounds.width * ratio,
+            Axis::Vertical => divider.y = bounds.y + bounds.height * ratio,
+        }
+        app.panes[&focused].session.terminal()?.mouse_mode = 1000;
+        for position in [
+            host.rects[&focused].center(),
+            divider,
+            Pos2::new(-8.0, -8.0),
+        ] {
+            host.mouse = position;
+            app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+            let before = app.panes[&target]
+                .session
+                .terminal()?
+                .screen()
+                .viewport_offset;
+            app.scroll(host, MouseScrollDelta::LineDelta(0.0, 1.0));
+            if app.focused(host.id) != Some(target)
+                || app.panes[&target]
+                    .session
+                    .terminal()?
+                    .screen()
+                    .viewport_offset
+                    != before + 3
+                || app.panes[&focused]
+                    .session
+                    .terminal()?
+                    .screen()
+                    .viewport_offset
+                    != 0
+                || app.panes[&focused].input.len() != 1
+                || app.panes[&target].input.len() != 1
+            {
+                return Err(
+                    "drag scrolling lost capture across a pane, divider, or window edge".into(),
+                );
+            }
+        }
+        app.panes[&focused].session.terminal()?.mouse_mode = 0;
+
+        let now = Instant::now() + Duration::from_secs(1);
+        for (position, rows, tick) in [
+            (Pos2::new(rect.center().x, rect.top()), 1, now),
+            (
+                Pos2::new(rect.center().x, rect.bottom()),
+                -1,
+                now + Duration::from_secs(1),
+            ),
+        ] {
+            host.mouse = position;
+            app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+            let before = app.panes[&target]
+                .session
+                .terminal()?
+                .screen()
+                .viewport_offset;
+            app.selection_scroll(host, tick);
+            let terminal = app.panes[&target].session.terminal()?;
+            if terminal.screen().viewport_offset != before.saturating_add_signed(rows)
+                || terminal.screen().selection.is_none()
+            {
+                return Err("stationary edge drag did not auto-scroll one row".into());
+            }
+        }
+        app.mouse(host, vt::MouseAction::Release, host.mouse_button);
+        host.mouse_button = None;
+        let offset = app.panes[&target]
+            .session
+            .terminal()?
+            .screen()
+            .viewport_offset;
+        app.selection_scroll(host, now + Duration::from_secs(3));
+        if host.selection_drag.is_some()
+            || app.panes[&target]
+                .session
+                .terminal()?
+                .screen()
+                .viewport_offset
+                != offset
+        {
+            return Err("selection auto-scroll continued after release".into());
+        }
+
+        // A release must finalize against live rows even while rendering waits
+        // for synchronized output. Terminal input instead abandons the drag.
+        for synchronized in [true, false] {
+            app.panes
+                .get_mut(&target)
+                .unwrap()
+                .reset_selection_gesture();
+            host.mouse = origin + Vec2::new(2.5 * cell.x, (pointer_row as f32 + 0.5) * cell.y);
+            host.mouse_button = Some(vt::MouseButton::Left);
+            app.mouse(host, vt::MouseAction::Press, host.mouse_button);
+            host.mouse.x += 3.0 * cell.x;
+            app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+            if synchronized {
+                let (selected, expected) = {
+                    let mut terminal = app.panes[&target].session.terminal()?;
+                    let selected = terminal.screen().selection.ok_or("no synchronized drag")?;
+                    terminal.set_mode(true, 2026, true);
+                    terminal.screen_mut().scroll_viewport(1);
+                    let end = vt::GridPoint {
+                        row: terminal.screen().viewport().nth(pointer_row).unwrap().id,
+                        col: 5,
+                    };
+                    (selected, vt::Selection { end, ..selected })
+                };
+                app.selection_scroll(host, Instant::now());
+                if app.panes[&target].session.terminal()?.screen().selection != Some(selected) {
+                    return Err("periodic drag refresh ignored synchronized output".into());
+                }
+                app.mouse(host, vt::MouseAction::Release, host.mouse_button);
+                if app.panes[&target].session.terminal()?.screen().selection != Some(expected) {
+                    return Err("release copied a stale endpoint during synchronized output".into());
+                }
+                app.panes[&target]
+                    .session
+                    .terminal()?
+                    .set_mode(true, 2026, false);
+            } else {
+                app.panes[&target]
+                    .session
+                    .terminal()?
+                    .screen_mut()
+                    .selection = None;
+                app.terminal_input(host, target);
+                app.selection_scroll(host, Instant::now() + Duration::from_secs(1));
+                if app.panes[&target]
+                    .session
+                    .terminal()?
+                    .screen()
+                    .selection
+                    .is_some()
+                {
+                    return Err(
+                        "selection refresh restored a drag cancelled by terminal input".into(),
+                    );
+                }
+            }
+            if host.selection_drag.is_some() {
+                return Err("release or terminal input retained the selection timer".into());
+            }
+            host.mouse_button = None;
+        }
+
+        app.panes
+            .get_mut(&target)
+            .unwrap()
+            .reset_selection_gesture();
+        app.panes[&target]
+            .session
+            .terminal()?
+            .feed(b"\x1b[?1049h\x1b[?1007h\x1b[Halternate text");
+        host.mouse = origin + Vec2::new(2.5 * cell.x, 0.5 * cell.y);
+        host.mouse_button = Some(vt::MouseButton::Left);
+        app.mouse(host, vt::MouseAction::Press, host.mouse_button);
+        host.mouse.x += 3.0 * cell.x;
+        app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+        let selected = app.panes[&target].session.terminal()?.screen().selection;
+        app.scroll(host, MouseScrollDelta::LineDelta(0.0, -1.0));
+        if selected.is_none()
+            || app.panes[&target].session.terminal()?.screen().selection != selected
+            || app.panes[&target].input.back().map(Vec::as_slice) != Some(b"\x1b[B\x1b[B\x1b[B")
+        {
+            return Err("alternate scrolling cleared a held selection or lost cursor keys".into());
+        }
+        app.cancel_selection_drag(host);
+        app.panes[&target]
+            .session
+            .terminal()?
+            .feed(b"\x1b[?1000h\x1b[?1006h");
+        host.mouse_button = Some(vt::MouseButton::Left);
+        app.mouse(host, vt::MouseAction::Press, host.mouse_button);
+        host.mouse.y = rect.top();
+        app.mouse(host, vt::MouseAction::Move, host.mouse_button);
+        app.selection_scroll(host, now + Duration::from_secs(4));
+        if host.selection_drag.is_some() || app.panes[&target].input.len() < 3 {
+            return Err("application mouse capture became a local selection drag".into());
+        }
+        Ok(())
+    })();
+    app.cancel_selection_drag(host);
+    let pane = app.panes.get_mut(&target).unwrap();
+    *pane.session.terminal()? = saved_terminal;
+    pane.scroll = saved_scroll;
+    pane.input.truncate(1);
+    pane.input_bytes = 0;
+    app.panes[&focused].session.terminal()?.mouse_mode = 0;
+    app.focus_pane(host.id, focused);
+    (host.focused, host.mouse, host.modifiers) = saved_host;
+    host.mouse_button = None;
+    result?;
+    eprintln!(
+        "Native smoke: selection followed wheel scrolling and timed pane-edge scrolling through release"
     );
     Ok(())
 }
