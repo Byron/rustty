@@ -25,6 +25,8 @@ pub enum Effect {
         title: Vec<u8>,
         body: Vec<u8>,
     },
+    /// Private pane-local metadata, enabled by `Terminal::agent_status_events`.
+    AgentStatus(crate::agent::Event),
     /// Rustty host extension, enabled by `Terminal::shell_command_events`.
     CommandStart,
     /// Rustty host extension, enabled by `Terminal::shell_command_events`.
@@ -114,6 +116,9 @@ pub struct Terminal {
     /// compatibility; application sessions opt in. Retained through reset,
     /// but not persisted in terminal snapshots.
     pub shell_command_events: bool,
+    /// Emit private OSC 777 agent metadata. Application sessions opt in; retained
+    /// through reset, but neither this setting nor agent status enters snapshots.
+    pub agent_status_events: bool,
     /// Report ANSI mode 20 changes to the PTY writer, including RIS. Retained
     /// through reset, but not snapshots; standalone VT clients opt in.
     pub linefeed_mode_events: bool,
@@ -191,6 +196,7 @@ impl Terminal {
             query_defaults: query::Defaults::default(),
             title_report: false,
             shell_command_events: false,
+            agent_status_events: false,
             linefeed_mode_events: false,
             visible: true,
             clipboard_write_limit: 64 * 1024 * 1024,
@@ -620,6 +626,7 @@ impl Terminal {
         let query_defaults = self.query_defaults.clone();
         let title_report = self.title_report;
         let shell_command_events = self.shell_command_events;
+        let agent_status_events = self.agent_status_events;
         let linefeed_mode_events = self.linefeed_mode_events;
         let synchronized_output_generation = self.synchronized_output_generation;
         let visible = self.visible;
@@ -665,6 +672,7 @@ impl Terminal {
         self.query_defaults = query_defaults;
         self.title_report = title_report;
         self.shell_command_events = shell_command_events;
+        self.agent_status_events = agent_status_events;
         self.linefeed_mode_events = linefeed_mode_events;
         self.synchronized_output_generation = synchronized_output_generation;
         self.visible = visible;
@@ -2532,6 +2540,14 @@ impl Terminal {
                 }
             }
             777 => {
+                if let Some(payload) = data.strip_prefix(b"rustty-agent;") {
+                    if self.agent_status_events
+                        && let Some(event) = crate::agent::Event::decode(payload)
+                    {
+                        effects.push(Effect::AgentStatus(event));
+                    }
+                    return;
+                }
                 if let Some(notification) = data.strip_prefix(b"notify;")
                     && let Some(split) = notification.iter().position(|&b| b == b';')
                 {

@@ -133,6 +133,7 @@ impl Session {
         );
         terminal.terminfo_name = terminfo_name;
         terminal.shell_command_events = true;
+        terminal.agent_status_events = true;
         terminal.linefeed_mode_events = true;
         terminal.query_defaults.color_scheme = options.color_scheme;
         terminal.query_defaults.focused = Some(options.focused);
@@ -1194,17 +1195,38 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn activity_title_effects_keep_their_order_around_command_boundaries() {
+        use rustty_vt::agent;
+
+        let mut stream = b"\x1b]133;C\x07\x1b]0;working\x07".to_vec();
+        stream.extend(
+            agent::Event::from_json(br#"{"op":"begin","state":"idle"}"#)
+                .unwrap()
+                .frame()
+                .unwrap(),
+        );
+        stream.extend(
+            agent::Event::from_json(br#"{"op":"update","state":"working"}"#)
+                .unwrap()
+                .frame()
+                .unwrap(),
+        );
+        stream.extend_from_slice(b"\x1b]9;4;1;23\x07");
+        stream.extend(agent::Event::End.frame().unwrap());
+        stream.extend_from_slice(b"\x1b]133;D;0\x07\x1b]0;ready\x07");
+        let escaped: String = stream.iter().map(|byte| format!("\\{byte:03o}")).collect();
         let session = Session::spawn(
             &Config::default(),
             SessionOptions {
                 command: Some(Command::Direct(vec![
-                    "/bin/sh".into(), "-c".into(),
-                    r"printf '\033]133;C\007\033]0;working\007\033]9;4;1;23\007\033]133;D;0\007\033]0;ready\007'".into(),
+                    "/bin/sh".into(),
+                    "-c".into(),
+                    format!("printf '{escaped}'"),
                 ])),
                 ..SessionOptions::default()
             },
             Arc::new(|| {}),
-        ).unwrap();
+        )
+        .unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
         let mut effects = Vec::new();
         let mut closed = false;
@@ -1219,6 +1241,14 @@ mod tests {
                     SessionEvent::Effect(Effect::Progress { state, .. }) => {
                         effects.push(format!("progress:{state}"))
                     }
+                    SessionEvent::Effect(Effect::AgentStatus(event)) => effects.push(match event {
+                        agent::Event::Begin(_) => "agent:begin".into(),
+                        agent::Event::Update(snapshot) => {
+                            assert_eq!(snapshot.state, agent::State::Working);
+                            "agent:working".into()
+                        }
+                        agent::Event::End => "agent:end".into(),
+                    }),
                     SessionEvent::OutputClosed => closed = true,
                     SessionEvent::Error(error) => panic!("{error}"),
                     _ => {}
@@ -1231,7 +1261,16 @@ mod tests {
         assert!(closed, "child did not finish its terminal output");
         assert_eq!(
             effects,
-            ["start", "title:working", "progress:1", "end", "title:ready"]
+            [
+                "start",
+                "title:working",
+                "agent:begin",
+                "agent:working",
+                "progress:1",
+                "agent:end",
+                "end",
+                "title:ready"
+            ]
         );
     }
 
