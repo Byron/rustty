@@ -26,7 +26,10 @@ rustty agent-sim --state working --interval 10
 `--interval` accepts 0.05–86400 seconds. `--state done` keeps the same completion
 identity on every signal, so local acknowledgement still projects it as idle;
 cycling generates a new completion on each lap. Each simulator has its own
-thread ID and uses the label “Agent sim 🦀”. It performs no agent work or model
+thread ID and emits the label “Agent sim 🦀”; dashboard text uses the local
+directory/worktree task slug. Pane/tab titles do not override it.
+`rustty stream-deck-legend` prints the icon meanings and
+controls separately. The simulator performs no agent work or model
 calls and changes no settings. Ctrl-C and macOS SIGTERM send end from the main
 loop. macOS Ctrl-Z sends end before suspension and begin on resume. Windows
 Ctrl-C/Break uses the same ordered cleanup; forced termination or console close

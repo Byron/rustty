@@ -129,7 +129,7 @@ impl Report {
             self.acknowledged.pop_front();
         }
     }
-    pub fn view(&self, pane: Id, fallback: &str, _activity: &Activity) -> Option<PaneView> {
+    pub fn view(&self, pane: Id, task_label: &str, _activity: &Activity) -> Option<PaneView> {
         let snapshot = self.snapshot.as_ref()?;
         let acknowledged = snapshot.state == State::Done
             && self.acknowledged.iter().any(|(thread, turn)| {
@@ -146,13 +146,7 @@ impl Report {
                 generation: self.generation,
             },
             state,
-            label: snapshot
-                .label
-                .as_deref()
-                .filter(|s| !s.is_empty())
-                .or(snapshot.thread_id.as_deref().filter(|s| !s.is_empty()))
-                .unwrap_or(fallback)
-                .to_owned(),
+            label: task_label.to_owned(),
         })
     }
 }
@@ -243,7 +237,8 @@ impl Dashboard {
                     }
                 }
                 let label = report.map_or_else(String::new, |r| {
-                    if names.get(r.label.as_str()).copied().unwrap_or(0) > 1 {
+                    if !r.label.is_empty() && names.get(r.label.as_str()).copied().unwrap_or(0) > 1
+                    {
                         format!("{} ·{}", r.label, slot + 1)
                     } else {
                         r.label.clone()
@@ -428,6 +423,46 @@ mod tests {
                 );
             }
         }
+    }
+    #[test]
+    fn tile_labels_use_local_task_names_without_changing_report_identity() {
+        let mut report = Report::default();
+        let activity = Activity::default();
+        let mut first = snapshot(State::Working, "opaque-thread-a", None);
+        first.label = Some("A long description supplied by the reporting program".into());
+        report.apply(Event::Begin(first), 7, false);
+        let initial = report.view(1, "foo-bar", &activity).unwrap();
+        assert_eq!(initial.label, "foo-bar");
+        let mut second = snapshot(State::Done, "opaque-thread-b", Some("turn-1"));
+        second.label = Some("Completely different conversation prose".into());
+        report.apply(Event::Update(second), 8, false);
+        let updated = report.view(1, "foo-bar", &activity).unwrap();
+        assert_eq!(updated.label, "foo-bar");
+        assert!(report.view(1, "", &activity).unwrap().label.is_empty());
+        assert_eq!(updated.target, initial.target);
+        assert_eq!(updated.state, State::Done);
+
+        let (mut workspace, mut reports) = setup(2);
+        for view in reports.values_mut() {
+            view.label = "foo-bar".into();
+        }
+        let mut dashboard = Dashboard::default();
+        dashboard.update(&mut workspace, &reports, None);
+        assert_eq!(dashboard.board.tile(0).label, "foo-bar ·1");
+        assert_eq!(dashboard.board.tile(1).label, "foo-bar ·2");
+        let positions = workspace.deck_positions.clone();
+        let capture = dashboard.board.tile(0).capture;
+        reports.get_mut(&positions[0].unwrap()).unwrap().state = State::Done;
+        dashboard.update(&mut workspace, &reports, positions[1]);
+        assert_eq!(workspace.deck_positions, positions);
+        assert_eq!(dashboard.board.tile(0).capture, capture);
+        assert_eq!(dashboard.board.tile(0).label, "foo-bar ·1");
+        for view in reports.values_mut() {
+            view.label.clear();
+        }
+        dashboard.update(&mut workspace, &reports, positions[1]);
+        assert!(dashboard.board.tile(0).label.is_empty());
+        assert!(dashboard.board.tile(1).label.is_empty());
     }
     #[test]
     fn acknowledgements_are_bounded_per_thread() {

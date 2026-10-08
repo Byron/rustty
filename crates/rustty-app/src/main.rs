@@ -17,6 +17,7 @@ fn main() {
     let cli_result = match std::env::args().nth(1).as_deref() {
         Some("agent-status") => Some(agent_cli::run(std::env::args().skip(2))),
         Some("agent-sim") => Some(agent_sim::run(std::env::args().skip(2))),
+        Some("stream-deck-legend") => Some(agent_cli::legend(std::env::args().skip(2))),
         _ => None,
     };
     if let Some(result) = cli_result {

@@ -10,6 +10,58 @@ done requires --turn-id. Every begin/update replaces the complete snapshot.
 Output must be this process's terminal stdout. --raw permits captured fixture output.
 One serialized reporter may own a pane; always emit end on normal cleanup.";
 
+const DECK_LEGEND: &str = "Rustty Stream Deck legend (5 × 3)
+
+Agent keys: large status icon, with a short worktree task slug below when available.
+For example, gitoxide.foo-bar becomes foo-bar. Long slugs are shortened to fit.
+
+  ▂█▅  Working       Blue activity bars
+   !   Needs input   Amber; a pending question does not mean all work stopped
+   ✓   Done          Green; a completed turn ready to inspect, not proof of success
+   ●   Idle          Neutral dot; also a locally acknowledged completion
+   ×   Error         Red cross
+   Ⅱ   Paused        Neutral pause bars
+   ○   Unknown       Neutral hollow circle; insufficient or lost status
+   —   Inactive      Dim dash, underlined when reserved; no focus target
+   ⇄   Move          Purple arrows/outline; select the swap destination
+
+A small mint line at the top marks the focused pane, independently of status.
+
+Fixed board:
+  Agent 1   Agent 2   Agent 3       ! Input     ▂█▅ Working
+  Agent 4   Agent 5   Agent 6       ✓ Done       ● Idle
+  Agent 7   Agent 8   Agent 9       ☀ Light      › Page
+
+The four state keys cycle matching panes across all windows, tabs and pages.
+Their numbers count matches; an empty group is dimmed and does nothing.
+Light shows the selected brightness: 100 → 25 → 50 → 75 → 100%.
+Page shows current/total; tap to advance and wrap.
+
+Tap an agent to reveal its exact pane. Revealing Done acknowledges it locally.
+Hold an agent for two seconds, then press another agent slot to swap or move it.
+Press the source again to cancel. Empty/reserved destinations accept swaps.
+In move mode Page and Light still work; the four state-cycle keys are disabled.
+Keys never approve requests or send input to an agent.
+
+With no reporting sessions the RUS/TTY/🦀💻✨/TTY/RUS board is decorative and inert.
+This command prints a reference only; it does not connect to the USB device.
+";
+
+pub fn legend(args: impl IntoIterator<Item = String>) -> Result<(), String> {
+    let mut args = args.into_iter();
+    if args
+        .next()
+        .is_some_and(|arg| !matches!(arg.as_str(), "--help" | "-h"))
+        || args.next().is_some()
+    {
+        return Err("Usage: rustty stream-deck-legend".into());
+    }
+    io::stdout()
+        .lock()
+        .write_all(DECK_LEGEND.as_bytes())
+        .map_err(|error| error.to_string())
+}
+
 enum Command {
     Help,
     Emit { frame: Vec<u8>, raw: bool },

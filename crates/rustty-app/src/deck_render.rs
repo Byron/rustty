@@ -16,7 +16,6 @@ pub enum Visual {
         moving: bool,
     },
     Function {
-        label: String,
         value: String,
         mark: Mark,
         dim: bool,
@@ -63,7 +62,7 @@ impl Renderer {
         };
         Ok(Self {
             label: fonts(10.5)?,
-            number: fonts(16.0)?,
+            number: fonts(13.0)?,
             large: fonts(32.0)?,
             size: size.0 as u32,
         })
@@ -137,42 +136,38 @@ impl Renderer {
                 ..
             } => {
                 let lines = wrap_label(&mut self.label, label, 52.0 * scale)?;
-                let top = if lines.len() == 1 { 23.0 } else { 18.0 };
+                let top = if lines.len() == 1 { 51.0 } else { 44.0 };
                 for (i, label) in lines.iter().enumerate() {
                     draw_text(
                         &mut self.label,
                         &mut image,
                         label,
-                        (9.0, top + i as f32 * 12.0, 54.0, 13.0),
+                        (10.0, top + i as f32 * 10.0, 52.0, 10.0),
                         text,
                     )?;
                 }
-                if *moving {
-                    draw_text(
-                        &mut self.label,
-                        &mut image,
-                        "MOVE ↔",
-                        (10.0, 48.0, 52.0, 14.0),
-                        MOVE,
-                    )?;
+                let center = if label.is_empty() {
+                    (36.0, 36.0)
                 } else {
-                    draw_mark(&mut image, *state, (36.0, 53.0), signal);
+                    (36.0, 28.0)
+                };
+                if *moving {
+                    draw_swap(&mut image, center, MOVE);
+                } else {
+                    draw_mark(&mut image, *state, center, signal);
                     if *reserved {
-                        line(&mut image, (31.0, 63.0), (41.0, 63.0), 1.0, NEUTRAL);
+                        line(
+                            &mut image,
+                            (26.0, center.1 + 6.0),
+                            (46.0, center.1 + 6.0),
+                            1.0,
+                            NEUTRAL,
+                        );
                     }
                 }
             }
-            Visual::Function {
-                label, value, mark, ..
-            } => {
-                draw_text(
-                    &mut self.label,
-                    &mut image,
-                    label,
-                    (7.0, 13.0, 58.0, 15.0),
-                    text,
-                )?;
-                let value_font = if text_width(&mut self.number, value)? > 43.0 * scale {
+            Visual::Function { value, mark, .. } => {
+                let value_font = if text_width(&mut self.number, value)? > 52.0 * scale {
                     &mut self.label
                 } else {
                     &mut self.number
@@ -181,36 +176,28 @@ impl Renderer {
                     value_font,
                     &mut image,
                     value,
-                    (19.0, 33.0, 45.0, 24.0),
+                    (10.0, 49.0, 52.0, 14.0),
                     text,
                 )?;
+                let ink = if dim { [82, 86, 90] } else { signal };
                 match mark {
-                    Mark::State(state) => draw_mark(
-                        &mut image,
-                        Some(*state),
-                        (14.0, 45.0),
-                        if dim {
-                            [82, 86, 90]
-                        } else {
-                            color(Some(*state))
-                        },
-                    ),
+                    Mark::State(state) => draw_mark(&mut image, Some(*state), (36.0, 28.0), ink),
                     Mark::Brightness => {
-                        circle(&mut image, (14.0, 45.0), 3.0, 1.1, NEUTRAL);
+                        circle(&mut image, (36.0, 28.0), 7.0, 2.4, ink);
                         for i in 0..8 {
                             let angle = i as f32 * std::f32::consts::FRAC_PI_4;
                             line(
                                 &mut image,
-                                (14.0 + angle.cos() * 5.0, 45.0 + angle.sin() * 5.0),
-                                (14.0 + angle.cos() * 7.0, 45.0 + angle.sin() * 7.0),
-                                1.0,
-                                NEUTRAL,
+                                (36.0 + angle.cos() * 12.0, 28.0 + angle.sin() * 12.0),
+                                (36.0 + angle.cos() * 16.0, 28.0 + angle.sin() * 16.0),
+                                2.2,
+                                ink,
                             );
                         }
                     }
                     Mark::Page => {
-                        line(&mut image, (10.0, 40.0), (16.0, 45.0), 1.6, NEUTRAL);
-                        line(&mut image, (16.0, 45.0), (10.0, 50.0), 1.6, NEUTRAL);
+                        line(&mut image, (29.0, 15.0), (43.0, 28.0), 3.6, ink);
+                        line(&mut image, (43.0, 28.0), (29.0, 41.0), 3.6, ink);
                     }
                 }
             }
@@ -291,35 +278,69 @@ fn draw_mark(image: &mut RgbImage, state: Option<State>, center: (f32, f32), col
     let (x, y) = center;
     match state {
         Some(State::Working) => {
-            for (dx, height) in [(-4.0, 5.0), (0.0, 10.0), (4.0, 7.0)] {
+            for (dx, height) in [(-10.0, 13.0), (0.0, 27.0), (10.0, 20.0)] {
                 line(
                     image,
-                    (x + dx, y - height / 2.0),
-                    (x + dx, y + height / 2.0),
-                    2.0,
+                    (x + dx, y + 13.5 - height),
+                    (x + dx, y + 13.5),
+                    4.2,
                     color,
                 );
             }
         }
         Some(State::NeedsInput) => {
-            line(image, (x, y - 6.0), (x, y + 1.0), 2.7, color);
-            line(image, (x, y + 5.0), (x, y + 5.0), 2.8, color);
+            line(image, (x, y - 13.0), (x, y + 4.0), 5.0, color);
+            line(image, (x, y + 12.0), (x, y + 12.0), 5.5, color);
         }
         Some(State::Done) => {
-            line(image, (x - 5.0, y), (x - 1.0, y + 4.0), 2.4, color);
-            line(image, (x - 1.0, y + 4.0), (x + 6.0, y - 5.0), 2.4, color);
+            line(image, (x - 13.0, y), (x - 3.0, y + 10.0), 4.4, color);
+            line(image, (x - 3.0, y + 10.0), (x + 14.0, y - 12.0), 4.4, color);
         }
         Some(State::Error) => {
-            line(image, (x - 4.0, y - 4.0), (x + 4.0, y + 4.0), 2.4, color);
-            line(image, (x + 4.0, y - 4.0), (x - 4.0, y + 4.0), 2.4, color);
+            line(
+                image,
+                (x - 11.0, y - 11.0),
+                (x + 11.0, y + 11.0),
+                4.4,
+                color,
+            );
+            line(
+                image,
+                (x + 11.0, y - 11.0),
+                (x - 11.0, y + 11.0),
+                4.4,
+                color,
+            );
         }
         Some(State::Paused) => {
-            line(image, (x - 3.0, y - 5.0), (x - 3.0, y + 5.0), 2.4, color);
-            line(image, (x + 3.0, y - 5.0), (x + 3.0, y + 5.0), 2.4, color);
+            line(image, (x - 7.0, y - 12.0), (x - 7.0, y + 12.0), 5.0, color);
+            line(image, (x + 7.0, y - 12.0), (x + 7.0, y + 12.0), 5.0, color);
         }
-        Some(State::Unknown) => circle(image, center, 4.0, 1.6, color),
-        Some(State::Idle) => line(image, center, center, 4.0, color),
-        None => line(image, (x - 5.0, y), (x + 5.0, y), 1.5, [86, 92, 98]),
+        Some(State::Unknown) => circle(image, center, 12.0, 3.0, color),
+        Some(State::Idle) => line(image, center, center, 17.0, color),
+        None => line(image, (x - 12.0, y), (x + 12.0, y), 2.5, [86, 92, 98]),
+    }
+}
+
+fn draw_swap(image: &mut RgbImage, center: (f32, f32), color: [u8; 3]) {
+    let (x, y) = center;
+    for direction in [-1.0, 1.0] {
+        let tip = (x + direction * 14.0, y - direction * 6.0);
+        line(image, (x - direction * 14.0, tip.1), tip, 3.0, color);
+        line(
+            image,
+            (tip.0 - direction * 6.0, tip.1 - 6.0),
+            tip,
+            3.0,
+            color,
+        );
+        line(
+            image,
+            (tip.0 - direction * 6.0, tip.1 + 6.0),
+            tip,
+            3.0,
+            color,
+        );
     }
 }
 
@@ -359,10 +380,12 @@ fn wrap_label(fonts: &mut FontSystem, text: &str, width: f32) -> Result<Vec<Stri
             }
             line.push_str(&ending);
         } else if end < graphemes.len()
-            && let Some(space) = graphemes[offset..end].iter().rposition(|part| *part == " ")
-            && space > 0
+            && let Some(boundary) = graphemes[offset..end]
+                .iter()
+                .rposition(|part| matches!(*part, " " | "-" | "_"))
+            && boundary > 0
         {
-            end = offset + space + 1;
+            end = offset + boundary + 1;
             line = graphemes[offset..end].concat();
         }
         lines.push(line.trim().to_string());
@@ -493,6 +516,14 @@ mod tests {
     #[test]
     fn labels_wrap_at_graphemes_without_shrinking() {
         let mut renderer = Renderer::new((72, 72)).unwrap();
+        assert_eq!(
+            wrap_label(&mut renderer.label, "foo-bar", 52.0).unwrap(),
+            ["foo-bar"]
+        );
+        let slug = wrap_label(&mut renderer.label, "foo-bar-baz-quux", 52.0).unwrap();
+        assert_eq!(slug.len(), 2);
+        assert!(slug[0].ends_with('-'));
+        assert!("foo-bar-baz-quux".starts_with(slug.concat().trim_end_matches('…')));
         let lines = wrap_label(
             &mut renderer.label,
             "Review e\u{301} 👩‍💻 Δ a very long thread label",
@@ -504,12 +535,7 @@ mod tests {
         for line in lines {
             assert!(text_width(&mut renderer.label, &line).unwrap() <= 52.0);
         }
-        let lines = wrap_label(
-            &mut renderer.label,
-            "Long duplicated thread label ·4096",
-            52.0,
-        )
-        .unwrap();
+        let lines = wrap_label(&mut renderer.label, "long-worktree-task-slug ·4096", 52.0).unwrap();
         assert!(lines[1].ends_with("… ·4096"));
         assert!(text_width(&mut renderer.label, &lines[1]).unwrap() <= 52.0);
         let visual = Visual::Agent {

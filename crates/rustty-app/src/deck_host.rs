@@ -11,6 +11,35 @@ use std::{
 
 type Discovery = JoinHandle<std::result::Result<Option<Candidate>, String>>;
 
+fn task_label(terminal_title: &str, cwd: &std::path::Path) -> String {
+    fn clean(value: &str) -> Option<String> {
+        let value: String = value.chars().filter(|c| !c.is_control()).collect();
+        let value = value.trim();
+        (!value.is_empty()).then(|| value.to_owned())
+    }
+    let name = (|| {
+        let title = clean(terminal_title)?;
+        // A known directory name can identify the worktree above a nested cwd.
+        // Arbitrary status prose from OSC titles does not name the task.
+        cwd.ancestors().find_map(|ancestor| {
+            let name = ancestor.file_name()?.to_string_lossy();
+            (title == name || title == ancestor.as_os_str().to_string_lossy())
+                .then(|| clean(&name))
+                .flatten()
+        })
+    })()
+    .or_else(|| {
+        cwd.file_name()
+            .and_then(|name| clean(&name.to_string_lossy()))
+    })
+    .unwrap_or_default();
+    // This is the local project.task naming convention, without Git discovery.
+    match name.split_once('.') {
+        Some((project, task)) if !project.is_empty() && !task.is_empty() => task.trim().to_owned(),
+        _ => name,
+    }
+}
+
 pub(super) struct Connection {
     pub report_generation: u64,
     dashboard: Dashboard,
@@ -109,17 +138,9 @@ impl App {
                     .into_iter()
                     .filter_map(|id| {
                         let pane = self.panes.get(&id)?;
-                        let fallback = pane
-                            .title_override
-                            .as_deref()
-                            .filter(|s| !s.is_empty())
-                            .or(tab.title.as_deref().filter(|s| !s.is_empty()))
-                            .map(str::to_owned)
-                            .unwrap_or_else(|| {
-                                directory_name(&pane.cwd).unwrap_or_else(|| "Terminal".into())
-                            });
+                        let label = task_label(&pane.title, &pane.cwd);
                         pane.agent
-                            .view(id, &fallback, &pane.activity)
+                            .view(id, &label, &pane.activity)
                             .map(|view| (id, view))
                     })
                     .collect::<Vec<_>>()
@@ -499,6 +520,44 @@ fn discovery_deadline(now: Instant, previous: Option<Instant>) -> Instant {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn task_labels_follow_local_project_task_names() {
+        use std::path::Path;
+        for (directory, expected) in [
+            ("/work/gitoxide.foo-bar", "foo-bar"),
+            ("/work/gitoxide.foo.bar", "foo.bar"),
+            ("/work/gitoxide", "gitoxide"),
+            ("/work/.config", ".config"),
+            ("/work/gitoxide.", "gitoxide."),
+            ("/work/répo.修复🔧", "修复🔧"),
+            ("", ""),
+            ("/", ""),
+        ] {
+            assert_eq!(task_label("", Path::new(directory)), expected);
+        }
+        let nested = Path::new("/work/gitoxide.foo-bar/crates/parser");
+        for title in ["gitoxide.foo-bar", "/work/gitoxide.foo-bar"] {
+            assert_eq!(task_label(title, nested), "foo-bar");
+        }
+        for title in [
+            "⠋ Working",
+            "[ ! ] Action Required | Codex",
+            "opaque-thread-id",
+            "repo.manual",
+            "repo.tab",
+        ] {
+            assert_eq!(task_label(title, nested), "parser");
+            assert_eq!(
+                task_label(title, Path::new("/work/gitoxide.foo-bar")),
+                "foo-bar"
+            );
+        }
+        assert_eq!(
+            task_label("", Path::new("/work/ \nrepo.修复\u{1b}🔧\t ")),
+            "修复🔧"
+        );
+        assert_eq!(task_label("\n\t", Path::new("/work/task")), "task");
+    }
     #[test]
     fn absent_device_has_no_resident_worker_and_reloads_cannot_accelerate_discovery() {
         let now = Instant::now();

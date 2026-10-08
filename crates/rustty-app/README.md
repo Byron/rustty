@@ -13,6 +13,8 @@ See [setup, controls, preview and limitations](../../docs/rustty/stream-deck.md)
 and the [private status protocol and demo](../../docs/rustty-agent-status.md).
 Run `rustty agent-sim` in a pane to test without an agent; use `--state working`
 for a fixed state or `--interval 0.5` for a faster cycle. Ctrl-C unregisters it.
+Tiles use large icons with short worktree task slugs; run
+`rustty stream-deck-legend` for the symbol meanings and controls.
 Automatic Codex status requires the companion TUI build with
 `tui.terminal_status = "rustty"`; stock notifications alone do not register panes.
 

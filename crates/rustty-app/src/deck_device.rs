@@ -223,22 +223,12 @@ fn keys(board: &Board, layout: Layout, moving: Option<&Capture>, brightness: u8)
             binding: Binding::Agent(tile.capture),
         };
     }
-    for (group, (label, state)) in [
-        ("Input", State::NeedsInput),
-        ("Working", State::Working),
-        ("Done", State::Done),
-        ("Idle", State::Idle),
-    ]
-    .into_iter()
-    .enumerate()
+    for (group, state) in [State::NeedsInput, State::Working, State::Done, State::Idle]
+        .into_iter()
+        .enumerate()
     {
         keys[layout.function_key(group)] = Key {
             visual: Visual::Function {
-                label: if moving.is_some() {
-                    "Moving".into()
-                } else {
-                    label.into()
-                },
                 value: board.counts[group].to_string(),
                 mark: Mark::State(state),
                 dim: moving.is_some() || board.counts[group] == 0,
@@ -251,7 +241,6 @@ fn keys(board: &Board, layout: Layout, moving: Option<&Capture>, brightness: u8)
     }
     keys[layout.function_key(4)] = Key {
         visual: Visual::Function {
-            label: "Light".into(),
             value: format!("{brightness}%"),
             mark: Mark::Brightness,
             dim: false,
@@ -260,7 +249,6 @@ fn keys(board: &Board, layout: Layout, moving: Option<&Capture>, brightness: u8)
     };
     keys[layout.function_key(5)] = Key {
         visual: Visual::Function {
-            label: "Page".into(),
             value: format!("{}/{}", board.page + 1, board.pages()),
             mark: Mark::Page,
             dim: board.pages() == 1,
@@ -596,7 +584,14 @@ pub fn preview(path: &std::path::Path) -> Result<(), String> {
                 layout_generation: 1,
             },
             label: [
-                "Build Δ", "Review", "Ready", "Shell", "Failed", "Paused", "Unknown", "Reserved",
+                "foo-bar",
+                "fix-login",
+                "api-cache",
+                "schema-v2",
+                "long-worktree-task-slug ·2",
+                "e\u{301}-👩‍💻-Δ",
+                "foo-bar ·2",
+                "old-task",
                 "",
             ][slot]
                 .into(),

@@ -52,6 +52,27 @@ For a disposable reporter, run `rustty agent-sim` inside a Rustty pane. It cycle
 all seven states every three seconds; `--state working` holds one state and
 `--interval 0.5` changes the reporting cadence. Ctrl-C unregisters it.
 See [protocol, simulator and demo](../rustty-agent-status.md).
+For the icon meanings and controls, print a separate reference in any terminal:
+
+```sh
+target/debug/rustty stream-deck-legend
+```
+
+The legend does not open the device or start a desktop window. Agent and function
+keys use large icons instead of state/function words. Function keys retain their
+small counts, brightness percentage and page indicator. An agent's remaining
+space holds a short task slug with margins; long names wrap and shorten by
+grapheme rather than shrinking the font.
+
+Names come from the pane's directory, independently of pane/tab titles, reporter
+prose or opaque thread IDs. A terminal title that exactly names a directory in
+the pane's path can identify the worktree above a nested working directory;
+otherwise the current directory name is used. The `project.task` naming convention
+strips the first prefix: `gitoxide.foo-bar` becomes `foo-bar`, and
+`gitoxide.foo.bar` becomes `foo.bar`. Names without a dot stay whole. Leading-dot
+names are retained. This is name formatting, not a Git
+worktree scan; a plain dotted directory follows the same convention.
+
 The source and test previews use actual 72×72 key images:
 
 ![Stream Deck contact sheet](stream-deck-preview.png)
@@ -60,9 +81,9 @@ The source and test previews use actual 72×72 key images:
 
 | Agent | Agent | Agent | Function | Function |
 |---|---|---|---|---|
-| 1 | 2 | 3 | Input: count | Working: count |
-| 4 | 5 | 6 | Done: count | Idle: count |
-| 7 | 8 | 9 | Bright: level | Page: current/total |
+| 1 | 2 | 3 | ! count | ▂█▅ count |
+| 4 | 5 | 6 | ✓ count | ● count |
+| 7 | 8 | 9 | ☀ level | › current/total |
 
 The left 3×3 region holds nine logical slots per page. Physical indexes come from
 the driver's layout metadata (agents 0,1,2,5,6,7,10,11,12; functions 3,4,8,9,13,14).
@@ -75,7 +96,7 @@ to enter move mode; release does not focus or cancel. The next fresh agent-key
 press swaps assignments, including empty slots and inactive reservations. Press
 the same logical source slot to cancel. The destination may be pressed while the
 source is still held; already-held keys are not fresh destinations. Releases are
-consumed. The source label remains visible with a distinct MOVE outline/mark.
+consumed. The source slug remains visible with purple ⇄ swap arrows and outline.
 
 During move mode **Page and Brightness still work**. The four state-cycle keys
 are dimmed and disabled. Function keys cannot be moved. Page advances/wraps and
@@ -204,7 +225,7 @@ research checkout), clean Codex `my-queue` at `1f0b5a95`, and clean prototype
 `de2625de`. No Ghostty production source, installed application or global Codex
 configuration was changed.
 
-- macOS arm64: full Rustty workspace/all-features run passed **596 tests**, with
+- macOS arm64: full Rustty workspace/all-features run passed **598 tests**, with
   5 explicitly ignored tests; strict workspace/all-targets/all-features Clippy
   and formatting passed. Protocol, lifecycle, layout, gesture, renderer and fake
   device behavior are covered.
@@ -281,3 +302,8 @@ HID owner thread is an allowed fallback if a future backend requires it.
 The user also physically unplugged/replugged the MK.2 and confirmed automatic
 board restoration with the selected **25% brightness**. The isolated Rustty
 controller was left running afterward and later closed by the user.
+
+The later icon-first artwork update was checked using the physical-size contact
+sheet, label/layout tests, captured legend CLI output and Windows compilation. Earlier physical checks cover
+the controls and device lifecycle; the revised artwork has not yet been checked
+on the MK.2 itself. `stream-deck-legend` prints the meanings independently of USB.
