@@ -150,6 +150,165 @@ fn index_preserves_cursor_resources_and_generation() {
 }
 
 #[test]
+fn reflow_preserves_styled_history_across_many_destination_pages() {
+    let mut terminal = Terminal::with_limits(
+        128,
+        4,
+        ScrollbackLimits {
+            bytes: None,
+            lines: None,
+        },
+    );
+    terminal.feed(b"\x1b[?2027h");
+    for record in 0..256 {
+        terminal.feed(
+            format!(
+                "\x1b[38;2;{};0;0m\x1b]8;id=record;https://example.org\x07a\u{301}界\x1b]8;;\x07{}\x1b[0m\r\n",
+                record % 16,
+                "abcdefgh".repeat(20),
+            )
+            .as_bytes(),
+        );
+    }
+    let contents = |screen: &Screen| {
+        screen
+            .all_rows()
+            .flat_map(|row| {
+                row.cells.iter().enumerate().filter_map(move |(col, cell)| {
+                    cell.codepoint().map(|_| {
+                        (
+                            row.text(col).to_string(),
+                            row.style(col),
+                            row.hyperlink(col).map(|link| link.uri_bytes().to_vec()),
+                        )
+                    })
+                })
+            })
+            .collect::<Vec<_>>()
+    };
+    let expected = contents(terminal.screen());
+    assert_eq!(expected.len(), 256 * 162);
+    for width in [63, 32, 128, 97, 128] {
+        terminal.resize(width, 4);
+        assert!(terminal.screen().pages.pages.len() > 1, "width {width}");
+        assert_eq!(contents(terminal.screen()), expected, "width {width}");
+        assert_references(terminal.screen());
+    }
+}
+
+#[test]
+fn reflow_publishes_payload_charges_before_padding_and_history_pruning() {
+    let mut terminal = Terminal::with_limits(
+        128,
+        4,
+        ScrollbackLimits {
+            bytes: None,
+            lines: None,
+        },
+    );
+    let page_rows = usize::from(terminal.screen().pages.pages[0].capacity.rows);
+    let line = format!(
+        "\x1b[1;31m\x1b]8;id=charge;https://example.org\x07a\u{301}\x1b]8;;\x07{}\r\n",
+        "a\u{301}".repeat(31),
+    );
+    for _ in 0..page_rows + 8 {
+        terminal.feed(line.as_bytes());
+    }
+    assert_references(terminal.screen());
+    let limit = terminal.screen().history_bytes();
+    assert!(limit > 0);
+    terminal.set_scrollback_memory_limit(Some(limit));
+    for (width, height) in [(256, 8), (63, 16)] {
+        // An elevated cursor makes height growth append and potentially prune.
+        terminal.cursor_position(1, 1);
+        terminal.resize(width, height);
+        let screen = terminal.screen();
+        assert_references(screen);
+        assert!(screen.history_bytes() <= limit);
+        assert!(screen.all_rows().any(|row| {
+            row.cells
+                .iter()
+                .any(|cell| cell.has_grapheme() && cell.has_hyperlink())
+        }));
+    }
+}
+
+#[test]
+fn reflow_remaps_style_runs_and_anchors_across_source_pages() {
+    let mut terminal = Terminal::new(128, 2, 1000);
+    let screen = terminal.screen_mut();
+    screen.pages = PageList::default();
+    let styles = [1, 2, 3].map(|color| Style {
+        foreground: Color::Indexed(color),
+        bold: true,
+        ..Style::default()
+    });
+    for (index, style) in styles.into_iter().enumerate() {
+        screen.pages.append(
+            PageCapacity {
+                cols: 128,
+                rows: 1,
+                ..PageCapacity::STANDARD
+            },
+            1,
+        );
+        let page = screen.pages.pages.back_mut().unwrap();
+        page.row_ids[0] = index as u64;
+        page.headers[0].set(RowHeader::WRAPPED, index < 2);
+        page.headers[0].set(RowHeader::CONTINUATION, index > 0);
+        // Equal source IDs have different meanings in each source page.
+        for col in 0..128 {
+            let id = page.styles.acquire(style).unwrap();
+            assert_eq!(id, 1);
+            page.cells[col].set_style_id(id);
+            page.cells[col].set_codepoint(Some((b'a' + (col % 26) as u8) as char));
+            page.mark_cell(0, page.cells[col]);
+        }
+        page.refresh_charge();
+    }
+    screen.next_row = 3;
+    screen.cursor.row = 1;
+    screen.cursor.col = 127;
+    let offsets = [0, 17, 31, 62, 63, 127, 128, 255, 256, 368, 383];
+    let tracked: Vec<_> = offsets
+        .map(|offset| screen.point(offset / 128, offset % 128).unwrap())
+        .into_iter()
+        .map(|point| screen.track(point))
+        .collect();
+    screen.selection = Some(Selection {
+        start: screen.resolve(tracked[1]).unwrap(),
+        end: screen.resolve(tracked[9]).unwrap(),
+        rectangular: false,
+    });
+    let selected = screen.selection_text().unwrap();
+    assert_references(screen);
+
+    for width in [63, 256, 32, 129, 128] {
+        terminal.resize(width, 2);
+        let screen = terminal.screen();
+        for offset in 0..384 {
+            let row = screen.physical_row(offset / usize::from(width));
+            let col = offset % usize::from(width);
+            assert_eq!(row.style(col), styles[offset / 128], "offset {offset}");
+            assert_eq!(
+                row.cells[col].codepoint(),
+                Some((b'a' + (offset % 128 % 26) as u8) as char),
+                "offset {offset}",
+            );
+        }
+        for (offset, tracked) in offsets.into_iter().zip(&tracked) {
+            assert_eq!(
+                screen.resolve(*tracked),
+                screen.point(offset / usize::from(width), offset % usize::from(width)),
+                "offset {offset}, width {width}",
+            );
+        }
+        assert_eq!(screen.selection_text().unwrap(), selected);
+        assert_references(screen);
+    }
+}
+
+#[test]
 fn resource_ownership_survives_edits_reflow_snapshots_and_eviction() {
     for columns in [8, 80, 1024] {
         let mut terminal = Terminal::with_limits(columns, 4, ScrollbackLimits::default());
@@ -339,6 +498,51 @@ fn detached_resources_outlive_source_mutation_and_destruction() {
     assert_eq!(detached.row(0).style(2).background, Color::Indexed(4));
     assert!(detached.row(0).hyperlink(0).is_some());
     assert_references(&detached);
+}
+
+#[test]
+fn row_used_distinguishes_empty_cells_from_text_and_backgrounds() {
+    let mut terminal = Terminal::new(128, 2, 0);
+    let screen = terminal.screen_mut();
+    assert_eq!(screen.row(0).used(), 0);
+    screen.set_cell_style(
+        0,
+        95,
+        Style {
+            foreground: Color::Indexed(1),
+            ..Style::default()
+        },
+    );
+    screen.cell_mut(0, 127).set_protected(true);
+    screen
+        .cell_mut(0, 127)
+        .set_semantic(SemanticContent::Prompt);
+    assert_eq!(screen.row(0).used(), 0);
+    screen.cell_mut(0, 63).set_codepoint(Some('x'));
+    assert_eq!(screen.row(0).used(), 64);
+    for background in [Color::Indexed(0), Color::Rgb(0, 0, 0)] {
+        for bold in [false, true] {
+            screen.set_cell_style(
+                0,
+                95,
+                Style {
+                    background,
+                    bold,
+                    ..Style::default()
+                },
+            );
+            assert_eq!(screen.row(0).cells[95].background().is_none(), bold);
+            assert_eq!(screen.row(0).used(), 96);
+        }
+    }
+    screen.set_cell_style(0, 95, Style::default());
+    assert_eq!(screen.row(0).used(), 64);
+    screen.cell_mut(0, 63).set_codepoint(Some('界'));
+    screen.cell_mut(0, 63).set_width(2);
+    screen.cell_mut(0, 64).set_width(0);
+    screen.cell_mut(0, 127).set_spacer_head(true);
+    assert_eq!(screen.row(0).used(), 65);
+    assert_references(screen);
 }
 
 #[test]
