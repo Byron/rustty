@@ -6,6 +6,14 @@ a portable frame renderer and a native desktop application. All crates are
 DirectComposition on Windows. Windows also supports CPU rendering with GDI
 presentation. CoreText and DirectWrite supply the respective native font backends.
 
+## Stream Deck agent dashboard
+
+Opt in with `stream-deck = true` to show reporting panes on a 5×3 Stream Deck.
+See [setup, controls, preview and limitations](../../docs/rustty/stream-deck.md)
+and the [private status protocol and demo](../../docs/rustty-agent-status.md).
+Automatic Codex status requires the companion TUI build with
+`tui.terminal_status = "rustty"`; stock notifications alone do not register panes.
+
 ## Windows 11 x64
 
 Install Rust 1.95 or later and the Visual Studio C++ build tools/Windows SDK.
