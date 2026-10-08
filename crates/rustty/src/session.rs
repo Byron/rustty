@@ -983,7 +983,7 @@ mod tests {
                     },
                 );
                 assert_eq!(
-                    &*terminal.screen().cell_text(&terminal.screen().row(0), 2),
+                    &*terminal.screen().cell_text(terminal.screen().row(0), 2),
                     "✔️"
                 );
                 assert_eq!(

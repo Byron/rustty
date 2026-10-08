@@ -15,11 +15,11 @@ fn resizing_applies_all_none_and_last_prompt_redraw_policies() {
         let mut terminal = snapshot::decode(bytes.as_slice(), Default::default()).unwrap();
         terminal.resize(20, 4);
         assert_eq!(
-            terminal.screen().row_text(&terminal.screen().row(0)),
+            terminal.screen().row_text(terminal.screen().row(0)),
             if policy == "1" { "" } else { "first" }
         );
         assert_eq!(
-            terminal.screen().row_text(&terminal.screen().row(1)),
+            terminal.screen().row_text(terminal.screen().row(1)),
             if policy == "0" { "secondinput" } else { "" }
         );
         assert_eq!(terminal.screen().cursor.style.background, Color::Indexed(4));
@@ -57,13 +57,13 @@ fn primary_prompt_redraw_runs_while_the_alternate_screen_is_active() {
     assert!(
         terminal
             .primary_screen()
-            .row_text(&terminal.primary_screen().row(0))
+            .row_text(terminal.primary_screen().row(0))
             .is_empty()
     );
     assert!(
         terminal
             .screen()
-            .row_text(&terminal.screen().row(0))
+            .row_text(terminal.screen().row(0))
             .contains("ALT")
     );
 
@@ -71,7 +71,7 @@ fn primary_prompt_redraw_runs_while_the_alternate_screen_is_active() {
     terminal.feed(b"\x1b[?1049h\x1b]133;A\x07prompt");
     terminal.resize(20, 4);
     assert_eq!(
-        terminal.screen().row_text(&terminal.screen().row(0)),
+        terminal.screen().row_text(terminal.screen().row(0)),
         "prompt"
     );
 }
@@ -86,12 +86,12 @@ fn last_redraw_clears_unmarked_input_and_same_size_resize_keeps_it() {
         );
         terminal.resize(16, 4);
         assert_eq!(
-            terminal.screen().row_text(&terminal.screen().row(0)),
+            terminal.screen().row_text(terminal.screen().row(0)),
             "input"
         );
         terminal.resize(20, 4);
         assert_eq!(
-            terminal.screen().row_text(&terminal.screen().row(0)),
+            terminal.screen().row_text(terminal.screen().row(0)),
             if policy == "last" { "" } else { "input" }
         );
     }

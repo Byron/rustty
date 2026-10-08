@@ -639,10 +639,7 @@ fn ghostty_sparse_page_preserves_styles_links_graphemes_and_wide_cells() {
         Some(HyperlinkId::Implicit(0x01020304))
     );
     assert_eq!(rows[0].style(2).background, Color::Indexed(7));
-    assert_eq!(
-        &*terminal.screen().cell_text(&rows[1], 0),
-        "x\u{301}\u{302}"
-    );
+    assert_eq!(&*terminal.screen().cell_text(rows[1], 0), "x\u{301}\u{302}");
     assert_eq!(rows[1].style(1).background, Color::Rgb(0xaa, 0xbb, 0xcc));
     assert!(rows[1].cells[2].spacer_head() && rows[1].wrapped && rows[1].wrap_continuation);
     let restored = decode(
@@ -839,7 +836,7 @@ fn mixed_physical_widths_survive_observation_and_grow_before_mutation() {
     ] {
         let mut terminal = decode(bytes.as_slice(), DecodeOptions::default()).unwrap();
         assert_eq!(
-            terminal.screen().row_text(&terminal.screen().row(0)),
+            terminal.screen().row_text(terminal.screen().row(0)),
             "abcdef"
         );
         terminal.feed(input);
@@ -853,12 +850,12 @@ fn mixed_physical_widths_survive_observation_and_grow_before_mutation() {
     terminal.feed(b"X");
     assert_eq!(terminal.screen().row(0).cells.len(), 8);
     assert_eq!(
-        terminal.screen().row_text(&terminal.screen().row(0)),
+        terminal.screen().row_text(terminal.screen().row(0)),
         "Xbcdef"
     );
     terminal.feed(b"\x1b[2J");
     assert_eq!(terminal.screen().row(0).cells.len(), 8);
-    assert_eq!(terminal.screen().row_text(&terminal.screen().row(0)), "");
+    assert_eq!(terminal.screen().row_text(terminal.screen().row(0)), "");
 }
 
 #[test]
@@ -985,8 +982,8 @@ fn maximum_four_byte_grapheme_preserves_snapshot_and_suffix_limit() {
         assert_eq!(full.len(), 260);
         terminal.print('\u{e0100}');
         let screen = terminal.screen();
-        assert_eq!(&*screen.cell_text(&screen.row(0), 0), full);
-        assert_eq!(&*snapshot.cell_text(&snapshot.row(0), 0), prefix);
+        assert_eq!(&*screen.cell_text(screen.row(0), 0), full);
+        assert_eq!(&*snapshot.cell_text(snapshot.row(0), 0), prefix);
         let restored = decode(
             encode_to_vec(&terminal).unwrap().as_slice(),
             DecodeOptions::default(),
@@ -994,7 +991,7 @@ fn maximum_four_byte_grapheme_preserves_snapshot_and_suffix_limit() {
         .unwrap();
         same_terminal(&terminal, &restored);
         terminal.feed(b"\x1b[2J");
-        assert_eq!(&*snapshot.cell_text(&snapshot.row(0), 0), prefix);
+        assert_eq!(&*snapshot.cell_text(snapshot.row(0), 0), prefix);
     }
 }
 

@@ -1824,7 +1824,7 @@ impl Terminal {
                     && self
                         .screen()
                         .rows()
-                        .last()
+                        .next_back()
                         .is_some_and(|row| row.semantic != SemanticContent::Output)
                 {
                     self.scroll_clear();
@@ -1880,7 +1880,7 @@ impl Terminal {
                 })
             })
             .map(|(row, _)| row + 1)
-            .last()
+            .next_back()
             .unwrap_or(0);
         let screen = self.screen_mut();
         for _ in 0..count {

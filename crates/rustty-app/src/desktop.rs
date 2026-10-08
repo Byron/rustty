@@ -673,8 +673,10 @@ pub fn run() -> Result<()> {
             let _ = repaint.send_event(Event::Repaint(info, deadline));
         }
     });
-    let mut gpu_config = egui_wgpu::WgpuConfiguration::default();
-    gpu_config.surface = egui_wgpu::SurfaceConfig::LOW_LATENCY;
+    let mut gpu_config = egui_wgpu::WgpuConfiguration {
+        surface: egui_wgpu::SurfaceConfig::LOW_LATENCY,
+        ..Default::default()
+    };
     #[cfg(target_os = "windows")]
     if let egui_wgpu::WgpuSetup::CreateNew(setup) = &mut gpu_config.wgpu_setup {
         // An HWND swapchain is opaque even for a transparent Winit window.
@@ -2254,7 +2256,7 @@ impl App {
                         .all_rows()
                         .next()
                         .map(|r| vt::GridPoint { row: r.id, col: 0 });
-                    let last = screen.all_rows().last().map(|r| vt::GridPoint {
+                    let last = screen.all_rows().next_back().map(|r| vt::GridPoint {
                         row: r.id,
                         col: r.cells.len() - 1,
                     });

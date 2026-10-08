@@ -148,11 +148,11 @@ fn scroll_up_without_history_preserves_pins_and_detaches_partial_regions() {
         let screen = terminal.screen();
         assert!(screen.history().next().is_none());
         assert_eq!(screen.resolve(tracked), screen.point(0, 2));
-        assert_eq!(&*screen.cell_text(&screen.row(0), 2), "k");
+        assert_eq!(&*screen.cell_text(screen.row(0), 2), "k");
         assert_eq!(screen.row(0).wrapped, bottom == 4);
         assert_eq!(screen.row(0).wrap_continuation, bottom == 4);
         assert_eq!(
-            &*screen.cell_text(&screen.row(3), 0),
+            &*screen.cell_text(screen.row(3), 0),
             if bottom == 3 { "y" } else { "" }
         );
     }
@@ -186,7 +186,7 @@ fn moving_rows_removes_orphaned_wide_wrap_padding() {
     terminal.feed("\x1b[8G界\x1b[T".as_bytes());
     assert!(!terminal.screen().row(1).cells[7].spacer_head());
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().row(2), 0),
+        &*terminal.screen().cell_text(terminal.screen().row(2), 0),
         "界"
     );
 }

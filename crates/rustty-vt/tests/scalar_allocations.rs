@@ -115,8 +115,8 @@ fn grapheme_append_allocates_only_its_shared_payload() {
     terminal.print('\u{302}');
     assert_eq!(ALLOCATIONS.replace(None).unwrap(), 1);
     let screen = terminal.screen();
-    assert_eq!(&*screen.cell_text(&screen.row(0), 0), "a\u{301}\u{302}");
-    assert_eq!(&*snapshot.cell_text(&snapshot.row(0), 0), "a\u{301}");
+    assert_eq!(&*screen.cell_text(screen.row(0), 0), "a\u{301}\u{302}");
+    assert_eq!(&*snapshot.cell_text(snapshot.row(0), 0), "a\u{301}");
 }
 
 #[test]
