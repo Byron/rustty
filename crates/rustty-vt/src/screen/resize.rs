@@ -1,4 +1,5 @@
 use super::*;
+use std::ops::Range;
 
 #[derive(Clone, Copy)]
 struct ReflowRow {
@@ -17,29 +18,35 @@ struct ReflowStyle {
 
 impl Screen {
     // Keep the destination row in hand across style changes, like Ghostty's
-    // ReflowCursor. Resource growth and special cells use the scalar fallback.
+    // ReflowCursor. Resource growth and linked cells use the scalar fallback.
     fn copy_reflow_runs(
         &mut self,
         source: &Page,
-        mut cells: &[Cell],
+        range: Range<usize>,
         col: usize,
         style_cache: &mut Option<ReflowStyle>,
     ) -> usize {
         let page = self.pages.pages.back_mut().unwrap();
         let row = usize::from(page.rows) - 1;
         let start = page.slot(row, col);
+        let mut cells = &source.cells[range.start..range.end];
         let mut copied = 0;
         while let Some(cell) = cells.first() {
             if cell.width() == 0
                 || cell.spacer_head()
-                || cell.has_grapheme()
                 || cell.has_hyperlink()
                 || (cell.background().is_some() && cell.style_id() != 0)
             {
                 break;
             }
             let pattern = cell.bits() & crate::printing::DEST_MASK;
-            let count = if cell.width() == 2 {
+            let count = if cell.has_grapheme() {
+                let width = usize::from(cell.width());
+                if width > cells.len() || width == 2 && cells[1].width() != 0 {
+                    break;
+                }
+                width
+            } else if cell.width() == 2 {
                 let mut tail = *cell;
                 tail.set_width(0);
                 crate::printing::destination_wide(
@@ -52,6 +59,15 @@ impl Screen {
             if count == 0 {
                 break;
             }
+            let allocation = if cell.has_grapheme() {
+                let from = source.grapheme(range.start + copied).unwrap();
+                let Ok(to) = page.graphemes.acquire(from.len) else {
+                    break;
+                };
+                Some((from, to))
+            } else {
+                None
+            };
             let source_id = cell.style_id();
             let id = if source_id == 0 {
                 0
@@ -66,6 +82,9 @@ impl Screen {
                     .styles
                     .acquire_with_id(*source.styles.get(source_id), source_id)
                 else {
+                    if let Some((_, allocation)) = allocation {
+                        page.graphemes.release(allocation);
+                    }
                     break;
                 };
                 page.styles.retain_many(id, (count - 1) as u16);
@@ -80,6 +99,10 @@ impl Screen {
                 id
             };
             let slot = start + copied;
+            if let Some((from, to)) = allocation {
+                page.graphemes.set_text(to, source.graphemes.text_arc(from));
+                page.grapheme_map.insert(slot as u32, to);
+            }
             let destination = &mut page.cells[slot..slot + count];
             destination.copy_from_slice(&cells[..count]);
             if cell.width() == 2 {
@@ -367,11 +390,15 @@ impl Screen {
                                 &mut exposed_rows,
                             );
                         }
-                        if bulk_copy && !cell.has_grapheme() && !cell.has_hyperlink() {
-                            let window =
-                                &old.cells[old_col..old_col + (used - old_col).min(cols - x)];
-                            let count =
-                                self.copy_reflow_runs(&source_page, window, x, &mut style_cache);
+                        if bulk_copy && !cell.has_hyperlink() {
+                            let start = old.offset + old_col;
+                            let end = start + (used - old_col).min(cols - x);
+                            let count = self.copy_reflow_runs(
+                                &source_page,
+                                start..end,
+                                x,
+                                &mut style_cache,
+                            );
                             if count > 0 {
                                 if count > 1 {
                                     cells.nth(count - 2);
@@ -706,12 +733,12 @@ mod tests {
             let mut source = Terminal::new(8, 1, 0);
             source.feed(b"\x1b[31mab\x1b[0m-\x1b[32mcd");
             source.feed(if limited_styles {
-                b"\x1b[34mef"
+                "\x1b[34me\u{301}f".as_bytes()
             } else {
                 "\x1b[0me\u{301}f".as_bytes()
             });
             let source_page = &source.screen().pages.pages[0];
-            let cells = &source_page.row_cells(0)[..7];
+            let start = source_page.slot(0, 0);
             let mut screen = Screen::new(8, 1, ScrollbackLimits::NONE);
             screen.pages = PageList::default();
             screen.pages.append(
@@ -720,21 +747,23 @@ mod tests {
                     rows: 1,
                     // Four buckets admit only two nondefault styles.
                     styles: if limited_styles { 4 } else { 128 },
+                    grapheme_bytes: if limited_styles { 4096 } else { 0 },
                     ..crate::PageCapacity::STANDARD
                 },
                 1,
             );
             let mut cache = None;
             assert_eq!(
-                screen.copy_reflow_runs(source_page, cells, 0, &mut cache),
+                screen.copy_reflow_runs(source_page, start..start + 7, 0, &mut cache),
                 5
             );
+            assert_eq!(screen.pages.pages[0].graphemes.used_bytes(), 0);
             assert!(screen.row(0).cells[5..].iter().all(|c| c.bits() == 0));
             screen
                 .install_cell(0, 5, source_page.row(0).copy_cell(5), true)
                 .unwrap();
             assert_eq!(
-                screen.copy_reflow_runs(source_page, &cells[6..], 6, &mut cache),
+                screen.copy_reflow_runs(source_page, start + 6..start + 7, 6, &mut cache),
                 1,
             );
             let expected = source_page.row(0);
@@ -755,7 +784,7 @@ mod tests {
         let mut source = Terminal::new(8, 2, 0);
         source.feed(b"\x1b[31mx");
         let source_page = &source.screen().pages.pages[0];
-        let cells = &source_page.row_cells(0)[..1];
+        let start = source_page.slot(0, 0);
 
         for split in [false, true] {
             let mut screen = Screen::new(8, 2, ScrollbackLimits::NONE);
@@ -769,7 +798,7 @@ mod tests {
             );
             let mut cache = None;
             assert_eq!(
-                screen.copy_reflow_runs(source_page, cells, 0, &mut cache),
+                screen.copy_reflow_runs(source_page, start..start + 1, 0, &mut cache),
                 1
             );
             assert_eq!(cache.unwrap().destination, 2);
@@ -787,7 +816,7 @@ mod tests {
             let page = screen.pages.pages.back().unwrap();
             assert_eq!(page.row(usize::from(page.rows) - 1).cells[0].style_id(), 1);
             assert_eq!(
-                screen.copy_reflow_runs(source_page, cells, 1, &mut cache),
+                screen.copy_reflow_runs(source_page, start..start + 1, 1, &mut cache),
                 1
             );
             let page = screen.pages.pages.back().unwrap();

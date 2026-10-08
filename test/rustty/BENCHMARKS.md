@@ -5586,3 +5586,38 @@ At 8,192 records, the same paired protocol gives:
 The gains agree in both orders. Unit tests, the new memory-budget regression
 and exact timed-case checks pass. Samples are in
 `/tmp/rustty-unicode-opt/payload-charge-paired`.
+
+### Keep admitted graphemes in the current reflow row
+
+The existing run-copy loop now also admits unlinked grapheme heads locally,
+reusing its destination row and source-to-destination style cache. A physical
+source range identifies each grapheme. The loop reserves its destination
+allocation before style admission and releases that reservation on failure;
+resource exhaustion still returns the copied prefix to the general installer.
+Wide graphemes retain two style references and one grapheme allocation.
+
+This removes repeated style hashing, temporary general cell copies, clearing
+fresh destination slots and repeated row lookup/marking. It follows Ghostty's
+retained reflow cursor and style mapping using Rustty's existing resource APIs.
+The memory-accounting flush from the preceding change covers the attached data.
+
+Paired medians at 8,192 records:
+
+| Case | Before ms | After ms | After / before |
+| --- | ---: | ---: | ---: |
+| Styled ASCII | 2.442 | 2.543 | 1.041× |
+| Styled CJK | 2.591 | 2.673 | 1.032× |
+| Plain combining marks | 134.616 | 81.582 | 0.606× |
+| Styled combining marks | 191.294 | 85.583 | 0.447× |
+| Plain emoji | 94.389 | 34.991 | 0.371× |
+| Styled emoji | 126.140 | 36.114 | 0.286× |
+| Styled mixed text | 77.784 | 28.776 | 0.370× |
+| Linked mixed text | 93.527 | 45.688 | 0.489× |
+
+Both orders agree. The substantial grapheme gains are retained; the 3–4%
+ordinary-run increase is tracked for the final comparison. All 339 VT tests
+pass with normal and scalar kernels, all 28 Unicode cases pass exact content
+checks, and the expanded integration regression compares full clusters and
+snapshots across anchored/scalar and batched reflow. The partial-copy test now
+also checks failed grapheme admission and reservation rollback on style failure.
+Artifacts are in `/tmp/rustty-unicode-opt/grapheme-runs-paired`.

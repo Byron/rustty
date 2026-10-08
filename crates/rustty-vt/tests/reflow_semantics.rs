@@ -130,10 +130,13 @@ fn reflow_remaps_duplicate_anchors_and_both_halves_of_a_wide_cell() {
 #[test]
 fn reflow_preserves_styled_wide_runs_and_normalizes_tail_metadata() {
     let mut source = Terminal::new(32, 4, 100);
-    source.feed(b"header\r\n");
+    source.feed(b"\x1b[?2027hheader\r\n");
     source.screen_mut().cursor.protected = true;
     source.screen_mut().cursor.semantic = SemanticContent::Input;
-    source.feed("a\x1b[1;31m界界\x1b[0mb\x1b[3;32m語語\x1b[0mc".as_bytes());
+    source.feed(
+        "a\x1b[1;31m界界\x1b[0mb\x1b[3;32m語語\x1b[0mc\x1b[1;31md\u{301}👩\u{200d}💻\x1b[0me"
+            .as_bytes(),
+    );
     // Reflow reconstructs each tail from its head, including edited tails.
     source.screen_mut().set_cell_style(
         1,
@@ -151,8 +154,15 @@ fn reflow_preserves_styled_wide_runs_and_normalizes_tail_metadata() {
             .all_rows()
             .flat_map(|row| {
                 row.cells.iter().enumerate().filter_map(move |(col, cell)| {
-                    cell.codepoint()
-                        .map(|cp| (cp, row.style(col), cell.protected(), cell.semantic()))
+                    cell.codepoint().map(|_| {
+                        (
+                            row.text(col).to_string(),
+                            cell.width(),
+                            row.style(col),
+                            cell.protected(),
+                            cell.semantic(),
+                        )
+                    })
                 })
             })
             .collect::<Vec<_>>()
@@ -178,8 +188,8 @@ fn reflow_preserves_styled_wide_runs_and_normalizes_tail_metadata() {
         );
         let expected: Vec<_> = expected
             .iter()
-            .copied()
-            .filter(|(cp, ..)| width != 1 || !matches!(cp, '界' | '語'))
+            .filter(|(_, cell_width, ..)| width != 1 || *cell_width != 2)
+            .cloned()
             .collect();
         assert_eq!(contents(terminal.screen()), expected, "width {width}");
         for row in terminal.screen().all_rows() {
