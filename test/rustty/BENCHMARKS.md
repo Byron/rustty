@@ -6,6 +6,10 @@ window. Criterion is a development dependency only. No application build is
 needed. Timing excludes terminal construction and input generation; the `feed`
 and `stream` workloads include UTF-8 decoding and VT parsing.
 
+The [large styled-history follow-up](#large-styled-history-reflow-comparison-2026-10-08)
+measures the quad-peek reproduction and exposes a reflow gap absent from the
+small active-screen workload below.
+
 The latest [complete Ghostty comparison](#step-49-reuse-cursor-preparation-after-scrolling)
 covers all 54 workloads with the retained core, including the scalar-scan
 controls and remaining gaps. The [final checkpoint](#final-checkpoint)
@@ -5174,3 +5178,64 @@ pass, including the new iterator's Unicode, background, invalid-codepoint and
 detached-snapshot checks. Source, binaries, assembly and all 1,800 timing
 samples remain in `target/packed-simplify/step52/`. The step-49 core and full
 Ghostty table remain current.
+
+
+## Large styled-history reflow comparison, 2026-10-08
+
+The quad-peek trace exposed history-dependent forward page scans during
+styled-cell installation. The fix in `f0af47475` removes those scans but
+still installs styled cells individually. The old native `reflow` workload
+only populated the active screen, so its favorable ratios did not measure
+this workload. The primitive harness now supplies identical generated
+styled histories to both engines and optionally reads a local capture from
+`RUSTTY_REFLOW_INPUT`. Captures are not copied into the repository or timing
+results.
+
+Both engines retain all history, start at 128 columns and 32 rows, prime a
+128 → 64 → 128 round trip, then time the same round trip. Text and foreground
+style/bold checksums cover the entire history before and after timing; the
+synthetic cases also check each cell and the narrowed row count. Setup,
+parsing, file reads, validation, process startup and destruction are excluded.
+These are terminal-core timings, without PTY, renderer or GPU work. Uncapped
+retention keeps the content equal; configured app memory limits can retain
+less and therefore change the absolute times.
+
+The same Apple M4 Max uses Rust 1.99.0 release defaults (thin LTO, one codegen
+unit) and Zig 0.16.0 ReleaseFast with its default ARM target. Measurements run
+serially in adjacent forward and reversed orders, with 20 samples per engine
+per direction. Pooled median times are below; ratios above one favor Ghostty.
+
+| Input | Rustty ms | Ghostty ms | Rustty / Ghostty |
+| --- | ---: | ---: | ---: |
+| 1,024 styled 192-column records | 12.096 | 0.330 | 36.62× |
+| 8,192 styled 192-column records | 99.063 | 2.474 | 40.04× |
+| 32,768 styled 192-column records | 393.825 | 9.821 | 40.10× |
+| Local ripgrep capture | 664.146 | 122.693 | 5.41× |
+
+The local ripgrep reproduction contains about 23.9 MB of text (61.6 MB with
+ANSI escapes and PTY-equivalent CRLF). It creates 236,572 history rows at
+128 columns. Its much shorter color runs reduce Ghostty's batching advantage,
+but Rustty still takes about 5.4 times as long. The earlier unprimed-native
+run measured 665.295 ms versus 123.468 ms; matching native priming confirms
+the gap (662.483/122.681 ms forward and 666.363/122.739 ms reversed).
+
+Ghostty's `ReflowCursor` resolves a style once per run, retains multiple
+references and copies contiguous compatible cells. Rustty's managed path
+copies, clears, admits styles, marks metadata and refreshes accounting for
+each cell. This identifies run copying as the next optimization to evaluate;
+no further production optimization is included in this comparison.
+
+Generated-workload results, capture timing results, logs and compiler metadata
+are kept in `/tmp/rustty-ghostty-quad-comparison`. The private capture remains
+only in a temporary file and is not tracked.
+
+```sh
+zig build vt-primitives test-vt-primitives \
+  -Demit-lib-vt=true -Demit-macos-app=false -Doptimize=ReleaseFast
+GHOSTTY_PRIMITIVES_BIN="$PWD/zig-out/bin/vt-primitives" \
+  cargo bench --offline -p rustty-vt --bench primitives -- reflow_history_styled
+# Supply a local VT output capture (with PTY-equivalent CRLF):
+RUSTTY_REFLOW_INPUT=/tmp/local-scrollback.txt \
+  GHOSTTY_PRIMITIVES_BIN="$PWD/zig-out/bin/vt-primitives" \
+  cargo bench --offline -p rustty-vt --bench primitives -- reflow_scrollback
+```

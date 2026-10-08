@@ -635,6 +635,8 @@ fn history_reflow(c: &mut Criterion) {
 }
 
 fn styled_history_reflow(c: &mut Criterion) {
+    let ghostty = std::env::var_os("GHOSTTY_PRIMITIVES_BIN").map(std::path::PathBuf::from);
+    let mut native_inputs = Vec::new();
     let mut group = c.benchmark_group("rustty/reflow_history_styled");
     for records in [1_024, 8_192, 32_768] {
         let mut terminal = Terminal::with_limits(
@@ -646,15 +648,15 @@ fn styled_history_reflow(c: &mut Criterion) {
             },
         );
         let text = "abcdefgh".repeat(24);
+        let mut input = String::new();
         for line in 0..records {
-            terminal.feed(
-                format!(
-                    "\x1b[{};{}m{text}\x1b[0m\r\n",
-                    if line % 2 == 0 { 1 } else { 22 },
-                    31 + line % 4,
-                )
-                .as_bytes(),
+            let record = format!(
+                "\x1b[{};{}m{text}\x1b[0m\r\n",
+                if line % 2 == 0 { 1 } else { 22 },
+                31 + line % 4,
             );
+            terminal.feed(record.as_bytes());
+            input.push_str(&record);
         }
         let check = |terminal: &Terminal, columns: usize| {
             let screen = terminal.screen();
@@ -663,6 +665,7 @@ fn styled_history_reflow(c: &mut Criterion) {
                 screen.history_len(),
                 records * record_rows + 1 - usize::from(ROWS)
             );
+            let mut checksum = 0_u64;
             for (index, row) in screen.all_rows().enumerate().take(records * record_rows) {
                 let record = index / record_rows;
                 let used = (192 - index % record_rows * columns).min(columns);
@@ -674,13 +677,19 @@ fn styled_history_reflow(c: &mut Criterion) {
                     let style = row.style(col);
                     assert_eq!(style.foreground, Color::Indexed(1 + (record % 4) as u8));
                     assert_eq!(style.bold, record % 2 == 0);
+                    checksum = checksum.wrapping_add(
+                        u64::from(b"abcdefgh"[col % 8])
+                            + (2 + (record % 4) as u64 + 257 * u64::from(style.bold)) * 0x11_0000,
+                    );
                 }
             }
+            checksum
         };
+        let checksum = check(&terminal, usize::from(COLS));
         terminal.resize(COLS / 2, ROWS);
-        check(&terminal, usize::from(COLS / 2));
+        assert_eq!(check(&terminal, usize::from(COLS / 2)), checksum);
         terminal.resize(COLS, ROWS);
-        check(&terminal, usize::from(COLS));
+        assert_eq!(check(&terminal, usize::from(COLS)), checksum);
         group.throughput(Throughput::Elements(records as u64));
         group.bench_function(records.to_string(), |b| {
             b.iter(|| {
@@ -689,9 +698,114 @@ fn styled_history_reflow(c: &mut Criterion) {
                 terminal.resize(COLS, ROWS);
             })
         });
-        check(&terminal, usize::from(COLS));
+        assert_eq!(check(&terminal, usize::from(COLS)), checksum);
+        native_inputs.push((records, input, checksum));
     }
     group.finish();
+    if let Some(binary) = ghostty {
+        let directory =
+            std::env::temp_dir().join(format!("rustty-styled-reflow-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let mut group = c.benchmark_group("ghostty/reflow_history_styled");
+        for (records, input, checksum) in native_inputs {
+            let data = directory.join(format!("{records}.txt"));
+            std::fs::write(&data, input).unwrap();
+            group.throughput(Throughput::Elements(records as u64));
+            group.bench_function(records.to_string(), |b| {
+                b.iter_custom(|iterations| {
+                    native(
+                        &binary,
+                        "reflow_history_styled",
+                        &data,
+                        iterations,
+                        records as u64,
+                        checksum,
+                    )
+                })
+            });
+        }
+        group.finish();
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+}
+
+// Optional local capture; the harness never copies its private input into the
+// repository or includes it in benchmark results.
+fn captured_scrollback_reflow(c: &mut Criterion) {
+    let Some(data) = std::env::var_os("RUSTTY_REFLOW_INPUT").map(std::path::PathBuf::from) else {
+        return;
+    };
+    let input = std::fs::read(&data).unwrap();
+    let mut terminal = Terminal::with_limits(
+        COLS,
+        ROWS,
+        ScrollbackLimits {
+            bytes: None,
+            lines: None,
+        },
+    );
+    terminal.feed(b"\x1b[?2027h");
+    for chunk in input.chunks(64 * 1024) {
+        terminal.feed(chunk);
+    }
+    let check = |terminal: &Terminal| {
+        let mut checksum = 0_u64;
+        for row in terminal.screen().all_rows() {
+            for (col, cell) in row.cells.iter().enumerate() {
+                if cell.codepoint().is_none() {
+                    continue;
+                }
+                let style = row.style(col);
+                let color = match style.foreground {
+                    Color::Default => 0,
+                    Color::Indexed(value) => u64::from(value) + 1,
+                    Color::Rgb(r, g, b) => {
+                        257 + (u64::from(r) << 16) + (u64::from(g) << 8) + u64::from(b)
+                    }
+                };
+                checksum = checksum
+                    .wrapping_mul(16_777_619)
+                    .wrapping_add(row.text(col).chars().map(u64::from).sum::<u64>())
+                    .wrapping_add((color + 257 * u64::from(style.bold)) * 0x11_0000);
+            }
+        }
+        checksum
+    };
+    let checksum = check(&terminal);
+    eprintln!(
+        "Captured scrollback: {} history rows",
+        terminal.screen().history_len()
+    );
+    terminal.resize(COLS / 2, ROWS);
+    assert_eq!(check(&terminal), checksum);
+    terminal.resize(COLS, ROWS);
+    assert_eq!(check(&terminal), checksum);
+    let mut group = c.benchmark_group("rustty/reflow_scrollback");
+    group.bench_function("capture", |b| {
+        b.iter(|| {
+            let terminal = black_box(&mut terminal);
+            terminal.resize(COLS / 2, ROWS);
+            terminal.resize(COLS, ROWS);
+        })
+    });
+    assert_eq!(check(&terminal), checksum);
+    group.finish();
+    if let Some(binary) = std::env::var_os("GHOSTTY_PRIMITIVES_BIN") {
+        let mut group = c.benchmark_group("ghostty/reflow_scrollback");
+        group.bench_function("capture", |b| {
+            b.iter_custom(|iterations| {
+                native(
+                    Path::new(&binary),
+                    "reflow_scrollback",
+                    &data,
+                    iterations,
+                    1,
+                    checksum,
+                )
+            })
+        });
+        group.finish();
+    }
 }
 
 // Match the app's default owned-history cap while retaining the same stream
@@ -741,6 +855,7 @@ criterion_group!(
     chunked_input,
     history_reflow,
     styled_history_reflow,
+    captured_scrollback_reflow,
     memory_capped_streams
 );
 criterion_main!(benches);

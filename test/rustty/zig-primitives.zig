@@ -6,7 +6,7 @@ const vt = @import("ghostty-vt");
 
 pub const std_options: std.Options = .{ .log_level = .err };
 
-const Operation = enum { width, print, scalar, read, clone, reflow, feed, stream, stream_styled };
+const Operation = enum { width, print, scalar, read, clone, reflow, feed, stream, stream_styled, reflow_history_styled, reflow_scrollback };
 const cols = 128;
 const rows = 32;
 const history_lines = 1024;
@@ -17,7 +17,61 @@ fn isStream(op: Operation) bool {
 }
 
 fn parsed(op: Operation) bool {
-    return op == .feed or isStream(op);
+    return op == .feed or isStream(op) or op == .reflow_history_styled or op == .reflow_scrollback;
+}
+
+fn historyChecksum(screen: *const vt.Screen) u64 {
+    var sum: u64 = 0;
+    var it = screen.pages.rowIterator(.right_down, .{ .screen = .{} }, null);
+    while (it.next()) |pin| {
+        for (pin.cells(.all)) |*cell| {
+            if (cell.codepoint() == 0) continue;
+            sum *%= 16_777_619;
+            sum +%= cell.codepoint();
+            if (cell.hasGrapheme()) {
+                for (pin.grapheme(cell).?) |cp| sum +%= cp;
+            }
+            const style = pin.style(cell);
+            const color: u64 = switch (style.fg_color) {
+                .none => 0,
+                .palette => |value| @as(u64, value) + 1,
+                .rgb => |value| 257 + (@as(u64, value.r) << 16) + (@as(u64, value.g) << 8) + value.b,
+            };
+            sum +%= (color + 257 * @as(u64, @intFromBool(style.flags.bold))) * 0x11_0000;
+        }
+    }
+    return sum;
+}
+
+// Check all retained rows, not just the active screen. The supplied records
+// contain 192 ASCII columns with alternating bold and four palette colors.
+fn checkStyledHistory(terminal: *const vt.Terminal, records: usize, columns: usize) !u64 {
+    const screen = terminal.screens.active;
+    const record_rows = std.math.divCeil(usize, 192, columns) catch unreachable;
+    if (screen.pages.total_rows != records * record_rows + 1) return error.InvalidHistory;
+    var sum: u64 = 0;
+    var index: usize = 0;
+    var it = screen.pages.rowIterator(.right_down, .{ .screen = .{} }, null);
+    while (it.next()) |pin| : (index += 1) {
+        const record = index / record_rows;
+        const used = if (record < records) @min(192 - index % record_rows * columns, columns) else 0;
+        for (pin.cells(.all), 0..) |*cell, col| {
+            if (col >= used) {
+                if (cell.codepoint() != 0) return error.InvalidText;
+                continue;
+            }
+            if (cell.codepoint() != "abcdefgh"[col % 8]) return error.InvalidText;
+            const style = pin.style(cell);
+            const color: u64 = switch (style.fg_color) {
+                .palette => |value| value,
+                else => return error.InvalidStyle,
+            };
+            if (color != 1 + record % 4 or style.flags.bold != (record % 2 == 0)) return error.InvalidStyle;
+            sum +%= cell.codepoint() + (color + 1 + 257 * @as(u64, @intFromBool(style.flags.bold))) * 0x11_0000;
+        }
+    }
+    if (index != screen.pages.total_rows) return error.InvalidHistory;
+    return sum;
 }
 
 fn streamChecksum(screen: *const vt.Screen) u64 {
@@ -116,7 +170,7 @@ fn step(
             std.mem.doNotOptimizeAway(&copy);
             copy.deinit();
         },
-        .reflow => {
+        .reflow, .reflow_history_styled, .reflow_scrollback => {
             try terminal.resize(terminal.gpa(), .{ .cols = cols / 2, .rows = rows });
             try terminal.resize(terminal.gpa(), .{ .cols = cols, .rows = rows });
         },
@@ -132,14 +186,15 @@ pub fn main(init: std.process.Init) !void {
     const op = std.meta.stringToEnum(Operation, args[1]) orelse return error.InvalidOperation;
     const iterations = try std.fmt.parseInt(u64, args[3], 10);
     if (iterations == 0) return error.InvalidIterations;
-    const bytes = try std.Io.Dir.cwd().readFileAlloc(init.io, args[2], alloc, .limited(16 * 1024 * 1024));
+    const bytes = try std.Io.Dir.cwd().readFileAlloc(init.io, args[2], alloc, .limited(128 * 1024 * 1024));
     defer alloc.free(bytes);
     const cps = if (parsed(op)) try alloc.alloc(u21, 0) else try decode(alloc, bytes);
     defer alloc.free(cps);
+    const styled_records = std.mem.count(u8, bytes, "\r\n");
     var terminal = try vt.Terminal.init(init.io, alloc, .{
         .cols = cols,
         .rows = rows,
-        .max_scrollback_bytes = if (isStream(op)) null else 0,
+        .max_scrollback_bytes = if (isStream(op) or op == .reflow_history_styled or op == .reflow_scrollback) null else 0,
         .max_scrollback_lines = if (isStream(op)) history_lines else null,
         .default_modes = .{ .grapheme_cluster = true },
     });
@@ -148,17 +203,32 @@ pub fn main(init: std.process.Init) !void {
     defer stream.deinit();
     if (isStream(op)) {
         for (0..prime_batches) |_| stream.nextSlice(bytes);
-    } else if (op == .feed) {
+    } else if (op == .feed or op == .reflow_history_styled or op == .reflow_scrollback) {
         stream.nextSlice(bytes);
     } else {
         try fill(&terminal, cps);
     }
+    if (op == .reflow_history_styled) {
+        _ = try checkStyledHistory(&terminal, styled_records, cols);
+        try terminal.resize(terminal.gpa(), .{ .cols = cols / 2, .rows = rows });
+        _ = try checkStyledHistory(&terminal, styled_records, cols / 2);
+        try terminal.resize(terminal.gpa(), .{ .cols = cols, .rows = rows });
+    }
     const expected = switch (op) {
         .width => try step(.width, &terminal, &stream, cps, bytes),
         .stream, .stream_styled => try checkStream(&terminal),
+        .reflow_history_styled => try checkStyledHistory(&terminal, styled_records, cols),
+        .reflow_scrollback => historyChecksum(terminal.screens.active),
         .scalar => read(terminal.screens.active, false),
         else => read(terminal.screens.active, true),
     };
+    if (op == .reflow_scrollback) {
+        // Match Rust's priming and validate the narrowed history as well.
+        try terminal.resize(terminal.gpa(), .{ .cols = cols / 2, .rows = rows });
+        if (historyChecksum(terminal.screens.active) != expected) return error.ChecksumMismatch;
+        try terminal.resize(terminal.gpa(), .{ .cols = cols, .rows = rows });
+        if (historyChecksum(terminal.screens.active) != expected) return error.ChecksumMismatch;
+    }
 
     var checksum: u64 = 0;
     const elapsed = switch (op) {
@@ -175,6 +245,8 @@ pub fn main(init: std.process.Init) !void {
     switch (op) {
         .print, .clone, .reflow, .feed => checksum = read(terminal.screens.active, true),
         .stream, .stream_styled => checksum = try checkStream(&terminal),
+        .reflow_history_styled => checksum = try checkStyledHistory(&terminal, styled_records, cols),
+        .reflow_scrollback => checksum = historyChecksum(terminal.screens.active),
         else => {},
     }
     if (checksum != expected) return error.ChecksumMismatch;
@@ -190,6 +262,8 @@ pub fn main(init: std.process.Init) !void {
             .width, .print => cps.len,
             .scalar, .read, .clone => cols * rows,
             .reflow => 1,
+            .reflow_history_styled => styled_records,
+            .reflow_scrollback => 1,
             .feed, .stream, .stream_styled => bytes.len,
         },
         .cell_bytes = @sizeOf(vt.Cell),
