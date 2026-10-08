@@ -5239,3 +5239,116 @@ RUSTTY_REFLOW_INPUT=/tmp/local-scrollback.txt \
   GHOSTTY_PRIMITIVES_BIN="$PWD/zig-out/bin/vt-primitives" \
   cargo bench --offline -p rustty-vt --bench primitives -- reflow_scrollback
 ```
+
+### Follow-up: match Ghostty's run-based reflow
+
+Rustty now matches Ghostty on this retained-history workload. Fresh adjacent
+comparisons run in both orders with frozen optimized binaries, 20 samples
+per engine per direction, a 0.5-second warmup and a 2-second target measurement
+period. The inputs, priming, unlimited retention and content/style checks are
+unchanged. Pooled medians from the 40 samples per engine are:
+
+| Input | Previous Rustty ms | Current Rustty ms | Current Ghostty ms | Current Rustty / Ghostty |
+| --- | ---: | ---: | ---: | ---: |
+| 1,024 styled records | 12.096 | 0.305 | 0.305 | 1.000× |
+| 8,192 styled records | 99.063 | 2.416 | 2.424 | 0.997× |
+| 32,768 styled records | 393.825 | 9.599 | 9.596 | 1.000× |
+| Local ripgrep capture | 664.146 | 119.773 | 117.955 | 1.015× |
+
+The largest generated history is about 41 times faster than the previous
+Rustty implementation; the capture is about 5.5 times faster. The capture
+measures 117.054/117.525 ms (Rustty/Ghostty) in forward order and
+122.334/118.417 ms in reverse order. This establishes terminal-core reflow
+parity for these inputs, not complete quad-peek UI latency or parity across
+all terminal operations.
+
+Each retained production change was measured separately before committing:
+
+| Change | 32,768 records ms | Capture ms |
+| --- | ---: | ---: |
+| Copy ordinary cells in styled runs | 16.168 | 208.139 |
+| Reuse a matching live style ID before hashing | 15.362 | 191.544 |
+| Refresh charges only when style storage grows | 15.540 | 184.870 |
+| Retain the last source-to-destination style mapping | 13.914 | 152.691 |
+| Hold the destination row across adjacent style runs | 13.800 | 134.497 |
+| Restrict cursor/wrap scans to active rows | 12.159 | 128.844 |
+| Apply current-row metadata once | 10.634 | 119.804 |
+| Skip decoding all-zero row-tail cells | 9.709 | 116.378 |
+
+These exploratory medians precede the final scalar-path gate and are
+individual runs, not a pooled cross-stage comparison. Machine variability
+affected some runs: during the metadata experiment both the candidate and unchanged baseline briefly slowed by more
+than two times. The repeated adjacent pair measured 10.634/11.970 ms for
+uniform histories and 119.804/121.077 ms for the capture (candidate/baseline).
+The final table above uses fresh paired measurements for both engines.
+
+The implementation follows Ghostty's contiguous copying, one style admission
+per run, retained style mapping, direct current-row access and packed empty
+cell check. It reuses Rustty's existing scanner and resource APIs. Wide cells,
+graphemes, hyperlinks, resource growth and rows with mapped anchors retain
+the existing scalar handling. The style cache includes destination layout
+generation so rebuilding or splitting a resource page cannot reuse stale IDs.
+
+Control measurements then found that wide and complex cells were entering
+the batching helper only to be rejected. Checking their eligibility before
+resolving a destination row restored the scalar path: Chinese-history reflow
+fell from 419 to 321 µs and combining-history reflow from 4.885 to 4.567 ms.
+This follow-up was measured separately and amended into the batching commit.
+The final paired comparison includes this gate.
+
+
+A separate before/after control sweep uses the original Rust binary and the
+final binary, adjacent in both orders, with 20 samples per direction, a
+0.2-second warmup and a 1-second measurement target. Pooled medians follow;
+the remaining increases are at most 2.1%, rather than the rejected 25% wide-
+character regression. These controls do not compare against Ghostty.
+
+| Control | Before µs | Current µs | Current / before |
+| --- | ---: | ---: | ---: |
+| reflow/ascii | 19.864 | 9.987 | 0.503× |
+| reflow/chinese | 19.734 | 18.835 | 0.954× |
+| reflow/combining | 52.139 | 47.343 | 0.908× |
+| reflow/emoji | 38.706 | 37.514 | 0.969× |
+| reflow_history/ascii | 529.284 | 68.109 | 0.129× |
+| reflow_history/chinese | 336.452 | 319.900 | 0.951× |
+| reflow_history/combining | 4796.214 | 4641.266 | 0.968× |
+| reflow_history/emoji | 3016.594 | 3079.842 | 1.021× |
+| print/ascii | 9.901 | 9.293 | 0.939× |
+| print/chinese | 16.555 | 16.482 | 0.996× |
+| print/combining | 27.375 | 27.289 | 0.997× |
+| print/emoji | 29.411 | 29.621 | 1.007× |
+| stream_styled/ascii | 9.204 | 9.344 | 1.015× |
+| stream_styled/chinese | 14.420 | 13.665 | 0.948× |
+| stream_styled/combining | 498.141 | 482.361 | 0.968× |
+| stream_styled/emoji | 400.670 | 361.350 | 0.902× |
+
+Control samples and logs are in `controls-simple-gate` under the same
+temporary results directory.
+
+Three candidates were measured and discarded: replacing iterator advancement
+with an explicit source column (14.289/157.084 ms), scanning four cells per
+SIMD group (13.783/155.816 ms), and bypassing the scanner for single-cell runs
+(14.176/150.200 ms). Against the then-current 13.914/152.691 ms baseline,
+none provided a consistent gain worth retaining. No new SIMD implementation,
+unsafe copying or persistent source-style lookup table was added.
+
+Final source validation passes 337 VT tests with the normal kernels and the
+same 337 tests with `scalar-kernels`, plus 105 app tests (two existing ignored
+tests remain ignored). The GPU test required native Metal access outside the
+sandbox. `cargo fmt --all --check` passes. Clippy passes for both crates and
+all targets with `-D warnings` and the previously required Rust 1.99 allowances
+for `manual_is_multiple_of`, `field_reassign_with_default`,
+`double_ended_iterator_last`, `enum_variant_names`, `while_let_loop`,
+`too_many_arguments`, `needless_borrows_for_generic_args` and
+`needless_option_as_deref`. The focused regressions cover partial run fallback,
+style relocation/reference counts, row-tail backgrounds, cursor clamping,
+anchors and resource accounting.
+
+`nu crates/rustty-app/build.nu --release --offline` built the optimized local
+`target/release/Rustty.app`; bundle resources, plist and ad-hoc signature
+validation passed with native macOS tool access.
+
+Frozen binaries, profiling output, candidate patches, per-sample timings and
+comparison scripts remain in `/tmp/rustty-reflow-opt`; final paired results
+are in its `final-paired-with-gate` directory. The private reproduction
+remains in a temporary file and has not been added to Git.
