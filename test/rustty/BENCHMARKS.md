@@ -5361,9 +5361,10 @@ Ghostty history cases. The new `reflow_history_content` family compares the
 remaining paths directly, using public synthetic input and independent content
 checks in both engines.
 
-The matched Unicode cases do not reach Ghostty parity. CJK wide cells have the
-largest relative gap, especially with styling; grapheme-heavy and mixed text
-also remain substantially slower. The ASCII control stays close to Ghostty.
+The initial matched Unicode cases below did not reach Ghostty parity. CJK wide
+cells had the largest relative gap, especially with styling; grapheme-heavy and
+mixed text were also substantially slower. The ASCII control stayed close to
+Ghostty. The follow-up experiments and final comparison document the fixes.
 
 Each record contains 192 logical display columns. The main cases use 1,024,
 8,192 and 32,768 records, retaining 2,017, 16,353 and 65,505 history rows at
@@ -5467,19 +5468,19 @@ are excluded from timing. `RUSTTY_REFLOW_DENSE_LINKS=1` enables the explicit
 capacity behavior is repaired. The ordinary `mixed-linked` control links only
 the first mixed unit (six display columns) of each record and passes all checks.
 
-The source paths explain why the narrow-cell result cannot be generalized.
-Ghostty's `ReflowCursor` admits complete wide head/tail pairs to its run copy;
-Rustty currently restricts that path to ordinary narrow cells. Plain CJK
-therefore pays per-character copying and row bookkeeping, and styled CJK adds
+The baseline source paths explain why the narrow-cell result could not be
+generalized. Ghostty's `ReflowCursor` admits complete wide head/tail pairs to
+its run copy; Rustty restricted that path to ordinary narrow cells. Plain CJK
+therefore paid per-character copying and row bookkeeping, and styled CJK added
 general managed-cell installation and repeated style admission.
 
-Both engines use scalar handling for grapheme resources. Ghostty copies suffix
+Both engines used scalar handling for grapheme resources. Ghostty copies suffix
 codepoints directly in page storage and caches scalar style mappings. Rustty
-passes temporary shared string ownership through the general installer, repeats
-resource/accounting work, and reconstructs wide tails separately. These are
-candidates for subsequent profiling; this comparison does not isolate the cost
-of each operation. Extending Rustty's existing wide-pair scanner into reflow is
-a smaller first experiment for the wide-character gap than introducing new SIMD.
+passed temporary shared string ownership through the general installer, repeated
+resource/accounting work, and reconstructed wide tails separately. These were
+candidates for subsequent profiling; this initial comparison did not isolate
+the cost of each operation. Extending Rustty's existing wide-pair scanner into
+reflow was a smaller first experiment than introducing new SIMD.
 
 All 56 ordinary engine/case combinations pass their exact checks in test mode,
 and both native harness tests pass. The Rust benchmark builds, formatting checks
@@ -5621,3 +5622,214 @@ checks, and the expanded integration regression compares full clusters and
 snapshots across anchored/scalar and batched reflow. The partial-copy test now
 also checks failed grapheme admission and reservation rollback on style failure.
 Artifacts are in `/tmp/rustty-unicode-opt/grapheme-runs-paired`.
+
+### Compiler-boundary experiment (not retained)
+
+Keeping `copy_reflow_runs` out of line saves about 1% for ordinary runs but
+slows grapheme/resource cases by 2–5% in both orders. The annotation is removed;
+the final source uses the compiler's normal inlining decision.
+
+| Case | Records | Default ms | Outlined ms | Outlined / default |
+| --- | ---: | ---: | ---: | ---: |
+| Styled ASCII | 32,768 | 9.945 | 9.835 | 0.989× |
+| Styled CJK | 32,768 | 10.584 | 10.456 | 0.988× |
+| Styled combining marks | 8,192 | 84.239 | 88.203 | 1.047× |
+| Styled emoji | 8,192 | 35.189 | 35.901 | 1.020× |
+| Linked mixed text | 8,192 | 44.006 | 44.966 | 1.022× |
+
+The same paired protocol and exact workload checks apply. Artifacts are in
+`/tmp/rustty-unicode-opt/outlined-paired`.
+
+### Final Unicode comparison after optimization
+
+The final implementation closes the large Unicode gap. Plain CJK is within
+4% of Ghostty across the three sizes; styled CJK, combining marks, emoji and
+mixed text are faster in both engine orders. Styled ASCII costs 3–5% more than
+Ghostty in the pooled results. This small ordinary-run tradeoff is retained
+alongside the much larger Unicode gains; no extra specialization is added to
+chase it.
+
+This repeats all 28 exact workloads with the same frozen Ghostty binary and
+final Rustty code at `9093bc972`. Engines run serially, adjacently in both
+orders, without concurrent builds, tests or profiling. Each direction uses
+20 samples, a 0.5-second warmup and a 2-second measurement target. The table
+pools 40 raw per-iteration samples per engine/case, totaling 2,240 samples.
+All invocations pass the independent exact pre/post content checks described
+above. Setup, parsing, validation and process startup remain outside timing.
+
+| Content | Records | Rustty ms | Ghostty ms | Rustty / Ghostty |
+| --- | ---: | ---: | ---: | ---: |
+| ascii-styled | 1,024 | 0.320 | 0.311 | 1.030× |
+| ascii-styled | 8,192 | 2.528 | 2.407 | 1.050× |
+| ascii-styled | 32,768 | 10.181 | 9.854 | 1.033× |
+| chinese-plain | 1,024 | 0.312 | 0.324 | 0.962× |
+| chinese-plain | 8,192 | 2.415 | 2.380 | 1.014× |
+| chinese-plain | 32,768 | 9.588 | 9.646 | 0.994× |
+| chinese-styled | 1,024 | 0.343 | 0.405 | 0.845× |
+| chinese-styled | 8,192 | 2.651 | 3.184 | 0.833× |
+| chinese-styled | 32,768 | 10.634 | 12.900 | 0.824× |
+| combining-plain | 1,024 | 8.960 | 11.978 | 0.748× |
+| combining-plain | 8,192 | 80.349 | 98.045 | 0.820× |
+| combining-plain | 32,768 | 328.307 | 393.750 | 0.834× |
+| combining-styled | 1,024 | 9.023 | 11.798 | 0.765× |
+| combining-styled | 8,192 | 83.756 | 101.431 | 0.826× |
+| combining-styled | 32,768 | 348.019 | 417.134 | 0.834× |
+| emoji-plain | 1,024 | 4.247 | 5.559 | 0.764× |
+| emoji-plain | 8,192 | 34.149 | 54.236 | 0.630× |
+| emoji-plain | 32,768 | 139.100 | 220.749 | 0.630× |
+| emoji-styled | 1,024 | 4.513 | 7.245 | 0.623× |
+| emoji-styled | 8,192 | 36.085 | 58.400 | 0.618× |
+| emoji-styled | 32,768 | 146.640 | 234.695 | 0.625× |
+| mixed-styled | 1,024 | 3.853 | 5.351 | 0.720× |
+| mixed-styled | 8,192 | 28.621 | 45.571 | 0.628× |
+| mixed-styled | 32,768 | 119.780 | 183.611 | 0.652× |
+| mixed-linked | 8,192 | 45.112 | 57.666 | 0.782× |
+| mixed-tracked | 8,192 | 29.245 | 45.249 | 0.646× |
+| chinese-odd-width | 8,192 | 3.406 | 3.505 | 0.972× |
+| mixed-odd-width | 8,192 | 29.631 | 45.638 | 0.649× |
+
+For the largest cases, the original Rustty measurements and fresh paired
+comparison are shown together below. The before column comes from the earlier
+baseline sweep; the isolated adjacent before/after experiments above establish
+the individual changes' effects. Use the fresh final/Ghostty pair to assess
+current engine parity.
+
+| Content, 32,768 records | Before Rustty ms | Final Rustty ms | Ghostty ms | Rustty speedup |
+| --- | ---: | ---: | ---: | ---: |
+| ascii-styled | 9.604 | 10.181 | 9.854 | 0.94× |
+| chinese-plain | 40.245 | 9.588 | 9.646 | 4.20× |
+| chinese-styled | 338.612 | 10.634 | 12.900 | 31.84× |
+| combining-plain | 611.539 | 328.307 | 393.750 | 1.86× |
+| combining-styled | 841.251 | 348.019 | 417.134 | 2.42× |
+| emoji-plain | 383.043 | 139.100 | 220.749 | 2.75× |
+| emoji-styled | 528.272 | 146.640 | 234.695 | 3.60× |
+| mixed-styled | 428.969 | 119.780 | 183.611 | 3.58× |
+
+Increasing records 32-fold increases Rustty's time approximately 31–39-fold,
+consistent with work proportional to retained content across this size range.
+At 32,768 records, forward/reverse Rustty/Ghostty ratios are 0.814×/0.829× for
+styled CJK, 0.849×/0.826× for styled combining marks, 0.626×/0.623× for styled
+emoji and 0.651×/0.654× for mixed text. The large-case conclusions agree in
+both orders. ASCII's corresponding ratios are 1.024×/1.041×.
+
+Sparse links still add resource work: at 8,192 records, Rustty rises from
+28.621 ms for mixed text to 45.112 ms with links, but remains faster than
+Ghostty's 57.666 ms linked result. Three tracked positions cost about 2% in
+Rustty, and the 63-column CJK control stays within 3% of Ghostty. This covers
+three anchors, not thousands of search-result anchors. The existing dense-link
+input metadata loss remains excluded from valid timing claims and is unchanged.
+
+The small styled-emoji Ghostty median varied from 6.181 to 8.839 ms between
+orders, while Rustty stayed at 4.480/4.609 ms. A separate exact-case confirmation
+in both orders measured 4.403/6.018 ms (Rustty/Ghostty, 0.732×).
+It confirms the gain with a smaller margin than the main pooled table.
+The table retains all original samples; the confirmation is separate and does
+not replace the noisier result. Other order differences do not change the
+conclusions. Millisecond figures to three decimals identify measured medians,
+not that degree of reproducibility.
+
+### Final regression controls
+
+The frozen pre-Unicode and final Rustty binaries run adjacently in both orders,
+with 20 samples per direction, a 0.2-second warmup and a 1-second measurement
+target. These 16 controls compare Rustty before/after, not Ghostty. `reflow`
+and scalar `print` use default-style 32-row screens without history;
+`reflow_history` retains 256 records (481 history rows at 128 columns and
+737 at 64), below its limit at both widths. `stream_styled` measures parsing
+and printing 32 colored/bold records into warmed, bounded 1,024-line history,
+including steady history eviction. They complement the large retained-history
+cases rather than replacing them.
+
+| Control | Before µs | Final µs | Final / before |
+| --- | ---: | ---: | ---: |
+| reflow/ascii | 9.825 | 10.126 | 1.031× |
+| reflow/chinese | 18.801 | 9.910 | 0.527× |
+| reflow/combining | 46.945 | 34.772 | 0.741× |
+| reflow/emoji | 36.435 | 25.392 | 0.697× |
+| reflow_history/ascii | 66.995 | 69.883 | 1.043× |
+| reflow_history/chinese | 321.445 | 80.541 | 0.251× |
+| reflow_history/combining | 4571.090 | 2553.414 | 0.559× |
+| reflow_history/emoji | 3054.925 | 1282.998 | 0.420× |
+| print/ascii | 9.236 | 9.192 | 0.995× |
+| print/chinese | 16.339 | 16.444 | 1.006× |
+| print/combining | 27.366 | 27.321 | 0.998× |
+| print/emoji | 28.844 | 29.138 | 1.010× |
+| stream_styled/ascii | 8.986 | 8.883 | 0.989× |
+| stream_styled/chinese | 13.392 | 13.269 | 0.991× |
+| stream_styled/combining | 480.432 | 479.214 | 0.997× |
+| stream_styled/emoji | 360.662 | 361.526 | 1.002× |
+
+Scalar printing and styled input stay within 1.2% in the pooled results.
+ASCII resize increases 3.1–4.3%, agreeing with the small ordinary-run cost
+seen above. Short Unicode resize improves 26–47%; the 256-record Unicode
+histories improve 44–75%. Both variant orders agree on those resize effects.
+
+### Original capture and final small experiments
+
+The original temporary ripgrep capture retains its previous Rustty latency,
+but the earlier near-parity result does not reproduce against the current
+Ghostty reference. Fresh adjacent pairs in both orders use the same 20-sample,
+0.5-second warmup, 2-second target protocol and unchanged capture checks:
+
+| Capture comparison | Rustty ms | Ghostty ms | Rustty / Ghostty |
+| --- | ---: | ---: | ---: |
+| Final implementation | 120.790 | 106.073 | 1.139× |
+| Frozen pre-Unicode implementation, separate confirmation | 115.325 | 104.625 | 1.102× |
+
+The final capture is 13.9% slower than Ghostty in this comparison. The frozen
+pre-Unicode Rustty binary is already 10.2% slower than the same reference in
+its fresh comparison. This is consistent with the few-percent ordinary-run
+cost seen in the direct controls, plus a pre-existing gap relative to today's
+reference. These are separate paired engine runs, not an adjacent Rustty
+before/final comparison. The previous report's 119.773/117.955 ms capture
+result must not be used to claim current universal parity.
+
+Source inspection confirms that the native and Rust capture setup, unlimited
+retention, input, priming, timed resize operation and checksum validation are
+unchanged. Ghostty production sources were not modified. Added Unicode harness
+code can affect compiled layout, and system conditions can vary, but these
+measurements do not establish the cause of the changed reference result.
+The input remains only in its authorized temporary file; no private contents
+were copied into Git, logs or these results.
+
+Three small follow-up candidates were checked and rejected. Keeping the copy
+loop out of line gives 120.038/105.187 ms against Ghostty (1.141×),
+so it does not close the capture gap and retains the earlier grapheme penalty.
+The two branch candidates use direct adjacent baseline/candidate capture pairs
+in both orders with the same timing protocol:
+
+| Candidate | Baseline ms | Candidate ms | Candidate / baseline |
+| --- | ---: | ---: | ---: |
+| Check cached source style before destination page | 120.087 | 119.546 | 0.995× |
+| Check for an empty run only after wide scanning | 122.112 | 122.134 | 1.000× |
+
+Neither provides a gain worth retaining. The first saves only 0.5%; the second
+is unchanged when pooled and reverses direction between orders. Both changes
+are removed. The retained production source still matches `9093bc972`.
+
+### Final validation and artifacts
+
+All 339 VT tests pass with normal kernels and all 339 with `scalar-kernels`.
+Expanded regressions cover full combining/ZWJ text, wide-tail normalization,
+width-one collapse, anchored versus batched snapshots, resource exhaustion,
+allocation rollback, style relocation and memory accounting before pruning.
+All 28 workloads pass exact checks in Rust, and the full paired comparison
+passes both engines' independent checks on every invocation.
+
+The application tests pass (105 tests; two existing ignored tests). Formatting
+and diff checks pass. Clippy passes for `rustty-vt` and `rustty-app`, all targets,
+with `-D warnings` and the established Rust 1.99 allowances listed in the prior
+validation section. No new unsafe code, dependency or persistent cache is added.
+`nu crates/rustty-app/build.nu --release --offline` builds
+`target/release/Rustty.app`; bundle resources, plist and ad-hoc signature checks
+pass. Full quad-peek UI/PTY/GPU latency was not retimed by these core benchmarks.
+
+Raw samples, logs, frozen binaries, pairing scripts and summaries remain in
+`/tmp/rustty-unicode-opt`. `final-paired` holds the 28-case engine comparison;
+`controls-final` holds the before/final controls; `final-capture` and
+`before-capture-current-reference` hold the capture checks;
+`final-emoji-small-check` holds the separate noisy-case confirmation.
+`outlined-capture`, `style-first-capture` and `wide-zero-capture` retain the
+rejected capture experiments. `final-binaries.sha256` identifies the retained
+baseline, final and Ghostty executables. Validation logs use the
+`grapheme-runs-*` and `final-*` prefixes in the same temporary directory.
