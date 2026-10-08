@@ -70,10 +70,15 @@ fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> {
     })
 }
 
-fn emit(output: &mut impl Write, frame: &[u8], terminal: bool, raw: bool) -> io::Result<()> {
+pub(super) fn emit(
+    output: &mut impl Write,
+    frame: &[u8],
+    terminal: bool,
+    raw: bool,
+) -> io::Result<()> {
     if !terminal && !raw {
         return Err(io::Error::other(
-            "agent-status stdout is not a terminal; use --raw only for explicit fixtures/passthrough",
+            "stdout is not a terminal; use --raw only for explicit fixtures/passthrough",
         ));
     }
     output.write_all(frame)?;

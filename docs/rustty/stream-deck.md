@@ -48,7 +48,10 @@ Only one controller should own the selected device. Stop the standalone
 unrelated controllers. Reloading Rustty settings enables/disables discovery and
 connection ownership. Unplugging or USB errors leave terminals running.
 
-For a disposable generic reporter, see [protocol and demo](../rustty-agent-status.md).
+For a disposable reporter, run `rustty agent-sim` inside a Rustty pane. It cycles
+all seven states every three seconds; `--state working` holds one state and
+`--interval 0.5` changes the reporting cadence. Ctrl-C unregisters it.
+See [protocol, simulator and demo](../rustty-agent-status.md).
 The source and test previews use actual 72×72 key images:
 
 ![Stream Deck contact sheet](stream-deck-preview.png)
@@ -201,10 +204,14 @@ research checkout), clean Codex `my-queue` at `1f0b5a95`, and clean prototype
 `de2625de`. No Ghostty production source, installed application or global Codex
 configuration was changed.
 
-- macOS arm64: full Rustty workspace/all-features run passed **594 tests**, with
+- macOS arm64: full Rustty workspace/all-features run passed **596 tests**, with
   5 explicitly ignored tests; strict workspace/all-targets/all-features Clippy
   and formatting passed. Protocol, lifecycle, layout, gesture, renderer and fake
   device behavior are covered.
+- The built-in `agent-sim` passed real macOS PTY checks for terminal-output
+  enforcement, fixed/cycling status, signal cadence, prompt Ctrl-C cleanup even
+  with a 60-second interval, and ordered end/begin through suspend/resume.
+  Windows compilation passed; its console-control runtime remains untested.
 - Windows ARM64: `cargo check -p rustty-app --all-targets --target
   aarch64-pc-windows-msvc` passed. This is compilation evidence, not Windows
   execution, ConPTY or physical USB certification.
@@ -273,4 +280,4 @@ HID owner thread is an allowed fallback if a future backend requires it.
 
 The user also physically unplugged/replugged the MK.2 and confirmed automatic
 board restoration with the selected **25% brightness**. The isolated Rustty
-controller was left running afterward.
+controller was left running afterward and later closed by the user.

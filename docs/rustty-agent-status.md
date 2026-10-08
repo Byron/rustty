@@ -10,7 +10,33 @@ Build locally without replacing installed applications:
 
 ```sh
 cargo build -p rustty-app --bin rustty
+target/debug/rustty agent-sim
 python3 test/rustty/agent-status-demo.py --rustty target/debug/rustty
+```
+
+For a permanent disposable reporter, run `rustty agent-sim` in any Rustty pane.
+By default it cycles through all seven states every three seconds until Ctrl-C:
+
+```sh
+rustty agent-sim --state needs_input      # Repeat one fixed state
+rustty agent-sim --interval 0.5           # Cycle twice a second
+rustty agent-sim --state working --interval 10
+```
+
+`--interval` accepts 0.05–86400 seconds. `--state done` keeps the same completion
+identity on every signal, so local acknowledgement still projects it as idle;
+cycling generates a new completion on each lap. Each simulator has its own
+thread ID and uses the label “Agent sim 🦀”. It performs no agent work or model
+calls and changes no settings. Ctrl-C and macOS SIGTERM send end from the main
+loop. macOS Ctrl-Z sends end before suspension and begin on resume. Windows
+Ctrl-C/Break uses the same ordered cleanup; forced termination or console close
+can bypass cleanup and relies on the enclosing command/PTY boundary.
+
+The simulator requires terminal stdout; `--raw` explicitly allows captured
+fixtures. Its macOS signal/PTY regression can be run without a device:
+
+```sh
+python3 test/rustty/agent-sim-check.py --rustty target/debug/rustty
 ```
 
 Run the demo inside a pane of the Rustty build with the dashboard enabled. It

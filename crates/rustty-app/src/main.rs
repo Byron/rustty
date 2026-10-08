@@ -4,6 +4,7 @@
 )]
 
 mod agent_cli;
+mod agent_sim;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod desktop;
 #[cfg(target_os = "windows")]
@@ -13,8 +14,13 @@ fn main() {
     #[cfg(target_os = "windows")]
     attach_parent_console();
 
-    if std::env::args().nth(1).as_deref() == Some("agent-status") {
-        if let Err(error) = agent_cli::run(std::env::args().skip(2)) {
+    let cli_result = match std::env::args().nth(1).as_deref() {
+        Some("agent-status") => Some(agent_cli::run(std::env::args().skip(2))),
+        Some("agent-sim") => Some(agent_sim::run(std::env::args().skip(2))),
+        _ => None,
+    };
+    if let Some(result) = cli_result {
+        if let Err(error) = result {
             eprintln!("Rustty: {error}");
             std::process::exit(1);
         }
