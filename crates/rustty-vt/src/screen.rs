@@ -2248,9 +2248,12 @@ impl Screen {
             Some(id) if id != 0 => set.acquire_with_id(style, id),
             _ => set.acquire(style),
         };
+        let bytes = self.pages.pages[index].styles.storage_bytes();
         match acquire(&mut self.pages.pages[index].styles) {
             Ok(id) => {
-                self.pages.pages[index].refresh_charge();
+                if self.pages.pages[index].styles.storage_bytes() != bytes {
+                    self.pages.pages[index].refresh_charge();
+                }
                 Ok(id)
             }
             Err(error) => {

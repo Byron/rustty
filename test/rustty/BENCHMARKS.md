@@ -5544,3 +5544,24 @@ regression also passes. Timed cases retain exact pre/post content checks.
 Artifacts are in `/tmp/rustty-unicode-opt/wide-normalized-paired`; an earlier
 unnormalized-tail experiment was stopped after review found its snapshot
 compatibility issue and is not retained.
+
+### Refresh scalar style charges only on allocation growth
+
+A five-second sample of styled combining-history reflow puts 455 of 4,158
+samples in `Page::refresh_charge`, with further time in style hashing and
+admission. Successful scalar style acquisition now uses the same storage-size
+check as run copying; rebuilding/error paths still refresh unconditionally.
+Existing reference/accounting invariant tests cover the changed path.
+
+Paired measurements use the preceding protocol and 8,192 records:
+
+| Case | Before ms | After ms | After / before |
+| --- | ---: | ---: | ---: |
+| Plain combining marks | 150.043 | 151.590 | 1.010× |
+| Styled combining marks | 209.753 | 204.437 | 0.975× |
+| Styled emoji | 135.178 | 128.690 | 0.952× |
+| Linked mixed text | 99.498 | 95.904 | 0.964× |
+
+Both orders confirm the styled gains. The small conditional is retained;
+unstyled variation is about 1%. All 107 VT unit tests and the memory-budget
+integration tests pass. Samples are in `/tmp/rustty-unicode-opt/style-charge-paired`.
