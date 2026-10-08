@@ -158,8 +158,13 @@ normal board and existing positions.
 
 Workspace `deck_positions` stores a bounded vector of optional pane IDs. Status,
 thread/turn IDs, USB handles and gestures are never persisted. Ending a reporter
-reserves its live pane's slot quietly; closing the pane leaves a hole. Imports
-keep current positions and imported panes receive positions on first report.
+reserves its live pane's slot quietly; closing the pane leaves a hole. New reporters
+take the first free hole, otherwise reclaim the first inactive reservation in slot
+order, and only then extend the board. Registered reporters keep their positions
+in every state, including Idle and Done. Reclaiming a reservation does not close
+its pane; if it reports again, it receives an available slot using the same rules.
+Assignments and eviction wait until any hold/swap gesture ends. Imports keep
+current positions and imported panes receive positions on first report.
 Terminal undo/redo preserves the current dashboard arrangement; swaps do not add
 terminal-layout history. Invalid auxiliary references are normalized without
 losing the terminal workspace. `window-save-state=never` makes arrangements

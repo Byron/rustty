@@ -192,16 +192,22 @@ impl Dashboard {
         if self.gesture.is_none() {
             for id in &live {
                 if reports.contains_key(id) && !workspace.deck_positions.contains(&Some(*id)) {
-                    if let Some(slot) = workspace
+                    let available = workspace
                         .deck_positions
-                        .iter_mut()
-                        .find(|slot| slot.is_none())
-                    {
-                        *slot = Some(*id);
+                        .iter()
+                        .position(Option::is_none)
+                        .or_else(|| {
+                            workspace.deck_positions.iter().position(|slot| {
+                                slot.is_some_and(|pane| !reports.contains_key(&pane))
+                            })
+                        });
+                    if let Some(slot) = available {
+                        workspace.deck_positions[slot] = Some(*id);
+                        changed = true;
                     } else if workspace.deck_positions.len() < MAX_DECK_SLOTS {
                         workspace.deck_positions.push(Some(*id));
+                        changed = true;
                     }
-                    changed = true;
                 }
             }
         }
@@ -525,6 +531,108 @@ mod tests {
         assert!(deck.board.no_sessions);
         assert!(deck.cycle(0, None).is_none());
         assert_eq!(workspace.deck_positions[1..], initial[1..]);
+    }
+    #[test]
+    fn new_reporter_reclaims_reserved_board_without_losing_panes() {
+        let (mut workspace, mut reports) = setup(10);
+        let newcomer = workspace.windows[9].tabs[0].root.panes()[0];
+        let new_report = reports.remove(&newcomer).unwrap();
+        let mut deck = Dashboard::default();
+        deck.update(&mut workspace, &reports, None);
+        let positions = workspace.deck_positions.clone();
+        let returning = positions[0].unwrap();
+        let old_report = reports[&returning].clone();
+        let old_capture = deck.board.tile(0).capture;
+        reports.clear();
+        deck.update(&mut workspace, &reports, None);
+        assert!(deck.board.no_sessions);
+        assert_eq!(workspace.deck_positions, positions);
+
+        reports.insert(newcomer, new_report);
+        assert!(deck.update(&mut workspace, &reports, None));
+        assert!(!deck.board.no_sessions);
+        assert_eq!(deck.board.pages(), 1);
+        assert_eq!(workspace.deck_positions[0], Some(newcomer));
+        assert_eq!(workspace.deck_positions[1..], positions[1..]);
+        assert!(!deck.board.valid(old_capture));
+        assert_eq!(workspace.windows.len(), 10);
+
+        reports.insert(returning, old_report);
+        assert!(deck.update(&mut workspace, &reports, None));
+        assert_eq!(workspace.deck_positions[0], Some(newcomer));
+        assert_eq!(workspace.deck_positions[1], Some(returning));
+        assert_eq!(deck.board.pages(), 1);
+        assert!(!deck.update(&mut workspace, &reports, None));
+    }
+    #[test]
+    fn holes_precede_eviction_and_all_registered_states_keep_their_slots() {
+        let (mut workspace, mut reports) = setup(11);
+        let first = workspace.windows[9].tabs[0].root.panes()[0];
+        let second = workspace.windows[10].tabs[0].root.panes()[0];
+        let first_report = reports.remove(&first).unwrap();
+        let second_report = reports.remove(&second).unwrap();
+        let mut deck = Dashboard::default();
+        deck.update(&mut workspace, &reports, None);
+        let positions = workspace.deck_positions.clone();
+        let reserved = positions[0].unwrap();
+        let returning = reports.remove(&reserved).unwrap();
+        reports.remove(&positions[1].unwrap());
+        workspace.deck_positions[1] = None;
+        for (id, state) in positions[2..].iter().zip([
+            State::Idle,
+            State::Working,
+            State::NeedsInput,
+            State::Done,
+            State::Error,
+            State::Paused,
+            State::Unknown,
+        ]) {
+            reports.get_mut(&id.unwrap()).unwrap().state = state;
+        }
+        reports.insert(first, first_report);
+        deck.update(&mut workspace, &reports, None);
+        assert_eq!(workspace.deck_positions[0], Some(reserved));
+        assert_eq!(workspace.deck_positions[1], Some(first));
+        let reservation_capture = deck.board.tile(0).capture;
+
+        reports.insert(second, second_report);
+        deck.update(&mut workspace, &reports, None);
+        assert_eq!(workspace.deck_positions[0], Some(second));
+        assert_eq!(workspace.deck_positions[2..], positions[2..]);
+        assert!(!deck.board.valid(reservation_capture));
+        assert_eq!(deck.board.pages(), 1);
+
+        reports.insert(reserved, returning);
+        deck.update(&mut workspace, &reports, None);
+        assert_eq!(workspace.deck_positions[9], Some(reserved));
+        assert_eq!(workspace.deck_positions[2..9], positions[2..]);
+        assert_eq!(deck.board.pages(), 2);
+    }
+    #[test]
+    fn eviction_waits_for_the_pending_swap() {
+        let (mut workspace, mut reports) = setup(3);
+        let newcomer = workspace.windows[2].tabs[0].root.panes()[0];
+        let new_report = reports.remove(&newcomer).unwrap();
+        let mut deck = Dashboard::default();
+        deck.update(&mut workspace, &reports, None);
+        let positions = workspace.deck_positions.clone();
+        reports.remove(&positions[1].unwrap());
+        deck.update(&mut workspace, &reports, None);
+        let source = deck.board.tile(0).capture;
+        let destination = deck.board.tile(1).capture;
+        deck.gesture = Some(source);
+        reports.insert(newcomer, new_report);
+        assert!(!deck.update(&mut workspace, &reports, None));
+        assert_eq!(workspace.deck_positions, positions);
+        assert!(deck.board.valid(destination));
+        deck.moving = true;
+        assert!(!deck.update(&mut workspace, &reports, None));
+        assert!(deck.swap(&mut workspace, source, destination));
+
+        deck.update(&mut workspace, &reports, None);
+        assert_eq!(workspace.deck_positions, [Some(newcomer), positions[0]]);
+        assert!(!deck.board.valid(destination));
+        assert_eq!(deck.board.pages(), 1);
     }
     #[test]
     fn swap_reservations_holes_and_freeze_assignments() {

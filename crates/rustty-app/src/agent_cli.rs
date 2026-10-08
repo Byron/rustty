@@ -42,6 +42,7 @@ Hold an agent for two seconds, then press another agent slot to swap or move it.
 Press the source again to cancel. Empty/reserved destinations accept swaps.
 In move mode Page and Light still work; the four state-cycle keys are disabled.
 Keys never approve requests or send input to an agent.
+New reporters use free slots, then reclaim inactive reservations before adding pages.
 
 With no reporting sessions the RUS/TTY/🦀💻✨/TTY/RUS board is decorative and inert.
 This command prints a reference only; it does not connect to the USB device.

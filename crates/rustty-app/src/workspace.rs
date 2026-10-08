@@ -672,7 +672,7 @@ pub struct Workspace {
     version: u32,
     next_id: Id,
     pub windows: Vec<WindowState>,
-    /// Logical dashboard positions; an inactive live pane keeps its reservation.
+    /// Logical dashboard positions; new reporters may reclaim inactive reservations.
     #[serde(default, deserialize_with = "deck_positions")]
     pub deck_positions: Vec<Option<Id>>,
 }
