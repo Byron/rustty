@@ -935,10 +935,7 @@ impl Screen {
         page.refresh_charge();
     }
     pub(crate) fn set_cell_cursor_hyperlink(&mut self, col: usize) {
-        loop {
-            let Some((_, id)) = self.cursor_link else {
-                break;
-            };
+        while let Some((_, id)) = self.cursor_link {
             let (index, row) = self.cursor_location();
             let page = &mut self.pages.pages[index];
             if page.links.retain_cell(id).is_ok() {
@@ -1584,6 +1581,10 @@ impl Screen {
         }
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Independent low-level scroll policies stay explicit"
+    )]
     pub(crate) fn shift_rows(
         &mut self,
         top: usize,

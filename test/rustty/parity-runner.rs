@@ -640,7 +640,7 @@ impl Runner {
                     }
                 }
                 self.checked += 1;
-                if self.checked % 100 == 0 {
+                if self.checked.is_multiple_of(100) {
                     println!(
                         "Checked {} comparisons ({})",
                         self.checked,

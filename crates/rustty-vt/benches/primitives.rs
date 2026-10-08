@@ -676,7 +676,7 @@ fn styled_history_reflow(c: &mut Criterion) {
                     );
                     let style = row.style(col);
                     assert_eq!(style.foreground, Color::Indexed(1 + (record % 4) as u8));
-                    assert_eq!(style.bold, record % 2 == 0);
+                    assert_eq!(style.bold, record.is_multiple_of(2));
                     checksum = checksum.wrapping_add(
                         u64::from(b"abcdefgh"[col % 8])
                             + (2 + (record % 4) as u64 + 257 * u64::from(style.bold)) * 0x11_0000,
@@ -801,7 +801,7 @@ impl ContentHistory {
             } else {
                 Color::Default
             },
-            bold: self.styled && record % 2 == 0,
+            bold: self.styled && record.is_multiple_of(2),
             ..Style::default()
         }
     }

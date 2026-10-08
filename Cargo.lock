@@ -1021,6 +1021,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
 
 [[package]]
+name = "elgato-streamdeck"
+version = "0.13.2"
+source = "git+https://github.com/OpenActionAPI/rust-elgato-streamdeck?rev=c8b9f85467be437f783ac8bb569a2dc63fca6374#c8b9f85467be437f783ac8bb569a2dc63fca6374"
+dependencies = [
+ "hidapi",
+ "image",
+]
+
+[[package]]
 name = "emath"
 version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1683,6 +1692,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
+name = "hidapi"
+version = "2.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "818c0e1d27887aaf76fe737042e27a66b796a7b099e6d2e1a72d106c2dff3fa6"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc",
+ "pkg-config",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "icu_collections"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1798,6 +1820,8 @@ dependencies = [
  "num-traits",
  "png",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]
@@ -3230,7 +3254,10 @@ dependencies = [
  "egui",
  "egui-wgpu",
  "egui-winit",
+ "elgato-streamdeck",
  "embed-resource",
+ "hidapi",
+ "image",
  "libc",
  "muda",
  "objc2 0.6.4",
@@ -3249,6 +3276,7 @@ dependencies = [
  "rustty-render-wgpu",
  "serde",
  "serde_json",
+ "unicode-segmentation",
  "wgpu",
  "windows",
  "windows-core",

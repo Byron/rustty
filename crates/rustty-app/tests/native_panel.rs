@@ -18,13 +18,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(target_os = "macos")]
 mod macos {
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     use objc2::{ClassType, MainThreadMarker, rc::Retained};
-    use objc2_app_kit::{NSPanel, NSView, NSWindow, NSWindowStyleMask, NSWindowTabbingMode};
+    use objc2_app_kit::{
+        NSPanel, NSView, NSWindow, NSWindowStyleMask, NSWindowTabbingMode, NSWorkspace,
+        NSWorkspaceDidWakeNotification, NSWorkspaceScreensDidSleepNotification,
+        NSWorkspaceScreensDidWakeNotification, NSWorkspaceSessionDidResignActiveNotification,
+        NSWorkspaceWillSleepNotification,
+    };
     use objc2_foundation::NSObjectProtocol;
     use rustty::config::Config;
-    use rustty_app::platform::Platform;
+    use rustty_app::platform::{Platform, PlatformEvent};
     use winit::{
         application::ApplicationHandler,
         dpi::{LogicalPosition, LogicalSize},
@@ -48,7 +53,9 @@ mod macos {
         let mut check = Check(false);
         event_loop.run_app_on_demand(&mut check)?;
         assert!(check.0, "Winit never initialized the native test windows");
-        println!("native_panel: native classes, key/main eligibility, ownership and style passed");
+        println!(
+            "native_panel: native window ownership/style and screen-power notification lifecycle passed"
+        );
         Ok(())
     }
 
@@ -58,7 +65,34 @@ mod macos {
         fn resumed(&mut self, event_loop: &ActiveEventLoop) {
             let mut config = Config::default();
             config.keybinds.clear();
-            let platform = Platform::new(Arc::new(|_| {}), &config).unwrap();
+            let power = Arc::new(Mutex::new(Vec::new()));
+            let events = Arc::clone(&power);
+            let platform = Platform::new(
+                Arc::new(move |event| {
+                    if let PlatformEvent::ScreensAwake(awake) = event {
+                        events.lock().unwrap().push(awake);
+                    }
+                }),
+                &config,
+            )
+            .unwrap();
+            assert_eq!(power.lock().unwrap().len(), 1);
+            power.lock().unwrap().clear();
+            let center = NSWorkspace::sharedWorkspace().notificationCenter();
+            // SAFETY: post only to this isolated process's notification center;
+            // these synthetic notifications do not sleep, wake or lock the Mac.
+            unsafe {
+                center.postNotificationName_object(NSWorkspaceScreensDidSleepNotification, None);
+                center.postNotificationName_object(NSWorkspaceScreensDidWakeNotification, None);
+                center.postNotificationName_object(NSWorkspaceWillSleepNotification, None);
+                center.postNotificationName_object(NSWorkspaceDidWakeNotification, None);
+                center.postNotificationName_object(
+                    NSWorkspaceSessionDidResignActiveNotification,
+                    None,
+                );
+            }
+            assert_eq!(&power.lock().unwrap()[..3], [false, true, false]);
+            assert_eq!(power.lock().unwrap().len(), 4);
             for panel in [false, true] {
                 let window = event_loop
                     .create_window(
@@ -103,6 +137,13 @@ mod macos {
                 assert!(!native.isReleasedWhenClosed());
                 assert!(std::ptr::eq(&*native, &*view.window().unwrap()));
             }
+            power.lock().unwrap().clear();
+            drop(platform);
+            // SAFETY: test token removal in the same isolated center after teardown.
+            unsafe {
+                center.postNotificationName_object(NSWorkspaceScreensDidWakeNotification, None)
+            };
+            assert!(power.lock().unwrap().is_empty());
             self.0 = true;
             event_loop.exit();
         }

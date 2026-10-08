@@ -18,6 +18,10 @@ pub enum ContentTag {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
+#[allow(
+    clippy::enum_variant_names,
+    reason = "Names mirror the reference's packed wide-cell tags"
+)]
 pub enum Wide {
     Narrow = 0,
     Wide = 1,
