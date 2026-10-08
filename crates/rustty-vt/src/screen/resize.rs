@@ -16,56 +16,72 @@ struct ReflowStyle {
 }
 
 impl Screen {
-    // Reflow exposes fresh slots. Copy ordinary cells sharing a style as a
-    // run, admitting that style once, like Ghostty's ReflowCursor::copyRun.
-    // Resource growth and splitting stay in the scalar fallback.
-    fn copy_reflow_run(
+    // Keep the destination row in hand across style changes, like Ghostty's
+    // ReflowCursor. Resource growth and special cells use the scalar fallback.
+    fn copy_reflow_runs(
         &mut self,
         source: &Page,
-        cells: &[Cell],
+        mut cells: &[Cell],
         col: usize,
         style_cache: &mut Option<ReflowStyle>,
-    ) -> bool {
+    ) -> usize {
         let page = self.pages.pages.back_mut().unwrap();
-        let source_id = cells[0].style_id();
-        let id = if source_id == 0 {
-            0
-        } else if let Some(cached) = style_cache.filter(|cached| {
-            cached.page == (page.serial, page.layout_generation) && cached.source == source_id
-        }) {
-            page.styles
-                .retain_many(cached.destination, cells.len() as u16);
-            cached.destination
-        } else {
-            let bytes = page.styles.storage_bytes();
-            let Ok(id) = page
-                .styles
-                .acquire_with_id(*source.styles.get(source_id), source_id)
-            else {
-                return false;
-            };
-            page.styles.retain_many(id, (cells.len() - 1) as u16);
-            if page.styles.storage_bytes() != bytes {
-                page.refresh_charge();
-            }
-            *style_cache = Some(ReflowStyle {
-                page: (page.serial, page.layout_generation),
-                source: source_id,
-                destination: id,
-            });
-            id
-        };
         let row = usize::from(page.rows) - 1;
-        let slot = page.slot(row, col);
-        let destination = &mut page.cells[slot..slot + cells.len()];
-        destination.copy_from_slice(cells);
-        if id != source_id {
-            for cell in destination {
-                cell.set_style_id(id);
+        let start = page.slot(row, col);
+        let mut copied = 0;
+        while let Some(cell) = cells.first() {
+            if cell.width() != 1
+                || cell.spacer_head()
+                || cell.has_grapheme()
+                || cell.has_hyperlink()
+                || (cell.background().is_some() && cell.style_id() != 0)
+            {
+                break;
             }
+            let count = crate::printing::destination_narrow(
+                cells,
+                cell.bits() & crate::printing::DEST_MASK,
+            );
+            let source_id = cell.style_id();
+            let id = if source_id == 0 {
+                0
+            } else if let Some(cached) = style_cache.filter(|cached| {
+                cached.page == (page.serial, page.layout_generation) && cached.source == source_id
+            }) {
+                page.styles.retain_many(cached.destination, count as u16);
+                cached.destination
+            } else {
+                let bytes = page.styles.storage_bytes();
+                let Ok(id) = page
+                    .styles
+                    .acquire_with_id(*source.styles.get(source_id), source_id)
+                else {
+                    break;
+                };
+                page.styles.retain_many(id, (count - 1) as u16);
+                if page.styles.storage_bytes() != bytes {
+                    page.refresh_charge();
+                }
+                *style_cache = Some(ReflowStyle {
+                    page: (page.serial, page.layout_generation),
+                    source: source_id,
+                    destination: id,
+                });
+                id
+            };
+            let slot = start + copied;
+            let destination = &mut page.cells[slot..slot + count];
+            destination.copy_from_slice(&cells[..count]);
+            if id != source_id {
+                for cell in destination {
+                    cell.set_style_id(id);
+                }
+            }
+            page.mark_cell(row, page.cells[slot]);
+            copied += count;
+            cells = &cells[count..];
         }
-        page.mark_cell(row, page.cells[slot]);
-        true
+        copied
     }
 
     fn reflow_row_state(&mut self) -> ReflowRow {
@@ -334,23 +350,14 @@ impl Screen {
                         }
                         if bulk_copy
                             && cell.width() == 1
-                            && !cell.spacer_head()
                             && !cell.has_grapheme()
                             && !cell.has_hyperlink()
-                            && (cell.background().is_none() || cell.style_id() == 0)
                         {
                             let window =
                                 &old.cells[old_col..old_col + (used - old_col).min(cols - x)];
-                            let count = crate::printing::destination_narrow(
-                                window,
-                                cell.bits() & crate::printing::DEST_MASK,
-                            );
-                            if self.copy_reflow_run(
-                                &source_page,
-                                &window[..count],
-                                x,
-                                &mut style_cache,
-                            ) {
+                            let count =
+                                self.copy_reflow_runs(&source_page, window, x, &mut style_cache);
+                            if count > 0 {
                                 if count > 1 {
                                     cells.nth(count - 2);
                                 }
@@ -653,6 +660,56 @@ mod tests {
     use crate::{Terminal, snapshot};
 
     #[test]
+    fn reflow_runs_resume_after_partial_copy_and_scalar_fallback() {
+        for limited_styles in [false, true] {
+            let mut source = Terminal::new(8, 1, 0);
+            source.feed(b"\x1b[31mab\x1b[0m-\x1b[32mcd");
+            source.feed(if limited_styles {
+                b"\x1b[34mef"
+            } else {
+                "\x1b[0me\u{301}f".as_bytes()
+            });
+            let source_page = &source.screen().pages.pages[0];
+            let cells = &source_page.row_cells(0)[..7];
+            let mut screen = Screen::new(8, 1, ScrollbackLimits::NONE);
+            screen.pages = PageList::default();
+            screen.pages.append(
+                crate::PageCapacity {
+                    cols: 8,
+                    rows: 1,
+                    // Four buckets admit only two nondefault styles.
+                    styles: if limited_styles { 4 } else { 128 },
+                    ..crate::PageCapacity::STANDARD
+                },
+                1,
+            );
+            let mut cache = None;
+            assert_eq!(
+                screen.copy_reflow_runs(source_page, cells, 0, &mut cache),
+                5
+            );
+            assert!(screen.row(0).cells[5..].iter().all(|c| c.bits() == 0));
+            screen
+                .install_cell(0, 5, source_page.row(0).copy_cell(5), true)
+                .unwrap();
+            assert_eq!(
+                screen.copy_reflow_runs(source_page, &cells[6..], 6, &mut cache),
+                1,
+            );
+            let expected = source_page.row(0);
+            let row = screen.row(0);
+            for col in 0..8 {
+                assert_eq!(row.text(col).as_str(), expected.text(col).as_str());
+                assert_eq!(row.style(col), expected.style(col));
+            }
+            let page = &screen.pages.pages[0];
+            for (id, _) in page.styles.iter() {
+                assert_eq!(page.styles.reference_count(id), 2);
+            }
+        }
+    }
+
+    #[test]
     fn reflow_style_cache_follows_resource_relocation() {
         let mut source = Terminal::new(8, 2, 0);
         source.feed(b"\x1b[31mx");
@@ -670,7 +727,10 @@ mod tests {
                 },
             );
             let mut cache = None;
-            assert!(screen.copy_reflow_run(source_page, cells, 0, &mut cache));
+            assert_eq!(
+                screen.copy_reflow_runs(source_page, cells, 0, &mut cache),
+                1
+            );
             assert_eq!(cache.unwrap().destination, 2);
 
             // Both operations renumber the copied style; only splitting also
@@ -685,7 +745,10 @@ mod tests {
 
             let page = screen.pages.pages.back().unwrap();
             assert_eq!(page.row(usize::from(page.rows) - 1).cells[0].style_id(), 1);
-            assert!(screen.copy_reflow_run(source_page, cells, 1, &mut cache));
+            assert_eq!(
+                screen.copy_reflow_runs(source_page, cells, 1, &mut cache),
+                1
+            );
             let page = screen.pages.pages.back().unwrap();
             let row = page.row(usize::from(page.rows) - 1);
             for col in 0..2 {
