@@ -147,7 +147,7 @@ Capture limits and invalid input can reject a request before these operations.
 | 66, 99 | Kitty text sizing and Kitty notifications: no terminal/desktop effect, matching the reference's unimplemented callbacks. Generic notifications use OSC 9/777. |
 | 72 | Kitty drag-and-drop state, callbacks, and host APIs exist in the VT crate; the native desktop drag handshake is missing in both apps. Ordinary file drops insert paths into the hovered pane. |
 | 133 | `A`, `N`, `P`, `L` prompt/fresh-line handling; `B`, `I` input/EOL semantics; `C`, `D` output and command lifecycle. Prompt navigation, resize/redraw policy, activity, and completion notifications consume these. |
-| 777 | `notify;title;body` produces a native notification. |
+| 777 | `notify;title;body` produces a native notification. Private `rustty-agent;1;BASE64(JSON)` reports pane-local agent metadata only when the host opts in. |
 | 1337 | `CurrentDir` uses the directory consumer; `Copy=:` uses OSC 52 decoding and clipboard policy. Other iTerm2 keys are unsupported. |
 | 5522 | Kitty clipboard transfers, MIME selection, grants, paste events, bounded decoding, and replies; native clipboard access honors configured policy. |
 
@@ -155,6 +155,36 @@ OSC 133's `cl` and `click_events` hints are retained/exposed with semantic metad
 but do not drive editor click forwarding in the desktop. Prompt `redraw` and `k`
 options do affect terminal behavior. OSC 3008 context signals are not dispatched
 by Rustty; Ghostty recognizes their metadata but also has no terminal callback.
+
+### Private agent status
+
+`ESC ] 777;rustty-agent;1;BASE64(COMPACT_UTF8_JSON) ST` is a private Rustty
+subcommand, not a standardized new OSC number. BEL and ordinary ST (`ESC \\`)
+terminate it. `Terminal::agent_status_events` defaults off, preserving standalone
+VT/oracle behavior; Rustty PTY sessions opt in and forward `Effect::AgentStatus`
+in input order. The setting survives host reset and RIS. Neither the setting nor
+any agent registration/status is saved in VT snapshots. Metadata effects leave
+terminal content, generation, title, notification, bell, focus, and replies alone.
+
+The JSON is an object with `op` equal to `begin`, `update`, or `end`. Begin/update
+require `state`: `idle`, `working`, `needs_input`, `done`, `error`, `paused`, or
+`unknown`. Optional string fields are `label`, `thread_id`, and `turn_id`; done
+requires a nonempty `turn_id`. End permits only `{"op":"end"}`. Unknown/duplicate
+fields, null metadata, wrong types, bad versions, malformed UTF-8/base64, and
+control characters are rejected. Labels are at most 128 UTF-8 bytes; IDs are
+1–128 ASCII bytes. Decoded JSON is at most 1024 bytes, inside the existing OSC 777
+payload bound of **less than 2048 bytes**. That check occurs after raw capture;
+it does not establish a new 2 KiB streaming allocation bound.
+
+One serialized reporter owns a pane's lifecycle. Begin registers/replaces it;
+update replaces its complete snapshot and is ignored by the application before
+begin; end unregisters it. Missing optional metadata uses pane-derived defaults.
+The receiving PTY supplies pane identity: no packet selects another pane or asks
+for focus. A done turn ID is stable across duplicate/switch snapshots and unique
+per completed turn, scoped to thread and registration. Done is observed turn
+completion, not proof of success. Programs sharing a PTY can spoof that pane's
+metadata; this protocol does not authenticate them. Lifecycle and completion
+acknowledgement belong to live application state, outside the VT.
 
 Shift overrides mouse reporting for local selection by default. XTSHIFTESCAPE
 can change that preference unless `mouse-shift-capture` is `always` or `never`.
@@ -195,6 +225,6 @@ cargo test -p rustty --features sessions --offline
 cargo test -p rustty-app -p rustty-render --offline
 cargo test -p rustty-vt --offline --test terminal --test modes --test sgr \
   --test colors --test osc_strings --test queries --test host_queries \
-  --test host_effects --test host_shell_events --test semantic \
+  --test host_effects --test host_shell_events --test host_agent_status --test semantic \
   --test stream_controls --test clipboard_kitty --test dnd
 ```

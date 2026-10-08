@@ -53,14 +53,14 @@ pub fn advance(
         "cached_redraw" => {}
         "status_update" => {
             // One changed cell in a populated pane, like an agent status tick.
-            terminal.feed(if frame % 2 == 0 {
+            terminal.feed(if frame.is_multiple_of(2) {
                 b"\x1b[H-"
             } else {
                 b"\x1b[H+"
             });
         }
         "resize_reflow" => terminal.resize(
-            if frame % 2 == 0 {
+            if frame.is_multiple_of(2) {
                 size[0].saturating_sub(20).max(2)
             } else {
                 size[0]

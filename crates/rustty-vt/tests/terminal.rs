@@ -36,7 +36,7 @@ fn wrapping_scrolling_and_tracked_references() {
     let pin = t.screen_mut().track(point);
     t.feed(b"efghijkl");
     assert_eq!(lines(&t), ["efgh", "ijkl"]);
-    assert_eq!(t.screen().row_text(&t.screen().physical_row(0)), "abcd");
+    assert_eq!(t.screen().row_text(t.screen().physical_row(0)), "abcd");
     assert_eq!(t.screen().resolve(pin), Some(point));
     t.feed(b"mnopqrstuvwx");
     assert_eq!(t.screen().resolve(pin), Some(point));
@@ -53,7 +53,7 @@ fn vt_overwrites_wide_cells_as_a_unit() {
     assert_eq!(t.screen().row(1).cells[0].width(), 2);
     t.feed(b"\x1b[2;2HX");
     assert!(t.screen().row(1).cells[0].codepoint().is_none());
-    assert_eq!(&*t.screen().cell_text(&t.screen().row(1), 1), "X");
+    assert_eq!(&*t.screen().cell_text(t.screen().row(1), 1), "X");
     invariant(&t);
     t.feed("\x1b[H界\x1b[2GX".as_bytes());
     invariant(&t);
@@ -63,10 +63,10 @@ fn vt_overwrites_wide_cells_as_a_unit() {
 fn graphemes_have_bounded_storage_and_track_width() {
     let mut t = Terminal::new(6, 2, 10);
     t.feed("a\u{301}".as_bytes());
-    assert_eq!(&*t.screen().cell_text(&t.screen().row(0), 0), "a\u{301}");
+    assert_eq!(&*t.screen().cell_text(t.screen().row(0), 0), "a\u{301}");
     t.feed(b"\x1b[?2027h");
     t.feed("👩🏽‍🚀".as_bytes());
-    assert_eq!(&*t.screen().cell_text(&t.screen().row(0), 1), "👩🏽‍🚀");
+    assert_eq!(&*t.screen().cell_text(t.screen().row(0), 1), "👩🏽‍🚀");
     assert_eq!(t.screen().row(0).cells[1].width(), 2);
     for _ in 0..200 {
         t.feed("\u{301}".as_bytes());
@@ -74,7 +74,7 @@ fn graphemes_have_bounded_storage_and_track_width() {
     invariant(&t);
     let mut t = Terminal::new(3, 3, 10);
     t.feed("\x1b[?2027hab❤\u{fe0f}".as_bytes());
-    assert_eq!(&*t.screen().cell_text(&t.screen().row(1), 0), "❤\u{fe0f}");
+    assert_eq!(&*t.screen().cell_text(t.screen().row(1), 0), "❤\u{fe0f}");
     assert_eq!(t.screen().row(1).cells[0].width(), 2);
     invariant(&t);
 }
@@ -89,20 +89,20 @@ fn combining_at_right_edge_respects_grapheme_and_wrap_modes() {
             terminal.feed("ab\u{596}".as_bytes());
             if wrap || grapheme {
                 assert_eq!(
-                    &*terminal.screen().cell_text(&terminal.screen().row(0), 0),
+                    &*terminal.screen().cell_text(terminal.screen().row(0), 0),
                     "a"
                 );
                 assert_eq!(
-                    &*terminal.screen().cell_text(&terminal.screen().row(0), 1),
+                    &*terminal.screen().cell_text(terminal.screen().row(0), 1),
                     "b\u{596}"
                 );
             } else {
                 assert_eq!(
-                    &*terminal.screen().cell_text(&terminal.screen().row(0), 0),
+                    &*terminal.screen().cell_text(terminal.screen().row(0), 0),
                     "a\u{596}"
                 );
                 assert_eq!(
-                    &*terminal.screen().cell_text(&terminal.screen().row(0), 1),
+                    &*terminal.screen().cell_text(terminal.screen().row(0), 1),
                     "b"
                 );
             }
@@ -143,7 +143,7 @@ fn legacy_combining_without_wrap_is_ignored_at_column_zero() {
     let mut terminal = Terminal::new(1, 2, 0);
     terminal.feed("\x1b[?7la\u{596}".as_bytes());
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().row(0), 0),
+        &*terminal.screen().cell_text(terminal.screen().row(0), 0),
         "a"
     );
 }
@@ -159,7 +159,7 @@ fn erase_retains_background_but_clears_other_style_and_protects_cells() {
         assert_eq!(style.foreground, Color::Default);
     }
     t.feed(b"\x1b[H\x1b[1\"qA\x1b[0\"qB\x1b[?2K");
-    assert_eq!(&*t.screen().cell_text(&t.screen().row(0), 0), "A");
+    assert_eq!(&*t.screen().cell_text(t.screen().row(0), 0), "A");
     assert!(t.screen().row(0).cells[1].codepoint().is_none());
 }
 
@@ -184,7 +184,7 @@ fn margins_scroll_only_the_defined_region() {
     assert_eq!(lines(&t), ["one", "three", "", "four"]);
     assert!(t.screen().history().next().is_none());
     t.feed(b"\x1b[?6h\x1b[1;2HX");
-    assert_eq!(&*t.screen().cell_text(&t.screen().row(1), 1), "X");
+    assert_eq!(&*t.screen().cell_text(t.screen().row(1), 1), "X");
     invariant(&t);
 }
 
@@ -221,7 +221,7 @@ fn resize_reflows_cursor_blanks_and_keeps_wide_padding_at_the_edge() {
     t.feed("abc界".as_bytes());
     t.resize(4, 4);
     assert!(t.screen().row(0).cells[3].spacer_head());
-    assert_eq!(&*t.screen().cell_text(&t.screen().row(1), 0), "界");
+    assert_eq!(&*t.screen().cell_text(t.screen().row(1), 0), "界");
     t.resize(1, 4);
     assert!(
         t.screen()
@@ -268,7 +268,7 @@ fn resize_retains_blank_cells_copied_from_a_wrapped_source_row() {
     assert_eq!(
         terminal
             .screen()
-            .row_text(&terminal.screen().physical_row(0)),
+            .row_text(terminal.screen().physical_row(0)),
         "abcdef"
     );
     assert_eq!(lines(&terminal), ["gh", ""]);

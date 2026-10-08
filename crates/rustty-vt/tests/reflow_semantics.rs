@@ -49,7 +49,7 @@ fn narrowing_with_more_active_rows_counts_continuations_at_the_active_boundary()
     assert_eq!(
         terminal
             .screen()
-            .row_text(&terminal.screen().physical_row(0)),
+            .row_text(terminal.screen().physical_row(0)),
         "AB"
     );
     assert_eq!(
@@ -83,7 +83,7 @@ fn reflow_copies_source_prompt_metadata_to_each_destination_segment() {
         terminal.resize(12, 4);
         assert_eq!(terminal.screen().row(0).semantic, expected);
         assert_eq!(
-            terminal.screen().row_text(&terminal.screen().row(0)),
+            terminal.screen().row_text(terminal.screen().row(0)),
             "abcdefghij"
         );
     }

@@ -87,7 +87,6 @@ fn restoring_a_cursor_preserves_the_active_hyperlink() {
                 .screen()
                 .row(0)
                 .hyperlink(0)
-                .as_deref()
                 .and_then(|link| link.raw.as_deref()),
             Some(b"current/\xff".as_slice()),
         );
@@ -182,7 +181,7 @@ fn same_screen_switches_preserve_active_hyperlinks() {
                 Some(HyperlinkId::Implicit(1))
             );
             assert_eq!(
-                &*terminal.screen().cell_text(&terminal.screen().row(0), 0),
+                &*terminal.screen().cell_text(terminal.screen().row(0), 0),
                 if alternate && mode == 1049 { "" } else { "A" }
             );
         }
