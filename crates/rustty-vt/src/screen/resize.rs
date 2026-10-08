@@ -94,13 +94,14 @@ impl Screen {
     }
 
     fn apply_reflow_row(&mut self, state: ReflowRow) {
-        let (index, row) = self.pages.locate_from_end(0);
-        let page = &mut self.pages.pages[index];
+        let page = self.pages.pages.back_mut().unwrap();
+        let row = usize::from(page.rows) - 1;
         page.row_ids[row] = state.id;
-        page.headers[row].set(RowHeader::WRAPPED, state.wrapped);
-        page.headers[row].set(RowHeader::CONTINUATION, state.continuation);
-        page.headers[row].set_semantic(state.semantic);
-        page.headers[row].set(RowHeader::DIRTY, true);
+        let header = &mut page.headers[row];
+        header.set(RowHeader::WRAPPED, state.wrapped);
+        header.set(RowHeader::CONTINUATION, state.continuation);
+        header.set_semantic(state.semantic);
+        header.set(RowHeader::DIRTY, true);
     }
 
     fn reflow_expose(&mut self, capacity: crate::PageCapacity, id: u64, spare: &mut Option<Page>) {
@@ -141,6 +142,9 @@ impl Screen {
         spare: &mut Option<Page>,
         exposed_rows: &mut usize,
     ) {
+        if *exposed_rows > output.len() {
+            self.apply_reflow_row(line);
+        }
         while *exposed_rows <= output.len() {
             let index = *exposed_rows;
             let state = output.get(index).copied().unwrap_or(line);
@@ -148,7 +152,6 @@ impl Screen {
             self.apply_reflow_row(state);
             *exposed_rows += 1;
         }
-        self.apply_reflow_row(line);
     }
 
     pub(crate) fn resize(&mut self, cols: usize, rows: usize, reflow: bool) {
