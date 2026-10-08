@@ -1,4 +1,4 @@
-use rustty_vt::{GridPoint, Selection, SemanticContent, Terminal, snapshot};
+use rustty_vt::{Color, GridPoint, Selection, SemanticContent, Style, Terminal, snapshot};
 
 #[test]
 fn reflow_initializes_retained_blank_gaps_and_viewport_padding() {
@@ -125,6 +125,84 @@ fn reflow_remaps_duplicate_anchors_and_both_halves_of_a_wide_cell() {
     assert_eq!(screen.resolve(second), Some(tail));
     assert_eq!(screen.selection.unwrap().start, base);
     assert_eq!(screen.selection.unwrap().end, tail);
+}
+
+#[test]
+fn reflow_preserves_styled_wide_runs_and_normalizes_tail_metadata() {
+    let mut source = Terminal::new(32, 4, 100);
+    source.feed(b"header\r\n");
+    source.screen_mut().cursor.protected = true;
+    source.screen_mut().cursor.semantic = SemanticContent::Input;
+    source.feed("a\x1b[1;31m界界\x1b[0mb\x1b[3;32m語語\x1b[0mc".as_bytes());
+    // Reflow reconstructs each tail from its head, including edited tails.
+    source.screen_mut().set_cell_style(
+        1,
+        4,
+        Style {
+            foreground: Color::Indexed(4),
+            ..Style::default()
+        },
+    );
+    source.screen_mut().cursor.protected = false;
+    source.screen_mut().cursor.semantic = SemanticContent::Output;
+    source.feed(b"\r\nfooter");
+    let contents = |screen: &rustty_vt::Screen| {
+        screen
+            .all_rows()
+            .flat_map(|row| {
+                row.cells.iter().enumerate().filter_map(move |(col, cell)| {
+                    cell.codepoint()
+                        .map(|cp| (cp, row.style(col), cell.protected(), cell.semantic()))
+                })
+            })
+            .collect::<Vec<_>>()
+    };
+    let expected = contents(source.screen());
+    let mut json = serde_json::to_value(source.screen()).unwrap();
+    let tail = &mut json["rows"][1]["cells"][2];
+    tail["protected"] = false.into();
+    tail["semantic"] = "Output".into();
+    tail["text"] = "x".into();
+    *source.screen_mut() = serde_json::from_value(json).unwrap();
+    for width in [1, 2, 3, 5, 8, 16, 64] {
+        let mut terminal = source.clone();
+        let mut anchored = source.clone();
+        let point = anchored.screen().point(1, 0).unwrap();
+        anchored.screen_mut().track(point);
+        terminal.resize(width, 4);
+        anchored.resize(width, 4);
+        assert_eq!(
+            snapshot::encode_to_vec(&terminal).unwrap(),
+            snapshot::encode_to_vec(&anchored).unwrap(),
+            "anchored and unanchored reflow at width {width}",
+        );
+        let expected: Vec<_> = expected
+            .iter()
+            .copied()
+            .filter(|(cp, ..)| width != 1 || !matches!(cp, '界' | '語'))
+            .collect();
+        assert_eq!(contents(terminal.screen()), expected, "width {width}");
+        for row in terminal.screen().all_rows() {
+            for (col, cell) in row.cells.iter().enumerate() {
+                if cell.width() == 2 {
+                    let tail = row.cells[col + 1];
+                    assert_eq!(tail.width(), 0);
+                    assert_eq!(tail.codepoint(), None);
+                    assert_eq!(row.style(col + 1), row.style(col));
+                    assert_eq!(tail.protected(), cell.protected());
+                    assert_eq!(tail.semantic(), cell.semantic());
+                } else if cell.width() == 0 {
+                    assert!(col > 0 && row.cells[col - 1].width() == 2);
+                }
+                if cell.spacer_head() {
+                    assert_eq!(col + 1, usize::from(width));
+                }
+                if width == 1 {
+                    assert_eq!(cell.width(), 1);
+                }
+            }
+        }
+    }
 }
 
 #[test]

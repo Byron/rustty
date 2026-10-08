@@ -30,7 +30,7 @@ impl Screen {
         let start = page.slot(row, col);
         let mut copied = 0;
         while let Some(cell) = cells.first() {
-            if cell.width() != 1
+            if cell.width() == 0
                 || cell.spacer_head()
                 || cell.has_grapheme()
                 || cell.has_hyperlink()
@@ -38,10 +38,20 @@ impl Screen {
             {
                 break;
             }
-            let count = crate::printing::destination_narrow(
-                cells,
-                cell.bits() & crate::printing::DEST_MASK,
-            );
+            let pattern = cell.bits() & crate::printing::DEST_MASK;
+            let count = if cell.width() == 2 {
+                let mut tail = *cell;
+                tail.set_width(0);
+                crate::printing::destination_wide(
+                    cells,
+                    [pattern, tail.bits() & crate::printing::DEST_MASK],
+                )
+            } else {
+                crate::printing::destination_narrow(cells, pattern)
+            };
+            if count == 0 {
+                break;
+            }
             let source_id = cell.style_id();
             let id = if source_id == 0 {
                 0
@@ -72,7 +82,15 @@ impl Screen {
             let slot = start + copied;
             let destination = &mut page.cells[slot..slot + count];
             destination.copy_from_slice(&cells[..count]);
-            if id != source_id {
+            if cell.width() == 2 {
+                // Reflow normalizes tails even for independently edited snapshots.
+                for pair in destination.as_chunks_mut::<2>().0 {
+                    pair[0].set_style_id(id);
+                    pair[1] = pair[0];
+                    pair[1].set_codepoint(None);
+                    pair[1].set_width(0);
+                }
+            } else if id != source_id {
                 for cell in destination {
                     cell.set_style_id(id);
                 }
@@ -349,11 +367,7 @@ impl Screen {
                                 &mut exposed_rows,
                             );
                         }
-                        if bulk_copy
-                            && cell.width() == 1
-                            && !cell.has_grapheme()
-                            && !cell.has_hyperlink()
-                        {
+                        if bulk_copy && !cell.has_grapheme() && !cell.has_hyperlink() {
                             let window =
                                 &old.cells[old_col..old_col + (used - old_col).min(cols - x)];
                             let count =

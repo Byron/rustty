@@ -5512,3 +5512,35 @@ RUSTTY_REFLOW_DENSE_LINKS=1 \
   cargo bench --offline -p rustty-vt --bench primitives -- \
   ghostty/reflow_history_content/mixed-dense-links --test
 ```
+
+### Follow-up: batch complete wide-character pairs
+
+Reflow now uses the existing wide-pair scanner as well as the narrow scanner.
+Complete pairs share style admission and copying; boundaries, resources and
+tracked rows retain scalar handling. Copied tails are reconstructed from heads
+so independently edited snapshot tails retain Rustty's established behavior.
+The regression compares batched and anchored scalar reflow with differing tail
+styles, protection, semantic metadata and codepoints, including width one.
+
+Frozen release binaries are compared adjacently in both orders, with 20 samples
+per direction, 0.2-second warmup and a 1-second measurement target. Pooled medians:
+
+| Case | Records | Before ms | Wide runs ms | After / before |
+| --- | ---: | ---: | ---: | ---: |
+| Styled ASCII | 32,768 | 9.831 | 9.707 | 0.987× |
+| Plain CJK | 32,768 | 40.291 | 9.216 | 0.229× |
+| Styled CJK | 32,768 | 338.291 | 10.229 | 0.030× |
+| Styled CJK, width 63 | 8,192 | 84.565 | 3.277 | 0.039× |
+| Styled combining marks | 8,192 | 212.122 | 212.154 | 1.000× |
+| Styled emoji | 8,192 | 132.043 | 137.815 | 1.044× |
+| Styled mixed text | 8,192 | 106.653 | 85.437 | 0.801× |
+
+The wide cases now meet the preceding Ghostty measurements; fresh native
+comparisons follow after grapheme work. The isolated emoji control rises 4.4%
+in both orders, while mixed text improves 20%. This remains a scalar-path
+control for the following optimization work, not a claimed emoji speedup.
+All 338 VT tests pass with normal and scalar kernels; the expanded snapshot
+regression also passes. Timed cases retain exact pre/post content checks.
+Artifacts are in `/tmp/rustty-unicode-opt/wide-normalized-paired`; an earlier
+unnormalized-tail experiment was stopped after review found its snapshot
+compatibility issue and is not retained.
