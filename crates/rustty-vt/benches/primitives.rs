@@ -634,6 +634,66 @@ fn history_reflow(c: &mut Criterion) {
     group.finish();
 }
 
+fn styled_history_reflow(c: &mut Criterion) {
+    let mut group = c.benchmark_group("rustty/reflow_history_styled");
+    for records in [1_024, 8_192, 32_768] {
+        let mut terminal = Terminal::with_limits(
+            COLS,
+            ROWS,
+            ScrollbackLimits {
+                bytes: None,
+                lines: None,
+            },
+        );
+        let text = "abcdefgh".repeat(24);
+        for line in 0..records {
+            terminal.feed(
+                format!(
+                    "\x1b[{};{}m{text}\x1b[0m\r\n",
+                    if line % 2 == 0 { 1 } else { 22 },
+                    31 + line % 4,
+                )
+                .as_bytes(),
+            );
+        }
+        let check = |terminal: &Terminal, columns: usize| {
+            let screen = terminal.screen();
+            let record_rows = 192_usize.div_ceil(columns);
+            assert_eq!(
+                screen.history_len(),
+                records * record_rows + 1 - usize::from(ROWS)
+            );
+            for (index, row) in screen.all_rows().enumerate().take(records * record_rows) {
+                let record = index / record_rows;
+                let used = (192 - index % record_rows * columns).min(columns);
+                for col in 0..used {
+                    assert_eq!(
+                        row.cells[col].codepoint(),
+                        Some(b"abcdefgh"[col % 8] as char)
+                    );
+                    let style = row.style(col);
+                    assert_eq!(style.foreground, Color::Indexed(1 + (record % 4) as u8));
+                    assert_eq!(style.bold, record % 2 == 0);
+                }
+            }
+        };
+        terminal.resize(COLS / 2, ROWS);
+        check(&terminal, usize::from(COLS / 2));
+        terminal.resize(COLS, ROWS);
+        check(&terminal, usize::from(COLS));
+        group.throughput(Throughput::Elements(records as u64));
+        group.bench_function(records.to_string(), |b| {
+            b.iter(|| {
+                let terminal = black_box(&mut terminal);
+                terminal.resize(COLS / 2, ROWS);
+                terminal.resize(COLS, ROWS);
+            })
+        });
+        check(&terminal, usize::from(COLS));
+    }
+    group.finish();
+}
+
 // Match the app's default owned-history cap while retaining the same stream
 // inputs and native line limit as the uncapped primitive comparisons.
 fn memory_capped_streams(c: &mut Criterion) {
@@ -680,6 +740,7 @@ criterion_group!(
     primitives,
     chunked_input,
     history_reflow,
+    styled_history_reflow,
     memory_capped_streams
 );
 criterion_main!(benches);

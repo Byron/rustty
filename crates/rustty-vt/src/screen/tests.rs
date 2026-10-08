@@ -150,6 +150,53 @@ fn index_preserves_cursor_resources_and_generation() {
 }
 
 #[test]
+fn reflow_preserves_styled_history_across_many_destination_pages() {
+    let mut terminal = Terminal::with_limits(
+        128,
+        4,
+        ScrollbackLimits {
+            bytes: None,
+            lines: None,
+        },
+    );
+    terminal.feed(b"\x1b[?2027h");
+    for record in 0..256 {
+        terminal.feed(
+            format!(
+                "\x1b[38;2;{};0;0m\x1b]8;id=record;https://example.org\x07a\u{301}界\x1b]8;;\x07{}\x1b[0m\r\n",
+                record % 16,
+                "abcdefgh".repeat(20),
+            )
+            .as_bytes(),
+        );
+    }
+    let contents = |screen: &Screen| {
+        screen
+            .all_rows()
+            .flat_map(|row| {
+                row.cells.iter().enumerate().filter_map(move |(col, cell)| {
+                    cell.codepoint().map(|_| {
+                        (
+                            row.text(col).to_string(),
+                            row.style(col),
+                            row.hyperlink(col).map(|link| link.uri_bytes().to_vec()),
+                        )
+                    })
+                })
+            })
+            .collect::<Vec<_>>()
+    };
+    let expected = contents(terminal.screen());
+    assert_eq!(expected.len(), 256 * 162);
+    for width in [63, 32, 128, 97, 128] {
+        terminal.resize(width, 4);
+        assert!(terminal.screen().pages.pages.len() > 1, "width {width}");
+        assert_eq!(contents(terminal.screen()), expected, "width {width}");
+        assert_references(terminal.screen());
+    }
+}
+
+#[test]
 fn resource_ownership_survives_edits_reflow_snapshots_and_eviction() {
     for columns in [8, 80, 1024] {
         let mut terminal = Terminal::with_limits(columns, 4, ScrollbackLimits::default());

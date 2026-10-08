@@ -18,8 +18,8 @@ impl Screen {
         }
     }
 
-    fn apply_reflow_row(&mut self, absolute: usize, state: ReflowRow) {
-        let (index, row) = self.locate(absolute);
+    fn apply_reflow_row(&mut self, state: ReflowRow) {
+        let (index, row) = self.pages.locate_from_end(0);
         let page = &mut self.pages.pages[index];
         page.row_ids[row] = state.id;
         page.headers[row].set(RowHeader::WRAPPED, state.wrapped);
@@ -64,14 +64,16 @@ impl Screen {
         line: ReflowRow,
         capacity: crate::PageCapacity,
         spare: &mut Option<Page>,
+        exposed_rows: &mut usize,
     ) {
-        while self.pages.total_rows() <= output.len() {
-            let index = self.pages.total_rows();
+        while *exposed_rows <= output.len() {
+            let index = *exposed_rows;
             let state = output.get(index).copied().unwrap_or(line);
             self.reflow_expose(capacity, state.id, spare);
-            self.apply_reflow_row(index, state);
+            self.apply_reflow_row(state);
+            *exposed_rows += 1;
         }
-        self.apply_reflow_row(output.len(), line);
+        self.apply_reflow_row(line);
     }
 
     pub(crate) fn resize(&mut self, cols: usize, rows: usize, reflow: bool) {
@@ -143,7 +145,8 @@ impl Screen {
             let mut wanted = Vec::new();
             let mut output = Vec::new();
             let mut line = self.reflow_row_state();
-            self.apply_reflow_row(0, line);
+            self.apply_reflow_row(line);
+            let mut exposed_rows = 1;
             let (mut x, mut pin_x, mut written_rows) = (0usize, 0usize, 0usize);
             let mut spare = None;
             while let Some(source_page) = source_pages.pages.pop_front() {
@@ -207,7 +210,13 @@ impl Screen {
                     };
                     line.semantic = old.semantic;
                     if used > 0 {
-                        self.ensure_reflow_row(&output, line, capacity, &mut spare);
+                        self.ensure_reflow_row(
+                            &output,
+                            line,
+                            capacity,
+                            &mut spare,
+                            &mut exposed_rows,
+                        );
                     }
                     let mut wide_tail = None;
                     for (old_col, cell) in old.cells.iter().take(used).enumerate() {
@@ -235,7 +244,7 @@ impl Screen {
                         let mut spacer = None;
                         if x + width > cols {
                             if width == 2 && x < cols {
-                                let (index, row) = self.locate(output.len());
+                                let (index, row) = self.pages.locate_from_end(0);
                                 let page = &mut self.pages.pages[index];
                                 let slot = page.slot(row, x);
                                 page.cells[slot].set_spacer_head(true);
@@ -245,13 +254,19 @@ impl Screen {
                                 });
                             }
                             line.wrapped = true;
-                            self.apply_reflow_row(output.len(), line);
+                            self.apply_reflow_row(line);
                             output.push(line);
                             line = self.reflow_row_state();
                             line.semantic = old.semantic;
                             line.continuation = true;
                             x = 0;
-                            self.ensure_reflow_row(&output, line, capacity, &mut spare);
+                            self.ensure_reflow_row(
+                                &output,
+                                line,
+                                capacity,
+                                &mut spare,
+                                &mut exposed_rows,
+                            );
                         }
                         record(
                             old_col,
@@ -287,7 +302,8 @@ impl Screen {
                             copy.cell.set_width(width as u8);
                             let _ = self.install_cell(output.len(), x, copy, true);
                             if width == 2 {
-                                let mut tail = self.physical_row(output.len()).copy_cell(x);
+                                let page = self.pages.pages.back().unwrap();
+                                let mut tail = page.row(usize::from(page.rows) - 1).copy_cell(x);
                                 tail.cell.set_codepoint(None);
                                 tail.cell.set_width(0);
                                 tail.text = None;
@@ -319,8 +335,8 @@ impl Screen {
                         written_rows = output.len() + 1;
                     }
                     if !old.wrapped {
-                        if output.len() < self.pages.total_rows() {
-                            self.apply_reflow_row(output.len(), line);
+                        if output.len() < exposed_rows {
+                            self.apply_reflow_row(line);
                         }
                         output.push(line);
                         line = self.reflow_row_state();
@@ -331,7 +347,7 @@ impl Screen {
                 spare = Some(source_page);
             }
             if output.len() < written_rows {
-                self.apply_reflow_row(output.len(), line);
+                self.apply_reflow_row(line);
                 output.push(line);
             }
             if let Some(p) = map.get(&(old_cursor.row, old_cursor.col)) {

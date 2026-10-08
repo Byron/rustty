@@ -977,7 +977,14 @@ impl Screen {
         copy: CellCopy,
         reflow: bool,
     ) -> Result<(), SetFull> {
-        let mut location = self.locate(absolute);
+        // Reflow appends into the last exposed row. Avoid walking all preceding
+        // history pages for every styled cell; resource splits still relocate
+        // the cell through acquire_style/acquire_grapheme when necessary.
+        let mut location = if reflow {
+            self.pages.locate_from_end(0)
+        } else {
+            self.locate(absolute)
+        };
         let (index, row) = location;
         let page = &mut self.pages.pages[index];
         let slot = page.slot(row, col);
