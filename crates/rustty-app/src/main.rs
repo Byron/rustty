@@ -3,6 +3,7 @@
     windows_subsystem = "windows"
 )]
 
+mod agent_cli;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod desktop;
 #[cfg(target_os = "windows")]
@@ -11,6 +12,14 @@ mod windows_registration;
 fn main() {
     #[cfg(target_os = "windows")]
     attach_parent_console();
+
+    if std::env::args().nth(1).as_deref() == Some("agent-status") {
+        if let Err(error) = agent_cli::run(std::env::args().skip(2)) {
+            eprintln!("Rustty: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
 
     #[cfg(target_os = "windows")]
     if std::env::args().len() == 2
