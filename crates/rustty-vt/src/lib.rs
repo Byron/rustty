@@ -4,6 +4,7 @@
 #[cfg(feature = "allocation-probe")]
 pub mod allocation_probe;
 
+pub mod agent;
 pub mod clipboard;
 pub mod color;
 pub mod dnd;

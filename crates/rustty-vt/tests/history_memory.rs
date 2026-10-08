@@ -146,7 +146,7 @@ fn pruning_a_wrapped_graphemes_source_preserves_active_text() {
         bounded(&terminal, limit);
         let cell = &terminal.screen().row(0).cells[0];
         assert_eq!(
-            &*terminal.screen().cell_text(&terminal.screen().row(0), 0),
+            &*terminal.screen().cell_text(terminal.screen().row(0), 0),
             "☀\u{200d}😀"
         );
         assert_eq!(cell.width(), 2);

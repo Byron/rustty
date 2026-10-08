@@ -297,7 +297,7 @@ impl<'a> ScreenFormatter<'a> {
                     start: self.screen.point(0, 0)?,
                     end: self.screen.point(
                         self.screen.history_len() + self.screen.height() - 1,
-                        self.screen.rows().last()?.cells.len() - 1,
+                        self.screen.rows().next_back()?.cells.len() - 1,
                     )?,
                     rectangular: false,
                 },

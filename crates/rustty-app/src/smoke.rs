@@ -24,6 +24,7 @@ fn hover_measurement_restarts_for_motion_and_leaving_but_not_duplicate_events() 
     let mut smoke = Smoke {
         directory: PathBuf::new(),
         offscreen: false,
+        interactive_deck: false,
         hover: true,
         pointer: None,
         stage: 4,
@@ -62,6 +63,7 @@ fn hover_measurement_restarts_for_motion_and_leaving_but_not_duplicate_events() 
 pub(super) struct Smoke {
     pub directory: PathBuf,
     pub offscreen: bool,
+    interactive_deck: bool,
     hover: bool,
     pointer: Option<Pos2>,
     stage: u8,
@@ -113,6 +115,7 @@ impl Smoke {
         Ok(Some(Self {
             directory,
             offscreen: std::env::var_os("RUSTTY_SMOKE_OFFSCREEN").is_some(),
+            interactive_deck: std::env::var_os("RUSTTY_SMOKE_INTERACTIVE_DECK").is_some(),
             hover: std::env::var_os("RUSTTY_SMOKE_HOVER").is_some(),
             pointer: None,
             stage: 0,
@@ -138,6 +141,7 @@ impl Smoke {
         }))
     }
     pub(super) fn configure(loaded: &mut LoadedConfig) {
+        loaded.config.stream_deck = false;
         let timing = std::env::var_os("RUSTTY_SMOKE_TIMING").is_some();
         if timing {
             let renderer = loaded.config.renderer;
@@ -197,6 +201,22 @@ impl Smoke {
         loaded.config.progress_style = true;
         loaded.config.undo_timeout = Duration::from_secs(5);
         loaded.config.keybinds.retain(|b| !b.flags.global);
+        if std::env::var_os("RUSTTY_SMOKE_INTERACTIVE_DECK").is_some()
+            && let Some(directory) = std::env::var_os("RUSTTY_SMOKE_DIR")
+        {
+            let script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../test/rustty/interactive-deck-demo.py");
+            let command = config::Command::Direct(vec![
+                "python3".into(),
+                script.to_string_lossy().into_owned(),
+                "--directory".into(),
+                directory.to_string_lossy().into_owned(),
+            ]);
+            loaded.config.command = Some(command.clone());
+            loaded.config.initial_command = Some(command);
+            loaded.config.working_directory = Some(PathBuf::from(directory));
+            loaded.config.stream_deck = true;
+        }
     }
     pub fn record(&mut self, event: &'static str) {
         if matches!(self.stage, 4 | 8 | 11 | 12) {
@@ -218,6 +238,46 @@ impl Smoke {
         }
     }
     pub fn step(&mut self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
+        if self.interactive_deck {
+            if self.stage == 0 && !app.workspace.windows.is_empty() {
+                app.add_window(false);
+                for window in 0..2 {
+                    let tab = app.workspace.id();
+                    let pane = app.workspace.id();
+                    app.workspace.windows[window].tabs.push(Tab::new(
+                        tab,
+                        pane,
+                        self.directory.clone(),
+                    ));
+                    for tab in 0..2 {
+                        for direction in [Direction::Right, Direction::Down] {
+                            let pane = app.workspace.id();
+                            let split = app.workspace.id();
+                            app.workspace.windows[window].tabs[tab].split(
+                                pane,
+                                split,
+                                direction,
+                                self.directory.clone(),
+                            );
+                        }
+                    }
+                    app.workspace.windows[window].frame = [
+                        100.0 + window as f64 * 150.0,
+                        100.0 + window as f64 * 80.0,
+                        1100.0,
+                        720.0,
+                    ];
+                }
+                app.changed();
+                app.reconcile(event_loop);
+                self.stage = 1;
+                println!(
+                    "Interactive Stream Deck fixture: 12 simulated reporters across two windows and four tabs; isolated workspace {}",
+                    self.directory.display()
+                );
+            }
+            return Ok(false);
+        }
         if self.offscreen {
             // This mode exercises visible-host scheduling with offscreen Metal
             // output, even if macOS occludes its disposable test window.
@@ -284,6 +344,9 @@ impl Smoke {
         }
         let complete = done;
         if complete && self.timing.is_none() {
+            if std::env::var_os("RUSTTY_SMOKE_DECK").is_some() {
+                super::deck_host::check_native_deck(app, event_loop)?;
+            }
             #[cfg(target_os = "windows")]
             check_last_window_exit(app, event_loop)?;
             let mut report = self.report.take().ok_or("missing smoke report")?;

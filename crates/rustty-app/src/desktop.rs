@@ -1,5 +1,7 @@
 #[path = "command_palette.rs"]
 mod command_palette;
+#[path = "deck_host.rs"]
+mod deck_host;
 #[path = "desktop_painter.rs"]
 mod painter;
 #[path = "smoke.rs"]
@@ -54,6 +56,7 @@ const MIN_WINDOW_SIZE: LogicalSize<f64> = LogicalSize::new(240.0, 120.0);
 
 #[derive(Debug)]
 enum Event {
+    DeckWake,
     Output(Id),
     Platform(PlatformEvent),
     Repaint(egui::RequestRepaintInfo, Instant),
@@ -77,6 +80,7 @@ fn dispatch_binding(
 }
 
 struct Pane {
+    agent: rustty_app::deck::Report,
     session: Session,
     host_state: (bool, bool, vt::query::ColorScheme),
     wake_pending: Arc<AtomicBool>,
@@ -560,6 +564,7 @@ impl DirectoryBadge {
 }
 
 struct App {
+    deck: deck_host::Connection,
     loaded: LoadedConfig,
     config_loader: config::ConfigLoader,
     config_args: Vec<String>,
@@ -673,8 +678,10 @@ pub fn run() -> Result<()> {
             let _ = repaint.send_event(Event::Repaint(info, deadline));
         }
     });
-    let mut gpu_config = egui_wgpu::WgpuConfiguration::default();
-    gpu_config.surface = egui_wgpu::SurfaceConfig::LOW_LATENCY;
+    let mut gpu_config = egui_wgpu::WgpuConfiguration {
+        surface: egui_wgpu::SurfaceConfig::LOW_LATENCY,
+        ..Default::default()
+    };
     #[cfg(target_os = "windows")]
     if let egui_wgpu::WgpuSetup::CreateNew(setup) = &mut gpu_config.wgpu_setup {
         // An HWND swapchain is opaque even for a transparent Winit window.
@@ -713,6 +720,7 @@ pub fn run() -> Result<()> {
         .and_then(|s| s.parse::<u64>().ok())
         .map(|s| now + Duration::from_secs(s));
     let mut app = App {
+        deck: deck_host::Connection::default(),
         loaded,
         config_loader,
         config_args: args,
@@ -1058,6 +1066,7 @@ impl App {
         self.panes.insert(
             id,
             Pane {
+                agent: rustty_app::deck::Report::default(),
                 session,
                 host_state,
                 wake_pending,
@@ -1461,6 +1470,18 @@ impl App {
             .values()
             .any(|host| host.visible && host.focused && self.focused(host.id) == Some(id));
         let config = &self.loaded.config;
+        let mut registered_agents = self
+            .workspace
+            .windows
+            .iter()
+            .flat_map(|window| &window.tabs)
+            .flat_map(|tab| tab.root.panes())
+            .filter(|id| {
+                self.panes
+                    .get(id)
+                    .is_some_and(|pane| pane.agent.is_registered())
+            })
+            .count();
         let Some(pane) = self.panes.get_mut(&id) else {
             return;
         };
@@ -1490,8 +1511,19 @@ impl App {
         }
         let events = pane.session.events().collect::<Vec<_>>();
         for event in events {
-            content_changed |= !matches!(&event, SessionEvent::Effect(vt::Effect::Title(_)));
+            let was_registered = pane.agent.is_registered();
+            content_changed |= !matches!(
+                &event,
+                SessionEvent::Effect(vt::Effect::Title(_) | vt::Effect::AgentStatus(_))
+            );
             match event {
+                SessionEvent::Effect(vt::Effect::AgentStatus(event)) if live && !pane.exited => {
+                    if matches!(event, vt::agent::Event::Begin(_)) {
+                        self.deck.report_generation += 1;
+                    }
+                    pane.agent
+                        .apply(event, self.deck.report_generation, pane.running.is_some());
+                }
                 SessionEvent::Effect(vt::Effect::Title(title)) => {
                     let title = String::from_utf8_lossy(&title);
                     pane.activity.title_changed(&title);
@@ -1512,6 +1544,7 @@ impl App {
                     pane.activity.command_started();
                 }
                 SessionEvent::Effect(vt::Effect::CommandEnd { exit_code }) => {
+                    pane.agent.command_ended();
                     stopped |= pane.activity.command_finished();
                     let elapsed = pane.running.take().map(|start| start.elapsed());
                     if elapsed
@@ -1557,12 +1590,14 @@ impl App {
                 SessionEvent::Effect(
                     effect @ (vt::Effect::ClipboardRead(_) | vt::Effect::ClipboardWrite(_)),
                 ) => clipboard.push(effect),
+                SessionEvent::OutputClosed => pane.agent.clear(),
                 SessionEvent::Exited {
                     code,
                     signal,
                     runtime,
                 } => {
                     pane.exited = true;
+                    pane.agent.clear();
                     pane.running = None;
                     pane.title = format!(
                         "Exited {code}{}",
@@ -1577,9 +1612,22 @@ impl App {
                 SessionEvent::Error(error) => self.errors.push(error),
                 _ => {}
             }
+            let registered = pane.agent.is_registered();
+            if live && registered != was_registered {
+                let was_empty = registered_agents == 0;
+                if registered {
+                    registered_agents += 1;
+                } else {
+                    registered_agents -= 1;
+                }
+                if was_empty != (registered_agents == 0) {
+                    self.deck.registration_transition();
+                }
+            }
         }
         // The child waiter can report exit before the reader delivers its final effects.
         if pane.exited {
+            pane.agent.clear();
             pane.running = None;
             stopped |= pane.activity.clear();
         }
@@ -2254,7 +2302,7 @@ impl App {
                         .all_rows()
                         .next()
                         .map(|r| vt::GridPoint { row: r.id, col: 0 });
-                    let last = screen.all_rows().last().map(|r| vt::GridPoint {
+                    let last = screen.all_rows().next_back().map(|r| vt::GridPoint {
                         row: r.id,
                         col: r.cells.len() - 1,
                     });
@@ -2560,6 +2608,11 @@ impl App {
             .keys()
             .copied()
             .collect::<std::collections::HashSet<_>>();
+        for (id, pane) in &mut self.panes {
+            if !required.contains_key(id) {
+                pane.agent.clear();
+            }
+        }
         for (_, state) in self.history.iter().chain(&self.redo) {
             retained.extend(
                 state
@@ -4537,6 +4590,7 @@ impl ApplicationHandler<Event> for App {
     }
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
         match event {
+            Event::DeckWake => {}
             Event::Output(id) => {
                 if let Some(smoke) = &mut self.smoke {
                     smoke.record("pty-output");
@@ -4587,29 +4641,10 @@ impl ApplicationHandler<Event> for App {
             }
             Event::Platform(event) => {
                 match event {
+                    #[cfg(target_os = "macos")]
+                    PlatformEvent::ScreensAwake(awake) => self.deck_screens_awake(awake),
                     PlatformEvent::NotificationClicked(pane) => {
-                        let target = self.workspace.windows.iter().find_map(|window| {
-                            window
-                                .tabs
-                                .iter()
-                                .position(|tab| tab.panes.contains_key(&pane))
-                                .map(|index| (window.id, index))
-                        });
-                        if let Some((id, index)) = target {
-                            if let Some(window) = self.index(id) {
-                                self.workspace.windows[window].active_tab = index;
-                            }
-                            self.focus_pane(id, pane);
-                            if let Some(host) = self.windows.values_mut().find(|host| host.id == id)
-                            {
-                                host.peek = None;
-                                host.visible = true;
-                                host.window.set_visible(true);
-                                host.window.set_minimized(false);
-                                host.window.focus_window();
-                                host.repaint();
-                            }
-                        }
+                        self.reveal_pane(pane);
                     }
                     PlatformEvent::Action(action) => {
                         self.platform_action(event_loop, action, false);
@@ -5085,6 +5120,7 @@ impl ApplicationHandler<Event> for App {
         self.reconcile(event_loop);
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.tick_deck();
         #[cfg(target_os = "windows")]
         if let Some(platform) = &self.platform {
             platform.tick();
@@ -5169,6 +5205,7 @@ impl ApplicationHandler<Event> for App {
             .save_at
             .into_iter()
             .chain(self.close_at)
+            .chain(self.deck.deadline())
             .chain(self.panes.values().flat_map(|pane| {
                 pane.activity
                     .deadline()
@@ -5208,6 +5245,7 @@ impl ApplicationHandler<Event> for App {
         event_loop.set_control_flow(next.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
     fn exiting(&mut self, _: &ActiveEventLoop) {
+        self.deck.stop();
         if self.startup_error.is_none() {
             self.save();
         }
@@ -5224,6 +5262,7 @@ impl ApplicationHandler<Event> for App {
 
 impl App {
     fn shutdown(&mut self) {
+        self.deck.stop();
         for host in self.windows.values() {
             host.window.set_visible(false);
         }
@@ -5239,13 +5278,15 @@ impl App {
         // interval for HUP/SIGKILL escalation and reaping before main returns.
         let deadline = Instant::now() + Duration::from_secs(2);
         while Instant::now() < deadline
-            && self
-                .panes
-                .values()
-                .map(|pane| &pane.session)
-                .chain(&self.closing)
-                .any(|session| !session.has_exited())
+            && (self.deck.busy()
+                || self
+                    .panes
+                    .values()
+                    .map(|pane| &pane.session)
+                    .chain(&self.closing)
+                    .any(|session| !session.has_exited()))
         {
+            self.deck.reap();
             for session in self
                 .panes
                 .values()

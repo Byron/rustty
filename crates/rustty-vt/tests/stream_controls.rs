@@ -54,7 +54,7 @@ fn raw_c1_controls_execute_cursor_and_protection_actions_inside_sequences() {
     assert!(!screen.row(3).cells[1].protected());
     assert!(!screen.cursor.protected);
     terminal.feed(b"\x1b[2K");
-    assert_eq!(terminal.screen().row_text(&terminal.screen().row(3)), "X");
+    assert_eq!(terminal.screen().row_text(terminal.screen().row(3)), "X");
 }
 
 #[test]
@@ -67,7 +67,7 @@ fn ground_state_c1_bytes_keep_utf8_decoding_semantics() {
     );
     assert!(!terminal.screen().cursor.protected);
     assert_eq!(
-        terminal.screen().row_text(&terminal.screen().row(2)),
+        terminal.screen().row_text(terminal.screen().row(2)),
         "   X\u{fffd}\u{fffd}"
     );
 }
@@ -179,14 +179,14 @@ fn explicit_zero_scrolling_preserves_the_direct_scroll_path() {
         assert!(rustty_vt::snapshot::encode_to_vec(&terminal).unwrap() == before);
         terminal.feed(b"\x1b[S");
         assert_eq!(
-            terminal.screen().row_text(&terminal.screen().row(0)),
+            terminal.screen().row_text(terminal.screen().row(0)),
             "b    X"
         );
         assert!(terminal.screen().cursor.pending_wrap);
         terminal.feed(b"\x1b[T");
-        assert_eq!(terminal.screen().row_text(&terminal.screen().row(0)), "");
+        assert_eq!(terminal.screen().row_text(terminal.screen().row(0)), "");
         assert_eq!(
-            terminal.screen().row_text(&terminal.screen().row(1)),
+            terminal.screen().row_text(terminal.screen().row(1)),
             "b    X"
         );
         assert!(terminal.screen().cursor.pending_wrap);
@@ -229,7 +229,7 @@ fn scroll_clear_omits_empty_rows_and_follows_the_cursor_row() {
     assert_eq!(
         terminal
             .screen()
-            .row_text(&terminal.screen().physical_row(0)),
+            .row_text(terminal.screen().physical_row(0)),
         "abc"
     );
     assert_eq!(

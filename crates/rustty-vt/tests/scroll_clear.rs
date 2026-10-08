@@ -12,13 +12,13 @@ fn scroll_clear_retains_rows_when_ordinary_scrollback_is_disabled() {
         assert_eq!(
             terminal
                 .screen()
-                .row_text(&terminal.screen().physical_row(0)),
+                .row_text(terminal.screen().physical_row(0)),
             "A"
         );
         assert_eq!(
             terminal
                 .screen()
-                .row_text(&terminal.screen().physical_row(1)),
+                .row_text(terminal.screen().physical_row(1)),
             "B"
         );
         assert_eq!(terminal.screen().cursor.row, 0);
@@ -29,7 +29,7 @@ fn scroll_clear_retains_rows_when_ordinary_scrollback_is_disabled() {
         assert_eq!(
             terminal
                 .screen()
-                .row_text(&terminal.screen().physical_row(0)),
+                .row_text(terminal.screen().physical_row(0)),
             "A"
         );
         terminal.feed(b"\x1b[3J");

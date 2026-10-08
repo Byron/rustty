@@ -8,32 +8,32 @@ fn legacy_mapping_keeps_original_width_and_repeat_codepoint() {
     terminal.feed(b"\x1b(B\x1b[b");
     let cells = &terminal.screen().row(0).cells;
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().row(0), 0),
+        &*terminal.screen().cell_text(terminal.screen().row(0), 0),
         " "
     );
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().row(0), 1),
+        &*terminal.screen().cell_text(terminal.screen().row(0), 1),
         " "
     );
     assert_eq!(cells[1].width(), 2);
     assert_eq!(cells[2].width(), 0);
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().row(0), 3),
+        &*terminal.screen().cell_text(terminal.screen().row(0), 3),
         "界"
     );
     assert_eq!(cells[3].width(), 2);
     terminal.feed(b"\x1b(0q\x1b(B\x1b[b");
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().row(0), 5),
+        &*terminal.screen().cell_text(terminal.screen().row(0), 5),
         "─"
     );
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().row(0), 6),
+        &*terminal.screen().cell_text(terminal.screen().row(0), 6),
         "q"
     );
     terminal.feed(b"\x1b(0\x1b%Gq");
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().row(0), 7),
+        &*terminal.screen().cell_text(terminal.screen().row(0), 7),
         "─"
     );
 }
@@ -46,11 +46,11 @@ fn single_shift_survives_combining_and_ignored_characters() {
         terminal.feed(b"\x1b*0A\x1bN");
         terminal.feed("\u{301}\u{fe0f}q".as_bytes());
         assert_eq!(
-            &*terminal.screen().cell_text(&terminal.screen().row(0), 0),
+            &*terminal.screen().cell_text(terminal.screen().row(0), 0),
             "A\u{301}"
         );
         assert_eq!(
-            &*terminal.screen().cell_text(&terminal.screen().row(0), 1),
+            &*terminal.screen().cell_text(terminal.screen().row(0), 1),
             "─"
         );
     }
@@ -58,7 +58,7 @@ fn single_shift_survives_combining_and_ignored_characters() {
     terminal.feed(b"\x1b*0ab\x1b[?7l\x1bN");
     terminal.feed("界\rq".as_bytes());
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().row(0), 0),
+        &*terminal.screen().cell_text(terminal.screen().row(0), 0),
         "─"
     );
 }
@@ -70,11 +70,11 @@ fn wide_spacers_consume_single_shifts() {
     terminal.feed("界#".as_bytes());
     assert!(terminal.screen().row(0).cells[2].spacer_head());
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().row(1), 0),
+        &*terminal.screen().cell_text(terminal.screen().row(1), 0),
         "界"
     );
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().row(1), 2),
+        &*terminal.screen().cell_text(terminal.screen().row(1), 2),
         "#"
     );
 
@@ -84,7 +84,7 @@ fn wide_spacers_consume_single_shifts() {
     terminal.feed("\u{fe0f}#".as_bytes());
     assert_eq!(terminal.screen().row(0).cells[0].width(), 2);
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().row(0), 2),
+        &*terminal.screen().cell_text(terminal.screen().row(0), 2),
         "#"
     );
 }
@@ -98,12 +98,12 @@ fn wrapped_existing_grapheme_maps_the_base_without_consuming_a_spacer_shift() {
     terminal.feed("😀#".as_bytes());
     assert!(terminal.screen().row(0).cells[2].spacer_head());
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().row(1), 0),
+        &*terminal.screen().cell_text(terminal.screen().row(1), 0),
         " \u{200d}😀"
     );
     assert_eq!(terminal.screen().row(1).cells[0].width(), 2);
     assert_eq!(
-        &*terminal.screen().cell_text(&terminal.screen().row(1), 2),
+        &*terminal.screen().cell_text(terminal.screen().row(1), 2),
         "#"
     );
 }
