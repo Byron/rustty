@@ -18,6 +18,7 @@ impl Screen {
         let id = if source_id == 0 {
             0
         } else {
+            let bytes = page.styles.storage_bytes();
             let Ok(id) = page
                 .styles
                 .acquire_with_id(*source.styles.get(source_id), source_id)
@@ -25,7 +26,9 @@ impl Screen {
                 return false;
             };
             page.styles.retain_many(id, (cells.len() - 1) as u16);
-            page.refresh_charge();
+            if page.styles.storage_bytes() != bytes {
+                page.refresh_charge();
+            }
             id
         };
         let row = usize::from(page.rows) - 1;
