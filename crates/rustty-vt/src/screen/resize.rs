@@ -8,15 +8,34 @@ struct ReflowRow {
     semantic: SemanticContent,
 }
 
+#[derive(Clone, Copy)]
+struct ReflowStyle {
+    page: (u64, u64),
+    source: u16,
+    destination: u16,
+}
+
 impl Screen {
     // Reflow exposes fresh slots. Copy ordinary cells sharing a style as a
     // run, admitting that style once, like Ghostty's ReflowCursor::copyRun.
     // Resource growth and splitting stay in the scalar fallback.
-    fn copy_reflow_run(&mut self, source: &Page, cells: &[Cell], col: usize) -> bool {
+    fn copy_reflow_run(
+        &mut self,
+        source: &Page,
+        cells: &[Cell],
+        col: usize,
+        style_cache: &mut Option<ReflowStyle>,
+    ) -> bool {
         let page = self.pages.pages.back_mut().unwrap();
         let source_id = cells[0].style_id();
         let id = if source_id == 0 {
             0
+        } else if let Some(cached) = style_cache.filter(|cached| {
+            cached.page == (page.serial, page.layout_generation) && cached.source == source_id
+        }) {
+            page.styles
+                .retain_many(cached.destination, cells.len() as u16);
+            cached.destination
         } else {
             let bytes = page.styles.storage_bytes();
             let Ok(id) = page
@@ -29,6 +48,11 @@ impl Screen {
             if page.styles.storage_bytes() != bytes {
                 page.refresh_charge();
             }
+            *style_cache = Some(ReflowStyle {
+                page: (page.serial, page.layout_generation),
+                source: source_id,
+                destination: id,
+            });
             id
         };
         let row = usize::from(page.rows) - 1;
@@ -186,6 +210,8 @@ impl Screen {
             let mut spare = None;
             while let Some(source_page) = source_pages.pages.pop_front() {
                 let capacity = source_page.adjusted_capacity(cols as u16, true);
+                // Source IDs are page-local; destination rebuilds can remap IDs.
+                let mut style_cache = None;
                 for source_row in 0..usize::from(source_page.rows) {
                     let old = source_page.row(source_row);
                     let unmanaged = !source_page.headers[source_row].has(RowHeader::MANAGED);
@@ -319,7 +345,12 @@ impl Screen {
                                 window,
                                 cell.bits() & crate::printing::DEST_MASK,
                             );
-                            if self.copy_reflow_run(&source_page, &window[..count], x) {
+                            if self.copy_reflow_run(
+                                &source_page,
+                                &window[..count],
+                                x,
+                                &mut style_cache,
+                            ) {
                                 if count > 1 {
                                     cells.nth(count - 2);
                                 }
@@ -620,6 +651,50 @@ impl Screen {
 mod tests {
     use super::*;
     use crate::{Terminal, snapshot};
+
+    #[test]
+    fn reflow_style_cache_follows_resource_relocation() {
+        let mut source = Terminal::new(8, 2, 0);
+        source.feed(b"\x1b[31mx");
+        let source_page = &source.screen().pages.pages[0];
+        let cells = &source_page.row_cells(0)[..1];
+
+        for split in [false, true] {
+            let mut screen = Screen::new(8, 2, ScrollbackLimits::NONE);
+            screen.set_cell_style(
+                0,
+                0,
+                Style {
+                    foreground: Color::Indexed(2),
+                    ..Style::default()
+                },
+            );
+            let mut cache = None;
+            assert!(screen.copy_reflow_run(source_page, cells, 0, &mut cache));
+            assert_eq!(cache.unwrap().destination, 2);
+
+            // Both operations renumber the copied style; only splitting also
+            // changes its owner. Neither may reuse the cached destination ID.
+            if split {
+                screen.split_resource_page(1).unwrap();
+            } else {
+                let page = &mut screen.pages.pages[0];
+                page.clear_cell(page.slot(0, 0), Color::Default);
+                page.rebuild(None).unwrap();
+            }
+
+            let page = screen.pages.pages.back().unwrap();
+            assert_eq!(page.row(usize::from(page.rows) - 1).cells[0].style_id(), 1);
+            assert!(screen.copy_reflow_run(source_page, cells, 1, &mut cache));
+            let page = screen.pages.pages.back().unwrap();
+            let row = page.row(usize::from(page.rows) - 1);
+            for col in 0..2 {
+                assert_eq!(row.cells[col].codepoint(), Some('x'));
+                assert_eq!(row.style(col).foreground, Color::Indexed(1));
+            }
+            assert_eq!(page.styles.reference_count(1), 2);
+        }
+    }
 
     #[test]
     fn unmanaged_reflow_matches_resource_copying() {
