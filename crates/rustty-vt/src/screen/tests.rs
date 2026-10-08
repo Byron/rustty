@@ -464,6 +464,51 @@ fn detached_resources_outlive_source_mutation_and_destruction() {
 }
 
 #[test]
+fn row_used_distinguishes_empty_cells_from_text_and_backgrounds() {
+    let mut terminal = Terminal::new(128, 2, 0);
+    let screen = terminal.screen_mut();
+    assert_eq!(screen.row(0).used(), 0);
+    screen.set_cell_style(
+        0,
+        95,
+        Style {
+            foreground: Color::Indexed(1),
+            ..Style::default()
+        },
+    );
+    screen.cell_mut(0, 127).set_protected(true);
+    screen
+        .cell_mut(0, 127)
+        .set_semantic(SemanticContent::Prompt);
+    assert_eq!(screen.row(0).used(), 0);
+    screen.cell_mut(0, 63).set_codepoint(Some('x'));
+    assert_eq!(screen.row(0).used(), 64);
+    for background in [Color::Indexed(0), Color::Rgb(0, 0, 0)] {
+        for bold in [false, true] {
+            screen.set_cell_style(
+                0,
+                95,
+                Style {
+                    background,
+                    bold,
+                    ..Style::default()
+                },
+            );
+            assert_eq!(screen.row(0).cells[95].background().is_none(), bold);
+            assert_eq!(screen.row(0).used(), 96);
+        }
+    }
+    screen.set_cell_style(0, 95, Style::default());
+    assert_eq!(screen.row(0).used(), 64);
+    screen.cell_mut(0, 63).set_codepoint(Some('界'));
+    screen.cell_mut(0, 63).set_width(2);
+    screen.cell_mut(0, 64).set_width(0);
+    screen.cell_mut(0, 127).set_spacer_head(true);
+    assert_eq!(screen.row(0).used(), 65);
+    assert_references(screen);
+}
+
+#[test]
 fn blank_backgrounds_switch_between_inline_and_managed_styles() {
     let mut terminal = Terminal::new(8, 2, 0);
     let screen = terminal.screen_mut();

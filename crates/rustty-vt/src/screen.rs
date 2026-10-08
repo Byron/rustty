@@ -439,9 +439,10 @@ impl<'a> RowView<'a> {
             .iter()
             .enumerate()
             .rposition(|(col, c)| {
-                c.codepoint().is_some()
-                    || c.width() == 0
-                    || self.style(col).background != Color::Default
+                c.bits() != 0
+                    && (c.codepoint().is_some()
+                        || c.width() == 0
+                        || self.style(col).background != Color::Default)
             })
             .map_or(0, |i| i + 1)
     }
