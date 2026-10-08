@@ -117,6 +117,9 @@ impl Connection {
 }
 impl App {
     fn deck_focused(&self) -> Option<Id> {
+        if !self.deck.dashboard.board.screens_awake {
+            return None;
+        }
         self.windows
             .values()
             .find(|host| host.visible && host.focused && !host.occluded && host.peek.is_none())
@@ -218,6 +221,9 @@ impl App {
         if self.deck.stopping || !self.config().stream_deck {
             return;
         }
+        if !self.deck.dashboard.board.screens_awake && !matches!(action, Action::Disconnected(_)) {
+            return;
+        }
         match action {
             Action::Gesture(source) => {
                 self.deck.dashboard.gesture = source.filter(|s| {
@@ -279,6 +285,14 @@ impl App {
                 }
             }
             Action::Brightness(_) => unreachable!(),
+        }
+    }
+    #[cfg(target_os = "macos")]
+    pub(super) fn deck_screens_awake(&mut self, awake: bool) {
+        self.deck.dashboard.screens_awake(awake);
+        self.sync_deck();
+        if let Some(worker) = &self.deck.worker {
+            worker.submit(self.deck.dashboard.board.clone());
         }
     }
     pub(super) fn tick_deck(&mut self) {

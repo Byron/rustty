@@ -170,6 +170,18 @@ terminal-layout history. Invalid auxiliary references are normalized without
 losing the terminal workspace. `window-save-state=never` makes arrangements
 session-only. Older Rustty versions may drop the optional field when saving.
 
+On macOS, screen sleep (and impending system sleep) sends 0% brightness through
+the USB owner without clearing artwork, registrations or positions. Image uploads
+pause until the screens wake; then Rustty restores the selected brightness and
+refreshes the latest board. Connecting while screens are asleep also starts at 0%.
+Locking alone leaves the board intact; if the lock screen later sleeps, the same
+dimming/restoration applies. Pending gestures are cancelled and keys held across
+sleep/wake cannot trigger actions. Done is not acknowledged while screens sleep.
+The driver has no power-off command: 0% is its lowest brightness, not USB power
+removal. The pre-system-sleep write is best effort if macOS suspends the process or
+USB first; wake/reconnect restores from Rustty's retained state. Windows keeps its
+current behavior; screen-power integration is macOS-only in this version.
+
 ## Ownership and limitations
 
 Discovery is a short off-UI enumeration at most once a second while enabled and

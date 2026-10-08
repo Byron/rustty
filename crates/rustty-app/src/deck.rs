@@ -39,6 +39,7 @@ pub struct Board {
     pub counts: [usize; 4],
     pub no_sessions: bool,
     pub brightness: u8,
+    pub screens_awake: bool,
 }
 impl Default for Board {
     fn default() -> Self {
@@ -50,6 +51,7 @@ impl Default for Board {
             counts: [0; 4],
             no_sessions: true,
             brightness: 100,
+            screens_awake: true,
         }
     }
 }
@@ -166,6 +168,15 @@ pub struct Dashboard {
     positions: Vec<Option<Id>>,
 }
 impl Dashboard {
+    pub fn screens_awake(&mut self, awake: bool) {
+        if self.board.screens_awake != awake {
+            self.board.screens_awake = awake;
+            self.board.generation += 1;
+            self.board.mode_generation += 1;
+            self.gesture = None;
+            self.moving = false;
+        }
+    }
     /// `reports` may contain retained panes; membership always comes from the workspace.
     pub fn update(
         &mut self,
@@ -607,6 +618,32 @@ mod tests {
         assert_eq!(workspace.deck_positions[9], Some(reserved));
         assert_eq!(workspace.deck_positions[2..9], positions[2..]);
         assert_eq!(deck.board.pages(), 2);
+    }
+    #[test]
+    fn screen_sleep_preserves_information_and_invalidates_pending_keys() {
+        let (mut workspace, reports) = setup(2);
+        let mut deck = Dashboard::default();
+        deck.update(&mut workspace, &reports, None);
+        let positions = workspace.deck_positions.clone();
+        let capture = deck.board.tile(0).capture;
+        deck.gesture = Some(capture);
+        deck.moving = true;
+        deck.board.brightness = 25;
+        deck.screens_awake(false);
+        deck.update(&mut workspace, &reports, None);
+        assert!(!deck.board.valid(capture));
+        assert!(deck.gesture.is_none());
+        assert!(!deck.moving);
+        let generation = deck.board.mode_generation;
+        deck.screens_awake(false);
+        assert_eq!(deck.board.mode_generation, generation);
+        deck.screens_awake(true);
+        deck.update(&mut workspace, &reports, None);
+        assert_eq!(workspace.deck_positions, positions);
+        assert_eq!(deck.board.brightness, 25);
+        assert_eq!(deck.board.tile(0).state, Some(State::NeedsInput));
+        assert_eq!(deck.board.tile(1).state, Some(State::Working));
+        assert!(!deck.board.no_sessions);
     }
     #[test]
     fn eviction_waits_for_the_pending_swap() {

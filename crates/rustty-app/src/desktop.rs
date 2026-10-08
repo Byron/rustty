@@ -4641,6 +4641,8 @@ impl ApplicationHandler<Event> for App {
             }
             Event::Platform(event) => {
                 match event {
+                    #[cfg(target_os = "macos")]
+                    PlatformEvent::ScreensAwake(awake) => self.deck_screens_awake(awake),
                     PlatformEvent::NotificationClicked(pane) => {
                         self.reveal_pane(pane);
                     }

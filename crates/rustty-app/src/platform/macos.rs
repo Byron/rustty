@@ -35,8 +35,10 @@ use objc2_app_kit::{
     NSPasteboardTypeString, NSPopUpMenuWindowLevel, NSRunningApplication, NSScreen,
     NSUserInterfaceItemIdentification, NSView, NSWindow, NSWindowAnimationBehavior,
     NSWindowCollectionBehavior, NSWindowTabbingMode, NSWindowTitleVisibility, NSWorkspace,
+    NSWorkspaceDidWakeNotification, NSWorkspaceScreensDidSleepNotification,
+    NSWorkspaceScreensDidWakeNotification, NSWorkspaceWillSleepNotification,
 };
-use objc2_core_graphics::{CGDisplayBounds, CGMainDisplayID};
+use objc2_core_graphics::{CGDisplayBounds, CGDisplayIsAsleep, CGMainDisplayID};
 use objc2_foundation::{
     NSArray, NSBundle, NSCopying, NSData, NSDistributedNotificationCenter, NSError, NSNotification,
     NSNotificationSuspensionBehavior, NSObject, NSObjectProtocol, NSPoint, NSPointInRect, NSRect,
@@ -63,6 +65,7 @@ use winit::{
 pub enum PlatformEvent {
     Action(Action),
     NotificationClicked(u64),
+    ScreensAwake(bool),
     GlobalHotkey { id: u32, key_code: u16 },
     Warning(String),
 }
@@ -79,6 +82,7 @@ pub struct Platform {
     notifications: Option<Retained<UNUserNotificationCenter>>,
     notification_state: Arc<NotificationState>,
     _notification_delegate: Retained<NotificationDelegate>,
+    power_observers: Vec<Retained<ProtocolObject<dyn NSObjectProtocol>>>,
     previous_quick_app: RefCell<Option<Retained<NSRunningApplication>>>,
     quick_animations: RefCell<HashMap<WindowId, Rc<RefCell<QuickAnimation>>>>,
 }
@@ -167,6 +171,31 @@ impl Platform {
             center.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
             center
         });
+        let center = NSWorkspace::sharedWorkspace().notificationCenter();
+        // SAFETY: these AppKit notification names are valid process-lifetime constants.
+        let power_observers = unsafe {
+            [
+                (NSWorkspaceScreensDidSleepNotification, Some(false)),
+                (NSWorkspaceScreensDidWakeNotification, Some(true)),
+                (NSWorkspaceWillSleepNotification, Some(false)),
+                (NSWorkspaceDidWakeNotification, None),
+            ]
+            .into_iter()
+            .map(|(name, awake)| {
+                let sink = callback.clone();
+                let block = RcBlock::new(move |_: NonNull<NSNotification>| {
+                    sink(PlatformEvent::ScreensAwake(
+                        awake.unwrap_or_else(|| !CGDisplayIsAsleep(CGMainDisplayID())),
+                    ));
+                });
+                // The sendable block only queues events; tokens are removed before Platform drops.
+                center.addObserverForName_object_queue_usingBlock(Some(name), None, None, &block)
+            })
+            .collect()
+        };
+        callback(PlatformEvent::ScreensAwake(!CGDisplayIsAsleep(
+            CGMainDisplayID(),
+        )));
         let mut platform = Self {
             mtm,
             menu,
@@ -176,6 +205,7 @@ impl Platform {
             notifications,
             notification_state: Arc::default(),
             _notification_delegate: delegate,
+            power_observers,
             previous_quick_app: RefCell::new(None),
             quick_animations: RefCell::new(HashMap::new()),
         };
@@ -666,6 +696,11 @@ impl Platform {
 
 impl Drop for Platform {
     fn drop(&mut self) {
+        let center = NSWorkspace::sharedWorkspace().notificationCenter();
+        for observer in self.power_observers.drain(..) {
+            // SAFETY: tokens came from this center and are still retained until removal completes.
+            unsafe { center.removeObserver((*observer).as_ref()) };
+        }
         self.notification_state
             .panes
             .lock()
