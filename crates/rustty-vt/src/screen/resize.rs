@@ -9,6 +9,38 @@ struct ReflowRow {
 }
 
 impl Screen {
+    // Reflow exposes fresh slots. Copy ordinary cells sharing a style as a
+    // run, admitting that style once, like Ghostty's ReflowCursor::copyRun.
+    // Resource growth and splitting stay in the scalar fallback.
+    fn copy_reflow_run(&mut self, source: &Page, cells: &[Cell], col: usize) -> bool {
+        let page = self.pages.pages.back_mut().unwrap();
+        let source_id = cells[0].style_id();
+        let id = if source_id == 0 {
+            0
+        } else {
+            let Ok(id) = page
+                .styles
+                .acquire_with_id(*source.styles.get(source_id), source_id)
+            else {
+                return false;
+            };
+            page.styles.retain_many(id, (cells.len() - 1) as u16);
+            page.refresh_charge();
+            id
+        };
+        let row = usize::from(page.rows) - 1;
+        let slot = page.slot(row, col);
+        let destination = &mut page.cells[slot..slot + cells.len()];
+        destination.copy_from_slice(cells);
+        if id != source_id {
+            for cell in destination {
+                cell.set_style_id(id);
+            }
+        }
+        page.mark_cell(row, page.cells[slot]);
+        true
+    }
+
     fn reflow_row_state(&mut self) -> ReflowRow {
         ReflowRow {
             id: self.next_row_id(),
@@ -219,7 +251,10 @@ impl Screen {
                         );
                     }
                     let mut wide_tail = None;
-                    for (old_col, cell) in old.cells.iter().take(used).enumerate() {
+                    let bulk_copy = wanted.is_empty()
+                        && !source_page.headers[source_row].has(RowHeader::PLACEHOLDER);
+                    let mut cells = old.cells.iter().take(used).enumerate();
+                    while let Some((old_col, cell)) = cells.next() {
                         if cell.width() == 0 {
                             record(
                                 old_col,
@@ -267,6 +302,27 @@ impl Screen {
                                 &mut spare,
                                 &mut exposed_rows,
                             );
+                        }
+                        if bulk_copy
+                            && cell.width() == 1
+                            && !cell.spacer_head()
+                            && !cell.has_grapheme()
+                            && !cell.has_hyperlink()
+                            && (cell.background().is_none() || cell.style_id() == 0)
+                        {
+                            let window =
+                                &old.cells[old_col..old_col + (used - old_col).min(cols - x)];
+                            let count = crate::printing::destination_narrow(
+                                window,
+                                cell.bits() & crate::printing::DEST_MASK,
+                            );
+                            if self.copy_reflow_run(&source_page, &window[..count], x) {
+                                if count > 1 {
+                                    cells.nth(count - 2);
+                                }
+                                x += count;
+                                continue;
+                            }
                         }
                         record(
                             old_col,

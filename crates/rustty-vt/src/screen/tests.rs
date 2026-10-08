@@ -197,6 +197,81 @@ fn reflow_preserves_styled_history_across_many_destination_pages() {
 }
 
 #[test]
+fn reflow_remaps_style_runs_and_anchors_across_source_pages() {
+    let mut terminal = Terminal::new(128, 2, 1000);
+    let screen = terminal.screen_mut();
+    screen.pages = PageList::default();
+    let styles = [1, 2, 3].map(|color| Style {
+        foreground: Color::Indexed(color),
+        bold: true,
+        ..Style::default()
+    });
+    for (index, style) in styles.into_iter().enumerate() {
+        screen.pages.append(
+            PageCapacity {
+                cols: 128,
+                rows: 1,
+                ..PageCapacity::STANDARD
+            },
+            1,
+        );
+        let page = screen.pages.pages.back_mut().unwrap();
+        page.row_ids[0] = index as u64;
+        page.headers[0].set(RowHeader::WRAPPED, index < 2);
+        page.headers[0].set(RowHeader::CONTINUATION, index > 0);
+        // Equal source IDs have different meanings in each source page.
+        for col in 0..128 {
+            let id = page.styles.acquire(style).unwrap();
+            assert_eq!(id, 1);
+            page.cells[col].set_style_id(id);
+            page.cells[col].set_codepoint(Some((b'a' + (col % 26) as u8) as char));
+            page.mark_cell(0, page.cells[col]);
+        }
+        page.refresh_charge();
+    }
+    screen.next_row = 3;
+    screen.cursor.row = 1;
+    screen.cursor.col = 127;
+    let offsets = [0, 17, 31, 62, 63, 127, 128, 255, 256, 368, 383];
+    let tracked: Vec<_> = offsets
+        .map(|offset| screen.point(offset / 128, offset % 128).unwrap())
+        .into_iter()
+        .map(|point| screen.track(point))
+        .collect();
+    screen.selection = Some(Selection {
+        start: screen.resolve(tracked[1]).unwrap(),
+        end: screen.resolve(tracked[9]).unwrap(),
+        rectangular: false,
+    });
+    let selected = screen.selection_text().unwrap();
+    assert_references(screen);
+
+    for width in [63, 256, 32, 129, 128] {
+        terminal.resize(width, 2);
+        let screen = terminal.screen();
+        for offset in 0..384 {
+            let row = screen.physical_row(offset / usize::from(width));
+            let col = offset % usize::from(width);
+            assert_eq!(row.style(col), styles[offset / 128], "offset {offset}");
+            assert_eq!(
+                row.cells[col].codepoint(),
+                Some((b'a' + (offset % 128 % 26) as u8) as char),
+                "offset {offset}",
+            );
+        }
+        for (offset, tracked) in offsets.into_iter().zip(&tracked) {
+            assert_eq!(
+                screen.resolve(*tracked),
+                screen.point(offset / usize::from(width), offset % usize::from(width)),
+                "offset {offset}, width {width}",
+            );
+        }
+        assert_eq!(screen.selection_text().unwrap(), selected);
+        assert_references(screen);
+    }
+}
+
+#[test]
 fn resource_ownership_survives_edits_reflow_snapshots_and_eviction() {
     for columns in [8, 80, 1024] {
         let mut terminal = Terminal::with_limits(columns, 4, ScrollbackLimits::default());
