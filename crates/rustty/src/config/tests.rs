@@ -203,6 +203,25 @@ fn no_config_returns_defaults_without_creating_any_settings() {
 }
 
 #[test]
+fn stream_deck_is_opt_in_and_reloads_without_changing_save_policy() {
+    let home = TestHome::new();
+    assert!(!home.loader.load().config.stream_deck);
+    home.local("stream-deck=true\nstream-deck-serial=test-device\nwindow-save-state=never\n");
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty());
+    assert!(loaded.config.stream_deck);
+    assert_eq!(
+        loaded.config.stream_deck_serial.as_deref(),
+        Some("test-device")
+    );
+    assert_eq!(loaded.config.window_save_state, WindowSaveState::Never);
+    home.local("stream-deck=false\nstream-deck-serial=\n");
+    let loaded = home.loader.load();
+    assert!(!loaded.config.stream_deck);
+    assert!(loaded.config.stream_deck_serial.is_none());
+}
+
+#[test]
 fn rustty_text_settings_take_precedence_with_legacy_paths_still_supported() {
     let home = TestHome::new();
     home.local("font-size=30\n");
