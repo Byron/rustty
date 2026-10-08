@@ -194,11 +194,9 @@ impl Screen {
             let height = if height_first { rows } else { old_rows };
             let active_start = self.pages.total_rows().saturating_sub(height);
             let old_wrapped = self
-                .all_rows()
-                .enumerate()
-                .filter(|(i, row)| {
-                    *i >= active_start && *i <= cursor_index && row.wrap_continuation
-                })
+                .rows()
+                .take((cursor_index + 1).saturating_sub(active_start))
+                .filter(|row| row.wrap_continuation)
                 .count();
             let mut source_pages = std::mem::take(&mut self.pages);
             let first_capacity = source_pages
@@ -475,13 +473,12 @@ impl Screen {
             }
             let start = self.pages.total_rows() - height;
             if let Some(cursor_index) = self
-                .all_rows()
+                .rows()
                 .position(|row| row.id == mapped_cursor.row)
-                .filter(|&i| i >= start)
+                .map(|i| start + i)
             {
                 let wrapped = self
-                    .all_rows()
-                    .skip(start)
+                    .rows()
                     .take(cursor_index - start + 1)
                     .filter(|r| r.wrap_continuation)
                     .count();
@@ -511,7 +508,10 @@ impl Screen {
             self.grow_row(id, Color::Default, rows);
         }
         let start = self.history_len();
-        let cursor_index = self.all_rows().position(|row| row.id == mapped_cursor.row);
+        let cursor_index = self
+            .rows()
+            .position(|row| row.id == mapped_cursor.row)
+            .map(|i| start + i);
         self.cursor.row = cursor_index
             .unwrap_or(start)
             .saturating_sub(start)
@@ -520,9 +520,11 @@ impl Screen {
         if cursor_index.is_none_or(|i| i < start) {
             self.cursor.col = 0;
         }
-        let saved_location = saved_point
-            .and_then(|p| self.all_rows().position(|r| r.id == p.row).map(|i| (i, p)))
-            .filter(|(i, _)| *i >= start);
+        let saved_location = saved_point.and_then(|p| {
+            self.rows()
+                .position(|r| r.id == p.row)
+                .map(|i| (start + i, p))
+        });
         if let Some(saved) = &mut self.saved_cursor {
             if let Some((index, point)) = saved_location {
                 saved.cursor.row = index - start;
@@ -658,6 +660,24 @@ impl Screen {
 mod tests {
     use super::*;
     use crate::{Terminal, snapshot};
+
+    #[test]
+    fn height_reduction_clamps_live_and_saved_cursors_pushed_into_history() {
+        for width in [4, 8, 16] {
+            let mut terminal = Terminal::new(8, 4, 100);
+            terminal.feed(b"abcdefgh\x1b7\r\nijklmnop\r\nqrstuvwx\r\nyz012345\x1b[2;5H");
+            let saved = &terminal.screen().saved_cursor.as_ref().unwrap().cursor;
+            assert!(saved.pending_wrap);
+            terminal.resize(width, 2);
+            let screen = terminal.screen();
+            assert_eq!(screen.history_len(), if width == 4 { 6 } else { 2 });
+            assert_eq!((screen.cursor.row, screen.cursor.col), (0, 0));
+            terminal.restore_cursor();
+            let cursor = &terminal.screen().cursor;
+            assert_eq!((cursor.row, cursor.col), (0, 0));
+            assert!(!cursor.pending_wrap);
+        }
+    }
 
     #[test]
     fn reflow_runs_resume_after_partial_copy_and_scalar_fallback() {
