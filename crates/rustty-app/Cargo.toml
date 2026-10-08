@@ -56,6 +56,7 @@ serde_json.workspace = true
 pollster = "0.4"
 base64.workspace = true
 png.workspace = true
+unicode-segmentation = "1.12"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
@@ -69,8 +70,12 @@ block2 = "0.6"
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 muda = "0.19"
+elgato-streamdeck = { git = "https://github.com/OpenActionAPI/rust-elgato-streamdeck", rev = "c8b9f85467be437f783ac8bb569a2dc63fca6374" }
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+# Use the driver's Rust Windows backend so cross-checks do not require C SDK headers.
+hidapi = { version = "2.6", default-features = false, features = ["windows-native"] }
 rustty-render-software.workspace = true
 windows-core = "0.62.2"
 windows = { version = "0.62.2", features = [
