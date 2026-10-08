@@ -672,6 +672,24 @@ pub struct Workspace {
     version: u32,
     next_id: Id,
     pub windows: Vec<WindowState>,
+    /// Logical dashboard positions; an inactive live pane keeps its reservation.
+    #[serde(default, deserialize_with = "deck_positions")]
+    pub deck_positions: Vec<Option<Id>>,
+}
+
+pub const MAX_DECK_SLOTS: usize = 4096;
+
+fn deck_positions<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<Option<Id>>, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(value.as_array().map_or_else(Vec::new, |slots| {
+        slots
+            .iter()
+            .take(MAX_DECK_SLOTS)
+            .map(|id| id.as_u64())
+            .collect()
+    }))
 }
 
 impl Default for Workspace {
@@ -680,11 +698,34 @@ impl Default for Workspace {
             version: 1,
             next_id: 1,
             windows: Vec::new(),
+            deck_positions: Vec::new(),
         }
     }
 }
 
 impl Workspace {
+    /// Auxiliary data must never prevent the terminal workspace from loading.
+    pub fn reconcile_deck_positions(&mut self) -> bool {
+        let live: HashSet<_> = self
+            .windows
+            .iter()
+            .flat_map(|w| &w.tabs)
+            .flat_map(|t| t.panes.keys().copied())
+            .collect();
+        let previous = self.deck_positions.clone();
+        let mut seen = HashSet::new();
+        self.deck_positions.truncate(MAX_DECK_SLOTS);
+        for position in &mut self.deck_positions {
+            if position.is_some_and(|id| !live.contains(&id) || !seen.insert(id)) {
+                *position = None;
+            }
+        }
+        while self.deck_positions.last() == Some(&None) {
+            self.deck_positions.pop();
+        }
+        previous != self.deck_positions
+    }
+
     /// Open saved windows alongside live sessions, assigning fresh identifiers.
     /// Validation and remapping finish before the current workspace changes.
     pub fn append_layout(&mut self, mut layout: Self) -> io::Result<Vec<Id>> {
@@ -748,6 +789,8 @@ impl Workspace {
     /// Restoring a layout must not reuse IDs issued after that snapshot.
     pub fn restore(&mut self, mut previous: Self) -> Self {
         previous.next_id = previous.next_id.max(self.next_id);
+        previous.deck_positions.clone_from(&self.deck_positions);
+        previous.reconcile_deck_positions();
         std::mem::replace(self, previous)
     }
     pub fn close_pane(&mut self, pane: Id) -> bool {
@@ -772,6 +815,7 @@ impl Workspace {
                     .min(window_state.tabs.len() - 1);
             }
         }
+        self.reconcile_deck_positions();
         true
     }
     pub fn id(&mut self) -> Id {
@@ -793,8 +837,9 @@ impl Workspace {
         if bytes.len() > 8 * 1024 * 1024 {
             return Err(invalid("workspace state exceeds 8 MiB"));
         }
-        let state: Self = serde_json::from_slice(&bytes).map_err(invalid)?;
+        let mut state: Self = serde_json::from_slice(&bytes).map_err(invalid)?;
         state.validate()?;
+        state.reconcile_deck_positions();
         Ok(Some(state))
     }
     pub fn save(&self, path: &Path) -> io::Result<()> {
@@ -1118,6 +1163,7 @@ mod tests {
         let state = Workspace {
             next_id: 100,
             version: 1,
+            deck_positions: vec![Some(7), None, Some(2)],
             windows: vec![WindowState {
                 id: 20,
                 tabs: vec![quadrants()],
@@ -1130,9 +1176,65 @@ mod tests {
         let bytes = serde_json::to_vec(&state).unwrap();
         let decoded: Workspace = serde_json::from_slice(&bytes).unwrap();
         decoded.validate().unwrap();
+        assert_eq!(decoded.deck_positions, state.deck_positions);
         let tab = &decoded.windows[0].tabs[0];
         assert_eq!(tab.root.panes(), [2, 7, 3, 5]);
         assert_eq!(tab.focused, 7);
         assert_eq!(tab.panes[&7].working_directory, PathBuf::from("/tmp"));
+    }
+
+    #[test]
+    fn deck_positions_are_optional_bounded_and_independent_of_layout_undo() {
+        let mut state = Workspace::default();
+        let window = state.id();
+        let tab = state.id();
+        let pane = state.id();
+        state.windows.push(WindowState {
+            id: window,
+            tabs: vec![Tab::new(tab, pane, PathBuf::from("/tmp"))],
+            active_tab: 0,
+            frame: [0.0, 0.0, 800.0, 600.0],
+            quick: false,
+        });
+        let prior = state.clone();
+        state.deck_positions = vec![None, Some(pane), Some(pane), Some(999)];
+        assert!(state.reconcile_deck_positions());
+        assert_eq!(state.deck_positions, [None, Some(pane)]);
+        state.restore(prior.clone());
+        assert_eq!(state.deck_positions, [None, Some(pane)]);
+        state.append_layout(prior).unwrap();
+        assert_eq!(state.deck_positions, [None, Some(pane)]);
+        let mut json = serde_json::to_value(&state).unwrap();
+        json.as_object_mut().unwrap().remove("deck_positions");
+        assert!(
+            serde_json::from_value::<Workspace>(json.clone())
+                .unwrap()
+                .deck_positions
+                .is_empty()
+        );
+        json["deck_positions"] = serde_json::json!({"invalid": true});
+        assert!(
+            serde_json::from_value::<Workspace>(json.clone())
+                .unwrap()
+                .deck_positions
+                .is_empty()
+        );
+        json["deck_positions"] = serde_json::json!([pane, "bad", null]);
+        assert_eq!(
+            serde_json::from_value::<Workspace>(json.clone())
+                .unwrap()
+                .deck_positions,
+            [Some(pane), None, None]
+        );
+        json["deck_positions"] = serde_json::json!(vec![pane; MAX_DECK_SLOTS + 10]);
+        assert_eq!(
+            serde_json::from_value::<Workspace>(json)
+                .unwrap()
+                .deck_positions
+                .len(),
+            MAX_DECK_SLOTS
+        );
+        state.close_pane(pane);
+        assert!(state.deck_positions.is_empty());
     }
 }
