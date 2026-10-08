@@ -5565,3 +5565,24 @@ Paired measurements use the preceding protocol and 8,192 records:
 Both orders confirm the styled gains. The small conditional is retained;
 unstyled variation is about 1%. All 107 VT unit tests and the memory-budget
 integration tests pass. Samples are in `/tmp/rustty-unicode-opt/style-charge-paired`.
+
+### Publish reflow payload charges once after reconstruction
+
+Grapheme/link admission already maintains its payload counters incrementally.
+Reflow now skips each cell's aggregate page-charge refresh and refreshes every
+destination page after reconstruction, before padding can invoke budget pruning.
+A new regression exercises styled graphemes, links, historical-page budgets,
+widening/narrowing and height growth, checking resource ownership and charges.
+
+At 8,192 records, the same paired protocol gives:
+
+| Case | Before ms | After ms | After / before |
+| --- | ---: | ---: | ---: |
+| Plain combining marks | 149.171 | 133.919 | 0.898× |
+| Styled combining marks | 202.980 | 191.957 | 0.946× |
+| Styled emoji | 130.351 | 125.014 | 0.959× |
+| Linked mixed text | 96.773 | 91.997 | 0.951× |
+
+The gains agree in both orders. Unit tests, the new memory-budget regression
+and exact timed-case checks pass. Samples are in
+`/tmp/rustty-unicode-opt/payload-charge-paired`.

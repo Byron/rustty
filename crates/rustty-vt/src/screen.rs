@@ -1070,7 +1070,7 @@ impl Screen {
                 result = Err(SetFull::OutOfMemory);
             }
         }
-        if payload_changed {
+        if payload_changed && !reflow {
             self.pages.pages[location.0].refresh_charge();
         }
         result

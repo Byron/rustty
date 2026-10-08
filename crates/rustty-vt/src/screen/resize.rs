@@ -458,6 +458,10 @@ impl Screen {
                 // Keep at most one exhausted source allocation for the next destination page.
                 spare = Some(source_page);
             }
+            // Padding can prune history, so publish payload charges first.
+            for page in &mut self.pages.pages {
+                page.refresh_charge();
+            }
             if output.len() < written_rows {
                 self.apply_reflow_row(line);
                 output.push(line);

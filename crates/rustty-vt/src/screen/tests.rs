@@ -197,6 +197,43 @@ fn reflow_preserves_styled_history_across_many_destination_pages() {
 }
 
 #[test]
+fn reflow_publishes_payload_charges_before_padding_and_history_pruning() {
+    let mut terminal = Terminal::with_limits(
+        128,
+        4,
+        ScrollbackLimits {
+            bytes: None,
+            lines: None,
+        },
+    );
+    let page_rows = usize::from(terminal.screen().pages.pages[0].capacity.rows);
+    let line = format!(
+        "\x1b[1;31m\x1b]8;id=charge;https://example.org\x07a\u{301}\x1b]8;;\x07{}\r\n",
+        "a\u{301}".repeat(31),
+    );
+    for _ in 0..page_rows + 8 {
+        terminal.feed(line.as_bytes());
+    }
+    assert_references(terminal.screen());
+    let limit = terminal.screen().history_bytes();
+    assert!(limit > 0);
+    terminal.set_scrollback_memory_limit(Some(limit));
+    for (width, height) in [(256, 8), (63, 16)] {
+        // An elevated cursor makes height growth append and potentially prune.
+        terminal.cursor_position(1, 1);
+        terminal.resize(width, height);
+        let screen = terminal.screen();
+        assert_references(screen);
+        assert!(screen.history_bytes() <= limit);
+        assert!(screen.all_rows().any(|row| {
+            row.cells
+                .iter()
+                .any(|cell| cell.has_grapheme() && cell.has_hyperlink())
+        }));
+    }
+}
+
+#[test]
 fn reflow_remaps_style_runs_and_anchors_across_source_pages() {
     let mut terminal = Terminal::new(128, 2, 1000);
     let screen = terminal.screen_mut();
