@@ -5352,3 +5352,163 @@ Frozen binaries, profiling output, candidate patches, per-sample timings and
 comparison scripts remain in `/tmp/rustty-reflow-opt`; final paired results
 are in its `final-paired-with-gate` directory. The private reproduction
 remains in a temporary file and has not been added to Git.
+
+## Long Unicode and resource-bearing reflow comparison, 2026-10-08
+
+The preceding parity result concerns ordinary styled narrow cells. Its Unicode
+controls compared Rustty before/after on only 256 records, without matched
+Ghostty history cases. The new `reflow_history_content` family compares the
+remaining paths directly, using public synthetic input and independent content
+checks in both engines.
+
+The matched Unicode cases do not reach Ghostty parity. CJK wide cells have the
+largest relative gap, especially with styling; grapheme-heavy and mixed text
+also remain substantially slower. The ASCII control stays close to Ghostty.
+
+Each record contains 192 logical display columns. The main cases use 1,024,
+8,192 and 32,768 records, retaining 2,017, 16,353 and 65,505 history rows at
+128 columns, with 32 active rows and unlimited history in both engines.
+The units are ASCII, CJK wide characters, base-plus-combining-mark clusters,
+ZWJ emoji, and a mixed six-column sequence (`a界é👩‍💻`). CJK, combining and
+emoji each have plain and styled variants; styling alternates bold and four
+foreground colors by record. ASCII and mixed styled histories are controls.
+At 32,768 records, the CJK, combining and emoji text payloads are approximately
+9.4, 18.9 and 34.6 MB, excluding SGR and line endings.
+
+Each timed operation is a primed 128 → 64 → 128 round trip. Mixed text forces
+wide-character padding at row boundaries: it needs four rows per record at
+64 columns, while the uniform cases need three. Separate 8,192-record cases
+use a 63-column narrow target, three tracked positions spread through history,
+or one linked six-column mixed unit per record. The tracked count stays fixed;
+this does not measure thousands of search-result anchors.
+
+Both harnesses independently construct the expected row layout from explicit
+cluster widths. Before timing, at the narrow width, after priming and after
+timing, they check every cluster's complete scalar sequence, wide heads/tails,
+spacer padding, foreground/style flags, wrap metadata, retained row count and
+cursor. Link checks cover explicit IDs and URIs on heads and wide tails; tracked
+positions must resolve to the expected coordinates. Empty spacer-head padding
+can have different printing/reflow attributes, so its shape and content are
+checked separately from its non-rendering style/link metadata. Checksums are
+only an additional cross-process guard after these exact validations.
+
+Setup, input parsing, checks, process startup and teardown are excluded from
+timing. The release settings and machine match the preceding comparison.
+Binaries are frozen, engines run serially and adjacently in both orders, and
+each direction uses 20 samples with a 0.5-second warmup and 2-second target
+measurement period. Raw samples and logs are in
+`/tmp/rustty-unicode-reflow/paired`.
+
+Pooled medians use 40 raw per-iteration samples per engine/case, for 2,240
+samples across all 28 matched workloads. Ratios above one favor Ghostty.
+
+| Content | Records | Rustty ms | Ghostty ms | Rustty / Ghostty |
+| --- | ---: | ---: | ---: | ---: |
+| ascii-styled | 1,024 | 0.311 | 0.301 | 1.03× |
+| ascii-styled | 8,192 | 2.426 | 2.363 | 1.03× |
+| ascii-styled | 32,768 | 9.604 | 9.582 | 1.00× |
+| chinese-plain | 1,024 | 1.272 | 0.314 | 4.05× |
+| chinese-plain | 8,192 | 10.034 | 2.329 | 4.31× |
+| chinese-plain | 32,768 | 40.245 | 9.733 | 4.13× |
+| chinese-styled | 1,024 | 10.485 | 0.415 | 25.28× |
+| chinese-styled | 8,192 | 84.597 | 3.274 | 25.84× |
+| chinese-styled | 32,768 | 338.612 | 13.112 | 25.82× |
+| combining-plain | 1,024 | 18.080 | 11.532 | 1.57× |
+| combining-plain | 8,192 | 156.285 | 95.419 | 1.64× |
+| combining-plain | 32,768 | 611.539 | 381.247 | 1.60× |
+| combining-styled | 1,024 | 24.431 | 11.499 | 2.12× |
+| combining-styled | 8,192 | 210.256 | 100.638 | 2.09× |
+| combining-styled | 32,768 | 841.251 | 412.400 | 2.04× |
+| emoji-plain | 1,024 | 11.634 | 5.681 | 2.05× |
+| emoji-plain | 8,192 | 95.004 | 54.472 | 1.74× |
+| emoji-plain | 32,768 | 383.043 | 225.221 | 1.70× |
+| emoji-styled | 1,024 | 16.408 | 6.161 | 2.66× |
+| emoji-styled | 8,192 | 131.696 | 59.383 | 2.22× |
+| emoji-styled | 32,768 | 528.272 | 230.816 | 2.29× |
+| mixed-styled | 1,024 | 13.334 | 5.204 | 2.56× |
+| mixed-styled | 8,192 | 105.574 | 44.036 | 2.40× |
+| mixed-styled | 32,768 | 428.969 | 181.716 | 2.36× |
+
+CJK cost scales almost exactly with retained content: increasing history by
+32 times increases time by approximately 31–32 times in both engines. The
+plain/styled CJK gaps remain about 4×/26× across the sizes. This is consistent
+with missing batching; there is no evidence of quadratic scaling across these
+sizes. Grapheme-heavy cases also scale approximately with content, with some
+increases in per-record cost: Ghostty's emoji cost rises 17–24% from the
+smallest to largest case. These timings do not isolate the cause of that
+additional cost.
+
+The two orders agree on every conclusion. For 32,768 records, forward/reverse
+ratios are 4.12×/4.22× for plain CJK, 25.68×/26.43× for styled CJK, and
+1.56×/1.63× for plain combining marks. The largest drift is in the small native
+combining cases: their reverse-order medians are 11–15% lower. Raw timing
+precision should not be confused with reproducibility to three decimal places.
+
+| Control (8,192 records) | Rustty ms | Ghostty ms | Rustty / Ghostty |
+| --- | ---: | ---: | ---: |
+| mixed-linked | 120.331 | 55.817 | 2.16× |
+| mixed-tracked | 105.588 | 44.489 | 2.37× |
+| chinese-odd-width | 84.569 | 3.449 | 24.52× |
+| mixed-odd-width | 105.299 | 44.126 | 2.39× |
+
+Compare these controls with `mixed-styled/8192` (105.574/44.036 ms) and
+`chinese-styled/8192` (84.597/3.274 ms). Sparse links add about 14% in Rustty
+and 27% in Ghostty. Three tracked positions have negligible impact here.
+Odd-width padding changes Rustty's medians by less than 1%; Ghostty's CJK
+case is about 5% slower, while its mixed case is essentially unchanged.
+
+A separate dense-link correctness probe links the entire mixed record. Both
+engines lose the hyperlink on record 135, second physical row, column 31,
+during input and before any resize. That is a wide tail at linked-cell offset
+26,214, the usable capacity of the grown per-page hyperlink map. The text
+remains present, but its link metadata is missing. These invalid histories
+are excluded from timing. `RUSTTY_REFLOW_DENSE_LINKS=1` enables the explicit
+`mixed-dense-links/8192` probe; its exact precheck must fail until that existing
+capacity behavior is repaired. The ordinary `mixed-linked` control links only
+the first mixed unit (six display columns) of each record and passes all checks.
+
+The source paths explain why the narrow-cell result cannot be generalized.
+Ghostty's `ReflowCursor` admits complete wide head/tail pairs to its run copy;
+Rustty currently restricts that path to ordinary narrow cells. Plain CJK
+therefore pays per-character copying and row bookkeeping, and styled CJK adds
+general managed-cell installation and repeated style admission.
+
+Both engines use scalar handling for grapheme resources. Ghostty copies suffix
+codepoints directly in page storage and caches scalar style mappings. Rustty
+passes temporary shared string ownership through the general installer, repeats
+resource/accounting work, and reconstructs wide tails separately. These are
+candidates for subsequent profiling; this comparison does not isolate the cost
+of each operation. Extending Rustty's existing wide-pair scanner into reflow is
+a smaller first experiment for the wide-character gap than introducing new SIMD.
+
+All 56 ordinary engine/case combinations pass their exact checks in test mode,
+and both native harness tests pass. The Rust benchmark builds, formatting checks
+pass, and benchmark-target Clippy passes with the established Rust 1.99 lint
+allowances listed above. This change adds benchmark coverage and diagnostics;
+the measured production implementation remains the one documented in the
+preceding section.
+
+The commands below run the family in one pass. The reported adjacent pairs
+use one `--exact <engine>/reflow_history_content/<case>/<records>` filter at
+a time, repeated in reversed engine order. The pairing and analysis scripts
+are retained in `/tmp/rustty-unicode-reflow` alongside the frozen binaries.
+
+```sh
+zig build vt-primitives test-vt-primitives \
+  -Demit-lib-vt=true -Demit-macos-app=false -Doptimize=ReleaseFast
+GHOSTTY_PRIMITIVES_BIN="$PWD/zig-out/bin/vt-primitives" \
+  cargo bench --offline -p rustty-vt --bench primitives -- \
+  reflow_history_content --sample-size 20 --warm-up-time 0.5 --measurement-time 2
+# Validate every workload without collecting timing samples:
+GHOSTTY_PRIMITIVES_BIN="$PWD/zig-out/bin/vt-primitives" \
+  cargo bench --offline -p rustty-vt --bench primitives -- \
+  reflow_history_content --test
+# Expected failing correctness probes; run separately for each engine:
+RUSTTY_REFLOW_DENSE_LINKS=1 \
+  cargo bench --offline -p rustty-vt --bench primitives -- \
+  rustty/reflow_history_content/mixed-dense-links --test
+RUSTTY_REFLOW_DENSE_LINKS=1 \
+  GHOSTTY_PRIMITIVES_BIN="$PWD/zig-out/bin/vt-primitives" \
+  cargo bench --offline -p rustty-vt --bench primitives -- \
+  ghostty/reflow_history_content/mixed-dense-links --test
+```

@@ -6,7 +6,7 @@ const vt = @import("ghostty-vt");
 
 pub const std_options: std.Options = .{ .log_level = .err };
 
-const Operation = enum { width, print, scalar, read, clone, reflow, feed, stream, stream_styled, reflow_history_styled, reflow_scrollback };
+const Operation = enum { width, print, scalar, read, clone, reflow, feed, stream, stream_styled, reflow_history_styled, reflow_scrollback, reflow_history_content };
 const cols = 128;
 const rows = 32;
 const history_lines = 1024;
@@ -72,6 +72,235 @@ fn checkStyledHistory(terminal: *const vt.Terminal, records: usize, columns: usi
     }
     if (index != screen.pages.total_rows) return error.InvalidHistory;
     return sum;
+}
+
+const ContentUnit = struct { text: []const u8, width: u2 = 1 };
+const ContentPattern = enum {
+    ascii,
+    chinese,
+    combining,
+    emoji,
+    mixed,
+
+    fn units(self: ContentPattern) []const ContentUnit {
+        return switch (self) {
+            .ascii => &.{ .{ .text = "a" }, .{ .text = "b" }, .{ .text = "c" }, .{ .text = "d" }, .{ .text = "e" }, .{ .text = "f" }, .{ .text = "g" }, .{ .text = "h" } },
+            .chinese => &.{ .{ .text = "天", .width = 2 }, .{ .text = "地", .width = 2 }, .{ .text = "玄", .width = 2 }, .{ .text = "黄", .width = 2 }, .{ .text = "宇", .width = 2 }, .{ .text = "宙", .width = 2 }, .{ .text = "洪", .width = 2 }, .{ .text = "荒", .width = 2 } },
+            .combining => &.{ .{ .text = "a\u{0301}" }, .{ .text = "b\u{0302}" }, .{ .text = "c\u{0303}" }, .{ .text = "d\u{0308}" } },
+            .emoji => &.{ .{ .text = "👩\u{200d}💻", .width = 2 }, .{ .text = "👨\u{200d}🚀", .width = 2 } },
+            .mixed => &.{ .{ .text = "a" }, .{ .text = "界", .width = 2 }, .{ .text = "e\u{0301}" }, .{ .text = "👩\u{200d}💻", .width = 2 } },
+        };
+    }
+
+    fn repeats(self: ContentPattern) usize {
+        return switch (self) {
+            .ascii => 24,
+            .chinese => 12,
+            .combining, .emoji => 48,
+            .mixed => 32,
+        };
+    }
+};
+
+const ContentConfig = struct {
+    pattern: ContentPattern,
+    records: usize,
+    styled: bool,
+    link_repeats: usize = 0,
+    tracked: bool = false,
+    narrow: u16 = cols / 2,
+};
+const ContentCell = struct {
+    kind: enum { head, tail, spacer, padding } = .padding,
+    unit: usize = 0,
+    repeat: usize = 0,
+};
+const ContentPins = [3]?*vt.Pin;
+
+// Model one hard line independently of either terminal's reflow algorithm.
+fn contentLayout(alloc: std.mem.Allocator, pattern: ContentPattern, columns: usize) ![]ContentCell {
+    var cells: std.ArrayList(ContentCell) = .empty;
+    errdefer cells.deinit(alloc);
+    for (0..pattern.repeats()) |repeat| {
+        for (pattern.units(), 0..) |unit, i| {
+            if (cells.items.len % columns + unit.width > columns) {
+                try cells.append(alloc, .{ .kind = .spacer });
+            }
+            try cells.append(alloc, .{ .kind = .head, .unit = i, .repeat = repeat });
+            if (unit.width == 2) try cells.append(alloc, .{ .kind = .tail, .unit = i, .repeat = repeat });
+        }
+    }
+    while (cells.items.len % columns != 0) try cells.append(alloc, .{});
+    return cells.toOwnedSlice(alloc);
+}
+
+fn feedContent(alloc: std.mem.Allocator, stream: *vt.TerminalStream, config: ContentConfig) !void {
+    var record: std.ArrayList(u8) = .empty;
+    defer record.deinit(alloc);
+    for (0..config.pattern.repeats()) |_| {
+        for (config.pattern.units()) |unit| try record.appendSlice(alloc, unit.text);
+    }
+    const linked_end = record.items.len / config.pattern.repeats() * config.link_repeats;
+    var buffer: [128]u8 = undefined;
+    for (0..config.records) |i| {
+        if (config.styled) stream.nextSlice(try std.fmt.bufPrint(&buffer, "\x1b[{};{}m", .{ @as(u8, if (i % 2 == 0) 1 else 22), 31 + i % 4 }));
+        if (config.link_repeats != 0) {
+            stream.nextSlice(try std.fmt.bufPrint(&buffer, "\x1b]8;id={};https://example.test/reflow/{}\x1b\\", .{ i, i }));
+            stream.nextSlice(record.items[0..linked_end]);
+            stream.nextSlice("\x1b]8;;\x1b\\");
+        }
+        stream.nextSlice(record.items[linked_end..]);
+        if (config.styled) stream.nextSlice("\x1b[0m");
+        stream.nextSlice("\r\n");
+    }
+}
+
+fn trackContent(screen: *vt.Screen, config: ContentConfig, record_rows: usize) !ContentPins {
+    var pins: ContentPins = .{ null, null, null };
+    errdefer for (pins) |maybe_pin| {
+        if (maybe_pin) |pin| screen.pages.untrackPin(pin);
+    };
+    if (config.tracked) {
+        for ([3]usize{ 0, config.records / 2, config.records - 1 }, 0..) |record, i| {
+            const pin = screen.pages.pin(.{ .screen = .{ .y = @intCast(record * record_rows) } }) orelse return error.InvalidPin;
+            pins[i] = try screen.pages.trackPin(pin);
+        }
+    }
+    return pins;
+}
+
+fn checkContent(terminal: *const vt.Terminal, config: ContentConfig, layout: []const ContentCell, columns: usize, pins: ContentPins) !u64 {
+    const screen = terminal.screens.active;
+    const record_rows = layout.len / columns;
+    const populated_rows = config.records * record_rows;
+    const total_rows = @max(populated_rows + 1, rows);
+    if (screen.pages.total_rows != total_rows or screen.pages.rows != rows or screen.pages.cols != columns) return error.InvalidHistory;
+    if (screen.cursor.x != 0 or screen.cursor.y != @min(populated_rows, rows - 1) or screen.cursor.pending_wrap) return error.InvalidCursor;
+    var it = screen.pages.rowIterator(.right_down, .{ .screen = .{} }, null);
+    var index: usize = 0;
+    while (it.next()) |pin| : (index += 1) {
+        const record = index / record_rows;
+        const part = index % record_rows;
+        const populated = index < populated_rows;
+        const header = pin.rowAndCell().row;
+        if (header.wrap != (populated and part + 1 < record_rows) or header.wrap_continuation != (populated and part != 0)) return error.InvalidWrap;
+        var style: vt.Style = .{};
+        if (config.styled and populated) {
+            style.fg_color = .{ .palette = @intCast(1 + record % 4) };
+            style.flags.bold = record % 2 == 0;
+        }
+        var id_buffer: [24]u8 = undefined;
+        var uri_buffer: [80]u8 = undefined;
+        const id = try std.fmt.bufPrint(&id_buffer, "{}", .{record});
+        const uri = try std.fmt.bufPrint(&uri_buffer, "https://example.test/reflow/{}", .{record});
+        const actual = pin.cells(.all);
+        if (actual.len != columns) return error.InvalidHistory;
+        for (actual, 0..) |*cell, col| {
+            if (cell.content_tag != .codepoint and cell.content_tag != .codepoint_grapheme) return error.InvalidStyle;
+            const expected: ContentCell = if (populated) layout[part * columns + col] else .{};
+            const logical = expected.kind == .head or expected.kind == .tail;
+            const wide: vt.Cell.Wide = switch (expected.kind) {
+                .head => if (config.pattern.units()[expected.unit].width == 2) .wide else .narrow,
+                .tail => .spacer_tail,
+                .spacer => .spacer_head,
+                .padding => .narrow,
+            };
+            if (cell.wide != wide) return error.InvalidWidth;
+            const extra = pin.grapheme(cell) orelse &.{};
+            if (expected.kind == .head) {
+                var scalars = (try std.unicode.Utf8View.init(config.pattern.units()[expected.unit].text)).iterator();
+                if (cell.codepoint() != scalars.nextCodepoint().?) return error.InvalidText;
+                var n: usize = 0;
+                while (scalars.nextCodepoint()) |cp| : (n += 1) {
+                    if (n >= extra.len or extra[n] != cp) return error.InvalidGrapheme;
+                }
+                if (n != extra.len or cell.hasGrapheme() != (n > 0)) return error.InvalidGrapheme;
+            } else if (cell.codepoint() != 0 or cell.hasGrapheme() or extra.len != 0) return error.InvalidText;
+            // Spacer-head padding can retain the printing pen, whereas newly
+            // generated reflow spacers are unstyled and unlinked.
+            if (expected.kind == .spacer) continue;
+            if (!pin.style(cell).eql(if (logical) style else .{})) return error.InvalidStyle;
+            const linked = logical and expected.repeat < config.link_repeats;
+            if (cell.hyperlink != linked) {
+                std.debug.print("Hyperlink flag mismatch: cols={} record={} row={} col={} expected={} actual={}\n", .{ columns, record, part, col, linked, cell.hyperlink });
+                return error.InvalidHyperlink;
+            }
+            if (cell.hyperlink) {
+                const page = pin.node.page();
+                const link_id = page.lookupHyperlink(cell) orelse return error.InvalidHyperlink;
+                const link = page.hyperlink_set.get(page.memory, link_id);
+                if (!std.mem.eql(u8, uri, link.uri.slice(page.memory))) return error.InvalidHyperlink;
+                switch (link.id) {
+                    .explicit => |value| if (!std.mem.eql(u8, id, value.slice(page.memory))) return error.InvalidHyperlink,
+                    .implicit => return error.InvalidHyperlink,
+                }
+            }
+        }
+    }
+    if (index != total_rows) return error.InvalidHistory;
+    for (pins, [3]usize{ 0, config.records / 2, config.records - 1 }) |maybe_pin, record| {
+        if (maybe_pin) |pin| {
+            const point = screen.pages.pointFromPin(.screen, pin.*) orelse return error.InvalidPin;
+            if (point.screen.x != 0 or point.screen.y != record * record_rows) return error.InvalidPin;
+        }
+    }
+    return historyChecksum(screen);
+}
+
+fn contentBenchmark(init: std.process.Init, bytes: []const u8, iterations: u64) !void {
+    const alloc = init.gpa;
+    const parsed_config = try std.json.parseFromSlice(ContentConfig, alloc, bytes, .{});
+    defer parsed_config.deinit();
+    const config = parsed_config.value;
+    if (config.records == 0 or config.narrow < 2 or config.narrow > cols or config.link_repeats > config.pattern.repeats()) return error.InvalidConfig;
+    const wide_layout = try contentLayout(alloc, config.pattern, cols);
+    defer alloc.free(wide_layout);
+    const narrow_layout = try contentLayout(alloc, config.pattern, config.narrow);
+    defer alloc.free(narrow_layout);
+    var terminal = try vt.Terminal.init(init.io, alloc, .{
+        .cols = cols,
+        .rows = rows,
+        .max_scrollback_bytes = null,
+        .max_scrollback_lines = null,
+        .default_modes = .{ .grapheme_cluster = true },
+    });
+    defer terminal.deinit(alloc);
+    var stream = vt.TerminalStream.init(.{ .allocator = alloc, .handler = .init(&terminal) });
+    defer stream.deinit();
+    try feedContent(alloc, &stream, config);
+    const checksum = checkContent(&terminal, config, wide_layout, cols, .{ null, null, null }) catch |err| {
+        std.debug.print("Content validation failed after input, before resize\n", .{});
+        return err;
+    };
+    const pins = try trackContent(terminal.screens.active, config, wide_layout.len / cols);
+    defer for (pins) |maybe_pin| {
+        if (maybe_pin) |pin| terminal.screens.active.pages.untrackPin(pin);
+    };
+    try terminal.resize(alloc, .{ .cols = config.narrow, .rows = rows });
+    if (try checkContent(&terminal, config, narrow_layout, config.narrow, pins) != checksum) return error.ChecksumMismatch;
+    try terminal.resize(alloc, .{ .cols = cols, .rows = rows });
+    if (try checkContent(&terminal, config, wide_layout, cols, pins) != checksum) return error.ChecksumMismatch;
+    const start = std.Io.Timestamp.now(init.io, .awake);
+    for (0..iterations) |_| {
+        try terminal.resize(alloc, .{ .cols = config.narrow, .rows = rows });
+        try terminal.resize(alloc, .{ .cols = cols, .rows = rows });
+        std.mem.doNotOptimizeAway(&terminal);
+    }
+    const elapsed = start.durationTo(.now(init.io, .awake)).nanoseconds;
+    if (try checkContent(&terminal, config, wide_layout, cols, pins) != checksum) return error.ChecksumMismatch;
+    var buffer: [4096]u8 = undefined;
+    var stdout = std.Io.File.stdout().writerStreaming(init.io, &buffer);
+    try std.json.Stringify.value(.{
+        .engine = "ghostty",
+        .operation = "reflow_history_content",
+        .iterations = iterations,
+        .elapsed_ns = elapsed,
+        .units_per_iteration = config.records,
+        .cell_bytes = @sizeOf(vt.Cell),
+        .checksum = checksum,
+    }, .{}, &stdout.interface);
+    try stdout.interface.writeByte('\n');
+    try stdout.interface.flush();
 }
 
 fn streamChecksum(screen: *const vt.Screen) u64 {
@@ -174,6 +403,7 @@ fn step(
             try terminal.resize(terminal.gpa(), .{ .cols = cols / 2, .rows = rows });
             try terminal.resize(terminal.gpa(), .{ .cols = cols, .rows = rows });
         },
+        .reflow_history_content => unreachable,
     }
     std.mem.doNotOptimizeAway(terminal);
     return 0;
@@ -188,6 +418,7 @@ pub fn main(init: std.process.Init) !void {
     if (iterations == 0) return error.InvalidIterations;
     const bytes = try std.Io.Dir.cwd().readFileAlloc(init.io, args[2], alloc, .limited(128 * 1024 * 1024));
     defer alloc.free(bytes);
+    if (op == .reflow_history_content) return contentBenchmark(init, bytes, iterations);
     const cps = if (parsed(op)) try alloc.alloc(u21, 0) else try decode(alloc, bytes);
     defer alloc.free(cps);
     const styled_records = std.mem.count(u8, bytes, "\r\n");
@@ -261,7 +492,7 @@ pub fn main(init: std.process.Init) !void {
         .units_per_iteration = switch (op) {
             .width, .print => cps.len,
             .scalar, .read, .clone => cols * rows,
-            .reflow => 1,
+            .reflow, .reflow_history_content => 1,
             .reflow_history_styled => styled_records,
             .reflow_scrollback => 1,
             .feed, .stream, .stream_styled => bytes.len,
@@ -307,4 +538,35 @@ test "primitive workloads retain scalar and grapheme contents" {
     try std.testing.expectError(error.InvalidCorpus, decode(alloc, "\n"));
     try std.testing.expectError(error.InvalidCorpus, decode(alloc, ""));
     try std.testing.expectError(error.InvalidUtf8, decode(alloc, "\xff"));
+}
+
+test "long-history content checks mixed clusters links and anchors at odd widths" {
+    const alloc = std.testing.allocator;
+    const config: ContentConfig = .{ .pattern = .mixed, .records = 40, .styled = true, .link_repeats = 32, .tracked = true, .narrow = 63 };
+    const wide_layout = try contentLayout(alloc, config.pattern, cols);
+    defer alloc.free(wide_layout);
+    const narrow_layout = try contentLayout(alloc, config.pattern, config.narrow);
+    defer alloc.free(narrow_layout);
+    var terminal = try vt.Terminal.init(std.testing.io, alloc, .{
+        .cols = cols,
+        .rows = rows,
+        .max_scrollback_bytes = null,
+        .max_scrollback_lines = null,
+        .default_modes = .{ .grapheme_cluster = true },
+    });
+    defer terminal.deinit(alloc);
+    var stream = vt.TerminalStream.init(.{ .allocator = alloc, .handler = .init(&terminal) });
+    defer stream.deinit();
+    try feedContent(alloc, &stream, config);
+    const checksum = try checkContent(&terminal, config, wide_layout, cols, .{ null, null, null });
+    const pins = try trackContent(terminal.screens.active, config, wide_layout.len / cols);
+    defer for (pins) |maybe_pin| {
+        if (maybe_pin) |pin| terminal.screens.active.pages.untrackPin(pin);
+    };
+    for (0..2) |_| {
+        try terminal.resize(alloc, .{ .cols = config.narrow, .rows = rows });
+        try std.testing.expectEqual(checksum, try checkContent(&terminal, config, narrow_layout, config.narrow, pins));
+        try terminal.resize(alloc, .{ .cols = cols, .rows = rows });
+        try std.testing.expectEqual(checksum, try checkContent(&terminal, config, wide_layout, cols, pins));
+    }
 }

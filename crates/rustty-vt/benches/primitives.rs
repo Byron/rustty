@@ -1,7 +1,7 @@
 //! Unit-level Criterion benchmarks; no PTY, session, font, renderer, or app.
-use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use rustty_vt::{Cell, Color, Row, Screen, ScrollbackLimits, Style, Terminal, unicode};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{hint::black_box, path::Path, process::Command, time::Duration};
 
 const COLS: u16 = 128;
@@ -729,6 +729,380 @@ fn styled_history_reflow(c: &mut Criterion) {
     }
 }
 
+// Public synthetic records keep logical content fixed across engine, width and
+// history size. Widths are explicit so neither engine is the correctness oracle.
+#[derive(Clone, Serialize)]
+struct ContentHistory {
+    pattern: &'static str,
+    records: usize,
+    styled: bool,
+    link_repeats: usize,
+    tracked: bool,
+    narrow: u16,
+}
+
+#[derive(Clone, Copy)]
+struct ExpectedHistoryCell {
+    text: &'static str,
+    width: u8,
+    spacer: bool,
+    linked: bool,
+}
+
+impl ContentHistory {
+    fn units(&self) -> &'static [(&'static str, u8)] {
+        match self.pattern {
+            "ascii" => &[
+                ("a", 1),
+                ("b", 1),
+                ("c", 1),
+                ("d", 1),
+                ("e", 1),
+                ("f", 1),
+                ("g", 1),
+                ("h", 1),
+            ],
+            "chinese" => &[
+                ("天", 2),
+                ("地", 2),
+                ("玄", 2),
+                ("黄", 2),
+                ("宇", 2),
+                ("宙", 2),
+                ("洪", 2),
+                ("荒", 2),
+            ],
+            "combining" => &[
+                ("a\u{301}", 1),
+                ("b\u{302}", 1),
+                ("c\u{303}", 1),
+                ("d\u{308}", 1),
+            ],
+            "emoji" => &[("👩\u{200d}💻", 2), ("👨\u{200d}🚀", 2)],
+            "mixed" => &[("a", 1), ("界", 2), ("e\u{301}", 1), ("👩\u{200d}💻", 2)],
+            _ => unreachable!(),
+        }
+    }
+
+    fn repeats(&self) -> usize {
+        let width: usize = self
+            .units()
+            .iter()
+            .map(|(_, width)| usize::from(*width))
+            .sum();
+        assert_eq!(192 % width, 0);
+        192 / width
+    }
+
+    fn style(&self, record: usize) -> Style {
+        Style {
+            foreground: if self.styled {
+                Color::Indexed(1 + (record % 4) as u8)
+            } else {
+                Color::Default
+            },
+            bold: self.styled && record % 2 == 0,
+            ..Style::default()
+        }
+    }
+
+    fn layout(&self, columns: usize) -> Vec<Vec<ExpectedHistoryCell>> {
+        let blank = ExpectedHistoryCell {
+            text: "",
+            width: 1,
+            spacer: false,
+            linked: false,
+        };
+        let mut result = vec![vec![blank; columns]];
+        let mut col = 0;
+        for repeat in 0..self.repeats() {
+            for &(text, width) in self.units() {
+                if col + usize::from(width) > columns {
+                    if col < columns {
+                        result.last_mut().unwrap()[col].spacer = true;
+                    }
+                    result.push(vec![blank; columns]);
+                    col = 0;
+                }
+                let row = result.last_mut().unwrap();
+                row[col] = ExpectedHistoryCell {
+                    text,
+                    width,
+                    spacer: false,
+                    linked: repeat < self.link_repeats,
+                };
+                if width == 2 {
+                    row[col + 1].width = 0;
+                    row[col + 1].linked = repeat < self.link_repeats;
+                }
+                col += usize::from(width);
+            }
+        }
+        result
+    }
+
+    fn checksum(&self) -> u64 {
+        let mut checksum = 0_u64;
+        for record in 0..self.records {
+            let color = if self.styled {
+                2 + record as u64 % 4
+            } else {
+                0
+            };
+            let style = (color + 257 * u64::from(self.styled && record % 2 == 0)) * 0x11_0000;
+            for _ in 0..self.repeats() {
+                for &(text, _) in self.units() {
+                    checksum = checksum
+                        .wrapping_mul(16_777_619)
+                        .wrapping_add(text.chars().map(u64::from).sum::<u64>())
+                        .wrapping_add(style);
+                }
+            }
+        }
+        checksum
+    }
+
+    fn setup(&self) -> (Terminal, Vec<rustty_vt::TrackedPoint>) {
+        let mut terminal = Terminal::with_limits(
+            COLS,
+            ROWS,
+            ScrollbackLimits {
+                bytes: None,
+                lines: None,
+            },
+        );
+        terminal.feed(b"\x1b[?2027h");
+        let pattern: String = self.units().iter().map(|(text, _)| *text).collect();
+        assert!(self.link_repeats <= self.repeats());
+        let linked = pattern.repeat(self.link_repeats);
+        let rest = pattern.repeat(self.repeats() - self.link_repeats);
+        for record in 0..self.records {
+            if self.styled {
+                terminal.feed(
+                    format!(
+                        "\x1b[{};{}m",
+                        if record % 2 == 0 { 1 } else { 22 },
+                        31 + record % 4
+                    )
+                    .as_bytes(),
+                );
+            }
+            if self.link_repeats > 0 {
+                terminal.feed(
+                    format!("\x1b]8;id={record};https://example.test/reflow/{record}\x1b\\")
+                        .as_bytes(),
+                );
+                terminal.feed(linked.as_bytes());
+                terminal.feed(b"\x1b]8;;\x1b\\");
+            }
+            terminal.feed(rest.as_bytes());
+            terminal.feed(b"\x1b[0m\r\n");
+        }
+        let stride = self.layout(usize::from(COLS)).len();
+        let anchors = if self.tracked {
+            [0, self.records / 2, self.records - 1]
+                .into_iter()
+                .map(|record| {
+                    let point = terminal.screen().point(record * stride, 0).unwrap();
+                    terminal.screen_mut().track(point)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        (terminal, anchors)
+    }
+
+    fn check(&self, terminal: &Terminal, columns: usize, anchors: &[rustty_vt::TrackedPoint]) {
+        let layout = self.layout(columns);
+        let populated = self.records * layout.len();
+        let screen = terminal.screen();
+        assert_eq!(
+            screen.history_len() + screen.height(),
+            (populated + 1).max(usize::from(ROWS))
+        );
+        assert_eq!(
+            (
+                screen.cursor.row,
+                screen.cursor.col,
+                screen.cursor.pending_wrap
+            ),
+            (usize::from(ROWS) - 1, 0, false)
+        );
+        for (index, row) in screen.all_rows().enumerate() {
+            let record = index / layout.len();
+            let offset = index % layout.len();
+            assert_eq!(row.wrapped, index < populated && offset + 1 < layout.len());
+            assert_eq!(row.wrap_continuation, index < populated && offset != 0);
+            assert_eq!(row.cells.len(), columns);
+            let link = (self.link_repeats > 0).then(|| {
+                rustty_vt::HyperlinkData::new(
+                    format!("https://example.test/reflow/{record}").as_bytes(),
+                    Some(rustty_vt::HyperlinkId::Explicit(
+                        record.to_string().into_bytes(),
+                    )),
+                )
+            });
+            for (col, cell) in row.cells.iter().enumerate() {
+                let expected = if index < populated {
+                    layout[offset][col]
+                } else {
+                    ExpectedHistoryCell {
+                        text: "",
+                        width: 1,
+                        spacer: false,
+                        linked: false,
+                    }
+                };
+                assert_eq!(
+                    row.text(col).as_str(),
+                    expected.text,
+                    "record={record} row={offset} col={col}"
+                );
+                assert_eq!(cell.width(), expected.width);
+                assert_eq!(cell.spacer_head(), expected.spacer);
+                assert_eq!(cell.has_grapheme(), expected.text.chars().count() > 1);
+                // Printing and reflow can assign different attributes to empty
+                // spacer-head padding. Real heads and tails must retain all data.
+                if expected.spacer {
+                    continue;
+                }
+                let used = !expected.text.is_empty() || expected.width == 0;
+                assert_eq!(
+                    row.style(col),
+                    if used {
+                        self.style(record)
+                    } else {
+                        Style::default()
+                    }
+                );
+                assert_eq!(
+                    row.hyperlink(col),
+                    if expected.linked { link.as_ref() } else { None },
+                    "{} cols={columns} record={record} row={offset} col={col}",
+                    self.pattern
+                );
+            }
+        }
+        for (&anchor, record) in anchors.iter().zip([0, self.records / 2, self.records - 1]) {
+            assert_eq!(
+                screen.resolve(anchor),
+                screen.point(record * layout.len(), 0)
+            );
+        }
+    }
+}
+
+fn content_history_reflow(c: &mut Criterion) {
+    let mut cases = Vec::new();
+    for pattern in ["ascii", "chinese", "combining", "emoji", "mixed"] {
+        for styled in [false, true] {
+            if matches!(pattern, "ascii" | "mixed") && !styled {
+                continue;
+            }
+            for records in [1_024, 8_192, 32_768] {
+                cases.push((
+                    format!("{pattern}-{}", if styled { "styled" } else { "plain" }),
+                    ContentHistory {
+                        pattern,
+                        records,
+                        styled,
+                        link_repeats: 0,
+                        tracked: false,
+                        narrow: 64,
+                    },
+                ));
+            }
+        }
+    }
+    for (label, pattern, link_repeats, tracked, narrow) in [
+        ("mixed-linked", "mixed", 1, false, 64),
+        ("mixed-tracked", "mixed", 0, true, 64),
+        ("chinese-odd-width", "chinese", 0, false, 63),
+        ("mixed-odd-width", "mixed", 0, false, 63),
+    ] {
+        cases.push((
+            label.to_owned(),
+            ContentHistory {
+                pattern,
+                records: 8_192,
+                styled: true,
+                link_repeats,
+                tracked,
+                narrow,
+            },
+        ));
+    }
+    // Both engines currently exhaust a per-page link map during this dense
+    // input. Keep the failing correctness probe explicit; never time lost links.
+    if std::env::var_os("RUSTTY_REFLOW_DENSE_LINKS").is_some() {
+        cases.push((
+            "mixed-dense-links".to_owned(),
+            ContentHistory {
+                pattern: "mixed",
+                records: 8_192,
+                styled: true,
+                link_repeats: 32,
+                tracked: false,
+                narrow: 64,
+            },
+        ));
+    }
+    let ghostty = std::env::var_os("GHOSTTY_PRIMITIVES_BIN");
+    let directory =
+        std::env::temp_dir().join(format!("rustty-content-reflow-{}", std::process::id()));
+    for engine in ["rustty", "ghostty"] {
+        if engine == "ghostty" && ghostty.is_none() {
+            continue;
+        }
+        let mut group = c.benchmark_group(format!("{engine}/reflow_history_content"));
+        for (label, case) in &cases {
+            group.throughput(Throughput::Elements(case.records as u64));
+            group.bench_with_input(BenchmarkId::new(label, case.records), case, |b, case| {
+                if engine == "rustty" {
+                    let (mut terminal, anchors) = case.setup();
+                    eprintln!(
+                        "Validating {} records of {} after input",
+                        case.records, label
+                    );
+                    case.check(&terminal, usize::from(COLS), &anchors);
+                    terminal.resize(case.narrow, ROWS);
+                    eprintln!("Validating narrowed history at {} columns", case.narrow);
+                    case.check(&terminal, usize::from(case.narrow), &anchors);
+                    terminal.resize(COLS, ROWS);
+                    eprintln!("Validating primed history at {COLS} columns");
+                    case.check(&terminal, usize::from(COLS), &anchors);
+                    b.iter(|| {
+                        let terminal = black_box(&mut terminal);
+                        terminal.resize(case.narrow, ROWS);
+                        terminal.resize(COLS, ROWS);
+                    });
+                    case.check(&terminal, usize::from(COLS), &anchors);
+                } else {
+                    std::fs::create_dir_all(&directory).unwrap();
+                    let data = directory.join(format!("{label}-{}.json", case.records));
+                    std::fs::write(&data, serde_json::to_vec(case).unwrap()).unwrap();
+                    let checksum = case.checksum();
+                    b.iter_custom(|iterations| {
+                        native(
+                            Path::new(ghostty.as_ref().unwrap()),
+                            "reflow_history_content",
+                            &data,
+                            iterations,
+                            case.records as u64,
+                            checksum,
+                        )
+                    });
+                }
+            });
+        }
+        group.finish();
+    }
+    if directory.exists() {
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+}
+
 // Optional local capture; the harness never copies its private input into the
 // repository or includes it in benchmark results.
 fn captured_scrollback_reflow(c: &mut Criterion) {
@@ -855,6 +1229,7 @@ criterion_group!(
     chunked_input,
     history_reflow,
     styled_history_reflow,
+    content_history_reflow,
     captured_scrollback_reflow,
     memory_capped_streams
 );
