@@ -75,6 +75,15 @@ impl StyleAdmission {
     pub fn acquire_with_id(&mut self, value: Style, id: u16) -> Result<u16, SetFull> {
         if value == Style::default() {
             Ok(0)
+        } else if id != 0
+            && self
+                .entries
+                .get(usize::from(id) - 1)
+                .is_some_and(|entry| entry.references > 0 && entry.value == Some(value))
+        {
+            // Like Ghostty's addWithId, reuse the live slot before hashing.
+            self.retain(id);
+            Ok(id)
         } else {
             self.add_with_id_hashed(value, value.native_hash(), id)
         }
@@ -1430,6 +1439,23 @@ mod tests {
             foreground: Color::Rgb(number as u8, (number >> 8) as u8, (number >> 16) as u8),
             ..Style::default()
         }
+    }
+
+    #[test]
+    fn preferred_style_ids_retain_only_matching_live_values() {
+        let mut styles = style_set(16);
+        let value = numbered_style(1);
+        let id = styles.acquire(value).unwrap();
+        assert_eq!(styles.acquire_with_id(value, id), Ok(id));
+        assert_eq!(styles.reference_count(id), 2);
+        assert_eq!(styles.acquire_with_id(Style::default(), id), Ok(0));
+        assert_eq!(styles.reference_count(id), 2);
+        let other = styles.acquire_with_id(numbered_style(2), id).unwrap();
+        assert_ne!(other, id);
+        styles.release_many(id, 2);
+        assert_eq!(styles.acquire_with_id(value, id), Ok(id));
+        assert_eq!(styles.reference_count(id), 1);
+        assert_eq!(styles.get(other), &numbered_style(2));
     }
 
     #[test]
