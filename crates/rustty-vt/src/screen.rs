@@ -439,9 +439,10 @@ impl<'a> RowView<'a> {
             .iter()
             .enumerate()
             .rposition(|(col, c)| {
-                c.codepoint().is_some()
-                    || c.width() == 0
-                    || self.style(col).background != Color::Default
+                c.bits() != 0
+                    && (c.codepoint().is_some()
+                        || c.width() == 0
+                        || self.style(col).background != Color::Default)
             })
             .map_or(0, |i| i + 1)
     }
@@ -977,7 +978,14 @@ impl Screen {
         copy: CellCopy,
         reflow: bool,
     ) -> Result<(), SetFull> {
-        let mut location = self.locate(absolute);
+        // Reflow appends into the last exposed row. Avoid walking all preceding
+        // history pages for every styled cell; resource splits still relocate
+        // the cell through acquire_style/acquire_grapheme when necessary.
+        let mut location = if reflow {
+            self.pages.locate_from_end(0)
+        } else {
+            self.locate(absolute)
+        };
         let (index, row) = location;
         let page = &mut self.pages.pages[index];
         let slot = page.slot(row, col);
@@ -1062,7 +1070,7 @@ impl Screen {
                 result = Err(SetFull::OutOfMemory);
             }
         }
-        if payload_changed {
+        if payload_changed && !reflow {
             self.pages.pages[location.0].refresh_charge();
         }
         result
@@ -2240,9 +2248,12 @@ impl Screen {
             Some(id) if id != 0 => set.acquire_with_id(style, id),
             _ => set.acquire(style),
         };
+        let bytes = self.pages.pages[index].styles.storage_bytes();
         match acquire(&mut self.pages.pages[index].styles) {
             Ok(id) => {
-                self.pages.pages[index].refresh_charge();
+                if self.pages.pages[index].styles.storage_bytes() != bytes {
+                    self.pages.pages[index].refresh_charge();
+                }
                 Ok(id)
             }
             Err(error) => {

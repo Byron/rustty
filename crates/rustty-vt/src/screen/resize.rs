@@ -1,4 +1,5 @@
 use super::*;
+use std::ops::Range;
 
 #[derive(Clone, Copy)]
 struct ReflowRow {
@@ -8,7 +9,122 @@ struct ReflowRow {
     semantic: SemanticContent,
 }
 
+#[derive(Clone, Copy)]
+struct ReflowStyle {
+    page: (u64, u64),
+    source: u16,
+    destination: u16,
+}
+
 impl Screen {
+    // Keep the destination row in hand across style changes, like Ghostty's
+    // ReflowCursor. Resource growth and linked cells use the scalar fallback.
+    fn copy_reflow_runs(
+        &mut self,
+        source: &Page,
+        range: Range<usize>,
+        col: usize,
+        style_cache: &mut Option<ReflowStyle>,
+    ) -> usize {
+        let page = self.pages.pages.back_mut().unwrap();
+        let row = usize::from(page.rows) - 1;
+        let start = page.slot(row, col);
+        let mut cells = &source.cells[range.start..range.end];
+        let mut copied = 0;
+        while let Some(cell) = cells.first() {
+            if cell.width() == 0
+                || cell.spacer_head()
+                || cell.has_hyperlink()
+                || (cell.background().is_some() && cell.style_id() != 0)
+            {
+                break;
+            }
+            let pattern = cell.bits() & crate::printing::DEST_MASK;
+            let count = if cell.has_grapheme() {
+                let width = usize::from(cell.width());
+                if width > cells.len() || width == 2 && cells[1].width() != 0 {
+                    break;
+                }
+                width
+            } else if cell.width() == 2 {
+                let mut tail = *cell;
+                tail.set_width(0);
+                crate::printing::destination_wide(
+                    cells,
+                    [pattern, tail.bits() & crate::printing::DEST_MASK],
+                )
+            } else {
+                crate::printing::destination_narrow(cells, pattern)
+            };
+            if count == 0 {
+                break;
+            }
+            let allocation = if cell.has_grapheme() {
+                let from = source.grapheme(range.start + copied).unwrap();
+                let Ok(to) = page.graphemes.acquire(from.len) else {
+                    break;
+                };
+                Some((from, to))
+            } else {
+                None
+            };
+            let source_id = cell.style_id();
+            let id = if source_id == 0 {
+                0
+            } else if let Some(cached) = style_cache.filter(|cached| {
+                cached.page == (page.serial, page.layout_generation) && cached.source == source_id
+            }) {
+                page.styles.retain_many(cached.destination, count as u16);
+                cached.destination
+            } else {
+                let bytes = page.styles.storage_bytes();
+                let Ok(id) = page
+                    .styles
+                    .acquire_with_id(*source.styles.get(source_id), source_id)
+                else {
+                    if let Some((_, allocation)) = allocation {
+                        page.graphemes.release(allocation);
+                    }
+                    break;
+                };
+                page.styles.retain_many(id, (count - 1) as u16);
+                if page.styles.storage_bytes() != bytes {
+                    page.refresh_charge();
+                }
+                *style_cache = Some(ReflowStyle {
+                    page: (page.serial, page.layout_generation),
+                    source: source_id,
+                    destination: id,
+                });
+                id
+            };
+            let slot = start + copied;
+            if let Some((from, to)) = allocation {
+                page.graphemes.set_text(to, source.graphemes.text_arc(from));
+                page.grapheme_map.insert(slot as u32, to);
+            }
+            let destination = &mut page.cells[slot..slot + count];
+            destination.copy_from_slice(&cells[..count]);
+            if cell.width() == 2 {
+                // Reflow normalizes tails even for independently edited snapshots.
+                for pair in destination.as_chunks_mut::<2>().0 {
+                    pair[0].set_style_id(id);
+                    pair[1] = pair[0];
+                    pair[1].set_codepoint(None);
+                    pair[1].set_width(0);
+                }
+            } else if id != source_id {
+                for cell in destination {
+                    cell.set_style_id(id);
+                }
+            }
+            page.mark_cell(row, page.cells[slot]);
+            copied += count;
+            cells = &cells[count..];
+        }
+        copied
+    }
+
     fn reflow_row_state(&mut self) -> ReflowRow {
         ReflowRow {
             id: self.next_row_id(),
@@ -18,14 +134,15 @@ impl Screen {
         }
     }
 
-    fn apply_reflow_row(&mut self, absolute: usize, state: ReflowRow) {
-        let (index, row) = self.locate(absolute);
-        let page = &mut self.pages.pages[index];
+    fn apply_reflow_row(&mut self, state: ReflowRow) {
+        let page = self.pages.pages.back_mut().unwrap();
+        let row = usize::from(page.rows) - 1;
         page.row_ids[row] = state.id;
-        page.headers[row].set(RowHeader::WRAPPED, state.wrapped);
-        page.headers[row].set(RowHeader::CONTINUATION, state.continuation);
-        page.headers[row].set_semantic(state.semantic);
-        page.headers[row].set(RowHeader::DIRTY, true);
+        let header = &mut page.headers[row];
+        header.set(RowHeader::WRAPPED, state.wrapped);
+        header.set(RowHeader::CONTINUATION, state.continuation);
+        header.set_semantic(state.semantic);
+        header.set(RowHeader::DIRTY, true);
     }
 
     fn reflow_expose(&mut self, capacity: crate::PageCapacity, id: u64, spare: &mut Option<Page>) {
@@ -64,14 +181,18 @@ impl Screen {
         line: ReflowRow,
         capacity: crate::PageCapacity,
         spare: &mut Option<Page>,
+        exposed_rows: &mut usize,
     ) {
-        while self.pages.total_rows() <= output.len() {
-            let index = self.pages.total_rows();
+        if *exposed_rows > output.len() {
+            self.apply_reflow_row(line);
+        }
+        while *exposed_rows <= output.len() {
+            let index = *exposed_rows;
             let state = output.get(index).copied().unwrap_or(line);
             self.reflow_expose(capacity, state.id, spare);
-            self.apply_reflow_row(index, state);
+            self.apply_reflow_row(state);
+            *exposed_rows += 1;
         }
-        self.apply_reflow_row(output.len(), line);
     }
 
     pub(crate) fn resize(&mut self, cols: usize, rows: usize, reflow: bool) {
@@ -117,11 +238,9 @@ impl Screen {
             let height = if height_first { rows } else { old_rows };
             let active_start = self.pages.total_rows().saturating_sub(height);
             let old_wrapped = self
-                .all_rows()
-                .enumerate()
-                .filter(|(i, row)| {
-                    *i >= active_start && *i <= cursor_index && row.wrap_continuation
-                })
+                .rows()
+                .take((cursor_index + 1).saturating_sub(active_start))
+                .filter(|row| row.wrap_continuation)
                 .count();
             let mut source_pages = std::mem::take(&mut self.pages);
             let first_capacity = source_pages
@@ -143,11 +262,14 @@ impl Screen {
             let mut wanted = Vec::new();
             let mut output = Vec::new();
             let mut line = self.reflow_row_state();
-            self.apply_reflow_row(0, line);
+            self.apply_reflow_row(line);
+            let mut exposed_rows = 1;
             let (mut x, mut pin_x, mut written_rows) = (0usize, 0usize, 0usize);
             let mut spare = None;
             while let Some(source_page) = source_pages.pages.pop_front() {
                 let capacity = source_page.adjusted_capacity(cols as u16, true);
+                // Source IDs are page-local; destination rebuilds can remap IDs.
+                let mut style_cache = None;
                 for source_row in 0..usize::from(source_page.rows) {
                     let old = source_page.row(source_row);
                     let unmanaged = !source_page.headers[source_row].has(RowHeader::MANAGED);
@@ -207,10 +329,19 @@ impl Screen {
                     };
                     line.semantic = old.semantic;
                     if used > 0 {
-                        self.ensure_reflow_row(&output, line, capacity, &mut spare);
+                        self.ensure_reflow_row(
+                            &output,
+                            line,
+                            capacity,
+                            &mut spare,
+                            &mut exposed_rows,
+                        );
                     }
                     let mut wide_tail = None;
-                    for (old_col, cell) in old.cells.iter().take(used).enumerate() {
+                    let bulk_copy = wanted.is_empty()
+                        && !source_page.headers[source_row].has(RowHeader::PLACEHOLDER);
+                    let mut cells = old.cells.iter().take(used).enumerate();
+                    while let Some((old_col, cell)) = cells.next() {
                         if cell.width() == 0 {
                             record(
                                 old_col,
@@ -235,7 +366,7 @@ impl Screen {
                         let mut spacer = None;
                         if x + width > cols {
                             if width == 2 && x < cols {
-                                let (index, row) = self.locate(output.len());
+                                let (index, row) = self.pages.locate_from_end(0);
                                 let page = &mut self.pages.pages[index];
                                 let slot = page.slot(row, x);
                                 page.cells[slot].set_spacer_head(true);
@@ -245,13 +376,36 @@ impl Screen {
                                 });
                             }
                             line.wrapped = true;
-                            self.apply_reflow_row(output.len(), line);
+                            self.apply_reflow_row(line);
                             output.push(line);
                             line = self.reflow_row_state();
                             line.semantic = old.semantic;
                             line.continuation = true;
                             x = 0;
-                            self.ensure_reflow_row(&output, line, capacity, &mut spare);
+                            self.ensure_reflow_row(
+                                &output,
+                                line,
+                                capacity,
+                                &mut spare,
+                                &mut exposed_rows,
+                            );
+                        }
+                        if bulk_copy && !cell.has_hyperlink() {
+                            let start = old.offset + old_col;
+                            let end = start + (used - old_col).min(cols - x);
+                            let count = self.copy_reflow_runs(
+                                &source_page,
+                                start..end,
+                                x,
+                                &mut style_cache,
+                            );
+                            if count > 0 {
+                                if count > 1 {
+                                    cells.nth(count - 2);
+                                }
+                                x += count;
+                                continue;
+                            }
                         }
                         record(
                             old_col,
@@ -287,7 +441,8 @@ impl Screen {
                             copy.cell.set_width(width as u8);
                             let _ = self.install_cell(output.len(), x, copy, true);
                             if width == 2 {
-                                let mut tail = self.physical_row(output.len()).copy_cell(x);
+                                let page = self.pages.pages.back().unwrap();
+                                let mut tail = page.row(usize::from(page.rows) - 1).copy_cell(x);
                                 tail.cell.set_codepoint(None);
                                 tail.cell.set_width(0);
                                 tail.text = None;
@@ -319,8 +474,8 @@ impl Screen {
                         written_rows = output.len() + 1;
                     }
                     if !old.wrapped {
-                        if output.len() < self.pages.total_rows() {
-                            self.apply_reflow_row(output.len(), line);
+                        if output.len() < exposed_rows {
+                            self.apply_reflow_row(line);
                         }
                         output.push(line);
                         line = self.reflow_row_state();
@@ -330,8 +485,12 @@ impl Screen {
                 // Keep at most one exhausted source allocation for the next destination page.
                 spare = Some(source_page);
             }
+            // Padding can prune history, so publish payload charges first.
+            for page in &mut self.pages.pages {
+                page.refresh_charge();
+            }
             if output.len() < written_rows {
-                self.apply_reflow_row(output.len(), line);
+                self.apply_reflow_row(line);
                 output.push(line);
             }
             if let Some(p) = map.get(&(old_cursor.row, old_cursor.col)) {
@@ -362,13 +521,12 @@ impl Screen {
             }
             let start = self.pages.total_rows() - height;
             if let Some(cursor_index) = self
-                .all_rows()
+                .rows()
                 .position(|row| row.id == mapped_cursor.row)
-                .filter(|&i| i >= start)
+                .map(|i| start + i)
             {
                 let wrapped = self
-                    .all_rows()
-                    .skip(start)
+                    .rows()
                     .take(cursor_index - start + 1)
                     .filter(|r| r.wrap_continuation)
                     .count();
@@ -398,7 +556,10 @@ impl Screen {
             self.grow_row(id, Color::Default, rows);
         }
         let start = self.history_len();
-        let cursor_index = self.all_rows().position(|row| row.id == mapped_cursor.row);
+        let cursor_index = self
+            .rows()
+            .position(|row| row.id == mapped_cursor.row)
+            .map(|i| start + i);
         self.cursor.row = cursor_index
             .unwrap_or(start)
             .saturating_sub(start)
@@ -407,9 +568,11 @@ impl Screen {
         if cursor_index.is_none_or(|i| i < start) {
             self.cursor.col = 0;
         }
-        let saved_location = saved_point
-            .and_then(|p| self.all_rows().position(|r| r.id == p.row).map(|i| (i, p)))
-            .filter(|(i, _)| *i >= start);
+        let saved_location = saved_point.and_then(|p| {
+            self.rows()
+                .position(|r| r.id == p.row)
+                .map(|i| (start + i, p))
+        });
         if let Some(saved) = &mut self.saved_cursor {
             if let Some((index, point)) = saved_location {
                 saved.cursor.row = index - start;
@@ -545,6 +708,126 @@ impl Screen {
 mod tests {
     use super::*;
     use crate::{Terminal, snapshot};
+
+    #[test]
+    fn height_reduction_clamps_live_and_saved_cursors_pushed_into_history() {
+        for width in [4, 8, 16] {
+            let mut terminal = Terminal::new(8, 4, 100);
+            terminal.feed(b"abcdefgh\x1b7\r\nijklmnop\r\nqrstuvwx\r\nyz012345\x1b[2;5H");
+            let saved = &terminal.screen().saved_cursor.as_ref().unwrap().cursor;
+            assert!(saved.pending_wrap);
+            terminal.resize(width, 2);
+            let screen = terminal.screen();
+            assert_eq!(screen.history_len(), if width == 4 { 6 } else { 2 });
+            assert_eq!((screen.cursor.row, screen.cursor.col), (0, 0));
+            terminal.restore_cursor();
+            let cursor = &terminal.screen().cursor;
+            assert_eq!((cursor.row, cursor.col), (0, 0));
+            assert!(!cursor.pending_wrap);
+        }
+    }
+
+    #[test]
+    fn reflow_runs_resume_after_partial_copy_and_scalar_fallback() {
+        for limited_styles in [false, true] {
+            let mut source = Terminal::new(8, 1, 0);
+            source.feed(b"\x1b[31mab\x1b[0m-\x1b[32mcd");
+            source.feed(if limited_styles {
+                "\x1b[34me\u{301}f".as_bytes()
+            } else {
+                "\x1b[0me\u{301}f".as_bytes()
+            });
+            let source_page = &source.screen().pages.pages[0];
+            let start = source_page.slot(0, 0);
+            let mut screen = Screen::new(8, 1, ScrollbackLimits::NONE);
+            screen.pages = PageList::default();
+            screen.pages.append(
+                crate::PageCapacity {
+                    cols: 8,
+                    rows: 1,
+                    // Four buckets admit only two nondefault styles.
+                    styles: if limited_styles { 4 } else { 128 },
+                    grapheme_bytes: if limited_styles { 4096 } else { 0 },
+                    ..crate::PageCapacity::STANDARD
+                },
+                1,
+            );
+            let mut cache = None;
+            assert_eq!(
+                screen.copy_reflow_runs(source_page, start..start + 7, 0, &mut cache),
+                5
+            );
+            assert_eq!(screen.pages.pages[0].graphemes.used_bytes(), 0);
+            assert!(screen.row(0).cells[5..].iter().all(|c| c.bits() == 0));
+            screen
+                .install_cell(0, 5, source_page.row(0).copy_cell(5), true)
+                .unwrap();
+            assert_eq!(
+                screen.copy_reflow_runs(source_page, start + 6..start + 7, 6, &mut cache),
+                1,
+            );
+            let expected = source_page.row(0);
+            let row = screen.row(0);
+            for col in 0..8 {
+                assert_eq!(row.text(col).as_str(), expected.text(col).as_str());
+                assert_eq!(row.style(col), expected.style(col));
+            }
+            let page = &screen.pages.pages[0];
+            for (id, _) in page.styles.iter() {
+                assert_eq!(page.styles.reference_count(id), 2);
+            }
+        }
+    }
+
+    #[test]
+    fn reflow_style_cache_follows_resource_relocation() {
+        let mut source = Terminal::new(8, 2, 0);
+        source.feed(b"\x1b[31mx");
+        let source_page = &source.screen().pages.pages[0];
+        let start = source_page.slot(0, 0);
+
+        for split in [false, true] {
+            let mut screen = Screen::new(8, 2, ScrollbackLimits::NONE);
+            screen.set_cell_style(
+                0,
+                0,
+                Style {
+                    foreground: Color::Indexed(2),
+                    ..Style::default()
+                },
+            );
+            let mut cache = None;
+            assert_eq!(
+                screen.copy_reflow_runs(source_page, start..start + 1, 0, &mut cache),
+                1
+            );
+            assert_eq!(cache.unwrap().destination, 2);
+
+            // Both operations renumber the copied style; only splitting also
+            // changes its owner. Neither may reuse the cached destination ID.
+            if split {
+                screen.split_resource_page(1).unwrap();
+            } else {
+                let page = &mut screen.pages.pages[0];
+                page.clear_cell(page.slot(0, 0), Color::Default);
+                page.rebuild(None).unwrap();
+            }
+
+            let page = screen.pages.pages.back().unwrap();
+            assert_eq!(page.row(usize::from(page.rows) - 1).cells[0].style_id(), 1);
+            assert_eq!(
+                screen.copy_reflow_runs(source_page, start..start + 1, 1, &mut cache),
+                1
+            );
+            let page = screen.pages.pages.back().unwrap();
+            let row = page.row(usize::from(page.rows) - 1);
+            for col in 0..2 {
+                assert_eq!(row.cells[col].codepoint(), Some('x'));
+                assert_eq!(row.style(col).foreground, Color::Indexed(1));
+            }
+            assert_eq!(page.styles.reference_count(1), 2);
+        }
+    }
 
     #[test]
     fn unmanaged_reflow_matches_resource_copying() {
