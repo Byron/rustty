@@ -73,7 +73,8 @@ strips the first prefix: `gitoxide.foo-bar` becomes `foo-bar`, and
 names are retained. This is name formatting, not a Git
 worktree scan; a plain dotted directory follows the same convention.
 
-The source and test previews use actual 72×72 key images:
+The source and test previews use actual 72×72 key images, showing the normal
+board, dim flashing phase, move mode, and no-session board from top to bottom:
 
 ![Stream Deck contact sheet](stream-deck-preview.png)
 
@@ -134,6 +135,23 @@ anything to Codex. Duplicate completed-turn snapshots stay acknowledged across
 A/T1 → B → A/T1; A/T2 is new. Each pane retains the last acknowledged completion
 for up to 64 threads in its current reporting lifecycle. Evicting a thread can
 make its old completion appear unread again. A new begin replaces the lifecycle.
+
+Unseen important states flash the agent tile between normal and 55% artwork
+intensity every 600 ms, retaining its icon and slug. Needs input, Done, Error,
+Paused and Unknown flash on first observation or a new transition; Idle flashes
+when an existing thread becomes ready/stops, including cancellation or interruption.
+Initial Idle and Working remain quiet. Revealing/focusing the pane stops its flash;
+states arriving while it is focused are immediately seen. This does not resolve
+requests or change status, except for the existing Done-to-Idle acknowledgement.
+Duplicate snapshots and label changes do not restart flashing; a new completed
+turn or a later important state does. Attention history shares the 64-thread
+lifecycle bound with completion acknowledgements, so eviction can make an old
+state appear unseen again. Device reconnect and screen sleep preserve this state;
+sleep suppresses rendering and focus acknowledgement. Only agent tiles on the
+current page flash; Page and state counts remain fixed. Move-source artwork stays
+steady until the move ends. Flashing never changes key targets or tile positions.
+The v1 protocol has no request identity: same-state updates cannot distinguish a
+new approval from a duplicate. A new observed state transition is needed to rearm.
 
 Existing Rustty title/progress presentation remains available; it cannot override
 an explicit structured status or register a session. Progress expiry, redraw,

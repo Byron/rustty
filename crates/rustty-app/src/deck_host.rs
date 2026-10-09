@@ -455,6 +455,13 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
         .unwrap()
         .capture;
     let input_before = app.panes[&hidden].input_bytes;
+    assert!(
+        app.panes[&hidden]
+            .agent
+            .view(hidden, "", &app.panes[&hidden].activity)
+            .unwrap()
+            .unseen
+    );
     let native = app
         .windows
         .iter()
@@ -462,6 +469,26 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
         .unwrap();
     app.windows[&native].window.set_minimized(true);
     app.reveal_pane(hidden);
+    assert!(
+        !app.panes[&hidden]
+            .agent
+            .view(hidden, "", &app.panes[&hidden].activity)
+            .unwrap()
+            .unseen
+    );
+    app.panes.get_mut(&hidden).unwrap().agent.apply(
+        AgentEvent::Update(snapshot(State::NeedsInput, None)),
+        3,
+        false,
+    );
+    app.sync_deck();
+    assert!(
+        !app.panes[&hidden]
+            .agent
+            .view(hidden, "", &app.panes[&hidden].activity)
+            .unwrap()
+            .unseen
+    );
     assert_eq!(app.focused(one), Some(hidden));
     assert_eq!(app.workspace.windows[app.index(one).unwrap()].active_tab, 1);
     assert!(app.windows[&native].visible);

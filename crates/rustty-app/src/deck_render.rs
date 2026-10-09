@@ -14,6 +14,7 @@ pub enum Visual {
         focused: bool,
         reserved: bool,
         moving: bool,
+        flash_dim: bool,
     },
     Function {
         value: String,
@@ -209,6 +210,17 @@ impl Renderer {
                     (9.0, 11.0, 54.0, 50.0),
                     TEXT,
                 )?;
+            }
+        }
+        if matches!(
+            visual,
+            Visual::Agent {
+                flash_dim: true,
+                ..
+            }
+        ) {
+            for pixel in image.pixels_mut() {
+                pixel.0 = pixel.0.map(|channel| (u16::from(channel) * 55 / 100) as u8);
             }
         }
         Ok(image)
@@ -544,8 +556,26 @@ mod tests {
             focused: true,
             reserved: false,
             moving: false,
+            flash_dim: false,
         };
         assert_eq!(renderer.render(&visual).unwrap().dimensions(), (72, 72));
+        let normal = renderer.render(&visual).unwrap();
+        let mut dimmed = visual;
+        if let Visual::Agent { flash_dim, .. } = &mut dimmed {
+            *flash_dim = true;
+        }
+        let dimmed = renderer.render(&dimmed).unwrap();
+        assert!(
+            normal
+                .pixels()
+                .zip(dimmed.pixels())
+                .all(|(normal, dimmed)| {
+                    normal
+                        .0
+                        .map(|channel| (u16::from(channel) * 55 / 100) as u8)
+                        == dimmed.0
+                })
+        );
         assert!(Renderer::new((72, 80)).is_err());
     }
 }

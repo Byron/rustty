@@ -190,7 +190,13 @@ struct Key {
     binding: Binding,
 }
 
-fn keys(board: &Board, layout: Layout, moving: Option<&Capture>, brightness: u8) -> Vec<Key> {
+fn keys(
+    board: &Board,
+    layout: Layout,
+    moving: Option<&Capture>,
+    brightness: u8,
+    elapsed: Duration,
+) -> Vec<Key> {
     if board.no_sessions {
         return [
             "R", "T", "🦀", "T", "R", "U", "T", "💻", "T", "U", "S", "Y", "✨", "Y", "S",
@@ -219,6 +225,7 @@ fn keys(board: &Board, layout: Layout, moving: Option<&Capture>, brightness: u8)
                 focused: tile.focused,
                 reserved: tile.reserved,
                 moving: is_moving,
+                flash_dim: tile.unseen && !tile.focused && !is_moving && flash_dim(elapsed),
             },
             binding: Binding::Agent(tile.capture),
         };
@@ -258,6 +265,10 @@ fn keys(board: &Board, layout: Layout, moving: Option<&Capture>, brightness: u8)
         },
     };
     keys
+}
+
+fn flash_dim(elapsed: Duration) -> bool {
+    (elapsed.as_millis() / 600) % 2 == 1
 }
 
 fn same_capture(left: &Capture, right: &Capture) -> bool {
@@ -521,7 +532,13 @@ fn run(
             }
             gestures.advance(start.elapsed(), emit);
             if screens_awake {
-                let desired = keys(&board, layout, gestures.moving.as_ref(), brightness);
+                let desired = keys(
+                    &board,
+                    layout,
+                    gestures.moving.as_ref(),
+                    brightness,
+                    start.elapsed(),
+                );
                 // Keep input and hold deadlines responsive between individual image writes.
                 for offset in 0..desired.len() {
                     let index = (next_upload + offset) % desired.len();
@@ -564,7 +581,7 @@ fn next_brightness(value: u8) -> u8 {
     }
 }
 
-/// Offline contact sheet: states, normal board, move board, then no-session board.
+/// Offline contact sheet: normal board, dim flash phase, move board, no-session board.
 pub fn preview(path: &std::path::Path) -> Result<(), String> {
     use crate::deck::{Target, Tile};
     let mut renderer = Renderer::new((72, 72))?;
@@ -607,6 +624,7 @@ pub fn preview(path: &std::path::Path) -> Result<(), String> {
             state: states.get(slot).copied(),
             focused: slot == 0,
             reserved: slot == 7,
+            unseen: slot < 7,
         })
         .collect();
     let mut board = Board {
@@ -620,15 +638,25 @@ pub fn preview(path: &std::path::Path) -> Result<(), String> {
         screens_awake: true,
     };
     let layout = Layout::new(Kind::Mk2Scissor)?;
-    let mut sheet = RgbImage::from_pixel(5 * 80 + 8, 3 * 3 * 80 + 24, image::Rgb([13, 15, 17]));
-    for section in 0..3 {
-        if section == 2 {
+    let mut sheet = RgbImage::from_pixel(5 * 80 + 8, 4 * 3 * 80 + 32, image::Rgb([13, 15, 17]));
+    for section in 0..4 {
+        if section == 3 {
             board.no_sessions = true;
         }
-        let source = (section == 1).then(|| board.tile(0).capture);
-        for (index, key) in keys(&board, layout, source.as_ref(), board.brightness)
-            .iter()
-            .enumerate()
+        let source = (section == 2).then(|| board.tile(0).capture);
+        for (index, key) in keys(
+            &board,
+            layout,
+            source.as_ref(),
+            board.brightness,
+            if section == 1 {
+                Duration::from_millis(600)
+            } else {
+                Duration::ZERO
+            },
+        )
+        .iter()
+        .enumerate()
         {
             image::imageops::replace(
                 &mut sheet,
@@ -671,15 +699,22 @@ mod tests {
                     state: (slot != 2 && slot != 3).then_some(State::Working),
                     focused: false,
                     reserved: slot == 3,
+                    unseen: false,
                 })
                 .collect(),
         }
     }
     fn shown(board: &Board) -> Vec<Option<Key>> {
-        keys(board, Layout::new(Kind::Mk2Scissor).unwrap(), None, 100)
-            .into_iter()
-            .map(Some)
-            .collect()
+        keys(
+            board,
+            Layout::new(Kind::Mk2Scissor).unwrap(),
+            None,
+            100,
+            Duration::ZERO,
+        )
+        .into_iter()
+        .map(Some)
+        .collect()
     }
     fn input(
         gesture: &mut Gestures,
@@ -694,6 +729,53 @@ mod tests {
         })
     }
 
+    #[test]
+    fn flashing_changes_only_unseen_agent_artwork_and_never_key_targets() {
+        let layout = Layout::new(Kind::Mk2Scissor).unwrap();
+        let mut board = board();
+        board.tiles[0].unseen = true;
+        board.tiles[0].state = Some(State::NeedsInput);
+        let bright = keys(&board, layout, None, 100, Duration::from_millis(599));
+        let dim = keys(&board, layout, None, 100, Duration::from_millis(600));
+        for index in 0..15 {
+            assert_eq!(bright[index].binding, dim[index].binding);
+            assert_eq!(bright[index].visual == dim[index].visual, index != 0);
+        }
+        assert_eq!(
+            bright,
+            keys(&board, layout, None, 100, Duration::from_millis(1200))
+        );
+        board.tiles[0].focused = true;
+        assert!(matches!(
+            keys(&board, layout, None, 100, Duration::from_millis(600))[0].visual,
+            Visual::Agent {
+                flash_dim: false,
+                ..
+            }
+        ));
+        board.tiles[0].focused = false;
+        let source = board.tile(0).capture;
+        assert!(matches!(
+            keys(
+                &board,
+                layout,
+                Some(&source),
+                100,
+                Duration::from_millis(600)
+            )[0]
+            .visual,
+            Visual::Agent {
+                flash_dim: false,
+                moving: true,
+                ..
+            }
+        ));
+        board.no_sessions = true;
+        assert_eq!(
+            keys(&board, layout, None, 100, Duration::ZERO),
+            keys(&board, layout, None, 100, Duration::from_millis(600))
+        );
+    }
     #[test]
     fn exact_regions_and_rejected_models() {
         let layout = Layout::new(Kind::Mk2Scissor).unwrap();
@@ -1242,7 +1324,10 @@ mod tests {
         let mut board = board();
         for no_sessions in [false, true] {
             board.no_sessions = no_sessions;
-            for (index, key) in keys(&board, layout, None, 100).iter().enumerate() {
+            for (index, key) in keys(&board, layout, None, 100, Duration::ZERO)
+                .iter()
+                .enumerate()
+            {
                 device
                     .upload(index, renderer.render(&key.visual).unwrap())
                     .unwrap();

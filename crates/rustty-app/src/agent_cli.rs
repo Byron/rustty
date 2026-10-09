@@ -26,6 +26,8 @@ For example, gitoxide.foo-bar becomes foo-bar. Long slugs are shortened to fit.
    ⇄   Move          Purple arrows/outline; select the swap destination
 
 A small mint line at the top marks the focused pane, independently of status.
+Unseen important states flash until their pane is revealed/focused. Initial Idle
+and Working stay quiet; later Idle transitions flash too. Flashing sends no input.
 
 Fixed board:
   Agent 1   Agent 2   Agent 3       ! Input     ▂█▅ Working

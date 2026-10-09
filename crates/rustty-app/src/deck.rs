@@ -29,6 +29,7 @@ pub struct Tile {
     pub state: Option<State>,
     pub focused: bool,
     pub reserved: bool,
+    pub unseen: bool,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Board {
@@ -71,6 +72,7 @@ impl Board {
             state: None,
             focused: false,
             reserved: false,
+            unseen: false,
         })
     }
     pub fn valid(&self, capture: Capture) -> bool {
@@ -84,7 +86,14 @@ pub struct Report {
     snapshot: Option<Snapshot>,
     generation: u64,
     enclosing_command: bool,
-    acknowledged: VecDeque<(Option<String>, String)>,
+    attention: VecDeque<Attention>,
+}
+struct Attention {
+    thread: Option<String>,
+    state: State,
+    turn: Option<String>,
+    completed: Option<String>,
+    unseen: bool,
 }
 impl Report {
     pub fn is_registered(&self) -> bool {
@@ -96,16 +105,20 @@ impl Report {
                 self.clear();
                 self.generation = generation;
                 self.enclosing_command = command_running;
+                self.observe(&snapshot);
                 self.snapshot = Some(snapshot);
             }
-            Event::Update(snapshot) if self.snapshot.is_some() => self.snapshot = Some(snapshot),
+            Event::Update(snapshot) if self.snapshot.is_some() => {
+                self.observe(&snapshot);
+                self.snapshot = Some(snapshot);
+            }
             Event::Update(_) => {}
             Event::End => self.clear(),
         }
     }
     pub fn clear(&mut self) {
         self.snapshot = None;
-        self.acknowledged.clear();
+        self.attention.clear();
         self.enclosing_command = false;
     }
     pub fn command_ended(&mut self) {
@@ -113,30 +126,61 @@ impl Report {
             self.clear();
         }
     }
+    fn observe(&mut self, snapshot: &Snapshot) {
+        let previous = self
+            .attention
+            .iter()
+            .position(|entry| entry.thread == snapshot.thread_id)
+            .and_then(|index| self.attention.remove(index));
+        let completed = previous.as_ref().and_then(|entry| entry.completed.clone());
+        let same = previous.as_ref().is_some_and(|entry| {
+            entry.state == snapshot.state
+                && (snapshot.state != State::Done || entry.turn == snapshot.turn_id)
+        });
+        let unseen = match snapshot.state {
+            State::Working => false,
+            State::Done if completed.is_some() && completed == snapshot.turn_id => false,
+            _ if same => previous.as_ref().is_some_and(|entry| entry.unseen),
+            State::Idle => previous
+                .as_ref()
+                .is_some_and(|entry| entry.state != State::Done || entry.unseen),
+            _ => true,
+        };
+        self.attention.push_back(Attention {
+            thread: snapshot.thread_id.clone(),
+            state: snapshot.state,
+            turn: snapshot.turn_id.clone(),
+            completed,
+            unseen,
+        });
+        if self.attention.len() > ACK_HISTORY {
+            self.attention.pop_front();
+        }
+    }
     pub fn acknowledge(&mut self) {
         let Some(snapshot) = &self.snapshot else {
             return;
         };
-        if snapshot.state != State::Done {
-            return;
-        }
-        let Some(turn) = &snapshot.turn_id else {
-            return;
-        };
-        self.acknowledged
-            .retain(|(thread, _)| *thread != snapshot.thread_id);
-        self.acknowledged
-            .push_back((snapshot.thread_id.clone(), turn.clone()));
-        if self.acknowledged.len() > ACK_HISTORY {
-            self.acknowledged.pop_front();
+        if let Some(entry) = self
+            .attention
+            .iter_mut()
+            .find(|entry| entry.thread == snapshot.thread_id)
+        {
+            entry.unseen = false;
+            if snapshot.state == State::Done {
+                entry.completed.clone_from(&snapshot.turn_id);
+            }
         }
     }
     pub fn view(&self, pane: Id, task_label: &str, _activity: &Activity) -> Option<PaneView> {
         let snapshot = self.snapshot.as_ref()?;
+        let attention = self
+            .attention
+            .iter()
+            .find(|entry| entry.thread == snapshot.thread_id);
         let acknowledged = snapshot.state == State::Done
-            && self.acknowledged.iter().any(|(thread, turn)| {
-                *thread == snapshot.thread_id && Some(turn) == snapshot.turn_id.as_ref()
-            });
+            && snapshot.turn_id.is_some()
+            && attention.is_some_and(|entry| entry.completed == snapshot.turn_id);
         let state = if acknowledged {
             State::Idle
         } else {
@@ -149,6 +193,7 @@ impl Report {
             },
             state,
             label: task_label.to_owned(),
+            unseen: attention.is_some_and(|entry| entry.unseen),
         })
     }
 }
@@ -157,6 +202,7 @@ pub struct PaneView {
     pub target: Target,
     pub state: State,
     pub label: String,
+    pub unseen: bool,
 }
 
 #[derive(Default)]
@@ -272,6 +318,7 @@ impl Dashboard {
                     state: report.map(|r| r.state),
                     focused: id.is_some() && *id == focused,
                     reserved: id.is_some() && report.is_none(),
+                    unseen: report.is_some_and(|r| r.unseen),
                 }
             })
             .collect();
@@ -360,6 +407,7 @@ mod tests {
                     },
                     label: "Review Δ".into(),
                     state: GROUPS[i % 4],
+                    unseen: false,
                 },
             );
         }
@@ -423,6 +471,72 @@ mod tests {
         report.apply(Event::End, 8, false);
         assert!(!report.is_registered());
         assert!(report.view(1, "pane", &activity).is_none());
+    }
+    #[test]
+    fn important_transitions_flash_until_seen_without_rearming_duplicates() {
+        let mut report = Report::default();
+        let activity = Activity::default();
+        report.apply(Event::Begin(snapshot(State::Idle, "A", None)), 1, false);
+        assert!(!report.view(1, "task", &activity).unwrap().unseen);
+        for state in [
+            State::NeedsInput,
+            State::Idle,
+            State::Error,
+            State::Paused,
+            State::Unknown,
+        ] {
+            report.apply(Event::Update(snapshot(State::Working, "A", None)), 1, false);
+            assert!(!report.view(1, "task", &activity).unwrap().unseen);
+            report.apply(Event::Update(snapshot(state, "A", None)), 1, false);
+            let unseen = report.view(1, "task", &activity).unwrap();
+            assert_eq!(unseen.state, state);
+            assert!(unseen.unseen);
+            report.apply(Event::Update(snapshot(state, "A", None)), 1, false);
+            assert!(report.view(1, "task", &activity).unwrap().unseen);
+            report.acknowledge();
+            let mut duplicate = snapshot(state, "A", None);
+            duplicate.label = Some("Updated display metadata".into());
+            report.apply(Event::Update(duplicate), 1, false);
+            let seen = report.view(1, "task", &activity).unwrap();
+            assert_eq!(seen.state, state);
+            assert_eq!(seen.target, unseen.target);
+            assert!(!seen.unseen);
+            report.apply(Event::Update(snapshot(State::Idle, "B", None)), 1, false);
+            report.apply(Event::Update(snapshot(state, "A", None)), 1, false);
+            assert!(!report.view(1, "task", &activity).unwrap().unseen);
+        }
+        report.apply(
+            Event::Update(snapshot(State::Done, "A", Some("T1"))),
+            1,
+            false,
+        );
+        assert!(report.view(1, "task", &activity).unwrap().unseen);
+        report.acknowledge();
+        report.apply(Event::Update(snapshot(State::Idle, "A", None)), 1, false);
+        assert!(!report.view(1, "task", &activity).unwrap().unseen);
+        report.apply(Event::Update(snapshot(State::Idle, "B", None)), 1, false);
+        report.apply(
+            Event::Update(snapshot(State::Done, "A", Some("T1"))),
+            1,
+            false,
+        );
+        let seen = report.view(1, "task", &activity).unwrap();
+        assert_eq!(seen.state, State::Idle);
+        assert!(!seen.unseen);
+        report.apply(
+            Event::Update(snapshot(State::Done, "A", Some("T2"))),
+            1,
+            false,
+        );
+        assert!(report.view(1, "task", &activity).unwrap().unseen);
+        report.apply(Event::End, 1, false);
+        assert!(report.view(1, "task", &activity).is_none());
+        report.apply(
+            Event::Begin(snapshot(State::NeedsInput, "A", None)),
+            2,
+            false,
+        );
+        assert!(report.view(1, "task", &activity).unwrap().unseen);
     }
     #[test]
     fn explicit_unknown_survives_stale_attention_and_working_hints() {
@@ -493,7 +607,7 @@ mod tests {
             );
             report.acknowledge();
         }
-        assert_eq!(report.acknowledged.len(), ACK_HISTORY);
+        assert_eq!(report.attention.len(), ACK_HISTORY);
         report.apply(
             Event::Update(snapshot(State::Done, "0", Some("1"))),
             1,
