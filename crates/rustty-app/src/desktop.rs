@@ -3371,6 +3371,11 @@ impl App {
                                 terminal_ime_rect = Some(prepared.ime_rect);
                             }
                         }
+                        host.fonts.retain_images(
+                            host.prepared
+                                .values()
+                                .flat_map(|pane| pane.screen.graphics.images.values()),
+                        );
                         let size = [size.width, size.height];
                         if let Some(retained) = &host.composed
                             && retained.matches(size, &composition)

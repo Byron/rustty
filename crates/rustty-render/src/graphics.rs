@@ -6,7 +6,10 @@ use rustty_vt::{
     Screen,
     graphics::{Image, Placement, PlacementId, unicode},
 };
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 pub(super) use unicode::PLACEHOLDER;
 // One neighboring pixel on each side prevents seams under bilinear filtering;
@@ -28,6 +31,34 @@ struct Geometry {
 }
 
 impl Renderer {
+    /// Release cached images absent from all visible panes. Call after refreshing
+    /// every pane's snapshot; retained frames remain independently replayable.
+    pub fn retain_images<'a>(&mut self, images: impl IntoIterator<Item = &'a Image>) {
+        if self.images.is_empty() {
+            return;
+        }
+        let sources = image_sources(images);
+        self.images.retain(|key, _| sources.contains(&key.0));
+        let pages: HashSet<_> = self.images.values().map(|tile| tile.glyph.atlas).collect();
+        // Keep complete upload histories on shared pages for backend revision tracking.
+        self.pages
+            .retain(|id, page| !page.image || pages.contains(id));
+        self.uploads
+            .retain(|upload| self.pages.contains_key(&upload.page));
+    }
+
+    pub(super) fn image_pages<'a>(
+        &self,
+        images: impl IntoIterator<Item = &'a Image>,
+    ) -> HashSet<usize> {
+        let sources = image_sources(images);
+        self.images
+            .iter()
+            .filter(|(key, _)| sources.contains(&key.0))
+            .map(|(_, tile)| tile.glyph.atlas)
+            .collect()
+    }
+
     pub(super) fn prepare_graphics(
         &mut self,
         screen: &Screen,
@@ -156,7 +187,7 @@ impl Renderer {
             }
         }
         let mut cached = self.cache_pixels([width + 2, height + 2], data.into(), true)?;
-        let step = 1.0 / self.pages[cached.atlas].size as f32;
+        let step = 1.0 / self.pages[&cached.atlas].size as f32;
         cached.uv[0] += step;
         cached.uv[1] += step;
         cached.uv[2] -= step;
@@ -171,6 +202,16 @@ impl Renderer {
         );
         Ok(cached)
     }
+}
+
+fn image_sources<'a>(images: impl IntoIterator<Item = &'a Image>) -> HashSet<usize> {
+    images
+        .into_iter()
+        .flat_map(|image| {
+            std::iter::once(&image.pixels).chain(image.frames.iter().map(|frame| &frame.pixels))
+        })
+        .map(|pixels| pixels.as_ptr() as usize)
+        .collect()
 }
 
 fn geometry(screen: &Screen, metrics: FontMetrics, options: &RenderOptions) -> Vec<Geometry> {
@@ -565,6 +606,152 @@ mod tests {
     }
 
     #[test]
+    fn exited_game_images_are_not_retained_by_shell_frames() {
+        let mut terminal = Terminal::new(10, 3, 0);
+        let (mut renderer, options) = renderer();
+        terminal.feed(b"\x1b[?1049h");
+        transmit(&mut terminal, 1, "");
+        let pixels = Arc::downgrade(&terminal.graphics().images[&1].pixels);
+        let game = renderer.prepare(terminal.screen(), &options).unwrap();
+        assert_eq!(game.atlas_uploads.len(), 1);
+        let upload = Arc::downgrade(&game.atlas_uploads[0].pixels);
+        terminal.feed(b"\x1b_Ga=d,d=A,q=2\x1b\\\x1b[?1049l");
+        assert!(terminal.graphics().images.is_empty());
+        let shell = renderer.prepare(terminal.screen(), &options).unwrap();
+        renderer.retain_images(terminal.graphics().images.values());
+        assert!(shell.atlas_uploads.is_empty());
+        assert_eq!(pixels.strong_count(), 0);
+        assert!(renderer.images.is_empty());
+        assert!(renderer.pages.is_empty());
+        assert!(renderer.uploads.is_empty());
+        assert_eq!(
+            upload.strong_count(),
+            1,
+            "the retained old frame can still replay"
+        );
+        drop(game);
+        assert_eq!(upload.strong_count(), 0);
+    }
+
+    #[test]
+    fn deleting_an_image_preserves_other_panes_and_text_pages() {
+        let (mut renderer, options) = renderer();
+        let mut game = Terminal::new(10, 3, 0);
+        let mut other = Terminal::new(10, 3, 0);
+        let mut text = Terminal::new(10, 3, 0);
+        transmit(&mut game, 1, "");
+        let image = game.screen_mut().graphics.images.get_mut(&1).unwrap();
+        image.width = TILE;
+        image.height = TILE;
+        image.pixels = vec![255; (TILE * TILE * 4) as usize].into();
+        let source = Arc::downgrade(&image.pixels);
+        let before = renderer.prepare(game.screen(), &options).unwrap();
+        let game_page = before.atlas_uploads[0].page;
+        transmit(&mut other, 1, "");
+        let surviving = renderer.prepare(other.screen(), &options).unwrap();
+        assert_eq!(
+            surviving.atlas_uploads.len(),
+            1,
+            "other panes do not retain game pages"
+        );
+        let other_upload = surviving.atlas_uploads[0].clone();
+        assert_ne!(other_upload.page, game_page);
+        text.feed(b"shell");
+        let shell = renderer.prepare(text.screen(), &options).unwrap();
+        assert!(
+            shell
+                .atlas_uploads
+                .iter()
+                .all(|u| u.page != game_page && u.page != other_upload.page)
+        );
+        let generation = renderer.generation();
+        game.feed(b"\x1b_Ga=d,d=A\x1b\\");
+        renderer.retain_images(
+            game.graphics()
+                .images
+                .values()
+                .chain(other.graphics().images.values()),
+        );
+        assert_eq!(source.strong_count(), 0);
+        assert!(!renderer.pages.contains_key(&game_page));
+        assert!(renderer.pages.contains_key(&other_upload.page));
+        assert_eq!(renderer.generation(), generation);
+        let after = renderer.prepare(other.screen(), &options).unwrap();
+        let upload = after
+            .atlas_uploads
+            .iter()
+            .find(|u| u.page == other_upload.page)
+            .unwrap();
+        assert_eq!(upload.revision, other_upload.revision);
+        assert!(Arc::ptr_eq(&upload.pixels, &other_upload.pixels));
+        let mut composed = shell.clone();
+        composed
+            .append_clipped(&after, [0.0; 2], [0.0, 0.0, 800.0, 600.0])
+            .unwrap();
+        assert!(!composed.atlas_uploads.iter().any(|u| u.page == game_page));
+        assert_eq!(
+            before.atlas_uploads[0].page, game_page,
+            "old frames stay independently valid"
+        );
+    }
+
+    #[test]
+    fn shared_image_pages_keep_complete_upload_history_until_unused() {
+        let (mut renderer, options) = renderer();
+        let mut first = Terminal::new(10, 3, 0);
+        let mut second = Terminal::new(10, 3, 0);
+        transmit(&mut first, 1, "");
+        let source = Arc::downgrade(&first.graphics().images[&1].pixels);
+        let one = renderer.prepare(first.screen(), &options).unwrap();
+        transmit(&mut second, 1, "");
+        let two = renderer.prepare(second.screen(), &options).unwrap();
+        assert_eq!(renderer.pages.len(), 1);
+        assert_eq!(two.atlas_uploads.len(), 2);
+        assert_eq!(two.atlas_uploads[0], one.atlas_uploads[0]);
+        first.feed(b"\x1b_Ga=d,d=A\x1b\\");
+        renderer.retain_images(second.graphics().images.values());
+        assert_eq!(source.strong_count(), 0);
+        assert_eq!(renderer.images.len(), 1);
+        assert_eq!(
+            renderer
+                .prepare(second.screen(), &options)
+                .unwrap()
+                .atlas_uploads,
+            two.atlas_uploads
+        );
+        second.feed(b"\x1b_Ga=d,d=A\x1b\\");
+        renderer.retain_images(second.graphics().images.values());
+        assert!(renderer.pages.is_empty());
+        assert!(renderer.uploads.is_empty());
+    }
+
+    #[test]
+    fn repeated_image_sessions_release_page_metadata_without_resetting_text() {
+        let (mut renderer, options) = renderer();
+        let mut terminal = Terminal::new(10, 3, 0);
+        terminal.feed(b"shell");
+        let text = renderer.prepare(terminal.screen(), &options).unwrap();
+        let pages = renderer.pages.len();
+        let mut last_page = text.atlas_uploads.last().unwrap().page;
+        let mut last_revision = text.atlas_uploads.last().unwrap().revision;
+        for _ in 0..16 {
+            transmit(&mut terminal, 1, "");
+            let frame = renderer.prepare(terminal.screen(), &options).unwrap();
+            let upload = frame.atlas_uploads.last().unwrap();
+            assert!(upload.page > last_page);
+            assert!(upload.revision > last_revision);
+            last_page = upload.page;
+            last_revision = upload.revision;
+            terminal.feed(b"\x1b_Ga=d,d=A\x1b\\");
+            renderer.retain_images(terminal.graphics().images.values());
+            assert!(renderer.images.is_empty());
+            assert_eq!(renderer.pages.len(), pages);
+            assert_eq!(renderer.uploads, text.atlas_uploads);
+            assert_eq!(renderer.generation(), text.generation);
+        }
+    }
+
+    #[test]
     fn images_fill_the_cell_grid_with_asymmetric_padding() {
         let mut terminal = Terminal::new(2, 2, 0);
         let (mut renderer, mut options) = renderer();
@@ -656,6 +843,7 @@ mod tests {
         let (mut renderer, options) = renderer();
         let mut check = |terminal: &Terminal, expected: Option<[u8; 4]>, uploads: usize| {
             let frame = renderer.prepare(terminal.screen(), &options).unwrap();
+            renderer.retain_images(terminal.graphics().images.values());
             assert_eq!(frame.atlas_uploads.len(), uploads);
             let images: Vec<_> = frame
                 .quads
@@ -707,9 +895,9 @@ mod tests {
         terminal.feed(b"\x1b_Ga=d,d=f,i=1,r=2\x1b\\");
         check(&terminal, red, 4);
         terminal.feed(b"\x1b_Ga=d,d=I,i=1\x1b\\");
-        check(&terminal, None, 4);
+        check(&terminal, None, 0);
         terminal.feed(b"\x1b_Ga=T,i=1,p=1,f=32,s=1,v=1,C=1;//8A/w==\x1b\\");
-        check(&terminal, Some([255, 255, 0, 255]), 5);
+        check(&terminal, Some([255, 255, 0, 255]), 1);
     }
 
     #[test]

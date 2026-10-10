@@ -5,7 +5,11 @@
 
 use bytemuck::{Pod, Zeroable};
 use rustty_render::{Frame, Paint};
-use std::{fmt, ops::Range};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    ops::Range,
+};
 
 #[derive(Debug)]
 pub struct RenderError(String);
@@ -40,7 +44,7 @@ pub struct Renderer {
     pipeline: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
-    atlases: Vec<Atlas>,
+    atlases: HashMap<usize, Atlas>,
     empty_atlas: Atlas,
     instance_buffer: wgpu::Buffer,
     instance_capacity: u64,
@@ -111,7 +115,7 @@ impl Renderer {
             pipeline,
             layout,
             sampler,
-            atlases: Vec::new(),
+            atlases: HashMap::new(),
             empty_atlas,
             instance_buffer,
             instance_capacity,
@@ -136,6 +140,17 @@ impl Renderer {
             self.atlases.clear();
             self.generation = Some(frame.generation);
         }
+        let mut pages = HashSet::with_capacity(self.atlases.len());
+        for page in frame.atlas_uploads.iter().map(|upload| upload.page).chain(
+            frame
+                .quads
+                .iter()
+                .filter(|quad| quad.paint != Paint::Solid)
+                .map(|quad| quad.atlas),
+        ) {
+            pages.insert(page);
+        }
+        self.atlases.retain(|page, _| pages.contains(page));
         for update in &frame.atlas_uploads {
             let required_bytes = update.size[0] as u64 * update.size[1] as u64 * 4;
             if required_bytes != update.pixels.len() as u64
@@ -147,15 +162,13 @@ impl Renderer {
                 || update.origin[1]
                     .checked_add(update.size[1])
                     .is_none_or(|v| v > update.page_size)
-                || update.page > self.atlases.len()
             {
                 return Err(RenderError("invalid glyph atlas upload".into()));
             }
-            if update.page == self.atlases.len() {
-                self.atlases
-                    .push(atlas(device, &self.layout, &self.sampler, update.page_size));
-            }
-            let atlas = &mut self.atlases[update.page];
+            let atlas = self
+                .atlases
+                .entry(update.page)
+                .or_insert_with(|| atlas(device, &self.layout, &self.sampler, update.page_size));
             if atlas.size != update.page_size {
                 return Err(RenderError(
                     "atlas size changed without a new generation".into(),
@@ -205,7 +218,7 @@ impl Renderer {
             if quad.rect[2] <= 0.0 || quad.rect[3] <= 0.0 {
                 continue;
             }
-            if quad.paint != Paint::Solid && quad.atlas >= self.atlases.len() {
+            if quad.paint != Paint::Solid && !self.atlases.contains_key(&quad.atlas) {
                 return Err(RenderError("glyph references an absent atlas".into()));
             }
             let page = if quad.paint == Paint::Solid {
@@ -264,7 +277,7 @@ impl Renderer {
         pass.set_pipeline(&self.pipeline);
         pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
         for batch in &self.batches {
-            let atlas = self.atlases.get(batch.atlas).unwrap_or(&self.empty_atlas);
+            let atlas = self.atlases.get(&batch.atlas).unwrap_or(&self.empty_atlas);
             pass.set_bind_group(0, &atlas.bind_group, &[]);
             pass.draw(0..4, batch.instances.clone());
         }
@@ -328,6 +341,59 @@ mod tests {
     use super::*;
     use rustty_render::{AtlasUpload, Color, Quad};
     use std::sync::Arc;
+
+    #[test]
+    fn unused_image_pages_are_released_without_replacing_live_textures() {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("GPU adapter");
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
+        let mut renderer = Renderer::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+        let mut game = Frame::empty([2, 1]);
+        for (page, paint) in [(7, Paint::Mask), (400, Paint::Color)] {
+            game.atlas_uploads.push(AtlasUpload {
+                revision: page as u64 + 1,
+                page,
+                page_size: 1,
+                origin: [0, 0],
+                size: [1, 1],
+                pixels: Arc::from([255; 4]),
+            });
+            game.quads.push(Quad {
+                rect: [0.0, 0.0, 1.0, 1.0],
+                uv: [0.0, 0.0, 1.0, 1.0],
+                color: Color::rgb([255; 3]),
+                paint,
+                atlas: page,
+            });
+        }
+        renderer.prepare(&device, &queue, &game).unwrap();
+        let text_texture = renderer.atlases[&7].texture.clone();
+        let text_revision = renderer.atlases[&7].revision;
+        let mut shell = game.clone();
+        shell.atlas_uploads.truncate(1);
+        shell.quads.truncate(1);
+        renderer.prepare(&device, &queue, &shell).unwrap();
+        assert_eq!(renderer.atlases.len(), 1);
+        assert_eq!(renderer.atlases[&7].texture, text_texture);
+        assert_eq!(renderer.atlases[&7].revision, text_revision);
+
+        shell.atlas_uploads.clear();
+        renderer.prepare(&device, &queue, &shell).unwrap();
+        assert_eq!(renderer.atlases[&7].texture, text_texture);
+
+        renderer.prepare(&device, &queue, &game).unwrap();
+        assert_eq!(renderer.atlases.len(), 2);
+        assert_eq!(renderer.atlases[&400].revision, 401);
+        assert_eq!(renderer.atlases[&7].texture, text_texture);
+        assert_eq!(renderer.generation, Some(game.generation));
+
+        shell.quads.clear();
+        renderer.prepare(&device, &queue, &shell).unwrap();
+        assert!(renderer.atlases.is_empty());
+    }
 
     #[test]
     fn offscreen_render_preserves_alpha_color_and_tiled_glyph_coverage() {

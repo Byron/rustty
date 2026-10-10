@@ -6,11 +6,12 @@ use crate::{
 };
 use egui::TextureFilter;
 use rustty_render::{Frame, Paint};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Default)]
 pub(crate) struct Atlases {
     generation: Option<u64>,
-    pages: Vec<Page>,
+    pages: HashMap<usize, Page>,
 }
 struct Page {
     texture: Texture,
@@ -18,7 +19,7 @@ struct Page {
 }
 impl Atlases {
     pub fn bytes(&self) -> usize {
-        self.pages.iter().map(|page| page.texture.bytes()).sum()
+        self.pages.values().map(|page| page.texture.bytes()).sum()
     }
     pub fn update(&mut self, frame: &Frame, bytes: &mut usize) -> Result<()> {
         if self.generation != Some(frame.generation) {
@@ -29,6 +30,23 @@ impl Atlases {
         if frame.atlas_uploads.len() > crate::MAX_GEOMETRY {
             return Err(RenderError("too many terminal atlas updates"));
         }
+        let mut pages = HashSet::with_capacity(self.pages.len());
+        for page in frame.atlas_uploads.iter().map(|upload| upload.page).chain(
+            frame
+                .quads
+                .iter()
+                .filter(|quad| quad.paint != Paint::Solid)
+                .map(|quad| quad.atlas),
+        ) {
+            pages.insert(page);
+        }
+        self.pages.retain(|id, page| {
+            let retain = pages.contains(id);
+            if !retain {
+                *bytes -= page.texture.bytes();
+            }
+            retain
+        });
         for update in &frame.atlas_uploads {
             let page_bytes = image_bytes([update.page_size as usize; 2], false)?;
             let data_bytes = image_bytes(update.size.map(|v| v as usize), true)?;
@@ -38,11 +56,10 @@ impl Atlases {
                         .checked_add(update.size[axis])
                         .is_none_or(|end| end > update.page_size)
                 })
-                || update.page > self.pages.len()
             {
                 return Err(RenderError("invalid terminal atlas upload"));
             }
-            if update.page == self.pages.len() {
+            if !self.pages.contains_key(&update.page) {
                 if self.pages.len() >= crate::MAX_TEXTURES {
                     return Err(RenderError("too many terminal atlas pages"));
                 }
@@ -54,13 +71,16 @@ impl Atlases {
                     return Err(RenderError("terminal atlas exceeds the 64 MiB limit"));
                 }
                 let next_bytes = reserve_bytes(*bytes, 0, page_bytes)?;
-                self.pages.push(Page {
-                    texture: Texture::empty([update.page_size as usize; 2])?,
-                    revision: None,
-                });
+                self.pages.insert(
+                    update.page,
+                    Page {
+                        texture: Texture::empty([update.page_size as usize; 2])?,
+                        revision: None,
+                    },
+                );
                 *bytes = next_bytes;
             }
-            let page = &mut self.pages[update.page];
+            let page = self.pages.get_mut(&update.page).unwrap();
             if page.texture.size != [update.page_size as usize; 2] {
                 return Err(RenderError(
                     "terminal atlas size changed within a generation",
@@ -148,7 +168,7 @@ pub(crate) fn paint(
         }
         let texture = &atlases
             .pages
-            .get(quad.atlas)
+            .get(&quad.atlas)
             .ok_or(RenderError("terminal quad references an absent atlas"))?
             .texture;
         let du = (quad.uv[2] - quad.uv[0]) / (rect[2] - rect[0]);

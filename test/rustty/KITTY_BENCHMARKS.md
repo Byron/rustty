@@ -81,3 +81,67 @@ baseline-only run remains in `/tmp/rustty-kitty/baseline`; a mixed-compiler run
 is retained under `paired-mixed-toolchains` and excluded from these results.
 These results establish placement-feed
 performance for these workloads, not complete game frame-rate parity.
+
+## Image lifetime after Glowstorm exit, 2026-10-10
+
+The renderer previously kept source image buffers and atlas uploads after the
+terminal deleted the images, and both rendering backends kept their atlas pages.
+A second game therefore accumulated another set of resources. Image retention
+now follows the visible pane snapshots; frames keep only their image pages,
+and the backends release pages absent from the composed frame. Text pages and
+unchanged images retain their caches.
+
+A real-game check kept the same PTY session, CPU renderer and Metal renderer
+alive across two launches. Each launch used `GLOWSTORM_SCALE=2.2`, a 120×45 grid
+at 2× display scale, and five seconds of gameplay before Ctrl-C. Snapshots and
+frames were dropped every iteration, and dead `Weak` image handles were dropped
+before measuring, since `Weak<[u8]>` keeps the backing allocation alive even
+after its last strong owner is gone. The five uploaded images held
+249.1 MiB of RGBA data. Measurements ran on macOS 27.0.1 arm64 with the workspace
+release profile.
+
+| Resource after returning to the shell | Before, first exit | Fixed, first exit | Before, second exit | Fixed, second exit |
+| --- | ---: | ---: | ---: | ---: |
+| Live CPU allocations (`malloc_zone_statistics`) | 381.7 MiB | 3.6 MiB | 780.0 MiB | 3.6 MiB |
+| GPU atlas capacity | 140 MiB | 4 MiB | 296 MiB | 4 MiB |
+| Resident memory | 658.1 MiB | 658.2 MiB | 1,057.0 MiB | 662.9 MiB |
+
+After each fixed exit, all substantial source buffers were released; the one
+remaining atlas page held text. The terminal retained one unused 4-byte
+placeholder in its alternate screen. Resident memory did not immediately return
+to startup levels: `vmmap` showed about 635 MiB in empty malloc regions, while
+live allocations were 3.6 MiB. That allocator caching is distinct from the
+previous retained image data; the second run reused the freed memory.
+The game is dynamic, so these are representative memory observations, not a
+controlled comparison of per-frame CPU/GPU time.
+
+To reproduce in Rustty, keep the window and shell open, run the following twice,
+press Enter to start each game, play for five seconds, and exit with Ctrl-C:
+
+```sh
+GLOWSTORM_SCALE=2.2 GLOWSTORM_GOD=1 /path/to/catnip/target/release/glowstorm
+```
+
+Use `footprint <rustty-pid>` and `vmmap -summary <rustty-pid>` from another
+terminal after each exit to distinguish live allocations, empty malloc regions
+and graphics memory. The one-off harness, frozen baseline/fixed executables,
+source and JSONL samples are retained in `/tmp/rustty-catnip-memory`.
+Persistent lifecycle checks cover renderer ownership and backend page release:
+
+```sh
+cargo test --offline -p rustty-render -p rustty-render-software -p rustty-render-wgpu
+```
+
+The GPU checks require access to a graphics adapter. Ghostty's image deletion
+and renderer cleanup paths were used as a reference; this measurement does not
+establish whole-process memory parity with Ghostty.
+
+A focused warm CPU-prepare comparison used the same frozen title/gameplay
+snapshots with both renderer versions linked into one release binary. With
+500 warmups and 100 alternating paired samples of 100 prepares each, title
+preparation measured 18.30 → 20.12 µs and gameplay 24.38 → 25.74 µs; fixed timings
+include `retain_images`. The paired median cost increases were 1.83 and 1.36 µs.
+This measures CPU preparation only, including frame destruction, and makes no
+GPU or frame-rate claim. Source, manifests, compiler version, executable hash
+and raw samples are in `/tmp/rustty-catnip-memory/prepare-timing`; the initial
+smoke run performed during an app build is excluded.
