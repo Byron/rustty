@@ -69,17 +69,17 @@ def main():
     binaries = {name: getattr(args, name).resolve()
                 for name in ["before", "scalar", "simd", "ghostty"] if getattr(args, name)}
     variants = [name for name in binaries if name != "ghostty"]
-    if len(variants) < 2:
-        parser.error("supply at least two Rust binaries (--before, --scalar, --simd)")
+    if not variants or len(binaries) < 2:
+        parser.error("supply a Rust binary (--before, --scalar, --simd) and at least one comparison")
     rust = benchmarks(binaries[variants[0]])
-    assert len(rust) == 54, rust
+    assert rust and len(rust) == len(set(rust)) and all(name.startswith("rustty/") for name in rust), rust
     for variant in variants[1:]:
         assert benchmarks(binaries[variant]) == rust, variant
     native = set()
     if "ghostty" in binaries:
         native = benchmarks(binaries[variants[-1]], binaries["ghostty"])
         native = {name.removeprefix("ghostty/") for name in native if name.startswith("ghostty/")}
-        assert len(native) == 36, native
+        assert native and native <= {name.removeprefix("rustty/") for name in rust}, native
     cases = [name.removeprefix("rustty/") for name in rust
              if not args.case or any(case in name for case in args.case)]
     assert cases, "No matching workloads"

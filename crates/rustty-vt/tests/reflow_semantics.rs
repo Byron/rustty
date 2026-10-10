@@ -260,7 +260,9 @@ fn reflow_maps_graphics_in_trailing_blanks_without_retaining_the_blanks() {
             parent: Some((1, PlacementId::External(1))),
             ..placement
         },
-    ];
+    ]
+    .into_iter()
+    .collect();
     terminal.resize(4, 4);
     let screen = terminal.screen();
     assert_eq!(screen.row(1).cells[0].codepoint(), Some('Z'));

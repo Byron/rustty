@@ -242,6 +242,11 @@ impl Tree {
         }
     }
     pub fn equalize(&mut self) {
+        if let Node::Split { axis, .. } = self.kind {
+            self.equalize_inner(Some(axis));
+        }
+    }
+    fn equalize_inner(&mut self, outer_axis: Option<Axis>) {
         if let Node::Split {
             axis,
             ratio,
@@ -249,11 +254,17 @@ impl Tree {
             second,
         } = &mut self.kind
         {
-            let a = first.weight(*axis);
-            let b = second.weight(*axis);
+            // Crossing both axes starts quadrants; their contents must not move this divider.
+            let boundary = outer_axis.is_some_and(|outer| outer != *axis);
+            let (a, b) = if boundary {
+                (1, 1)
+            } else {
+                (first.weight(*axis), second.weight(*axis))
+            };
             *ratio = a as f32 / (a + b) as f32;
-            first.equalize();
-            second.equalize();
+            let outer_axis = outer_axis.filter(|_| !boundary);
+            first.equalize_inner(outer_axis);
+            second.equalize_inner(outer_axis);
         }
     }
     pub fn resize(&mut self, pane: Id, direction: Direction, pixels: f32, bounds: Rect) -> bool {
@@ -1133,6 +1144,100 @@ mod tests {
         assert!(!tree.set_ratio(id, f32::NAN));
         assert!(!tree.resize(99, Direction::Left, 20.0, bounds));
     }
+
+    #[test]
+    fn equalize_aligns_quadrants_independently_of_their_interiors() {
+        for transpose in [false, true] {
+            let (right, down) = if transpose {
+                (Direction::Down, Direction::Right)
+            } else {
+                (Direction::Right, Direction::Down)
+            };
+            let mut tree = Tree::leaf(1);
+            for (pane, new, split, direction) in [
+                (1, 2, 3, right),
+                (1, 4, 5, down),
+                (2, 6, 7, down),
+                (1, 8, 9, down),
+                (8, 10, 11, down),
+                (1, 12, 13, right),
+                (12, 14, 15, right),
+                (2, 16, 17, right),
+                (16, 18, 19, right),
+            ] {
+                assert!(tree.split(pane, new, split, direction));
+                assert!(tree.set_ratio(split, 0.2));
+            }
+            let quadrants: Vec<_> = tree.panes().iter().map(|id| tree.quadrant(*id)).collect();
+            tree.equalize();
+            assert_eq!(
+                tree.panes()
+                    .iter()
+                    .map(|id| tree.quadrant(*id))
+                    .collect::<Vec<_>>(),
+                quadrants
+            );
+            let mut layout = Vec::new();
+            tree.layout_into(Rect::UNIT, &mut layout, true);
+            let rects: BTreeMap<_, _> = layout.iter().copied().collect();
+            let check = |id, [x, y, width, height]: [f32; 4]| {
+                let expected = if transpose {
+                    [y, x, height, width]
+                } else {
+                    [x, y, width, height]
+                };
+                let actual = rects[&id];
+                for (actual, expected) in [actual.x, actual.y, actual.width, actual.height]
+                    .into_iter()
+                    .zip(expected)
+                {
+                    assert!(
+                        (actual - expected).abs() < 0.000001,
+                        "pane {id}: {actual} != {expected}"
+                    );
+                }
+            };
+            for (id, x, y) in [(9, 0.0, 0.0), (17, 0.5, 0.0), (4, 0.0, 0.5), (6, 0.5, 0.5)] {
+                check(id, [x, y, 0.5, 0.5]);
+            }
+            // The first quadrant has three rows, with three panes in its first row.
+            for (column, id) in [1, 12, 14].into_iter().enumerate() {
+                check(id, [column as f32 / 6.0, 0.0, 1.0 / 6.0, 1.0 / 6.0]);
+            }
+            for (row, id) in [(1, 8), (2, 10)] {
+                check(id, [0.0, row as f32 / 6.0, 0.5, 1.0 / 6.0]);
+            }
+            for (column, id) in [2, 16, 18].into_iter().enumerate() {
+                check(id, [0.5 + column as f32 / 6.0, 0.0, 1.0 / 6.0, 0.5]);
+            }
+            tree.equalize();
+            let mut repeated = Vec::new();
+            tree.layout_into(Rect::UNIT, &mut repeated, true);
+            assert_eq!(layout, repeated);
+        }
+    }
+
+    #[test]
+    fn equalize_preserves_outer_lanes_with_incomplete_quadrants() {
+        let mut tree = Tree::leaf(1);
+        tree.split(1, 2, 3, Direction::Right);
+        tree.split(2, 4, 5, Direction::Right);
+        tree.split(1, 6, 7, Direction::Down);
+        tree.split(4, 8, 9, Direction::Down);
+        tree.split(4, 10, 11, Direction::Down);
+        tree.equalize();
+        let layout: BTreeMap<_, _> = tree.layout(Rect::UNIT).into_iter().collect();
+        for rect in layout.values() {
+            assert!((rect.width - 1.0 / 3.0).abs() < 0.000001);
+        }
+        assert_eq!(layout[&1].height, 0.5);
+        assert_eq!(layout[&6].height, 0.5);
+        assert_eq!(layout[&2].height, 1.0);
+        assert_eq!(layout[&8].height, 0.5);
+        assert_eq!(layout[&4].height, 0.25);
+        assert_eq!(layout[&10].height, 0.25);
+    }
+
     #[test]
     fn restored_layouts_do_not_reuse_ids_and_closing_keeps_nearby_focus() {
         let mut workspace = Workspace::default();

@@ -3342,6 +3342,7 @@ dependencies = [
  "crc32c",
  "criterion",
  "flate2",
+ "libc",
  "lz4_flex",
  "png",
  "regex",

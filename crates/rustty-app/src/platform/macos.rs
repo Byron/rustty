@@ -1,7 +1,7 @@
 //! Native macOS integration. Winit owns windows; native helpers handle OS policy.
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{BTreeMap, HashMap},
     ffi::c_void,
     io::{self, Read},
@@ -38,7 +38,10 @@ use objc2_app_kit::{
     NSWorkspaceDidWakeNotification, NSWorkspaceScreensDidSleepNotification,
     NSWorkspaceScreensDidWakeNotification, NSWorkspaceWillSleepNotification,
 };
-use objc2_core_graphics::{CGDisplayBounds, CGDisplayIsAsleep, CGMainDisplayID};
+use objc2_core_foundation::CFString;
+use objc2_core_graphics::{
+    CGDisplayBounds, CGDisplayIsAsleep, CGError, CGGetOnlineDisplayList, CGMainDisplayID,
+};
 use objc2_foundation::{
     NSArray, NSBundle, NSCopying, NSData, NSDistributedNotificationCenter, NSError, NSNotification,
     NSNotificationSuspensionBehavior, NSObject, NSObjectProtocol, NSPoint, NSPointInRect, NSRect,
@@ -83,6 +86,7 @@ pub struct Platform {
     notification_state: Arc<NotificationState>,
     _notification_delegate: Retained<NotificationDelegate>,
     power_observers: Vec<Retained<ProtocolObject<dyn NSObjectProtocol>>>,
+    wake_assertion: Cell<u32>,
     previous_quick_app: RefCell<Option<Retained<NSRunningApplication>>>,
     quick_animations: RefCell<HashMap<WindowId, Rc<RefCell<QuickAnimation>>>>,
 }
@@ -90,6 +94,46 @@ pub struct Platform {
 impl Platform {
     pub fn double_click_interval() -> Duration {
         Duration::from_secs_f64(NSEvent::doubleClickInterval())
+    }
+
+    /// Include external and mirrored displays, including while they are asleep.
+    pub fn screens_awake() -> Option<bool> {
+        let mut count = 0;
+        // SAFETY: a null display array asks CoreGraphics for the online display count.
+        if unsafe { CGGetOnlineDisplayList(0, std::ptr::null_mut(), &mut count) }
+            != CGError::Success
+        {
+            return None;
+        }
+        if count == 0 {
+            return Some(false);
+        }
+        let mut displays = vec![0; count as usize];
+        // SAFETY: the array contains count writable display IDs; count is a valid out pointer.
+        if unsafe { CGGetOnlineDisplayList(count, displays.as_mut_ptr(), &mut count) }
+            != CGError::Success
+        {
+            return None;
+        }
+        Some(
+            displays
+                .into_iter()
+                .take(count as usize)
+                .any(|display| !CGDisplayIsAsleep(display)),
+        )
+    }
+
+    pub fn wake_screens(&self) -> Result<(), String> {
+        let name = CFString::from_str("Rustty Stream Deck key");
+        let mut assertion = self.wake_assertion.get();
+        // SAFETY: the name and assertion out pointer remain valid for the call; 0 is local activity.
+        let result = unsafe { IOPMAssertionDeclareUserActivity(&name, 0, &mut assertion) };
+        if result != 0 {
+            return Err(format!("Could not wake macOS displays (IOKit {result:#x})"));
+        }
+        // macOS releases this assertion after the configured display-sleep timeout.
+        self.wake_assertion.set(assertion);
+        Ok(())
     }
 
     /// The kernel supplies cryptographic entropy; failures must not mint a paste grant.
@@ -184,18 +228,18 @@ impl Platform {
             .map(|(name, awake)| {
                 let sink = callback.clone();
                 let block = RcBlock::new(move |_: NonNull<NSNotification>| {
-                    sink(PlatformEvent::ScreensAwake(
-                        awake.unwrap_or_else(|| !CGDisplayIsAsleep(CGMainDisplayID())),
-                    ));
+                    if let Some(awake) = awake.or_else(Self::screens_awake) {
+                        sink(PlatformEvent::ScreensAwake(awake));
+                    }
                 });
                 // The sendable block only queues events; tokens are removed before Platform drops.
                 center.addObserverForName_object_queue_usingBlock(Some(name), None, None, &block)
             })
             .collect()
         };
-        callback(PlatformEvent::ScreensAwake(!CGDisplayIsAsleep(
-            CGMainDisplayID(),
-        )));
+        if let Some(awake) = Self::screens_awake() {
+            callback(PlatformEvent::ScreensAwake(awake));
+        }
         let mut platform = Self {
             mtm,
             menu,
@@ -206,6 +250,7 @@ impl Platform {
             notification_state: Arc::default(),
             _notification_delegate: delegate,
             power_observers,
+            wake_assertion: Cell::new(0),
             previous_quick_app: RefCell::new(None),
             quick_animations: RefCell::new(HashMap::new()),
         };
@@ -696,6 +741,11 @@ impl Platform {
 
 impl Drop for Platform {
     fn drop(&mut self) {
+        let assertion = self.wake_assertion.get();
+        if assertion != 0 {
+            // SAFETY: this is our last assertion ID; it may already have expired.
+            unsafe { IOPMAssertionRelease(assertion) };
+        }
         let center = NSWorkspace::sharedWorkspace().notificationCenter();
         for observer in self.power_observers.drain(..) {
             // SAFETY: tokens came from this center and are still retained until removal completes.
@@ -713,6 +763,16 @@ impl Drop for Platform {
             center.removeAllDeliveredNotifications();
         }
     }
+}
+
+#[link(name = "IOKit", kind = "framework")]
+unsafe extern "C" {
+    fn IOPMAssertionDeclareUserActivity(
+        name: &CFString,
+        user_type: i32,
+        assertion_id: *mut u32,
+    ) -> i32;
+    fn IOPMAssertionRelease(assertion_id: u32) -> i32;
 }
 
 #[derive(Default)]

@@ -169,8 +169,9 @@ With zero live registered sessions the entire board becomes:
 | U | T | 💻 | T | U |
 | S | Y | ✨ | Y | S |
 
-These keys are decorative and inert. Idle/done sessions still count. Transitions
-cancel gestures and suppress keys held across the change. The USB owner stays
+These keys are decorative and inert while the Mac's displays are awake. Idle/done
+sessions still count. Transitions cancel gestures and suppress keys held across
+the change. The USB owner stays
 connected and preserves the selected brightness. The next begin restores the
 normal board and existing positions.
 
@@ -188,17 +189,29 @@ terminal-layout history. Invalid auxiliary references are normalized without
 losing the terminal workspace. `window-save-state=never` makes arrangements
 session-only. Older Rustty versions may drop the optional field when saving.
 
-On macOS, screen sleep (and impending system sleep) sends 0% brightness through
-the USB owner without clearing artwork, registrations or positions. Image uploads
-pause until the screens wake; then Rustty restores the selected brightness and
-refreshes the latest board. Connecting while screens are asleep also starts at 0%.
-Locking alone leaves the board intact; if the lock screen later sleeps, the same
-dimming/restoration applies. Pending gestures are cancelled and keys held across
-sleep/wake cannot trigger actions. Done is not acknowledged while screens sleep.
-The driver has no power-off command: 0% is its lowest brightness, not USB power
-removal. The pre-system-sleep write is best effort if macOS suspends the process or
-USB first; wake/reconnect restores from Rustty's retained state. Windows keeps its
-current behavior; screen-power integration is macOS-only in this version.
+On macOS, screen sleep (and impending system sleep) dims the Deck to 15% without
+clearing artwork, registrations or positions. The board keeps updating, with
+flashing paused. Brightness and next-page controls still work without waking the
+Mac; brightness changes while dimmed are temporary. On wake, Rustty restores the
+percentage selected before sleep and refreshes the board. Connecting while the
+screens are asleep also starts at 15%.
+
+Any other key wakes the Mac's displays without activating its usual action;
+release it and press again to activate. This also works on the decorative board.
+Rustty uses macOS's user-activity power API, without synthetic input or accessibility
+permission. A wake press on the dimmed Deck checks display state once: if the
+Mac is already awake, Rustty restores the Deck immediately; otherwise it requests
+display wake. There are no periodic display-state checks or checks on normal
+awake button actions. Locking alone leaves the board intact; waking displays
+does not unlock the Mac. Pending gestures are
+cancelled and keys held across sleep/wake cannot trigger actions. Done is not
+acknowledged while screens sleep.
+
+Full system sleep or USB power loss still depends on hardware to wake the Mac;
+Rustty cannot handle button input while suspended. The pre-system-sleep dimming
+write is best effort if macOS suspends the process or USB first; wake/reconnect
+restores from Rustty's retained state. Windows keeps its current behavior;
+screen-power integration is macOS-only in this version.
 
 ## Ownership and limitations
 
@@ -342,3 +355,14 @@ The later icon-first artwork update was checked using the physical-size contact
 sheet, label/layout tests, captured legend CLI output and Windows compilation. Earlier physical checks cover
 the controls and device lifecycle; the revised artwork has not yet been checked
 on the MK.2 itself. `stream-deck-legend` prints the meanings independently of USB.
+
+## Display sleep validation (2026-10-12)
+
+The 28 deck-related library tests and two host tests pass, including startup while
+asleep, temporary brightness changes and restoration, failed brightness writes,
+held-key suppression, decorative-board wake, power transitions arriving during
+USB reads, and a fresh second press before wake artwork has finished uploading.
+Formatting and the signed release app build pass. Strict Clippy stops on existing
+warnings in `rustty-parser`, `desktop.rs` and `smoke.rs`; the changed files add no
+diagnostics. This update has not been tested through a physical overnight power
+loss or full-system-sleep cycle, and the existing controller was not interrupted.

@@ -71,8 +71,7 @@ fn placements(screen: &Screen, cell: [u32; 2]) -> Vec<Value> {
     placements.into_iter().map(|p| {
         let image = &screen.graphics.images[&p.image_id];
         let kind = if p.virtual_placement { "virtual" } else if p.parent.is_some() { "relative" } else { "pin" };
-        let chain = p.parent.and_then(|_| p.resolve_chain(|key| screen.graphics.placements.iter()
-            .find(|p| (p.image_id,p.placement_id) == key))).map(|(root,offset)| {
+        let chain = p.parent.and_then(|_| p.resolve_chain(|key| screen.graphics.placements.get(key))).map(|(root,offset)| {
                 json!({"image_id":root.image_id,"placement_id":placement_id(root.placement_id),
                     "anchor":if root.virtual_placement { None } else { location(screen,GridPoint { row:root.row,col:root.col }) },
                     "offset":offset})

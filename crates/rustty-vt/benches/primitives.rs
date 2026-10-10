@@ -4,6 +4,12 @@ use rustty_vt::{Cell, Color, Row, Screen, ScrollbackLimits, Style, Terminal, uni
 use serde::{Deserialize, Serialize};
 use std::{hint::black_box, path::Path, process::Command, time::Duration};
 
+#[path = "../../../test/rustty/kitty_bench.rs"]
+mod kitty;
+
+#[path = "../../../test/rustty/kitty_upload_bench.rs"]
+mod kitty_upload;
+
 const COLS: u16 = 128;
 const ROWS: u16 = 32;
 const PATTERNS: [(&str, &str); 4] = [
@@ -1231,6 +1237,11 @@ criterion_group!(
     styled_history_reflow,
     content_history_reflow,
     captured_scrollback_reflow,
-    memory_capped_streams
+    memory_capped_streams,
+    kitty::placements,
+    kitty::cells,
+    kitty::image_deletions,
+    kitty::image_deletion_scaling,
+    kitty_upload::uploads
 );
 criterion_main!(benches);
