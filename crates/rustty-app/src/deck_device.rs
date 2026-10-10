@@ -90,6 +90,7 @@ pub enum Action {
         generation: u64,
     },
     Brightness(u8),
+    WakeScreens,
     Disconnected(Result<(), String>),
 }
 
@@ -183,6 +184,16 @@ enum Binding {
     Page { generation: u64 },
     Brightness,
     None,
+}
+impl Binding {
+    fn same_target(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Agent(a), Self::Agent(b)) => same_capture(a, b),
+            (Self::Cycle { group: a, .. }, Self::Cycle { group: b, .. }) => a == b,
+            (Self::Page { .. }, Self::Page { .. }) => true,
+            _ => self == other,
+        }
+    }
 }
 #[derive(Clone, Debug, PartialEq)]
 struct Key {
@@ -289,6 +300,7 @@ struct Gestures {
     functions: Vec<Option<Binding>>,
     baseline: bool,
     normal: bool,
+    screens_awake: bool,
     mode_generation: u64,
     press: Option<Press>,
     moving: Option<Capture>,
@@ -301,6 +313,7 @@ impl Gestures {
             functions: vec![None; 15],
             baseline: false,
             normal: !no_sessions,
+            screens_awake: true,
             mode_generation,
             press: None,
             moving: None,
@@ -318,8 +331,10 @@ impl Gestures {
         self.functions.fill(None);
     }
     fn reconcile(&mut self, board: &Board, emit: &impl Fn(Action)) {
-        let normal = !board.no_sessions && board.screens_awake;
-        let changed_mode = self.mode_generation != board.mode_generation || self.normal != normal;
+        let normal = !board.no_sessions;
+        let changed_mode = self.mode_generation != board.mode_generation
+            || self.normal != normal
+            || self.screens_awake != board.screens_awake;
         let invalid = self
             .press
             .as_ref()
@@ -332,6 +347,7 @@ impl Gestures {
             self.cancel(emit);
         }
         self.normal = normal;
+        self.screens_awake = board.screens_awake;
         self.mode_generation = board.mode_generation;
     }
     fn advance(&mut self, now: Duration, emit: &impl Fn(Action)) {
@@ -378,6 +394,17 @@ impl Gestures {
                     self.suppressed[index] = false;
                     self.functions[index] = None;
                 }
+                continue;
+            }
+            if down
+                && !self.screens_awake
+                && displayed[index].as_ref().is_some_and(|key| {
+                    !matches!(key.binding, Binding::Brightness | Binding::Page { .. })
+                })
+            {
+                // A press on the dimmed Deck also recovers a missed display-wake notification.
+                emit(Action::WakeScreens);
+                self.suppressed[index] = true;
                 continue;
             }
             if !self.normal {
@@ -511,59 +538,80 @@ fn run(
     }
     let mut brightness = board.brightness;
     let mut screens_awake = board.screens_awake;
-    device.brightness(if screens_awake { brightness } else { 0 })?;
+    let mut display_brightness = if screens_awake { brightness } else { 15 };
+    device.brightness(display_brightness)?;
     let mut gestures = Gestures::new(board.no_sessions, board.mode_generation);
-    let mut displayed = vec![None; 15];
+    let mut displayed: Vec<Option<Key>> = vec![None; 15];
+    let mut refresh = [false; 15];
     let mut next_upload = 0;
     let start = Instant::now();
     let result = (|| {
         while !stopping.load(Ordering::Acquire) {
+            let buttons = device.read(Duration::from_millis(20))?;
+            if stopping.load(Ordering::Acquire) {
+                break;
+            }
             if let Some(latest) = latest.lock().unwrap_or_else(|e| e.into_inner()).take() {
                 board = latest;
             }
             gestures.reconcile(&board, emit);
             if screens_awake != board.screens_awake {
-                device.brightness(if board.screens_awake { brightness } else { 0 })?;
+                display_brightness = if board.screens_awake { brightness } else { 15 };
+                device.brightness(display_brightness)?;
                 screens_awake = board.screens_awake;
                 if screens_awake {
                     // Refresh retained artwork in case system sleep also reset the USB display.
-                    displayed.fill(None);
+                    refresh.fill(true);
                 }
             }
             gestures.advance(start.elapsed(), emit);
-            if screens_awake {
-                let desired = keys(
-                    &board,
-                    layout,
-                    gestures.moving.as_ref(),
-                    brightness,
-                    start.elapsed(),
-                );
-                // Keep input and hold deadlines responsive between individual image writes.
-                for offset in 0..desired.len() {
-                    let index = (next_upload + offset) % desired.len();
-                    let key = desired[index].clone();
-                    if displayed[index]
-                        .as_ref()
-                        .is_none_or(|old: &Key| old.visual != key.visual)
-                    {
-                        device.upload(index, render(&key.visual)?)?;
-                        displayed[index] = Some(key);
-                        next_upload = (index + 1) % desired.len();
-                        break;
-                    }
-                    displayed[index] = Some(key);
+            let desired = keys(
+                &board,
+                layout,
+                gestures.moving.as_ref(),
+                display_brightness,
+                if screens_awake {
+                    start.elapsed()
+                } else {
+                    Duration::ZERO
+                },
+            );
+            for (old, key) in displayed.iter_mut().zip(&desired) {
+                if let Some(old) = old
+                    && (old.visual == key.visual || old.binding.same_target(&key.binding))
+                {
+                    // Fresh presses can use unchanged targets while wake artwork is refreshed.
+                    old.binding = key.binding.clone();
                 }
             }
             // Some firmware sends only changes; drain startup reports before accepting fresh presses.
-            gestures.baseline = screens_awake && displayed.iter().all(Option::is_some);
-            if let Some(buttons) = device.read(Duration::from_millis(20))?
+            gestures.baseline = displayed.iter().all(Option::is_some);
+            if let Some(buttons) = buttons
                 && gestures.buttons(&buttons, &displayed, start.elapsed(), emit)
             {
-                let next = next_brightness(brightness);
+                let next = next_brightness(display_brightness);
                 device.brightness(next)?;
-                brightness = next;
-                emit(Action::Brightness(brightness));
+                display_brightness = next;
+                if screens_awake {
+                    brightness = next;
+                    emit(Action::Brightness(brightness));
+                }
+            }
+            // Keep input and hold deadlines responsive between individual image writes.
+            for offset in 0..desired.len() {
+                let index = (next_upload + offset) % desired.len();
+                let key = desired[index].clone();
+                if refresh[index]
+                    || displayed[index]
+                        .as_ref()
+                        .is_none_or(|old: &Key| old.visual != key.visual)
+                {
+                    device.upload(index, render(&key.visual)?)?;
+                    displayed[index] = Some(key);
+                    refresh[index] = false;
+                    next_upload = (index + 1) % desired.len();
+                    break;
+                }
             }
         }
         Ok(())
@@ -1141,6 +1189,175 @@ mod tests {
     }
 
     #[test]
+    fn sleeping_buttons_wake_without_activating_except_brightness_and_page() {
+        for no_sessions in [false, true] {
+            for key in 0..15 {
+                let mut board = board();
+                board.screens_awake = false;
+                board.no_sessions = no_sessions;
+                let keys = shown(&board);
+                let actions = RefCell::new(Vec::new());
+                let mut gesture = Gestures::new(no_sessions, board.mode_generation);
+                gesture.reconcile(&board, &|a| actions.borrow_mut().push(a));
+                input(&mut gesture, &keys, &[], 0, &actions);
+                assert!(!input(&mut gesture, &keys, &[key], 1, &actions));
+                gesture.advance(Duration::from_secs(3), &|a| actions.borrow_mut().push(a));
+                let brightness = input(&mut gesture, &keys, &[], 3001, &actions);
+                assert_eq!(brightness, !no_sessions && key == 13);
+                assert_eq!(
+                    *actions.borrow(),
+                    match (no_sessions, key) {
+                        (false, 13) => vec![],
+                        (false, 14) => vec![Action::Page {
+                            generation: board.mode_generation
+                        }],
+                        _ => vec![Action::WakeScreens],
+                    }
+                );
+                actions.borrow_mut().clear();
+                board.screens_awake = true;
+                gesture.reconcile(&board, &|a| actions.borrow_mut().push(a));
+                input(&mut gesture, &keys, &[key], 4000, &actions);
+                input(&mut gesture, &keys, &[], 4001, &actions);
+                assert!(
+                    !actions.borrow().contains(&Action::WakeScreens),
+                    "awake buttons must not request display-state checks"
+                );
+            }
+        }
+
+        let mut board = board();
+        board.screens_awake = false;
+        let keys = shown(&board);
+        let actions = RefCell::new(Vec::new());
+        let mut gesture = Gestures::new(false, board.mode_generation);
+        gesture.reconcile(&board, &|a| actions.borrow_mut().push(a));
+        input(&mut gesture, &keys, &[0], 0, &actions);
+        input(&mut gesture, &keys, &[], 1, &actions);
+        assert!(actions.borrow().is_empty(), "startup-held keys cannot wake");
+        input(&mut gesture, &keys, &[0], 2, &actions);
+        board.screens_awake = true;
+        gesture.reconcile(&board, &|a| actions.borrow_mut().push(a));
+        input(&mut gesture, &keys, &[], 3, &actions);
+        assert_eq!(*actions.borrow(), [Action::WakeScreens]);
+        input(&mut gesture, &keys, &[0], 4, &actions);
+        input(&mut gesture, &keys, &[], 5, &actions);
+        assert!(
+            actions
+                .borrow()
+                .iter()
+                .any(|action| matches!(action, Action::Focus(_)))
+        );
+        assert_eq!(
+            actions
+                .borrow()
+                .iter()
+                .filter(|action| **action == Action::WakeScreens)
+                .count(),
+            1,
+            "the awake snapshot ends button-triggered recovery"
+        );
+    }
+
+    #[test]
+    fn power_changes_during_reads_preserve_wake_press_and_next_press_during_repaint() {
+        struct WakeDevice<'a> {
+            board: Board,
+            reads: Cell<usize>,
+            uploads: RefCell<Vec<(usize, usize)>>,
+            writes: RefCell<Vec<u8>>,
+            latest: &'a Mutex<Option<Board>>,
+            stopping: &'a AtomicBool,
+        }
+        impl Device for WakeDevice<'_> {
+            fn read(&self, _: Duration) -> Result<Option<Vec<bool>>, String> {
+                let count = self.reads.get() + 1;
+                self.reads.set(count);
+                if count == 16 || count == 18 {
+                    let mut board = self.board.clone();
+                    board.screens_awake = count == 18;
+                    board.generation = count as u64;
+                    board.mode_generation = count as u64;
+                    for tile in &mut board.tiles {
+                        tile.capture.layout_generation = board.generation;
+                    }
+                    *self.latest.lock().unwrap() = Some(board);
+                }
+                if count == 22 {
+                    self.stopping.store(true, Ordering::Release);
+                }
+                let mut buttons = vec![false; 15];
+                buttons[0] = count == 16;
+                buttons[12] = count == 18;
+                Ok(Some(buttons))
+            }
+            fn upload(&self, index: usize, _: RgbImage) -> Result<(), String> {
+                self.uploads.borrow_mut().push((self.reads.get(), index));
+                Ok(())
+            }
+            fn brightness(&self, value: u8) -> Result<(), String> {
+                self.writes.borrow_mut().push(value);
+                Ok(())
+            }
+        }
+        for initially_awake in [false, true] {
+            let latest = Mutex::new(None);
+            let stopping = AtomicBool::new(false);
+            let mut board = board();
+            board.brightness = 75;
+            board.screens_awake = initially_awake;
+            let device = WakeDevice {
+                board: board.clone(),
+                reads: Cell::new(0),
+                uploads: RefCell::new(Vec::new()),
+                writes: RefCell::new(Vec::new()),
+                latest: &latest,
+                stopping: &stopping,
+            };
+            let actions = RefCell::new(Vec::new());
+            run(
+                &device,
+                &mut |_| Ok(RgbImage::new(72, 72)),
+                board,
+                Layout::new(Kind::Mk2Scissor).unwrap(),
+                &latest,
+                &stopping,
+                &|action| actions.borrow_mut().push((device.reads.get(), action)),
+            )
+            .unwrap();
+            assert_eq!(
+                device.writes.borrow().as_slice(),
+                if initially_awake {
+                    &[75, 15, 75][..]
+                } else {
+                    &[15, 75][..]
+                }
+            );
+            assert_eq!(actions.borrow()[0], (16, Action::WakeScreens));
+            let focused: Vec<_> = actions
+                .borrow()
+                .iter()
+                .filter_map(|(at, action)| {
+                    if let Action::Focus(capture) = action {
+                        Some((*at, capture.slot, capture.layout_generation))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            assert_eq!(focused, [(19, 8, 18)]);
+            assert!(
+                !device
+                    .uploads
+                    .borrow()
+                    .iter()
+                    .any(|(at, key)| *at >= 18 && *key == 12),
+                "the second press works before its unchanged artwork is reuploaded"
+            );
+        }
+    }
+
+    #[test]
     fn screen_sleep_dims_retains_state_and_suppresses_held_keys_on_wake() {
         struct PowerDevice<'a> {
             board: Board,
@@ -1158,7 +1375,7 @@ mod tests {
                 if count == 17 || count == 19 || count == 20 {
                     let mut board = self.board.clone();
                     board.screens_awake = count == 20;
-                    board.mode_generation += count as u64;
+                    board.mode_generation += if count == 20 { 2 } else { 1 };
                     board.tiles[0].label = "Updated while asleep".into();
                     *self.latest.lock().unwrap() = Some(board);
                 }
@@ -1187,13 +1404,14 @@ mod tests {
             (true, None),
             (false, Some(2)),
             (false, Some(3)),
+            (false, Some(4)),
         ] {
             let stopping = AtomicBool::new(false);
             let latest = Mutex::new(None);
             let events = RefCell::new(Vec::new());
             let visuals = RefCell::new(Vec::new());
             let mut board = board();
-            board.brightness = 25;
+            board.brightness = 75;
             board.screens_awake = !initially_asleep;
             let device = PowerDevice {
                 board: board.clone(),
@@ -1221,20 +1439,20 @@ mod tests {
                 event,
                 Action::Focus(_) | Action::Swap { .. } | Action::Cycle { .. } | Action::Page { .. }
             )));
-            assert!(
-                !device
-                    .uploads
-                    .borrow()
-                    .iter()
-                    .any(|(at, _)| (17..20).contains(at))
-            );
             if fail_write.is_none() {
+                assert!(
+                    device
+                        .uploads
+                        .borrow()
+                        .iter()
+                        .any(|(at, _)| (17..20).contains(at))
+                );
                 assert_eq!(
                     *device.writes.borrow(),
                     if initially_asleep {
-                        vec![0, 25, 50]
+                        vec![15, 25, 75, 100]
                     } else {
-                        vec![25, 0, 25, 50]
+                        vec![75, 15, 25, 75, 100]
                     }
                 );
                 assert_eq!(
@@ -1244,7 +1462,7 @@ mod tests {
                         .filter(|event| matches!(event, Action::Brightness(_)))
                         .cloned()
                         .collect::<Vec<_>>(),
-                    [Action::Brightness(50)]
+                    [Action::Brightness(100)]
                 );
                 assert!(visuals.borrow().iter().any(|visual| matches!(visual, Visual::Agent { label, .. } if label == "Updated while asleep")));
                 assert_eq!(

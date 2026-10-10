@@ -6,6 +6,9 @@ window. Criterion is a development dependency only. No application build is
 needed. Timing excludes terminal construction and input generation; the `feed`
 and `stream` workloads include UTF-8 decoding and VT parsing.
 
+The [Catnip Kitty graphics comparison](KITTY_BENCHMARKS.md) measures warmed
+sprite placement updates against Ghostty and checks live POSIX shared-memory uploads.
+
 The [large styled-history follow-up](#large-styled-history-reflow-comparison-2026-10-08)
 measures the quad-peek reproduction and exposes a reflow gap absent from the
 small active-screen workload below.

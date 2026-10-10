@@ -5,7 +5,7 @@ use rustty_font::{
 };
 use rustty_vt::screen::{Color as TerminalColor, CursorShape, RowView, Screen, Style, Underline};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -127,8 +127,10 @@ pub struct Renderer {
     shaped_bytes: usize,
     sprites: HashMap<(char, u8), CachedGlyph>,
     images: HashMap<graphics::TileKey, graphics::CachedTile>,
-    pages: Vec<Page>,
+    pages: BTreeMap<usize, Page>,
     uploads: Vec<AtlasUpload>,
+    next_page: usize,
+    next_revision: u64,
     generation: u64,
 }
 
@@ -141,8 +143,10 @@ impl Renderer {
             shaped_bytes: 0,
             sprites: HashMap::new(),
             images: HashMap::new(),
-            pages: Vec::new(),
+            pages: BTreeMap::new(),
             uploads: Vec::new(),
+            next_page: 0,
+            next_revision: 0,
             generation: NEXT_GENERATION.fetch_add(1, Ordering::Relaxed),
         })
     }
@@ -168,6 +172,8 @@ impl Renderer {
         self.images.clear();
         self.pages.clear();
         self.uploads.clear();
+        self.next_page = 0;
+        self.next_revision = 0;
         self.generation = NEXT_GENERATION.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -380,7 +386,13 @@ impl Renderer {
         frame.quads.extend(foreground.quads);
         frame.quads.extend(above_text);
         self.preedit(screen, options, &mut frame)?;
-        frame.atlas_uploads = self.uploads.clone();
+        let image_pages = self.image_pages(screen.graphics.images.values());
+        frame.atlas_uploads = self
+            .uploads
+            .iter()
+            .filter(|upload| !self.pages[&upload.page].image || image_pages.contains(&upload.page))
+            .cloned()
+            .collect();
         Ok(frame)
     }
 
@@ -606,12 +618,7 @@ impl Renderer {
             .next_power_of_two()
             .max(PAGE_SIZE);
         let mut position = None;
-        for (index, page) in self
-            .pages
-            .iter_mut()
-            .enumerate()
-            .filter(|(_, p)| p.image == image)
-        {
+        for (&index, page) in self.pages.iter_mut().filter(|(_, p)| p.image == image) {
             if let Some(origin) = reserve(page, width + 2, height + 2) {
                 position = Some((index, origin));
                 break;
@@ -622,7 +629,7 @@ impl Renderer {
         } else {
             let bytes = self
                 .pages
-                .iter()
+                .values()
                 .filter(|p| p.image == image)
                 .map(|p| u64::from(p.size).pow(2) * 4)
                 .sum::<u64>();
@@ -634,7 +641,8 @@ impl Renderer {
             if bytes + u64::from(required).pow(2) * 4 > budget {
                 return Err(RenderError::AtlasCapacity);
             }
-            let index = self.pages.len();
+            let index = self.next_page;
+            self.next_page += 1;
             let mut page = Page {
                 x: 0,
                 y: 0,
@@ -643,11 +651,11 @@ impl Renderer {
                 image,
             };
             let origin = reserve(&mut page, width + 2, height + 2).expect("new page fits bitmap");
-            self.pages.push(page);
+            self.pages.insert(index, page);
             (index, origin)
         };
         let origin = [origin[0] + 1, origin[1] + 1];
-        let size = self.pages[page].size as f32;
+        let size = self.pages[&page].size as f32;
         cached.atlas = page;
         cached.uv = [
             origin[0] as f32 / size,
@@ -655,10 +663,11 @@ impl Renderer {
             (origin[0] + width) as f32 / size,
             (origin[1] + height) as f32 / size,
         ];
+        self.next_revision += 1;
         self.uploads.push(AtlasUpload {
-            revision: self.uploads.len() as u64 + 1,
+            revision: self.next_revision,
             page,
-            page_size: self.pages[page].size,
+            page_size: self.pages[&page].size,
             origin,
             size: dimensions,
             pixels,
