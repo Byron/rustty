@@ -475,6 +475,59 @@ fn terminal_block_masks_have_no_seams_at_fractional_pane_origins() {
 }
 
 #[test]
+fn unused_image_pages_are_released_without_reuploading_live_textures() {
+    let mut renderer = Renderer::default();
+    let mut delta = TexturesDelta::default();
+    let mut game = Frame::empty([2, 1]);
+    for (x, page, paint) in [(0.0, 7, Paint::Mask), (1.0, 400, Paint::Color)] {
+        let mut pixels = upload(page as u64 + 1, 1, vec![255; 4]);
+        pixels.page = page;
+        game.atlas_uploads.push(pixels);
+        let mut quad = terminal_quad(
+            paint,
+            [x, 0.0, 1.0, 1.0],
+            [0.0, 0.0, 1.0, 1.0],
+            Color::rgb([255, 0, 0]),
+        );
+        quad.atlas = page;
+        game.quads.push(quad);
+    }
+    let draw = |renderer: &mut Renderer, frame: Frame, delta: &mut TexturesDelta| {
+        render(
+            renderer,
+            [2, 1],
+            1.0,
+            &[callback(
+                frame,
+                1,
+                rect(0.0, 0.0, 2.0, 1.0),
+                Rect::EVERYTHING,
+            )],
+            delta,
+        )
+    };
+    let both = draw(&mut renderer, game.clone(), &mut delta);
+    assert_eq!(renderer.resource_bytes, 8);
+    assert_eq!(both, [255, 0, 0, 255, 255, 255, 255, 255]);
+
+    let mut shell = game.clone();
+    shell.atlas_uploads.truncate(1);
+    shell.quads.truncate(1);
+    // An unchanged revision must not overwrite the retained text texture.
+    shell.atlas_uploads[0].pixels = vec![0; 4].into();
+    let text = draw(&mut renderer, shell.clone(), &mut delta);
+    assert_eq!(renderer.resource_bytes, 4);
+    assert_eq!(text, [255, 0, 0, 255, 0, 0, 0, 0]);
+
+    assert_eq!(draw(&mut renderer, game, &mut delta), both);
+    assert_eq!(renderer.resource_bytes, 8);
+    shell.atlas_uploads.clear();
+    shell.quads.clear();
+    draw(&mut renderer, shell, &mut delta);
+    assert_eq!(renderer.resource_bytes, 0);
+}
+
+#[test]
 fn atlas_revision_generation_and_window_lifetime_are_independent() {
     let mut renderer = Renderer::default();
     let mut delta = TexturesDelta::default();

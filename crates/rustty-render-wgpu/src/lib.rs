@@ -5,7 +5,11 @@
 
 use bytemuck::{Pod, Zeroable};
 use rustty_render::{Frame, Paint};
-use std::{fmt, ops::Range};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    ops::Range,
+};
 
 #[derive(Debug)]
 pub struct RenderError(String);
@@ -40,10 +44,11 @@ pub struct Renderer {
     pipeline: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
-    atlases: Vec<Atlas>,
+    atlases: HashMap<usize, Atlas>,
     empty_atlas: Atlas,
     instance_buffer: wgpu::Buffer,
     instance_capacity: u64,
+    uploads: wgpu::util::StagingBelt,
     batches: Vec<Batch>,
     generation: Option<u64>,
 }
@@ -111,10 +116,14 @@ impl Renderer {
             pipeline,
             layout,
             sampler,
-            atlases: Vec::new(),
+            atlases: HashMap::new(),
             empty_atlas,
             instance_buffer,
             instance_capacity,
+            uploads: wgpu::util::StagingBelt::new(
+                device.clone(),
+                (1024 * 1024).min(device.limits().max_buffer_size),
+            ),
             batches: Vec::new(),
             generation: None,
         }
@@ -128,6 +137,23 @@ impl Renderer {
         queue: &wgpu::Queue,
         frame: &Frame,
     ) -> Result<(), RenderError> {
+        let mut encoder = None;
+        let result = self.prepare_inner(device, queue, &mut encoder, frame);
+        if let Some(encoder) = encoder {
+            // A host can discard its frame after preparation, including on error.
+            self.uploads.finish_and_recall_on_submit(&encoder);
+            queue.submit([encoder.finish()]);
+        }
+        result
+    }
+
+    fn prepare_inner(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut Option<wgpu::CommandEncoder>,
+        frame: &Frame,
+    ) -> Result<(), RenderError> {
         self.batches.clear();
         if frame.size.contains(&0) {
             return Ok(());
@@ -136,6 +162,27 @@ impl Renderer {
             self.atlases.clear();
             self.generation = Some(frame.generation);
         }
+        let mut pages = HashSet::with_capacity(self.atlases.len());
+        for page in frame.atlas_uploads.iter().map(|upload| upload.page).chain(
+            frame
+                .quads
+                .iter()
+                .filter(|quad| quad.paint != Paint::Solid)
+                .map(|quad| quad.atlas),
+        ) {
+            pages.insert(page);
+        }
+        self.atlases.retain(|page, _| pages.contains(page));
+        // Keep large uploads out of the retained belt, and preserve upload order
+        // by using one path for the frame: queue writes precede encoder commands.
+        let use_belt = frame.atlas_uploads.iter().all(|update| {
+            self.atlases
+                .get(&update.page)
+                .is_some_and(|atlas| update.revision <= atlas.revision)
+                || upload_stride(update.size[0])
+                    .checked_mul(u64::from(update.size[1]))
+                    .is_some_and(|bytes| bytes <= (64 * 1024).min(device.limits().max_buffer_size))
+        });
         for update in &frame.atlas_uploads {
             let required_bytes = update.size[0] as u64 * update.size[1] as u64 * 4;
             if required_bytes != update.pixels.len() as u64
@@ -147,15 +194,13 @@ impl Renderer {
                 || update.origin[1]
                     .checked_add(update.size[1])
                     .is_none_or(|v| v > update.page_size)
-                || update.page > self.atlases.len()
             {
                 return Err(RenderError("invalid glyph atlas upload".into()));
             }
-            if update.page == self.atlases.len() {
-                self.atlases
-                    .push(atlas(device, &self.layout, &self.sampler, update.page_size));
-            }
-            let atlas = &mut self.atlases[update.page];
+            let atlas = self
+                .atlases
+                .entry(update.page)
+                .or_insert_with(|| atlas(device, &self.layout, &self.sampler, update.page_size));
             if atlas.size != update.page_size {
                 return Err(RenderError(
                     "atlas size changed without a new generation".into(),
@@ -165,29 +210,72 @@ impl Renderer {
                 continue;
             }
             if !update.size.contains(&0) {
-                queue.write_texture(
-                    wgpu::TexelCopyTextureInfo {
-                        texture: &atlas.texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d {
-                            x: update.origin[0],
-                            y: update.origin[1],
-                            z: 0,
+                let destination = wgpu::TexelCopyTextureInfo {
+                    texture: &atlas.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: update.origin[0],
+                        y: update.origin[1],
+                        z: 0,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                };
+                let size = wgpu::Extent3d {
+                    width: update.size[0],
+                    height: update.size[1],
+                    depth_or_array_layers: 1,
+                };
+                if use_belt {
+                    let stride = upload_stride(update.size[0]);
+                    let padded_bytes = stride * u64::from(update.size[1]);
+                    let encoder = encoder.get_or_insert_with(|| {
+                        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("rustty image uploads"),
+                        })
+                    });
+                    let slice = self.uploads.allocate(
+                        wgpu::BufferSize::new(padded_bytes).unwrap(),
+                        wgpu::BufferSize::new(wgpu::COPY_BUFFER_ALIGNMENT).unwrap(),
+                    );
+                    {
+                        let mut mapped = slice
+                            .get_mapped_range_mut()
+                            .map_err(|error| RenderError(error.to_string()))?;
+                        for (row, source) in update
+                            .pixels
+                            .chunks_exact(update.size[0] as usize * 4)
+                            .enumerate()
+                        {
+                            let start = row * stride as usize;
+                            mapped
+                                .slice(start..start + source.len())
+                                .copy_from_slice(source);
+                        }
+                    }
+                    encoder.copy_buffer_to_texture(
+                        wgpu::TexelCopyBufferInfo {
+                            buffer: slice.buffer(),
+                            layout: wgpu::TexelCopyBufferLayout {
+                                offset: slice.offset(),
+                                bytes_per_row: Some(stride as u32),
+                                rows_per_image: None,
+                            },
                         },
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    &update.pixels,
-                    wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(update.size[0] * 4),
-                        rows_per_image: None,
-                    },
-                    wgpu::Extent3d {
-                        width: update.size[0],
-                        height: update.size[1],
-                        depth_or_array_layers: 1,
-                    },
-                );
+                        destination,
+                        size,
+                    );
+                } else {
+                    queue.write_texture(
+                        destination,
+                        &update.pixels,
+                        wgpu::TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(update.size[0] * 4),
+                            rows_per_image: None,
+                        },
+                        size,
+                    );
+                }
             }
             atlas.revision = update.revision;
         }
@@ -205,7 +293,7 @@ impl Renderer {
             if quad.rect[2] <= 0.0 || quad.rect[3] <= 0.0 {
                 continue;
             }
-            if quad.paint != Paint::Solid && quad.atlas >= self.atlases.len() {
+            if quad.paint != Paint::Solid && !self.atlases.contains_key(&quad.atlas) {
                 return Err(RenderError("glyph references an absent atlas".into()));
             }
             let page = if quad.paint == Paint::Solid {
@@ -264,11 +352,15 @@ impl Renderer {
         pass.set_pipeline(&self.pipeline);
         pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
         for batch in &self.batches {
-            let atlas = self.atlases.get(batch.atlas).unwrap_or(&self.empty_atlas);
+            let atlas = self.atlases.get(&batch.atlas).unwrap_or(&self.empty_atlas);
             pass.set_bind_group(0, &atlas.bind_group, &[]);
             pass.draw(0..4, batch.instances.clone());
         }
     }
+}
+
+fn upload_stride(width: u32) -> u64 {
+    (u64::from(width) * 4).next_multiple_of(u64::from(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT))
 }
 
 fn instance_buffer(device: &wgpu::Device, size: u64) -> wgpu::Buffer {
@@ -329,15 +421,348 @@ mod tests {
     use rustty_render::{AtlasUpload, Color, Quad};
     use std::sync::Arc;
 
-    #[test]
-    fn offscreen_render_preserves_alpha_color_and_tiled_glyph_coverage() {
-        const HEIGHT: u32 = 52;
+    fn gpu() -> (wgpu::Device, wgpu::Queue) {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter =
             pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
                 .expect("GPU adapter");
-        let (device, queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap()
+    }
+
+    fn render_frame(
+        renderer: &mut Renderer,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        frame: &Frame,
+    ) -> Vec<u8> {
+        renderer.prepare(device, queue, frame).unwrap();
+        draw_frame(renderer, device, queue, frame.size)
+    }
+
+    fn draw_frame(
+        renderer: &Renderer,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        [width, height]: [u32; 2],
+    ) -> Vec<u8> {
+        let target = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("offscreen terminal test"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let view = target.create_view(&Default::default());
+        let stride = upload_stride(width);
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: stride * u64::from(height),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+            renderer.paint(&mut pass);
+        }
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &target,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(stride as u32),
+                    rows_per_image: None,
+                },
+            },
+            target.size(),
+        );
+        queue.submit([encoder.finish()]);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        readback
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                sender.send(result).unwrap();
+            });
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        receiver.recv().unwrap().unwrap();
+        let mapped = readback.slice(..).get_mapped_range().unwrap();
+        mapped
+            .chunks_exact(stride as usize)
+            .flat_map(|row| row[..width as usize * 4].iter().copied())
+            .collect()
+    }
+
+    fn upload_frame(size: [u32; 2]) -> Frame {
+        let mut frame = Frame::empty(size);
+        frame.quads.push(Quad {
+            rect: [0.0, 0.0, size[0] as f32, size[1] as f32],
+            uv: [0.0, 0.0, size[0] as f32 / 512.0, size[1] as f32 / 512.0],
+            color: Color::rgb([255; 3]),
+            paint: Paint::Color,
+            atlas: 0,
+        });
+        frame
+    }
+
+    fn solid_upload(revision: u64, size: [u32; 2], color: [u8; 4]) -> AtlasUpload {
+        AtlasUpload {
+            revision,
+            page: 0,
+            page_size: 512,
+            origin: [1, 1],
+            size,
+            pixels: color.repeat((size[0] * size[1]) as usize).into(),
+        }
+    }
+
+    fn assert_pixels(frame: &Frame, pixels: &[u8], expected: impl Fn(u32, u32) -> [u8; 4]) {
+        for y in 0..frame.size[1] {
+            for x in 0..frame.size[0] {
+                let index = ((y * frame.size[0] + x) * 4) as usize;
+                assert_eq!(
+                    &pixels[index..index + 4],
+                    &expected(x, y),
+                    "pixel ({x}, {y})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn small_and_large_uploads_preserve_overlap_order() {
+        let (device, queue) = gpu();
+        for small_first in [true, false] {
+            let mut renderer = Renderer::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+            let mut frame = upload_frame([5, 259]);
+            // These straddle the 64 KiB padded staging threshold by one row.
+            let mut small = solid_upload(1, [3, 256], [255, 0, 0, 255]);
+            let mut large = solid_upload(2, [3, 257], [0, 255, 0, 255]);
+            frame.atlas_uploads = if small_first {
+                vec![small, large]
+            } else {
+                large.revision = 1;
+                small.revision = 2;
+                vec![large, small]
+            };
+            let pixels = render_frame(&mut renderer, &device, &queue, &frame);
+            assert_pixels(&frame, &pixels, |x, y| {
+                if !(1..=3).contains(&x) || !(1..=257).contains(&y) {
+                    [0; 4]
+                } else if small_first || y == 257 {
+                    [0, 255, 0, 255]
+                } else {
+                    [255, 0, 0, 255]
+                }
+            });
+        }
+    }
+
+    #[test]
+    fn small_uploads_follow_large_retained_history() {
+        let (device, queue) = gpu();
+        let mut renderer = Renderer::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+        let mut frame = upload_frame([5, 259]);
+        frame
+            .atlas_uploads
+            .push(solid_upload(1, [3, 257], [0, 255, 0, 255]));
+        render_frame(&mut renderer, &device, &queue, &frame);
+        let texture = renderer.atlases[&0].texture.clone();
+        // Exercise a new upload exactly at the 64 KiB padded threshold while
+        // retaining a larger revision, then replay that same frame unchanged.
+        frame
+            .atlas_uploads
+            .push(solid_upload(2, [3, 256], [255, 0, 0, 255]));
+        let pixels = render_frame(&mut renderer, &device, &queue, &frame);
+        assert_pixels(&frame, &pixels, |x, y| {
+            if !(1..=3).contains(&x) || !(1..=257).contains(&y) {
+                [0; 4]
+            } else if y == 257 {
+                [0, 255, 0, 255]
+            } else {
+                [255, 0, 0, 255]
+            }
+        });
+        assert_eq!(render_frame(&mut renderer, &device, &queue, &frame), pixels);
+        assert_eq!(renderer.atlases[&0].texture, texture);
+        assert_eq!(renderer.atlases[&0].revision, 2);
+    }
+
+    #[test]
+    fn uploaded_pixels_survive_an_abandoned_host_draw() {
+        let (device, queue) = gpu();
+        let mut renderer = Renderer::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+        let mut frame = upload_frame([5, 5]);
+        frame
+            .atlas_uploads
+            .push(solid_upload(1, [3, 3], [0, 255, 0, 255]));
+        let host_encoder = device.create_command_encoder(&Default::default());
+        renderer.prepare(&device, &queue, &frame).unwrap();
+        let texture = renderer.atlases[&0].texture.clone();
+        // egui prepares resources before acquiring a surface. If acquisition
+        // fails, it discards this encoder and submits only pending queue writes.
+        drop(host_encoder);
+        queue.submit([]);
+        // The retained-frame callback can skip preparation on the next draw.
+        let pixels = draw_frame(&renderer, &device, &queue, frame.size);
+        assert_pixels(&frame, &pixels, |x, y| {
+            if (1..=3).contains(&x) && (1..=3).contains(&y) {
+                [0, 255, 0, 255]
+            } else {
+                [0; 4]
+            }
+        });
+        assert_eq!(renderer.atlases[&0].texture, texture);
+        assert_eq!(renderer.atlases[&0].revision, 1);
+        assert_eq!(render_frame(&mut renderer, &device, &queue, &frame), pixels);
+    }
+
+    #[test]
+    fn failed_preparation_unmaps_partial_uploads_before_retry() {
+        let (device, queue) = gpu();
+        let mut renderer = Renderer::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+        let mut frame = upload_frame([5, 5]);
+        frame
+            .atlas_uploads
+            .push(solid_upload(1, [3, 3], [0, 255, 0, 255]));
+        let mut invalid = frame.clone();
+        invalid.quads[0].rect[0] = f32::NAN;
+        assert!(renderer.prepare(&device, &queue, &invalid).is_err());
+        // Preparation must submit and unmap the partial upload before returning
+        // the error; the host has no commands to submit for this failed frame.
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        frame.atlas_uploads.push(AtlasUpload {
+            origin: [2, 1],
+            ..solid_upload(2, [1, 2], [255, 0, 0, 255])
+        });
+        let pixels = render_frame(&mut renderer, &device, &queue, &frame);
+        assert_pixels(&frame, &pixels, |x, y| {
+            if x == 2 && (1..=2).contains(&y) {
+                [255, 0, 0, 255]
+            } else if (1..=3).contains(&x) && (1..=3).contains(&y) {
+                [0, 255, 0, 255]
+            } else {
+                [0; 4]
+            }
+        });
+    }
+
+    #[test]
+    fn reused_upload_buffers_preserve_odd_width_rows_and_gutters() {
+        let (device, queue) = gpu();
+        let mut renderer = Renderer::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+        let mut frame = upload_frame([7, 5]);
+        let colors = [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255]];
+        for step in 0..4 {
+            let pixels: Vec<_> = (0..9)
+                .flat_map(|i| colors[(i + i / 3 + step) % 3])
+                .collect();
+            frame.atlas_uploads.push(AtlasUpload {
+                pixels: pixels.into(),
+                ..solid_upload(step as u64 * 2 + 1, [3, 3], [0; 4])
+            });
+            frame.atlas_uploads.push(AtlasUpload {
+                origin: [5, 1],
+                pixels: (0..3)
+                    .flat_map(|y| colors[(y + step) % 3])
+                    .collect::<Vec<_>>()
+                    .into(),
+                ..solid_upload(step as u64 * 2 + 2, [1, 3], [0; 4])
+            });
+            let pixels = render_frame(&mut renderer, &device, &queue, &frame);
+            assert_pixels(&frame, &pixels, |x, y| {
+                if (1..=3).contains(&x) && (1..=3).contains(&y) {
+                    colors[((x - 1 + y - 1) as usize + step) % 3]
+                } else if x == 5 && (1..=3).contains(&y) {
+                    colors[((y - 1) as usize + step) % 3]
+                } else {
+                    [0; 4]
+                }
+            });
+        }
+    }
+
+    #[test]
+    fn unused_image_pages_are_released_without_replacing_live_textures() {
+        let (device, queue) = gpu();
+        let mut renderer = Renderer::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+        let prepare = |renderer: &mut Renderer, frame: &Frame| {
+            renderer.prepare(&device, &queue, frame).unwrap();
+            queue.submit([]);
+            device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        };
+        let mut game = Frame::empty([2, 1]);
+        for (page, paint) in [(7, Paint::Mask), (400, Paint::Color)] {
+            game.atlas_uploads.push(AtlasUpload {
+                revision: page as u64 + 1,
+                page,
+                page_size: 1,
+                origin: [0, 0],
+                size: [1, 1],
+                pixels: Arc::from([255; 4]),
+            });
+            game.quads.push(Quad {
+                rect: [0.0, 0.0, 1.0, 1.0],
+                uv: [0.0, 0.0, 1.0, 1.0],
+                color: Color::rgb([255; 3]),
+                paint,
+                atlas: page,
+            });
+        }
+        prepare(&mut renderer, &game);
+        let text_texture = renderer.atlases[&7].texture.clone();
+        let text_revision = renderer.atlases[&7].revision;
+        let mut shell = game.clone();
+        shell.atlas_uploads.truncate(1);
+        shell.quads.truncate(1);
+        prepare(&mut renderer, &shell);
+        assert_eq!(renderer.atlases.len(), 1);
+        assert_eq!(renderer.atlases[&7].texture, text_texture);
+        assert_eq!(renderer.atlases[&7].revision, text_revision);
+
+        shell.atlas_uploads.clear();
+        prepare(&mut renderer, &shell);
+        assert_eq!(renderer.atlases[&7].texture, text_texture);
+
+        prepare(&mut renderer, &game);
+        assert_eq!(renderer.atlases.len(), 2);
+        assert_eq!(renderer.atlases[&400].revision, 401);
+        assert_eq!(renderer.atlases[&7].texture, text_texture);
+        assert_eq!(renderer.generation, Some(game.generation));
+
+        shell.quads.clear();
+        prepare(&mut renderer, &shell);
+        assert!(renderer.atlases.is_empty());
+    }
+
+    #[test]
+    fn offscreen_render_preserves_alpha_color_and_tiled_glyph_coverage() {
+        const HEIGHT: u32 = 52;
+        let (device, queue) = gpu();
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
         let mut renderer = Renderer::new(&device, format);
         let mut frame = Frame::empty([32, HEIGHT]);
@@ -419,76 +844,7 @@ mod tests {
             paint: Paint::Color,
             atlas: 0,
         });
-        renderer.prepare(&device, &queue, &frame).unwrap();
-        let target = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("offscreen terminal test"),
-            size: wgpu::Extent3d {
-                width: 32,
-                height: HEIGHT,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
-        let view = target.create_view(&Default::default());
-        let readback = device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
-            size: 256 * u64::from(HEIGHT),
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-        let mut encoder = device.create_command_encoder(&Default::default());
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    depth_slice: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                ..Default::default()
-            });
-            renderer.paint(&mut pass);
-        }
-        encoder.copy_texture_to_buffer(
-            wgpu::TexelCopyTextureInfo {
-                texture: &target,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyBufferInfo {
-                buffer: &readback,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(256),
-                    rows_per_image: None,
-                },
-            },
-            wgpu::Extent3d {
-                width: 32,
-                height: HEIGHT,
-                depth_or_array_layers: 1,
-            },
-        );
-        queue.submit([encoder.finish()]);
-        let (sender, receiver) = std::sync::mpsc::channel();
-        readback
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |result| {
-                sender.send(result).unwrap();
-            });
-        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
-        receiver.recv().unwrap().unwrap();
-        let bytes = readback.slice(..).get_mapped_range().unwrap();
+        let bytes = render_frame(&mut renderer, &device, &queue, &frame);
         let covered = &bytes[4 * 4..4 * 4 + 4];
         assert!(
             (180..=195).contains(&covered[0]) && (180..=195).contains(&covered[1]),
@@ -497,7 +853,7 @@ mod tests {
         assert_eq!(&covered[2..], &[255, 255]);
         assert_eq!(&bytes[20 * 4..20 * 4 + 4], &[0, 255, 0, 255]);
         assert_eq!(&bytes[28 * 4..28 * 4 + 4], &[255, 255, 255, 255]);
-        let pixel = |x: usize, y: usize| &bytes[y * 256 + x * 4..y * 256 + x * 4 + 4];
+        let pixel = |x: usize, y: usize| &bytes[y * 32 * 4 + x * 4..y * 32 * 4 + x * 4 + 4];
         assert_eq!(pixel(28, 50), &[0, 255, 0, 255]);
         assert_eq!(pixel(24, 50), &[255, 255, 255, 255]);
         let interpolated = pixel(3, 9);

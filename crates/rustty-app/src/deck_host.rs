@@ -221,7 +221,12 @@ impl App {
         if self.deck.stopping || !self.config().stream_deck {
             return;
         }
-        if !self.deck.dashboard.board.screens_awake && !matches!(action, Action::Disconnected(_)) {
+        if !self.deck.dashboard.board.screens_awake
+            && !matches!(
+                action,
+                Action::Disconnected(_) | Action::Page { .. } | Action::WakeScreens
+            )
+        {
             return;
         }
         match action {
@@ -282,6 +287,19 @@ impl App {
                 self.deck.dashboard.moving = false;
                 if let Err(error) = result {
                     self.deck.diagnostic(&error);
+                }
+            }
+            Action::WakeScreens =>
+            {
+                #[cfg(target_os = "macos")]
+                if !self.deck.dashboard.board.screens_awake {
+                    if Platform::screens_awake() == Some(true) {
+                        self.deck_screens_awake(true);
+                    } else if let Some(platform) = &self.platform
+                        && let Err(error) = platform.wake_screens()
+                    {
+                        self.deck.diagnostic(&error);
+                    }
                 }
             }
             Action::Brightness(_) => unreachable!(),

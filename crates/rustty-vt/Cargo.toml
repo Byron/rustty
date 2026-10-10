@@ -27,6 +27,9 @@ bytemuck = { version = "1.25", features = ["derive"] }
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 wide = "1.7"
 
+[target.'cfg(all(unix, not(target_os = "android")))'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 

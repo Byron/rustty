@@ -7,6 +7,13 @@ use std::{
     sync::Arc,
 };
 
+mod images;
+pub use images::Images;
+mod pixels;
+mod placements;
+pub use placements::Placements;
+#[cfg(all(unix, not(target_os = "android")))]
+mod shm;
 pub mod unicode;
 
 const MAX_DATA: usize = 400 * 1024 * 1024;
@@ -20,7 +27,7 @@ pub struct Image {
     pub width: u32,
     pub height: u32,
     /// Unassociated RGBA8, independent of the renderer's target color space.
-    pub pixels: Arc<[u8]>,
+    pub pixels: Arc<Vec<u8>>,
     pub generation: u64,
     identity: u64,
     pub frames: Vec<AnimationFrame>,
@@ -34,7 +41,7 @@ pub struct Image {
 
 #[derive(Clone, Debug)]
 pub struct AnimationFrame {
-    pub pixels: Arc<[u8]>,
+    pub pixels: Arc<Vec<u8>>,
     pub gap_ms: u32,
 }
 
@@ -46,21 +53,21 @@ impl Image {
             &self.frames[self.current_frame - 1].pixels
         }
     }
-    pub fn displayed_pixels(&self) -> Arc<[u8]> {
+    pub fn displayed_pixels(&self) -> Arc<Vec<u8>> {
         if self.current_frame == 0 {
             self.pixels.clone()
         } else {
             self.frames[self.current_frame - 1].pixels.clone()
         }
     }
-    fn frame(&self, number: usize) -> Option<&Arc<[u8]>> {
+    fn frame(&self, number: usize) -> Option<&Arc<Vec<u8>>> {
         if number == 1 {
             Some(&self.pixels)
         } else {
             self.frames.get(number.checked_sub(2)?).map(|f| &f.pixels)
         }
     }
-    fn set_frame(&mut self, number: usize, pixels: Arc<[u8]>) {
+    fn set_frame(&mut self, number: usize, pixels: Arc<Vec<u8>>) {
         if number == 1 {
             self.pixels = pixels;
         } else {
@@ -236,8 +243,8 @@ struct Loading {
 
 #[derive(Clone, Debug)]
 pub struct Graphics {
-    pub images: HashMap<u32, Image>,
-    pub placements: Vec<Placement>,
+    pub images: Images,
+    pub placements: Placements,
     pub generation: u64,
     pub limit: usize,
     loading: Option<Loading>,
@@ -248,8 +255,8 @@ pub struct Graphics {
 impl Default for Graphics {
     fn default() -> Self {
         Self {
-            images: HashMap::new(),
-            placements: Vec::new(),
+            images: Images::default(),
+            placements: Placements::default(),
             generation: 0,
             limit: 320_000_000,
             loading: None,
@@ -262,16 +269,14 @@ impl Default for Graphics {
 impl Graphics {
     /// Resolve a Unicode placeholder's optional application-supplied placement ID.
     pub fn placeholder_target(&self, image_id: u32, placement_id: u32) -> Option<&Placement> {
+        if placement_id != 0 {
+            return self
+                .placements
+                .get((image_id, PlacementId::External(placement_id)));
+        }
         self.placements
             .iter()
-            .filter(|p| {
-                p.image_id == image_id
-                    && if placement_id == 0 {
-                        p.virtual_placement
-                    } else {
-                        p.placement_id == PlacementId::External(placement_id)
-                    }
-            })
+            .filter(|p| p.image_id == image_id && p.virtual_placement)
             .min_by_key(|p| match p.placement_id {
                 PlacementId::External(id) => (false, id),
                 PlacementId::Internal(id) => (true, id),
@@ -287,18 +292,19 @@ impl Graphics {
         if !self.images.contains_key(&image_id) {
             return Err("ENOPARENT: parent image not found");
         }
-        let parent = self
-            .placements
-            .iter()
-            .filter(|p| {
-                p.image_id == image_id
-                    && (placement_id == 0 || p.placement_id == PlacementId::External(placement_id))
-            })
-            .min_by_key(|p| match p.placement_id {
-                PlacementId::External(id) => (false, id),
-                PlacementId::Internal(id) => (true, id),
-            })
-            .ok_or("ENOPARENT: parent placement not found")?;
+        let parent = if placement_id != 0 {
+            self.placements
+                .get((image_id, PlacementId::External(placement_id)))
+        } else {
+            self.placements
+                .iter()
+                .filter(|p| p.image_id == image_id)
+                .min_by_key(|p| match p.placement_id {
+                    PlacementId::External(id) => (false, id),
+                    PlacementId::Internal(id) => (true, id),
+                })
+        }
+        .ok_or("ENOPARENT: parent placement not found")?;
         let parent_key = (parent.image_id, parent.placement_id);
         if child == Some(parent_key) {
             return Err("EINVAL: placement cannot be its own parent");
@@ -310,8 +316,7 @@ impl Graphics {
             }
             let placement = self
                 .placements
-                .iter()
-                .find(|p| (p.image_id, p.placement_id) == key)
+                .get(key)
                 .ok_or("ENOENT: parent chain ancestor not found")?;
             let Some(next) = placement.parent else {
                 return Ok(parent_key);
@@ -325,7 +330,11 @@ impl Graphics {
     }
 
     pub(crate) fn snapshot(&self, screen: &Screen) -> Self {
-        let mut placements = self.placements.clone();
+        let mut placements = if self.placements.is_empty() {
+            Placements::default()
+        } else {
+            self.placements.clone()
+        };
         if !placements.is_empty() {
             let start = screen.history_len().saturating_sub(screen.viewport_offset) as i64;
             let anchors: HashSet<_> = placements.iter().map(|p| p.row).collect();
@@ -335,10 +344,7 @@ impl Graphics {
                 .filter(|(_, row)| anchors.contains(&row.id))
                 .map(|(index, row)| (row.id, index as i64 - start))
                 .collect();
-            for placement in &mut placements {
-                placement.viewport_row =
-                    Some(offsets.get(&placement.row).copied().unwrap_or(i64::MIN));
-            }
+            placements.project_rows(&offsets);
         }
         Self {
             images: self.images.clone(),
@@ -359,22 +365,25 @@ impl Graphics {
 
     fn reap_orphans(&mut self) -> HashSet<u32> {
         let mut removed = HashSet::new();
+        if !self.placements.has_relatives() {
+            return removed;
+        }
         loop {
-            let keys: HashSet<_> = self
+            let orphans: Vec<_> = self
                 .placements
                 .iter()
+                .filter(|p| {
+                    p.parent
+                        .is_some_and(|parent| self.placements.get(parent).is_none())
+                })
                 .map(|p| (p.image_id, p.placement_id))
                 .collect();
-            let before = self.placements.len();
-            self.placements.retain(|p| {
-                let keep = p.parent.is_none_or(|parent| keys.contains(&parent));
-                if !keep {
-                    removed.insert(p.image_id);
-                }
-                keep
-            });
-            if self.placements.len() == before {
+            if orphans.is_empty() {
                 return removed;
+            }
+            for key in orphans {
+                self.placements.remove(key);
+                removed.insert(key.0);
             }
         }
     }
@@ -391,34 +400,33 @@ impl Graphics {
             true
         });
     }
-    fn resolve_id(&self, id: u32, number: u32) -> Option<u32> {
+    fn resolve_id(&mut self, id: u32, number: u32) -> Option<u32> {
         if id != 0 {
             self.images.contains_key(&id).then_some(id)
+        } else if number != 0 {
+            self.images.resolve_number(number)
         } else {
-            self.images
-                .values()
-                .filter(|i| i.number == number && number != 0)
-                .max_by_key(|i| i.generation)
-                .map(|i| i.id)
+            None
         }
     }
     fn allocate_id(&mut self, implicit: bool) -> u32 {
         // Numbered uploads choose the lowest free client ID. Anonymous uploads
         // use a separate counter so they rarely collide with client choices.
-        let mut id = if implicit { self.next_image } else { 1 };
+        if !implicit {
+            return self.images.allocate_id();
+        }
+        let mut id = self.next_image;
         while id == 0 || self.images.contains_key(&id) {
             id = id.wrapping_add(1);
         }
-        if implicit {
-            self.next_image = id.wrapping_add(1);
-        }
+        self.next_image = id.wrapping_add(1);
         id
     }
     fn reserve(&mut self, bytes: usize, exclude: u32) -> Result<(), &'static str> {
         if bytes > self.limit {
             return Err("ENOMEM: out of memory");
         }
-        while self.bytes_used().saturating_add(bytes) > self.limit {
+        while self.images.cached_bytes_used().saturating_add(bytes) > self.limit {
             let Some(id) = self
                 .images
                 .values()
@@ -429,7 +437,7 @@ impl Graphics {
                 return Err("ENOMEM: out of memory");
             };
             self.images.remove(&id);
-            self.placements.retain(|p| p.image_id != id);
+            self.placements.remove_image(id);
         }
         Ok(())
     }
@@ -616,7 +624,7 @@ impl Terminal {
             }
         }
         if matches!(action, b'p' | b'a' | b'c') {
-            let Some(resolved) = self.graphics().resolve_id(id, command.n(b'I')) else {
+            let Some(resolved) = self.screen_mut().graphics.resolve_id(id, command.n(b'I')) else {
                 command.reply(id, 0, "ENOENT: image not found", effects);
                 return;
             };
@@ -654,9 +662,13 @@ impl Terminal {
             .get(&b't')
             .copied()
             .unwrap_or(i64::from(b'd')) as u8;
-        if medium != b'd' {
+        if medium != b'd' && medium != b's' {
             command.reply(id, 0, "EINVAL: unsupported medium", effects);
             return;
+        }
+        if medium == b's' {
+            // Local transports carry the complete image even with m=1.
+            command.values.remove(&b'm');
         }
         let mut image_generation = None;
         if action != b'q'
@@ -688,7 +700,8 @@ impl Terminal {
                 return;
             }
             if action == b'f' {
-                let Some(resolved) = self.graphics().resolve_id(id, command.n(b'I')) else {
+                let Some(resolved) = self.screen_mut().graphics.resolve_id(id, command.n(b'I'))
+                else {
                     command.reply(
                         id,
                         command.n(b'r') as usize,
@@ -702,6 +715,19 @@ impl Terminal {
                 command.values.insert(b'i', i64::from(id));
             } else if action != b'q' && id == 0 {
                 id = self.screen_mut().graphics.allocate_id(command.n(b'I') == 0);
+            }
+            if medium == b's' {
+                #[cfg(all(unix, not(target_os = "android")))]
+                let loaded = shm::read(&command, &data);
+                #[cfg(not(all(unix, not(target_os = "android"))))]
+                let loaded: Result<Vec<u8>, &str> = Err("EINVAL: unsupported medium");
+                match loaded {
+                    Ok(bytes) => data = bytes,
+                    Err(error) => {
+                        command.reply(command.n(b'i'), 0, error, effects);
+                        return;
+                    }
+                }
             }
         }
         if action != b'q' && command.n(b'm') != 0 {
@@ -741,7 +767,7 @@ impl Terminal {
             return;
         }
         storage.generation = storage.generation.wrapping_add(1);
-        storage.placements.retain(|p| p.image_id != id);
+        storage.placements.remove_image(id);
         storage.reap_orphans();
         storage.images.insert(
             id,
@@ -750,7 +776,7 @@ impl Terminal {
                 number: command.n(b'I'),
                 width,
                 height,
-                pixels: pixels.into(),
+                pixels: pixels::intern(width, height, pixels),
                 generation: storage.generation,
                 identity: storage.generation,
                 frames: Vec::new(),
@@ -826,13 +852,8 @@ impl Terminal {
             graphics.next_placement = n.wrapping_add(1);
             PlacementId::Internal(n)
         };
-        if cmd.n(b'p') != 0 {
-            graphics
-                .placements
-                .retain(|p| p.image_id != id || p.placement_id != placement_id);
-        }
         placement.placement_id = placement_id;
-        graphics.placements.push(placement);
+        graphics.placements.insert(placement);
         graphics.generation = graphics.generation.wrapping_add(1);
         if cmd.n(b'C') != 1 && cmd.n(b'U') == 0 && parent.is_none() {
             let target = cursor.col.saturating_add(columns as usize);
@@ -917,13 +938,14 @@ impl Terminal {
         );
         let image = self.screen_mut().graphics.images.get_mut(&id).unwrap();
         let gap = cmd.signed(b'z');
+        let pixels = pixels::intern(image_width, image_height, canvas);
         if new {
             image.frames.push(AnimationFrame {
-                pixels: canvas.into(),
+                pixels,
                 gap_ms: if gap == 0 { 40 } else { gap.max(0) as u32 },
             });
         } else {
-            image.set_frame(number, canvas.into());
+            image.set_frame(number, pixels);
             if gap != 0 {
                 if number == 1 {
                     image.root_gap_ms = gap.max(0) as u32;
@@ -1039,7 +1061,10 @@ impl Terminal {
                 );
             }
         }
-        image.set_frame(cmd.n(b'c') as usize, canvas.into());
+        image.set_frame(
+            cmd.n(b'c') as usize,
+            pixels::intern(image.width, image.height, canvas),
+        );
         graphics.generation = graphics.generation.wrapping_add(1);
         if cmd.n(b'c') as usize - 1 == image.current_frame {
             image.generation = graphics.generation;
@@ -1050,11 +1075,17 @@ impl Terminal {
 
     fn graphics_delete(&mut self, cmd: &Command) {
         let what = cmd.values.get(&b'd').copied().unwrap_or(i64::from(b'a')) as u8;
+        let kind = what.to_ascii_lowercase();
         let image_id = self
-            .graphics()
+            .screen_mut()
+            .graphics
             .resolve_id(cmd.n(b'i'), cmd.n(b'I'))
             .unwrap_or(0);
-        let row_ids: Vec<_> = self.screen().rows().map(|r| r.id).collect();
+        let row_ids: Vec<_> = if matches!(kind, b'c' | b'p' | b'q' | b'y') {
+            self.screen().rows().map(|r| r.id).collect()
+        } else {
+            Vec::new()
+        };
         let cursor = self.screen().cursor.clone();
         let cell = [
             self.width_px / u32::from(self.cols),
@@ -1076,7 +1107,7 @@ impl Terminal {
                     return;
                 }
                 graphics.images.remove(&image_id);
-                graphics.placements.retain(|p| p.image_id != image_id);
+                graphics.placements.remove_image(image_id);
                 graphics.reap_orphans();
             } else {
                 let frame = (cmd.n(b'r') as usize).clamp(1, image.frames.len() + 1);
@@ -1099,62 +1130,77 @@ impl Terminal {
         } else {
             let mut removed = HashSet::new();
             let images = &graphics.images;
-            graphics.placements.retain(|p| {
-                let [columns, rows] = images
-                    .get(&p.image_id)
-                    .map_or([0; 2], |image| p.grid_size(image, cell));
-                let y = row_ids.iter().position(|&id| id == p.row);
-                let at = |x: usize, row: usize| {
-                    y.is_some_and(|y| {
-                        x >= p.col
-                            && x < p.col.saturating_add(columns as usize)
-                            && row >= y
-                            && row < y.saturating_add(rows as usize)
-                    })
-                };
-                let remove = match what.to_ascii_lowercase() {
-                    b'a' => visible.contains(&(p.image_id, p.placement_id)),
-                    b'i' | b'n' => {
-                        p.image_id == image_id
-                            && (cmd.n(b'p') == 0
-                                || p.placement_id == PlacementId::External(cmd.n(b'p')))
-                    }
-                    b'c' => at(cursor.col, cursor.row),
-                    b'p' => at(
-                        cmd.n(b'x').saturating_sub(1) as usize,
-                        cmd.n(b'y').saturating_sub(1) as usize,
-                    ),
-                    b'q' => {
-                        p.z == cmd.signed(b'z')
-                            && at(
-                                cmd.n(b'x').saturating_sub(1) as usize,
-                                cmd.n(b'y').saturating_sub(1) as usize,
-                            )
-                    }
-                    b'r' => (cmd.n(b'x')..=cmd.n(b'y')).contains(&p.image_id),
-                    b'x' => {
-                        cmd.n(b'x') as usize > p.col
-                            && (cmd.n(b'x') as usize) <= p.col.saturating_add(columns as usize)
-                    }
-                    b'y' => y.is_some_and(|y| {
-                        cmd.n(b'y') as usize > y
-                            && (cmd.n(b'y') as usize) <= y.saturating_add(rows as usize)
-                    }),
-                    b'z' => p.z == cmd.signed(b'z'),
-                    _ => false,
-                };
-                if remove {
-                    removed.insert(p.image_id);
+            let placement_id = cmd.n(b'p');
+            if matches!(kind, b'i' | b'n') && placement_id != 0 {
+                if graphics
+                    .placements
+                    .remove((image_id, PlacementId::External(placement_id)))
+                    .is_some()
+                    && what.is_ascii_uppercase()
+                {
+                    removed.insert(image_id);
                 }
-                !remove
-            });
+            } else if matches!(kind, b'i' | b'n') {
+                graphics.placements.remove_image(image_id);
+            } else {
+                graphics.placements.retain(|p| {
+                    // ID-based deletions don't need image geometry or screen row searches.
+                    let size = || {
+                        images
+                            .get(&p.image_id)
+                            .map_or([0; 2], |image| p.grid_size(image, cell))
+                    };
+                    let y = || row_ids.iter().position(|&id| id == p.row);
+                    let at = |x: usize, row: usize| {
+                        y().is_some_and(|y| {
+                            let [columns, rows] = size();
+                            x >= p.col
+                                && x < p.col.saturating_add(columns as usize)
+                                && row >= y
+                                && row < y.saturating_add(rows as usize)
+                        })
+                    };
+                    let remove = match kind {
+                        b'a' => visible.contains(&(p.image_id, p.placement_id)),
+                        b'c' => at(cursor.col, cursor.row),
+                        b'p' => at(
+                            cmd.n(b'x').saturating_sub(1) as usize,
+                            cmd.n(b'y').saturating_sub(1) as usize,
+                        ),
+                        b'q' => {
+                            p.z == cmd.signed(b'z')
+                                && at(
+                                    cmd.n(b'x').saturating_sub(1) as usize,
+                                    cmd.n(b'y').saturating_sub(1) as usize,
+                                )
+                        }
+                        b'r' => (cmd.n(b'x')..=cmd.n(b'y')).contains(&p.image_id),
+                        b'x' => {
+                            cmd.n(b'x') as usize > p.col
+                                && (cmd.n(b'x') as usize)
+                                    <= p.col.saturating_add(size()[0] as usize)
+                        }
+                        b'y' => y().is_some_and(|y| {
+                            cmd.n(b'y') as usize > y
+                                && (cmd.n(b'y') as usize) <= y.saturating_add(size()[1] as usize)
+                        }),
+                        b'z' => p.z == cmd.signed(b'z'),
+                        _ => false,
+                    };
+                    if remove && what.is_ascii_uppercase() {
+                        removed.insert(p.image_id);
+                    }
+                    !remove
+                });
+            }
             removed.extend(graphics.reap_orphans());
             if what.is_ascii_uppercase() {
                 if matches!(what, b'I' | b'N') && cmd.n(b'p') == 0 {
-                    removed.insert(image_id);
+                    graphics.images.remove(&image_id);
+                    removed.remove(&image_id);
                 }
                 for id in removed {
-                    if !graphics.placements.iter().any(|p| p.image_id == id) {
+                    if !graphics.placements.has_image(id) {
                         graphics.images.remove(&id);
                     }
                 }
@@ -1398,6 +1444,75 @@ mod tests {
     use super::*;
 
     #[test]
+    fn deduplicated_images_keep_independent_quotas_and_snapshot_lifetimes() {
+        let upload = |terminal: &mut Terminal, id| {
+            terminal.feed(format!("\x1b_Ga=t,i={id},f=32,s=1,v=1,q=2;ERIT/w==\x1b\\").as_bytes());
+        };
+        let mut first = Terminal::new(8, 4, 100);
+        let mut second = Terminal::new(8, 4, 100);
+        first.set_graphics_limit(8);
+        second.set_graphics_limit(4);
+        upload(&mut first, 1);
+        upload(&mut first, 2);
+        upload(&mut second, 9);
+        assert!(Arc::ptr_eq(
+            &first.graphics().images[&1].pixels,
+            &second.graphics().images[&9].pixels
+        ));
+        assert_eq!(first.graphics().bytes_used(), 8);
+        assert_eq!(second.graphics().bytes_used(), 4);
+        upload(&mut first, 3);
+        assert!(!first.graphics().images.contains_key(&1));
+        assert_eq!(first.graphics().bytes_used(), 8);
+        assert!(second.graphics().images.contains_key(&9));
+
+        let snapshot = second.screen().snapshot_viewport();
+        let pixels = Arc::downgrade(&snapshot.graphics.images[&9].pixels);
+        drop(first);
+        drop(second);
+        assert_eq!(pixels.strong_count(), 1);
+        assert_eq!(
+            snapshot.graphics.images[&9].pixels.as_slice(),
+            [17, 18, 19, 255]
+        );
+        drop(snapshot);
+        assert!(pixels.upgrade().is_none());
+    }
+
+    #[test]
+    fn frame_reservations_preserve_the_target_and_reuse_freed_capacity() {
+        let mut terminal = Terminal::new(8, 4, 0);
+        terminal.set_graphics_limit(8);
+        for id in [1, 2] {
+            terminal.feed(format!("\x1b_Gi={id},f=32,s=1,v=1;AQID/w==\x1b\\").as_bytes());
+        }
+        terminal.feed(b"\x1b_Ga=f,i=1,f=32,s=1,v=1;BAUG/w==\x1b\\");
+        assert_eq!(terminal.graphics().bytes_used(), 8);
+        assert_eq!(terminal.graphics().images.len(), 1);
+        assert_eq!(terminal.graphics().images[&1].frames.len(), 1);
+        assert_eq!(
+            terminal.feed(b"\x1b_Ga=f,i=1,r=3,f=32,s=1,v=1;BAUG/w==\x1b\\"),
+            [Effect::Write(
+                b"\x1b_Gi=1,r=3;ENOSPC: animation frame storage full\x1b\\".to_vec()
+            )]
+        );
+        assert_eq!(terminal.graphics().bytes_used(), 8);
+        assert_eq!(terminal.graphics().images[&1].frames.len(), 1);
+        terminal.feed(b"\x1b_Ga=d,d=f,i=1,r=2\x1b\\");
+        terminal.feed(b"\x1b_Gi=3,f=32,s=1,v=1;AQID/w==\x1b\\");
+        assert_eq!(terminal.graphics().bytes_used(), 8);
+        assert!(terminal.graphics().images.contains_key(&1));
+        assert!(terminal.graphics().images.contains_key(&3));
+        assert_eq!(
+            terminal.feed(b"\x1b_Gi=4,f=32,s=3,v=1;AAAAAAAAAAAAAAAA\x1b\\"),
+            [Effect::Write(
+                b"\x1b_Gi=4;ENOMEM: out of memory\x1b\\".to_vec()
+            )]
+        );
+        assert_eq!(terminal.graphics().images.len(), 2);
+    }
+
+    #[test]
     fn relative_parent_validation_preserves_placements_on_failure() {
         let mut terminal = Terminal::new(8, 4, 100);
         terminal.feed(b"\x1b_Ga=T,i=1,p=1,C=1,f=32,s=1,v=1;AQID/w==\x1b\\");
@@ -1480,6 +1595,25 @@ mod tests {
     }
 
     #[test]
+    fn numbered_lookup_follows_animation_changes_and_eviction() {
+        let mut terminal = Terminal::new(8, 4, 0);
+        for _ in 0..2 {
+            terminal.feed(b"\x1b_GI=7,f=32,s=1,v=1;AQID/w==\x1b\\");
+        }
+        assert_eq!(terminal.screen_mut().graphics.resolve_id(0, 7), Some(2));
+        terminal.feed(b"\x1b_Ga=f,i=1,f=32,s=1,v=1;BAUG/w==\x1b\\");
+        terminal.feed(b"\x1b_Ga=a,i=1,c=2\x1b\\");
+        assert_eq!(terminal.screen_mut().graphics.resolve_id(0, 7), Some(1));
+        terminal.feed(b"\x1b_Ga=d,d=F,i=1,r=2\x1b\\");
+        assert_eq!(terminal.screen_mut().graphics.resolve_id(0, 7), Some(1));
+        terminal.set_graphics_limit(4);
+        assert_eq!(terminal.screen_mut().graphics.resolve_id(0, 7), Some(1));
+        terminal.feed(b"\x1b_Ga=d,d=N,I=7\x1b\\");
+        assert_eq!(terminal.screen_mut().graphics.resolve_id(0, 7), None);
+        assert_eq!(terminal.screen_mut().graphics.resolve_id(0, 0), None);
+    }
+
+    #[test]
     fn transmission_ids_are_chosen_before_chunking_and_pixel_validation() {
         let mut terminal = Terminal::new(8, 4, 10);
         terminal.feed(b"\x1b_Gi=1,f=32,s=1,v=1;AQID/w==\x1b\\");
@@ -1490,6 +1624,11 @@ mod tests {
             [Effect::Write(b"\x1b_Gi=2,I=9;OK\x1b\\".to_vec())]
         );
         assert_eq!(terminal.graphics().images[&2].number, 9);
+        terminal.feed(b"\x1b_GI=10,f=32,s=1,v=1;AQ==\x1b\\");
+        assert_eq!(
+            terminal.feed(b"\x1b_GI=10,f=32,s=1,v=1;AQID/w==\x1b\\"),
+            [Effect::Write(b"\x1b_Gi=3,I=10;OK\x1b\\".to_vec())]
+        );
         assert!(terminal.feed(b"\x1b_Gf=32,s=1,v=1;AQ==\x1b\\").is_empty());
         terminal.feed(b"\x1b_Gf=99,s=1,v=1;AQID/w==\x1b\\");
         terminal.feed(b"\x1b_Gf=32,s=1,v=1;AQID/w==\x1b\\");
@@ -1523,7 +1662,7 @@ mod tests {
             [Effect::Write(b"\x1b_Gi=1;OK\x1b\\".to_vec())]
         );
         assert_eq!(
-            t.graphics().images[&1].pixels.as_ref(),
+            t.graphics().images[&1].pixels.as_slice(),
             [1, 2, 3, 255, 4, 5, 6, 255]
         );
         assert_eq!(t.graphics().placements.len(), 1);
@@ -1581,6 +1720,102 @@ mod tests {
         assert_eq!(t.graphics().placements.len(), 2);
         t.feed(b"\x1b_Ga=t,i=1,f=32,s=1,v=1;AQID/w==\x1b\\");
         assert!(t.graphics().placements.is_empty());
+    }
+
+    #[test]
+    fn keyed_deletion_preserves_other_tiles_and_reaps_relative_descendants() {
+        for (kind, target) in [('i', "i=2"), ('n', "I=17"), ('I', "i=2"), ('N', "I=17")] {
+            let mut t = Terminal::new(10, 3, 100);
+            for _ in 0..2 {
+                t.feed(b"\x1b_Ga=t,I=17,f=32,s=1,v=1,q=2;AQID/w==\x1b\\");
+            }
+            t.feed(b"\x1b_Ga=t,i=3,f=32,s=1,v=1,q=2;AQID/w==\x1b\\");
+            for options in [
+                "i=1,p=1",
+                "i=2,p=1",
+                "i=2,p=2",
+                "i=2",
+                "i=3,p=1,P=2,Q=1",
+                "i=3,p=2,P=3,Q=1",
+            ] {
+                t.feed(format!("\x1b_Ga=p,{options},c=1,r=1,C=1,q=2\x1b\\").as_bytes());
+            }
+            assert_eq!(t.graphics().placements.len(), 6);
+            t.feed(format!("\x1b_Ga=d,d={kind},{target},p=1\x1b\\").as_bytes());
+            let mut keys: Vec<_> = t
+                .graphics()
+                .placements
+                .iter()
+                .map(|p| (p.image_id, p.placement_id))
+                .collect();
+            keys.sort_unstable();
+            assert_eq!(
+                keys,
+                [
+                    (1, PlacementId::External(1)),
+                    (2, PlacementId::Internal(0)),
+                    (2, PlacementId::External(2)),
+                ],
+                "{kind}"
+            );
+            assert!(t.graphics().images.contains_key(&2));
+            assert_eq!(t.graphics().images.contains_key(&3), kind.is_lowercase());
+
+            // The remaining tiles have no relatives; delete just the external ID.
+            t.feed(format!("\x1b_Ga=d,d={kind},{target},p=2\x1b\\").as_bytes());
+            assert_eq!(t.graphics().placements.len(), 2);
+            assert!(t.graphics().images.contains_key(&2));
+            t.feed(format!("\x1b_Ga=d,d={kind},{target}\x1b\\").as_bytes());
+            assert_eq!(t.graphics().placements.len(), 1);
+            assert_eq!(t.graphics().placements[0].image_id, 1);
+            assert_eq!(t.graphics().images.contains_key(&2), kind.is_lowercase());
+        }
+    }
+
+    #[test]
+    fn upload_discards_publicly_retained_placements_of_a_reused_image_id() {
+        let mut terminal = Terminal::new(10, 3, 0);
+        terminal.feed(b"\x1b_Ga=T,I=17,f=32,s=1,v=1,C=1;AQID/w==\x1b\\");
+        let graphics = &mut terminal.screen_mut().graphics;
+        graphics.images.remove(&1);
+        let mut placement = graphics.placements[0].clone();
+        placement.placement_id = PlacementId::External(42);
+        graphics.placements.insert(placement);
+        assert_eq!(graphics.placements.len(), 2);
+        terminal.feed(b"\x1b_GI=18,f=32,s=1,v=1;AQID/w==\x1b\\");
+        assert_eq!(terminal.graphics().images[&1].number, 18);
+        assert!(terminal.graphics().placements.is_empty());
+    }
+
+    #[test]
+    fn whole_image_deletion_preserves_independently_placed_descendant_images() {
+        for (kind, target) in [('I', "i=1"), ('N', "I=17")] {
+            let mut terminal = Terminal::new(10, 3, 0);
+            terminal.feed(b"\x1b_GI=17,f=32,s=1,v=1;AQID/w==\x1b\\");
+            for id in [2, 3] {
+                terminal.feed(format!("\x1b_Gi={id},f=32,s=1,v=1;AQID/w==\x1b\\").as_bytes());
+            }
+            for options in [
+                "i=1,p=1",
+                "i=1,p=2",
+                "i=2,p=1,P=1,Q=1",
+                "i=2,p=2",
+                "i=3,p=1,P=2,Q=1",
+            ] {
+                terminal.feed(format!("\x1b_Ga=p,{options},C=1,q=2\x1b\\").as_bytes());
+            }
+            assert_eq!(terminal.graphics().placements.len(), 5);
+            terminal.feed(format!("\x1b_Ga=d,d={kind},{target}\x1b\\").as_bytes());
+            let graphics = terminal.graphics();
+            assert_eq!(graphics.images.len(), 1);
+            assert!(graphics.images.contains_key(&2));
+            assert_eq!(graphics.placements.len(), 1);
+            let placement = &graphics.placements[0];
+            assert_eq!(
+                (placement.image_id, placement.placement_id),
+                (2, PlacementId::External(2))
+            );
+        }
     }
 
     #[test]
@@ -1645,12 +1880,12 @@ mod tests {
         let mut t = Terminal::new(10, 3, 10);
         let payload = base64::engine::general_purpose::STANDARD.encode(encoded);
         t.feed(format!("\x1b_Gi=1,f=100;{payload}\x1b\\").as_bytes());
-        assert_eq!(t.graphics().images[&1].pixels.as_ref(), [12, 34, 56, 78]);
+        assert_eq!(t.graphics().images[&1].pixels.as_slice(), [12, 34, 56, 78]);
         let mut zlib = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
         zlib.write_all(&[90, 80, 70]).unwrap();
         let payload = base64::engine::general_purpose::STANDARD.encode(zlib.finish().unwrap());
         t.feed(format!("\x1b_Gi=2,s=1,v=1,f=24,o=z;{payload}\x1b\\").as_bytes());
-        assert_eq!(t.graphics().images[&2].pixels.as_ref(), [90, 80, 70, 255]);
+        assert_eq!(t.graphics().images[&2].pixels.as_slice(), [90, 80, 70, 255]);
     }
 
     #[test]
@@ -1690,7 +1925,7 @@ mod tests {
         t.feed(b"\x1b_Gm=0;/w==\x1b\\");
         assert_eq!(t.graphics().images[&1].frames.len(), 2);
         assert_eq!(
-            t.graphics().images[&1].frames[1].pixels.as_ref(),
+            t.graphics().images[&1].frames[1].pixels.as_slice(),
             [0, 0, 255, 255]
         );
     }
