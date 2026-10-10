@@ -45,9 +45,9 @@ impl Renderer {
             options.padding[0],
             options.padding[1],
             (screen.rows().next().map_or(0, |r| r.cells.len()) as f32 * metrics.cell_width as f32)
-                .min((options.size[0] as f32 - 2.0 * options.padding[0]).max(0.0)),
+                .min((options.size[0] as f32 - options.padding[0]).max(0.0)),
             (screen.height() as f32 * metrics.cell_height as f32)
-                .min((options.size[1] as f32 - 2.0 * options.padding[1]).max(0.0)),
+                .min((options.size[1] as f32 - options.padding[1]).max(0.0)),
         ];
         for mut placement in placements {
             let Some(image) = screen.graphics.images.get(&placement.image) else {
@@ -561,6 +561,32 @@ mod tests {
             animated.atlas_uploads[old..]
                 .iter()
                 .all(|u| u.pixels.iter().all(|p| *p == 255))
+        );
+    }
+
+    #[test]
+    fn images_fill_the_cell_grid_with_asymmetric_padding() {
+        let mut terminal = Terminal::new(2, 2, 0);
+        let (mut renderer, mut options) = renderer();
+        let cell = renderer.metrics();
+        options.padding = [9.0, 23.0];
+        options.size = [9 + 2 * cell.cell_width + 2, 23 + 2 * cell.cell_height + 3];
+        transmit(&mut terminal, 1, "c=2,r=2,z=-1");
+        let frame = renderer.prepare(terminal.screen(), &options).unwrap();
+        let images: Vec<_> = frame
+            .quads
+            .iter()
+            .filter(|q| q.paint == Paint::Color)
+            .collect();
+        assert_eq!(images.len(), 1);
+        assert_eq!(
+            images[0].rect,
+            [
+                9.0,
+                23.0,
+                (2 * cell.cell_width) as f32,
+                (2 * cell.cell_height) as f32
+            ]
         );
     }
 

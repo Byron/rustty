@@ -3196,11 +3196,16 @@ impl App {
                                 .floor()
                                 .clamp(1.0, u16::MAX as f32)
                                 as u16;
+                            // Image placement and pixel mouse input share the renderer's cell grid.
                             if let Err(error) = pane.session.resize(
                                 cols,
                                 rows,
-                                physical.x.min(u16::MAX as f32) as u16,
-                                physical.y.min(u16::MAX as f32) as u16,
+                                u32::from(cols)
+                                    .saturating_mul(metrics.cell_width)
+                                    .min(u16::MAX as u32) as u16,
+                                u32::from(rows)
+                                    .saturating_mul(metrics.cell_height)
+                                    .min(u16::MAX as u32) as u16,
                             ) {
                                 render_error = Some(error.to_string());
                                 continue;
