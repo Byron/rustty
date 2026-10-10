@@ -57,6 +57,8 @@ target/release/examples/parity-runner --no-build --replay target/parity/failures
 target/release/examples/parity-runner --no-build --replay target/parity/failures/ID/request.json --minimize
 cargo +1.95.0 test --offline -p rustty-vt --example parity-runner
 python3 test/rustty/transport_limits.py zig-out/bin/vt-oracle target/release/examples/parity
+# POSIX only: creates test-owned shared memory and verifies pixels, replies, and unlink.
+python3 test/rustty/kitty_shared_memory.py zig-out/bin/vt-oracle target/release/examples/parity
 ```
 
 Suite execution runs entirely in Rust: process transport, delivery variants,
@@ -820,8 +822,10 @@ An oracle crash, invalid response, unsupported operation or timeout fails the
 run. Requests are limited to 32 MiB and responses to 128 MiB. Large writes use
 varied chunk sizes with bounded JSON overhead; scalar delivery still exercises
 each byte. This accommodates hexadecimal input around the 8 MiB OSC limit.
-Graphics file, temporary-file and shared-memory transports are disabled in the
-Zig oracle.
+Graphics file and temporary-file transports are disabled in the Zig oracle.
+Shared-memory loading is enabled only by the `graphics_shared_memory` request
+option, used by `kitty_shared_memory.py` to recreate test-owned POSIX objects
+for each engine and verify their consumption and unlinking.
 
 `--unicode` compares the display widths of all 1,112,064 valid Unicode scalars
 in batches of 4,096 codepoints, plus rejected surrogate and out-of-range inputs.

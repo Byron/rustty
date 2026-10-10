@@ -7,6 +7,8 @@ use std::{
     sync::Arc,
 };
 
+#[cfg(all(unix, not(target_os = "android")))]
+mod shm;
 pub mod unicode;
 
 const MAX_DATA: usize = 400 * 1024 * 1024;
@@ -654,9 +656,13 @@ impl Terminal {
             .get(&b't')
             .copied()
             .unwrap_or(i64::from(b'd')) as u8;
-        if medium != b'd' {
+        if medium != b'd' && medium != b's' {
             command.reply(id, 0, "EINVAL: unsupported medium", effects);
             return;
+        }
+        if medium == b's' {
+            // Local transports carry the complete image even with m=1.
+            command.values.remove(&b'm');
         }
         let mut image_generation = None;
         if action != b'q'
@@ -702,6 +708,19 @@ impl Terminal {
                 command.values.insert(b'i', i64::from(id));
             } else if action != b'q' && id == 0 {
                 id = self.screen_mut().graphics.allocate_id(command.n(b'I') == 0);
+            }
+            if medium == b's' {
+                #[cfg(all(unix, not(target_os = "android")))]
+                let loaded = shm::read(&command, &data);
+                #[cfg(not(all(unix, not(target_os = "android"))))]
+                let loaded: Result<Vec<u8>, &str> = Err("EINVAL: unsupported medium");
+                match loaded {
+                    Ok(bytes) => data = bytes,
+                    Err(error) => {
+                        command.reply(command.n(b'i'), 0, error, effects);
+                        return;
+                    }
+                }
             }
         }
         if action != b'q' && command.n(b'm') != 0 {

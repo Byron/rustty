@@ -101,6 +101,7 @@ const Request = struct {
     observe_semantic: bool = false,
     observe_graphics: bool = false,
     observe_graphics_placements: bool = false,
+    graphics_shared_memory: bool = false,
     dnd_events: bool = true,
     color_inputs: []const []const u8 = &.{},
     page_layout: ?page_layout_adapter.Request = null,
@@ -521,7 +522,11 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
         .rows = request.rows,
         .max_scrollback_bytes = null,
         .max_scrollback_lines = null,
-        .kitty_image_loading_limits = .direct,
+        .kitty_image_loading_limits = limits: {
+            var limits = vt.kitty.graphics.LoadingImage.Limits.direct;
+            limits.shared_memory = request.graphics_shared_memory;
+            break :limits limits;
+        },
     });
     defer t.deinit(alloc);
     if (!observe_terminal) {
