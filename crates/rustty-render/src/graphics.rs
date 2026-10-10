@@ -565,6 +565,66 @@ mod tests {
     }
 
     #[test]
+    fn moving_cropped_sprites_reuses_the_uploaded_atlas() {
+        let mut terminal = Terminal::new(10, 3, 100);
+        let (mut renderer, options) = renderer();
+        let cell = renderer.metrics();
+        terminal.set_pixel_size(10 * cell.cell_width, 3 * cell.cell_height);
+        terminal.feed(b"\x1b_Ga=t,i=1,f=32,s=2,v=1,q=2;/wAAgAD/AP8=\x1b\\");
+        for id in 1..=3 {
+            terminal.feed(
+                format!("\x1b_Ga=p,i=1,p={id},x=0,w=1,h=1,X=2,Y=3,z=-{id},C=1,q=2\x1b\\")
+                    .as_bytes(),
+            );
+        }
+        let pixels = terminal.graphics().images[&1].pixels.clone();
+        let before = renderer.prepare(terminal.screen(), &options).unwrap();
+        let uploads: Vec<_> = before
+            .atlas_uploads
+            .iter()
+            .map(|u| (u.page, u.revision))
+            .collect();
+        let old: Vec<_> = before
+            .quads
+            .iter()
+            .filter(|q| q.paint == Paint::Color)
+            .cloned()
+            .collect();
+        assert_eq!(old.len(), 3);
+        assert_eq!(uploads.len(), 1);
+
+        terminal.feed(b"\x1b[?2026h\x1b[2;3H\x1b_Ga=p,i=1,p=2,x=1,w=1,h=1,X=2,Y=3,z=-2,C=1,q=2\x1b\\\x1b_Ga=d,d=i,i=1,p=1,q=2\x1b\\\x1b[?2026l");
+        let after = renderer.prepare(terminal.screen(), &options).unwrap();
+        let sprites: Vec<_> = after
+            .quads
+            .iter()
+            .filter(|q| q.paint == Paint::Color)
+            .collect();
+        assert_eq!(sprites.len(), 2);
+        assert_eq!(terminal.graphics().placements.len(), 2);
+        assert_eq!(sprites[0].rect, old[0].rect);
+        assert_eq!(
+            sprites[1].rect,
+            [
+                options.padding[0] + 2.0 * cell.cell_width as f32 + 2.0,
+                options.padding[1] + cell.cell_height as f32 + 3.0,
+                1.0,
+                1.0
+            ]
+        );
+        assert_ne!(sprites[1].uv, old[1].uv);
+        assert_eq!(
+            after
+                .atlas_uploads
+                .iter()
+                .map(|u| (u.page, u.revision))
+                .collect::<Vec<_>>(),
+            uploads
+        );
+        assert!(Arc::ptr_eq(&pixels, &terminal.graphics().images[&1].pixels));
+    }
+
+    #[test]
     fn kitty_protocol_lifecycle_refreshes_pixels_and_reuses_unchanged_frames() {
         let mut terminal = Terminal::new(10, 3, 100);
         let (mut renderer, options) = renderer();

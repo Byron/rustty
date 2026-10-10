@@ -845,13 +845,17 @@ impl Terminal {
             graphics.next_placement = n.wrapping_add(1);
             PlacementId::Internal(n)
         };
-        if cmd.n(b'p') != 0 {
-            graphics
-                .placements
-                .retain(|p| p.image_id != id || p.placement_id != placement_id);
-        }
         placement.placement_id = placement_id;
-        graphics.placements.push(placement);
+        if cmd.n(b'p') != 0
+            && let Some(previous) = graphics
+                .placements
+                .iter_mut()
+                .find(|p| p.image_id == id && p.placement_id == placement_id)
+        {
+            *previous = placement;
+        } else {
+            graphics.placements.push(placement);
+        }
         graphics.generation = graphics.generation.wrapping_add(1);
         if cmd.n(b'C') != 1 && cmd.n(b'U') == 0 && parent.is_none() {
             let target = cursor.col.saturating_add(columns as usize);

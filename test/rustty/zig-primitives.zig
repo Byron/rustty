@@ -6,7 +6,7 @@ const vt = @import("ghostty-vt");
 
 pub const std_options: std.Options = .{ .log_level = .err };
 
-const Operation = enum { width, print, scalar, read, clone, reflow, feed, stream, stream_styled, reflow_history_styled, reflow_scrollback, reflow_history_content };
+const Operation = enum { width, print, scalar, read, clone, reflow, feed, stream, stream_styled, reflow_history_styled, reflow_scrollback, reflow_history_content, kitty_place };
 const cols = 128;
 const rows = 32;
 const history_lines = 1024;
@@ -403,7 +403,7 @@ fn step(
             try terminal.resize(terminal.gpa(), .{ .cols = cols / 2, .rows = rows });
             try terminal.resize(terminal.gpa(), .{ .cols = cols, .rows = rows });
         },
-        .reflow_history_content => unreachable,
+        .reflow_history_content, .kitty_place => unreachable,
     }
     std.mem.doNotOptimizeAway(terminal);
     return 0;
@@ -419,6 +419,7 @@ pub fn main(init: std.process.Init) !void {
     const bytes = try std.Io.Dir.cwd().readFileAlloc(init.io, args[2], alloc, .limited(128 * 1024 * 1024));
     defer alloc.free(bytes);
     if (op == .reflow_history_content) return contentBenchmark(init, bytes, iterations);
+    if (op == .kitty_place) return @import("zig-kitty-bench.zig").run(init, bytes, iterations);
     const cps = if (parsed(op)) try alloc.alloc(u21, 0) else try decode(alloc, bytes);
     defer alloc.free(cps);
     const styled_records = std.mem.count(u8, bytes, "\r\n");
@@ -492,7 +493,7 @@ pub fn main(init: std.process.Init) !void {
         .units_per_iteration = switch (op) {
             .width, .print => cps.len,
             .scalar, .read, .clone => cols * rows,
-            .reflow, .reflow_history_content => 1,
+            .reflow, .reflow_history_content, .kitty_place => 1,
             .reflow_history_styled => styled_records,
             .reflow_scrollback => 1,
             .feed, .stream, .stream_styled => bytes.len,
