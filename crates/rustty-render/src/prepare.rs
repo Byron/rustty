@@ -1153,6 +1153,56 @@ mod tests {
     }
 
     #[test]
+    fn viewport_snapshots_preserve_selection_paint_while_scrolling() {
+        let mut terminal = Terminal::new(10, 3, 100);
+        terminal.feed(b"0123456789\r\n".repeat(11).as_slice());
+        terminal.feed(b"0123456789");
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let options = RenderOptions {
+            cursor_visible: false,
+            ..Default::default()
+        };
+        let selected_rects = |frame: Frame| {
+            frame
+                .quads
+                .into_iter()
+                .filter(|q| {
+                    q.paint == Paint::Solid && q.color == Color::rgb(options.selection_background)
+                })
+                .map(|q| q.rect)
+                .collect::<Vec<_>>()
+        };
+        for rectangular in [false, true] {
+            for reversed in [false, true] {
+                let mut selection = Selection {
+                    start: terminal.screen().point(3, 7).unwrap(),
+                    end: terminal.screen().point(8, 2).unwrap(),
+                    rectangular,
+                };
+                if reversed {
+                    std::mem::swap(&mut selection.start, &mut selection.end);
+                }
+                terminal.screen_mut().selection = Some(selection);
+                let text = terminal.screen().selection_text().unwrap();
+                assert_eq!(text.lines().count(), 6);
+                for offset in (0..=9).chain((0..9).rev()) {
+                    let screen = terminal.screen_mut();
+                    screen.scroll_viewport(offset - screen.viewport_offset as isize);
+                    let expected = selected_rects(renderer.prepare(screen, &options).unwrap());
+                    let snapshot = screen.snapshot_viewport();
+                    assert_eq!(screen.selection, Some(selection));
+                    assert_eq!(screen.selection_text().as_deref(), Some(text.as_str()));
+                    assert_eq!(
+                        selected_rects(renderer.prepare(&snapshot, &options).unwrap()),
+                        expected,
+                        "offset={offset}, rectangular={rectangular}, reversed={reversed}",
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn sprites_fill_cells_without_entering_native_shaping_runs() {
         let mut terminal = Terminal::new(10, 2, 10);
         terminal.feed("A█B─█".as_bytes());
