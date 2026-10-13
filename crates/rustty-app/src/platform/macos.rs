@@ -33,9 +33,9 @@ use objc2_app_kit::{
     NSEventType, NSFloatingWindowLevel, NSMenu, NSModalResponseCancel, NSModalResponseOK,
     NSOpenPanel, NSPasteboard, NSPasteboardAccessBehavior, NSPasteboardItem,
     NSPasteboardTypeString, NSPopUpMenuWindowLevel, NSRunningApplication, NSScreen,
-    NSUserInterfaceItemIdentification, NSView, NSWindow, NSWindowAnimationBehavior,
-    NSWindowCollectionBehavior, NSWindowTabbingMode, NSWindowTitleVisibility, NSWorkspace,
-    NSWorkspaceDidWakeNotification, NSWorkspaceScreensDidSleepNotification,
+    NSUserInterfaceItemIdentification, NSView, NSWindow, NSWindowAnimationBehavior, NSWindowButton,
+    NSWindowCollectionBehavior, NSWindowStyleMask, NSWindowTabbingMode, NSWindowTitleVisibility,
+    NSWorkspace, NSWorkspaceDidWakeNotification, NSWorkspaceScreensDidSleepNotification,
     NSWorkspaceScreensDidWakeNotification, NSWorkspaceWillSleepNotification,
 };
 use objc2_core_foundation::CFString;
@@ -45,7 +45,7 @@ use objc2_core_graphics::{
 use objc2_foundation::{
     NSArray, NSBundle, NSCopying, NSData, NSDistributedNotificationCenter, NSError, NSNotification,
     NSNotificationSuspensionBehavior, NSObject, NSObjectProtocol, NSPoint, NSPointInRect, NSRect,
-    NSSize, NSString, NSURL,
+    NSSize, NSString, NSURL, NSUnionRect,
 };
 use objc2_user_notifications::{
     UNAuthorizationOptions, UNMutableNotificationContent, UNNotification,
@@ -150,6 +150,41 @@ impl Platform {
             .ok_or("native window has no content view")?;
         let point = view.convertPoint_fromView(native.mouseLocationOutsideOfEventStream(), None);
         Ok([point.x as f32, point.y as f32])
+    }
+
+    /// Visible window buttons in logical coordinates, with the origin at the top left.
+    pub fn window_controls_rect(window: &Window) -> Option<[f32; 4]> {
+        let native = native_window(window).ok()?;
+        if !native.styleMask().contains(NSWindowStyleMask::Titled)
+            || native.styleMask().contains(NSWindowStyleMask::FullScreen)
+        {
+            return None;
+        }
+        let view = native.contentView()?;
+        let mut bounds: Option<NSRect> = None;
+        for kind in [
+            NSWindowButton::CloseButton,
+            NSWindowButton::MiniaturizeButton,
+            NSWindowButton::ZoomButton,
+        ] {
+            let button = native.standardWindowButton(kind)?;
+            if button.isHiddenOrHasHiddenAncestor() {
+                continue;
+            }
+            let rect = view.convertRect_fromView(button.bounds(), Some(&button));
+            bounds = Some(bounds.map_or(rect, |bounds| NSUnionRect(bounds, rect)));
+        }
+        let bounds = bounds?;
+        Some([
+            bounds.origin.x as f32,
+            if view.isFlipped() {
+                bounds.origin.y
+            } else {
+                view.bounds().size.height - bounds.origin.y - bounds.size.height
+            } as f32,
+            bounds.size.width as f32,
+            bounds.size.height as f32,
+        ])
     }
 
     /// Native state for an explicitly requested smoke-test failure report.

@@ -779,13 +779,42 @@ impl Screen {
     }
 
     pub fn snapshot_viewport(&self) -> Self {
+        let viewport_start = self.history_len().saturating_sub(self.viewport_offset);
+        let selection = self.selection.and_then(|mut selection| {
+            let start = self
+                .all_rows()
+                .position(|row| row.id == selection.start.row)?;
+            let end = self
+                .all_rows()
+                .position(|row| row.id == selection.end.row)?;
+            let viewport_end = viewport_start + self.height - 1;
+            if start.max(end) < viewport_start || start.min(end) > viewport_end {
+                return None;
+            }
+            // The detached snapshot must resolve both endpoints without retaining history.
+            for (point, row) in [(&mut selection.start, start), (&mut selection.end, end)] {
+                if row < viewport_start {
+                    point.row = self.physical_row(viewport_start).id;
+                    if !selection.rectangular {
+                        point.col = 0;
+                    }
+                } else if row > viewport_end {
+                    let last = self.physical_row(viewport_end);
+                    point.row = last.id;
+                    if !selection.rectangular {
+                        point.col = last.cells.len() - 1;
+                    }
+                }
+            }
+            Some(selection)
+        });
         let mut result = Self {
             metadata: self.metadata.clone(),
             graphics: self.graphics.snapshot(self),
             columns: self.columns,
             height: self.height,
             cursor: self.cursor.clone(),
-            selection: self.selection,
+            selection,
             viewport_offset: 0,
             viewport_pin_column: 0,
             viewport_pin: None,
@@ -795,10 +824,7 @@ impl Screen {
             iso_protection: self.iso_protection,
             limits: ScrollbackLimits::NONE,
             memory_limit: None,
-            pages: self.pages.clone_range(
-                self.history_len().saturating_sub(self.viewport_offset),
-                self.height,
-            ),
+            pages: self.pages.clone_range(viewport_start, self.height),
             cursor_style: self.cursor_style,
             cursor_link: self.cursor_link,
             next_row: self.next_row,

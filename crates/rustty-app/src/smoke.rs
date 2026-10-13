@@ -394,6 +394,9 @@ impl Smoke {
                 if host.frames == 0 || !ready(app, pane) {
                     return Ok(false);
                 }
+                if host.content.y != 0.0 {
+                    return Err("single-tab window reserved space for a tab bar".into());
+                }
                 {
                     let terminal = app.panes[&pane].session.terminal()?;
                     let screen = terminal.screen();
@@ -447,6 +450,22 @@ impl Smoke {
                 app.action(event_loop, host, Action::NewTab, true);
                 if app.panes.len() != 5 {
                     return Err("tab creation did not start a fifth PTY".into());
+                }
+                app.draw(event_loop, host)?;
+                if host.content.y != 38.0 {
+                    return Err("second tab did not reveal the tab bar".into());
+                }
+                app.action(event_loop, host, Action::CloseTab, true);
+                app.draw(event_loop, host)?;
+                if host.content.y != 0.0 {
+                    return Err("closing the second tab did not hide the tab bar".into());
+                }
+                if !app.action(event_loop, host, Action::Undo, true) {
+                    return Err("closing the second tab could not be undone".into());
+                }
+                app.draw(event_loop, host)?;
+                if host.content.y != 38.0 {
+                    return Err("restoring the second tab did not reveal the tab bar".into());
                 }
                 app.action(event_loop, host, Action::PreviousTab, true);
                 eprintln!("Native smoke: splits, tabs, and quadrant actions passed");
