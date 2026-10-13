@@ -33,6 +33,8 @@ A file for [guiding coding agents](https://agents.md/).
 
 ## Rustty Scope
 
+- Unless explicitly specified otherwise, Rustty is the target for all changes,
+  including requests that refer to Ghostty.
 - When working on Rustty, treat Ghostty's production code as a read-only
   reference. Do not modify it unless explicitly asked.
 - Ghostty tools and utilities may be added or updated to support inspection,

@@ -22,8 +22,8 @@ mod macos {
 
     use objc2::{ClassType, MainThreadMarker, rc::Retained};
     use objc2_app_kit::{
-        NSPanel, NSView, NSWindow, NSWindowStyleMask, NSWindowTabbingMode, NSWorkspace,
-        NSWorkspaceDidWakeNotification, NSWorkspaceScreensDidSleepNotification,
+        NSPanel, NSView, NSWindow, NSWindowButton, NSWindowStyleMask, NSWindowTabbingMode,
+        NSWorkspace, NSWorkspaceDidWakeNotification, NSWorkspaceScreensDidSleepNotification,
         NSWorkspaceScreensDidWakeNotification, NSWorkspaceSessionDidResignActiveNotification,
         NSWorkspaceWillSleepNotification,
     };
@@ -101,6 +101,7 @@ mod macos {
                             .with_visible(false)
                             .with_active(false)
                             .with_decorations(false)
+                            .with_fullsize_content_view(true)
                             .with_nonactivating_panel(panel)
                             .with_inner_size(LogicalSize::new(320.0, 180.0)),
                     )
@@ -110,11 +111,27 @@ mod macos {
                 let native = check_window(&window, panel);
                 assert_eq!(native.tabbingMode(), NSWindowTabbingMode::Disallowed);
                 let view = native.contentView().unwrap();
+                assert!(Platform::window_controls_rect(&window).is_none());
 
                 // Exercise Winit's temporary zoom mask as well as ordinary edits.
                 // The old path replaced the entire borderless style to query zoom.
                 let _ = window.is_maximized();
                 window.set_decorations(true);
+                let controls = Platform::window_controls_rect(&window)
+                    .expect("decorated window exposes its traffic lights");
+                assert!(
+                    controls[0] >= 0.0 && controls[1].is_finite(),
+                    "{controls:?}"
+                );
+                assert!(controls[2] >= 40.0 && controls[3] >= 10.0);
+                for kind in [
+                    NSWindowButton::CloseButton,
+                    NSWindowButton::MiniaturizeButton,
+                    NSWindowButton::ZoomButton,
+                ] {
+                    native.standardWindowButton(kind).unwrap().setHidden(true);
+                }
+                assert!(Platform::window_controls_rect(&window).is_none());
                 window.set_resizable(false);
                 check_window(&window, panel);
                 window.set_decorations(false);

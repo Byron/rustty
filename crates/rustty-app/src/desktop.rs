@@ -489,7 +489,8 @@ impl Host {
 struct DirectoryBadge {
     label: DirectoryLabel,
     bounds: egui::Rect,
-    large: bool,
+    centered: bool,
+    shared: bool,
     active: bool,
     attention: bool,
     flash: f32,
@@ -505,33 +506,50 @@ impl DirectoryBadge {
         } else {
             ui.visuals().strong_text_color()
         };
-        let mut job = egui::text::LayoutJob::simple(
-            format!(
-                "{}{}",
-                self.label.name,
-                if self.attention { " ●" } else { "" }
-            ),
-            egui::FontId::proportional(if self.large { 22.0 } else { 12.0 }),
-            color,
-            (self.bounds.width() * 0.75 - 24.0).max(1.0),
-        );
-        job.wrap.max_rows = 1;
-        job.wrap.break_anywhere = true;
-        job.sections[0]
-            .format
-            .coords
-            .push("wght", if self.large { 600.0 } else { 500.0 });
-        if self.label.shows_activity(self.active) {
-            job.sections[0].format.underline = egui::Stroke::new(1.0, color);
+        let scale = if self.shared { 1.0 } else { 0.7 };
+        let large_padding = Vec2::new(16.0, 10.0) * scale;
+        let layout = |large| {
+            let mut job = egui::text::LayoutJob::simple(
+                format!(
+                    "{}{}",
+                    self.label.name,
+                    if self.attention { " ●" } else { "" }
+                ),
+                egui::FontId::proportional(if large { 22.0 * scale } else { 12.0 }),
+                color,
+                if self.centered {
+                    (self.bounds.width() * 0.75 - 24.0 * scale).max(1.0)
+                } else if large {
+                    f32::INFINITY
+                } else {
+                    (self.bounds.width() - 32.0).max(1.0)
+                },
+            );
+            job.wrap.max_rows = 1;
+            job.wrap.break_anywhere = true;
+            job.sections[0]
+                .format
+                .coords
+                .push("wght", if large { 600.0 } else { 500.0 });
+            if self.label.shows_activity(self.active) {
+                job.sections[0].format.underline = egui::Stroke::new(1.0, color);
+            }
+            ui.painter().layout_job(job)
+        };
+        let mut galley = layout(true);
+        let large = self.centered
+            || (galley.size().x + 2.0 * large_padding.x + 16.0 <= self.bounds.width()
+                && galley.size().y + 2.0 * large_padding.y + 16.0 <= self.bounds.height());
+        if !large {
+            galley = layout(false);
         }
-        let galley = ui.painter().layout_job(job);
-        let padding = if self.large {
-            Vec2::new(16.0, 10.0)
+        let padding = if large {
+            large_padding
         } else {
             Vec2::new(8.0, 4.0)
         };
         let size = galley.size() + 2.0 * padding;
-        let bounds = if self.large {
+        let bounds = if self.centered {
             egui::Rect::from_center_size(self.bounds.center(), size)
         } else {
             egui::Rect::from_min_size(
@@ -540,7 +558,7 @@ impl DirectoryBadge {
             )
         };
         let painter = ui.painter().with_clip_rect(self.bounds);
-        let rounding = if self.large { 10.0 } else { 6.0 };
+        let rounding = if large { 10.0 * scale } else { 6.0 };
         painter.rect_filled(
             bounds,
             rounding,
@@ -3017,94 +3035,97 @@ impl App {
                 tab_accent.foreground[2],
             );
             root_ui.visuals_mut().hyperlink_color = accent;
-            egui::Panel::top("tabs")
-                .exact_size(38.0)
-                .frame(
-                    egui::Frame::new()
-                        .fill(rgb(config.background))
-                        .inner_margin(6.0),
-                )
-                .show(root_ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.add_space(72.0);
-                        for (index, tab) in state.tabs.iter().enumerate() {
-                            let (label, is_active) = self.tab_label(tab);
-                            let selected = index == state.active_tab;
-                            let colors = TabAccent::new(tab.color, platform_accent);
-                            let color = Color32::from_rgb(
-                                colors.background[0],
-                                colors.background[1],
-                                colors.background[2],
-                            );
-                            let mut text = egui::RichText::new(label);
-                            if !selected && is_active {
-                                text = text.underline();
-                            }
-                            if selected {
-                                text = text.color(Color32::from_rgb(
-                                    colors.foreground[0],
-                                    colors.foreground[1],
-                                    colors.foreground[2],
-                                ));
-                            }
-                            let flash =
-                                self.flash_opacity(tab.id, now, &mut animation_deadline) * 0.45;
-                            let fill = if selected {
-                                color
-                            } else {
-                                color.gamma_multiply(flash.max(if tab.color.is_some() {
-                                    0.12
-                                } else {
-                                    0.0
-                                }))
-                            };
-                            let response =
-                                ui.add(egui::Button::selectable(selected, text).fill(fill));
-                            if tab.color.is_some() {
-                                ui.painter().line_segment(
-                                    [
-                                        response.rect.left_top() + Vec2::new(4.0, 1.0),
-                                        response.rect.right_top() + Vec2::new(-4.0, 1.0),
-                                    ],
-                                    egui::Stroke::new(2.0, color),
+            if state.tabs.len() > 1 {
+                egui::Panel::top("tabs")
+                    .exact_size(38.0)
+                    .frame(
+                        egui::Frame::new()
+                            .fill(rgb(config.background))
+                            .inner_margin(6.0),
+                    )
+                    .show(root_ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.add_space(72.0);
+                            for (index, tab) in state.tabs.iter().enumerate() {
+                                let (label, is_active) = self.tab_label(tab);
+                                let selected = index == state.active_tab;
+                                let colors = TabAccent::new(tab.color, platform_accent);
+                                let color = Color32::from_rgb(
+                                    colors.background[0],
+                                    colors.background[1],
+                                    colors.background[2],
                                 );
-                            }
-                            if response.clicked() {
-                                tab_selection = Some(index);
-                            }
-                            response.context_menu(|ui| {
-                                let window_index = self.index(host.id).unwrap();
-                                let actual = &mut self.workspace.windows[window_index].tabs[index];
-                                ui.label("Tab title");
-                                let mut title = actual.title.clone().unwrap_or_default();
-                                if ui.text_edit_singleline(&mut title).changed() {
-                                    actual.title = (!title.is_empty()).then_some(title);
-                                    presentation_changed = true;
+                                let mut text = egui::RichText::new(label);
+                                if !selected && is_active {
+                                    text = text.underline();
                                 }
-                                ui.label("Tab color");
-                                let mut color = actual.color.unwrap_or(platform_accent);
-                                if ui.color_edit_button_srgb(&mut color).changed() {
-                                    actual.color = Some(color);
-                                    presentation_changed = true;
+                                if selected {
+                                    text = text.color(Color32::from_rgb(
+                                        colors.foreground[0],
+                                        colors.foreground[1],
+                                        colors.foreground[2],
+                                    ));
                                 }
-                                if actual.color.is_some()
-                                    && ui.button("Use system accent").clicked()
-                                {
-                                    actual.color = None;
-                                    presentation_changed = true;
+                                let flash =
+                                    self.flash_opacity(tab.id, now, &mut animation_deadline) * 0.45;
+                                let fill = if selected {
+                                    color
+                                } else {
+                                    color.gamma_multiply(flash.max(if tab.color.is_some() {
+                                        0.12
+                                    } else {
+                                        0.0
+                                    }))
+                                };
+                                let response =
+                                    ui.add(egui::Button::selectable(selected, text).fill(fill));
+                                if tab.color.is_some() {
+                                    ui.painter().line_segment(
+                                        [
+                                            response.rect.left_top() + Vec2::new(4.0, 1.0),
+                                            response.rect.right_top() + Vec2::new(-4.0, 1.0),
+                                        ],
+                                        egui::Stroke::new(2.0, color),
+                                    );
                                 }
-                                if ui.button("Close tab").clicked() {
+                                if response.clicked() {
                                     tab_selection = Some(index);
-                                    commands.push(Action::CloseTab);
-                                    ui.close();
                                 }
-                            });
-                        }
-                        if ui.button("+").on_hover_text("New tab").clicked() {
-                            commands.push(Action::NewTab);
-                        }
+                                response.context_menu(|ui| {
+                                    let window_index = self.index(host.id).unwrap();
+                                    let actual =
+                                        &mut self.workspace.windows[window_index].tabs[index];
+                                    ui.label("Tab title");
+                                    let mut title = actual.title.clone().unwrap_or_default();
+                                    if ui.text_edit_singleline(&mut title).changed() {
+                                        actual.title = (!title.is_empty()).then_some(title);
+                                        presentation_changed = true;
+                                    }
+                                    ui.label("Tab color");
+                                    let mut color = actual.color.unwrap_or(platform_accent);
+                                    if ui.color_edit_button_srgb(&mut color).changed() {
+                                        actual.color = Some(color);
+                                        presentation_changed = true;
+                                    }
+                                    if actual.color.is_some()
+                                        && ui.button("Use system accent").clicked()
+                                    {
+                                        actual.color = None;
+                                        presentation_changed = true;
+                                    }
+                                    if ui.button("Close tab").clicked() {
+                                        tab_selection = Some(index);
+                                        commands.push(Action::CloseTab);
+                                        ui.close();
+                                    }
+                                });
+                            }
+                            if ui.button("+").on_hover_text("New tab").clicked() {
+                                commands.push(Action::NewTab);
+                            }
+                        });
                     });
-                });
+            }
             // Cache this viewport's popup state for native events between frames.
             host.popup_open = egui::Popup::is_any_open(ctx);
             if host.ui_input() {
@@ -3564,7 +3585,8 @@ impl App {
                             DirectoryBadge {
                                 label,
                                 bounds,
-                                large: true,
+                                centered: true,
+                                shared: true,
                                 attention,
                                 accent: tab_accent,
                                 active: members.iter().any(|id| {
@@ -3591,7 +3613,7 @@ impl App {
                             host.focused,
                             host.focus_hint.visible(id, now),
                         ) {
-                            let large = label.large(
+                            let centered = label.large(
                                 active.quadrant_zoom.is_some()
                                     && (host.peek.is_some() || active.zoom == active.quadrant_zoom),
                             );
@@ -3603,7 +3625,8 @@ impl App {
                             DirectoryBadge {
                                 label,
                                 bounds,
-                                large,
+                                centered,
+                                shared: false,
                                 flash,
                                 accent: tab_accent,
                                 active: pane.activity.is_active(),
@@ -3613,6 +3636,17 @@ impl App {
                         }
                     }
                 });
+            #[cfg(target_os = "macos")]
+            if state.tabs.len() == 1
+                && let Some([x, y, width, height]) = Platform::window_controls_rect(&host.window)
+            {
+                paint_window_controls_background(
+                    root_ui.painter(),
+                    egui::Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, height)),
+                    rgb(config.background),
+                    rgb(config.foreground),
+                );
+            }
             host.search_rects.clear();
             let modal_input = host.modal_input();
             let requested_search = host.search_focus.filter(|_| host.focus_text_input);
@@ -5615,6 +5649,24 @@ fn configure_ui_fonts(context: &egui::Context) {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn paint_window_controls_background(
+    painter: &egui::Painter,
+    buttons: egui::Rect,
+    background: Color32,
+    foreground: Color32,
+) {
+    painter.rect_filled(
+        egui::Rect::from_min_max(Pos2::ZERO, buttons.max + Vec2::new(12.0, 10.0)),
+        egui::CornerRadius {
+            nw: 14,
+            se: 14,
+            ..Default::default()
+        },
+        background.lerp_to_gamma(foreground, 0.12),
+    );
+}
+
 fn paint_pane_gutter(
     painter: &egui::Painter,
     outer: egui::Rect,
@@ -6141,6 +6193,39 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
+    fn window_controls_background_covers_text_and_rounds_opposite_corners() {
+        let context = egui::Context::default();
+        let buttons = egui::Rect::from_min_size(Pos2::new(10.0, 10.0), Vec2::new(54.0, 14.0));
+        for (background, foreground) in [
+            (Color32::BLACK, Color32::WHITE),
+            (Color32::WHITE, Color32::BLACK),
+        ] {
+            let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                paint_window_controls_background(ui.painter(), buttons, background, foreground);
+            });
+            output.textures_delta.clear();
+            let shape = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect) => Some(rect),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(shape.rect.min, Pos2::ZERO);
+            assert_eq!(shape.rect.max, Pos2::new(76.0, 34.0));
+            assert!(shape.rect.contains_rect(buttons));
+            assert_eq!(shape.corner_radius.nw, shape.corner_radius.se);
+            assert_eq!(shape.corner_radius.nw, 14);
+            assert_eq!(shape.corner_radius.ne, 0);
+            assert_eq!(shape.corner_radius.sw, 0);
+            assert_eq!(shape.fill.a(), 255);
+            assert_ne!(shape.fill, background);
+        }
+    }
+
+    #[test]
     fn determinate_progress_does_not_blend_into_the_focused_split_outline() {
         let context = egui::Context::default();
         let bounds = egui::Rect::from_min_size(Pos2::new(20.0, 30.0), Vec2::new(200.0, 100.0));
@@ -6311,12 +6396,77 @@ mod tests {
     }
 
     #[test]
+    fn unshared_directory_badges_use_large_type_when_it_fits_and_stay_top_right() {
+        let context = egui::Context::default();
+        configure_ui_fonts(&context);
+        for (name, size, font_size) in [
+            ("gitime", Vec2::new(740.0, 330.0), 22.0 * 0.7),
+            ("timesheets", Vec2::new(370.0, 330.0), 22.0 * 0.7),
+            ("gitoxide.stable-gix", Vec2::new(180.0, 200.0), 12.0),
+            ("gitime", Vec2::new(740.0, 38.0), 12.0),
+        ] {
+            let bounds = egui::Rect::from_min_size(Pos2::new(100.0, 50.0), size);
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(bounds),
+                    ..Default::default()
+                },
+                |ui| {
+                    DirectoryBadge {
+                        label: DirectoryLabel::new(Some(name.into()), false, true, false).unwrap(),
+                        bounds,
+                        centered: false,
+                        shared: false,
+                        active: true,
+                        attention: true,
+                        flash: 0.0,
+                        accent: TabAccent::new(None, [230, 185, 60]),
+                    }
+                    .paint(ui);
+                },
+            );
+            output.textures_delta.clear();
+            let text = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) => Some(text),
+                    _ => None,
+                })
+                .unwrap();
+            let format = &text.galley.job.sections[0].format;
+            assert_eq!(format.font_id.size, font_size, "{name} in {size:?}");
+            assert_eq!(format.underline.width, 1.0);
+            if font_size > 12.0 {
+                assert!(!text.galley.elided);
+            }
+            let badge = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect) => Some(rect.rect),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(badge.right(), bounds.right() - 8.0);
+            assert_eq!(badge.top(), bounds.top() + 8.0);
+            assert!(bounds.contains_rect(badge));
+            let padding = if font_size > 12.0 {
+                Vec2::new(16.0, 10.0) * 0.7
+            } else {
+                Vec2::new(8.0, 4.0)
+            };
+            assert!((text.pos - badge.min - padding).length() < 0.01);
+        }
+    }
+
+    #[test]
     fn directory_badges_are_centered_and_readable_with_the_native_font() {
         let context = egui::Context::default();
         configure_ui_fonts(&context);
         let bounds = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 240.0));
         let accent = TabAccent::new(Some([230, 185, 60]), [0; 3]);
-        for focused in [false, true] {
+        for (focused, shared) in [(false, true), (true, true), (false, false)] {
             for theme in [egui::ThemePreference::Dark, egui::ThemePreference::Light] {
                 context.set_theme(theme);
                 let mut output = context.run_ui(
@@ -6328,7 +6478,8 @@ mod tests {
                         let label = DirectoryLabel::new(Some("rustty".into()), focused, true, true)
                             .unwrap();
                         DirectoryBadge {
-                            large: label.large(true),
+                            centered: label.large(true),
+                            shared,
                             label,
                             bounds,
                             active: false,
@@ -6349,6 +6500,10 @@ mod tests {
                     })
                     .unwrap();
                 assert!((text.pos + text.galley.size() / 2.0 - bounds.center()).length() < 1.0);
+                assert_eq!(
+                    text.galley.job.sections[0].format.font_id.size,
+                    if shared { 22.0 } else { 22.0 * 0.7 }
+                );
                 assert_eq!(
                     text.galley.job.sections[0].format.color,
                     if focused || theme == egui::ThemePreference::Light {
