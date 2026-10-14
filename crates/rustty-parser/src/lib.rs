@@ -188,13 +188,15 @@ pub enum Event<'a> {
     OscOverflow,
 }
 
-/// Parser events with printable runs borrowed directly from the input.
+/// Parser events with text and APC payload runs borrowed directly from the input.
 /// Controls and text split across input boundaries retain scalar [`Event`]s.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum BatchEvent<'a> {
     PrintAscii(&'a [u8]),
     /// Valid printable UTF-8, which may also contain ASCII characters.
     PrintUtf8(&'a str),
+    /// Printable ASCII in an APC payload; control bytes retain scalar events.
+    ApcPut(&'a [u8]),
     Event(Event<'a>),
 }
 
@@ -378,14 +380,20 @@ impl Parser {
         self.retain_continuation(bytes);
     }
 
-    /// Like [`Self::advance`], but emit printable text as borrowed runs.
+    /// Like [`Self::advance`], but emit printable text and APC data as borrowed runs.
     /// Pending UTF-8 and escape sequences keep their scalar path.
     pub fn advance_batched(&mut self, bytes: &[u8], mut handler: impl FnMut(BatchEvent<'_>)) {
         let mut remaining = bytes;
         while let Some(&byte) = remaining.first() {
-            if (b' '..=b'~').contains(&byte) && self.is_ground() {
+            if (b' '..=b'~').contains(&byte)
+                && (self.is_ground() || self.state == State::SosPmApcString)
+            {
                 let len = printable_ascii_prefix(remaining);
-                handler(BatchEvent::PrintAscii(&remaining[..len]));
+                handler(if self.state == State::SosPmApcString {
+                    BatchEvent::ApcPut(&remaining[..len])
+                } else {
+                    BatchEvent::PrintAscii(&remaining[..len])
+                });
                 remaining = &remaining[len..];
             } else {
                 if (0xc2..=0xf4).contains(&byte) && self.is_ground() {
@@ -651,6 +659,20 @@ mod tests {
     }
 
     #[test]
+    fn apc_payload_uses_a_borrowed_run() {
+        let bytes = b"\x1b_Ga=t,f=32;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\x1b\\";
+        let mut scalar_payload_events = 0;
+        Parser::new().advance_batched(bytes, |event| {
+            scalar_payload_events +=
+                usize::from(matches!(event, BatchEvent::Event(Event::ApcPut(_))));
+        });
+        assert_eq!(
+            scalar_payload_events, 0,
+            "ASCII image data must not dispatch per byte"
+        );
+    }
+
+    #[test]
     fn printable_batches_preserve_scalar_events_and_continuations() {
         let bytes = [
             b"hello\x7f world\x80\xc2\x9b\xf0\x9fASCII\xed\xa0\x80\xf0\x9f\x1b[31mred\x1b[0m\x07\x1b]2;title\x07\x1bP1;2qraw ascii\x1b\\\x1b_Ga=t;AAAA\x1b\\end".as_slice(),
@@ -691,6 +713,14 @@ mod tests {
                             assert!(run.as_bytes().as_ptr_range().end <= chunk.as_ptr_range().end);
                             unicode_runs += usize::from(!run.is_ascii());
                             actual.extend(run.chars().map(|cp| format!("{:?}", Event::Print(cp))));
+                        }
+                        BatchEvent::ApcPut(run) => {
+                            assert!(!run.is_empty());
+                            assert!(run.as_ptr() >= chunk.as_ptr());
+                            assert!(run.as_ptr_range().end <= chunk.as_ptr_range().end);
+                            actual.extend(
+                                run.iter().map(|&byte| format!("{:?}", Event::ApcPut(byte))),
+                            );
                         }
                         BatchEvent::Event(event) => actual.push(format!("{event:?}")),
                     });

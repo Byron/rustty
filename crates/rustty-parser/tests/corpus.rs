@@ -18,6 +18,11 @@ fn parse(bytes: &[u8], chunk: usize, batched: bool) -> (u64, State, bool) {
                         Event::Print(cp).hash(&mut hash);
                     }
                 }
+                BatchEvent::ApcPut(bytes) => {
+                    for &byte in bytes {
+                        Event::ApcPut(byte).hash(&mut hash);
+                    }
+                }
                 BatchEvent::Event(event) => event.hash(&mut hash),
             });
         } else {

@@ -395,3 +395,32 @@ fn printable_runs_resume_from_snapshots_at_every_byte_boundary() {
         }
     }
 }
+
+#[test]
+fn apc_batches_preserve_pixels_glyph_limits_and_unfinished_payloads() {
+    let input = b"\x1b_Ga=T,f=32,s=1,v=1,i=7,q=2;/wAAgA==\x1b\\\x1b_25a1;s;\x1b\\\x1b_25a1;s\x1b\\\x1b_25a1;unfinished";
+    for enabled in [false, true] {
+        let mut expected = Terminal::new(8, 3, 0);
+        expected.glyphs.set_enabled(enabled);
+        expected.glyphs.set_apc_limit(Some(1));
+        let expected_effects = deliver(&mut expected, input, 1, false);
+        assert_eq!(*expected.graphics().images[&7].pixels, [255, 0, 0, 128]);
+        assert_eq!(expected_effects.len(), usize::from(enabled));
+        for chunk in 1..=input.len() {
+            for handler in [false, true] {
+                let mut actual = Terminal::new(8, 3, 0);
+                actual.glyphs.set_enabled(enabled);
+                actual.glyphs.set_apc_limit(Some(1));
+                assert_eq!(
+                    deliver(&mut actual, input, chunk, handler),
+                    expected_effects
+                );
+                assert_eq!(
+                    actual.graphics().images[&7].pixels,
+                    expected.graphics().images[&7].pixels
+                );
+                same_state(&actual, &expected, "APC chunks preserve the scalar result");
+            }
+        }
+    }
+}

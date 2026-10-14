@@ -327,6 +327,10 @@ impl Terminal {
                     self.print_utf8(text);
                     return;
                 }
+                BatchEvent::ApcPut(bytes) => {
+                    self.apc_put(bytes);
+                    return;
+                }
                 BatchEvent::Event(event) => event,
             };
             self.handle(event, &mut pending, true, true);
@@ -361,6 +365,10 @@ impl Terminal {
                 }
                 BatchEvent::PrintUtf8(text) => {
                     self.print_utf8(text);
+                    return;
+                }
+                BatchEvent::ApcPut(bytes) => {
+                    self.apc_put(bytes);
                     return;
                 }
                 BatchEvent::Event(event) => event,
@@ -883,24 +891,7 @@ impl Terminal {
                 self.apc_glyph_limit = None;
                 self.string_overflow = false;
             }
-            Event::ApcPut(byte) => {
-                if self.string_overflow {
-                    // A disabled or over-limit glyph command stays ignored.
-                } else if self
-                    .apc_glyph_limit
-                    .map_or(self.apc.len() >= 64 * 1024 * 1024, |limit| {
-                        self.apc.len() - 5 >= limit
-                    })
-                {
-                    self.string_overflow = true;
-                } else {
-                    self.apc.push(byte);
-                    if self.apc.as_slice() == b"25a1;" {
-                        self.apc_glyph_limit = Some(self.glyphs.apc_limit());
-                        self.string_overflow = !self.glyphs.enabled();
-                    }
-                }
-            }
+            Event::ApcPut(byte) => self.apc_put(&[byte]),
             Event::ApcEnd => {
                 let mut apc = std::mem::take(&mut self.apc);
                 if !self.string_overflow {
@@ -923,6 +914,31 @@ impl Terminal {
                 effects.push(Effect::UnknownSequence("OSC exceeded capture limit".into()))
             }
         }
+    }
+
+    fn apc_put(&mut self, mut bytes: &[u8]) {
+        if self.string_overflow {
+            return;
+        }
+        if self.apc.len() < 5 {
+            let prefix = bytes.len().min(5 - self.apc.len());
+            self.apc.extend_from_slice(&bytes[..prefix]);
+            bytes = &bytes[prefix..];
+            if self.apc.as_slice() == b"25a1;" {
+                self.apc_glyph_limit = Some(self.glyphs.apc_limit());
+                self.string_overflow = !self.glyphs.enabled();
+                if self.string_overflow {
+                    return;
+                }
+            }
+        }
+        let limit = self
+            .apc_glyph_limit
+            .map_or(64 * 1024 * 1024, |limit| limit.saturating_add(5));
+        let available = limit.saturating_sub(self.apc.len());
+        self.apc
+            .extend_from_slice(&bytes[..bytes.len().min(available)]);
+        self.string_overflow = bytes.len() > available;
     }
 
     /// Fill ordinary row spans without repeating cursor and page lookup per cell.

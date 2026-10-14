@@ -872,3 +872,51 @@ git diff --check
 
 GPU validation used Metal on an Apple M4 Max. Native presentation timing,
 other GPU backends and the full workspace test suite were not measured or run.
+
+## Tix rounded graph uploads: batched APC payloads, 2026-10-14
+
+A fresh capture of Tix scrolling Git's own history contains 509 completed
+synchronized frames and 123 MB of terminal output, including 30,226 image
+uploads. The isolated PTY used 240×90 cells at 16×35 pixels. The previous parser
+dispatched an APC event for every base64 byte; the terminal checked capture
+limits and drained pending effects after each byte. A sampled replay identified
+that byte handling as the largest part of terminal feed time.
+
+APC printable ASCII now uses the existing borrowed-run scanner. The terminal
+copies each run within its existing 64 MiB graphics limit and latched glyph
+limit. Controls, terminators, disabled glyphs and unfinished continuation state
+keep their existing behavior. No payload limit or graphics protocol changes.
+
+Baseline `361990fc5` and the candidate use Rust 1.95.0, identical dependencies,
+thin LTO and one codegen unit on macOS arm64. Ten sequential complete-capture
+samples per version ran in forward and reverse order. Each replay keeps one
+terminal and CPU renderer alive; feed, viewport snapshot, CPU preparation and
+single-pane composition are timed separately. Setup, file reads and final
+destruction are excluded. Medians cover the entire 509-frame capture:
+
+| Timed work | Before | APC runs |
+| --- | ---: | ---: |
+| Terminal feed | 857.30 ms | 389.83 ms |
+| All four CPU stages | 1,859.35 ms | 1,469.32 ms |
+
+Feed is 2.20 times faster. The unchanged preparation/composition stages vary
+between the runs, so the 21% reduction in their combined CPU stages is a narrower
+claim than a native scrolling improvement. All 509 canonical terminal, complete
+image-pixel and placement-state hashes match across versions.
+
+All 378 parser/VT tests pass, including the full scalar/batched parser corpus,
+both feed APIs, every payload chunk size, glyph prefix/limit handling and pixel
+checks. A workspace compile check also passes. Reproduction source, frozen
+binaries, captures' locations, state hashes and raw samples are retained under
+`/tmp/rustty-scroll-oct14`. The replay does not measure native presentation,
+input latency or whole-process CPU while scrolling.
+
+An additional candidate replay rendered every captured frame into an offscreen
+Metal target, retaining the CPU renderer, GPU renderer and texture throughout.
+It used Menlo at 13 points and 2× display scale, and waited for completion after
+each frame. GPU preparation totaled 218.79 ms (median/p95 0.430/0.638 ms per
+frame); submission plus completion waits totaled 715.54 ms (1.251/2.492 ms).
+All frames completed without GPU validation errors. These CPU-observed wall
+times include driver work and waiting, not GPU timestamps or native window
+presentation. They do not establish the reported sustained process CPU usage.
+The temporary GPU harness and results are under the same artifact directory.
