@@ -49,9 +49,9 @@ def main [
     cp ($root | path join crates rustty-font resources NerdFontsSymbols-LICENSE.txt) $notices
     cp ($source | path join README.md) ($notices | path join Resources.md)
 
-    # Reuse Ghostty's checked-in macOS artwork at the sizes iconutil requires.
+    # Resize Rustty's checked-in artwork to the sizes iconutil requires.
     let iconset = ($stage | path join Rustty.iconset)
-    let icon = ($root | path join macos Assets.xcassets AppIconImage.imageset macOS-AppIcon-1024px.png)
+    let icon = ($source | path join icons rustty.png)
     mkdir $iconset
     for size in [16 32 128 256 512] {
         for scale in [1 2] {
