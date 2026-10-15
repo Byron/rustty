@@ -284,6 +284,7 @@ pub fn search_shortcut(action: &config::Action) -> bool {
             | ToggleFullscreen
             | ToggleCommandPalette
             | Themes
+            | StreamDeck(_)
             | NextTab
             | PreviousTab
             | LastTab

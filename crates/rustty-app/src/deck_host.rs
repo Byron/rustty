@@ -42,6 +42,7 @@ fn task_label(terminal_title: &str, cwd: &std::path::Path) -> String {
 
 pub(super) struct Connection {
     pub report_generation: u64,
+    connected: bool,
     dashboard: Dashboard,
     worker: Option<Worker>,
     discovery: Option<Discovery>,
@@ -58,6 +59,7 @@ impl Default for Connection {
     fn default() -> Self {
         Self {
             report_generation: 0,
+            connected: false,
             dashboard: Dashboard::default(),
             worker: None,
             discovery: None,
@@ -73,6 +75,9 @@ impl Default for Connection {
     }
 }
 impl Connection {
+    pub(super) fn commands_available(&self) -> bool {
+        self.connected && !self.stopping
+    }
     pub(super) fn registration_transition(&mut self) {
         self.dashboard.board.mode_generation += 1;
     }
@@ -87,6 +92,7 @@ impl Connection {
         self.worker.is_some() || self.discovery.is_some()
     }
     pub fn stop(&mut self) {
+        self.connected = false;
         self.stopping = true;
         self.next_check = None;
         self.dashboard.gesture = None;
@@ -97,6 +103,7 @@ impl Connection {
     }
     pub fn reap(&mut self) {
         if self.worker.as_ref().is_some_and(Worker::is_finished) {
+            self.connected = false;
             let _ = self.worker.take().unwrap().join();
             self.actions = None;
         }
@@ -116,6 +123,76 @@ impl Connection {
     }
 }
 impl App {
+    fn cycle_deck(&mut self, group: usize) {
+        self.cycle_deck_with_host(group, None);
+    }
+    fn cycle_deck_with_host(&mut self, group: usize, host: Option<&mut Host>) {
+        self.sync_deck_with_host(host.as_deref());
+        // Chained shortcuts can navigate again before the native focus event arrives.
+        let focused = if host.is_some() {
+            self.active.and_then(|id| self.focused(id))
+        } else {
+            self.deck_focused()
+        };
+        if let Some(capture) = self.deck.dashboard.cycle(group, focused)
+            && let Some(target) = capture
+                .target
+                .filter(|target| self.live_deck_target(*target))
+        {
+            self.reveal_pane_with_host(target.pane, host);
+        }
+    }
+    fn pull_deck_to_first(&mut self) {
+        self.sync_deck();
+        if self.deck.dashboard.pull_to_first(&mut self.workspace) {
+            self.changed();
+        }
+        self.sync_deck();
+    }
+    pub(super) fn deck_command(&mut self, command: config::StreamDeckAction) -> bool {
+        self.deck_command_with_host(command, None)
+    }
+    pub(super) fn deck_command_with_host(
+        &mut self,
+        command: config::StreamDeckAction,
+        mut host: Option<&mut Host>,
+    ) -> bool {
+        use config::StreamDeckAction;
+        if !self.config().stream_deck || !self.deck.commands_available() {
+            return false;
+        }
+        if !self.deck.dashboard.board.screens_awake
+            && !matches!(
+                command,
+                StreamDeckAction::NextPage | StreamDeckAction::Brightness
+            )
+        {
+            return false;
+        }
+        match command {
+            StreamDeckAction::NeedsInput => self.cycle_deck_with_host(0, host.as_deref_mut()),
+            StreamDeckAction::Working => self.cycle_deck_with_host(1, host.as_deref_mut()),
+            StreamDeckAction::Done => self.cycle_deck_with_host(2, host.as_deref_mut()),
+            StreamDeckAction::Idle => self.cycle_deck_with_host(3, host.as_deref_mut()),
+            StreamDeckAction::NextPage => self.deck.dashboard.page(),
+            StreamDeckAction::Brightness => {
+                if let Some(worker) = &self.deck.worker {
+                    worker.request_brightness();
+                }
+            }
+            StreamDeckAction::PullToFirst => {
+                self.sync_deck_with_host(host.as_deref());
+                if self.deck.dashboard.pull_to_first(&mut self.workspace) {
+                    self.changed();
+                }
+            }
+        }
+        self.sync_deck_with_host(host.as_deref());
+        if let Some(worker) = &self.deck.worker {
+            worker.submit(self.deck.dashboard.board.clone());
+        }
+        true
+    }
     fn deck_focused(&self) -> Option<Id> {
         if !self.deck.dashboard.board.screens_awake {
             return None;
@@ -126,7 +203,19 @@ impl App {
             .and_then(|host| self.focused(host.id))
     }
     fn sync_deck(&mut self) {
-        let focused = self.deck_focused();
+        self.sync_deck_with_host(None);
+    }
+    fn sync_deck_with_host(&mut self, host: Option<&Host>) {
+        let focused = host
+            .filter(|host| {
+                self.deck.dashboard.board.screens_awake
+                    && host.visible
+                    && host.focused
+                    && !host.occluded
+                    && host.peek.is_none()
+            })
+            .and_then(|host| self.focused(host.id))
+            .or_else(|| self.deck_focused());
         if let Some(pane) = focused.and_then(|id| self.panes.get_mut(&id)) {
             pane.agent.acknowledge();
         }
@@ -173,6 +262,9 @@ impl App {
     }
     /// Notification and physical dashboard actions share the exact native reveal path.
     pub(super) fn reveal_pane(&mut self, pane: Id) {
+        self.reveal_pane_with_host(pane, None);
+    }
+    fn reveal_pane_with_host(&mut self, pane: Id, mut host: Option<&mut Host>) {
         let target = self.workspace.windows.iter().find_map(|window| {
             window
                 .tabs
@@ -183,34 +275,44 @@ impl App {
         let Some((id, tab, quick)) = target else {
             return;
         };
-        let Some(native) = self
+        let native = self
             .windows
             .iter()
-            .find_map(|(native, host)| (host.id == id).then_some(*native))
-        else {
+            .find_map(|(native, host)| (host.id == id).then_some(*native));
+        if native.is_none() && host.as_deref().is_none_or(|host| host.id != id) {
             return;
-        };
+        }
         let index = self.index(id).unwrap();
         self.workspace.windows[index].active_tab = tab;
         self.focus_pane(id, pane);
-        if let Some(mut host) = self.windows.remove(&native) {
-            host.peek = None;
-            if quick {
-                self.quick_visible(&mut host, true, false);
-            } else {
-                host.visible = true;
-                host.window.set_visible(true);
-                host.window.set_minimized(false);
-                host.window.focus_window();
-            }
-            host.repaint();
+        if let Some(host) = host.as_deref_mut().filter(|host| host.id == id) {
+            self.reveal_deck_host(host, quick);
+        } else if let Some(native) = native
+            && let Some(mut host) = self.windows.remove(&native)
+        {
+            self.reveal_deck_host(&mut host, quick);
             self.windows.insert(native, host);
         }
         self.active = Some(id);
         if let Some(state) = self.panes.get_mut(&pane) {
             state.agent.acknowledge();
         }
-        self.sync_host_state();
+        // Detached hosts are restored before their caller synchronizes session focus.
+        if host.is_none() {
+            self.sync_host_state();
+        }
+    }
+    fn reveal_deck_host(&mut self, host: &mut Host, quick: bool) {
+        host.peek = None;
+        if quick {
+            self.quick_visible(host, true, false);
+        } else {
+            host.visible = true;
+            host.window.set_visible(true);
+            host.window.set_minimized(false);
+            host.window.focus_window();
+        }
+        host.repaint();
     }
     fn deck_action(&mut self, action: Action) {
         // Brightness acknowledgement remains truthful even if disable raced the USB write.
@@ -224,12 +326,16 @@ impl App {
         if !self.deck.dashboard.board.screens_awake
             && !matches!(
                 action,
-                Action::Disconnected(_) | Action::Page { .. } | Action::WakeScreens
+                Action::Connected
+                    | Action::Disconnected(_)
+                    | Action::Page { .. }
+                    | Action::WakeScreens
             )
         {
             return;
         }
         match action {
+            Action::Connected => self.deck.connected = true,
             Action::Gesture(source) => {
                 self.deck.dashboard.gesture = source.filter(|s| {
                     self.deck.dashboard.board.valid(*s)
@@ -268,12 +374,18 @@ impl App {
             Action::Cycle { group, generation } => {
                 self.sync_deck();
                 if generation == self.deck.dashboard.board.mode_generation {
-                    let focused = self.deck_focused();
-                    if let Some(capture) = self.deck.dashboard.cycle(group, focused)
-                        && let Some(target) = capture.target.filter(|t| self.live_deck_target(*t))
-                    {
-                        self.reveal_pane(target.pane);
-                    }
+                    self.cycle_deck(group);
+                }
+            }
+            Action::PullToFirst {
+                generation,
+                mode_generation,
+            } => {
+                self.sync_deck();
+                if generation == self.deck.dashboard.board.generation
+                    && mode_generation == self.deck.dashboard.board.mode_generation
+                {
+                    self.pull_deck_to_first();
                 }
             }
             Action::Page { generation } => {
@@ -282,6 +394,7 @@ impl App {
                 }
             }
             Action::Disconnected(result) => {
+                self.deck.connected = false;
                 self.deck.stopping = true;
                 self.deck.dashboard.gesture = None;
                 self.deck.dashboard.moving = false;
@@ -347,6 +460,7 @@ impl App {
         self.sync_deck();
         let now = Instant::now();
         if self.deck.worker.as_ref().is_some_and(Worker::is_finished) {
+            self.deck.connected = false;
             if let Err(error) = self.deck.worker.take().unwrap().join() {
                 self.deck.diagnostic(&error);
             }
@@ -401,6 +515,11 @@ impl App {
                 Err(error) if config.0 && !cancelled => self.deck.diagnostic(&error),
                 _ => {}
             }
+        }
+        if let Some(platform) = &mut self.platform
+            && let Err(error) = platform.set_stream_deck_connected(self.deck.commands_available())
+        {
+            self.deck.diagnostic(&error);
         }
         if !config.0 {
             self.deck.next_check = None;
@@ -554,6 +673,106 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
             .get(&hidden)
             .is_none_or(|p| p.agent.view(hidden, "", &p.activity).is_none())
     );
+    // Simulate readiness without starting discovery or owning the physical device.
+    use config::StreamDeckAction;
+    let enabled = app.loaded.config.stream_deck;
+    let stopping = app.deck.stopping;
+    app.loaded.config.stream_deck = true;
+    app.deck.stopping = false;
+    assert!(!app.deck_command(StreamDeckAction::PullToFirst));
+    app.deck_action(Action::Connected);
+    for (id, state) in [(first, State::Idle), (second, State::Working)] {
+        app.panes.get_mut(&id).unwrap().agent.apply(
+            AgentEvent::Update(snapshot(state, None)),
+            0,
+            false,
+        );
+    }
+    let input_before = [
+        app.panes[&first].input_bytes,
+        app.panes[&second].input_bytes,
+    ];
+    app.workspace.deck_positions = vec![Some(first)];
+    app.workspace.deck_positions.resize(9, None);
+    app.workspace.deck_positions.push(Some(second));
+    app.sync_deck();
+    assert!(app.deck_command(StreamDeckAction::NextPage));
+    assert_eq!(app.deck.dashboard.board.page, 1);
+    assert!(app.platform_action(
+        event_loop,
+        config::Action::StreamDeck(StreamDeckAction::PullToFirst),
+        false,
+    ));
+    assert_eq!(app.workspace.deck_positions, [Some(first), Some(second)]);
+    assert_eq!(app.deck.dashboard.board.page, 0);
+    let queued = Action::PullToFirst {
+        generation: app.deck.dashboard.board.generation,
+        mode_generation: app.deck.dashboard.board.mode_generation,
+    };
+    assert!(app.deck_command(StreamDeckAction::PullToFirst));
+    let mode = app.deck.dashboard.board.mode_generation;
+    app.deck_action(queued);
+    assert_eq!(app.deck.dashboard.board.mode_generation, mode);
+    app.deck_action(Action::PullToFirst {
+        generation: app.deck.dashboard.board.generation,
+        mode_generation: mode,
+    });
+    assert_eq!(app.deck.dashboard.board.mode_generation, mode + 1);
+    app.reveal_pane(first);
+    let key = app
+        .windows
+        .iter()
+        .find_map(|(key, host)| (host.id == two).then_some(*key))
+        .unwrap();
+    let mut host = app.windows.remove(&key).unwrap();
+    assert!(app.action(
+        event_loop,
+        &mut host,
+        config::Action::StreamDeck(StreamDeckAction::Working),
+        false,
+    ));
+    app.windows.insert(key, host);
+    assert_eq!(app.active, Some(two));
+    assert_eq!(app.focused(two), Some(second));
+    for scenario in 0..3 {
+        if scenario == 2 {
+            let window = app.workspace.windows.remove(app.index(two).unwrap());
+            let index = app.index(one).unwrap();
+            app.workspace.windows[index].tabs.extend(window.tabs);
+            app.reconcile(event_loop);
+        }
+        app.reveal_pane(first);
+        for id in [first, second] {
+            app.panes.get_mut(&id).unwrap().title = "keep until reset".into();
+        }
+        let mut binding = config::KeyBinding::parse(if scenario == 1 {
+            "global:ctrl+alt+p=stream_deck:working"
+        } else {
+            "ctrl+alt+p=stream_deck:working"
+        })?;
+        binding.actions.push(config::Action::Reset);
+        if scenario == 1 {
+            app.platform_binding(event_loop, binding);
+        } else {
+            let mut host = app.windows.remove(&native).unwrap();
+            assert!(app.host_binding(event_loop, &mut host, binding));
+            app.windows.insert(native, host);
+        }
+        assert_eq!(app.panes[&first].title, "keep until reset");
+        assert!(app.panes[&second].title.is_empty());
+        assert_eq!(app.focused(app.active.unwrap()), Some(second));
+    }
+    assert_eq!(
+        [
+            app.panes[&first].input_bytes,
+            app.panes[&second].input_bytes
+        ],
+        input_before
+    );
+    app.deck_action(Action::Disconnected(Ok(())));
+    assert!(!app.deck_command(StreamDeckAction::PullToFirst));
+    app.loaded.config.stream_deck = enabled;
+    app.deck.stopping = stopping;
     // Saving `never` leaves even already-existing workspace bytes untouched.
     let before = std::fs::read(&app.state_path).ok();
     let policy = app.loaded.config.window_save_state;
@@ -567,7 +786,7 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
     assert!(app.deck.worker.is_none());
     assert!(app.deck.discovery.is_none());
     eprintln!(
-        "Native Stream Deck smoke: exact panes across windows/tabs, minimized reveal, quick animation request, completion acknowledgement, input preservation, pane removal and save-state-never passed; no USB used"
+        "Native Stream Deck smoke: exact panes across windows/tabs, minimized reveal, quick animation request, completion acknowledgement, menu/shortcut chains, pull-to-first, stale control rejection, disconnected gating, input preservation, pane removal and save-state-never passed; no USB used"
     );
     Ok(())
 }
@@ -621,6 +840,9 @@ mod tests {
     fn absent_device_has_no_resident_worker_and_reloads_cannot_accelerate_discovery() {
         let now = Instant::now();
         let mut connection = Connection::default();
+        assert!(!connection.commands_available());
+        connection.connected = true;
+        assert!(connection.commands_available());
         assert!(!connection.busy());
         assert!(connection.deadline().is_none());
         assert_eq!(discovery_deadline(now, None), now);
@@ -634,6 +856,7 @@ mod tests {
         );
         connection.next_check = Some(now);
         connection.stop();
+        assert!(!connection.commands_available());
         assert!(connection.deadline().is_none());
         // Completed discovery is reaped without starting a USB/rendering worker.
         connection.discovery = Some(std::thread::spawn(|| Ok(None)));

@@ -4,7 +4,7 @@ use muda::{
     AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu,
     accelerator::{Key, KeyAccelerator, Modifiers},
 };
-use rustty::config::{Action, Config, Direction, KeyTrigger};
+use rustty::config::{Action, Config, Direction, KeyTrigger, StreamDeckAction};
 use std::ffi::c_void;
 
 mod paint;
@@ -23,6 +23,8 @@ pub(super) fn message_hook(message: *const c_void) -> bool {
 pub(super) struct NativeMenu {
     menu: Menu,
     actions: Vec<(MenuItem, Action)>,
+    stream_deck_menu: Submenu,
+    stream_deck_connected: bool,
     _paint: paint::Runtime,
 }
 impl NativeMenu {
@@ -86,6 +88,18 @@ impl NativeMenu {
         ] {
             append(&window, &mut actions, name, action)?;
         }
+        let stream_deck = Submenu::new("&Stream Deck", true);
+        for (name, action) in [
+            ("Next Needing Input", StreamDeckAction::NeedsInput),
+            ("Next Working", StreamDeckAction::Working),
+            ("Next Done", StreamDeckAction::Done),
+            ("Next Idle", StreamDeckAction::Idle),
+            ("Next Page", StreamDeckAction::NextPage),
+            ("Cycle Brightness", StreamDeckAction::Brightness),
+            ("Pull to First Page", StreamDeckAction::PullToFirst),
+        ] {
+            append(&stream_deck, &mut actions, name, Action::StreamDeck(action))?;
+        }
         let help = Submenu::new("&Help", true);
         help.append(&PredefinedMenuItem::about(
             Some("About Rustty"),
@@ -117,6 +131,8 @@ impl NativeMenu {
         Ok(Self {
             menu,
             actions,
+            stream_deck_menu: stream_deck,
+            stream_deck_connected: false,
             _paint: paint,
         })
     }
@@ -131,6 +147,19 @@ impl NativeMenu {
     pub fn detach(&self, hwnd: HWND) {
         paint::detach(hwnd);
         let _ = unsafe { self.menu.remove_for_hwnd(hwnd.0 as isize) };
+    }
+    pub fn set_stream_deck_connected(&mut self, connected: bool) -> Result<(), String> {
+        if connected == self.stream_deck_connected {
+            return Ok(());
+        }
+        if connected {
+            self.menu.insert(&self.stream_deck_menu, 4)
+        } else {
+            self.menu.remove(&self.stream_deck_menu)
+        }
+        .map_err(err)?;
+        self.stream_deck_connected = connected;
+        Ok(())
     }
     pub fn update(&self, config: &Config) -> Result<(), String> {
         for (item, action) in &self.actions {
@@ -280,7 +309,7 @@ mod tests {
     fn native_menu_labels_do_not_intercept_host_shortcuts() {
         let events = Arc::new(Mutex::new(Vec::new()));
         let sink = events.clone();
-        let fixture = Fixture {
+        let mut fixture = Fixture {
             menu: NativeMenu::new(Arc::new(move |event| {
                 if let PlatformEvent::Action(action) = event {
                     sink.lock().unwrap().push(action);
@@ -376,5 +405,61 @@ mod tests {
             [Action::NewWindow],
             "native menu clicks still dispatch actions"
         );
+
+        let root = unsafe { GetMenu(fixture.normal.0) };
+        assert_eq!(unsafe { GetMenuItemCount(Some(root)) }, 5);
+        fixture.menu.set_stream_deck_connected(false).unwrap();
+        config
+            .keybinds
+            .push(KeyBinding::parse("ctrl+shift+p=stream_deck:pull_to_first").unwrap());
+        fixture.menu.update(&config).unwrap();
+        for with_shortcut in [true, false] {
+            if !with_shortcut {
+                config.keybinds.pop();
+                fixture.menu.update(&config).unwrap();
+            }
+            fixture.menu.set_stream_deck_connected(true).unwrap();
+            fixture.menu.set_stream_deck_connected(true).unwrap();
+            assert_eq!(unsafe { GetMenuItemCount(Some(root)) }, 6);
+            let deck = unsafe { GetSubMenu(root, 4) };
+            assert_eq!(unsafe { GetMenuItemCount(Some(deck)) }, 7);
+            let length = unsafe { GetMenuStringW(deck, 6, Some(&mut text), MF_BYPOSITION) };
+            let label = String::from_utf16(&text[..length as usize]).unwrap();
+            if with_shortcut {
+                assert!(label.starts_with("Pull to First Page\t"));
+                assert!(label.len() > "Pull to First Page\t".len());
+            } else {
+                assert_eq!(label, "Pull to First Page");
+            }
+            events.lock().unwrap().clear();
+            let expected = [
+                StreamDeckAction::NeedsInput,
+                StreamDeckAction::Working,
+                StreamDeckAction::Done,
+                StreamDeckAction::Idle,
+                StreamDeckAction::NextPage,
+                StreamDeckAction::Brightness,
+                StreamDeckAction::PullToFirst,
+            ];
+            for index in 0..expected.len() {
+                let command = unsafe { GetMenuItemID(deck, index as i32) };
+                unsafe {
+                    SendMessageW(
+                        fixture.normal.0,
+                        WM_COMMAND,
+                        Some(WPARAM(command as usize)),
+                        Some(LPARAM(0)),
+                    );
+                }
+            }
+            assert_eq!(
+                *events.lock().unwrap(),
+                expected.map(Action::StreamDeck),
+                "commands created while hidden must dispatch after every connection"
+            );
+            fixture.menu.set_stream_deck_connected(false).unwrap();
+            fixture.menu.set_stream_deck_connected(false).unwrap();
+            assert_eq!(unsafe { GetMenuItemCount(Some(root)) }, 5);
+        }
     }
 }
