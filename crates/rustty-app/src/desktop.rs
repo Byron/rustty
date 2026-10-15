@@ -220,6 +220,11 @@ struct PendingPaste {
 enum Confirmation {
     Close(Action),
     Paste(PendingPaste),
+    OpenUrl {
+        uri: String,
+        cwd: PathBuf,
+        handler: String,
+    },
 }
 
 struct LayoutPicker {
@@ -1329,6 +1334,18 @@ impl App {
         self.terminal_input(host, paste.pane);
         self.write(paste.pane, bytes);
         host.repaint();
+    }
+    fn open_url(&mut self, host: &mut Host, uri: String, cwd: PathBuf, approved: bool) {
+        if let Some(platform) = &self.platform {
+            match platform.open_url(&uri, &cwd, approved) {
+                Ok(Some(handler)) => {
+                    host.confirm = Some(Confirmation::OpenUrl { uri, cwd, handler })
+                }
+                Ok(None) => {}
+                Err(error) => self.errors.push(error),
+            }
+            host.repaint();
+        }
     }
     fn drop_file(&mut self, host: &mut Host, position: Pos2, path: &Path) {
         if host.modal_input()
@@ -3718,60 +3735,73 @@ impl App {
             }
             let mut confirmed = None;
             if let Some(confirmation) = &host.confirm {
-                let is_paste = matches!(confirmation, Confirmation::Paste(_));
-                egui::Window::new(if is_paste {
-                    "Paste potentially unsafe text?"
-                } else {
-                    "Close running commands?"
-                })
-                .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .show(ctx, |ui| {
-                    match confirmation {
-                        Confirmation::Close(_) => {
-                            ui.label("Closing this terminal will stop its running commands.");
-                        }
-                        Confirmation::Paste(paste) => {
-                            if let Some(pane) = self.panes.get(&paste.pane) {
-                                ui.label(format!("Terminal: {}", pane.title));
-                            }
-                            ui.label(
-                                "This paste may run commands. Review the text before continuing.",
-                            );
-                            egui::ScrollArea::vertical()
-                                .max_height(160.0)
-                                .show(ui, |ui| {
-                                    let shown = paste.data.len().min(4096);
-                                    ui.add(
-                                        egui::Label::new(
-                                            egui::RichText::new(String::from_utf8_lossy(
-                                                &paste.data[..shown],
-                                            ))
-                                            .monospace(),
-                                        )
-                                        .wrap(),
-                                    );
-                                    if shown < paste.data.len() {
-                                        ui.label("… preview truncated");
-                                    }
-                                });
-                        }
+                let (title, button) = match confirmation {
+                    Confirmation::Close(_) => ("Close running commands?", "Close"),
+                    Confirmation::Paste(_) => ("Paste potentially unsafe text?", "Paste"),
+                    Confirmation::OpenUrl { .. } => {
+                        ("Open link from terminal output?", "Open Link")
                     }
-                    ui.horizontal(|ui| {
-                        if ui.button("Cancel").clicked()
-                            || ui.input(|input| input.key_pressed(egui::Key::Escape))
-                        {
-                            confirmed = Some(false);
+                };
+                egui::Window::new(title)
+                    .collapsible(false)
+                    .resizable(false)
+                    .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                    .show(ctx, |ui| {
+                        match confirmation {
+                            Confirmation::Close(_) => {
+                                ui.label("Closing this terminal will stop its running commands.");
+                            }
+                            Confirmation::Paste(paste) => {
+                                if let Some(pane) = self.panes.get(&paste.pane) {
+                                    ui.label(format!("Terminal: {}", pane.title));
+                                }
+                                ui.label(
+                                    "This paste may run commands. Review the text before continuing.",
+                                );
+                                egui::ScrollArea::vertical()
+                                    .max_height(160.0)
+                                    .show(ui, |ui| {
+                                        let shown = paste.data.len().min(4096);
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(String::from_utf8_lossy(
+                                                    &paste.data[..shown],
+                                                ))
+                                                .monospace(),
+                                            )
+                                            .wrap(),
+                                        );
+                                        if shown < paste.data.len() {
+                                            ui.label("… preview truncated");
+                                        }
+                                    });
+                            }
+                            Confirmation::OpenUrl { uri, handler, .. } => {
+                                ui.label(format!("This link will open in {handler}."));
+                                ui.label(
+                                    "Only continue if you recognize and trust the destination.",
+                                );
+                                egui::ScrollArea::vertical()
+                                    .max_height(160.0)
+                                    .show(ui, |ui| {
+                                        ui.add(
+                                            egui::Label::new(egui::RichText::new(uri).monospace())
+                                                .wrap(),
+                                        );
+                                    });
+                            }
                         }
-                        if ui
-                            .button(if is_paste { "Paste" } else { "Close" })
-                            .clicked()
-                        {
-                            confirmed = Some(true);
-                        }
+                        ui.horizontal(|ui| {
+                            if ui.button("Cancel").clicked()
+                                || ui.input(|input| input.key_pressed(egui::Key::Escape))
+                            {
+                                confirmed = Some(false);
+                            }
+                            if ui.button(button).clicked() {
+                                confirmed = Some(true);
+                            }
+                        });
                     });
-                });
             }
             if let Some(approved) = confirmed
                 && let Some(confirmation) = host.confirm.take()
@@ -3782,6 +3812,7 @@ impl App {
                         self.action(event_loop, host, action, true);
                     }
                     Confirmation::Paste(paste) => self.paste(host, paste, true),
+                    Confirmation::OpenUrl { uri, cwd, .. } => self.open_url(host, uri, cwd, true),
                 }
             }
             if let Some((pane, request)) = host.clipboard_request.front() {
@@ -4541,10 +4572,11 @@ impl App {
                 host.selection_drag = None;
                 if let Some(link) = &host.hovered_link
                     && link.pane == id
-                    && let Some(platform) = &self.platform
-                    && let Err(error) = platform.open_url(&link.uri, &pane.cwd)
                 {
-                    self.errors.push(error);
+                    let uri = link.uri.clone();
+                    let cwd = pane.cwd.clone();
+                    drop(terminal);
+                    self.open_url(host, uri, cwd, false);
                 }
             } else {
                 host.selection_drag = Some((id, input::SelectionDrag::new(point, host.mouse)));
