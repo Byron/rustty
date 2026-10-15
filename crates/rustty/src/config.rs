@@ -189,6 +189,34 @@ pub struct Theme {
     pub dark: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThemeChoice {
+    pub name: String,
+    pub path: PathBuf,
+    pub user: bool,
+}
+
+impl ThemeChoice {
+    /// User paths survive switching config families; bundled names stay portable.
+    pub fn config_value(&self) -> String {
+        let value = if self.user
+            || self.name.starts_with("light:")
+            || self.name.starts_with("dark:")
+            || self.name.trim() != self.name
+            || self.name.contains(['/', '\\'])
+        {
+            self.path.to_string_lossy().into_owned()
+        } else {
+            self.name.clone()
+        };
+        if value.starts_with('"') || value.trim() != value {
+            format!("\"{value}\"")
+        } else {
+            value
+        }
+    }
+}
+
 impl Theme {
     fn parse(value: &str) -> Result<Self, &'static str> {
         if !value.starts_with("light:") && !value.starts_with("dark:") {
@@ -716,6 +744,15 @@ impl ConfigLoader {
     }
 
     pub fn load_with_args(&self, args: &[String]) -> LoadedConfig {
+        self.load_overrides(args, None)
+    }
+
+    /// Preview a theme beneath explicit settings without changing any files.
+    pub fn load_with_theme(&self, args: &[String], theme: &str) -> LoadedConfig {
+        self.load_overrides(args, Some(theme))
+    }
+
+    fn load_overrides(&self, args: &[String], theme: Option<&str>) -> LoadedConfig {
         let own_app = self.app_config_home.as_ref().map_or_else(
             || self.home.join("Library/Application Support/com.rustty.app"),
             |root| root.join("Rustty"),
@@ -870,6 +907,15 @@ impl ConfigLoader {
                 &mut entries,
                 &mut includes,
             );
+        }
+        if let Some(theme) = theme {
+            entries.push(Entry {
+                path: self.working_directory.join("<theme-preview>"),
+                line: 1,
+                key: "theme".into(),
+                value: theme.into(),
+                quoted: false,
+            });
         }
         // Determine the final selected theme before applying it beneath all
         // explicit settings, regardless of where `theme` appears in a file.
@@ -1046,6 +1092,84 @@ impl ConfigLoader {
         }
     }
 
+    fn theme_dirs(&self, family: ConfigFamily) -> Vec<(PathBuf, bool)> {
+        let user_dir = if family == ConfigFamily::Rustty {
+            "rustty"
+        } else {
+            "ghostty"
+        };
+        let mut dirs = vec![(self.xdg_config_home.join(user_dir).join("themes"), true)];
+        if let Some(root) = &self.app_config_home {
+            dirs.push((
+                root.join(if user_dir == "rustty" {
+                    "Rustty"
+                } else {
+                    user_dir
+                })
+                .join("themes"),
+                true,
+            ));
+        }
+        if let Some(resources) = &self.resources_dir {
+            dirs.push((resources.join("themes"), false));
+        }
+        dirs
+    }
+
+    /// User themes precede bundled themes; duplicate names follow lookup order.
+    pub fn themes(&self, family: ConfigFamily) -> io::Result<Vec<ThemeChoice>> {
+        let mut seen = HashSet::new();
+        let mut choices = Vec::new();
+        for (dir, user) in self.theme_dirs(family) {
+            let entries = match fs::read_dir(dir) {
+                Ok(entries) => entries,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error),
+            };
+            for entry in entries {
+                let entry = entry?;
+                let Ok(name) = entry.file_name().into_string() else {
+                    continue;
+                };
+                // A non-file entry also shadows the same name during theme lookup.
+                if name.chars().any(char::is_control) || !seen.insert(name.clone()) {
+                    continue;
+                }
+                let path = entry.path();
+                let metadata = match fs::metadata(&path) {
+                    Ok(metadata) => metadata,
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                    Err(error) => return Err(error),
+                };
+                if !metadata.is_file() {
+                    continue;
+                }
+                let path = fs::canonicalize(path)?;
+                if !path
+                    .to_str()
+                    .is_some_and(|path| !path.chars().any(char::is_control))
+                {
+                    continue;
+                }
+                // Resolve through normal lookup to honor filesystem case and aliases.
+                if let Some(lookup) = self.theme_path(&name, family)
+                    && fs::canonicalize(lookup).ok().as_ref() != Some(&path)
+                {
+                    continue;
+                }
+                choices.push(ThemeChoice { name, path, user });
+            }
+        }
+        choices.sort_by_cached_key(|choice| {
+            (
+                !choice.user,
+                choice.name.to_lowercase(),
+                choice.name.clone(),
+            )
+        });
+        Ok(choices)
+    }
+
     fn theme_path(&self, name: &str, family: ConfigFamily) -> Option<PathBuf> {
         if name.starts_with("~/") {
             return Some(expand_path(name, &self.home, &self.home));
@@ -1057,36 +1181,10 @@ impl ConfigLoader {
         if name.is_empty() || name.contains(['/', '\\']) {
             return None;
         }
-        let user_dir = if family == ConfigFamily::Rustty {
-            "rustty"
-        } else {
-            "ghostty"
-        };
-        let user_path = self
-            .xdg_config_home
-            .join(user_dir)
-            .join("themes")
-            .join(name);
-        if present(&user_path) {
-            return Some(user_path);
-        }
-        if let Some(root) = &self.app_config_home {
-            let path = root
-                .join(if user_dir == "rustty" {
-                    "Rustty"
-                } else {
-                    user_dir
-                })
-                .join("themes")
-                .join(name);
-            if present(&path) {
-                return Some(path);
-            }
-        }
-        self.resources_dir
-            .as_ref()
-            .map(|p| p.join("themes").join(name))
-            .filter(|p| present(p))
+        self.theme_dirs(family)
+            .into_iter()
+            .map(|(dir, _)| dir.join(name))
+            .find(|path| present(path))
     }
 }
 

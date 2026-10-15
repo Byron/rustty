@@ -176,6 +176,21 @@ escape sequences. It works when terminal keyboard input is disabled. The child
 process keeps running; its own input settings or subsequent output can still
 require recovery within that application. Press Enter if the shell needs to
 redraw its prompt.
+
+Choose **Themes…** in the command palette to search user themes followed by
+bundled themes. Arrow keys or moving the pointer over a theme preview its
+appearance across open windows. Escape restores the previous appearance;
+Enter or a click keeps the theme for this session and shows the configuration
+line to add or edit. Rustty never writes configuration files from this picker.
+Explicit appearance settings still override the theme. Previews preserve
+shortcuts, commands, history limits and permissions, even in custom theme files.
+Reloading configuration (including an OS appearance change) restores the saved
+theme and closes any active preview. The `themes` action can also be bound to
+a key. Theme discovery follows the active configuration family: Rustty user
+themes live under `$XDG_CONFIG_HOME/rustty/themes` (normally
+`~/.config/rustty/themes`), or `%APPDATA%\Rustty\themes` on Windows; Ghostty
+fallback uses its corresponding `ghostty/themes` directory.
+
 Tabs, splits, zoom, quadrant navigation, clipboard and
 search use the configured Ghostty keybindings. Window layouts and pane directories
 are saved separately under `com.rustty.app`.
@@ -267,6 +282,8 @@ directory and exits. It uses the selected display configuration but does not
 restore or overwrite the regular app workspace.
 Find checks also capture `find-focused.png` and `find-unfocused.png` to verify
 the overlays and their transparency.
+Theme checks capture `theme-picker.png` and verify preview, cancellation,
+acceptance, reload and unchanged configuration files using isolated themes.
 
 On a locked or headless Mac, set `RUSTTY_SMOKE_OFFSCREEN=1` for an offscreen
 Metal capture of the same host primitives. The report labels this mode; it does

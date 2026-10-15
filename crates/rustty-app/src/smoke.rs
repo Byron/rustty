@@ -98,6 +98,7 @@ impl Smoke {
             "window.png",
             "find-focused.png",
             "find-unfocused.png",
+            "theme-picker.png",
             "result.json",
             "timing.json",
         ] {
@@ -344,12 +345,25 @@ impl Smoke {
         }
         let complete = done;
         if complete && self.timing.is_none() {
+            let mut host = app.windows.remove(&key).unwrap();
+            let result = check_themes(app, event_loop, &mut host, &self.directory);
+            app.windows.insert(key, host);
+            result?;
             if std::env::var_os("RUSTTY_SMOKE_DECK").is_some() {
                 super::deck_host::check_native_deck(app, event_loop)?;
             }
             #[cfg(target_os = "windows")]
             check_last_window_exit(app, event_loop)?;
             let mut report = self.report.take().ok_or("missing smoke report")?;
+            report["checks"].as_array_mut().unwrap().extend(
+                [
+                    "theme-preview",
+                    "theme-cancel",
+                    "theme-accept",
+                    "theme-reload",
+                ]
+                .map(serde_json::Value::from),
+            );
             if cfg!(target_os = "windows") {
                 report["checks"].as_array_mut().unwrap().extend(
                     ["last-window-exit", "layout-autosave", "layout-on-exit"]
@@ -842,6 +856,178 @@ impl Smoke {
         }
         Ok(false)
     }
+}
+
+fn check_themes(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    host: &mut Host,
+    directory: &Path,
+) -> Result<()> {
+    let directory = directory.join("theme-fixtures");
+    let user = directory.join("config/rustty");
+    let bundled = directory.join("resources/themes");
+    fs::create_dir_all(user.join("themes"))?;
+    fs::create_dir_all(&bundled)?;
+    let files = [
+        (
+            user.join("config.rustty"),
+            "theme = Saved\nstream-deck = false\n",
+        ),
+        (
+            user.join("themes/A Preview"),
+            "background = 445566\nforeground = ddeeff\n",
+        ),
+        (
+            user.join("themes/Saved"),
+            "background = 112233\nforeground = aabbcc\n",
+        ),
+        (
+            bundled.join("Bundled"),
+            "background = 778899\nforeground = ffffff\n",
+        ),
+    ];
+    for (path, source) in &files {
+        fs::write(path, source)?;
+    }
+    let loader = config::ConfigLoader {
+        home: directory.clone(),
+        xdg_config_home: directory.join("config"),
+        app_config_home: None,
+        resources_dir: Some(directory.join("resources")),
+        dark_mode: true,
+        working_directory: directory.clone(),
+    };
+    let original_loader = std::mem::replace(&mut app.config_loader, loader);
+    let original_args = std::mem::take(&mut app.config_args);
+    let original_loaded = app.loaded.clone();
+    let original_errors = std::mem::take(&mut app.errors);
+    let original_palette = std::mem::take(&mut host.palette);
+    let original_focus = host.focused;
+    let original_text_focus = host.focus_text_input;
+    host.focused = true;
+    host.egui.egui_input_mut().focused = true;
+    host.egui
+        .egui_input_mut()
+        .events
+        .push(egui::Event::WindowFocused(true));
+    let key = |host: &mut Host, key| {
+        for pressed in [true, false] {
+            host.egui.egui_input_mut().events.push(egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            });
+        }
+    };
+    let colors = |app: &App, background, foreground| -> Result<()> {
+        for pane in app.panes.values() {
+            let terminal = pane.session.terminal()?;
+            if terminal.background != background || terminal.foreground != foreground {
+                return Err("theme selection did not update every pane's default colors".into());
+            }
+        }
+        Ok(())
+    };
+    let result = (|| -> Result<()> {
+        app.loaded = app.config_loader.load();
+        app.apply_theme_config(
+            theme_preview::appearance(&original_loaded.config, app.loaded.config.clone()),
+            Some(host),
+        );
+        let saved = app.config().clone();
+        let preview_line = app
+            .config_loader
+            .themes(app.loaded.family)?
+            .iter()
+            .find(|theme| theme.name == "A Preview")
+            .map(|theme| format!("\ntheme = {}\n", theme.config_value()))
+            .ok_or("missing preview theme")?;
+        colors(app, [0x11, 0x22, 0x33], [0xaa, 0xbb, 0xcc])?;
+        app.action(event_loop, host, Action::Themes, false);
+        if !host.palette.open || app.theme_preview.is_none() {
+            return Err("Themes action did not open the theme palette".into());
+        }
+        app.draw(event_loop, host)?;
+        app.draw(event_loop, host)?;
+        colors(app, [0x44, 0x55, 0x66], [0xdd, 0xee, 0xff])?;
+        capture_window(
+            app,
+            event_loop,
+            host,
+            &directory.parent().unwrap().join("theme-picker.png"),
+        )?;
+        key(host, egui::Key::ArrowDown);
+        app.draw(event_loop, host)?;
+        colors(app, [0x11, 0x22, 0x33], [0xaa, 0xbb, 0xcc])?;
+        key(host, egui::Key::ArrowDown);
+        app.draw(event_loop, host)?;
+        colors(app, [0x77, 0x88, 0x99], [0xff; 3])?;
+        key(host, egui::Key::Escape);
+        app.draw(event_loop, host)?;
+        if app.config() != &saved || app.theme_preview.is_some() || host.palette.open {
+            return Err("Escape did not restore the appearance before theme selection".into());
+        }
+        colors(app, [0x11, 0x22, 0x33], [0xaa, 0xbb, 0xcc])?;
+        app.action(event_loop, host, Action::Themes, false);
+        app.draw(event_loop, host)?;
+        key(host, egui::Key::Enter);
+        app.draw(event_loop, host)?;
+        if app.theme_preview.is_some()
+            || host.palette.open
+            || !app
+                .errors
+                .iter()
+                .any(|message| message.contains(&preview_line))
+        {
+            return Err("accepting a theme did not keep it and show its configuration line".into());
+        }
+        app.draw(event_loop, host)?;
+        if !host.messages_open {
+            return Err("accepted theme did not open the messages popup".into());
+        }
+        colors(app, [0x44, 0x55, 0x66], [0xdd, 0xee, 0xff])?;
+        key(host, egui::Key::Escape);
+        app.draw(event_loop, host)?;
+        app.action(event_loop, host, Action::Themes, false);
+        app.draw(event_loop, host)?;
+        app.reload_config(Some(host));
+        if app.theme_preview.is_some() || host.palette.open {
+            return Err("configuration reload left the theme preview active".into());
+        }
+        colors(app, [0x11, 0x22, 0x33], [0xaa, 0xbb, 0xcc])?;
+        for (path, source) in &files {
+            if fs::read_to_string(path)? != *source {
+                return Err("theme selection changed a configuration or theme file".into());
+            }
+        }
+        Ok(())
+    })();
+    app.cancel_theme_preview(Some(host));
+    app.config_loader = original_loader;
+    app.config_args = original_args;
+    app.apply_theme_config(original_loaded.config.clone(), Some(host));
+    app.loaded = original_loaded;
+    if let Some(platform) = &mut app.platform {
+        platform.update_config(&app.loaded.config)?;
+    }
+    app.errors = original_errors;
+    host.palette = original_palette;
+    host.focused = original_focus;
+    host.focus_text_input = original_text_focus;
+    host.messages_open = !app.errors.is_empty();
+    host.egui.egui_input_mut().focused = original_focus;
+    host.egui
+        .egui_input_mut()
+        .events
+        .push(egui::Event::WindowFocused(original_focus));
+    result?;
+    eprintln!(
+        "Native smoke: searchable themes previewed across panes, cancelled, accepted with a configuration hint, and reloaded without file writes"
+    );
+    Ok(())
 }
 
 struct Replay {
@@ -1797,8 +1983,16 @@ fn check_find(
         }
         for window_focused in [true, false] {
             set_focus(host, window_focused);
-            host.capture = true;
-            app.draw(event_loop, host)?;
+            capture_window(
+                app,
+                event_loop,
+                host,
+                &directory.join(if window_focused {
+                    "find-focused.png"
+                } else {
+                    "find-unfocused.png"
+                }),
+            )?;
             for (id, expected) in [(original_focus, [10, 5]), (other, [4, 4])] {
                 let frame = &host.prepared[&id].frame;
                 let actual = [[255, 224, 130], [242, 165, 126]].map(|color| {
@@ -1818,37 +2012,6 @@ fn check_find(
                     .into());
                 }
             }
-            if let Some(state) = app.painter.render_state() {
-                state.device.poll(wgpu::PollType::wait_indefinitely())?;
-            }
-            let mut events = Vec::new();
-            app.painter.handle_screenshots(&mut events);
-            let image = events
-                .into_iter()
-                .find_map(|event| match event {
-                    egui::Event::Screenshot { image, .. } => Some(image),
-                    _ => None,
-                })
-                .ok_or("missing Find screenshot")?;
-            let path = directory.join(if window_focused {
-                "find-focused.png"
-            } else {
-                "find-unfocused.png"
-            });
-            let mut encoder = png::Encoder::new(
-                fs::File::create(path)?,
-                image.width() as u32,
-                image.height() as u32,
-            );
-            encoder.set_color(png::ColorType::Rgba);
-            encoder.set_depth(png::BitDepth::Eight);
-            encoder.write_header()?.write_image_data(
-                &image
-                    .pixels
-                    .iter()
-                    .flat_map(|color| color.to_array())
-                    .collect::<Vec<_>>(),
-            )?;
         }
         set_focus(host, true);
         app.action(event_loop, host, Action::StartSearch, false);
@@ -2807,6 +2970,47 @@ fn check_link_hover(app: &mut App, host: &mut Host, focused: Id, hovered: Id) ->
 
 /// Render the same host primitives to a texture when no drawable is available
 /// (e.g. a locked CI Mac). This does not claim visible surface presentation.
+fn capture_window(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    host: &mut Host,
+    path: &Path,
+) -> Result<()> {
+    if let Some(state) = app.painter.render_state() {
+        // Synchronous checks run while App.smoke is taken, so capture explicitly offscreen.
+        let size = host.window.inner_size();
+        let texture = offscreen_texture(&state, [size.width, size.height]);
+        app.draw_frame(event_loop, host, Some(&texture))?;
+        return save_texture(&state, &texture, path);
+    }
+    host.capture = true;
+    app.draw(event_loop, host)?;
+    let mut events = Vec::new();
+    app.painter.handle_screenshots(&mut events);
+    let image = events
+        .into_iter()
+        .find_map(|event| match event {
+            egui::Event::Screenshot { image, .. } => Some(image),
+            _ => None,
+        })
+        .ok_or("missing software screenshot")?;
+    let mut encoder = png::Encoder::new(
+        fs::File::create(path)?,
+        image.width() as u32,
+        image.height() as u32,
+    );
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    encoder.write_header()?.write_image_data(
+        &image
+            .pixels
+            .iter()
+            .flat_map(|color| color.to_array())
+            .collect::<Vec<_>>(),
+    )?;
+    Ok(())
+}
+
 fn offscreen_texture(state: &egui_wgpu::RenderState, size: [u32; 2]) -> wgpu::Texture {
     state.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("Rustty host capture"),
@@ -2896,9 +3100,22 @@ pub(super) fn capture(
     scale: f32,
     path: &Path,
 ) -> Result<()> {
+    let texture = offscreen_texture(state, size);
+    let (encoder, commands) = offscreen_commands(state, primitives, delta, size, scale, &texture);
+    state
+        .queue
+        .submit(commands.into_iter().chain([encoder.finish()]));
+    save_texture(state, &texture, path)
+}
+
+fn save_texture(
+    state: &egui_wgpu::RenderState,
+    texture: &wgpu::Texture,
+    path: &Path,
+) -> Result<()> {
     let device = &state.device;
     let queue = &state.queue;
-    let texture = offscreen_texture(state, size);
+    let size = [texture.width(), texture.height()];
     let stride = (size[0] * 4).div_ceil(256) * 256;
     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("Rustty host readback"),
@@ -2906,8 +3123,9 @@ pub(super) fn capture(
         usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
-    let (mut encoder, commands) =
-        offscreen_commands(state, primitives, delta, size, scale, &texture);
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("Rustty host readback"),
+    });
     encoder.copy_texture_to_buffer(
         texture.as_image_copy(),
         wgpu::TexelCopyBufferInfo {
@@ -2920,7 +3138,7 @@ pub(super) fn capture(
         },
         texture.size(),
     );
-    queue.submit(commands.into_iter().chain([encoder.finish()]));
+    queue.submit([encoder.finish()]);
     let (tx, rx) = std::sync::mpsc::channel();
     buffer
         .slice(..)

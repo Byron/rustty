@@ -1,13 +1,23 @@
 //! A searchable command list with shortcuts from the active configuration.
 
 use egui::{Color32, Key, RichText, Vec2};
-use rustty::config::{Action, Config, Direction, KeyBinding, KeyTrigger};
+use rustty::config::{Action, Config, Direction, KeyBinding, KeyTrigger, ThemeChoice};
+
+#[derive(Clone, Debug, PartialEq)]
+pub(super) enum PaletteEvent {
+    Action(Action),
+    PreviewTheme(ThemeChoice),
+    AcceptTheme(ThemeChoice),
+}
 
 #[derive(Default)]
 pub(super) struct CommandPalette {
     pub open: bool,
     query: String,
     selected: Option<usize>,
+    themes: Option<Vec<ThemeChoice>>,
+    last_preview: Option<std::path::PathBuf>,
+    pointer_position: Option<egui::Pos2>,
 }
 
 impl CommandPalette {
@@ -15,6 +25,16 @@ impl CommandPalette {
         self.open = !self.open;
         self.query.clear();
         self.selected = None;
+        self.themes = None;
+        self.last_preview = None;
+    }
+
+    pub fn show_themes(&mut self, themes: Vec<ThemeChoice>) {
+        self.open = true;
+        self.query.clear();
+        self.selected = Some(0);
+        self.themes = Some(themes);
+        self.last_preview = None;
     }
 
     pub fn show(
@@ -23,7 +43,21 @@ impl CommandPalette {
         id: egui::Id,
         config: &Config,
         request_focus: &mut bool,
-    ) -> Option<Action> {
+    ) -> Option<PaletteEvent> {
+        if root.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::Escape)) {
+            self.open = false;
+            return None;
+        }
+        let (pointer_position, pointer_moved) = root.input(|input| {
+            let position = input.pointer.hover_pos();
+            let moved = position != self.pointer_position
+                && input
+                    .events
+                    .iter()
+                    .any(|event| matches!(event, egui::Event::PointerMoved(_)));
+            (position, moved)
+        });
+        self.pointer_position = pointer_position;
         let bounds = root.max_rect().shrink(16.0);
         let top = bounds.top() + bounds.height() * 0.05;
         let width = bounds.width().clamp(1.0, 500.0);
@@ -76,52 +110,74 @@ impl CommandPalette {
                             | input.consume_key(egui::Modifiers::CTRL, Key::N),
                     )
                 });
+                if up || down {
+                    ui.memory_mut(|memory| memory.move_focus(egui::FocusDirection::None));
+                }
                 frame.show(ui, |ui| {
                     ui.set_width((width - frame.total_margin().sum().x).max(1.0));
                     ui.spacing_mut().item_spacing.y = 0.0;
+                    let hint = if self.themes.is_some() {
+                        "Select a theme"
+                    } else {
+                        "Execute a command"
+                    };
                     let query = ui.add_sized(
                         [ui.available_width(), 48.0],
                         egui::TextEdit::singleline(&mut self.query)
                             .id(field_id)
-                            .hint_text(RichText::new("Execute a command…").size(20.0))
+                            .hint_text(RichText::new(format!("{hint}…")).size(20.0))
                             .font(egui::FontId::proportional(20.0))
                             .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 0)))
                             .vertical_align(egui::Align::Center),
                     );
                     query.widget_info(|| {
-                        egui::WidgetInfo::labeled(
-                            egui::WidgetType::TextEdit,
-                            ui.is_enabled(),
-                            "Execute a command",
-                        )
+                        egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, ui.is_enabled(), hint)
                     });
                     let needle = self.query.trim();
-                    let mut commands = actions();
+                    let mut commands = if self.themes.is_none() {
+                        actions()
+                    } else {
+                        Vec::new()
+                    };
                     commands.retain(|(label, _)| matches_query(label, needle));
+                    let themes = self.themes.as_ref().map(|themes| {
+                        themes
+                            .iter()
+                            .filter(|theme| matches_query(&theme.name, needle))
+                            .collect::<Vec<_>>()
+                    });
+                    let count = themes.as_ref().map_or(commands.len(), Vec::len);
+                    let event_at = |index: usize| {
+                        if let Some(themes) = &themes {
+                            themes
+                                .get(index)
+                                .map(|theme| PaletteEvent::AcceptTheme((*theme).clone()))
+                        } else {
+                            commands
+                                .get(index)
+                                .map(|(_, action)| PaletteEvent::Action(action.clone()))
+                        }
+                    };
                     if query.changed() {
-                        self.selected = (!needle.is_empty()).then_some(0);
+                        self.selected = (themes.is_some() || !needle.is_empty()).then_some(0);
                     }
-                    self.selected = self.selected.filter(|index| *index < commands.len());
-                    if !commands.is_empty() {
+                    self.selected = self.selected.filter(|index| *index < count);
+                    if count > 0 {
                         if down {
-                            self.selected =
-                                Some(self.selected.map_or(0, |i| (i + 1) % commands.len()));
+                            self.selected = Some(self.selected.map_or(0, |i| (i + 1) % count));
                         } else if up {
                             self.selected = Some(
                                 self.selected
                                     .unwrap_or(0)
                                     .checked_sub(1)
-                                    .unwrap_or(commands.len() - 1),
+                                    .unwrap_or(count - 1),
                             );
                         }
                     }
                     let enter =
                         query.lost_focus() && ui.input(|input| input.key_pressed(Key::Enter));
                     if enter {
-                        action = self
-                            .selected
-                            .and_then(|index| commands.get(index))
-                            .map(|(_, action)| action.clone());
+                        action = self.selected.and_then(event_at);
                         if action.is_none() {
                             query.request_focus();
                         }
@@ -141,20 +197,34 @@ impl CommandPalette {
                             scroll = scroll.vertical_scroll_offset(0.0);
                         }
                         scroll.show(ui, |ui| {
-                            if commands.is_empty() {
+                            if count == 0 {
                                 ui.add_sized(
                                     [ui.available_width(), 32.0],
                                     egui::Label::new(RichText::new("No matches").weak()),
                                 );
                             }
-                            for (index, (label, command)) in commands.iter().enumerate() {
-                                let shortcut =
-                                    shortcut_label(&config.keybinds, command).unwrap_or_default();
+                            // A resting pointer must not undo keyboard or search selection.
+                            let pointer_moved = pointer_moved && !up && !down && !query.changed();
+                            for index in 0..count {
+                                let (label, shortcut) = if let Some(themes) = &themes {
+                                    let theme = themes[index];
+                                    (
+                                        theme.name.as_str(),
+                                        if theme.user { "User" } else { "Bundled" }.to_owned(),
+                                    )
+                                } else {
+                                    let (label, command) = &commands[index];
+                                    (
+                                        *label,
+                                        shortcut_label(&config.keybinds, command)
+                                            .unwrap_or_default(),
+                                    )
+                                };
                                 let selected = self.selected == Some(index);
                                 let row = ui.add(
                                     egui::Button::selectable(
                                         selected,
-                                        RichText::new(*label)
+                                        RichText::new(label)
                                             .size(14.0)
                                             .color(ui.visuals().text_color()),
                                     )
@@ -167,8 +237,12 @@ impl CommandPalette {
                                 if selected && (up || down || query.changed()) {
                                     row.scroll_to_me(None);
                                 }
+                                if themes.is_some() && pointer_moved && row.hovered() {
+                                    self.selected = Some(index);
+                                    ui.ctx().request_repaint();
+                                }
                                 if row.clicked() {
-                                    action = Some(command.clone());
+                                    action = event_at(index);
                                 }
                                 if !shortcut.is_empty() {
                                     row.on_hover_text(format!("{label}  {shortcut}"));
@@ -176,10 +250,20 @@ impl CommandPalette {
                             }
                         });
                     });
+                    if action.is_none()
+                        && !ui.is_sizing_pass()
+                        && let Some(theme) =
+                            self.selected.and_then(|index| themes.as_ref()?.get(index))
+                        && self.last_preview.as_ref() != Some(&theme.path)
+                    {
+                        self.last_preview = Some(theme.path.clone());
+                        action = Some(PaletteEvent::PreviewTheme((*theme).clone()));
+                    }
                 });
-                if action.is_some()
-                    || ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::Escape))
-                {
+                if matches!(
+                    action,
+                    Some(PaletteEvent::Action(_) | PaletteEvent::AcceptTheme(_))
+                ) {
                     self.open = false;
                 }
             });
@@ -285,6 +369,7 @@ fn actions() -> Vec<(&'static str, Action)> {
         ("Open Saved Layout", Action::OpenLayout),
         ("Reload Configuration", Action::ReloadConfig),
         ("Reset Terminal", Action::Reset),
+        ("Themes…", Action::Themes),
         ("Toggle Quick Terminal", Action::ToggleQuickTerminal),
         ("Undo Layout Change", Action::Undo),
         ("Redo Layout Change", Action::Redo),
@@ -417,7 +502,7 @@ mod tests {
         config: &Config,
         focus: &mut bool,
         events: Vec<egui::Event>,
-    ) -> (Option<Action>, egui::FullOutput) {
+    ) -> (Option<PaletteEvent>, egui::FullOutput) {
         let mut action = None;
         let mut raw = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
@@ -450,6 +535,280 @@ mod tests {
         }
     }
 
+    fn themes() -> Vec<ThemeChoice> {
+        ["Alpha", "Beta", "Gamma"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, name)| ThemeChoice {
+                name: name.to_owned(),
+                path: std::path::PathBuf::from("/themes").join(name),
+                user: index == 0,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn themes_preview_changed_choices_through_navigation_and_search_before_accepting() {
+        let context = egui::Context::default();
+        let config = Config::default();
+        let mut palette = CommandPalette::default();
+        let mut focus = true;
+        let choices = themes();
+        palette.show_themes(choices.clone());
+        let events = (0..3)
+            .filter_map(|_| draw(&context, &mut palette, &config, &mut focus, vec![]).0)
+            .collect::<Vec<_>>();
+        assert_eq!(events, [PaletteEvent::PreviewTheme(choices[0].clone())]);
+        assert!(palette.open);
+        assert_eq!(palette.selected, Some(0));
+        let (_, output) = draw(&context, &mut palette, &config, &mut focus, vec![]);
+        let labels = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) => Some(text.galley.job.text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for label in ["Select a theme…", "User", "Bundled"] {
+            assert!(labels.contains(&label), "{labels:?}");
+        }
+        for (key, index) in [(Key::ArrowDown, 1), (Key::ArrowUp, 0), (Key::ArrowUp, 2)] {
+            let (event, _) = draw(
+                &context,
+                &mut palette,
+                &config,
+                &mut focus,
+                vec![self::key(key)],
+            );
+            assert_eq!(
+                event,
+                Some(PaletteEvent::PreviewTheme(choices[index].clone()))
+            );
+            assert!(palette.open);
+            assert_eq!(palette.selected, Some(index));
+        }
+        let (event, _) = draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![egui::Event::Text("bta".into())],
+        );
+        assert_eq!(event, Some(PaletteEvent::PreviewTheme(choices[1].clone())));
+        assert_eq!(palette.selected, Some(0));
+        assert_eq!(
+            draw(&context, &mut palette, &config, &mut focus, vec![]).0,
+            None
+        );
+        let (event, _) = draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![key(Key::Enter)],
+        );
+        assert_eq!(event, Some(PaletteEvent::AcceptTheme(choices[1].clone())));
+        assert!(!palette.open);
+    }
+
+    #[test]
+    fn themes_preview_moving_pointer_without_overriding_keyboard_and_accept_clicks() {
+        let context = egui::Context::default();
+        let config = Config::default();
+        let mut palette = CommandPalette::default();
+        let mut focus = true;
+        let choices = themes();
+        palette.show_themes(choices.clone());
+        draw(&context, &mut palette, &config, &mut focus, vec![]);
+        let (_, output) = draw(&context, &mut palette, &config, &mut focus, vec![]);
+        let position = |name| {
+            output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.job.text == name => {
+                        Some(text.pos + text.galley.rect.center().to_vec2())
+                    }
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let alpha = position("Alpha");
+        let beta = position("Beta");
+        let (event, _) = draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![egui::Event::PointerMoved(beta)],
+        );
+        assert_eq!(event, Some(PaletteEvent::PreviewTheme(choices[1].clone())));
+        let (event, _) = draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![key(Key::ArrowUp)],
+        );
+        assert_eq!(event, Some(PaletteEvent::PreviewTheme(choices[0].clone())));
+        assert_eq!(
+            draw(&context, &mut palette, &config, &mut focus, vec![]).0,
+            None
+        );
+        assert_eq!(palette.selected, Some(0));
+        let (event, _) = draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![egui::Event::PointerMoved(beta)],
+        );
+        assert_eq!(event, None);
+        assert_eq!(palette.selected, Some(0));
+        let (event, _) = draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![egui::Event::PointerMoved(beta + Vec2::new(1.0, 0.0))],
+        );
+        assert_eq!(event, Some(PaletteEvent::PreviewTheme(choices[1].clone())));
+        for pressed in [true, false] {
+            let (event, _) = draw(
+                &context,
+                &mut palette,
+                &config,
+                &mut focus,
+                vec![
+                    egui::Event::PointerMoved(alpha),
+                    egui::Event::PointerButton {
+                        pos: alpha,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+            assert_eq!(
+                event,
+                Some(if pressed {
+                    PaletteEvent::PreviewTheme(choices[0].clone())
+                } else {
+                    PaletteEvent::AcceptTheme(choices[0].clone())
+                })
+            );
+        }
+        assert!(!palette.open);
+    }
+
+    #[test]
+    fn themes_cancel_without_a_preview_and_toggle_restores_commands() {
+        let context = egui::Context::default();
+        let config = Config::default();
+        let mut palette = CommandPalette::default();
+        let mut focus = true;
+        palette.show_themes(themes());
+        draw(&context, &mut palette, &config, &mut focus, vec![]);
+        let (event, _) = draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![key(Key::ArrowDown), key(Key::Escape)],
+        );
+        assert_eq!(event, None);
+        assert!(!palette.open);
+        palette.toggle();
+        assert!(palette.open);
+        assert!(palette.themes.is_none());
+        assert!(palette.last_preview.is_none());
+        assert_eq!(palette.selected, None);
+        focus = true;
+        draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![egui::Event::Text("themes".into())],
+        );
+        let (event, _) = draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![key(Key::Enter)],
+        );
+        assert_eq!(event, Some(PaletteEvent::Action(Action::Themes)));
+    }
+
+    #[test]
+    fn themes_with_no_matches_keep_focus_and_clearing_search_restores_first_preview() {
+        let context = egui::Context::default();
+        let config = Config::default();
+        let mut palette = CommandPalette::default();
+        let mut focus = true;
+        let choices = themes();
+        palette.show_themes(choices.clone());
+        draw(&context, &mut palette, &config, &mut focus, vec![]);
+        draw(&context, &mut palette, &config, &mut focus, vec![]);
+        assert!(context.text_edit_focused(), "before navigation");
+        draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![key(Key::ArrowDown)],
+        );
+        assert!(context.text_edit_focused(), "after navigation");
+        let (event, _) = draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![egui::Event::Text("no matches".into())],
+        );
+        assert_eq!(palette.query, "no matches");
+        assert_eq!(palette.selected, None);
+        assert_eq!(event, None);
+        let (event, _) = draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![key(Key::Enter)],
+        );
+        assert_eq!(event, None);
+        assert!(palette.open);
+        assert!(context.text_edit_focused());
+        assert_eq!(palette.selected, None);
+        let (event, _) = draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![
+                modified_key(Key::A, egui::Modifiers::COMMAND),
+                key(Key::Backspace),
+            ],
+        );
+        assert_eq!(event, Some(PaletteEvent::PreviewTheme(choices[0].clone())));
+        assert_eq!(palette.selected, Some(0));
+
+        palette.show_themes(Vec::new());
+        draw(&context, &mut palette, &config, &mut focus, vec![]);
+        let (event, _) = draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![key(Key::Enter)],
+        );
+        assert_eq!(event, None);
+        assert!(palette.open);
+        assert!(context.text_edit_focused());
+    }
+
     #[test]
     fn palette_exposes_terminal_recovery_without_sending_terminal_input() {
         let context = egui::Context::default();
@@ -472,7 +831,7 @@ mod tests {
             &mut focus,
             vec![key(Key::Enter)],
         );
-        assert_eq!(action, Some(Action::Reset));
+        assert_eq!(action, Some(PaletteEvent::Action(Action::Reset)));
         assert_eq!(Action::parse("reset").unwrap(), Action::Reset);
     }
 
@@ -557,7 +916,7 @@ mod tests {
             &mut focus,
             vec![key(Key::Enter)],
         );
-        assert_eq!(action, Some(Action::NewWindow));
+        assert_eq!(action, Some(PaletteEvent::Action(Action::NewWindow)));
         assert!(!palette.open);
 
         palette.toggle();
@@ -676,7 +1035,7 @@ mod tests {
             &mut focus,
             vec![key(Key::Enter)],
         );
-        assert_eq!(action, Some(Action::ReloadConfig));
+        assert_eq!(action, Some(PaletteEvent::Action(Action::ReloadConfig)));
     }
 
     #[test]

@@ -283,6 +283,7 @@ pub fn search_shortcut(action: &config::Action) -> bool {
             | ToggleQuickTerminal
             | ToggleFullscreen
             | ToggleCommandPalette
+            | Themes
             | NextTab
             | PreviousTab
             | LastTab
