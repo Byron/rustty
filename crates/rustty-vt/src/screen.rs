@@ -1249,17 +1249,6 @@ impl Screen {
             let slot = page.slot(row, col);
             page.grapheme_map.insert(slot as u32, allocation);
             page.cells[slot].set_grapheme(true);
-            let base = page.cells[slot]
-                .codepoint()
-                .expect("wrapped grapheme has a base");
-            // A pending character-set shift can remap the base while wrapping.
-            // Otherwise the allocation already owns exactly the destination text.
-            if !page.graphemes.text(allocation).starts_with(base) {
-                let mut text = String::with_capacity(4 + suffix.len());
-                text.push(base);
-                text.push_str(suffix);
-                page.graphemes.set_text(allocation, Arc::from(text));
-            }
             page.mark_cell(row, page.cells[slot]);
             page.refresh_charge();
         } else {

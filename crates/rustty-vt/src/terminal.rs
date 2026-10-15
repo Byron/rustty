@@ -1091,6 +1091,12 @@ impl Terminal {
         if self.status_display {
             return;
         }
+        // A single shift applies to this scalar, including combining or ignored characters.
+        let charset = {
+            let state = &mut self.screen_mut().charset;
+            let slot = state.single.take().unwrap_or(state.gl);
+            state.slots[slot]
+        };
         let mut location = self.ensure_row_cells(self.screen().cursor.row, usize::from(self.cols));
         // The row now spans the logical screen, so clamping needs no page lookup.
         let col = self.screen().cursor.col.min(usize::from(self.cols) - 1);
@@ -1210,7 +1216,7 @@ impl Terminal {
                 self.print_wrap();
                 location = self.screen().cursor_location();
             }
-            self.put_cell(Some(cp), width, false, location);
+            self.put_cell(Some(map_charset(cp, charset)), width, false, location);
         }
         let x = self.screen().cursor.col;
         self.screen_mut().cursor.pending_wrap = x + width as usize > right;
@@ -1247,8 +1253,7 @@ impl Terminal {
                 .map(|(text, _)| text);
             self.screen_mut().cursor.col = col;
             if text.is_some() {
-                // Native moves existing grapheme data without printing a
-                // spacer head, so the pending single shift reaches the base.
+                // Keep the allocation alive until the wrapped destination is written.
                 let spacer_head = right == self.cols as usize - 1;
                 let cell = self.screen_mut().cell_mut(y, col);
                 cell.set_codepoint(None);
@@ -1278,10 +1283,6 @@ impl Terminal {
                     .move_wrapped_grapheme(source_col, &text[base_len..]);
             }
         } else if width != old_width {
-            if width == 2 {
-                // Widening writes a spacer tail, which consumes the shift.
-                self.screen_mut().charset.single = None;
-            }
             let background = self.screen().cursor.style.background;
             self.screen_mut()
                 .change_grapheme_width(y, col, width, right, background);
@@ -1302,14 +1303,8 @@ impl Terminal {
         spacer_head: bool,
         location: (usize, usize),
     ) {
-        // Map only when writing a cell. Width, combining behavior, and REP
-        // use the original scalar; even an empty spacer consumes one shift.
-        let charset = &mut self.screen_mut().charset;
-        let slot = charset.single.take().unwrap_or(charset.gl);
         // Native cells reserve codepoint zero for empty content.
-        let codepoint = codepoint
-            .map(|cp| map_charset(cp, charset.slots[slot]))
-            .filter(|&cp| cp != '\0');
+        let codepoint = codepoint.filter(|&cp| cp != '\0');
         // print and append_grapheme extend the source row; print_wrap extends
         // the destination row before any wrapped write reaches this helper.
         self.screen_mut()
@@ -2917,9 +2912,6 @@ fn sgr_report(style: Style) -> String {
 }
 
 fn map_charset(cp: char, set: Charset) -> char {
-    if matches!(set, Charset::British | Charset::DecSpecial) && cp as u32 > 255 {
-        return ' ';
-    }
     if set == Charset::British && cp == '#' {
         return '£';
     }
