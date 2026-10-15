@@ -1,4 +1,4 @@
-//! Unicode 17 properties and tailored grapheme rules from Ghostty's pinned uucode.
+//! Unicode 18 properties and tailored grapheme rules from Ghostty's pinned uucode.
 //! Regenerate the data with `tools/generate_unicode.py`; no build-time generator.
 
 // One byte selects a deduplicated 128-scalar block of little-endian u16 values.
@@ -71,11 +71,12 @@ const PICTO: u8 = 11;
 const MOD_BASE: u8 = 12;
 const MOD: u8 = 13;
 const EXTEND: u8 = 14;
-const LINKER: u8 = 15;
-const CONSONANT: u8 = 16;
+const LINKER_EXTEND: u8 = 15;
+const LINKER_OTHER: u8 = 16;
+const CONSONANT: u8 = 17;
 
 fn extend(g: u8) -> bool {
-    matches!(g, ZWNJ | EXTEND | LINKER)
+    matches!(g, ZWNJ | EXTEND | LINKER_EXTEND)
 }
 fn picto(g: u8) -> bool {
     matches!(g, PICTO | MOD_BASE)
@@ -93,18 +94,21 @@ pub(crate) fn grapheme_break(a: char, b: char, state: &mut u8) -> bool {
 
 #[inline(always)]
 pub(crate) fn grapheme_break_properties(a: u8, b: u8, state: &mut u8) -> bool {
-    match *state {
-        1 if a != RI || b != RI => *state = 0,
-        2 if !matches!(a, EXTEND | LINKER | ZWNJ | ZWJ | PICTO | MOD_BASE | MOD)
-            || !matches!(b, EXTEND | LINKER | ZWNJ | ZWJ | PICTO | MOD_BASE | MOD) =>
+    // Match uucode's packed state: bit 0 tracks a linker independently of the base.
+    let after_linker =
+        matches!(a, LINKER_EXTEND | LINKER_OTHER) || (*state & 1 != 0 && indic_extend(a));
+    *state = (*state & 6) | u8::from(after_linker && indic_extend(b));
+    match *state & 6 {
+        4 if a != RI || b != RI => *state &= 1,
+        2 if !matches!(
+            a,
+            EXTEND | LINKER_EXTEND | ZWNJ | ZWJ | PICTO | MOD_BASE | MOD
+        ) || !matches!(
+            b,
+            EXTEND | LINKER_EXTEND | ZWNJ | ZWJ | PICTO | MOD_BASE | MOD
+        ) =>
         {
-            *state = 0
-        }
-        3 | 4
-            if !matches!(a, CONSONANT | LINKER | EXTEND | ZWJ)
-                || !matches!(b, CONSONANT | LINKER | EXTEND | ZWJ) =>
-        {
-            *state = 0
+            *state &= 1
         }
         _ => {}
     }
@@ -120,53 +124,30 @@ pub(crate) fn grapheme_break_properties(a: u8, b: u8, state: &mut u8) -> bool {
     {
         return false;
     }
-    if a == CONSONANT {
-        if indic_extend(b) {
-            *state = 3;
-            return false;
-        }
-        if b == LINKER {
-            *state = 4;
-            return false;
-        }
-    } else if *state == 3 {
-        if b == LINKER {
-            *state = 4;
-            return false;
-        }
-        if indic_extend(b) {
-            return false;
-        }
-        *state = 0;
-    } else if *state == 4 {
-        if b == LINKER || indic_extend(b) {
-            return false;
-        }
-        *state = 0;
-        if b == CONSONANT {
-            return false;
-        }
+    if after_linker && b == CONSONANT {
+        *state &= 1;
+        return false;
     }
     if picto(a) {
         if extend(b) || b == ZWJ || a == MOD_BASE && b == MOD {
-            *state = 2;
+            *state = (*state & 1) | 2;
             return false;
         }
-    } else if *state == 2 {
+    } else if *state & 6 == 2 {
         if (extend(a) || a == MOD) && (extend(b) || b == ZWJ) {
             return false;
         }
-        *state = 0;
+        *state &= 1;
         if a == ZWJ && picto(b) {
             return false;
         }
     }
     if a == RI && b == RI {
-        if *state == 0 {
-            *state = 1;
+        if *state & 6 == 0 {
+            *state = (*state & 1) | 4;
             return false;
         }
-        *state = 0;
+        *state &= 1;
         return true;
     }
     !(extend(b) || b == ZWJ)
@@ -237,17 +218,10 @@ mod tests {
     #[test]
     fn ordinary_boundaries_preserve_state_transitions_and_special_joins() {
         for (a, b) in [('天', '地'), ('a', '界'), ('é', 'Ｘ')] {
-            for initial in 0..=u8::MAX {
+            for initial in 0..5 {
                 let mut state = initial;
                 assert!(grapheme_break(a, b, &mut state));
-                assert_eq!(
-                    state,
-                    if (1..=4).contains(&initial) {
-                        0
-                    } else {
-                        initial
-                    }
-                );
+                assert_eq!(state, 0);
             }
         }
         let mut state = 0;

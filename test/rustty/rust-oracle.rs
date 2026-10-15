@@ -666,6 +666,18 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
             result["widths"] = json!(widths);
             return Ok(result);
         }
+        "unicode-grapheme" => {
+            let text = request
+                .codepoints
+                .iter()
+                .map(|&cp| char::from_u32(cp).ok_or("InvalidCodepoint"))
+                .collect::<Result<String, _>>()?;
+            let (bytes, width) = rustty_vt::unicode::grapheme_width(&text);
+            return Ok(json!({
+                "id": request.id, "ok": true,
+                "grapheme": {"len": text[..bytes].chars().count(), "width": width}
+            }));
+        }
         "terminal" | "input" => {}
         _ => return Err("UnsupportedKind"),
     }
