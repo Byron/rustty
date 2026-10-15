@@ -571,14 +571,7 @@ fn screen_extra(out: &mut Vec<u8>, screen: &Screen, options: Options<'_>, extra:
     if extra.hyperlink
         && let Some(link) = &cursor.hyperlink
     {
-        out.extend_from_slice(b"\x1b]8;");
-        if let Some(crate::HyperlinkId::Explicit(id)) = &link.id {
-            out.extend_from_slice(b"id=");
-            out.extend_from_slice(id);
-        }
-        out.push(b';');
-        out.extend_from_slice(link.uri_bytes());
-        out.extend_from_slice(b"\x1b\\");
+        hyperlink_open(out, link.id.as_ref(), link.uri_bytes(), Format::Vt);
     }
     if extra.protection && cursor.protected {
         out.extend_from_slice(b"\x1b[1\"q");
@@ -737,6 +730,11 @@ fn format_page(
                 blank_cells += 1;
                 continue;
             }
+            if blank_cells > 0 && options.emit == Format::Vt && hyperlink.take().is_some() {
+                // Skipped cells carry no link, even when linked text surrounds them.
+                hyperlink_close(&mut out.bytes, options.emit);
+                out.map_last();
+            }
             out.bytes.extend(std::iter::repeat_n(b' ', blank_cells));
             if let Some(map) = &mut out.map {
                 // Native maps materialized blanks backwards from the next
@@ -766,22 +764,18 @@ fn format_page(
                     out.map_to(point);
                 }
             }
-            if options.emit == Format::Html {
+            if options.emit != Format::Plain {
                 let link = row
                     .hyperlink(left + index)
                     .map(|link| (link.id.as_ref(), link.uri_bytes()));
                 if link != hyperlink {
-                    if hyperlink.is_some() {
-                        out.bytes.extend_from_slice(b"</a>");
+                    if hyperlink.is_some() && (options.emit == Format::Html || link.is_none()) {
+                        hyperlink_close(&mut out.bytes, options.emit);
                         out.map_last();
                     }
                     hyperlink = link;
-                    if let Some((_, uri)) = link {
-                        out.bytes.extend_from_slice(b"<a href=\"");
-                        for &byte in uri {
-                            html_char(&mut out.bytes, char::from(byte));
-                        }
-                        out.bytes.extend_from_slice(b"\">");
+                    if let Some((id, uri)) = link {
+                        hyperlink_open(&mut out.bytes, id, uri, options.emit);
                         out.map_to(point);
                     }
                 }
@@ -817,7 +811,7 @@ fn format_page(
         style_close(&mut out.bytes, options.emit);
     }
     if hyperlink.is_some() {
-        out.bytes.extend_from_slice(b"</a>");
+        hyperlink_close(&mut out.bytes, options.emit);
     }
     if options.emit == Format::Html {
         out.bytes.extend_from_slice(b"</div>");
@@ -825,6 +819,37 @@ fn format_page(
     }
     out.map_last();
     (blank_rows, blank_cells)
+}
+
+fn hyperlink_open(out: &mut Vec<u8>, id: Option<&crate::HyperlinkId>, uri: &[u8], emit: Format) {
+    match emit {
+        Format::Plain => {}
+        Format::Vt => {
+            out.extend_from_slice(b"\x1b]8;");
+            if let Some(crate::HyperlinkId::Explicit(id)) = id {
+                out.extend_from_slice(b"id=");
+                out.extend_from_slice(id);
+            }
+            out.push(b';');
+            out.extend_from_slice(uri);
+            out.extend_from_slice(b"\x1b\\");
+        }
+        Format::Html => {
+            out.extend_from_slice(b"<a href=\"");
+            for &byte in uri {
+                html_char(out, char::from(byte));
+            }
+            out.extend_from_slice(b"\">");
+        }
+    }
+}
+
+fn hyperlink_close(out: &mut Vec<u8>, emit: Format) {
+    out.extend_from_slice(match emit {
+        Format::Plain => b"",
+        Format::Vt => b"\x1b]8;;\x1b\\",
+        Format::Html => b"</a>",
+    });
 }
 
 fn write_char(out: &mut Vec<u8>, cp: char, emit: Format) {
