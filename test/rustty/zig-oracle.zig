@@ -472,6 +472,18 @@ pub fn main(init: std.process.Init) !void {
             try stdout.interface.flush();
             continue;
         };
+        if (std.mem.eql(u8, parsed.value.kind, "unicode-grapheme")) {
+            const response = measureGrapheme(parsed.value) catch |err| {
+                try std.json.Stringify.value(Response{ .id = parsed.value.id, .ok = false, .err = @errorName(err) }, .{}, &stdout.interface);
+                try stdout.interface.writeByte('\n');
+                try stdout.interface.flush();
+                continue;
+            };
+            try std.json.Stringify.value(response, .{}, &stdout.interface);
+            try stdout.interface.writeByte('\n');
+            try stdout.interface.flush();
+            continue;
+        }
         const response = execute(alloc, init.io, parsed.value) catch |err| Response{
             .id = parsed.value.id,
             .ok = false,
@@ -481,6 +493,20 @@ pub fn main(init: std.process.Init) !void {
         try stdout.interface.writeByte('\n');
         try stdout.interface.flush();
     }
+}
+
+const GraphemeResponse = struct {
+    id: []const u8,
+    ok: bool = true,
+    grapheme: struct { len: usize, width: u2 },
+};
+
+fn measureGrapheme(request: Request) !GraphemeResponse {
+    for (request.codepoints) |cp| {
+        if (cp > 0x10ffff or (cp >= 0xd800 and cp <= 0xdfff)) return error.InvalidCodepoint;
+    }
+    const measured = vt.unicode.graphemeWidth(u32, request.codepoints);
+    return .{ .id = request.id, .grapheme = .{ .len = measured.len, .width = measured.width } };
 }
 
 fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
