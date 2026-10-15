@@ -51,7 +51,11 @@ pub fn run(alloc: Allocator, operations: anytype) !Result {
                     continue;
                 }
                 const transition = vt.parse_table.table[byte][@intFromEnum(parser.state)];
-                if (parser.state == .osc_string and transition.state != .osc_string) {
+                // CAN/SUB cancel raw OSC capture too, including overflow.
+                if (parser.state == .osc_string and
+                    transition.state != .osc_string and
+                    byte != 0x18 and byte != 0x1a)
+                {
                     try events.append(alloc, if (overflow) .{ .kind = "osc_overflow" } else .{
                         .kind = "osc",
                         .data = try hex(alloc, osc.items),

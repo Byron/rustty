@@ -488,7 +488,7 @@ impl Parser {
         let changed = next != self.state;
         if changed {
             match self.state {
-                State::OscString => {
+                State::OscString if !matches!(byte, 0x18 | 0x1a) => {
                     if self.osc_overflow {
                         handler(Event::OscOverflow);
                     } else {
