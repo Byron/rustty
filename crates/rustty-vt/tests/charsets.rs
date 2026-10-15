@@ -9,11 +9,11 @@ fn legacy_mapping_keeps_original_width_and_repeat_codepoint() {
     let cells = &terminal.screen().row(0).cells;
     assert_eq!(
         &*terminal.screen().cell_text(terminal.screen().row(0), 0),
-        " "
+        "�"
     );
     assert_eq!(
         &*terminal.screen().cell_text(terminal.screen().row(0), 1),
-        " "
+        "界"
     );
     assert_eq!(cells[1].width(), 2);
     assert_eq!(cells[2].width(), 0);
@@ -39,32 +39,35 @@ fn legacy_mapping_keeps_original_width_and_repeat_codepoint() {
 }
 
 #[test]
-fn single_shift_survives_combining_and_ignored_characters() {
-    for grapheme in [false, true] {
-        let mut terminal = Terminal::new(10, 2, 0);
-        terminal.set_mode(true, 2027, grapheme);
-        terminal.feed(b"\x1b*0A\x1bN");
-        terminal.feed("\u{301}\u{fe0f}q".as_bytes());
-        assert_eq!(
-            &*terminal.screen().cell_text(terminal.screen().row(0), 0),
-            "A\u{301}"
-        );
-        assert_eq!(
-            &*terminal.screen().cell_text(terminal.screen().row(0), 1),
-            "─"
-        );
+fn single_shift_is_consumed_by_combining_and_ignored_characters() {
+    for (slot, shift) in [("*", "N"), ("+", "O")] {
+        for grapheme in [false, true] {
+            for mark in ["\u{301}", "\u{fe0f}"] {
+                let mut terminal = Terminal::new(10, 2, 0);
+                terminal.set_mode(true, 2027, grapheme);
+                terminal.feed(format!("\x1b{slot}0A\x1b{shift}{mark}q").as_bytes());
+                assert_eq!(
+                    &*terminal.screen().cell_text(terminal.screen().row(0), 0),
+                    if mark == "\u{301}" { "A\u{301}" } else { "A" }
+                );
+                assert_eq!(
+                    &*terminal.screen().cell_text(terminal.screen().row(0), 1),
+                    "q"
+                );
+            }
+        }
     }
     let mut terminal = Terminal::new(3, 2, 0);
     terminal.feed(b"\x1b*0ab\x1b[?7l\x1bN");
     terminal.feed("界\rq".as_bytes());
     assert_eq!(
         &*terminal.screen().cell_text(terminal.screen().row(0), 0),
-        "─"
+        "q"
     );
 }
 
 #[test]
-fn wide_spacers_consume_single_shifts() {
+fn wide_character_consumes_single_shift_before_spacer_writes() {
     let mut terminal = Terminal::new(3, 2, 0);
     terminal.feed(b"\x1b*Aab\x1bN");
     terminal.feed("界#".as_bytes());
@@ -90,7 +93,7 @@ fn wide_spacers_consume_single_shifts() {
 }
 
 #[test]
-fn wrapped_existing_grapheme_maps_the_base_without_consuming_a_spacer_shift() {
+fn wrapped_existing_grapheme_keeps_its_original_base() {
     let mut terminal = Terminal::new(3, 3, 0);
     terminal.feed(b"\x1b[?2027h\x1b*A");
     terminal.feed("ab☀\u{200d}".as_bytes());
@@ -99,11 +102,39 @@ fn wrapped_existing_grapheme_maps_the_base_without_consuming_a_spacer_shift() {
     assert!(terminal.screen().row(0).cells[2].spacer_head());
     assert_eq!(
         &*terminal.screen().cell_text(terminal.screen().row(1), 0),
-        " \u{200d}😀"
+        "☀\u{200d}😀"
     );
     assert_eq!(terminal.screen().row(1).cells[0].width(), 2);
     assert_eq!(
         &*terminal.screen().cell_text(terminal.screen().row(1), 2),
         "#"
     );
+}
+
+#[test]
+fn legacy_charsets_leave_unicode_above_their_range_unmapped() {
+    for (set, before, after) in [("0", "◆", "▒"), ("A", "`", "a")] {
+        let mut terminal = Terminal::new(10, 2, 0);
+        terminal.feed(format!("\x1b({set}`😀aĀ界").as_bytes());
+        let screen = terminal.screen();
+        let row = screen.row(0);
+        for (col, text) in [(0, before), (1, "😀"), (3, after), (4, "Ā"), (5, "界")] {
+            assert_eq!(&*screen.cell_text(row, col), text);
+        }
+        assert_eq!(row.cells[1].width(), 2);
+        assert_eq!(row.cells[2].width(), 0);
+        assert_eq!(row.cells[5].width(), 2);
+        assert_eq!(screen.cursor.col, 7);
+    }
+}
+
+#[test]
+fn widening_a_wrapped_character_does_not_apply_a_new_charset() {
+    let mut terminal = Terminal::new(3, 3, 0);
+    terminal.feed(b"\x1b[?2027h\x1b[3G#\x1b(A");
+    terminal.feed("\u{fe0f}".as_bytes());
+    let screen = terminal.screen();
+    assert!(screen.row(0).cells[2].spacer_head());
+    assert_eq!(&*screen.cell_text(screen.row(1), 0), "#\u{fe0f}");
+    assert_eq!(screen.row(1).cells[0].width(), 2);
 }
