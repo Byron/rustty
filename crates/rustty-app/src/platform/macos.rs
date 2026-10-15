@@ -44,8 +44,9 @@ use objc2_core_graphics::{
 };
 use objc2_foundation::{
     NSArray, NSBundle, NSCopying, NSData, NSDistributedNotificationCenter, NSError, NSNotification,
-    NSNotificationSuspensionBehavior, NSObject, NSObjectProtocol, NSPoint, NSPointInRect, NSRect,
-    NSSize, NSString, NSURL, NSUnionRect,
+    NSNotificationSuspensionBehavior, NSNumber, NSObject, NSObjectProtocol, NSPoint, NSPointInRect,
+    NSRect, NSSize, NSString, NSURL, NSURLComponents, NSURLContentTypeKey, NSURLIsDirectoryKey,
+    NSURLIsExecutableKey, NSURLIsRegularFileKey, NSUnionRect,
 };
 use objc2_user_notifications::{
     UNAuthorizationOptions, UNMutableNotificationContent, UNNotification,
@@ -706,9 +707,24 @@ impl Platform {
             .setBadgeLabel(label.as_deref());
     }
 
-    pub fn open_url(&self, target: &str, cwd: &Path) -> Result<(), String> {
+    /// Return the handler for confirmation before dispatching a custom URL scheme.
+    pub fn open_url(
+        &self,
+        target: &str,
+        cwd: &Path,
+        approved: bool,
+    ) -> Result<Option<String>, String> {
+        // Recheck the target after confirmation, including symlink and file metadata changes.
         let url = url_for_opening(target, cwd)?;
-        open_native_url(&url)
+        if !approved && url_needs_confirmation(&url) {
+            let handler = NSWorkspace::sharedWorkspace()
+                .URLForApplicationToOpenURL(&url)
+                .and_then(|url| url.path())
+                .map_or_else(|| "the default application".into(), |path| path.to_string());
+            return Ok(Some(handler));
+        }
+        open_native_url(&url)?;
+        Ok(None)
     }
 
     pub fn choose_layout_path(&self) -> Result<Option<PathBuf>, String> {
@@ -828,7 +844,7 @@ fn native_window(window: &Window) -> Result<Retained<NSWindow>, String> {
         .ok_or_else(|| "native window has no attached view".into())
 }
 
-// These four stable selectors avoid introducing a second objc2 generation just
+// These stable selectors avoid introducing a second objc2 generation just
 // for MIME lookup. UniformTypeIdentifiers is available on our minimum macOS 13.
 #[link(name = "UniformTypeIdentifiers", kind = "framework")]
 unsafe extern "C" {}
@@ -850,6 +866,9 @@ impl UTType {
         #[unsafe(method(preferredMIMEType))]
         #[unsafe(method_family = none)]
         fn preferred_mime(&self) -> Option<Retained<NSString>>;
+        #[unsafe(method(conformsToType:))]
+        #[unsafe(method_family = none)]
+        fn conforms_to(&self, other: &Self) -> bool;
     );
 }
 
@@ -1213,9 +1232,14 @@ fn may_restore_quick_focus(
     explicit && key && app_active && active_space
 }
 
-fn url_for_opening(target: &str, cwd: &Path) -> Result<Retained<NSURL>, String> {
-    if target.is_empty() || target.chars().any(char::is_control) {
-        return Err("URL or file path is empty or contains control characters".into());
+fn resolve_link_url(target: &str, cwd: &Path) -> Result<Retained<NSURL>, String> {
+    if target.is_empty()
+        || target.chars().any(|c| {
+            c.is_control()
+                || matches!(c as u32, 0x061c | 0x200b..=0x200f | 0x2028..=0x202e | 0x2060 | 0x2066..=0x2069 | 0xfeff)
+        })
+    {
+        return Err("URL or file path is empty or contains invisible or line-breaking characters".into());
     }
     let target = NSString::from_str(target);
     if let Some(url) = NSURL::URLWithString(&target)
@@ -1225,6 +1249,119 @@ fn url_for_opening(target: &str, cwd: &Path) -> Result<Retained<NSURL>, String> 
     }
     let path = target.stringByExpandingTildeInPath().to_string();
     NSURL::from_file_path(cwd.join(path)).ok_or_else(|| "invalid file path".into())
+}
+
+fn url_needs_confirmation(url: &NSURL) -> bool {
+    !matches!(
+        url.scheme()
+            .map(|scheme| scheme.to_string().to_ascii_lowercase())
+            .as_deref(),
+        Some("http" | "https" | "mailto" | "file")
+    )
+}
+
+fn url_for_opening(target: &str, cwd: &Path) -> Result<Retained<NSURL>, String> {
+    let url = resolve_link_url(target, cwd)?;
+    match url
+        .scheme()
+        .map(|scheme| scheme.to_string().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("http" | "https") if url.host().is_none_or(|host| host.is_empty()) => {
+            return Err("The web target does not contain a valid host".into());
+        }
+        Some("mailto")
+            if NSURLComponents::componentsWithURL_resolvingAgainstBaseURL(&url, false)
+                .and_then(|components| components.path())
+                .is_none_or(|path| path.is_empty()) =>
+        {
+            return Err("The mail target does not contain an address".into());
+        }
+        Some("file") => {}
+        _ => return Ok(url),
+    }
+    if url.query().is_some()
+        || url.fragment().is_some()
+        || url.host().is_some_and(|host| {
+            !host.is_empty() && !host.to_string().eq_ignore_ascii_case("localhost")
+        })
+    {
+        return Err("The file target must be local, without a query or fragment".into());
+    }
+    let canonical = url
+        .URLByStandardizingPath()
+        .and_then(|url| url.URLByResolvingSymlinksInPath())
+        .ok_or("The local target cannot be resolved")?;
+    let [directory, regular, executable, content_type] = unsafe {
+        [
+            NSURLIsDirectoryKey,
+            NSURLIsRegularFileKey,
+            NSURLIsExecutableKey,
+            NSURLContentTypeKey,
+        ]
+    };
+    let values = canonical
+        .resourceValuesForKeys_error(&NSArray::from_slice(&[
+            directory,
+            regular,
+            executable,
+            content_type,
+        ]))
+        .map_err(|_| "The local target does not exist or is inaccessible")?;
+    let flag = |key| {
+        values
+            .objectForKey(key)
+            .and_then(|value| value.downcast_ref::<NSNumber>().map(NSNumber::boolValue))
+            .unwrap_or(false)
+    };
+    let is_directory = flag(directory);
+    if !is_directory && !flag(regular) {
+        return Err("The local target is not a regular file or directory".into());
+    }
+    let extension = canonical
+        .pathExtension()
+        .map(|s| s.to_string().to_ascii_lowercase());
+    let unsafe_extension = matches!(
+        extension.as_deref(),
+        Some(
+            "action"
+                | "app"
+                | "applescript"
+                | "class"
+                | "command"
+                | "desktop"
+                | "inetloc"
+                | "jar"
+                | "mobileconfig"
+                | "mpkg"
+                | "pkg"
+                | "scpt"
+                | "terminal"
+                | "tool"
+                | "url"
+                | "webloc"
+                | "workflow"
+        )
+    );
+    let unsafe_type = values
+        .objectForKey(content_type)
+        .and_then(|value| value.downcast::<UTType>().ok())
+        .is_some_and(|kind| {
+            [
+                "com.apple.application",
+                "public.executable",
+                "public.script",
+            ]
+            .iter()
+            .any(|identifier| {
+                UTType::from_identifier(&NSString::from_str(identifier))
+                    .is_some_and(|unsafe_kind| kind.conforms_to(&unsafe_kind))
+            })
+        });
+    if unsafe_extension || unsafe_type || !is_directory && flag(executable) {
+        return Err("Opening this local target could execute code".into());
+    }
+    Ok(canonical)
 }
 
 fn open_native_url(url: &NSURL) -> Result<(), String> {
@@ -1987,6 +2124,78 @@ mod tests {
     use super::*;
 
     #[test]
+    fn terminal_links_reject_executables_and_malformed_targets() {
+        for target in [
+            "/bin/sh",
+            "file:///System/Applications/Calculator.app",
+            "file:///dev/null",
+            "file://remote/tmp/readme.txt",
+            "file:///tmp/readme.txt?script",
+            "file:///tmp/readme.txt#script",
+            "https:relative",
+            "mailto:",
+            "https://example.org/\u{202e}txt.sh",
+        ] {
+            assert!(
+                url_for_opening(target, Path::new("/tmp")).is_err(),
+                "{target}"
+            );
+        }
+    }
+
+    #[test]
+    fn terminal_links_allow_documents_and_require_consent_for_custom_schemes() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+
+        let directory =
+            std::env::temp_dir().join(format!("rustty-link-policy-{}", std::process::id()));
+        std::fs::create_dir(&directory).unwrap();
+        let document = directory.join("readme.txt");
+        std::fs::write(&document, b"a plain document").unwrap();
+        let url = url_for_opening("readme.txt", &directory).unwrap();
+        assert_eq!(
+            url.to_file_path().unwrap().canonicalize().unwrap(),
+            document.canonicalize().unwrap()
+        );
+        assert!(!url_needs_confirmation(&url));
+        assert!(url_for_opening(directory.to_str().unwrap(), &directory).is_ok());
+
+        for name in ["launch.command", "installer.PKG", "script.sh"] {
+            let path = directory.join(name);
+            std::fs::write(&path, b"test").unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+            assert!(url_for_opening(name, &directory).is_err(), "{name}");
+        }
+        symlink("/bin/sh", directory.join("harmless.txt")).unwrap();
+        assert!(url_for_opening("harmless.txt", &directory).is_err());
+        std::fs::set_permissions(&document, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(url_for_opening("readme.txt", &directory).is_err());
+
+        for (target, confirmation) in [
+            ("https://example.org/document", false),
+            ("HTTP://example.org/document", false),
+            ("mailto:user@example.org", false),
+            ("rustty-test:run-command", true),
+            ("ssh://example.org", true),
+        ] {
+            let url = url_for_opening(target, &directory).unwrap();
+            assert_eq!(url_needs_confirmation(&url), confirmation, "{target}");
+        }
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn terminal_links_check_both_detected_text_and_osc8_targets() {
+        let mut terminal = rustty::vt::Terminal::new(100, 2, 0);
+        terminal.feed(b"file:///System/Applications/Calculator.app\r\n\x1b]8;;file:///System/Applications/Calculator.app\x1b\\innocent text\x1b]8;;\x1b\\");
+        let links = rustty::vt::search::LinkMatcher::default().links(terminal.screen());
+        assert_eq!(links.len(), 2);
+        for link in links {
+            assert!(url_for_opening(&link.uri, Path::new("/tmp")).is_err());
+        }
+    }
+
+    #[test]
     fn link_urls_resolve_file_paths_against_the_pane_directory() {
         let cwd = Path::new("/Users/byron/dev/github.com/zed-industries/zed");
         let relative = "target/aarch64-apple-darwin/release-fast/Zed-aarch64.dmg";
@@ -2006,7 +2215,7 @@ mod tests {
                     .join("Downloads/Zed.dmg"),
             ),
         ] {
-            let url = url_for_opening(target, cwd).unwrap();
+            let url = resolve_link_url(target, cwd).unwrap();
             assert_eq!(
                 url.to_file_path().as_deref(),
                 Some(expected.as_path()),
@@ -2020,7 +2229,7 @@ mod tests {
             "file:///tmp/Zed%20Dev.dmg",
         ] {
             assert_eq!(
-                url_for_opening(target, cwd)
+                resolve_link_url(target, cwd)
                     .unwrap()
                     .absoluteString()
                     .unwrap()
@@ -2029,7 +2238,7 @@ mod tests {
             );
         }
         for target in ["", "/tmp/Zed\n.dmg", "file:///tmp/\0Zed.dmg"] {
-            assert!(url_for_opening(target, cwd).is_err());
+            assert!(resolve_link_url(target, cwd).is_err());
         }
     }
 

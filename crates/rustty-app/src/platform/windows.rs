@@ -319,8 +319,14 @@ impl Platform {
             }
         }
     }
-    pub fn open_url(&self, target: &str, cwd: &Path) -> Result<(), String> {
-        shell_open(&link_target(target, cwd)?, w!("open"))
+    pub fn open_url(
+        &self,
+        target: &str,
+        cwd: &Path,
+        _approved: bool,
+    ) -> Result<Option<String>, String> {
+        shell_open(&link_target(target, cwd)?, w!("open"))?;
+        Ok(None)
     }
     pub fn open_config(&self, path: &Path) -> Result<(), String> {
         if let Some(parent) = path.parent() {
