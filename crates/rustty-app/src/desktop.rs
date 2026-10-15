@@ -6,7 +6,9 @@ mod deck_host;
 mod painter;
 #[path = "smoke.rs"]
 mod smoke;
-use command_palette::CommandPalette;
+#[path = "theme_preview.rs"]
+mod theme_preview;
+use command_palette::{CommandPalette, PaletteEvent};
 use egui::{Color32, Pos2, Sense, Vec2, ViewportId};
 use rustty::{
     app_paths,
@@ -586,11 +588,17 @@ impl DirectoryBadge {
     }
 }
 
+struct ThemePreview {
+    owner: Id,
+    original: Config,
+}
+
 struct App {
     deck: deck_host::Connection,
     loaded: LoadedConfig,
     config_loader: config::ConfigLoader,
     config_args: Vec<String>,
+    theme_preview: Option<ThemePreview>,
     workspace: Workspace,
     state_path: PathBuf,
     resources: Option<PathBuf>,
@@ -747,6 +755,7 @@ pub fn run() -> Result<()> {
         loaded,
         config_loader,
         config_args: args,
+        theme_preview: None,
         workspace,
         state_path,
         resources,
@@ -2298,8 +2307,30 @@ impl App {
                 }
             }
             Action::ToggleCommandPalette => {
-                host.palette.toggle();
+                if self
+                    .theme_preview
+                    .as_ref()
+                    .is_some_and(|preview| preview.owner == host.id)
+                {
+                    self.cancel_theme_preview(Some(host));
+                } else {
+                    host.palette.toggle();
+                }
                 host.focus_text_input = host.palette.open || host.search_focus.is_some();
+            }
+            Action::Themes => {
+                self.cancel_theme_preview(Some(host));
+                match self.config_loader.themes(self.loaded.family) {
+                    Ok(themes) => {
+                        self.theme_preview = Some(ThemePreview {
+                            owner: host.id,
+                            original: self.config().clone(),
+                        });
+                        host.palette.show_themes(themes);
+                        host.focus_text_input = true;
+                    }
+                    Err(error) => self.errors.push(format!("Could not list themes: {error}")),
+                }
             }
             Action::CopyToClipboard => {
                 let text = focused.and_then(|id| {
@@ -2521,6 +2552,7 @@ impl App {
         }
     }
     fn reload_config(&mut self, mut host: Option<&mut Host>) {
+        self.cancel_theme_preview(host.as_deref_mut());
         let previous_renderer = self.loaded.config.renderer;
         self.loaded = load_config(&mut self.config_loader, &self.config_args, None);
         if self.smoke.is_some() {
@@ -2552,8 +2584,11 @@ impl App {
             }
         }
         self.update_fonts(host.as_deref_mut());
-        if let Some(platform) = &self.platform {
-            for window in host.into_iter().chain(self.windows.values_mut()) {
+        self.configure_windows(host);
+    }
+    fn configure_windows(&mut self, host: Option<&mut Host>) {
+        for window in host.into_iter().chain(self.windows.values_mut()) {
+            if let Some(platform) = &self.platform {
                 let quick = self
                     .workspace
                     .windows
@@ -2565,6 +2600,77 @@ impl App {
                     self.errors.push(error);
                 }
             }
+            window.repaint();
+        }
+    }
+    fn apply_theme_config(&mut self, config: Config, mut host: Option<&mut Host>) {
+        let fonts_changed = font_config(self.config(), 1.0) != font_config(&config, 1.0);
+        self.loaded.config = config;
+        self.context.set_theme(ui_theme(self.config()));
+        for pane in self.panes.values_mut() {
+            if let Err(error) = pane.session.apply_config(&self.loaded.config) {
+                self.errors.push(error.to_string());
+            }
+        }
+        if fonts_changed {
+            self.update_fonts(host.as_deref_mut());
+        }
+        self.configure_windows(host);
+    }
+    fn cancel_theme_preview(&mut self, mut host: Option<&mut Host>) {
+        let Some(preview) = self.theme_preview.take() else {
+            return;
+        };
+        for window in host
+            .iter_mut()
+            .map(|host| &mut **host)
+            .chain(self.windows.values_mut())
+        {
+            if window.id == preview.owner {
+                window.palette.open = false;
+                window.focus_text_input = window.search_focus.is_some();
+            }
+        }
+        self.apply_theme_config(preview.original, host);
+    }
+    fn preview_theme(&mut self, host: &mut Host, theme: config::ThemeChoice, accept: bool) {
+        let Some(preview) = self
+            .theme_preview
+            .as_ref()
+            .filter(|preview| preview.owner == host.id)
+        else {
+            return;
+        };
+        let loaded = self
+            .config_loader
+            .load_with_theme(&self.config_args, &theme.path.to_string_lossy());
+        let errors = loaded
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                diagnostic.path == theme.path
+                    || diagnostic
+                        .path
+                        .file_name()
+                        .is_some_and(|name| name == "<theme-preview>")
+            })
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        if !errors.is_empty() {
+            self.cancel_theme_preview(Some(host));
+            self.errors.extend(errors);
+            return;
+        }
+        let config = theme_preview::appearance(&preview.original, loaded.config);
+        self.apply_theme_config(config, Some(host));
+        if accept {
+            self.theme_preview = None;
+            self.errors.push(format!(
+                "Theme {} selected for this session. To keep it, add or edit this line in {}:\n\ntheme = {}\n\nNo configuration file was changed. Reloading configuration or restarting Rustty restores the saved theme.",
+                theme.name,
+                self.loaded.edit_config_path.display(),
+                theme.config_value(),
+            ));
         }
     }
     fn update_fonts(&mut self, host: Option<&mut Host>) {
@@ -2624,6 +2730,13 @@ impl App {
         true
     }
     fn reconcile(&mut self, event_loop: &ActiveEventLoop) {
+        if self
+            .theme_preview
+            .as_ref()
+            .is_some_and(|preview| self.index(preview.owner).is_none())
+        {
+            self.cancel_theme_preview(None);
+        }
         // With no native windows there is no ThemeChanged event to observe.
         // Refresh before creating a session that could immediately query it.
         if self.windows.is_empty() {
@@ -3039,6 +3152,7 @@ impl App {
         );
         self.activity_flashes.remove(&active.id);
         let mut commands = Vec::new();
+        let mut palette_event = None;
         let mut search_commands = Vec::new();
         let mut layout_command = None;
         let mut tab_selection = None;
@@ -3740,14 +3854,15 @@ impl App {
                 }
             }
             if host.palette.open {
-                if let Some(action) = host.palette.show(
-                    root_ui,
-                    egui::Id::new(("palette", host.id)),
-                    &config,
-                    &mut host.focus_text_input,
-                ) {
-                    commands.push(action);
-                }
+                palette_event = host
+                    .palette
+                    .show(
+                        root_ui,
+                        egui::Id::new(("palette", host.id)),
+                        &config,
+                        &mut host.focus_text_input,
+                    )
+                    .or(palette_event.take());
                 if !host.palette.open {
                     host.focus_text_input = host.search_focus.is_some();
                 }
@@ -3910,6 +4025,20 @@ impl App {
         }
         if let Some(id) = retry_pane {
             self.failed_panes.remove(&id);
+        }
+        match palette_event {
+            Some(PaletteEvent::Action(action)) => commands.push(action),
+            Some(PaletteEvent::PreviewTheme(theme)) => self.preview_theme(host, theme, false),
+            Some(PaletteEvent::AcceptTheme(theme)) => self.preview_theme(host, theme, true),
+            None => {}
+        }
+        if !host.palette.open
+            && self
+                .theme_preview
+                .as_ref()
+                .is_some_and(|preview| preview.owner == host.id)
+        {
+            self.cancel_theme_preview(Some(host));
         }
         for action in commands {
             self.action(event_loop, host, action, false);
@@ -5601,7 +5730,7 @@ fn show_messages(ctx: &egui::Context, errors: &mut Vec<String>) -> Option<egui::
                 .max_height(300.0)
                 .show(ui, |ui| {
                     for error in errors.iter() {
-                        ui.label(error);
+                        ui.add(egui::Label::new(error).selectable(true));
                     }
                 });
             ui.button("Dismiss")
