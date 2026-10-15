@@ -111,7 +111,7 @@ fn combining_at_right_edge_respects_grapheme_and_wrap_modes() {
 }
 
 #[test]
-fn wrapped_graphemes_drop_suffixes_when_native_scrolling_discards_the_source() {
+fn wrapped_graphemes_preserve_suffixes_when_scrolling_discards_the_source() {
     for (cols, rows, line) in [(3, 1, 1), (3, 2, 2), (1024, 48, 46)] {
         for alternate in [false, true] {
             for memory_limit in [None, Some(0), Some(1)] {
@@ -124,11 +124,7 @@ fn wrapped_graphemes_drop_suffixes_when_native_scrolling_discards_the_source() {
                 let row = terminal.screen().row(usize::from(line.min(rows - 1)));
                 assert_eq!(
                     &*row.text(0),
-                    if alternate && rows == 1 {
-                        "☺❤"
-                    } else {
-                        "☺\u{200d}❤"
-                    },
+                    "☺\u{200d}❤",
                     "{cols}x{rows}, alternate={alternate}, host limit={memory_limit:?}"
                 );
                 assert_eq!(row.cells[0].width(), 2);
