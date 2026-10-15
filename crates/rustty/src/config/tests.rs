@@ -600,6 +600,260 @@ fn bad_theme_reports_diagnostic_but_keeps_explicit_settings() {
 }
 
 #[test]
+fn theme_catalog_lists_user_first_and_resolves_duplicate_names_by_search_order() {
+    let mut home = TestHome::new();
+    let native = home.root.join("roaming");
+    home.loader.app_config_home = Some(native.clone());
+    let resources = home.loader.resources_dir.as_ref().unwrap();
+    fs::create_dir_all(resources.join("themes")).unwrap();
+    for name in ["Bundled", "Shared", "zulu"] {
+        fs::write(resources.join("themes").join(name), "background=#010203\n").unwrap();
+    }
+    let shared = home.write(".config/rustty/themes/Shared", "background=#040506\n");
+    home.write(".config/rustty/themes/Zebra", "background=#040506\n");
+    home.write(".config/ghostty/themes/Ghostty", "background=#070809\n");
+    fs::create_dir_all(native.join("Rustty/themes")).unwrap();
+    for name in ["alpha", "Shared"] {
+        fs::write(
+            native.join("Rustty/themes").join(name),
+            "background=#ffffff\n",
+        )
+        .unwrap();
+    }
+    fs::create_dir_all(home.loader.xdg_config_home.join("rustty/themes/folder")).unwrap();
+    #[cfg(unix)]
+    home.write(".config/rustty/themes/bad\nname", "background=red\n");
+    let choices = home.loader.themes(ConfigFamily::Rustty).unwrap();
+    assert_eq!(
+        choices
+            .iter()
+            .map(|choice| (choice.name.as_str(), choice.user))
+            .collect::<Vec<_>>(),
+        [
+            ("alpha", true),
+            ("Shared", true),
+            ("Zebra", true),
+            ("Bundled", false),
+            ("zulu", false)
+        ],
+    );
+    assert!(choices.iter().all(|choice| choice.path.is_absolute()));
+    assert_eq!(choices[1].path, fs::canonicalize(shared).unwrap());
+    assert_eq!(choices[3].config_value(), "Bundled");
+    let ghostty = home.loader.themes(ConfigFamily::GhosttyLocal).unwrap();
+    assert_eq!(ghostty[0].name, "Ghostty");
+    assert!(ghostty[0].user);
+    assert!(!ghostty.iter().any(|choice| choice.name == "Zebra"));
+}
+
+#[test]
+fn theme_catalog_missing_directories_are_read_only() {
+    let home = TestHome::new();
+    assert!(home.loader.themes(ConfigFamily::Rustty).unwrap().is_empty());
+    assert!(!home.loader.home.exists());
+    assert!(!home.loader.resources_dir.as_ref().unwrap().exists());
+    let loaded = home.loader.load_with_theme(&[], "missing");
+    assert_eq!(loaded.diagnostics.len(), 1);
+    assert_eq!(loaded.diagnostics[0].key.as_deref(), Some("theme"));
+    assert!(!home.loader.home.exists());
+}
+
+#[test]
+fn theme_catalog_follows_filesystem_case_and_nonfile_shadowing() {
+    let home = TestHome::new();
+    home.own("");
+    let user = home.write(".config/rustty/themes/CaseTheme", "background=red\n");
+    let user_dir = user.parent().unwrap();
+    fs::create_dir(user_dir.join("Blocked")).unwrap();
+    let bundled = home.loader.resources_dir.as_ref().unwrap().join("themes");
+    fs::create_dir_all(&bundled).unwrap();
+    for name in ["casetheme", "blocked"] {
+        fs::write(bundled.join(name), "background=blue\n").unwrap();
+    }
+    let choices = home.loader.themes(ConfigFamily::Rustty).unwrap();
+    let case_insensitive = user_dir.join("casetheme").exists();
+    assert_eq!(choices.len(), if case_insensitive { 1 } else { 3 });
+    for choice in choices {
+        home.own(&format!("theme={}\n", choice.config_value()));
+        let saved = home.loader.load();
+        let preview = home
+            .loader
+            .load_with_theme(&[], choice.path.to_str().unwrap());
+        assert!(saved.diagnostics.is_empty(), "{:?}", saved.diagnostics);
+        assert!(preview.diagnostics.is_empty());
+        assert_eq!(saved.config.background, preview.config.background);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn theme_catalog_rejects_unrepresentable_canonical_paths() {
+    use std::os::unix::fs::symlink;
+
+    let home = TestHome::new();
+    let safe = home.write(".config/rustty/themes/Safe", "background=blue\n");
+    let themes = safe.parent().unwrap();
+    let target = home.write("target\ncommand=exit\n/theme", "background=red\n");
+    symlink(target, themes.join("light:literal")).unwrap();
+    #[cfg(not(target_os = "macos"))]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        let invalid = std::ffi::OsString::from_vec(b"invalid\xff".to_vec());
+        let target = home.write(PathBuf::from(invalid).join("theme"), "background=red\n");
+        symlink(target, themes.join("InvalidPath")).unwrap();
+    }
+    let choices = home.loader.themes(ConfigFamily::Rustty).unwrap();
+    assert_eq!(choices.len(), 1);
+    assert_eq!(choices[0].name, "Safe");
+}
+
+#[test]
+fn user_theme_selection_survives_creating_the_first_rustty_config() {
+    let home = TestHome::new();
+    home.write(".config/ghostty/themes/UserTheme", "background=blue\n");
+    let initial = home.loader.load();
+    assert_eq!(initial.family, ConfigFamily::Defaults);
+    let choices = home.loader.themes(initial.family).unwrap();
+    let choice = &choices[0];
+    assert!(choice.user);
+    assert_eq!(choice.config_value(), choice.path.to_str().unwrap());
+    fs::create_dir_all(initial.edit_config_path.parent().unwrap()).unwrap();
+    fs::write(
+        initial.edit_config_path,
+        format!("theme={}\n", choice.config_value()),
+    )
+    .unwrap();
+    let saved = home.loader.load();
+    assert_eq!(saved.family, ConfigFamily::Rustty);
+    assert!(saved.diagnostics.is_empty(), "{:?}", saved.diagnostics);
+    assert_eq!(saved.config.background, Rgb::new(0, 0, 255));
+}
+
+#[test]
+fn theme_preview_overrides_includes_and_cli_but_keeps_explicit_settings() {
+    let home = TestHome::new();
+    let root_text = "theme=Root\nforeground=#112233\nconfig-file=override\n";
+    let root = home.own(root_text);
+    let include_text = "theme=Included\ncursor-style=underline\n";
+    let include = home.write(
+        "Library/Application Support/com.rustty.app/override",
+        include_text,
+    );
+    for (name, background) in [
+        ("Root", "#010101"),
+        ("CLI", "#020202"),
+        ("Included", "#030303"),
+        ("Preview", "#040506"),
+    ] {
+        home.write(
+            format!(".config/rustty/themes/{name}"),
+            &format!(
+                "background={background}\nforeground=#ffffff\nfont-size=99\ncursor-style=bar\n"
+            ),
+        );
+    }
+    let arguments = args(&["--theme=CLI", "--font-size=18"]);
+    let original = home.loader.load_with_args(&arguments);
+    assert_eq!(original.config.background, Rgb::new(3, 3, 3));
+    let loaded = home.loader.load_with_theme(&arguments, "Preview");
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(loaded.config.theme.unwrap().dark, "Preview");
+    assert_eq!(loaded.config.background, Rgb::new(4, 5, 6));
+    assert_eq!(loaded.config.foreground, Rgb::new(0x11, 0x22, 0x33));
+    assert_eq!(loaded.config.font_size, 18.0);
+    assert_eq!(loaded.config.cursor_style, CursorStyle::Underline);
+    assert_eq!(fs::read_to_string(root).unwrap(), root_text);
+    assert_eq!(fs::read_to_string(include).unwrap(), include_text);
+    assert_eq!(
+        home.loader.load_with_args(&arguments).config,
+        original.config
+    );
+}
+
+#[test]
+fn theme_preview_supports_dual_variants_reset_and_diagnostics() {
+    let mut home = TestHome::new();
+    home.own("theme=Day\nfont-size=18\n");
+    home.write(".config/rustty/themes/Day", "background=white\n");
+    home.write(".config/rustty/themes/Night", "background=black\n");
+    for (dark, background) in [(false, Rgb::new(255, 255, 255)), (true, Rgb::new(0, 0, 0))] {
+        home.loader.dark_mode = dark;
+        let loaded = home.loader.load_with_theme(&[], "light:Day,dark:Night");
+        assert!(loaded.diagnostics.is_empty());
+        assert_eq!(loaded.config.background, background);
+        assert_eq!(loaded.config.window_theme, WindowTheme::System);
+    }
+    let reset = home.loader.load_with_theme(&[], "");
+    assert!(reset.config.theme.is_none());
+    assert_eq!(reset.config.background, Config::default().background);
+    for invalid in ["light:Day", "../bad", "missing"] {
+        let loaded = home.loader.load_with_theme(&[], invalid);
+        assert_eq!(loaded.config.font_size, 18.0);
+        assert_eq!(
+            loaded.diagnostics.len(),
+            1,
+            "{invalid}: {:?}",
+            loaded.diagnostics
+        );
+        assert_eq!(loaded.diagnostics[0].key.as_deref(), Some("theme"));
+        assert!(loaded.diagnostics[0].path.ends_with("<theme-preview>"));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn theme_catalog_and_config_values_handle_literal_filenames() {
+    let home = TestHome::new();
+    home.own("");
+    for name in [
+        "Normal Theme",
+        "light:literal",
+        "dark:literal",
+        " spaced ",
+        "\"quoted\"",
+        "back\\slash",
+    ] {
+        home.write(
+            Path::new(".config/rustty/themes").join(name),
+            "background=#123456\n",
+        );
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        let invalid = std::ffi::OsString::from_vec(b"invalid\xff".to_vec());
+        fs::write(
+            home.loader
+                .xdg_config_home
+                .join("rustty/themes")
+                .join(invalid),
+            "background=red\n",
+        )
+        .unwrap();
+    }
+    let choices = home.loader.themes(ConfigFamily::Rustty).unwrap();
+    assert_eq!(choices.len(), 6);
+    for choice in choices {
+        let value = choice.config_value();
+        assert_eq!(unquote(&value), choice.path.to_str().unwrap());
+        home.own(&format!("theme={value}\n"));
+        let loaded = home.loader.load();
+        assert!(
+            loaded.diagnostics.is_empty(),
+            "{}: {:?}",
+            choice.name,
+            loaded.diagnostics
+        );
+        assert_eq!(loaded.config.background, Rgb::new(0x12, 0x34, 0x56));
+        let preview = home
+            .loader
+            .load_with_theme(&[], choice.path.to_str().unwrap());
+        assert!(preview.diagnostics.is_empty());
+        assert_eq!(preview.config.background, loaded.config.background);
+    }
+}
+
+#[test]
 fn cli_font_override_reset_defaults_flag_and_direct_initial_argv() {
     let home = TestHome::new();
     home.own("font-family=File font\nfont-size=99\nconfig-default-files=false\n");
