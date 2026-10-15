@@ -328,6 +328,14 @@ impl Session {
         &self.shell
     }
 
+    pub fn reset_terminal(&self) -> io::Result<()> {
+        let mut terminal = self.terminal()?;
+        terminal.reset_from_host();
+        self.input
+            .send(IoCommand::Linefeed(terminal.modes.get(false, 20)))
+            .map_err(error)
+    }
+
     /// Queues the entire input or returns an error without sending any prefix.
     pub fn write(&self, bytes: &[u8]) -> io::Result<()> {
         if self.exited.load(Ordering::Acquire) {
