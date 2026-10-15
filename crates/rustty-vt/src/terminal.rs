@@ -1246,31 +1246,15 @@ impl Terminal {
             if !self.modes.dec(7) {
                 return;
             }
-            let text = self
-                .screen()
-                .cursor_row()
-                .copy_cell(col)
-                .text
-                .map(|(text, _)| text);
+            let text = self.screen().cursor_row().copy_cell(col).text;
             self.screen_mut().cursor.col = col;
-            if text.is_some() {
-                // Keep the allocation alive until the wrapped destination is written.
-                let spacer_head = right == self.cols as usize - 1;
-                let cell = self.screen_mut().cell_mut(y, col);
-                cell.set_codepoint(None);
-                cell.set_width(1);
-                cell.set_spacer_head(spacer_head);
-                cell.set_grapheme(true);
-            } else {
-                self.put_cell(
-                    None,
-                    1,
-                    right == self.cols as usize - 1,
-                    self.screen().cursor_location(),
-                );
-            }
+            self.put_cell(
+                None,
+                1,
+                right == self.cols as usize - 1,
+                self.screen().cursor_location(),
+            );
             self.print_wrap();
-            let source_col = col;
             col = self.screen().cursor.col;
             self.put_cell(
                 cell.codepoint(),
@@ -1278,10 +1262,8 @@ impl Terminal {
                 false,
                 self.screen().cursor_location(),
             );
-            if let Some(text) = text {
-                let base_len = cell.codepoint().map_or(0, char::len_utf8);
-                self.screen_mut()
-                    .move_wrapped_grapheme(source_col, &text[base_len..]);
+            if let Some((text, len)) = text {
+                let _ = self.screen_mut().restore_wrapped_grapheme(text, len);
             }
         } else if width != old_width {
             let background = self.screen().cursor.style.background;

@@ -702,11 +702,14 @@ fn wrapped_transfers_share_unchanged_text_and_preserve_detached_snapshots() {
     let (shared, len) = screen.row(0).copy_cell(2).text.unwrap();
     assert_eq!(len, 1);
     let detached = screen.snapshot_viewport();
+    screen.clear_grapheme(0, 2);
     screen.cell_mut(0, 2).set_codepoint(None);
     screen.cursor.row = 1;
     screen.cursor.col = 0;
     screen.write_cursor_cell(Some('☺'), 2, false, screen.cursor_location());
-    screen.move_wrapped_grapheme(2, "\u{200d}");
+    screen
+        .restore_wrapped_grapheme(shared.clone(), len)
+        .unwrap();
     let (moved, len) = screen.row(1).copy_cell(0).text.unwrap();
     assert_eq!(len, 1);
     assert!(Arc::ptr_eq(&shared, &moved));
