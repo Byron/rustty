@@ -504,11 +504,12 @@ pub(crate) fn mouse_shape_index(name: &str) -> Option<u8> {
         .map(|index| index as u8)
 }
 
-/// Check clipboard bytes before encoding. Pass `false` to reject newlines
+/// Check clipboard bytes before encoding. Pass `false` to reject line terminators
 /// regardless of terminal state, or the active bracketed-paste mode otherwise.
 pub fn paste_is_safe(text: impl AsRef<[u8]>, bracketed: bool) -> bool {
     let text = text.as_ref();
-    (bracketed || !text.contains(&b'\n')) && !text.windows(6).any(|part| part == b"\x1b[201~")
+    (bracketed || !text.iter().any(|byte| matches!(byte, b'\r' | b'\n')))
+        && !text.windows(6).any(|part| part == b"\x1b[201~")
 }
 
 fn single_char(text: &str) -> Option<char> {
@@ -907,6 +908,18 @@ mod tests {
             terminal.encode_paste(bytes),
             b"\x1b[200~\xff\n \xfe\x1b[201~"
         );
+    }
+
+    #[test]
+    fn paste_protection_checks_both_line_terminators() {
+        for text in ["\r", "echo hi\r", "one\rtwo", "one\ntwo", "one\r\ntwo"] {
+            assert!(!paste_is_safe(text, false), "{text:?}");
+            assert!(paste_is_safe(text, true), "{text:?}");
+        }
+        for bracketed in [false, true] {
+            assert!(paste_is_safe("one\ttwo", bracketed));
+            assert!(!paste_is_safe("one\x1b[201~two\r", bracketed));
+        }
     }
 
     #[cfg(target_os = "macos")]

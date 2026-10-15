@@ -6933,18 +6933,15 @@ mod tests {
                     let mut config = Config::default();
                     config.clipboard_paste_protection = protection;
                     config.clipboard_paste_bracketed_safe = trust_brackets;
-                    for data in [
-                        b"".as_slice(),
-                        b"plain text",
-                        b"one\rtwo",
-                        "日誌".as_bytes(),
-                    ] {
+                    for data in [b"".as_slice(), b"plain text", "日誌".as_bytes()] {
                         assert!(!paste_needs_confirmation(&config, &terminal, data));
                     }
-                    assert_eq!(
-                        paste_needs_confirmation(&config, &terminal, b"one\ntwo"),
-                        protection && !(bracketed && trust_brackets)
-                    );
+                    for data in [b"one\ntwo".as_slice(), b"one\rtwo", b"one\r\ntwo"] {
+                        assert_eq!(
+                            paste_needs_confirmation(&config, &terminal, data),
+                            protection && !(bracketed && trust_brackets)
+                        );
+                    }
                     assert_eq!(
                         paste_needs_confirmation(&config, &terminal, b"one\x1b[201~two"),
                         protection
