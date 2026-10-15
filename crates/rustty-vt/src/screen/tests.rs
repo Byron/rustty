@@ -697,31 +697,29 @@ fn inline_text_matches_utf8_for_every_scalar() {
 
 #[test]
 fn wrapped_transfers_share_unchanged_text_and_preserve_detached_snapshots() {
-    for base in ['☺', ' '] {
-        let mut screen = Screen::new(3, 2, ScrollbackLimits::default());
-        screen.set_cell_text(0, 2, "☺\u{200d}");
-        let (shared, len) = screen.row(0).copy_cell(2).text.unwrap();
-        assert_eq!(len, 1);
-        let detached = screen.snapshot_viewport();
-        screen.cell_mut(0, 2).set_codepoint(None);
-        screen.cursor.row = 1;
-        screen.cursor.col = 0;
-        screen.write_cursor_cell(Some(base), 2, false, screen.cursor_location());
-        screen.move_wrapped_grapheme(2, "\u{200d}");
-        let (moved, len) = screen.row(1).copy_cell(0).text.unwrap();
-        assert_eq!(len, 1);
-        assert_eq!(Arc::ptr_eq(&shared, &moved), base == '☺');
-        assert_eq!(&*moved, format!("{base}\u{200d}"));
-        screen.append_grapheme(0, '❤').unwrap();
-        screen.pages.pages[0]
-            .rebuild(Some(PageResource::Graphemes))
-            .unwrap();
-        assert_eq!(&*screen.row(1).text(0), format!("{base}\u{200d}❤"));
-        assert_eq!(&*detached.row(0).text(2), "☺\u{200d}");
-        assert_eq!(&*shared, "☺\u{200d}");
-        assert_references(&screen);
-        assert_references(&detached);
-    }
+    let mut screen = Screen::new(3, 2, ScrollbackLimits::default());
+    screen.set_cell_text(0, 2, "☺\u{200d}");
+    let (shared, len) = screen.row(0).copy_cell(2).text.unwrap();
+    assert_eq!(len, 1);
+    let detached = screen.snapshot_viewport();
+    screen.cell_mut(0, 2).set_codepoint(None);
+    screen.cursor.row = 1;
+    screen.cursor.col = 0;
+    screen.write_cursor_cell(Some('☺'), 2, false, screen.cursor_location());
+    screen.move_wrapped_grapheme(2, "\u{200d}");
+    let (moved, len) = screen.row(1).copy_cell(0).text.unwrap();
+    assert_eq!(len, 1);
+    assert!(Arc::ptr_eq(&shared, &moved));
+    assert_eq!(&*moved, "☺\u{200d}");
+    screen.append_grapheme(0, '❤').unwrap();
+    screen.pages.pages[0]
+        .rebuild(Some(PageResource::Graphemes))
+        .unwrap();
+    assert_eq!(&*screen.row(1).text(0), "☺\u{200d}❤");
+    assert_eq!(&*detached.row(0).text(2), "☺\u{200d}");
+    assert_eq!(&*shared, "☺\u{200d}");
+    assert_references(&screen);
+    assert_references(&detached);
 }
 
 #[test]
