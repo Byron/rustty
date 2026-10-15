@@ -234,3 +234,171 @@ fn state_only_vt_export_restores_terminal_settings_without_printing_content() {
         )
     );
 }
+
+#[test]
+fn full_vt_export_preserves_cell_links_and_restores_the_active_cursor_link() {
+    let mut terminal = Terminal::new(20, 3, 100);
+    terminal.feed(b"\x1b]8;;https://a.example\x1b\\aa\x1b]8;;\x1b\\ ");
+    terminal.feed(b"\x1b]8;id=raw;https://b.example/\xff\x1b\\bb\x1b[9Gcc\x1b]8;;\x1b\\\r\n");
+    terminal.feed(
+        "\x1b]8;id=styled;https://c.example\x1b\\\x1b[1mé界\x1b[0m\x1b]8;;\x1b\\ plain".as_bytes(),
+    );
+    terminal.feed(b"\x1b]8;id=current;https://cursor.example\x1b\\");
+    let before = rustty_vt::snapshot::encode_to_vec(&terminal).unwrap();
+    let mut formatter = terminal.formatter(Format::Vt);
+    formatter.extra = TerminalExtra::ALL;
+    let output = formatter.format().unwrap();
+    assert_eq!(
+        rustty_vt::snapshot::encode_to_vec(&terminal).unwrap(),
+        before
+    );
+
+    let mut replayed = Terminal::new(20, 3, 100);
+    replayed.feed(&output);
+    for (source, target) in terminal.screen().rows().zip(replayed.screen().rows()) {
+        for col in 0..source.cells.len() {
+            assert_eq!(source.hyperlink(col), target.hyperlink(col), "column {col}");
+        }
+    }
+    assert_eq!(terminal.screen().cursor, replayed.screen().cursor);
+    terminal.feed(b"!");
+    replayed.feed(b"!");
+    assert_eq!(
+        terminal.screen().row(1).hyperlink(9),
+        replayed.screen().row(1).hyperlink(9)
+    );
+}
+
+#[test]
+fn vt_hyperlink_transitions_preserve_ids_and_map_escapes_to_the_linked_cells() {
+    let open_a = b"\x1b]8;id=a;https://example.org\x1b\\";
+    let open_b = b"\x1b]8;id=b;https://example.org\x1b\\";
+    let close = b"\x1b]8;;\x1b\\";
+    let input = [open_a.as_slice(), b"ab", open_b, b"cd", close].concat();
+    let mut terminal = Terminal::new(8, 2, 0);
+    terminal.feed(&input);
+    let screen = terminal.screen();
+    let (bytes, map) = screen.formatter(Format::Vt).format_with_map().unwrap();
+    assert_eq!(bytes, input);
+    let expected = [
+        vec![0; open_a.len() + 1],
+        vec![1],
+        vec![2; open_b.len() + 1],
+        vec![3; 1 + close.len()],
+    ]
+    .concat();
+    assert_eq!(bytes.len(), map.len());
+    for (offset, col) in expected.into_iter().enumerate() {
+        assert_eq!(map.point(offset), screen.point(0, col));
+    }
+    let selection = Selection {
+        start: screen.point(0, 1).unwrap(),
+        end: screen.point(0, 2).unwrap(),
+        rectangular: false,
+    };
+    assert_eq!(
+        screen
+            .format_selection(selection, Options::new(Format::Vt))
+            .unwrap(),
+        [open_a.as_slice(), b"b", open_b, b"c", close].concat(),
+    );
+}
+
+#[test]
+fn vt_hyperlinks_close_before_skipped_cells_and_follow_hard_and_soft_wraps() {
+    let open = "\x1b]8;;https://example.org\x1b\\";
+    let close = "\x1b]8;;\x1b\\";
+    for (columns, unwrap, body, expected) in [
+        (
+            8,
+            false,
+            "ab\x1b[5Gcd".to_owned(),
+            format!("{open}ab{close}  {open}cd{close}"),
+        ),
+        (
+            8,
+            false,
+            format!("ab{close}\r\ncd"),
+            format!("{open}ab\r\n{close}cd"),
+        ),
+        (
+            8,
+            false,
+            "ab\r\ncd".to_owned(),
+            format!("{open}ab\r\ncd{close}"),
+        ),
+        (
+            4,
+            false,
+            "abcdef".to_owned(),
+            format!("{open}abcd\r\nef{close}"),
+        ),
+        (4, true, "abcdef".to_owned(), format!("{open}abcdef{close}")),
+        (
+            4,
+            true,
+            "ab\x1b[4Gde".to_owned(),
+            format!("{open}ab{close} {open}de{close}"),
+        ),
+    ] {
+        let mut terminal = Terminal::new(columns, 3, 0);
+        terminal.feed(format!("{open}{body}{close}").as_bytes());
+        let mut formatter = terminal.screen().formatter(Format::Vt);
+        formatter.options.unwrap = unwrap;
+        let (output, map) = formatter.format_with_map().unwrap();
+        assert_eq!(output, expected.as_bytes(), "{body:?}, unwrap={unwrap}");
+        assert_eq!(output.len(), map.len());
+        let mut replayed = Terminal::new(columns, 3, 0);
+        replayed.feed(&output);
+        assert!(replayed.screen().cursor.hyperlink.is_none());
+        for (source, target) in terminal.screen().rows().zip(replayed.screen().rows()) {
+            for col in 0..source.cells.len() {
+                assert_eq!(
+                    source.hyperlink(col).map(|link| link.uri_bytes()),
+                    target.hyperlink(col).map(|link| link.uri_bytes()),
+                    "{body:?}, column {col}",
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn vt_hyperlinks_survive_physical_page_boundaries_without_leaking() {
+    let mut terminal = Terminal::new(1024, 3, 100);
+    terminal.feed(b"\x1b]8;id=history;https://example.org\x1b\\");
+    terminal.feed(&b"x\r\n".repeat(80));
+    terminal.feed(b"y\x1b]8;;\x1b\\\r\nplain");
+    let screen = terminal.screen();
+    let (output, map) = screen.formatter(Format::Vt).format_with_map().unwrap();
+    assert!(map.get(output.len() - 1).unwrap().page > 0);
+    assert_eq!(output.len(), map.len());
+    let mut replayed = Terminal::new(1024, 3, 100);
+    replayed.feed(&output);
+    assert!(replayed.screen().cursor.hyperlink.is_none());
+    let original_rows: Vec<_> = screen.all_rows().collect();
+    let replayed_rows: Vec<_> = replayed.screen().all_rows().collect();
+    assert_eq!(original_rows.len(), replayed_rows.len());
+    for (source, target) in original_rows.into_iter().zip(replayed_rows) {
+        assert_eq!(source.hyperlink(0), target.hyperlink(0));
+        assert!(target.hyperlink(1).is_none());
+    }
+}
+
+#[test]
+fn html_and_plain_hyperlink_exports_keep_their_existing_formats() {
+    let mut terminal = Terminal::new(16, 2, 0);
+    terminal.feed(b"\x1b]8;id=a;https://example.org?a=1&b=2\x1b\\link\x1b]8;;\x1b\\ normal");
+    let screen = terminal.screen();
+    assert_eq!(
+        screen.formatter(Format::Plain).format().unwrap(),
+        b"link normal"
+    );
+    let (html, map) = screen.formatter(Format::Html).format_with_map().unwrap();
+    assert_eq!(html, b"<div style=\"font-family: monospace; white-space: pre;\"><a href=\"https://example.org?a=1&amp;b=2\">link</a> normal</div>");
+    assert_eq!(html.len(), map.len());
+    let closing = html.windows(4).position(|bytes| bytes == b"</a>").unwrap();
+    for offset in closing..closing + 4 {
+        assert_eq!(map.point(offset), screen.point(0, 3));
+    }
+}
