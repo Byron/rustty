@@ -718,6 +718,42 @@ impl Terminal {
         self.changed();
     }
 
+    /// DECSTR resets application modes and the pen without clearing content or
+    /// moving the cursor. Dynamic colors and modes outside DECSTR stay intact.
+    pub fn soft_reset(&mut self) {
+        for (private, mode) in [
+            (true, 25),
+            (false, 4),
+            (true, 6),
+            (true, 7),
+            (true, 45),
+            (true, 1045),
+            (false, 2),
+            (true, 1),
+            (true, 66),
+            (true, 69),
+        ] {
+            let default = self.modes.get_default(private, mode).unwrap();
+            // Origin mode must change without its usual cursor repositioning.
+            self.modes.set(private, mode, default);
+        }
+        self.reset_margins();
+        let screen = self.screen_mut();
+        screen.set_cursor_style(Style::default());
+        screen.cursor.protected = false;
+        screen.iso_protection = false;
+        screen.metadata.protected_mode = 0;
+        screen.charset = CharsetState::default();
+        screen.saved_cursor = None;
+        self.status_display = false;
+        self.modify_other_keys = false;
+        self.palette.clone_from(&self.metadata.original_palette);
+        self.metadata.palette_overrides.fill(0);
+        self.set_cursor_style(0);
+        self.set_mode(true, 25, self.modes.dec(25));
+        self.changed();
+    }
+
     /// Set a host-configurable mode's current value and reset default. Modes
     /// with transition side effects require their semantic API instead.
     pub fn set_default_mode(&mut self, private: bool, mode: u16, value: bool) -> bool {
@@ -2368,7 +2404,7 @@ impl Terminal {
                     screen.metadata.protected_mode = 2;
                 }
             }
-            // The pinned libghostty stream ignores DECSTR and ANSI DECRQM.
+            ([b'!'], b'p') if p.is_empty() => self.soft_reset(),
             ([b'!'] | [b'$'], b'p') => {}
             ([b'?', b'$'], b'p') => {
                 if p.len() != 1 {
