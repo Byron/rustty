@@ -409,14 +409,15 @@ impl Terminal {
             }
             1015 => format!("\x1b[{};{x};{y}M", code + 32).into_bytes(),
             1005 => {
-                let (Some(x), Some(y)) =
-                    (char::from_u32(x as u32 + 32), char::from_u32(y as u32 + 32))
-                else {
+                let (Some(button), Some(x), Some(y)) = (
+                    char::from_u32(u32::from(code) + 32),
+                    char::from_u32(x as u32 + 32),
+                    char::from_u32(y as u32 + 32),
+                ) else {
                     return Vec::new();
                 };
                 let mut output = b"\x1b[M".to_vec();
-                output.push((code + 32) as u8);
-                for cp in [x, y] {
+                for cp in [button, x, y] {
                     output.extend_from_slice(cp.encode_utf8(&mut [0; 4]).as_bytes());
                 }
                 output
@@ -654,12 +655,12 @@ fn pc_key(t: &Terminal, key: Key, mods: Modifiers) -> Option<Vec<u8>> {
             return Some(format!("\x1b[27;{number};127~").into_bytes());
         }
         return Some(match mask {
-            0 | 7 => vec![if t.modes.dec(67) { 8 } else { 127 }],
+            0 => vec![if t.modes.dec(67) { 8 } else { 127 }],
             2 => vec![if t.modes.dec(67) { 127 } else { 8 }],
             1 | 8 | 9 => vec![127],
             4 | 5 | 12 | 13 => vec![0x1b, 127],
             3 | 10 | 11 => vec![8],
-            6 | 14 | 15 => vec![0x1b, 8],
+            6 | 7 | 14 | 15 => vec![0x1b, 8],
             _ => unreachable!(),
         });
     }
@@ -960,6 +961,20 @@ mod tests {
         key.text = Some("日本".into());
         assert_eq!(t.encode_key(&key), "日本".as_bytes());
     }
+
+    #[test]
+    fn legacy_backspace_preserves_control_alt_and_shift() {
+        let mut terminal = Terminal::new(80, 24, 0);
+        let mut key = KeyEvent::new(Key::Backspace);
+        key.modifiers.control = true;
+        key.modifiers.alt = true;
+        key.modifiers.shift = true;
+        assert_eq!(terminal.encode_key(&key), b"\x1b\x08");
+        terminal.feed(b"\x1b[?67h");
+        assert_eq!(terminal.encode_key(&key), b"\x1b\x08");
+        terminal.feed(b"\x1b[>4;2m");
+        assert_eq!(terminal.encode_key(&key), b"\x1b[27;8;127~");
+    }
     #[test]
     fn kitty_reports_modifiers_repeats_release_and_associated_text() {
         let mut t = Terminal::new(80, 24, 10);
@@ -1062,7 +1077,7 @@ mod tests {
         event.y = 0.0;
         assert_eq!(
             t.encode_mouse(event, mouse_options()),
-            [0x1b, b'[', b'M', 160, 33, 33]
+            "\x1b[M\u{a0}!!".as_bytes()
         );
         t.feed(b"\x1b[?9h");
         event.button = Some(MouseButton::WheelUp);
