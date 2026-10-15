@@ -1,6 +1,6 @@
 //! Selection queries over physical rows, including retained history.
 
-use crate::{Cell, GridPoint, Row, Screen, Selection, SemanticContent};
+use crate::{Cell, GridPoint, Row, Screen, Selection, SemanticContent, packed::Wide};
 
 pub const DEFAULT_WORD_BOUNDARIES: &[char] = &[
     '\0', ' ', '\t', '\'', '"', '│', '`', '|', ':', ';', ',', '(', ')', '[', ']', '{', '}', '<',
@@ -383,29 +383,43 @@ impl Grid<'_> {
     }
 
     fn word(&self, point: Position, boundaries: &[char]) -> Option<Selection> {
-        let boundary = boundaries.contains(&codepoint(self.cell(point))?);
-        let same =
-            |cell: &Cell| codepoint(cell).is_some_and(|c| boundaries.contains(&c) == boundary);
+        let boundary = boundaries.contains(&self.word_codepoint(point)?);
+        let same = |point| {
+            self.word_codepoint(point)
+                .is_some_and(|c| boundaries.contains(&c) == boundary)
+        };
         let mut end = point;
         while let Some(next) = self.next(end) {
-            if !same(self.cell(next)) {
+            let row = self.row(end.0);
+            if (end.1 + 1 == row.cells.len() && !row.wrapped) || !same(next) {
                 break;
             }
             end = next;
-            // Match native's forward scan: this check follows the initial cell.
-            if end.1 + 1 == self.row(end.0).cells.len() && !self.row(end.0).wrapped {
-                break;
-            }
         }
         let mut start = point;
         while let Some(previous) = self.previous(start) {
             let row = self.row(previous.0);
-            if (previous.1 + 1 == row.cells.len() && !row.wrapped) || !same(self.cell(previous)) {
+            if (previous.1 + 1 == row.cells.len() && !row.wrapped) || !same(previous) {
                 break;
             }
             start = previous;
         }
         Some(self.selection(start, end))
+    }
+
+    fn word_codepoint(&self, point: Position) -> Option<char> {
+        let owner = match self.cell(point).wide() {
+            Wide::Narrow | Wide::Wide => point,
+            Wide::SpacerTail => (point.0, point.1.checked_sub(1)?),
+            Wide::SpacerHead => {
+                let next = (point.0 + 1, 0);
+                if next.0 >= self.len() || self.cell(next).wide() != Wide::Wide {
+                    return None;
+                }
+                next
+            }
+        };
+        codepoint(self.cell(owner))
     }
 }
 
