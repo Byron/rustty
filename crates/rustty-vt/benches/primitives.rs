@@ -10,6 +10,9 @@ mod kitty;
 #[path = "../../../test/rustty/kitty_upload_bench.rs"]
 mod kitty_upload;
 
+#[path = "../../../test/rustty/charset_bench.rs"]
+mod charset;
+
 const COLS: u16 = 128;
 const ROWS: u16 = 32;
 const PATTERNS: [(&str, &str); 4] = [
@@ -1238,6 +1241,7 @@ criterion_group!(
     content_history_reflow,
     captured_scrollback_reflow,
     memory_capped_streams,
+    charset::charsets,
     kitty::placements,
     kitty::cells,
     kitty::image_deletions,
