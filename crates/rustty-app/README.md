@@ -170,6 +170,12 @@ disabled by default and follows configuration reloads.
 New terminals default to `grapheme-width-method = unicode`, matching Ghostty's
 emoji widths. The `legacy` setting remains available; changing this setting
 applies only to new terminals.
+The command palette's **Reset Terminal** action (`reset` in keybindings) directly
+resets the focused pane's modes, screen, and scrollback, including unfinished
+escape sequences. It works when terminal keyboard input is disabled. The child
+process keeps running; its own input settings or subsequent output can still
+require recovery within that application. Press Enter if the shell needs to
+redraw its prompt.
 Tabs, splits, zoom, quadrant navigation, clipboard and
 search use the configured Ghostty keybindings. Window layouts and pane directories
 are saved separately under `com.rustty.app`.

@@ -2278,6 +2278,25 @@ impl App {
                         Some(Fullscreen::Borderless(None))
                     })
             }
+            Action::Reset => {
+                if let Some(pane) = focused.and_then(|id| self.panes.get_mut(&id)) {
+                    if let Err(error) = pane.session.reset_terminal() {
+                        self.errors.push(error.to_string());
+                    } else {
+                        pane.reset_selection_gesture();
+                        pane.mouse_cell = None;
+                        pane.sync_output.deadline = None;
+                        pane.search = None;
+                        pane.activity.progress_reported(0, None, Instant::now());
+                        if pane.title_override.is_none() {
+                            pane.title.clear();
+                        }
+                        host.search_focus = None;
+                        host.selection_drag = None;
+                        host.hovered_link = None;
+                    }
+                }
+            }
             Action::ToggleCommandPalette => {
                 host.palette.toggle();
                 host.focus_text_input = host.palette.open || host.search_focus.is_some();
