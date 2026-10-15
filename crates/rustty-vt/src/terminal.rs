@@ -389,6 +389,9 @@ impl Terminal {
         terminator: Option<u8>,
         handler: &mut impl EffectHandler,
     ) {
+        if matches!(terminator, Some(0x18 | 0x1a)) {
+            return;
+        }
         let mut effects = Vec::new();
         let read_enabled = handler.clipboard_read_enabled();
         let write_enabled = handler.clipboard_write_enabled();
