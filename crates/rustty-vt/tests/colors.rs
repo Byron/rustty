@@ -59,12 +59,11 @@ fn unset_protocol_colors_remain_distinct_from_render_fallbacks() {
 }
 
 #[test]
-fn explicit_colors_survive_default_changes_ris_and_snapshots_until_reset() {
+fn ris_resets_palette_overrides_to_configured_defaults() {
     let mut terminal = Terminal::new(80, 24, 0);
     terminal.set_default_colors(Some([1, 2, 3]), None, None, &[[1, 2, 3]]);
     terminal.feed(b"\x1b]10;#010203\x07\x1b]4;0;#010203\x07");
     terminal.set_default_colors(Some([9, 8, 7]), None, None, &[[9, 8, 7]]);
-    terminal.feed(b"\x1bc");
     let bytes = rustty_vt::snapshot::encode_to_vec(&terminal).unwrap();
     let mut terminal = rustty_vt::snapshot::decode(bytes.as_slice(), Default::default()).unwrap();
     for target in [Target::Foreground, Target::Palette(0)] {
@@ -72,6 +71,12 @@ fn explicit_colors_survive_default_changes_ris_and_snapshots_until_reset() {
         assert_eq!(terminal.color_override(target), Some([1, 2, 3]));
         assert_eq!(terminal.color_current(target), Some([1, 2, 3]));
     }
+    terminal.feed(b"\x1bc");
+    assert_eq!(terminal.color_override(Target::Palette(0)), None);
+    assert_eq!(terminal.color_current(Target::Palette(0)), Some([9, 8, 7]));
+    terminal.set_default_colors(Some([9, 8, 7]), None, None, &[[4, 5, 6]]);
+    assert_eq!(terminal.color_current(Target::Palette(0)), Some([4, 5, 6]));
+    terminal.set_default_colors(Some([9, 8, 7]), None, None, &[[9, 8, 7]]);
     terminal.feed(b"\x1b]110;extra\x07");
     assert_eq!(terminal.color_override(Target::Foreground), Some([1, 2, 3]));
     terminal.feed(b"\x1b]110;;;\x07\x1b]104;bad\x07");
