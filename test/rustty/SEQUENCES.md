@@ -57,7 +57,8 @@ significant. Values describe the recognized operations, not arbitrary parameters
 | `14t`, `16t`, `18t` | Text-pixel, cell-pixel, and cell-grid size replies using the session's host geometry. |
 | `21t` | Title reply when `title-report = true`; disabled by default, applied at startup and reload. |
 | `22t`, `23t` | Title-stack operations: intentionally unimplemented in both reference handlers and Rustty. |
-| `!p`, `$p` | DEC soft reset and ANSI mode query: ignored by the reference stream and Rustty. |
+| `!p` | DEC soft reset (DECSTR): restores application modes, margins, pen, character sets and palette defaults without clearing content or moving the cursor. |
+| `$p` | ANSI mode query: ignored by the reference stream and Rustty. |
 | `$}` | Select the status display; selecting the status area suppresses main-screen printing. There is no rendered status area. |
 | `$~` | Status-display type declaration: no effect, matching the reference. |
 
