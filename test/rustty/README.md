@@ -834,6 +834,21 @@ in batches of 4,096 codepoints, plus rejected surrogate and out-of-range inputs.
 The cases enumerate the scalar range independently of Rust's generated table.
 This verifies scalar width; terminal grapheme composition needs separate cases.
 
+Rustty uses Unicode 18 data from Ghostty's pinned uucode `9d555245`. Regenerate
+the checked-in property tables with
+`python3 crates/rustty-vt/tools/generate_unicode.py /path/to/uucode/ucd`.
+The generator requires the Unicode 18 UCD. Ordinary Rust builds use these
+tables directly and do not require Zig or Unicode data files.
+
+After building both adapters, run
+`python3 test/rustty/unicode18.py zig-out/bin/vt-oracle target/release/examples/parity`
+for 5,850 focused grapheme comparisons: every triple of the 18 tailored
+properties, longer Indic/emoji overlaps, new modifier sequences, empty input
+and rejected scalars. Unicode 18 tracks an Indic linker independently of emoji
+state and distinguishes linkers that extend the preceding cluster from those
+that start a new one. The checker compares first-cluster length and width;
+`tests/unicode18.rs` also covers new emoji cell widths and chunked terminal input.
+
 `--corpus` runs the inherited `stream-initial` and `stream-cmin` terminal bytes
 without requiring the full compatibility gate. The 3,295 fixtures passed 9,885
 whole-buffer, scalar and varied-delivery comparisons. Their first byte is the

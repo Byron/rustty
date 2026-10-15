@@ -10,6 +10,9 @@ import struct
 import sys
 
 ucd = Path(sys.argv[1])
+assert (ucd / "auxiliary/GraphemeBreakProperty.txt").read_text().startswith(
+    "# GraphemeBreakProperty-18.0.0.txt"
+), "Expected the pinned Unicode 18 UCD"
 count = 0x110000
 gc = ["Cn"] * count
 gb = ["Other"] * count
@@ -60,7 +63,7 @@ for line in (ucd / "emoji/emoji-variation-sequences.txt").read_text().splitlines
     if line:
         variation[int(line.split()[0], 16)] = 1
 
-names = ["Other", "Prepend", "Regional_Indicator", "SpacingMark", "L", "V", "T", "LV", "LVT", "ZWJ", "ZWNJ", "Pictographic", "ModifierBase", "Modifier", "IndicExtend", "IndicLinker", "IndicConsonant"]
+names = ["Other", "Prepend", "Regional_Indicator", "SpacingMark", "L", "V", "T", "LV", "LVT", "ZWJ", "ZWNJ", "Pictographic", "ModifierBase", "Modifier", "IndicExtend", "IndicLinkerExtend", "IndicLinkerOther", "IndicConsonant"]
 out = bytearray()
 values = bytearray()
 previous = None
@@ -70,7 +73,9 @@ for cp in range(count):
     elif modifier_base[cp]: prop = "ModifierBase"
     elif pictographic[cp]: prop = "Pictographic"
     elif indic[cp] == "Extend": prop = "ZWJ" if cp == 0x200D else "IndicExtend"
-    elif indic[cp] == "Linker": prop = "IndicLinker"
+    elif indic[cp] == "Linker":
+        assert prop in ("Extend", "Other"), (hex(cp), prop)
+        prop = "IndicLinker" + prop
     elif indic[cp] == "Consonant": prop = "IndicConsonant"
     elif prop == "Extend":
         assert cp == 0x200C, hex(cp)
