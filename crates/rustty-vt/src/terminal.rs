@@ -1839,7 +1839,10 @@ impl Terminal {
                     && self
                         .screen()
                         .rows()
-                        .next_back()
+                        .rfind(|row| {
+                            row.semantic != SemanticContent::Output
+                                || row.cells.iter().any(|cell| cell.codepoint().is_some())
+                        })
                         .is_some_and(|row| row.semantic != SemanticContent::Output)
                 {
                     self.scroll_clear();
