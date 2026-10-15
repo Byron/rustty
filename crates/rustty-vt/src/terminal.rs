@@ -954,10 +954,6 @@ impl Terminal {
         if self.modes.get(false, 4)
             || !self.modes.dec(7)
             || screen.charset.single.is_some()
-            || !matches!(
-                screen.charset.slots[screen.charset.gl],
-                Charset::Utf8 | Charset::Ascii
-            )
             || screen.cursor.hyperlink.is_some()
         {
             for &byte in bytes {
@@ -1217,7 +1213,7 @@ impl Terminal {
                 self.print_wrap();
                 location = self.screen().cursor_location();
             }
-            self.put_cell(Some(map_charset(cp, charset)), width, false, location);
+            self.put_cell(Some(charset.map(cp)), width, false, location);
         }
         let x = self.screen().cursor.col;
         self.screen_mut().cursor.pending_wrap = x + width as usize > right;
@@ -2895,20 +2891,6 @@ fn sgr_report(style: Style) -> String {
     }
     result.push('m');
     result
-}
-
-fn map_charset(cp: char, set: Charset) -> char {
-    if set == Charset::British && cp == '#' {
-        return '£';
-    }
-    if set == Charset::DecSpecial && ('`'..='~').contains(&cp) {
-        const SPECIAL: [char; 31] = [
-            '◆', '▒', '␉', '␌', '␍', '␊', '°', '±', '␤', '␋', '┘', '┐', '┌', '└', '┼', '⎺', '⎻',
-            '─', '⎼', '⎽', '├', '┤', '┴', '┬', '│', '≤', '≥', 'π', '≠', '£', '·',
-        ];
-        return SPECIAL[cp as usize - '`' as usize];
-    }
-    cp
 }
 
 pub fn default_palette() -> Vec<[u8; 3]> {

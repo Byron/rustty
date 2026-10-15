@@ -138,3 +138,32 @@ fn widening_a_wrapped_character_does_not_apply_a_new_charset() {
     assert_eq!(&*screen.cell_text(screen.row(1), 0), "#\u{fe0f}");
     assert_eq!(screen.row(1).cells[0].width(), 2);
 }
+
+#[test]
+fn legacy_charset_batches_match_scalar_writes_across_styles_and_boundaries() {
+    let bytes: Vec<_> = (b' '..=b'~').cycle().take(1025).collect();
+    for cols in [1, 5, 17, 128] {
+        for set in ['B', 'A', '0'] {
+            for graphemes in [false, true] {
+                let mut batched = Terminal::new(cols, 3, 64);
+                batched.set_mode(true, 2027, graphemes);
+                batched.feed("界a\u{301}\r\x1b[44m\x1b[2J\x1b[1;31m".as_bytes());
+                batched.feed(format!("\x1b({set}").as_bytes());
+                let mut scalar = batched.clone();
+                for style in [b"\x1b[1;31m".as_slice(), b"\x1b[0m", b"\x1b[0m"] {
+                    batched.feed(style);
+                    scalar.feed(style);
+                    batched.feed(&bytes);
+                    for &byte in &bytes {
+                        scalar.print(char::from(byte));
+                    }
+                    assert_eq!(
+                        rustty_vt::snapshot::encode_to_vec(&batched).unwrap(),
+                        rustty_vt::snapshot::encode_to_vec(&scalar).unwrap(),
+                        "cols={cols}, set={set}, graphemes={graphemes}"
+                    );
+                }
+            }
+        }
+    }
+}
