@@ -654,10 +654,11 @@ impl Terminal {
             self.foreground,
             self.background,
             self.cursor_color,
-            self.palette.clone(),
+            self.metadata.original_palette.clone(),
         );
         let (width_px, height_px) = (self.width_px, self.height_px);
         let mut metadata = self.metadata.clone();
+        metadata.palette_overrides.fill(0);
         metadata.cursor_is_default = true;
         metadata.shell_redraw = 0;
         metadata.mouse_shift_capture = None;
