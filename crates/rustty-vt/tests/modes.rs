@@ -99,15 +99,15 @@ fn stream_mode_queries_follow_native_parameter_and_host_rules() {
         b"\x1b[31m\x1b[?7l\x1b[!p\x1b[4$p\x1b[?1;7$p\x1b[?$p\x1b[?7$p\x1b[?5522$p\x1b[?32885$p\x1b[?32775$p\x1b[?65536$p",
         &mut handler,
     );
-    assert_eq!(terminal.screen().cursor.style.foreground, Color::Indexed(1));
-    assert!(!terminal.modes.dec(7));
+    assert_eq!(terminal.screen().cursor.style.foreground, Color::Default);
+    assert!(terminal.modes.dec(7));
     assert_eq!(
         handler.0,
         [
-            b"\x1b[?7;2$y".to_vec(),
+            b"\x1b[?7;1$y".to_vec(),
             b"\x1b[?5522;0$y".to_vec(),
             b"\x1b[?117;4$y".to_vec(),
-            b"\x1b[?7;2$y".to_vec(),
+            b"\x1b[?7;1$y".to_vec(),
             b"\x1b[?32767;0$y".to_vec(),
         ]
     );

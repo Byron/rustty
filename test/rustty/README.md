@@ -755,8 +755,10 @@ counterpart calls the guarded terminal API. Acceptance is recorded in
 for semantic configuration. `cursor_defaults` sets the configured shape and
 optional blink policy through the terminal APIs. Stream cases cover mode reports,
 saved-state reuse, transitions, reset behavior, cursor defaults and malformed
-parameters. The pinned reference ignores ANSI DECRQM and DECSTR, and truncates
-unknown DECRQM mode tags to 15 bits; these behaviors are retained explicitly.
+parameters. DECSTR soft reset restores its specified modes and defaults while
+preserving screen content and cursor position. The reference ignores ANSI
+DECRQM and truncates unknown DECRQM mode tags to 15 bits; these behaviors are
+retained explicitly.
 
 Color fixtures compare xterm OSC 4/5/10–19 and reset commands, plus Kitty OSC 21.
 `observe_colors` exposes each dynamic color and all 256 palette entries with
