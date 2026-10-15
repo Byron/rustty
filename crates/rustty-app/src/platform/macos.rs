@@ -56,7 +56,7 @@ use objc2_user_notifications::{
 };
 use rustty::config::{
     Action, Config, Direction, KeyBinding, KeyTrigger, Modifiers, OptionAsAlt,
-    QuickTerminalPosition, QuickTerminalScreen, QuickTerminalSpaceBehavior,
+    QuickTerminalPosition, QuickTerminalScreen, QuickTerminalSpaceBehavior, StreamDeckAction,
 };
 use rustty::vt::clipboard::{self, Content, Location, ReadResult, ReadSuccess, WriteResult};
 use winit::{
@@ -81,6 +81,8 @@ pub struct Platform {
     mtm: MainThreadMarker,
     menu: Menu,
     menu_actions: Vec<(MenuItem, Action)>,
+    stream_deck_menu: Submenu,
+    stream_deck_connected: bool,
     callback: EventSink,
     global_keys: Option<GlobalKeys>,
     notifications: Option<Retained<UNUserNotificationCenter>>,
@@ -223,7 +225,8 @@ impl Platform {
 
     pub fn new(callback: EventSink, config: &Config) -> Result<Self, String> {
         let mtm = MainThreadMarker::new().ok_or("platform must initialize on the main thread")?;
-        let (menu, menu_actions) = make_menu()?;
+        let mut menu_actions = Vec::new();
+        let (menu, stream_deck_menu) = make_menu(&mut menu_actions)?;
         let actions: Vec<_> = menu_actions
             .iter()
             .map(|(_, action)| action.clone())
@@ -280,6 +283,8 @@ impl Platform {
             mtm,
             menu,
             menu_actions,
+            stream_deck_menu,
+            stream_deck_connected: false,
             callback,
             global_keys: None,
             notifications,
@@ -292,6 +297,20 @@ impl Platform {
         };
         platform.update_config(config)?;
         Ok(platform)
+    }
+
+    pub fn set_stream_deck_connected(&mut self, connected: bool) -> Result<(), String> {
+        if connected == self.stream_deck_connected {
+            return Ok(());
+        }
+        if connected {
+            self.menu.insert(&self.stream_deck_menu, 4)
+        } else {
+            self.menu.remove(&self.stream_deck_menu)
+        }
+        .map_err(|e| e.to_string())?;
+        self.stream_deck_connected = connected;
+        Ok(())
     }
 
     pub fn update_config(&mut self, config: &Config) -> Result<(), String> {
@@ -310,7 +329,10 @@ impl Platform {
                         && binding.actions == [action.clone()]
                 })
                 .and_then(|binding| menu_accelerator(&binding.trigger[0]));
-            item.set_key_accelerator(accelerator)
+            // Muda leaves native equivalents intact for None, including hidden menu copies.
+            let accelerator = accelerator
+                .unwrap_or_else(|| KeyAccelerator::new(None, Key::Character(String::new())));
+            item.set_key_accelerator(Some(accelerator))
                 .map_err(|e| e.to_string())?;
         }
         if let Some(menu) = NSApplication::sharedApplication(self.mtm).mainMenu() {
@@ -1429,9 +1451,8 @@ impl NotificationDelegate {
     }
 }
 
-fn make_menu() -> Result<(Menu, Vec<(MenuItem, Action)>), String> {
+fn make_menu(actions: &mut Vec<(MenuItem, Action)>) -> Result<(Menu, Submenu), String> {
     let menu = Menu::new();
-    let mut actions = Vec::new();
     let app = Submenu::new("Rustty", true);
     app.append_items(&[
         &PredefinedMenuItem::about(
@@ -1446,13 +1467,8 @@ fn make_menu() -> Result<(Menu, Vec<(MenuItem, Action)>), String> {
         &PredefinedMenuItem::separator(),
     ])
     .map_err(|e| e.to_string())?;
-    append_action(&app, &mut actions, "Settings…", Action::OpenConfig)?;
-    append_action(
-        &app,
-        &mut actions,
-        "Reload Configuration",
-        Action::ReloadConfig,
-    )?;
+    append_action(&app, actions, "Settings…", Action::OpenConfig)?;
+    append_action(&app, actions, "Reload Configuration", Action::ReloadConfig)?;
     app.append_items(&[
         &PredefinedMenuItem::separator(),
         &PredefinedMenuItem::services(None),
@@ -1463,7 +1479,7 @@ fn make_menu() -> Result<(Menu, Vec<(MenuItem, Action)>), String> {
         &PredefinedMenuItem::separator(),
     ])
     .map_err(|e| e.to_string())?;
-    append_action(&app, &mut actions, "Quit Rustty", Action::Quit)?;
+    append_action(&app, actions, "Quit Rustty", Action::Quit)?;
 
     let file = Submenu::new("File", true);
     for (name, action) in [
@@ -1476,7 +1492,7 @@ fn make_menu() -> Result<(Menu, Vec<(MenuItem, Action)>), String> {
         ("Close Tab", Action::CloseTab),
         ("Close Window", Action::CloseWindow),
     ] {
-        append_action(&file, &mut actions, name, action)?;
+        append_action(&file, actions, name, action)?;
     }
     let edit = Submenu::new("Edit", true);
     for (name, action) in [
@@ -1487,7 +1503,7 @@ fn make_menu() -> Result<(Menu, Vec<(MenuItem, Action)>), String> {
         ("Select All", Action::SelectAll),
         ("Find…", Action::StartSearch),
     ] {
-        append_action(&edit, &mut actions, name, action)?;
+        append_action(&edit, actions, name, action)?;
     }
     let view = Submenu::new("View", true);
     for (name, action) in [
@@ -1500,7 +1516,19 @@ fn make_menu() -> Result<(Menu, Vec<(MenuItem, Action)>), String> {
         ("Decrease Font Size", Action::DecreaseFontSize(1.0)),
         ("Reset Font Size", Action::ResetFontSize),
     ] {
-        append_action(&view, &mut actions, name, action)?;
+        append_action(&view, actions, name, action)?;
+    }
+    let stream_deck = Submenu::new("Stream Deck", true);
+    for (name, action) in [
+        ("Next Needing Input", StreamDeckAction::NeedsInput),
+        ("Next Working", StreamDeckAction::Working),
+        ("Next Done", StreamDeckAction::Done),
+        ("Next Idle", StreamDeckAction::Idle),
+        ("Next Page", StreamDeckAction::NextPage),
+        ("Cycle Brightness", StreamDeckAction::Brightness),
+        ("Pull to First Page", StreamDeckAction::PullToFirst),
+    ] {
+        append_action(&stream_deck, actions, name, Action::StreamDeck(action))?;
     }
     let window = Submenu::new("Window", true);
     window
@@ -1517,7 +1545,7 @@ fn make_menu() -> Result<(Menu, Vec<(MenuItem, Action)>), String> {
         ("Next Split", Action::GotoSplit(Direction::Next)),
         ("Toggle Quick Terminal", Action::ToggleQuickTerminal),
     ] {
-        append_action(&window, &mut actions, name, action)?;
+        append_action(&window, actions, name, action)?;
     }
     window
         .append(&PredefinedMenuItem::bring_all_to_front(None))
@@ -1525,7 +1553,7 @@ fn make_menu() -> Result<(Menu, Vec<(MenuItem, Action)>), String> {
     window.set_as_windows_menu_for_nsapp();
     menu.append_items(&[&app, &file, &edit, &view, &window])
         .map_err(|e| e.to_string())?;
-    Ok((menu, actions))
+    Ok((menu, stream_deck))
 }
 
 fn append_action(

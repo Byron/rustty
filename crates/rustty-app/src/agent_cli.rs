@@ -38,6 +38,13 @@ The four state keys cycle matching panes across all windows, tabs and pages.
 Their numbers count matches; an empty group is dimmed and does nothing.
 Light shows the selected brightness: 100 → 25 → 50 → 75 → 100%.
 Page shows current/total; tap to advance and wrap.
+Hold Page for one second to open a one-shot menu, then press the top-left
+function key for Pull to First. A fresh Page tap cancels the menu.
+Pull to First brings non-idle agents onto page one: Input, Done, Working, Paused,
+then Error/Unknown, newest activity first within each category. Qualifying agents
+already on page one keep their slots; empty/inactive and least-active slots go first.
+The connected device also exposes these controls in Rustty's Stream Deck menu;
+all menu commands can be assigned keyboard shortcuts.
 
 Tap an agent to reveal its exact pane. Revealing Done acknowledges it locally.
 Hold an agent for two seconds, then press another agent slot to swap or move it.

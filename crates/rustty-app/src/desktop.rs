@@ -2332,6 +2332,11 @@ impl App {
                     Err(error) => self.errors.push(format!("Could not list themes: {error}")),
                 }
             }
+            Action::StreamDeck(command) => {
+                if !self.deck_command_with_host(command, Some(host)) {
+                    return false;
+                }
+            }
             Action::CopyToClipboard => {
                 let text = focused.and_then(|id| {
                     self.panes
@@ -2872,19 +2877,68 @@ impl App {
         self.windows.remove_entry(&key)
     }
 
-    fn platform_binding(&mut self, event_loop: &ActiveEventLoop, binding: config::KeyBinding) {
-        let mut target = self.take_active_host();
+    fn host_binding(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        host: &mut Host,
+        binding: config::KeyBinding,
+    ) -> bool {
+        let mut target = host.id;
         dispatch_binding(binding, |action, all| {
-            if let Some((_, host)) = &mut target {
+            let navigation = matches!(
+                action,
+                Action::StreamDeck(
+                    config::StreamDeckAction::NeedsInput
+                        | config::StreamDeckAction::Working
+                        | config::StreamDeckAction::Done
+                        | config::StreamDeckAction::Idle
+                )
+            );
+            let performed = if target == host.id {
                 self.binding_action(event_loop, host, action, all)
             } else {
-                let performed = self.platform_action(event_loop, action, all);
-                // A native action can create the first window. Keep that host
-                // for the remaining chain, just as the focused keyboard does.
-                target = self.take_active_host();
+                let key = self
+                    .windows
+                    .iter()
+                    .find_map(|(&key, host)| (host.id == target).then_some(key));
+                let Some((key, mut target_host)) =
+                    key.and_then(|key| self.windows.remove_entry(&key))
+                else {
+                    return false;
+                };
+                // Keep every other host available to global actions such as config reload.
+                let original_key = host.window.id();
+                std::mem::swap(host, &mut target_host);
+                self.windows.insert(original_key, target_host);
+                let performed = self.binding_action(event_loop, host, action, all);
+                let mut target_host = self.windows.remove(&original_key).unwrap();
+                std::mem::swap(host, &mut target_host);
+                self.windows.insert(key, target_host);
                 performed
+            };
+            if navigation && performed {
+                target = self.active.unwrap_or(target);
             }
-        });
+            performed
+        })
+    }
+
+    fn platform_binding(&mut self, event_loop: &ActiveEventLoop, mut binding: config::KeyBinding) {
+        let mut target = self.take_active_host();
+        if target.is_none() {
+            let mut actions = std::mem::take(&mut binding.actions).into_iter();
+            for action in actions.by_ref() {
+                self.platform_action(event_loop, action, binding.flags.all);
+                target = self.take_active_host();
+                if target.is_some() {
+                    break;
+                }
+            }
+            binding.actions = actions.collect();
+        }
+        if let Some((_, host)) = &mut target {
+            self.host_binding(event_loop, host, binding);
+        }
         if let Some((key, host)) = target {
             self.windows.insert(key, host);
             // Reconcile after the chain: closing every window may be followed
@@ -2894,6 +2948,9 @@ impl App {
     }
 
     fn platform_action(&mut self, event_loop: &ActiveEventLoop, action: Action, all: bool) -> bool {
+        if let Action::StreamDeck(command) = action {
+            return self.deck_command(command);
+        }
         if action == Action::OpenLayout && self.windows.is_empty() {
             let id = self.add_window(false);
             self.reconcile(event_loop);
@@ -2985,9 +3042,7 @@ impl App {
                 host.sequence_len = 0;
                 let binding = self.config().keybinds[index].clone();
                 let flags = binding.flags;
-                let performed = dispatch_binding(binding, |action, all| {
-                    self.binding_action(event_loop, host, action, all)
-                });
+                let performed = self.host_binding(event_loop, host, binding);
                 if flags.consumed && (!flags.performable || performed) {
                     if ui_input || host.ui_input() {
                         host.consumed_keys.insert(key.physical_key);

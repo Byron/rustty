@@ -18,7 +18,8 @@ mod font;
 mod keybinding;
 pub use font::{CodepointMap, FontStyleRequest, FontVariation};
 pub use keybinding::{
-    Action, BindingFlags, Direction, KeyBinding, KeyTrigger, Modifiers, parse_escaped_bytes,
+    Action, BindingFlags, Direction, KeyBinding, KeyTrigger, Modifiers, StreamDeckAction,
+    parse_escaped_bytes,
 };
 
 /// The maximum size of an individual config/theme file. Includes also have a

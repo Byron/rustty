@@ -110,6 +110,10 @@ impl Platform {
         Ok(platform)
     }
 
+    pub fn set_stream_deck_connected(&mut self, connected: bool) -> Result<(), String> {
+        self.menu.set_stream_deck_connected(connected)
+    }
+
     pub fn update_config(&mut self, config: &Config) -> Result<(), String> {
         self.menu.update(config)?;
         self.keys.update(config);

@@ -75,6 +75,7 @@ pub fn discover(serial: Option<&str>) -> Result<Option<Candidate>, String> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
+    Connected,
     Gesture(Option<Capture>),
     Move(Option<Capture>),
     Focus(Capture),
@@ -89,13 +90,23 @@ pub enum Action {
     Page {
         generation: u64,
     },
+    PullToFirst {
+        generation: u64,
+        mode_generation: u64,
+    },
     Brightness(u8),
     WakeScreens,
     Disconnected(Result<(), String>),
 }
 
+#[derive(Default)]
+struct Update {
+    board: Option<Board>,
+    brightness_steps: u8,
+}
+
 pub struct Worker {
-    latest: Arc<Mutex<Option<Board>>>,
+    latest: Arc<Mutex<Update>>,
     stopping: Arc<AtomicBool>,
     thread: Option<JoinHandle<Result<(), String>>>,
 }
@@ -106,7 +117,7 @@ impl Worker {
         initial: Board,
         callback: impl Fn(Action) + Send + 'static,
     ) -> std::io::Result<Self> {
-        let latest = Arc::new(Mutex::new(None));
+        let latest = Arc::new(Mutex::new(Update::default()));
         let stopping = Arc::new(AtomicBool::new(false));
         let updates = Arc::clone(&latest);
         let cancel = Arc::clone(&stopping);
@@ -126,7 +137,12 @@ impl Worker {
 
     /// Replace the single pending snapshot; status bursts cannot queue renders.
     pub fn submit(&self, board: Board) {
-        *self.latest.lock().unwrap_or_else(|e| e.into_inner()) = Some(board);
+        self.latest.lock().unwrap_or_else(|e| e.into_inner()).board = Some(board);
+    }
+    pub fn request_brightness(&self) {
+        let mut update = self.latest.lock().unwrap_or_else(|e| e.into_inner());
+        // Four steps still normalize an out-of-cycle brightness, such as sleep's 15%.
+        update.brightness_steps = update.brightness_steps % 4 + 1;
     }
     pub fn stop(&self) {
         self.stopping.store(true, Ordering::Release);
@@ -180,8 +196,17 @@ impl Layout {
 #[derive(Clone, Debug, PartialEq)]
 enum Binding {
     Agent(Capture),
-    Cycle { group: usize, generation: u64 },
-    Page { generation: u64 },
+    Cycle {
+        group: usize,
+        generation: u64,
+    },
+    Page {
+        generation: u64,
+    },
+    PullToFirst {
+        generation: u64,
+        mode_generation: u64,
+    },
     Brightness,
     None,
 }
@@ -205,6 +230,7 @@ fn keys(
     board: &Board,
     layout: Layout,
     moving: Option<&Capture>,
+    menu: Option<u64>,
     brightness: u8,
     elapsed: Duration,
 ) -> Vec<Key> {
@@ -245,6 +271,22 @@ fn keys(
         .into_iter()
         .enumerate()
     {
+        if let Some(generation) = menu {
+            if group == 0 {
+                keys[layout.function_key(group)] = Key {
+                    visual: Visual::Function {
+                        value: "Pull first".into(),
+                        mark: Mark::PullToFirst,
+                        dim: false,
+                    },
+                    binding: Binding::PullToFirst {
+                        generation,
+                        mode_generation: board.mode_generation,
+                    },
+                };
+            }
+            continue;
+        }
         keys[layout.function_key(group)] = Key {
             visual: Visual::Function {
                 value: board.counts[group].to_string(),
@@ -267,9 +309,13 @@ fn keys(
     };
     keys[layout.function_key(5)] = Key {
         visual: Visual::Function {
-            value: format!("{}/{}", board.page + 1, board.pages()),
+            value: if menu.is_some() {
+                "Cancel".into()
+            } else {
+                format!("{}/{}", board.page + 1, board.pages())
+            },
             mark: Mark::Page,
-            dim: board.pages() == 1,
+            dim: false,
         },
         binding: Binding::Page {
             generation: board.mode_generation,
@@ -294,6 +340,11 @@ struct Press {
     capture: Capture,
     at: Duration,
 }
+struct PagePress {
+    key: usize,
+    at: Duration,
+    generation: u64,
+}
 struct Gestures {
     held: [bool; 15],
     suppressed: [bool; 15],
@@ -302,11 +353,14 @@ struct Gestures {
     normal: bool,
     screens_awake: bool,
     mode_generation: u64,
+    layout_generation: u64,
     press: Option<Press>,
+    page_press: Option<PagePress>,
     moving: Option<Capture>,
+    menu: Option<u64>,
 }
 impl Gestures {
-    fn new(no_sessions: bool, mode_generation: u64) -> Self {
+    fn new(no_sessions: bool, mode_generation: u64, layout_generation: u64) -> Self {
         Self {
             held: [false; 15],
             suppressed: [false; 15],
@@ -315,8 +369,20 @@ impl Gestures {
             normal: !no_sessions,
             screens_awake: true,
             mode_generation,
+            layout_generation,
             press: None,
+            page_press: None,
             moving: None,
+            menu: None,
+        }
+    }
+    fn set_menu(&mut self, menu: Option<u64>) {
+        self.menu = menu;
+        self.page_press = None;
+        // Replacing controls must not reinterpret presses already in flight.
+        for index in [3, 4, 8, 9, 14] {
+            self.suppressed[index] |= self.held[index];
+            self.functions[index] = None;
         }
     }
     fn cancel(&mut self, emit: &impl Fn(Action)) {
@@ -329,6 +395,8 @@ impl Gestures {
         }
         self.suppressed = self.held;
         self.functions.fill(None);
+        self.page_press = None;
+        self.menu = None;
     }
     fn reconcile(&mut self, board: &Board, emit: &impl Fn(Action)) {
         let normal = !board.no_sessions;
@@ -345,10 +413,15 @@ impl Gestures {
                 .is_some_and(|source| !live(board, source));
         if changed_mode || invalid {
             self.cancel(emit);
+        } else if self.layout_generation != board.generation
+            && (self.menu.is_some() || self.page_press.is_some())
+        {
+            self.set_menu(None);
         }
         self.normal = normal;
         self.screens_awake = board.screens_awake;
         self.mode_generation = board.mode_generation;
+        self.layout_generation = board.generation;
     }
     fn advance(&mut self, now: Duration, emit: &impl Fn(Action)) {
         if self.moving.is_none()
@@ -358,12 +431,22 @@ impl Gestures {
         {
             let source = self.press.take().unwrap().capture;
             self.moving = Some(source);
+            self.page_press = None;
             for function in &mut self.functions {
                 if matches!(function, Some(Binding::Cycle { .. })) {
                     *function = None;
                 }
             }
             emit(Action::Move(Some(source)));
+        }
+        if self.moving.is_none()
+            && self.press.is_none()
+            && self.screens_awake
+            && let Some(press) = &self.page_press
+            && self.held[press.key]
+            && now.saturating_sub(press.at) >= Duration::from_secs(1)
+        {
+            self.set_menu(Some(press.generation));
         }
     }
     fn buttons(
@@ -416,6 +499,9 @@ impl Gestures {
                 };
                 match &key.binding {
                     Binding::Agent(destination) => {
+                        if self.menu.is_some() {
+                            self.set_menu(None);
+                        }
                         if let Some(source) = self.moving.take() {
                             if source.slot != destination.slot {
                                 emit(Action::Swap {
@@ -445,11 +531,33 @@ impl Gestures {
                             emit(Action::Gesture(Some(*destination)));
                         }
                     }
-                    Binding::Cycle { .. } if self.moving.is_some() => {}
+                    Binding::Cycle { .. } if self.moving.is_some() || self.menu.is_some() => {}
+                    Binding::PullToFirst {
+                        generation,
+                        mode_generation,
+                    } if self.menu != Some(*generation)
+                        || self.mode_generation != *mode_generation => {}
+                    Binding::Page { .. } => {
+                        self.functions[index] = Some(key.binding.clone());
+                        if self.menu.is_none() && self.moving.is_none() && self.screens_awake {
+                            self.page_press = Some(PagePress {
+                                key: index,
+                                at: now,
+                                generation: self.layout_generation,
+                            });
+                        }
+                    }
                     Binding::None => {}
                     binding => self.functions[index] = Some(binding.clone()),
                 }
             } else {
+                if self
+                    .page_press
+                    .as_ref()
+                    .is_some_and(|press| press.key == index)
+                {
+                    self.page_press = None;
+                }
                 if self.press.as_ref().is_some_and(|press| press.key == index) {
                     let press = self.press.take().unwrap();
                     emit(Action::Focus(press.capture));
@@ -457,8 +565,28 @@ impl Gestures {
                 }
                 match self.functions[index].take() {
                     Some(Binding::Brightness) => brightness = true,
-                    Some(Binding::Page { generation }) => emit(Action::Page { generation }),
-                    Some(Binding::Cycle { group, generation }) if self.moving.is_none() => {
+                    Some(Binding::Page { generation }) => {
+                        if self.menu.is_some() {
+                            self.set_menu(None);
+                        } else {
+                            emit(Action::Page { generation });
+                        }
+                    }
+                    Some(Binding::PullToFirst {
+                        generation,
+                        mode_generation,
+                    }) if self.menu == Some(generation)
+                        && self.mode_generation == mode_generation =>
+                    {
+                        self.set_menu(None);
+                        emit(Action::PullToFirst {
+                            generation,
+                            mode_generation,
+                        });
+                    }
+                    Some(Binding::Cycle { group, generation })
+                        if self.moving.is_none() && self.menu.is_none() =>
+                    {
                         emit(Action::Cycle { group, generation })
                     }
                     _ => {}
@@ -494,7 +622,7 @@ impl Device for StreamDeck {
 fn connected(
     candidate: Candidate,
     initial: Board,
-    latest: &Mutex<Option<Board>>,
+    latest: &Mutex<Update>,
     stopping: &AtomicBool,
     emit: &impl Fn(Action),
 ) -> Result<(), String> {
@@ -529,7 +657,7 @@ fn run(
     render: &mut impl FnMut(&Visual) -> Result<RgbImage, String>,
     mut board: Board,
     layout: Layout,
-    latest: &Mutex<Option<Board>>,
+    latest: &Mutex<Update>,
     stopping: &AtomicBool,
     emit: &impl Fn(Action),
 ) -> Result<(), String> {
@@ -540,10 +668,11 @@ fn run(
     let mut screens_awake = board.screens_awake;
     let mut display_brightness = if screens_awake { brightness } else { 15 };
     device.brightness(display_brightness)?;
-    let mut gestures = Gestures::new(board.no_sessions, board.mode_generation);
+    let mut gestures = Gestures::new(board.no_sessions, board.mode_generation, board.generation);
     let mut displayed: Vec<Option<Key>> = vec![None; 15];
     let mut refresh = [false; 15];
     let mut next_upload = 0;
+    let mut announced = false;
     let start = Instant::now();
     let result = (|| {
         while !stopping.load(Ordering::Acquire) {
@@ -551,7 +680,8 @@ fn run(
             if stopping.load(Ordering::Acquire) {
                 break;
             }
-            if let Some(latest) = latest.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            let update = std::mem::take(&mut *latest.lock().unwrap_or_else(|e| e.into_inner()));
+            if let Some(latest) = update.board {
                 board = latest;
             }
             gestures.reconcile(&board, emit);
@@ -569,6 +699,7 @@ fn run(
                 &board,
                 layout,
                 gestures.moving.as_ref(),
+                gestures.menu,
                 display_brightness,
                 if screens_awake {
                     start.elapsed()
@@ -586,10 +717,12 @@ fn run(
             }
             // Some firmware sends only changes; drain startup reports before accepting fresh presses.
             gestures.baseline = displayed.iter().all(Option::is_some);
-            if let Some(buttons) = buttons
-                && gestures.buttons(&buttons, &displayed, start.elapsed(), emit)
-            {
-                let next = next_brightness(display_brightness);
+            let brightness_pressed = buttons.is_some_and(|buttons| {
+                gestures.buttons(&buttons, &displayed, start.elapsed(), emit)
+            });
+            let steps = update.brightness_steps + u8::from(brightness_pressed);
+            if steps > 0 {
+                let next = (0..steps).fold(display_brightness, |value, _| next_brightness(value));
                 device.brightness(next)?;
                 display_brightness = next;
                 if screens_awake {
@@ -613,6 +746,10 @@ fn run(
                     break;
                 }
             }
+            if !announced && displayed.iter().all(Option::is_some) {
+                emit(Action::Connected);
+                announced = true;
+            }
         }
         Ok(())
     })();
@@ -629,7 +766,7 @@ fn next_brightness(value: u8) -> u8 {
     }
 }
 
-/// Offline contact sheet: normal board, dim flash phase, move board, no-session board.
+/// Offline contact sheet: normal, dim flash, move, alternate controls, and no sessions.
 pub fn preview(path: &std::path::Path) -> Result<(), String> {
     use crate::deck::{Target, Tile};
     let mut renderer = Renderer::new((72, 72))?;
@@ -686,9 +823,9 @@ pub fn preview(path: &std::path::Path) -> Result<(), String> {
         screens_awake: true,
     };
     let layout = Layout::new(Kind::Mk2Scissor)?;
-    let mut sheet = RgbImage::from_pixel(5 * 80 + 8, 4 * 3 * 80 + 32, image::Rgb([13, 15, 17]));
-    for section in 0..4 {
-        if section == 3 {
+    let mut sheet = RgbImage::from_pixel(5 * 80 + 8, 5 * 3 * 80 + 40, image::Rgb([13, 15, 17]));
+    for section in 0..5 {
+        if section == 4 {
             board.no_sessions = true;
         }
         let source = (section == 2).then(|| board.tile(0).capture);
@@ -696,6 +833,7 @@ pub fn preview(path: &std::path::Path) -> Result<(), String> {
             &board,
             layout,
             source.as_ref(),
+            (section == 3).then_some(board.generation),
             board.brightness,
             if section == 1 {
                 Duration::from_millis(600)
@@ -757,6 +895,7 @@ mod tests {
             board,
             Layout::new(Kind::Mk2Scissor).unwrap(),
             None,
+            None,
             100,
             Duration::ZERO,
         )
@@ -783,19 +922,19 @@ mod tests {
         let mut board = board();
         board.tiles[0].unseen = true;
         board.tiles[0].state = Some(State::NeedsInput);
-        let bright = keys(&board, layout, None, 100, Duration::from_millis(599));
-        let dim = keys(&board, layout, None, 100, Duration::from_millis(600));
+        let bright = keys(&board, layout, None, None, 100, Duration::from_millis(599));
+        let dim = keys(&board, layout, None, None, 100, Duration::from_millis(600));
         for index in 0..15 {
             assert_eq!(bright[index].binding, dim[index].binding);
             assert_eq!(bright[index].visual == dim[index].visual, index != 0);
         }
         assert_eq!(
             bright,
-            keys(&board, layout, None, 100, Duration::from_millis(1200))
+            keys(&board, layout, None, None, 100, Duration::from_millis(1200))
         );
         board.tiles[0].focused = true;
         assert!(matches!(
-            keys(&board, layout, None, 100, Duration::from_millis(600))[0].visual,
+            keys(&board, layout, None, None, 100, Duration::from_millis(600))[0].visual,
             Visual::Agent {
                 flash_dim: false,
                 ..
@@ -808,6 +947,7 @@ mod tests {
                 &board,
                 layout,
                 Some(&source),
+                None,
                 100,
                 Duration::from_millis(600)
             )[0]
@@ -820,8 +960,8 @@ mod tests {
         ));
         board.no_sessions = true;
         assert_eq!(
-            keys(&board, layout, None, 100, Duration::ZERO),
-            keys(&board, layout, None, 100, Duration::from_millis(600))
+            keys(&board, layout, None, None, 100, Duration::ZERO),
+            keys(&board, layout, None, None, 100, Duration::from_millis(600))
         );
     }
     #[test]
@@ -847,12 +987,177 @@ mod tests {
         }
     }
 
+    fn menu_keys(board: &Board) -> Vec<Option<Key>> {
+        keys(
+            board,
+            Layout::new(Kind::Mk2Scissor).unwrap(),
+            None,
+            Some(board.generation),
+            board.brightness,
+            Duration::ZERO,
+        )
+        .into_iter()
+        .map(Some)
+        .collect()
+    }
+
+    #[test]
+    fn page_tap_releases_but_hold_opens_one_shot_menu_and_keeps_brightness() {
+        let board = board();
+        let keys = shown(&board);
+        let menu = menu_keys(&board);
+        let actions = RefCell::new(Vec::new());
+        let mut gesture = Gestures::new(false, 1, 1);
+        input(&mut gesture, &keys, &[], 0, &actions);
+        input(&mut gesture, &keys, &[14], 1, &actions);
+        assert!(actions.borrow().is_empty());
+        input(&mut gesture, &keys, &[], 1000, &actions);
+        assert_eq!(*actions.borrow(), [Action::Page { generation: 1 }]);
+        actions.borrow_mut().clear();
+        input(&mut gesture, &keys, &[14], 3000, &actions);
+        gesture.advance(Duration::from_millis(3999), &|a| {
+            actions.borrow_mut().push(a)
+        });
+        assert!(gesture.menu.is_none());
+        gesture.advance(Duration::from_millis(4000), &|a| {
+            actions.borrow_mut().push(a)
+        });
+        assert_eq!(gesture.menu, Some(1));
+        input(&mut gesture, &menu, &[], 5001, &actions);
+        assert_eq!(gesture.menu, Some(1), "opening release is consumed");
+        input(&mut gesture, &menu, &[13], 5002, &actions);
+        assert!(input(&mut gesture, &menu, &[], 5003, &actions));
+        assert_eq!(gesture.menu, Some(1));
+        for key in [4, 8, 9] {
+            assert_eq!(menu[key].as_ref().unwrap().binding, Binding::None);
+            input(&mut gesture, &menu, &[key], 5004, &actions);
+            input(&mut gesture, &menu, &[], 5005, &actions);
+        }
+        input(&mut gesture, &menu, &[3], 5006, &actions);
+        input(&mut gesture, &menu, &[], 5007, &actions);
+        assert_eq!(
+            *actions.borrow(),
+            [Action::PullToFirst {
+                generation: 1,
+                mode_generation: 1
+            }]
+        );
+        assert!(gesture.menu.is_none());
+        // Alternate artwork may remain during incremental uploads after selection.
+        input(&mut gesture, &menu, &[3], 5008, &actions);
+        input(&mut gesture, &menu, &[], 5009, &actions);
+        assert_eq!(actions.borrow().len(), 1);
+    }
+
+    #[test]
+    fn menu_requires_fresh_controls_and_a_fresh_page_tap_cancels() {
+        let board = board();
+        let keys = shown(&board);
+        let menu = menu_keys(&board);
+        let actions = RefCell::new(Vec::new());
+        let mut gesture = Gestures::new(false, 1, 1);
+        input(&mut gesture, &keys, &[3, 14], 0, &actions);
+        input(&mut gesture, &keys, &[3, 14], 3000, &actions);
+        assert!(
+            gesture.menu.is_none(),
+            "connection-held controls stay inert"
+        );
+        input(&mut gesture, &keys, &[], 3001, &actions);
+        input(&mut gesture, &keys, &[3, 14], 3002, &actions);
+        input(&mut gesture, &menu, &[], 5002, &actions);
+        assert_eq!(gesture.menu, Some(1));
+        assert!(actions.borrow().is_empty(), "old cycle press is consumed");
+        // The selection cannot reinterpret a key whose new artwork is not uploaded yet.
+        input(&mut gesture, &keys, &[3], 5003, &actions);
+        input(&mut gesture, &keys, &[], 5004, &actions);
+        assert!(actions.borrow().is_empty());
+        input(&mut gesture, &menu, &[14], 5005, &actions);
+        input(&mut gesture, &menu, &[], 5006, &actions);
+        assert!(gesture.menu.is_none());
+        assert!(actions.borrow().is_empty(), "cancel must not turn the page");
+        input(&mut gesture, &menu, &[3], 5007, &actions);
+        input(&mut gesture, &menu, &[], 5008, &actions);
+        assert!(
+            actions.borrow().is_empty(),
+            "stale alternate artwork is inert"
+        );
+    }
+
+    #[test]
+    fn menu_and_pending_choices_cancel_on_layout_mode_sleep_and_disconnect() {
+        for change in 0..5 {
+            let mut board = board();
+            let keys = shown(&board);
+            let menu = menu_keys(&board);
+            let actions = RefCell::new(Vec::new());
+            let mut gesture = Gestures::new(false, 1, 1);
+            input(&mut gesture, &keys, &[], 0, &actions);
+            input(&mut gesture, &keys, &[14], 1, &actions);
+            input(&mut gesture, &menu, &[], 2001, &actions);
+            input(&mut gesture, &menu, &[3], 2002, &actions);
+            match change {
+                0 => board.generation += 1,
+                1 => board.mode_generation += 2,
+                2 => board.screens_awake = false,
+                3 => board.no_sessions = true,
+                _ => gesture.cancel(&|a| actions.borrow_mut().push(a)),
+            }
+            gesture.reconcile(&board, &|a| actions.borrow_mut().push(a));
+            input(&mut gesture, &menu, &[], 2003, &actions);
+            assert!(gesture.menu.is_none());
+            assert!(actions.borrow().is_empty());
+        }
+    }
+
+    #[test]
+    fn reopened_menu_rejects_artwork_from_the_previous_control_mode() {
+        let mut board = board();
+        let old_menu = menu_keys(&board);
+        let actions = RefCell::new(Vec::new());
+        let mut gesture = Gestures::new(false, 1, 1);
+        input(&mut gesture, &shown(&board), &[], 0, &actions);
+        input(&mut gesture, &shown(&board), &[14], 1, &actions);
+        input(&mut gesture, &old_menu, &[], 2001, &actions);
+        board.mode_generation += 1;
+        gesture.reconcile(&board, &|a| actions.borrow_mut().push(a));
+        let menu = menu_keys(&board);
+        input(&mut gesture, &shown(&board), &[14], 2002, &actions);
+        input(&mut gesture, &menu, &[], 4002, &actions);
+        input(&mut gesture, &old_menu, &[3], 4003, &actions);
+        input(&mut gesture, &old_menu, &[], 4004, &actions);
+        assert!(actions.borrow().is_empty());
+        input(&mut gesture, &menu, &[3], 4005, &actions);
+        input(&mut gesture, &menu, &[], 4006, &actions);
+        assert_eq!(
+            *actions.borrow(),
+            [Action::PullToFirst {
+                generation: 1,
+                mode_generation: 2
+            }]
+        );
+    }
+
+    #[test]
+    fn holding_page_in_move_mode_still_turns_page_and_never_opens_menu() {
+        let keys = shown(&board());
+        let actions = RefCell::new(Vec::new());
+        let mut gesture = Gestures::new(false, 1, 1);
+        input(&mut gesture, &keys, &[], 0, &actions);
+        input(&mut gesture, &keys, &[0], 1, &actions);
+        input(&mut gesture, &keys, &[], 2001, &actions);
+        input(&mut gesture, &keys, &[14, 13], 2002, &actions);
+        assert!(input(&mut gesture, &keys, &[], 5000, &actions));
+        assert!(gesture.moving.is_some());
+        assert!(gesture.menu.is_none());
+        assert!(actions.borrow().contains(&Action::Page { generation: 1 }));
+    }
+
     #[test]
     fn tap_boundary_hold_and_consumed_releases() {
         let board = board();
         let keys = shown(&board);
         let actions = RefCell::new(Vec::new());
-        let mut gesture = Gestures::new(false, 1);
+        let mut gesture = Gestures::new(false, 1, 1);
         input(&mut gesture, &keys, &[], 0, &actions);
         input(&mut gesture, &keys, &[0], 0, &actions);
         input(&mut gesture, &keys, &[], 1999, &actions);
@@ -897,7 +1202,7 @@ mod tests {
         for destination in [1, 2, 5] {
             let keys = shown(&board());
             let actions = RefCell::new(Vec::new());
-            let mut gesture = Gestures::new(false, 1);
+            let mut gesture = Gestures::new(false, 1, 1);
             input(&mut gesture, &keys, &[], 0, &actions);
             input(&mut gesture, &keys, &[0], 1, &actions);
             input(&mut gesture, &keys, &[0, 1], 2, &actions);
@@ -928,7 +1233,7 @@ mod tests {
         let mut board = board();
         let mut keys = shown(&board);
         let actions = RefCell::new(Vec::new());
-        let mut gesture = Gestures::new(false, 1);
+        let mut gesture = Gestures::new(false, 1, 1);
         input(&mut gesture, &keys, &[], 0, &actions);
         input(&mut gesture, &keys, &[0], 0, &actions);
         input(&mut gesture, &keys, &[], 2000, &actions);
@@ -974,7 +1279,7 @@ mod tests {
         let mut board = board();
         let keys = shown(&board);
         let actions = RefCell::new(Vec::new());
-        let mut gesture = Gestures::new(false, 1);
+        let mut gesture = Gestures::new(false, 1, 1);
         input(&mut gesture, &keys, &[0, 13], 0, &actions);
         input(&mut gesture, &keys, &[], 1, &actions);
         assert!(actions.borrow().is_empty());
@@ -1018,7 +1323,7 @@ mod tests {
         let keys = shown(&board);
         for destination in [vec![0], vec![1, 2]] {
             let actions = RefCell::new(Vec::new());
-            let mut gesture = Gestures::new(false, 1);
+            let mut gesture = Gestures::new(false, 1, 1);
             input(&mut gesture, &keys, &[], 0, &actions);
             input(&mut gesture, &keys, &[0], 1, &actions);
             input(&mut gesture, &keys, &[], 2001, &actions);
@@ -1047,7 +1352,7 @@ mod tests {
         let mut board = board();
         let keys = shown(&board);
         let actions = RefCell::new(Vec::new());
-        let mut gesture = Gestures::new(false, 1);
+        let mut gesture = Gestures::new(false, 1, 1);
         input(&mut gesture, &keys, &[], 0, &actions);
         input(&mut gesture, &keys, &[0, 13], 1, &actions);
         board.mode_generation += 2;
@@ -1066,7 +1371,7 @@ mod tests {
     fn swap_consumes_agents_but_preserves_held_page_and_brightness() {
         let keys = shown(&board());
         let actions = RefCell::new(Vec::new());
-        let mut gesture = Gestures::new(false, 1);
+        let mut gesture = Gestures::new(false, 1, 1);
         input(&mut gesture, &keys, &[], 0, &actions);
         input(&mut gesture, &keys, &[0, 3], 1, &actions);
         gesture.advance(Duration::from_millis(2001), &|a| {
@@ -1096,7 +1401,7 @@ mod tests {
         reads: Cell<usize>,
         uploads: RefCell<Vec<usize>>,
         stopping: &'a AtomicBool,
-        latest: &'a Mutex<Option<Board>>,
+        latest: &'a Mutex<Update>,
     }
     impl Device for FakeDevice<'_> {
         fn read(&self, _: Duration) -> Result<Option<Vec<bool>>, String> {
@@ -1117,9 +1422,9 @@ mod tests {
             if self.uploads.borrow().len() == 1 {
                 let mut board = board();
                 board.tiles[0].label = "Latest".into();
-                *self.latest.lock().unwrap() = Some(board.clone());
+                self.latest.lock().unwrap().board = Some(board.clone());
                 board.tiles[0].label = "Newest".into();
-                *self.latest.lock().unwrap() = Some(board);
+                self.latest.lock().unwrap().board = Some(board);
             }
             Ok(())
         }
@@ -1135,7 +1440,7 @@ mod tests {
     fn coalescing_successful_mapping_and_brightness_failure() {
         for (failure, quiet_start) in [(false, false), (false, true), (true, false)] {
             let stopping = AtomicBool::new(false);
-            let latest = Mutex::new(None);
+            let latest = Mutex::new(Update::default());
             let events = RefCell::new(Vec::new());
             let visuals = RefCell::new(Vec::new());
             let device = FakeDevice {
@@ -1197,7 +1502,8 @@ mod tests {
                 board.no_sessions = no_sessions;
                 let keys = shown(&board);
                 let actions = RefCell::new(Vec::new());
-                let mut gesture = Gestures::new(no_sessions, board.mode_generation);
+                let mut gesture =
+                    Gestures::new(no_sessions, board.mode_generation, board.generation);
                 gesture.reconcile(&board, &|a| actions.borrow_mut().push(a));
                 input(&mut gesture, &keys, &[], 0, &actions);
                 assert!(!input(&mut gesture, &keys, &[key], 1, &actions));
@@ -1230,7 +1536,7 @@ mod tests {
         board.screens_awake = false;
         let keys = shown(&board);
         let actions = RefCell::new(Vec::new());
-        let mut gesture = Gestures::new(false, board.mode_generation);
+        let mut gesture = Gestures::new(false, board.mode_generation, board.generation);
         gesture.reconcile(&board, &|a| actions.borrow_mut().push(a));
         input(&mut gesture, &keys, &[0], 0, &actions);
         input(&mut gesture, &keys, &[], 1, &actions);
@@ -1266,7 +1572,7 @@ mod tests {
             reads: Cell<usize>,
             uploads: RefCell<Vec<(usize, usize)>>,
             writes: RefCell<Vec<u8>>,
-            latest: &'a Mutex<Option<Board>>,
+            latest: &'a Mutex<Update>,
             stopping: &'a AtomicBool,
         }
         impl Device for WakeDevice<'_> {
@@ -1281,7 +1587,7 @@ mod tests {
                     for tile in &mut board.tiles {
                         tile.capture.layout_generation = board.generation;
                     }
-                    *self.latest.lock().unwrap() = Some(board);
+                    self.latest.lock().unwrap().board = Some(board);
                 }
                 if count == 22 {
                     self.stopping.store(true, Ordering::Release);
@@ -1301,7 +1607,7 @@ mod tests {
             }
         }
         for initially_awake in [false, true] {
-            let latest = Mutex::new(None);
+            let latest = Mutex::new(Update::default());
             let stopping = AtomicBool::new(false);
             let mut board = board();
             board.brightness = 75;
@@ -1333,7 +1639,8 @@ mod tests {
                     &[15, 75][..]
                 }
             );
-            assert_eq!(actions.borrow()[0], (16, Action::WakeScreens));
+            assert_eq!(actions.borrow()[0], (15, Action::Connected));
+            assert!(actions.borrow().contains(&(16, Action::WakeScreens)));
             let focused: Vec<_> = actions
                 .borrow()
                 .iter()
@@ -1365,7 +1672,7 @@ mod tests {
             writes: RefCell<Vec<u8>>,
             uploads: RefCell<Vec<(usize, usize)>>,
             fail_write: Option<usize>,
-            latest: &'a Mutex<Option<Board>>,
+            latest: &'a Mutex<Update>,
             stopping: &'a AtomicBool,
         }
         impl Device for PowerDevice<'_> {
@@ -1377,7 +1684,7 @@ mod tests {
                     board.screens_awake = count == 20;
                     board.mode_generation += if count == 20 { 2 } else { 1 };
                     board.tiles[0].label = "Updated while asleep".into();
-                    *self.latest.lock().unwrap() = Some(board);
+                    self.latest.lock().unwrap().board = Some(board);
                 }
                 if count == 40 {
                     self.stopping.store(true, Ordering::Release);
@@ -1407,7 +1714,7 @@ mod tests {
             (false, Some(4)),
         ] {
             let stopping = AtomicBool::new(false);
-            let latest = Mutex::new(None);
+            let latest = Mutex::new(Update::default());
             let events = RefCell::new(Vec::new());
             let visuals = RefCell::new(Vec::new());
             let mut board = board();
@@ -1488,7 +1795,7 @@ mod tests {
     fn reconnect_restores_last_successful_brightness_and_shutdown_skips_rendering() {
         for cancelled in [false, true] {
             let stopping = AtomicBool::new(cancelled);
-            let latest = Mutex::new(None);
+            let latest = Mutex::new(Update::default());
             let device = FakeDevice {
                 brightness: RefCell::new(Vec::new()),
                 fail_brightness: false,
@@ -1521,6 +1828,98 @@ mod tests {
     }
 
     #[test]
+    fn setup_and_brightness_requests_only_acknowledge_successful_usb_writes() {
+        struct Requests<'a> {
+            worker: &'a Worker,
+            reads: Cell<usize>,
+            writes: RefCell<Vec<u8>>,
+            failure: usize,
+            requests: usize,
+            awake: bool,
+        }
+        impl Device for Requests<'_> {
+            fn read(&self, _: Duration) -> Result<Option<Vec<bool>>, String> {
+                let count = self.reads.get() + 1;
+                self.reads.set(count);
+                if count == 16 {
+                    for _ in 0..self.requests {
+                        self.worker.request_brightness();
+                    }
+                    let mut board = board();
+                    board.screens_awake = self.awake;
+                    self.worker.submit(board);
+                } else if count == 20 {
+                    self.worker.stop();
+                }
+                Ok(None)
+            }
+            fn upload(&self, index: usize, _: RgbImage) -> Result<(), String> {
+                if self.failure == 2 && index == 14 {
+                    return Err("setup upload failed".into());
+                }
+                Ok(())
+            }
+            fn brightness(&self, value: u8) -> Result<(), String> {
+                self.writes.borrow_mut().push(value);
+                if self.failure == 1 && self.reads.get() == 16 {
+                    return Err("brightness write failed".into());
+                }
+                Ok(())
+            }
+        }
+        for failure in 0..3 {
+            for (requests, expected) in [(1, 25), (2, 50), (4, 100), (5, 25)] {
+                for awake in [false, true] {
+                    let worker = Worker {
+                        latest: Arc::new(Mutex::new(Update::default())),
+                        stopping: Arc::new(AtomicBool::new(false)),
+                        thread: None,
+                    };
+                    let device = Requests {
+                        worker: &worker,
+                        reads: Cell::new(0),
+                        writes: RefCell::new(Vec::new()),
+                        failure,
+                        requests,
+                        awake,
+                    };
+                    let actions = RefCell::new(Vec::new());
+                    let mut board = board();
+                    board.screens_awake = awake;
+                    let result = run(
+                        &device,
+                        &mut |_| Ok(RgbImage::new(72, 72)),
+                        board,
+                        Layout::new(Kind::Mk2Scissor).unwrap(),
+                        &worker.latest,
+                        &worker.stopping,
+                        &|action| actions.borrow_mut().push((device.reads.get(), action)),
+                    );
+                    assert_eq!(result.is_err(), failure != 0);
+                    assert_eq!(
+                        *actions.borrow(),
+                        match failure {
+                            0 if awake =>
+                                vec![(15, Action::Connected), (16, Action::Brightness(expected))],
+                            0 | 1 => vec![(15, Action::Connected)],
+                            _ => vec![],
+                        }
+                    );
+                    let initial = if awake { 100 } else { 15 };
+                    assert_eq!(
+                        *device.writes.borrow(),
+                        if failure == 2 {
+                            vec![initial]
+                        } else {
+                            vec![initial, expected]
+                        }
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     #[ignore = "owns and changes the connected Stream Deck; close its existing controller first"]
     fn hardware_usb_smoke() {
         let candidate = discover(None)
@@ -1542,7 +1941,7 @@ mod tests {
         let mut board = board();
         for no_sessions in [false, true] {
             board.no_sessions = no_sessions;
-            for (index, key) in keys(&board, layout, None, 100, Duration::ZERO)
+            for (index, key) in keys(&board, layout, None, None, 100, Duration::ZERO)
                 .iter()
                 .enumerate()
             {

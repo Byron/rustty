@@ -179,6 +179,17 @@ impl Direction {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StreamDeckAction {
+    NeedsInput,
+    Working,
+    Done,
+    Idle,
+    NextPage,
+    Brightness,
+    PullToFirst,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
     Ignore,
@@ -201,6 +212,7 @@ pub enum Action {
     ToggleFullscreen,
     ToggleCommandPalette,
     Themes,
+    StreamDeck(StreamDeckAction),
     Reset,
     NextTab,
     PreviousTab,
@@ -275,6 +287,16 @@ impl Action {
                     _ => return Err("invalid search direction"),
                 },
             },
+            "stream_deck" => Self::StreamDeck(match required()? {
+                "needs_input" => StreamDeckAction::NeedsInput,
+                "working" => StreamDeckAction::Working,
+                "done" => StreamDeckAction::Done,
+                "idle" => StreamDeckAction::Idle,
+                "next_page" => StreamDeckAction::NextPage,
+                "brightness" => StreamDeckAction::Brightness,
+                "pull_to_first" => StreamDeckAction::PullToFirst,
+                _ => return Err("unsupported Stream Deck command"),
+            }),
             "increase_font_size" => {
                 Self::IncreaseFontSize(parse_positive(argument.unwrap_or("1"))?)
             }

@@ -20,15 +20,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod macos {
     use std::sync::{Arc, Mutex};
 
-    use objc2::{ClassType, MainThreadMarker, rc::Retained};
+    use objc2::{ClassType, MainThreadMarker, rc::Retained, sel};
     use objc2_app_kit::{
-        NSPanel, NSView, NSWindow, NSWindowButton, NSWindowStyleMask, NSWindowTabbingMode,
-        NSWorkspace, NSWorkspaceDidWakeNotification, NSWorkspaceScreensDidSleepNotification,
-        NSWorkspaceScreensDidWakeNotification, NSWorkspaceSessionDidResignActiveNotification,
-        NSWorkspaceWillSleepNotification,
+        NSApplication, NSEventModifierFlags, NSPanel, NSView, NSWindow, NSWindowButton,
+        NSWindowStyleMask, NSWindowTabbingMode, NSWorkspace, NSWorkspaceDidWakeNotification,
+        NSWorkspaceScreensDidSleepNotification, NSWorkspaceScreensDidWakeNotification,
+        NSWorkspaceSessionDidResignActiveNotification, NSWorkspaceWillSleepNotification,
     };
-    use objc2_foundation::NSObjectProtocol;
-    use rustty::config::Config;
+    use objc2_foundation::{NSObjectProtocol, NSString};
+    use rustty::config::{Action, Config, KeyBinding, StreamDeckAction};
     use rustty_app::platform::{Platform, PlatformEvent};
     use winit::{
         application::ApplicationHandler,
@@ -54,7 +54,7 @@ mod macos {
         event_loop.run_app_on_demand(&mut check)?;
         assert!(check.0, "Winit never initialized the native test windows");
         println!(
-            "native_panel: native window ownership/style and screen-power notification lifecycle passed"
+            "native_panel: window ownership/style, screen-power lifecycle and Stream Deck menu/shortcuts passed"
         );
         Ok(())
     }
@@ -67,15 +67,18 @@ mod macos {
             config.keybinds.clear();
             let power = Arc::new(Mutex::new(Vec::new()));
             let events = Arc::clone(&power);
-            let platform = Platform::new(
-                Arc::new(move |event| {
-                    if let PlatformEvent::ScreensAwake(awake) = event {
-                        events.lock().unwrap().push(awake);
-                    }
+            let actions = Arc::new(Mutex::new(Vec::new()));
+            let action_events = Arc::clone(&actions);
+            let mut platform = Platform::new(
+                Arc::new(move |event| match event {
+                    PlatformEvent::ScreensAwake(awake) => events.lock().unwrap().push(awake),
+                    PlatformEvent::Action(action) => action_events.lock().unwrap().push(action),
+                    _ => {}
                 }),
                 &config,
             )
             .unwrap();
+            check_stream_deck_menu(&mut platform, &mut config, &actions);
             assert_eq!(power.lock().unwrap().len(), 1);
             power.lock().unwrap().clear();
             let center = NSWorkspace::sharedWorkspace().notificationCenter();
@@ -166,6 +169,98 @@ mod macos {
         }
 
         fn window_event(&mut self, _: &ActiveEventLoop, _: WindowId, _: WindowEvent) {}
+    }
+
+    fn check_stream_deck_menu(
+        platform: &mut Platform,
+        config: &mut Config,
+        actions: &Mutex<Vec<Action>>,
+    ) {
+        let root = NSApplication::sharedApplication(MainThreadMarker::new().unwrap())
+            .mainMenu()
+            .unwrap();
+        let title = NSString::from_str("Stream Deck");
+        let original_count = root.numberOfItems();
+        assert!(root.itemWithTitle(&title).is_none());
+        platform.set_stream_deck_connected(false).unwrap();
+        config.keybinds = vec![KeyBinding::parse("cmd+shift+p=stream_deck:pull_to_first").unwrap()];
+        platform.update_config(config).unwrap();
+        platform.set_stream_deck_connected(true).unwrap();
+        platform.set_stream_deck_connected(true).unwrap();
+        assert_eq!(root.numberOfItems(), original_count + 1);
+        assert_eq!(
+            root.itemAtIndex(4).unwrap().title().to_string(),
+            "Stream Deck"
+        );
+        let deck = root.itemWithTitle(&title).unwrap().submenu().unwrap();
+        let expected = [
+            ("Next Needing Input", StreamDeckAction::NeedsInput),
+            ("Next Working", StreamDeckAction::Working),
+            ("Next Done", StreamDeckAction::Done),
+            ("Next Idle", StreamDeckAction::Idle),
+            ("Next Page", StreamDeckAction::NextPage),
+            ("Cycle Brightness", StreamDeckAction::Brightness),
+            ("Pull to First Page", StreamDeckAction::PullToFirst),
+        ];
+        assert_eq!(deck.numberOfItems(), expected.len() as isize);
+        for (index, (name, _)) in expected.iter().enumerate() {
+            assert_eq!(
+                deck.itemAtIndex(index as isize)
+                    .unwrap()
+                    .title()
+                    .to_string(),
+                *name
+            );
+            deck.performActionForItemAtIndex(index as isize);
+        }
+        assert_eq!(
+            *actions.lock().unwrap(),
+            expected.map(|(_, action)| Action::StreamDeck(action))
+        );
+        actions.lock().unwrap().clear();
+        let pull = deck.itemAtIndex(6).unwrap();
+        assert_eq!(pull.keyEquivalent().to_string(), "p");
+        assert_eq!(
+            pull.keyEquivalentModifierMask(),
+            NSEventModifierFlags::Command | NSEventModifierFlags::Shift
+        );
+
+        config.keybinds.clear();
+        platform.update_config(config).unwrap();
+        assert!(
+            pull.keyEquivalent().is_empty(),
+            "reload must remove live shortcuts"
+        );
+        config.keybinds = vec![KeyBinding::parse("cmd+shift+p=stream_deck:pull_to_first").unwrap()];
+        platform.update_config(config).unwrap();
+        assert_eq!(pull.keyEquivalent().to_string(), "p");
+        platform.set_stream_deck_connected(false).unwrap();
+        platform.set_stream_deck_connected(false).unwrap();
+        assert_eq!(root.numberOfItems(), original_count);
+        config.keybinds.clear();
+        platform.update_config(config).unwrap();
+        platform.set_stream_deck_connected(true).unwrap();
+        let deck = root.itemWithTitle(&title).unwrap().submenu().unwrap();
+        assert!(deck.itemAtIndex(6).unwrap().keyEquivalent().is_empty());
+        deck.performActionForItemAtIndex(6);
+        assert_eq!(
+            *actions.lock().unwrap(),
+            [Action::StreamDeck(StreamDeckAction::PullToFirst)]
+        );
+        platform.set_stream_deck_connected(false).unwrap();
+        assert_eq!(root.numberOfItems(), original_count);
+
+        let app = root.itemAtIndex(0).unwrap().submenu().unwrap();
+        let hide = app
+            .itemArray()
+            .into_iter()
+            .find(|item| item.action() == Some(sel!(hide:)))
+            .unwrap();
+        assert_eq!(
+            hide.keyEquivalent().to_string(),
+            "h",
+            "predefined shortcuts stay intact"
+        );
     }
 
     fn check_window(window: &Window, panel: bool) -> Retained<NSWindow> {
