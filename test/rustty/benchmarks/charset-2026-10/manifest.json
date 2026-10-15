@@ -1,0 +1,26 @@
+{
+  "binaries": {
+    "before": {
+      "path": "/private/tmp/rustty-charset-performance-20261015/before",
+      "sha256": "2f42e874851dabef12d0f68f2e7eaa2caac7a99252b2adb0967004799515e542"
+    },
+    "simd": {
+      "path": "/private/tmp/rustty-charset-performance-20261015/after",
+      "sha256": "bd705a7f6ccdc61500d5aa95f4049c1702ffa0f759aca0ff8a2a532aadc1b4c8"
+    }
+  },
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "samples_per_direction": 50,
+  "warmup_seconds": 0.3,
+  "measurement_seconds": 1,
+  "cases": [
+    "feed/ascii",
+    "stream/ascii",
+    "charset_repaint/ascii",
+    "charset_repaint/dec",
+    "charset_repaint/british",
+    "charset_stream/ascii",
+    "charset_stream/dec",
+    "charset_stream/british"
+  ]
+}

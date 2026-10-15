@@ -615,6 +615,22 @@ pub(crate) enum Charset {
     DecSpecial,
 }
 
+impl Charset {
+    pub(crate) fn map(self, cp: char) -> char {
+        if self == Self::British && cp == '#' {
+            return '£';
+        }
+        if self == Self::DecSpecial && ('`'..='~').contains(&cp) {
+            const SPECIAL: [char; 31] = [
+                '◆', '▒', '␉', '␌', '␍', '␊', '°', '±', '␤', '␋', '┘', '┐', '┌', '└', '┼', '⎺',
+                '⎻', '─', '⎼', '⎽', '├', '┤', '┴', '┬', '│', '≤', '≥', 'π', '≠', '£', '·',
+            ];
+            return SPECIAL[cp as usize - '`' as usize];
+        }
+        cp
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct CharsetState {
     pub slots: [Charset; 4],
@@ -1348,6 +1364,7 @@ impl Screen {
 
     pub(crate) fn write_cursor_ascii(&mut self, bytes: &[u8]) -> usize {
         use crate::printing;
+        let charset = self.charset.slots[self.charset.gl];
         let (index, row) = self.sync_cursor_resources();
         let template = self.cursor_template(None, 1, false);
         let page = &mut self.pages.pages[index];
@@ -1362,11 +1379,17 @@ impl Screen {
             old.bits() & printing::DEST_MASK,
         );
         page.replace_simple_styles(old.style_id(), template.style_id(), count);
-        printing::store_ascii(
-            &mut page.cells[offset..offset + count],
-            &bytes[..count],
-            template,
-        );
+        let cells = &mut page.cells[offset..offset + count];
+        let bytes = &bytes[..count];
+        if matches!(charset, Charset::Utf8 | Charset::Ascii) {
+            printing::store_ascii(cells, bytes, template);
+        } else {
+            for (cell, &byte) in cells.iter_mut().zip(bytes) {
+                *cell = Cell::from_bits(
+                    template.bits() | (u64::from(charset.map(char::from(byte))) << 2),
+                );
+            }
+        }
         if count != 0 {
             page.mark_cell(row, template);
         }
