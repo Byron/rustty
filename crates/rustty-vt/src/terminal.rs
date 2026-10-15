@@ -247,6 +247,19 @@ impl Terminal {
         &self.parser
     }
 
+    /// Recover terminal input and display state without dispatching pending sequences.
+    pub fn reset_from_host(&mut self) {
+        self.parser.reset();
+        self.dcs.clear();
+        self.dcs_header.0.clear();
+        self.dcs_header.1.clear();
+        self.dcs_header.2 = 0;
+        self.apc.clear();
+        self.apc_glyph_limit = None;
+        self.string_overflow = false;
+        self.reset();
+    }
+
     pub fn primary_screen(&self) -> &Screen {
         &self.primary
     }

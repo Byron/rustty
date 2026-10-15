@@ -284,6 +284,7 @@ fn actions() -> Vec<(&'static str, Action)> {
         ("Open Configuration", Action::OpenConfig),
         ("Open Saved Layout", Action::OpenLayout),
         ("Reload Configuration", Action::ReloadConfig),
+        ("Reset Terminal", Action::Reset),
         ("Toggle Quick Terminal", Action::ToggleQuickTerminal),
         ("Undo Layout Change", Action::Undo),
         ("Redo Layout Change", Action::Redo),
@@ -447,6 +448,32 @@ mod tests {
             repeat: false,
             modifiers,
         }
+    }
+
+    #[test]
+    fn palette_exposes_terminal_recovery_without_sending_terminal_input() {
+        let context = egui::Context::default();
+        let config = Config::default();
+        let mut palette = CommandPalette::default();
+        let mut focus = true;
+        palette.toggle();
+        draw(&context, &mut palette, &config, &mut focus, vec![]);
+        draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![egui::Event::Text("reset terminal".into())],
+        );
+        let (action, _) = draw(
+            &context,
+            &mut palette,
+            &config,
+            &mut focus,
+            vec![key(Key::Enter)],
+        );
+        assert_eq!(action, Some(Action::Reset));
+        assert_eq!(Action::parse("reset").unwrap(), Action::Reset);
     }
 
     #[test]
