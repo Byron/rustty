@@ -4,7 +4,11 @@ use crate::{
     workspace::{Id, MAX_DECK_SLOTS, Workspace},
 };
 use rustty::vt::agent::{Event, Snapshot, State};
-use std::collections::{HashMap, VecDeque};
+use std::{
+    cmp::Reverse,
+    collections::{HashMap, VecDeque},
+    time::Instant,
+};
 
 pub const PAGE_SIZE: usize = 9;
 pub const ACK_HISTORY: usize = 64;
@@ -85,6 +89,7 @@ impl Board {
 pub struct Report {
     snapshot: Option<Snapshot>,
     generation: u64,
+    last_activity: Option<Instant>,
     enclosing_command: bool,
     attention: VecDeque<Attention>,
 }
@@ -127,6 +132,13 @@ impl Report {
         }
     }
     fn observe(&mut self, snapshot: &Snapshot) {
+        if self.snapshot.as_ref().is_none_or(|previous| {
+            previous.state != snapshot.state
+                || previous.thread_id != snapshot.thread_id
+                || previous.turn_id != snapshot.turn_id
+        }) {
+            self.last_activity = Some(Instant::now());
+        }
         let previous = self
             .attention
             .iter()
@@ -192,6 +204,7 @@ impl Report {
                 generation: self.generation,
             },
             state,
+            last_activity: self.last_activity,
             label: task_label.to_owned(),
             unseen: attention.is_some_and(|entry| entry.unseen),
         })
@@ -201,6 +214,7 @@ impl Report {
 pub struct PaneView {
     pub target: Target,
     pub state: State,
+    pub last_activity: Option<Instant>,
     pub label: String,
     pub unseen: bool,
 }
@@ -212,6 +226,7 @@ pub struct Dashboard {
     pub moving: bool,
     cursors: [Option<usize>; 4],
     positions: Vec<Option<Id>>,
+    last_activity: Vec<Option<Instant>>,
 }
 impl Dashboard {
     pub fn screens_awake(&mut self, awake: bool) {
@@ -322,6 +337,11 @@ impl Dashboard {
                 }
             })
             .collect();
+        self.last_activity = workspace
+            .deck_positions
+            .iter()
+            .map(|id| id.and_then(|id| reports.get(&id)?.last_activity))
+            .collect();
         self.board.page = self.board.page.min(self.board.pages() - 1);
         changed
     }
@@ -353,6 +373,74 @@ impl Dashboard {
     }
     pub fn page(&mut self) {
         self.board.page = (self.board.page + 1) % self.board.pages();
+    }
+    pub fn pull_to_first(&mut self, workspace: &mut Workspace) -> bool {
+        self.board.page = 0;
+        // Host commands must cancel worker-local gestures even when every slot stays put.
+        self.board.mode_generation += 1;
+        self.gesture = None;
+        self.moving = false;
+        if self.positions != workspace.deck_positions {
+            return false;
+        }
+        let mut candidates: Vec<_> = self
+            .board
+            .tiles
+            .iter()
+            .filter(|tile| tile.state.is_some_and(|state| state != State::Idle))
+            .collect();
+        candidates.sort_by_key(|tile| {
+            let priority = match tile.state {
+                Some(State::NeedsInput) => 0,
+                Some(State::Done) => 1,
+                Some(State::Working) => 2,
+                Some(State::Paused) => 3,
+                _ => 4,
+            };
+            (
+                priority,
+                Reverse(self.last_activity[tile.capture.slot]),
+                tile.capture.slot,
+            )
+        });
+        candidates.truncate(PAGE_SIZE);
+        // Keep the selected first-page agents in their familiar positions.
+        let mut destinations: Vec<_> = (0..PAGE_SIZE)
+            .filter(|slot| !candidates.iter().any(|tile| tile.capture.slot == *slot))
+            .collect();
+        destinations.sort_by_key(|&slot| {
+            let tile = self.board.tile(slot);
+            let priority = if tile.capture.assignment.is_none() {
+                0
+            } else if tile.reserved {
+                1
+            } else if tile.state == Some(State::Idle) {
+                2
+            } else {
+                3
+            };
+            (
+                priority,
+                self.last_activity.get(slot).copied().flatten(),
+                slot,
+            )
+        });
+        let mut changed = false;
+        for (source, destination) in candidates
+            .iter()
+            .filter(|tile| tile.capture.slot >= PAGE_SIZE)
+            .zip(destinations)
+        {
+            workspace
+                .deck_positions
+                .swap(source.capture.slot, destination);
+            changed = true;
+        }
+        if changed {
+            workspace.reconcile_deck_positions();
+            self.board.generation += 1;
+        }
+        changed
     }
     pub fn swap(
         &mut self,
@@ -407,6 +495,7 @@ mod tests {
                     },
                     label: "Review Δ".into(),
                     state: GROUPS[i % 4],
+                    last_activity: None,
                     unseen: false,
                 },
             );
@@ -617,6 +706,197 @@ mod tests {
             report.view(1, "", &Activity::default()).unwrap().state,
             State::Done
         );
+    }
+    #[test]
+    fn activity_recency_ignores_duplicate_metadata_and_acknowledgement() {
+        let mut report = Report::default();
+        let activity = Activity::default();
+        let old = Instant::now() - std::time::Duration::from_secs(60);
+        let initial = snapshot(State::Done, "A", Some("T1"));
+        report.apply(Event::Update(initial.clone()), 1, false);
+        assert!(report.last_activity.is_none());
+        report.apply(Event::Begin(initial.clone()), 1, false);
+        assert!(report.last_activity.unwrap() > old);
+        report.last_activity = Some(old);
+        let mut duplicate = initial.clone();
+        duplicate.label = Some("A different label".into());
+        report.apply(Event::Update(duplicate), 1, false);
+        report.acknowledge();
+        let view = report.view(1, "task", &activity).unwrap();
+        assert_eq!(view.state, State::Idle);
+        assert_eq!(view.last_activity, Some(old));
+        for changed in [
+            snapshot(State::Done, "A", Some("T2")),
+            snapshot(State::Done, "B", Some("T2")),
+            snapshot(State::Working, "B", Some("T2")),
+            snapshot(State::Idle, "B", Some("T2")),
+        ] {
+            report.last_activity = Some(old);
+            report.apply(Event::Update(changed.clone()), 1, false);
+            let observed = report.view(1, "task", &activity).unwrap().last_activity;
+            assert!(observed.unwrap() > old);
+            report.apply(Event::Update(changed), 1, false);
+            assert_eq!(report.last_activity, observed);
+        }
+        report.last_activity = Some(old);
+        report.apply(Event::Begin(initial), 2, false);
+        assert!(report.last_activity.unwrap() > old);
+    }
+    #[test]
+    fn pull_prioritizes_categories_and_recency_without_reordering_kept_agents() {
+        let (mut workspace, mut reports) = setup(17);
+        let mut deck = Dashboard::default();
+        deck.update(&mut workspace, &reports, None);
+        let initial = workspace.deck_positions.clone();
+        for report in reports.values_mut() {
+            report.state = State::Idle;
+        }
+        let now = Instant::now();
+        for (slot, state, age) in [
+            (1, State::NeedsInput, 100),
+            (4, State::Done, 100),
+            (6, State::Working, 100),
+            (9, State::NeedsInput, 20),
+            (10, State::NeedsInput, 10),
+            (11, State::Done, 5),
+            (12, State::Working, 4),
+            (13, State::Paused, 3),
+            (14, State::Error, 2),
+            (15, State::Unknown, 2),
+        ] {
+            let report = reports.get_mut(&initial[slot].unwrap()).unwrap();
+            report.state = state;
+            report.last_activity = Some(now - std::time::Duration::from_secs(age));
+        }
+        deck.update(&mut workspace, &reports, None);
+        assert!(deck.pull_to_first(&mut workspace));
+        for (destination, source) in [(0, 10), (2, 9), (3, 11), (5, 12), (7, 13), (8, 14)] {
+            assert_eq!(workspace.deck_positions[destination], initial[source]);
+            assert_eq!(workspace.deck_positions[source], initial[destination]);
+        }
+        for kept in [1, 4, 6, 15, 16] {
+            assert_eq!(workspace.deck_positions[kept], initial[kept]);
+        }
+        assert!(!deck.pull_to_first(&mut workspace));
+        deck.update(&mut workspace, &reports, None);
+        let pulled = workspace.deck_positions.clone();
+        assert!(!deck.pull_to_first(&mut workspace));
+        assert_eq!(workspace.deck_positions, pulled);
+    }
+    #[test]
+    fn pull_prefers_empty_then_reserved_then_oldest_idle_and_preserves_assignments() {
+        let (mut workspace, mut reports) = setup(12);
+        let mut deck = Dashboard::default();
+        deck.update(&mut workspace, &reports, None);
+        let initial = workspace.deck_positions.clone();
+        reports.remove(&initial[0].unwrap());
+        workspace.close_pane(initial[0].unwrap());
+        reports.remove(&initial[1].unwrap());
+        let now = Instant::now();
+        for (slot, id) in initial.iter().enumerate().skip(2) {
+            let report = reports.get_mut(&id.unwrap()).unwrap();
+            report.state = if slot < PAGE_SIZE {
+                State::Idle
+            } else {
+                State::Working
+            };
+            report.last_activity = Some(now - std::time::Duration::from_secs(slot as u64));
+        }
+        deck.update(&mut workspace, &reports, None);
+        let before = workspace.deck_positions.clone();
+        let capture = deck.board.tile(9).capture;
+        deck.gesture = Some(capture);
+        deck.moving = true;
+        deck.board.page = 1;
+        assert!(deck.pull_to_first(&mut workspace));
+        assert_eq!(deck.board.page, 0);
+        assert!(deck.gesture.is_none());
+        assert!(!deck.moving);
+        assert!(!deck.board.valid(capture));
+        assert_eq!(workspace.deck_positions[0], initial[9]);
+        assert_eq!(workspace.deck_positions[1], initial[10]);
+        assert_eq!(workspace.deck_positions[8], initial[11]);
+        assert_eq!(workspace.deck_positions[9], None);
+        assert_eq!(workspace.deck_positions[10], initial[1]);
+        assert_eq!(workspace.deck_positions[11], initial[8]);
+        assert_eq!(&workspace.deck_positions[2..8], &initial[2..8]);
+        let mut before: Vec<_> = before.into_iter().flatten().collect();
+        let mut after: Vec<_> = workspace.deck_positions.iter().copied().flatten().collect();
+        before.sort_unstable();
+        after.sort_unstable();
+        assert_eq!(before, after);
+    }
+    #[test]
+    fn pull_selects_nine_and_evicts_least_recent_nonselected_agents_first() {
+        let (mut workspace, mut reports) = setup(18);
+        let mut deck = Dashboard::default();
+        deck.update(&mut workspace, &reports, None);
+        let initial = workspace.deck_positions.clone();
+        let now = Instant::now();
+        for (slot, id) in initial.iter().enumerate() {
+            let report = reports.get_mut(&id.unwrap()).unwrap();
+            report.state = State::Working;
+            report.last_activity = Some(now - std::time::Duration::from_secs(slot as u64));
+        }
+        for id in &initial[9..18] {
+            reports.get_mut(&id.unwrap()).unwrap().state = State::NeedsInput;
+        }
+        deck.update(&mut workspace, &reports, None);
+        assert!(deck.pull_to_first(&mut workspace));
+        for destination in 0..9 {
+            assert_eq!(
+                workspace.deck_positions[destination],
+                initial[17 - destination]
+            );
+        }
+        assert_eq!(workspace.deck_positions.len(), initial.len());
+    }
+    #[test]
+    fn pull_never_promotes_idle_or_retained_closed_agents_and_returns_to_first_page() {
+        let (mut workspace, mut reports) = setup(12);
+        let mut deck = Dashboard::default();
+        deck.update(&mut workspace, &reports, None);
+        let initial = workspace.deck_positions.clone();
+        for report in reports.values_mut() {
+            report.state = State::Idle;
+        }
+        reports.get_mut(&initial[11].unwrap()).unwrap().state = State::NeedsInput;
+        workspace.close_pane(initial[11].unwrap());
+        deck.update(&mut workspace, &reports, None);
+        let positions = workspace.deck_positions.clone();
+        deck.board.page = 1;
+        assert!(!deck.pull_to_first(&mut workspace));
+        assert_eq!(deck.board.page, 0);
+        assert_eq!(workspace.deck_positions, positions);
+        assert!(
+            deck.board
+                .tiles
+                .iter()
+                .all(|tile| tile.state != Some(State::NeedsInput))
+        );
+    }
+    #[test]
+    fn pull_without_moves_still_invalidates_worker_control_mode() {
+        let (mut workspace, reports) = setup(2);
+        let mut deck = Dashboard::default();
+        deck.update(&mut workspace, &reports, None);
+        for _ in 0..2 {
+            let mode = deck.board.mode_generation;
+            let layout = deck.board.generation;
+            let positions = workspace.deck_positions.clone();
+            deck.gesture = Some(deck.board.tile(0).capture);
+            deck.moving = true;
+            assert!(!deck.pull_to_first(&mut workspace));
+            assert_eq!(deck.board.mode_generation, mode + 1);
+            assert_eq!(deck.board.generation, layout);
+            assert_eq!(workspace.deck_positions, positions);
+            assert!(deck.gesture.is_none());
+            assert!(!deck.moving);
+        }
+        workspace.deck_positions.swap(0, 1);
+        let mode = deck.board.mode_generation;
+        assert!(!deck.pull_to_first(&mut workspace));
+        assert_eq!(deck.board.mode_generation, mode + 1);
     }
     #[test]
     fn slots_reservations_cycles_and_closed_panes() {
