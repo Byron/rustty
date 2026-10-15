@@ -568,6 +568,10 @@ impl Screen {
         if cursor_index.is_none_or(|i| i < start) {
             self.cursor.col = 0;
         }
+        if self.cursor.pending_wrap && self.cursor.col != cols - 1 {
+            self.cursor.pending_wrap = false;
+            self.cursor.col += 1;
+        }
         let saved_location = saved_point.and_then(|p| {
             self.rows()
                 .position(|r| r.id == p.row)
