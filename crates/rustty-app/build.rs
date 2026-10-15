@@ -11,7 +11,7 @@ fn windows_resources() {
     }
     let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let manifest = root.join("resources/windows.manifest");
-    let icon = root.join("../../dist/windows/ghostty.ico");
+    let icon = root.join("resources/icons/rustty.ico");
     println!("cargo:rerun-if-changed={}", manifest.display());
     println!("cargo:rerun-if-changed={}", icon.display());
     let escape = |path: &std::path::Path| path.to_string_lossy().replace('\\', "/");

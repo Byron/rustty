@@ -43,8 +43,17 @@ Resource provenance:
   zsh's `.zshenv`. Existing `GHOSTTY_*` environment variable names remain part
   of the integration protocol. `TERM_PROGRAM=ghostty` enables compatible CLI
   behavior such as Cargo's OSC progress reports; the application remains Rustty.
-- The app icon reuses `macos/Assets.xcassets/AppIconImage.imageset/macOS-AppIcon-1024px.png`.
-  Ghostty's MIT notice is included in every app bundle.
+- `icons/rustty.png` and `icons/rustty.ico` are Rustty's app artwork, with an
+  original crab and warm Rust-orange palette composed over Ghostty's MIT-licensed
+  frame, screen, CRT, and gloss layers. Ghostty's MIT notice is included in every
+  app bundle. The macOS build resizes the 1024px PNG into `Rustty.icns`; Windows
+  embeds the multi-size ICO and includes a copy in its portable bundle.
+  macOS also embeds the PNG and sets the running app's Dock/Cmd-Tab icon at
+  startup so cached Ghostty artwork cannot override it, including with `cargo run`.
+  Regenerate both from the repository root on macOS with
+  `swift crates/rustty-app/resources/icons/generate.swift`. If Swift needs a
+  writable module cache, add `-module-cache-path /tmp/rustty-icon-cache` before
+  the script path.
 
 The Rust/WGPU executable has no link dependency on the Zig library. Native
 macOS frameworks or Windows APIs provide font services, menus and notifications.

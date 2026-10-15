@@ -141,7 +141,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'resources/themes') -Destination $resources -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $repository 'src/shell-integration') -Destination $resources -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'resources/ghostty.terminfo') -Destination $resources
-    Copy-Item -LiteralPath (Join-Path $repository 'dist/windows/ghostty.ico') -Destination (Join-Path $resources 'rustty.ico')
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'resources/icons/rustty.ico') -Destination (Join-Path $resources 'rustty.ico')
     # Git's autocrlf also affects extensionless scripts. The bundle always
     # contains UTF-8/LF integration, including hidden zsh startup files.
     $utf8 = [Text.UTF8Encoding]::new($false)

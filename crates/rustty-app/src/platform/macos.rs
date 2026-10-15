@@ -21,8 +21,8 @@ use muda::{
     accelerator::{Key, KeyAccelerator, Modifiers as MenuModifiers},
 };
 use objc2::{
-    DeclaredClass, MainThreadMarker, MainThreadOnly, define_class, extern_class, extern_methods,
-    msg_send,
+    AnyThread, DeclaredClass, MainThreadMarker, MainThreadOnly, define_class, extern_class,
+    extern_methods, msg_send,
     rc::Retained,
     runtime::{Bool, ProtocolObject},
     sel,
@@ -30,7 +30,7 @@ use objc2::{
 use objc2_app_kit::{
     NSAccessibility, NSAnimatablePropertyContainer, NSAnimationContext, NSApplication,
     NSApplicationActivationOptions, NSColor, NSColorSpace, NSEvent, NSEventModifierFlags,
-    NSEventType, NSFloatingWindowLevel, NSMenu, NSModalResponseCancel, NSModalResponseOK,
+    NSEventType, NSFloatingWindowLevel, NSImage, NSMenu, NSModalResponseCancel, NSModalResponseOK,
     NSOpenPanel, NSPasteboard, NSPasteboardAccessBehavior, NSPasteboardItem,
     NSPasteboardTypeString, NSPopUpMenuWindowLevel, NSRunningApplication, NSScreen,
     NSUserInterfaceItemIdentification, NSView, NSWindow, NSWindowAnimationBehavior, NSWindowButton,
@@ -225,6 +225,14 @@ impl Platform {
 
     pub fn new(callback: EventSink, config: &Config) -> Result<Self, String> {
         let mtm = MainThreadMarker::new().ok_or("platform must initialize on the main thread")?;
+        let icon = NSImage::initWithData(
+            NSImage::alloc(),
+            &NSData::with_bytes(include_bytes!("../../resources/icons/rustty.png")),
+        )
+        .ok_or("could not decode the Rustty app icon")?;
+        // Replace macOS's cached Dock/Cmd-Tab icon, including for unbundled launches.
+        // SAFETY: AppKit receives a valid, non-nil image on the main thread.
+        unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&icon)) };
         let mut menu_actions = Vec::new();
         let (menu, stream_deck_menu) = make_menu(&mut menu_actions)?;
         let actions: Vec<_> = menu_actions

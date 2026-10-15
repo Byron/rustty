@@ -20,14 +20,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod macos {
     use std::sync::{Arc, Mutex};
 
-    use objc2::{ClassType, MainThreadMarker, rc::Retained, sel};
+    use objc2::{AnyThread, ClassType, MainThreadMarker, rc::Retained, sel};
     use objc2_app_kit::{
-        NSApplication, NSEventModifierFlags, NSPanel, NSView, NSWindow, NSWindowButton,
-        NSWindowStyleMask, NSWindowTabbingMode, NSWorkspace, NSWorkspaceDidWakeNotification,
-        NSWorkspaceScreensDidSleepNotification, NSWorkspaceScreensDidWakeNotification,
-        NSWorkspaceSessionDidResignActiveNotification, NSWorkspaceWillSleepNotification,
+        NSApplication, NSBitmapImageRep, NSColorSpace, NSEventModifierFlags, NSImage, NSPanel,
+        NSView, NSWindow, NSWindowButton, NSWindowStyleMask, NSWindowTabbingMode, NSWorkspace,
+        NSWorkspaceDidWakeNotification, NSWorkspaceScreensDidSleepNotification,
+        NSWorkspaceScreensDidWakeNotification, NSWorkspaceSessionDidResignActiveNotification,
+        NSWorkspaceWillSleepNotification,
     };
-    use objc2_foundation::{NSObjectProtocol, NSString};
+    use objc2_foundation::{NSData, NSObjectProtocol, NSString};
     use rustty::config::{Action, Config, KeyBinding, StreamDeckAction};
     use rustty_app::platform::{Platform, PlatformEvent};
     use winit::{
@@ -54,7 +55,7 @@ mod macos {
         event_loop.run_app_on_demand(&mut check)?;
         assert!(check.0, "Winit never initialized the native test windows");
         println!(
-            "native_panel: window ownership/style, screen-power lifecycle and Stream Deck menu/shortcuts passed"
+            "native_panel: app icon, window ownership/style, screen-power lifecycle and Stream Deck menu/shortcuts passed"
         );
         Ok(())
     }
@@ -63,6 +64,14 @@ mod macos {
 
     impl ApplicationHandler for Check {
         fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+            let app = NSApplication::sharedApplication(MainThreadMarker::new().unwrap());
+            let stale_icon = NSImage::initWithData(
+                NSImage::alloc(),
+                &NSData::with_bytes(include_bytes!("../../../images/icons/icon_512.png")),
+            )
+            .unwrap();
+            // SAFETY: seed this test process with a valid old icon on the main thread.
+            unsafe { app.setApplicationIconImage(Some(&stale_icon)) };
             let mut config = Config::default();
             config.keybinds.clear();
             let power = Arc::new(Mutex::new(Vec::new()));
@@ -78,6 +87,41 @@ mod macos {
                 &config,
             )
             .unwrap();
+            let expected_icon = NSImage::initWithData(
+                NSImage::alloc(),
+                &NSData::with_bytes(include_bytes!("../resources/icons/rustty.png")),
+            )
+            .unwrap();
+            let actual_icon = app.applicationIconImage().unwrap();
+            assert_eq!(actual_icon.size(), expected_icon.size());
+            let actual =
+                NSBitmapImageRep::imageRepWithData(&actual_icon.TIFFRepresentation().unwrap())
+                    .unwrap();
+            let expected =
+                NSBitmapImageRep::imageRepWithData(&expected_icon.TIFFRepresentation().unwrap())
+                    .unwrap();
+            // AppKit renders the live icon at Retina resolution in a different color format.
+            for (x, y) in [(512, 512), (400, 400), (600, 600), (0, 0)] {
+                let color = |rep: &NSBitmapImageRep| {
+                    let c = rep
+                        .colorAtX_y(x * rep.pixelsWide() / 1024, y * rep.pixelsHigh() / 1024)
+                        .unwrap()
+                        .colorUsingColorSpace(&NSColorSpace::sRGBColorSpace())
+                        .unwrap();
+                    [
+                        c.redComponent(),
+                        c.greenComponent(),
+                        c.blueComponent(),
+                        c.alphaComponent(),
+                    ]
+                };
+                let a = color(&actual);
+                let e = color(&expected);
+                assert!(
+                    a.into_iter().zip(e).all(|(a, e)| (a - e).abs() < 0.06),
+                    "startup must replace the stale Ghostty Dock/Cmd-Tab icon: {a:?} != {e:?}"
+                );
+            }
             check_stream_deck_menu(&mut platform, &mut config, &actions);
             assert_eq!(power.lock().unwrap().len(), 1);
             power.lock().unwrap().clear();
