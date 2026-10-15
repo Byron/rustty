@@ -1223,45 +1223,24 @@ impl Screen {
         Ok(())
     }
 
-    pub(crate) fn move_wrapped_grapheme(&mut self, source_col: usize, suffix: &str) {
+    pub(crate) fn restore_wrapped_grapheme(
+        &mut self,
+        text: Arc<str>,
+        len: u8,
+    ) -> Result<(), SetFull> {
+        // Wrapping can erase the source row or leave it at the same screen row.
         let absolute = self.history_len() + self.cursor.row;
-        // Native transfer stops when scrolling leaves no preceding row. Only
-        // host-budget pruning preserves active text through the saved suffix.
-        if absolute == 0 && (self.memory_limit.is_none() || self.limits.bytes == Some(0)) {
-            return;
-        }
-        let source = absolute.checked_sub(1).and_then(|source| {
-            let (index, row) = self.locate(source);
-            let page = &mut self.pages.pages[index];
-            let slot = page.slot(row, source_col);
-            let allocation = page.grapheme_map.remove(&(slot as u32))?;
-            if page.cells[slot].has_grapheme() {
-                page.cells[slot].set_grapheme(false);
-            }
-            Some((index, allocation))
-        });
-        let (index, row) = self.cursor_location();
-        if let Some((source_index, allocation)) = source
-            && source_index == index
-        {
-            let col = self.cursor.col;
-            let page = &mut self.pages.pages[index];
-            let slot = page.slot(row, col);
-            page.grapheme_map.insert(slot as u32, allocation);
-            page.cells[slot].set_grapheme(true);
-            page.mark_cell(row, page.cells[slot]);
-            page.refresh_charge();
-        } else {
-            for cp in suffix.chars() {
-                if self.append_grapheme(self.cursor.col, cp).is_err() {
-                    break;
-                }
-            }
-            if let Some((index, allocation)) = source {
-                self.pages.pages[index].graphemes.release(allocation);
-                self.pages.pages[index].refresh_charge();
-            }
-        }
+        let mut location = self.cursor_location();
+        let allocation = self.acquire_grapheme(absolute, &mut location, len)?;
+        let (index, row) = location;
+        let page = &mut self.pages.pages[index];
+        let slot = page.slot(row, self.cursor.col);
+        page.graphemes.set_text(allocation, text);
+        page.grapheme_map.insert(slot as u32, allocation);
+        page.cells[slot].set_grapheme(true);
+        page.mark_cell(row, page.cells[slot]);
+        page.refresh_charge();
+        Ok(())
     }
 
     fn cursor_template(&self, codepoint: Option<char>, width: u8, spacer_head: bool) -> Cell {
