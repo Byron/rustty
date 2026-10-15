@@ -112,7 +112,7 @@ fn logical_line_selection_respects_cell_semantics_and_distinguishes_trimming_opt
 }
 
 #[test]
-fn word_selection_keeps_native_hard_edge_and_wide_spacer_boundaries() {
+fn word_selection_stops_at_hard_edges_and_includes_wide_spacers() {
     let mut terminal = Terminal::new(4, 3, 100);
     terminal.feed(b"abcd\r\nefgh");
     let screen = terminal.screen();
@@ -120,24 +120,42 @@ fn word_selection_keeps_native_hard_edge_and_wide_spacer_boundaries() {
         .select_word(screen.point(0, 2).unwrap(), DEFAULT_WORD_BOUNDARIES)
         .unwrap();
     assert_eq!(before_edge.end, screen.point(0, 3).unwrap());
-    // Native checks the end of a hard row after consuming the initial cell.
     let at_edge = screen
         .select_word(screen.point(0, 3).unwrap(), DEFAULT_WORD_BOUNDARIES)
         .unwrap();
-    assert_eq!(at_edge.end, screen.point(1, 3).unwrap());
+    assert_eq!(at_edge.end, screen.point(0, 3).unwrap());
 
     let mut terminal = Terminal::new(4, 3, 100);
     terminal.feed("a界b".as_bytes());
     let screen = terminal.screen();
-    assert!(
-        screen
-            .select_word(screen.point(0, 2).unwrap(), DEFAULT_WORD_BOUNDARIES)
-            .is_none()
-    );
-    let before_spacer = screen
-        .select_word(screen.point(0, 0).unwrap(), DEFAULT_WORD_BOUNDARIES)
-        .unwrap();
-    assert_eq!(before_spacer.end, screen.point(0, 1).unwrap());
+    for col in 0..4 {
+        let selected = screen
+            .select_word(screen.point(0, col).unwrap(), DEFAULT_WORD_BOUNDARIES)
+            .unwrap();
+        assert_eq!(selected.start, screen.point(0, 0).unwrap());
+        assert_eq!(selected.end, screen.point(0, 3).unwrap());
+    }
+}
+
+#[test]
+fn word_selection_resolves_wide_characters_across_soft_wraps() {
+    let mut terminal = Terminal::new(5, 3, 100);
+    terminal.feed("abcd界ef".as_bytes());
+    let screen = terminal.screen();
+    for (boundaries, start, end) in [
+        (DEFAULT_WORD_BOUNDARIES, 0, 8),
+        (&['界'][..], 0, 3),
+        (&['界'][..], 4, 6),
+        (&['界'][..], 7, 8),
+    ] {
+        for offset in start..=end {
+            let selected = screen
+                .select_word(screen.point(offset / 5, offset % 5).unwrap(), boundaries)
+                .unwrap();
+            assert_eq!(selected.start, screen.point(start / 5, start % 5).unwrap());
+            assert_eq!(selected.end, screen.point(end / 5, end % 5).unwrap());
+        }
+    }
 }
 
 #[test]
