@@ -1068,6 +1068,32 @@ keybind = cmd+shift+f=toggle_quadrant_zoom
 }
 
 #[test]
+fn stream_deck_commands_are_bindable_and_reject_unknown_arguments() {
+    for (name, command) in [
+        ("needs_input", StreamDeckAction::NeedsInput),
+        ("working", StreamDeckAction::Working),
+        ("done", StreamDeckAction::Done),
+        ("idle", StreamDeckAction::Idle),
+        ("next_page", StreamDeckAction::NextPage),
+        ("brightness", StreamDeckAction::Brightness),
+        ("pull_to_first", StreamDeckAction::PullToFirst),
+    ] {
+        let binding =
+            KeyBinding::parse(&format!("global:ctrl+shift+p=stream_deck:{name}")).unwrap();
+        assert!(binding.flags.global);
+        assert_eq!(binding.actions, [Action::StreamDeck(command)]);
+    }
+    for invalid in [
+        "stream_deck",
+        "stream_deck:",
+        "stream_deck:unknown",
+        "stream_deck:idle:extra",
+    ] {
+        assert!(Action::parse(invalid).is_err(), "{invalid}");
+    }
+}
+
+#[test]
 fn keybind_sequences_prefix_replacement_chains_and_tables() {
     let home = TestHome::new();
     home.own("keybind=clear\nkeybind=ctrl+a=new_tab\nkeybind=ctrl+a>n=new_window\nkeybind=ctrl+a>t=new_tab\nkeybind=chain=toggle_fullscreen\nkeybind=tools/ctrl+b=new_tab\nkeybind=tools/\n");

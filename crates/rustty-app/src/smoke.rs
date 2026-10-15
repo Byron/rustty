@@ -239,6 +239,10 @@ impl Smoke {
         }
     }
     pub fn step(&mut self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
+        if std::env::var("RUSTTY_SMOKE_DECK").as_deref() == Ok("only") {
+            super::deck_host::check_native_deck(app, event_loop)?;
+            return Ok(true);
+        }
         if self.interactive_deck {
             if self.stage == 0 && !app.workspace.windows.is_empty() {
                 app.add_window(false);

@@ -74,7 +74,7 @@ names are retained. This is name formatting, not a Git
 worktree scan; a plain dotted directory follows the same convention.
 
 The source and test previews use actual 72×72 key images, showing the normal
-board, dim flashing phase, move mode, and no-session board from top to bottom:
+board, dim flashing phase, move mode, alternate controls, and no-session board:
 
 ![Stream Deck contact sheet](stream-deck-preview.png)
 
@@ -100,9 +100,16 @@ source is still held; already-held keys are not fresh destinations. Releases are
 consumed. The source slug remains visible with purple ⇄ swap arrows and outline.
 
 During move mode **Page and Brightness still work**. The four state-cycle keys
-are dimmed and disabled. Function keys cannot be moved. Page advances/wraps and
-has no effect when there is one page. Status, label and focus changes never sort
-or compact slots. Interior holes stay holes.
+are dimmed and disabled. Function keys cannot be moved. A Page tap advances/wraps
+on release and has no effect when there is one page. Status, label and focus
+changes never sort or compact slots. Interior holes stay holes.
+
+Outside move mode, hold **Page for one second** to replace the four state-cycle
+keys with a one-shot menu. Releasing Page keeps it open. The top-left function
+key becomes **Pull first**; the other three are blank and inert. Select Pull first
+to run it and close the menu, or tap Page again to cancel. Brightness still works.
+Only fresh presses count; held keys and stale artwork cannot select an alternative.
+Sleep, disconnect and layout changes cancel the menu.
 
 Input, Working, Done and Idle cycle all live reporting panes in stable slot order,
 including off-page and hidden panes. They advance from the focused matching pane,
@@ -116,6 +123,32 @@ Brightness starts at 100%; successive taps select **25 → 50 → 75 → 100 →
 The worker changes the displayed level only after a successful USB write. The
 selected level lives in memory and is reapplied on reconnect; it is not read back
 from the device or saved to disk. Holding a function key does not repeat it.
+
+## Menu, shortcuts and Pull to First
+
+Rustty shows a native **Stream Deck** menu after successfully opening and
+initializing the device, and removes it on disconnect or disable. It offers the
+four state cycles, Next Page, Brightness and Pull to First. All seven commands
+support configurable shortcuts; none has a default binding. For example:
+
+```text
+keybind = ctrl+alt+p=stream_deck:pull_to_first
+```
+
+The `stream_deck` arguments are `needs_input`, `working`, `done`, `idle`,
+`next_page`, `brightness` and `pull_to_first`. Shortcuts require the connected
+device. Rapid brightness presses preserve every cycle step while coalescing
+pending USB writes to the final level.
+
+Pull to First returns to page one and chooses up to nine live, non-idle agents,
+prioritizing **Needs input → Done → Working → Paused → Error/Unknown**, then the
+most recent activity within each category. Activity means a state, thread or
+turn change; duplicate reports, labels and focus do not make an agent newer.
+Chosen agents already on page one keep their positions. Incoming agents swap
+into empty slots first, then inactive reservations, then idle agents, then the
+oldest remaining agents. Within each destination group, older activity goes
+first. This prioritizes incoming agents without rearranging familiar positions.
+Idle agents are never promoted, and displaced assignments remain on later pages.
 
 ## Status and completion semantics
 
@@ -261,6 +294,10 @@ RUSTTY_DECK_PREVIEW=/tmp/rustty-deck.png \
 RUSTTY_SMOKE_DIR=/tmp/rustty-deck-native-check RUSTTY_SMOKE_OFFSCREEN=1 \
   RUSTTY_SMOKE_DECK=1 target/debug/rustty --config-file=/tmp/empty-rustty.conf
 ```
+
+Use `RUSTTY_SMOKE_DECK=only` to run just the native dashboard checks, including
+menu/shortcut chains and stale control rejection, without the general terminal
+rendering and shell-input stages.
 
 The native smoke fixture forces USB off and uses test-owned shells/workspace.
 The explicitly ignored `hardware_usb_smoke` test opens the physical device and

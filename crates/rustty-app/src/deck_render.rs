@@ -29,6 +29,7 @@ pub enum Mark {
     State(State),
     Brightness,
     Page,
+    PullToFirst,
 }
 
 pub struct Renderer {
@@ -199,6 +200,12 @@ impl Renderer {
                     Mark::Page => {
                         line(&mut image, (29.0, 15.0), (43.0, 28.0), 3.6, ink);
                         line(&mut image, (43.0, 28.0), (29.0, 41.0), 3.6, ink);
+                    }
+                    Mark::PullToFirst => {
+                        line(&mut image, (23.0, 14.0), (49.0, 14.0), 2.4, ink);
+                        line(&mut image, (36.0, 21.0), (36.0, 41.0), 3.0, ink);
+                        line(&mut image, (26.0, 30.0), (36.0, 20.0), 3.0, ink);
+                        line(&mut image, (36.0, 20.0), (46.0, 30.0), 3.0, ink);
                     }
                 }
             }
