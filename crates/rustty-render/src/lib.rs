@@ -12,6 +12,13 @@ mod prepare;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use prepare::{Preedit, RenderOptions, Renderer};
 
+/// Maximum atlas storage for terminal glyphs, independent of Kitty images.
+pub const MAX_GLYPH_ATLAS_BYTES: usize = 64 * 1024 * 1024;
+/// Maximum atlas storage for Kitty images, independent of terminal glyphs.
+pub const MAX_IMAGE_ATLAS_BYTES: usize = 320 * 1024 * 1024;
+/// Storage a backend needs to replay a complete terminal frame's atlas pages.
+pub const MAX_TERMINAL_ATLAS_BYTES: usize = MAX_GLYPH_ATLAS_BYTES + MAX_IMAGE_ATLAS_BYTES;
+
 /// A search match clipped to one visible row, identified by its stable row ID.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SearchHighlight {
