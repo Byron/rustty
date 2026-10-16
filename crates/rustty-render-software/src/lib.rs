@@ -9,6 +9,8 @@ mod texture;
 
 const MAX_DIMENSION: usize = 16_384;
 const MAX_BYTES: usize = 256 * 1024 * 1024;
+// Leave room for a complete terminal atlas alongside the existing UI budget.
+const MAX_TEXTURE_BYTES: usize = MAX_BYTES + rustty_render::MAX_TERMINAL_ATLAS_BYTES;
 const MAX_TEXTURES: usize = 4096;
 const MAX_WINDOWS: usize = 128;
 const MAX_GEOMETRY: usize = 6_000_000;
@@ -152,7 +154,7 @@ fn reserve_bytes(current: usize, old: usize, new: usize) -> Result<usize> {
     current
         .checked_sub(old)
         .and_then(|bytes| bytes.checked_add(new))
-        .filter(|bytes| *bytes <= MAX_BYTES)
+        .filter(|bytes| *bytes <= MAX_TEXTURE_BYTES)
         .ok_or(RenderError("textures exceed the software memory limit"))
 }
 
