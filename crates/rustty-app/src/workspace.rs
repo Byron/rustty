@@ -648,6 +648,12 @@ impl Tab {
         } else {
             None
         };
+        let quadrant_zoom = self
+            .quadrant_zoom
+            .and_then(|id| self.root.node(id))
+            .and_then(|node| node.clone().remove(pane))
+            .filter(|node| matches!(node.kind, Node::Split { .. }))
+            .map(|node| node.id);
         let Some(root) = self.root.clone().remove(pane) else {
             return false;
         };
@@ -658,10 +664,14 @@ impl Tab {
                 .node(*node)
                 .is_some_and(|node| node.contains(*pane))
         });
-        self.zoom = self.zoom.filter(|id| self.root.node(*id).is_some());
-        self.quadrant_zoom = self
-            .quadrant_zoom
-            .filter(|id| self.root.node(*id).is_some());
+        self.zoom = if self.zoom == self.quadrant_zoom {
+            quadrant_zoom
+        } else {
+            self.zoom
+                .filter(|id| self.root.node(*id).is_some())
+                .or(quadrant_zoom)
+        };
+        self.quadrant_zoom = quadrant_zoom;
         if self.focused == pane {
             self.focused = next.unwrap_or_else(|| self.root.panes()[0]);
         }
@@ -981,6 +991,78 @@ mod tests {
         assert_eq!(tab.target(2, Direction::Left), None);
         assert!(tab.close(9));
         assert_eq!(tab.root.quadrant(2), Some(2));
+    }
+    #[test]
+    fn closing_panes_keeps_quadrant_zoom_until_one_remains() {
+        for order in [[2, 9, 11], [11, 9, 2]] {
+            for focus_closed in [false, true] {
+                let mut tab = quadrants();
+                tab.focus(2);
+                tab.split(9, 10, Direction::Right, PathBuf::from("/tmp"));
+                tab.split(11, 12, Direction::Down, PathBuf::from("/tmp"));
+                tab.toggle_quadrant_zoom();
+                for (index, pane) in order.into_iter().enumerate() {
+                    if focus_closed {
+                        tab.focus(pane);
+                    }
+                    assert!(tab.close(pane));
+                    assert!(tab.root.contains(tab.focused));
+                    if index == 0 {
+                        let quadrant = tab.root.quadrant(tab.focused);
+                        assert!(quadrant.is_some());
+                        assert_eq!((tab.zoom, tab.quadrant_zoom), (quadrant, quadrant));
+                        assert_eq!(tab.visible_tree(false).panes().len(), 2);
+                    } else {
+                        assert_eq!((tab.zoom, tab.quadrant_zoom), (None, None));
+                    }
+                    if index < 2 {
+                        assert!(order[index + 1..].contains(&tab.focused));
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn closing_full_zoomed_pane_restores_surviving_quadrant_zoom() {
+        let mut tab = quadrants();
+        tab.focus(2);
+        tab.split(9, 10, Direction::Right, PathBuf::from("/tmp"));
+        tab.split(11, 12, Direction::Down, PathBuf::from("/tmp"));
+        tab.toggle_quadrant_zoom();
+        tab.focus(2);
+        tab.toggle_zoom();
+        assert!(tab.close(2));
+        assert_eq!(
+            (tab.focused, tab.zoom, tab.quadrant_zoom),
+            (9, Some(12), Some(12))
+        );
+        assert_eq!(tab.visible_tree(false).panes(), [9, 11]);
+        tab.toggle_zoom();
+        assert!(tab.close(9));
+        assert_eq!((tab.focused, tab.zoom, tab.quadrant_zoom), (11, None, None));
+    }
+    #[test]
+    fn closing_other_panes_preserves_full_pane_zoom() {
+        for quadrant_zoom in [false, true] {
+            let mut tab = quadrants();
+            tab.focus(2);
+            tab.split(9, 10, Direction::Right, PathBuf::from("/tmp"));
+            tab.split(11, 12, Direction::Down, PathBuf::from("/tmp"));
+            if quadrant_zoom {
+                tab.toggle_quadrant_zoom();
+            }
+            tab.focus(9);
+            tab.toggle_zoom();
+            for pane in [5, 11, 2] {
+                assert!(tab.close(pane));
+                assert_eq!((tab.focused, tab.zoom), (9, Some(9)));
+                assert_eq!(
+                    tab.quadrant_zoom,
+                    (quadrant_zoom && pane != 2).then_some(10)
+                );
+                assert_eq!(tab.visible_tree(false).panes(), [9]);
+            }
+        }
     }
     #[test]
     fn directional_navigation_uses_edges_and_stays_in_zoomed_quadrant() {
