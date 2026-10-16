@@ -3300,34 +3300,14 @@ impl App {
                                 if response.clicked() {
                                     tab_selection = Some(index);
                                 }
-                                response.context_menu(|ui| {
-                                    let window_index = self.index(host.id).unwrap();
-                                    let actual =
-                                        &mut self.workspace.windows[window_index].tabs[index];
-                                    ui.label("Tab title");
-                                    let mut title = actual.title.clone().unwrap_or_default();
-                                    if ui.text_edit_singleline(&mut title).changed() {
-                                        actual.title = (!title.is_empty()).then_some(title);
-                                        presentation_changed = true;
-                                    }
-                                    ui.label("Tab color");
-                                    let mut color = actual.color.unwrap_or(platform_accent);
-                                    if ui.color_edit_button_srgb(&mut color).changed() {
-                                        actual.color = Some(color);
-                                        presentation_changed = true;
-                                    }
-                                    if actual.color.is_some()
-                                        && ui.button("Use system accent").clicked()
-                                    {
-                                        actual.color = None;
-                                        presentation_changed = true;
-                                    }
-                                    if ui.button("Close tab").clicked() {
-                                        tab_selection = Some(index);
-                                        commands.push(Action::CloseTab);
-                                        ui.close();
-                                    }
-                                });
+                                let window_index = self.index(host.id).unwrap();
+                                let actual = &mut self.workspace.windows[window_index].tabs[index];
+                                let (changed, close) = show_tab_context_menu(&response, actual, platform_accent);
+                                presentation_changed |= changed;
+                                if close {
+                                    tab_selection = Some(index);
+                                    commands.push(Action::CloseTab);
+                                }
                             }
                             if ui.button("+").on_hover_text("New tab").clicked() {
                                 commands.push(Action::NewTab);
@@ -5724,6 +5704,52 @@ fn directory_from_osc(value: &str) -> Option<PathBuf> {
     Some(PathBuf::from(value))
 }
 
+fn show_tab_context_menu(
+    response: &egui::Response,
+    tab: &mut Tab,
+    accent: [u8; 3],
+) -> (bool, bool) {
+    let mut changed = false;
+    let mut close = false;
+    egui::Popup::context_menu(response)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .show(|ui| {
+            let title_label = ui.label("Tab title");
+            let mut title = tab.title.clone().unwrap_or_default();
+            if ui
+                .text_edit_singleline(&mut title)
+                .labelled_by(title_label.id)
+                .changed()
+            {
+                tab.title = (!title.is_empty()).then_some(title);
+                changed = true;
+            }
+            ui.label("Tab color");
+            ui.menu_button("Choose color", |ui| {
+                ui.spacing_mut().slider_width = 275.0;
+                let color = tab.color.unwrap_or(accent);
+                let mut selected = Color32::from_rgb(color[0], color[1], color[2]);
+                if egui::color_picker::color_picker_color32(
+                    ui,
+                    &mut selected,
+                    egui::color_picker::Alpha::Opaque,
+                ) {
+                    tab.color = Some([selected.r(), selected.g(), selected.b()]);
+                    changed = true;
+                }
+            });
+            if tab.color.is_some() && ui.button("Use system accent").clicked() {
+                tab.color = None;
+                changed = true;
+            }
+            if ui.button("Close tab").clicked() {
+                close = true;
+                ui.close();
+            }
+        });
+    (changed, close)
+}
+
 fn show_layout_picker(ctx: &egui::Context, picker: &mut LayoutPicker) -> Option<LayoutCommand> {
     let mut open = true;
     let mut command = None;
@@ -6040,6 +6066,136 @@ fn ui_theme(config: &Config) -> egui::ThemePreference {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tab_context_menu_keeps_title_and_color_editors_open() {
+        fn frame(
+            context: &egui::Context,
+            tab: &mut Tab,
+            events: Vec<egui::Event>,
+        ) -> egui::FullOutput {
+            let mut raw = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    Pos2::ZERO,
+                    Vec2::new(800.0, 600.0),
+                )),
+                focused: true,
+                events,
+                ..Default::default()
+            };
+            input::filter_egui_events(&mut raw, egui::Popup::is_any_open(context));
+            let mut output = context.run_ui(raw, |root| {
+                egui::Panel::top("tabs").show(root, |ui| {
+                    let response = ui.button("Terminal");
+                    assert!(!show_tab_context_menu(&response, tab, [80, 120, 160]).1);
+                });
+                egui::CentralPanel::default().show(root, |_| {});
+            });
+            output.textures_delta.clear();
+            output
+        }
+        fn point(output: &egui::FullOutput, label: &str) -> Pos2 {
+            let update = output.platform_output.accesskit_update.as_ref().unwrap();
+            let bounds = update
+                .nodes
+                .iter()
+                .find_map(|(_, node)| {
+                    (node.label().is_some_and(|text| text.starts_with(label))
+                        || label == "Tab title" && node.role() == egui::accesskit::Role::TextInput)
+                        .then(|| node.bounds())
+                        .flatten()
+                })
+                .unwrap_or_else(|| panic!("missing {label}"));
+            Pos2::new(
+                ((bounds.x0 + bounds.x1) / 2.0) as f32,
+                ((bounds.y0 + bounds.y1) / 2.0) as f32,
+            )
+        }
+        fn click(
+            context: &egui::Context,
+            tab: &mut Tab,
+            pos: Pos2,
+            button: egui::PointerButton,
+        ) -> egui::FullOutput {
+            let mut output = frame(context, tab, vec![egui::Event::PointerMoved(pos)]);
+            for pressed in [true, false] {
+                output = frame(
+                    context,
+                    tab,
+                    vec![egui::Event::PointerButton {
+                        pos,
+                        button,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                );
+            }
+            output
+        }
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let mut tab = Tab::new(1, 2, "/tmp".into());
+        let output = frame(&context, &mut tab, vec![]);
+        click(
+            &context,
+            &mut tab,
+            point(&output, "Terminal"),
+            egui::PointerButton::Secondary,
+        );
+        frame(&context, &mut tab, vec![]);
+        let output = frame(&context, &mut tab, vec![]);
+        click(
+            &context,
+            &mut tab,
+            point(&output, "Tab title"),
+            egui::PointerButton::Primary,
+        );
+        assert!(egui::Popup::is_any_open(&context));
+        assert!(context.text_edit_focused());
+        frame(
+            &context,
+            &mut tab,
+            vec![egui::Event::Text("work 日誌".into())],
+        );
+        assert_eq!(tab.title.as_deref(), Some("work 日誌"));
+        let output = frame(&context, &mut tab, vec![]);
+        click(
+            &context,
+            &mut tab,
+            point(&output, "Choose color"),
+            egui::PointerButton::Primary,
+        );
+        assert!(egui::Popup::is_any_open(&context));
+        let output = frame(&context, &mut tab, vec![]);
+        let picker = output
+            .shapes
+            .iter()
+            .find_map(|shape| {
+                if let egui::Shape::Mesh(mesh) = &shape.shape {
+                    let bounds = mesh.calc_bounds();
+                    if bounds.width() > 200.0 && bounds.height() > 200.0 {
+                        return Some(bounds);
+                    }
+                }
+                None
+            })
+            .expect("color picker");
+        click(
+            &context,
+            &mut tab,
+            picker.center(),
+            egui::PointerButton::Primary,
+        );
+        assert!(egui::Popup::is_any_open(&context));
+        assert!(tab.color.is_some_and(|color| color != [80, 120, 160]));
+        click(
+            &context,
+            &mut tab,
+            Pos2::new(790.0, 590.0),
+            egui::PointerButton::Primary,
+        );
+        assert!(!egui::Popup::is_any_open(&context));
+    }
 
     #[test]
     fn binding_dispatch_runs_every_action_in_order_with_broadcast_flags() {
