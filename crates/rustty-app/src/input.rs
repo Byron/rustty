@@ -1574,6 +1574,7 @@ mod tests {
                         egui::Popup::close_all(&self.context);
                     }
                     egui::Popup::context_menu(&tab)
+                        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                         .at_position(egui::pos2(10.0, 35.0))
                         .show(|ui| {
                             text_edit(ui, &mut self.text, egui::Id::new("title"), focus_editor);
