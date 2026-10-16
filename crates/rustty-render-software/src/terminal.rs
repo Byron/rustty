@@ -5,7 +5,7 @@ use crate::{
     texture::{Texture, encode},
 };
 use egui::TextureFilter;
-use rustty_render::{Frame, Paint};
+use rustty_render::{Frame, MAX_TERMINAL_ATLAS_BYTES, Paint};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Default)]
@@ -66,9 +66,11 @@ impl Atlases {
                 if self
                     .bytes()
                     .checked_add(page_bytes)
-                    .is_none_or(|bytes| bytes > 64 * 1024 * 1024)
+                    .is_none_or(|bytes| bytes > MAX_TERMINAL_ATLAS_BYTES)
                 {
-                    return Err(RenderError("terminal atlas exceeds the 64 MiB limit"));
+                    return Err(RenderError(
+                        "terminal atlas exceeds the image and glyph budget",
+                    ));
                 }
                 let next_bytes = reserve_bytes(*bytes, 0, page_bytes)?;
                 self.pages.insert(

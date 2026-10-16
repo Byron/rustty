@@ -528,6 +528,80 @@ fn unused_image_pages_are_released_without_reuploading_live_textures() {
 }
 
 #[test]
+fn full_image_and_glyph_atlases_render_alongside_ui_textures() {
+    let mut renderer = Renderer::default();
+    let mut delta = TexturesDelta::default();
+    let ui = TextureId::Managed(0);
+    texture(
+        &mut delta,
+        ui,
+        [1, 1],
+        vec![Color32::WHITE],
+        TextureOptions::LINEAR,
+    );
+    // 80 image pages use 320 MiB; 16 glyph pages use their separate 64 MiB.
+    // A one-texel upload keeps the fixture small while allocating real pages.
+    let mut frame = Frame::empty([96, 1]);
+    for page in 0..96 {
+        frame.atlas_uploads.push(AtlasUpload {
+            page,
+            page_size: 1024,
+            revision: 1,
+            origin: [512; 2],
+            size: [1; 2],
+            pixels: vec![255, 0, 0, 255].into(),
+        });
+        let mut quad = terminal_quad(
+            if page < 80 { Paint::Color } else { Paint::Mask },
+            [page as f32, 0.0, 1.0, 1.0],
+            [512.5 / 1024.0; 4],
+            Color::rgb([0, 255, 0]),
+        );
+        quad.atlas = page;
+        frame.quads.push(quad);
+    }
+    let primitive = |frame| callback(frame, 1, rect(0.0, 0.0, 96.0, 1.0), Rect::EVERYTHING);
+    let pixels = render(
+        &mut renderer,
+        [96, 1],
+        1.0,
+        &[primitive(frame.clone())],
+        &mut delta,
+    );
+    for x in 0..96 {
+        assert_eq!(
+            pixel(&pixels, 96, x, 0),
+            if x < 80 {
+                [255, 0, 0, 255]
+            } else {
+                [0, 255, 0, 255]
+            },
+            "every image and glyph page remains drawable at the full budget"
+        );
+    }
+    assert_eq!(renderer.resource_bytes, 384 * 1024 * 1024 + 4);
+
+    let mut extra = upload(1, 1, vec![255; 4]);
+    extra.page = 96;
+    frame.atlas_uploads.push(extra);
+    assert!(
+        renderer
+            .render([96, 1], 1.0, &[primitive(frame)], &delta)
+            .is_err(),
+        "a full terminal atlas still rejects an allocation beyond its budget"
+    );
+    assert_eq!(renderer.resource_bytes, 384 * 1024 * 1024 + 4);
+    renderer.free_window(1);
+    assert_eq!(
+        renderer.resource_bytes, 4,
+        "closing the window retains only UI pixels"
+    );
+    delta.free.insert(ui);
+    render(&mut renderer, [1, 1], 1.0, &[], &mut delta);
+    assert_eq!(renderer.resource_bytes, 0);
+}
+
+#[test]
 fn atlas_revision_generation_and_window_lifetime_are_independent() {
     let mut renderer = Renderer::default();
     let mut delta = TexturesDelta::default();

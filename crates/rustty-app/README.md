@@ -78,6 +78,8 @@ The renderer setting takes effect after restarting Rustty; macOS uses GPU render
 Both Windows paths retain native menus, per-pixel background opacity, and the same
 terminal/UI drawing. Software animation follows the monitor refresh rate, with a
 60 Hz default when it is unavailable. Idle windows do not continuously repaint.
+Software rendering supports the shared renderer's 320 MiB image atlas and separate
+64 MiB glyph atlas per window. Texture storage is allocated as needed.
 
 Windows defaults to **Cascadia Mono at 12 pt**, falling back to Consolas and then
 the embedded JetBrains Mono if those system families are unavailable. Explicit

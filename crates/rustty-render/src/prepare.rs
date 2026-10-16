@@ -1,4 +1,7 @@
-use crate::{AtlasUpload, Color, Frame, Paint, Quad, RenderError, SearchHighlight};
+use crate::{
+    AtlasUpload, Color, Frame, MAX_GLYPH_ATLAS_BYTES, MAX_IMAGE_ATLAS_BYTES, Paint, Quad,
+    RenderError, SearchHighlight,
+};
 use rustty_font::{
     BitmapFormat, FontConfig, FontError, FontId, FontMetrics, FontStyle, FontSystem, GlyphBitmap,
     ShapedGlyph, sprite,
@@ -13,9 +16,7 @@ use std::{
 };
 
 const PAGE_SIZE: u32 = 1024;
-const MAX_ATLAS_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_SHAPED_BYTES: usize = 4 * 1024 * 1024;
-const MAX_IMAGE_ATLAS_BYTES: u64 = 320 * 1024 * 1024;
 static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 #[path = "graphics.rs"]
@@ -636,9 +637,9 @@ impl Renderer {
             let budget = if image {
                 MAX_IMAGE_ATLAS_BYTES
             } else {
-                MAX_ATLAS_BYTES
+                MAX_GLYPH_ATLAS_BYTES
             };
-            if bytes + u64::from(required).pow(2) * 4 > budget {
+            if bytes + u64::from(required).pow(2) * 4 > budget as u64 {
                 return Err(RenderError::AtlasCapacity);
             }
             let index = self.next_page;
