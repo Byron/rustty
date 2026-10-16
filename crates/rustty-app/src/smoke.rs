@@ -443,6 +443,43 @@ impl Smoke {
                 if app.tab(host.id).unwrap().panes.len() != 4 {
                     return Err("split creation lost a pane".into());
                 }
+                app.action(event_loop, host, Action::NewSplit(Direction::Right), true);
+                for (action, label, capture) in [
+                    (Action::ToggleSplitZoom, "Zoom", "zoom.png"),
+                    (Action::ToggleQuadrantZoom, "Quad-zoom", "quad-zoom.png"),
+                    (
+                        Action::ToggleSplitZoom,
+                        "Zoom within quad-zoom",
+                        "nested-zoom.png",
+                    ),
+                ] {
+                    app.action(event_loop, host, action, true);
+                    let tab = app.tab(host.id).unwrap();
+                    if zoom_label(tab) != Some(label)
+                        || !app.tab_label(tab).0.ends_with(&format!(" [{label}]"))
+                    {
+                        return Err("zoom modes did not have distinct labels".into());
+                    }
+                    app.draw(event_loop, host)?;
+                    capture_window(app, event_loop, host, &self.directory.join(capture))?;
+                    if !host
+                        .window
+                        .title()
+                        .ends_with(&format!(" [{label}] — Rustty"))
+                    {
+                        return Err("window title did not reflect its zoom layer".into());
+                    }
+                }
+                app.action(event_loop, host, Action::ToggleQuadrantZoom, true);
+                if zoom_label(app.tab(host.id).unwrap()) != Some("Quad-zoom") {
+                    return Err("nested zoom did not return to its quadrant".into());
+                }
+                app.action(event_loop, host, Action::CloseSurface, true);
+                if app.tab(host.id).unwrap().panes.len() != 4
+                    || zoom_label(app.tab(host.id).unwrap()).is_some()
+                {
+                    return Err("closing to one quadrant pane did not leave zoom".into());
+                }
                 app.action(event_loop, host, Action::ToggleQuadrantZoom, true);
                 let before = app.focused(host.id).unwrap();
                 host.peek = app.tab_mut(host.id).unwrap().begin_peek(config::Modifiers {
@@ -465,8 +502,9 @@ impl Smoke {
                 }
                 app.focus_pane(host.id, target);
                 app.action(event_loop, host, Action::ToggleQuadrantZoom, true);
+                let before = app.panes.len();
                 app.action(event_loop, host, Action::NewTab, true);
-                if app.panes.len() != 5 {
+                if app.panes.len() != before + 1 {
                     return Err("tab creation did not start a fifth PTY".into());
                 }
                 app.draw(event_loop, host)?;
