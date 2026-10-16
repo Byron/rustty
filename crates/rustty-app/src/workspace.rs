@@ -542,7 +542,7 @@ impl Tab {
     }
     pub fn toggle_quadrant_zoom(&mut self) {
         let quadrant = self.root.quadrant(self.focused);
-        if quadrant == self.quadrant_zoom && self.zoom.is_some() {
+        if quadrant == self.quadrant_zoom && self.zoom == quadrant {
             self.zoom = None;
             self.quadrant_zoom = None;
         } else {
@@ -980,6 +980,20 @@ mod tests {
         tab.focus(5);
         assert_eq!(tab.zoom, Some(5));
         assert_eq!(tab.remembered.get(&10), Some(&9));
+    }
+    #[test]
+    fn quadrant_zoom_toggle_unwinds_full_pane_zoom_first() {
+        let mut tab = quadrants();
+        tab.focus(2);
+        tab.split(9, 10, Direction::Right, PathBuf::from("/tmp"));
+        tab.toggle_quadrant_zoom();
+        tab.toggle_zoom();
+        assert_eq!((tab.zoom, tab.quadrant_zoom), (Some(9), Some(10)));
+        tab.toggle_quadrant_zoom();
+        assert_eq!((tab.zoom, tab.quadrant_zoom), (Some(10), Some(10)));
+        assert_eq!(tab.visible_tree(false).panes(), [2, 9]);
+        tab.toggle_quadrant_zoom();
+        assert_eq!((tab.zoom, tab.quadrant_zoom), (None, None));
     }
     #[test]
     fn navigation_skips_current_quadrant_and_blocked_edges_keep_focus() {

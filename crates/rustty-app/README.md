@@ -284,6 +284,9 @@ directory and exits. It uses the selected display configuration but does not
 restore or overwrite the regular app workspace.
 Find checks also capture `find-focused.png` and `find-unfocused.png` to verify
 the overlays and their transparency.
+Zoom checks capture `zoom.png`, `quad-zoom.png` and `nested-zoom.png`, with
+distinct labels in the panel header, tab label and window title. Toggling
+quadrant zoom from nested pane zoom returns to the quadrant before unzooming.
 Theme checks capture `theme-picker.png` and verify preview, cancellation,
 acceptance, reload and unchanged configuration files using isolated themes.
 

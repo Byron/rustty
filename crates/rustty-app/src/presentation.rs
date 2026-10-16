@@ -1,10 +1,19 @@
 //! Shared tab, pane, and quadrant presentation rules from Ghostty Local.
-use crate::workspace::Id;
+use crate::workspace::{Id, Tab};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 pub const PROGRESS_TIMEOUT: Duration = Duration::from_secs(15);
 pub const FLASH_DURATION: Duration = Duration::from_millis(1200);
+
+pub fn zoom_label(tab: &Tab) -> Option<&'static str> {
+    let zoom = tab.zoom?;
+    Some(match tab.quadrant_zoom {
+        None => "Zoom",
+        Some(quadrant) if quadrant == zoom => "Quad-zoom",
+        Some(_) => "Zoom within quad-zoom",
+    })
+}
 
 /// Typing restarts the visible phase; idle redraws happen only at its boundaries.
 pub fn cursor_blink_phase(started: Instant, now: Instant) -> (bool, Instant) {
@@ -330,6 +339,25 @@ impl TabAccent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn zoom_labels_distinguish_pane_quadrant_and_nested_zoom() {
+        let mut tab = Tab::new(1, 2, "/tmp".into());
+        tab.split(3, 4, rustty::config::Direction::Right, "/tmp".into());
+        tab.split(5, 6, rustty::config::Direction::Down, "/tmp".into());
+        tab.split(7, 8, rustty::config::Direction::Right, "/tmp".into());
+        assert_eq!(zoom_label(&tab), None);
+        tab.toggle_zoom();
+        assert_eq!(zoom_label(&tab), Some("Zoom"));
+        tab.toggle_quadrant_zoom();
+        assert_eq!(zoom_label(&tab), Some("Quad-zoom"));
+        tab.toggle_zoom();
+        assert_eq!(zoom_label(&tab), Some("Zoom within quad-zoom"));
+        tab.toggle_quadrant_zoom();
+        assert_eq!(zoom_label(&tab), Some("Quad-zoom"));
+        tab.toggle_quadrant_zoom();
+        assert_eq!(zoom_label(&tab), None);
+    }
 
     #[test]
     fn indefinite_progress_restarts_on_appearance_but_not_report_updates() {

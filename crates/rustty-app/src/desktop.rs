@@ -22,7 +22,7 @@ use rustty_app::{
     platform::{Platform, PlatformEvent},
     presentation::{
         Activity, CompletionFlash, DirectoryLabel, FocusHint, Progress, TabAccent,
-        common_directory_name, cursor_blink_phase, directory_name,
+        common_directory_name, cursor_blink_phase, directory_name, zoom_label,
     },
     search::{self, Search},
     workspace::{self, Axis, Id, Peek, Rect, SavedPane, Tab, WindowState, Workspace},
@@ -1483,11 +1483,10 @@ impl App {
                 String::new()
             }
         );
-        let label = format!(
-            "{}{suffix}{}",
-            title.chars().take(26).collect::<String>(),
-            if tab.zoom.is_some() { " ◩" } else { "" }
-        );
+        let mut label = format!("{}{suffix}", title.chars().take(26).collect::<String>());
+        if let Some(zoom) = zoom_label(tab) {
+            label.push_str(&format!(" [{zoom}]"));
+        }
         (label, is_active)
     }
 
@@ -1797,7 +1796,12 @@ impl App {
                 }
             })
             .unwrap_or_else(|| "Rustty".into());
-        let title = format!("{title} — Rustty");
+        let zoom = self.tab(host.id).and_then(zoom_label);
+        let title = if let Some(zoom) = zoom {
+            format!("{title} [{zoom}] — Rustty")
+        } else {
+            format!("{title} — Rustty")
+        };
         if host.window.title() != title {
             host.window.set_title(&title);
         }
@@ -3729,6 +3733,22 @@ impl App {
                             );
                             ui.painter().galley(bounds.min, galley, Color32::WHITE);
                         }
+                    }
+                    if let Some(zoom) = zoom_label(active)
+                        && host.peek.is_none()
+                        && active.panes.len() > 1
+                    {
+                        ui.put(
+                            egui::Rect::from_min_size(
+                                content.left_top() + Vec2::new(80.0, 3.0),
+                                Vec2::new((content.width() - 88.0).max(0.0), 14.0),
+                            ),
+                            egui::Label::new(
+                                egui::RichText::new(zoom).size(11.0).color(rgb(config.foreground)),
+                            )
+                            .truncate()
+                            .halign(egui::Align::Center),
+                        );
                     }
                     self.update_hover_link(host);
                     if let Some(link) = &host.hovered_link
