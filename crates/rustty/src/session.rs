@@ -1296,10 +1296,7 @@ mod tests {
                     Effect::CommandStart,
                     Effect::Title(b"temporary".to_vec()),
                     Effect::CommandEnd { exit_code: Some(0) },
-                    Effect::Progress {
-                        state: 0,
-                        value: None,
-                    },
+                    Effect::ProgressReset,
                     Effect::Title(Vec::new()),
                 ],
                 "read split at {split}"
@@ -1319,20 +1316,11 @@ mod tests {
         // An explicit empty title already provides the reset's final state.
         assert_eq!(
             feed_output(&mut terminal, b"\x1b]2;\x07\x1bc"),
-            [
-                Effect::Title(Vec::new()),
-                Effect::Progress {
-                    state: 0,
-                    value: None,
-                },
-            ]
+            [Effect::Title(Vec::new()), Effect::ProgressReset,]
         );
         assert_eq!(
             feed_output(&mut terminal, b"\x1bc"),
-            [Effect::Progress {
-                state: 0,
-                value: None,
-            }]
+            [Effect::ProgressReset]
         );
     }
 

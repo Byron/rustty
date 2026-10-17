@@ -62,13 +62,7 @@ fn progress_distinguishes_missing_invalid_and_clamped_values() {
             "{data}"
         );
     }
-    assert_eq!(
-        terminal.feed(b"\x1bc"),
-        [Effect::Progress {
-            state: 0,
-            value: None,
-        }]
-    );
+    assert_eq!(terminal.feed(b"\x1bc"), [Effect::ProgressReset]);
 }
 
 #[test]

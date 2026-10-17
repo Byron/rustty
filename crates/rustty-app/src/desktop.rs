@@ -83,6 +83,7 @@ fn dispatch_binding(
 
 struct Pane {
     agent: rustty_app::deck::Report,
+    deck_progress: rustty_app::deck::ProgressReport,
     session: Session,
     host_state: (bool, bool, vt::query::ColorScheme),
     wake_pending: Arc<AtomicBool>,
@@ -1099,6 +1100,7 @@ impl App {
             id,
             Pane {
                 agent: rustty_app::deck::Report::default(),
+                deck_progress: rustty_app::deck::ProgressReport::default(),
                 session,
                 host_state,
                 wake_pending,
@@ -1513,16 +1515,16 @@ impl App {
             .values()
             .any(|host| host.visible && host.focused && self.focused(host.id) == Some(id));
         let config = &self.loaded.config;
-        let mut registered_agents = self
+        let mut deck_panes = self
             .workspace
             .windows
             .iter()
             .flat_map(|window| &window.tabs)
             .flat_map(|tab| tab.root.panes())
             .filter(|id| {
-                self.panes
-                    .get(id)
-                    .is_some_and(|pane| pane.agent.is_registered())
+                self.panes.get(id).is_some_and(|pane| {
+                    pane.agent.is_registered() || pane.deck_progress.state().is_some()
+                })
             })
             .count();
         let Some(pane) = self.panes.get_mut(&id) else {
@@ -1554,7 +1556,13 @@ impl App {
         }
         let events = pane.session.events().collect::<Vec<_>>();
         for event in events {
-            let was_registered = pane.agent.is_registered();
+            let was_registered = pane.agent.is_registered() || pane.deck_progress.state().is_some();
+            if live
+                && !pane.exited
+                && let SessionEvent::Effect(effect) = &event
+            {
+                pane.deck_progress.apply(effect, pane.running.is_some());
+            }
             content_changed |= !matches!(
                 &event,
                 SessionEvent::Effect(vt::Effect::Title(_) | vt::Effect::AgentStatus(_))
@@ -1581,6 +1589,9 @@ impl App {
                         value,
                         Instant::now(),
                     );
+                }
+                SessionEvent::Effect(vt::Effect::ProgressReset) => {
+                    stopped |= pane.activity.progress_reported(0, None, Instant::now());
                 }
                 SessionEvent::Effect(vt::Effect::CommandStart) => {
                     pane.running = Some(Instant::now());
@@ -1633,7 +1644,10 @@ impl App {
                 SessionEvent::Effect(
                     effect @ (vt::Effect::ClipboardRead(_) | vt::Effect::ClipboardWrite(_)),
                 ) => clipboard.push(effect),
-                SessionEvent::OutputClosed => pane.agent.clear(),
+                SessionEvent::OutputClosed => {
+                    pane.agent.clear();
+                    pane.deck_progress.clear();
+                }
                 SessionEvent::Exited {
                     code,
                     signal,
@@ -1641,6 +1655,7 @@ impl App {
                 } => {
                     pane.exited = true;
                     pane.agent.clear();
+                    pane.deck_progress.clear();
                     pane.running = None;
                     pane.title = format!(
                         "Exited {code}{}",
@@ -1655,15 +1670,15 @@ impl App {
                 SessionEvent::Error(error) => self.errors.push(error),
                 _ => {}
             }
-            let registered = pane.agent.is_registered();
+            let registered = pane.agent.is_registered() || pane.deck_progress.state().is_some();
             if live && registered != was_registered {
-                let was_empty = registered_agents == 0;
+                let was_empty = deck_panes == 0;
                 if registered {
-                    registered_agents += 1;
+                    deck_panes += 1;
                 } else {
-                    registered_agents -= 1;
+                    deck_panes -= 1;
                 }
-                if was_empty != (registered_agents == 0) {
+                if was_empty != (deck_panes == 0) {
                     self.deck.registration_transition();
                 }
             }
@@ -1671,6 +1686,7 @@ impl App {
         // The child waiter can report exit before the reader delivers its final effects.
         if pane.exited {
             pane.agent.clear();
+            pane.deck_progress.clear();
             pane.running = None;
             stopped |= pane.activity.clear();
         }
@@ -2301,6 +2317,7 @@ impl App {
                         pane.sync_output.deadline = None;
                         pane.search = None;
                         pane.activity.progress_reported(0, None, Instant::now());
+                        pane.deck_progress.clear();
                         if pane.title_override.is_none() {
                             pane.title.clear();
                         }
@@ -5399,6 +5416,10 @@ impl ApplicationHandler<Event> for App {
         self.reconcile(event_loop);
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let now = Instant::now();
+        for pane in self.panes.values_mut() {
+            pane.deck_progress.expire(now);
+        }
         self.tick_deck();
         #[cfg(target_os = "windows")]
         if let Some(platform) = &self.platform {
@@ -5489,6 +5510,7 @@ impl ApplicationHandler<Event> for App {
                 pane.activity
                     .deadline()
                     .into_iter()
+                    .chain(pane.deck_progress.deadline())
                     .chain(pane.sync_output.deadline)
             }))
             .chain((!self.closing.is_empty()).then_some(now + Duration::from_millis(20)))

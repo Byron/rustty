@@ -25,10 +25,7 @@ fn linefeed_mode_effects_keep_stream_order_including_reset() {
                 Effect::LinefeedMode(false),
                 Effect::Write(b"\x1b[0n".to_vec()),
                 Effect::LinefeedMode(false),
-                Effect::Progress {
-                    state: 0,
-                    value: None
-                },
+                Effect::ProgressReset,
             ]
         );
         assert!(terminal.linefeed_mode_events);
