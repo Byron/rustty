@@ -371,6 +371,7 @@ fn actions() -> Vec<(&'static str, Action)> {
         ("Reset Terminal", Action::Reset),
         ("Themes…", Action::Themes),
         ("Toggle Quick Terminal", Action::ToggleQuickTerminal),
+        ("Toggle Outliner", Action::ToggleOutliner),
         ("Undo Layout Change", Action::Undo),
         ("Redo Layout Change", Action::Redo),
     ];
@@ -810,29 +811,34 @@ mod tests {
     }
 
     #[test]
-    fn palette_exposes_terminal_recovery_without_sending_terminal_input() {
-        let context = egui::Context::default();
-        let config = Config::default();
-        let mut palette = CommandPalette::default();
-        let mut focus = true;
-        palette.toggle();
-        draw(&context, &mut palette, &config, &mut focus, vec![]);
-        draw(
-            &context,
-            &mut palette,
-            &config,
-            &mut focus,
-            vec![egui::Event::Text("reset terminal".into())],
-        );
-        let (action, _) = draw(
-            &context,
-            &mut palette,
-            &config,
-            &mut focus,
-            vec![key(Key::Enter)],
-        );
-        assert_eq!(action, Some(PaletteEvent::Action(Action::Reset)));
-        assert_eq!(Action::parse("reset").unwrap(), Action::Reset);
+    fn palette_exposes_recovery_and_outliner_without_sending_terminal_input() {
+        for (query, command, expected) in [
+            ("reset terminal", "reset", Action::Reset),
+            ("outliner", "toggle_outliner", Action::ToggleOutliner),
+        ] {
+            let context = egui::Context::default();
+            let config = Config::default();
+            let mut palette = CommandPalette::default();
+            let mut focus = true;
+            palette.toggle();
+            draw(&context, &mut palette, &config, &mut focus, vec![]);
+            draw(
+                &context,
+                &mut palette,
+                &config,
+                &mut focus,
+                vec![egui::Event::Text(query.into())],
+            );
+            let (action, _) = draw(
+                &context,
+                &mut palette,
+                &config,
+                &mut focus,
+                vec![key(Key::Enter)],
+            );
+            assert_eq!(action, Some(PaletteEvent::Action(expected.clone())));
+            assert_eq!(Action::parse(command).unwrap(), expected);
+        }
     }
 
     #[test]

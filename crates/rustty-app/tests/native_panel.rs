@@ -22,8 +22,9 @@ mod macos {
 
     use objc2::{AnyThread, ClassType, MainThreadMarker, rc::Retained, sel};
     use objc2_app_kit::{
-        NSApplication, NSBitmapImageRep, NSColorSpace, NSEventModifierFlags, NSImage, NSPanel,
-        NSView, NSWindow, NSWindowButton, NSWindowStyleMask, NSWindowTabbingMode, NSWorkspace,
+        NSApplication, NSBitmapImageRep, NSColorSpace, NSEventModifierFlags, NSFloatingWindowLevel,
+        NSImage, NSPanel, NSView, NSWindow, NSWindowButton, NSWindowCollectionBehavior,
+        NSWindowStyleMask, NSWindowTabbingMode, NSWindowTitleVisibility, NSWorkspace,
         NSWorkspaceDidWakeNotification, NSWorkspaceScreensDidSleepNotification,
         NSWorkspaceScreensDidWakeNotification, NSWorkspaceSessionDidResignActiveNotification,
         NSWorkspaceWillSleepNotification,
@@ -55,7 +56,7 @@ mod macos {
         event_loop.run_app_on_demand(&mut check)?;
         assert!(check.0, "Winit never initialized the native test windows");
         println!(
-            "native_panel: app icon, window ownership/style, screen-power lifecycle and Stream Deck menu/shortcuts passed"
+            "native_panel: app icon, window/outliner ownership/style, screen-power lifecycle and Stream Deck menu/shortcuts passed"
         );
         Ok(())
     }
@@ -201,6 +202,7 @@ mod macos {
                 assert!(!native.isReleasedWhenClosed());
                 assert!(std::ptr::eq(&*native, &*view.window().unwrap()));
             }
+            check_outliner(event_loop, &platform);
             power.lock().unwrap().clear();
             drop(platform);
             // SAFETY: test token removal in the same isolated center after teardown.
@@ -305,6 +307,42 @@ mod macos {
             "h",
             "predefined shortcuts stay intact"
         );
+    }
+
+    fn check_outliner(event_loop: &ActiveEventLoop, platform: &Platform) {
+        let window = event_loop
+            .create_window(
+                Window::default_attributes()
+                    .with_title("Outliner")
+                    .with_visible(false)
+                    .with_active(false)
+                    .with_nonactivating_panel(true)
+                    .with_enabled_buttons(winit::window::WindowButtons::CLOSE)
+                    .with_inner_size(LogicalSize::new(340.0, 520.0)),
+            )
+            .unwrap();
+        platform.configure_outliner(&window).unwrap();
+        let native = check_window(&window, true);
+        assert_eq!(native.title().to_string(), "Outliner");
+        assert_eq!(native.titleVisibility(), NSWindowTitleVisibility::Visible);
+        assert_eq!(native.level(), NSFloatingWindowLevel);
+        assert_eq!(native.tabbingMode(), NSWindowTabbingMode::Disallowed);
+        assert_eq!(
+            native.collectionBehavior(),
+            NSWindowCollectionBehavior::FullScreenAuxiliary
+        );
+        assert!(native.isExcludedFromWindowsMenu());
+        assert!(native.hidesOnDeactivate());
+        assert!(native.styleMask().contains(
+            NSWindowStyleMask::Titled | NSWindowStyleMask::Closable | NSWindowStyleMask::Resizable
+        ));
+        let view = native.contentView().unwrap();
+        window.set_resizable(false);
+        window.set_resizable(true);
+        assert!(std::ptr::eq(&*native, &*check_window(&window, true)));
+        drop(window);
+        assert!(!native.isVisible());
+        assert!(std::ptr::eq(&*native, &*view.window().unwrap()));
     }
 
     fn check_window(window: &Window, panel: bool) -> Retained<NSWindow> {
