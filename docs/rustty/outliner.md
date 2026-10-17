@@ -44,6 +44,11 @@ quad names remain visible in the tree. Tab breadcrumbs show just the tab name;
 their `Cmd+N` shortcuts remain in the tree and tooltips. Other repeated names
 appear only at their deepest level, keeping each ancestor's icon available for navigation.
 
+Panels with the same name under the same quad or tab share one tree row and one
+search breadcrumb. Each panel keeps its own clickable position icon; clicking
+the shared name selects the first icon's panel. Matching names in different
+parent groups remain separate. Pins retain their individual entries and order.
+
 `Ctrl+N` and `Ctrl+P` select the next or previous match, wrapping at either end.
 The terminal follows selection changes while keyboard input stays in the Outliner.
 Editing the query selects the first match; clicking a result selects and focuses it
