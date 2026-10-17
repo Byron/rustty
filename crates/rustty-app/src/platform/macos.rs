@@ -525,6 +525,37 @@ impl Platform {
     /// Winit created this window as a nonactivating NSPanel, so focusing it leaves
     /// the previously active application in control of the menu bar and its windows.
     pub fn show_quick(&self, window: &Window, config: &Config) -> Result<(), String> {
+        self.show_quick_with_activation(window, config, true)
+    }
+
+    pub fn preview_window(
+        &self,
+        window: &Window,
+        quick: bool,
+        config: &Config,
+    ) -> Result<(), String> {
+        let key = NSApplication::sharedApplication(self.mtm).keyWindow();
+        if quick {
+            self.show_quick_with_activation(window, config, false)?;
+        } else {
+            let native = native_window(window)?;
+            if native.isMiniaturized() {
+                native.deminiaturize(None);
+            }
+            native.orderFront(None);
+        }
+        if let Some(key) = key {
+            key.orderFront(None);
+        }
+        Ok(())
+    }
+
+    fn show_quick_with_activation(
+        &self,
+        window: &Window,
+        config: &Config,
+        activate: bool,
+    ) -> Result<(), String> {
         let native = native_window(window)?;
         self.configure_window(window, true, config)?;
         let state = self.quick_animation(window, &native);
@@ -554,12 +585,13 @@ impl Platform {
                 NSSize::new(width, height),
             )
         });
-        let duration = if screen.is_some() {
+        let duration = if activate && screen.is_some() {
             config.quick_terminal_animation_duration
         } else {
             Duration::ZERO
         };
         let generation = state.borrow_mut().begin(frame, true);
+        state.borrow_mut().focus = activate;
         let fade = config.quick_terminal_position == QuickTerminalPosition::Center;
         // A changed target must have its final size before sliding in, even if
         // a hide is still running. Same-frame reversals keep their live position.
@@ -580,8 +612,12 @@ impl Platform {
                 1.0
             });
         }
-        window.set_visible(true);
-        window.focus_window();
+        if activate {
+            window.set_visible(true);
+            window.focus_window();
+        } else {
+            native.orderFront(None);
+        }
         animate_quick(native, state, generation, frame, 1.0, duration);
         Ok(())
     }

@@ -24,15 +24,34 @@ or repeated zoom suffixes. Tab accents carry through their descendants.
 Search for **Toggle Pin** in the command palette to pin or unpin the focused panel.
 It can also be bound with `keybind = ctrl+alt+p=toggle_pin`; no shortcut is assigned
 by default. Pinned panels appear in a separate section above the tree. Each pin
-shows a neutral breadcrumb with the same levels, names, and position icons as the
+shows a neutral breadcrumb with the same levels and position icons as the
 tree, making panels with matching names distinguishable. Click a breadcrumb level
 to select it using the tree's navigation rules. A neutral pin also marks the panel
 in the tree and beside its terminal label, or in its corner while the label is hidden.
 
 New pins are appended to the list. Drag a pin icon to change its order; a focused
 pin icon also supports Alt+↑/↓. Clicking the pin icon or toggling an existing pin
-removes it. Pins and their
-order are saved with the workspace, and closing a panel removes its pin.
+removes it. Pins and their order are saved with the workspace, and closing a panel
+removes its pin.
+
+With the Outliner focused, press `/` to open a search field at the bottom. The tree
+stays visible until you type, then becomes a list of matching panel breadcrumbs.
+Search ignores case and permits gaps between letters; matched characters in panel
+names are highlighted. Pinned entries remain above the results.
+
+Breadcrumbs represent quads with just their position icon and zoom indicator;
+quad names remain visible in the tree. Tab breadcrumbs show just the tab name;
+their `Cmd+N` shortcuts remain in the tree and tooltips. Other repeated names
+appear only at their deepest level, keeping each ancestor's icon available for navigation.
+
+`Ctrl+N` and `Ctrl+P` select the next or previous match, wrapping at either end.
+The terminal follows selection changes while keyboard input stays in the Outliner.
+Editing the query selects the first match; clicking a result selects and focuses it
+while keeping search open.
+
+Enter, Escape, and `Ctrl+[` focus the selected result and exit search, using the
+first result until you select another. With no matches, they exit without changing
+focus. The `×` button closes search without changing panel focus.
 
 A square icon maps each panel's position within its parent. Quad icons use a double
 square and map the quad's position within the tab. Corner brackets mark zoom while
@@ -65,7 +84,8 @@ Closing it leaves all terminal windows and panels intact.
 
 When multiple tabs are present, a monochrome breadcrumb appears at the right end
 of the tab bar. It shows the focused quad (if present) and panel using the same
-names and icons. It omits the tab name and supports the same selection rules.
+compact icons and panel names. It omits the tab name and supports the same
+selection rules.
 Tabs scroll horizontally when space is tight; the new-tab button stays accessible.
 
 For a disposable native check with screenshots, run:
@@ -76,6 +96,6 @@ RUSTTY_SMOKE_DIR=/tmp/rustty-outliner-check RUSTTY_SMOKE_OFFSCREEN=1 \
 ```
 
 The fixture uses its own workspace and quiet child processes, disables USB, and
-checks pinning and drag order, disclosure controls, navigation, zoom,
+checks pinning and drag order, fuzzy search, disclosure controls, navigation, zoom,
 native movement/resizing, quick-terminal visibility,
 terminal typing, and input isolation between native windows.
