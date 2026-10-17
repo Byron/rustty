@@ -182,6 +182,30 @@ impl Platform {
         Some([color.R, color.G, color.B])
     }
 
+    pub fn configure_outliner(&self, window: &Window) -> Result<(), String> {
+        let native = hwnd(window)?;
+        // Keep the utility out of Alt-Tab without attaching the terminal menu.
+        unsafe {
+            let style = GetWindowLongPtrW(native, GWL_EXSTYLE) as u32;
+            SetWindowLongPtrW(
+                native,
+                GWL_EXSTYLE,
+                ((style | WS_EX_TOOLWINDOW.0) & !WS_EX_APPWINDOW.0) as isize,
+            );
+            SetWindowPos(
+                native,
+                Some(HWND_TOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            )
+            .map_err(err)?;
+        }
+        Ok(())
+    }
+
     pub fn configure_window(
         &self,
         window: &Window,
