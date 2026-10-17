@@ -6,9 +6,11 @@ workspace. Its position and size are remembered while the application runs.
 It can also be bound with
 `keybind = ctrl+alt+o=toggle_outliner`; no shortcut is assigned by default.
 
-Each window has a root row, named `Window N · <active tab name>`. The Quick Terminal
-appears after its first use in the current application session and stays listed
-while hidden. Beneath each window, the hierarchy includes only the levels present:
+When more than one window is included, each has a root row named
+`Window N · <active tab name>`. With just one included window, that level is omitted.
+The Quick Terminal appears after its first use in the current application session
+and stays listed while hidden; an unused Quick Terminal does not add a window level.
+Within each window, the hierarchy includes only the levels present:
 
 - One tab without quads: panels.
 - One tab with quads: quads → panels.
@@ -18,6 +20,19 @@ Panels use the same directory basename as their on-screen labels. A quad uses th
 name when all its panels share it; otherwise it uses its position, such as
 “Top left.” Tab rows show `Cmd+N` followed by the tab name, without activity counts
 or repeated zoom suffixes. Tab accents carry through their descendants.
+
+Search for **Toggle Pin** in the command palette to pin or unpin the focused panel.
+It can also be bound with `keybind = ctrl+alt+p=toggle_pin`; no shortcut is assigned
+by default. Pinned panels appear in a separate section above the tree. Each pin
+shows a neutral breadcrumb with the same levels, names, and position icons as the
+tree, making panels with matching names distinguishable. Click a breadcrumb level
+to select it using the tree's navigation rules. A neutral pin also marks the panel
+in the tree and beside its terminal label, or in its corner while the label is hidden.
+
+New pins are appended to the list. Drag a pin icon to change its order; a focused
+pin icon also supports Alt+↑/↓. Clicking the pin icon or toggling an existing pin
+removes it. Pins and their
+order are saved with the workspace, and closing a panel removes its pin.
 
 A square icon maps each panel's position within its parent. Quad icons use a double
 square and map the quad's position within the tab. Corner brackets mark zoom while
@@ -61,5 +76,6 @@ RUSTTY_SMOKE_DIR=/tmp/rustty-outliner-check RUSTTY_SMOKE_OFFSCREEN=1 \
 ```
 
 The fixture uses its own workspace and quiet child processes, disables USB, and
-checks disclosure controls, navigation, zoom, native movement/resizing, quick-terminal visibility,
+checks pinning and drag order, disclosure controls, navigation, zoom,
+native movement/resizing, quick-terminal visibility,
 terminal typing, and input isolation between native windows.

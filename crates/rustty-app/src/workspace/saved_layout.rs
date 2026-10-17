@@ -1058,6 +1058,8 @@ mod tests {
         let mut live = workspace();
         let tab = &mut live.windows[0].tabs[0];
         tab.remembered.insert(tab.root.id, tab.focused);
+        let panes = tab.root.panes();
+        live.pinned_panes = vec![panes[2], panes[0]];
         let old = serde_json::to_value(&live.windows).unwrap();
         let saved = live.clone();
         let new_windows = live.append_layout(saved).unwrap();
@@ -1068,6 +1070,15 @@ mod tests {
         assert_ne!(original.focused, imported.focused);
         assert_eq!(imported.zoom, Some(imported.focused));
         assert_eq!(imported.remembered[&imported.root.id], imported.focused);
+        assert_eq!(
+            live.pinned_panes,
+            [
+                panes[2],
+                panes[0],
+                imported.root.panes()[2],
+                imported.root.panes()[0]
+            ]
+        );
         assert_eq!(
             imported.panes[&imported.focused].working_directory,
             original.panes[&original.focused].working_directory
@@ -1081,9 +1092,12 @@ mod tests {
         let dir = TestDir::new();
         let source = dir.0.join("layout.json");
         let mut live = workspace();
+        let pinned = live.windows[0].tabs[0].focused;
+        live.toggle_pin(pinned);
         live.save(&source).unwrap();
         let bytes = fs::read(&source).unwrap();
         let loaded = load_layout(&source).unwrap();
+        assert_eq!(loaded.pinned_panes, [pinned]);
         live.append_layout(loaded).unwrap();
         assert_eq!(fs::read(&source).unwrap(), bytes);
         let before = serde_json::to_value(&live).unwrap();

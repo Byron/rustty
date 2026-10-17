@@ -377,6 +377,7 @@ fn actions() -> Vec<(&'static str, Action)> {
         ("Themes…", Action::Themes),
         ("Toggle Quick Terminal", Action::ToggleQuickTerminal),
         ("Toggle Outliner", Action::ToggleOutliner),
+        ("Toggle Pin", Action::TogglePin),
         ("Undo Layout Change", Action::Undo),
         ("Redo Layout Change", Action::Redo),
     ];
@@ -816,10 +817,11 @@ mod tests {
     }
 
     #[test]
-    fn palette_exposes_recovery_and_outliner_without_sending_terminal_input() {
+    fn palette_exposes_recovery_outliner_and_pin_without_sending_terminal_input() {
         for (query, command, expected) in [
             ("reset terminal", "reset", Action::Reset),
             ("outliner", "toggle_outliner", Action::ToggleOutliner),
+            ("toggle pin", "toggle_pin", Action::TogglePin),
         ] {
             let context = egui::Context::default();
             let config = Config::default();

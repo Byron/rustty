@@ -505,6 +505,7 @@ struct DirectoryBadge {
     shared: bool,
     active: bool,
     attention: bool,
+    pinned: bool,
     flash: f32,
     accent: TabAccent,
 }
@@ -519,6 +520,7 @@ impl DirectoryBadge {
             ui.visuals().strong_text_color()
         };
         let scale = if self.shared { 1.0 } else { 0.7 };
+        let pin_width = if self.pinned { 20.0 } else { 0.0 };
         let large_padding = Vec2::new(16.0, 10.0) * scale;
         let layout = |large| {
             let mut job = egui::text::LayoutJob::simple(
@@ -530,11 +532,11 @@ impl DirectoryBadge {
                 egui::FontId::proportional(if large { 22.0 * scale } else { 12.0 }),
                 color,
                 if self.centered {
-                    (self.bounds.width() * 0.75 - 24.0 * scale).max(1.0)
+                    (self.bounds.width() * 0.75 - 24.0 * scale - pin_width).max(1.0)
                 } else if large {
                     f32::INFINITY
                 } else {
-                    (self.bounds.width() - 32.0).max(1.0)
+                    (self.bounds.width() - 32.0 - pin_width).max(1.0)
                 },
             );
             job.wrap.max_rows = 1;
@@ -550,7 +552,7 @@ impl DirectoryBadge {
         };
         let mut galley = layout(true);
         let large = self.centered
-            || (galley.size().x + 2.0 * large_padding.x + 16.0 <= self.bounds.width()
+            || (galley.size().x + pin_width + 2.0 * large_padding.x + 16.0 <= self.bounds.width()
                 && galley.size().y + 2.0 * large_padding.y + 16.0 <= self.bounds.height());
         if !large {
             galley = layout(false);
@@ -560,7 +562,7 @@ impl DirectoryBadge {
         } else {
             Vec2::new(8.0, 4.0)
         };
-        let size = galley.size() + 2.0 * padding;
+        let size = galley.size() + Vec2::new(pin_width, 0.0) + 2.0 * padding;
         let bounds = if self.centered {
             egui::Rect::from_center_size(self.bounds.center(), size)
         } else {
@@ -589,8 +591,40 @@ impl DirectoryBadge {
         if self.flash > 0.0 {
             painter.rect_filled(bounds, rounding, accent.gamma_multiply(self.flash));
         }
-        painter.galley(bounds.min + padding, galley, color);
+        if self.pinned {
+            outliner_ui::paint_pin(
+                &painter,
+                egui::Rect::from_center_size(
+                    Pos2::new(bounds.left() + padding.x + 8.0, bounds.center().y),
+                    Vec2::splat(16.0),
+                ),
+                color,
+            );
+        }
+        painter.galley(
+            bounds.min + padding + Vec2::new(pin_width, 0.0),
+            galley,
+            color,
+        );
     }
+}
+
+fn paint_panel_pin(ui: &egui::Ui, pane: Id, bounds: egui::Rect) {
+    let rect = egui::Rect::from_min_size(
+        bounds.right_top() + Vec2::new(-28.0, 8.0),
+        Vec2::splat(20.0),
+    );
+    let painter = ui.painter().with_clip_rect(bounds);
+    painter.rect_filled(rect, 4, ui.visuals().widgets.inactive.bg_fill);
+    outliner_ui::paint_pin(&painter, rect.shrink(2.0), ui.visuals().strong_text_color());
+    let response = ui.interact(
+        rect,
+        egui::Id::new(("panel-pin", pane)),
+        egui::Sense::hover(),
+    );
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "Pinned panel"));
+    response.on_hover_text("Pinned panel");
 }
 
 struct ThemePreview {
@@ -1569,14 +1603,25 @@ impl App {
             .unwrap_or([70, 130, 210]);
         let result = host.draw(
             event_loop,
-            &self.context,
             &mut self.painter,
             &rows,
+            &self.workspace.pinned_panes,
             accent,
             capture,
         );
         self.outliner = Some(host);
-        if let Some(target) = result? {
+        let result = result?;
+        if let Some(pane) = result.unpin {
+            self.workspace.pinned_panes.retain(|id| *id != pane);
+            self.repaint_pane(pane, true);
+            self.changed();
+        }
+        if let Some((pane, before)) = result.reorder
+            && self.workspace.reorder_pin(pane, before)
+        {
+            self.changed();
+        }
+        if let Some(target) = result.selected {
             self.select_outline_target(target);
         }
         Ok(())
@@ -1670,6 +1715,7 @@ impl App {
                         && matches!(
                             binding.actions[0],
                             Action::ToggleOutliner
+                                | Action::TogglePin
                                 | Action::CloseSurface
                                 | Action::CloseTab
                                 | Action::CloseWindow
@@ -2594,6 +2640,11 @@ impl App {
             Action::ToggleOutliner => {
                 self.toggle_outliner(event_loop);
             }
+            Action::TogglePin => {
+                if let Some(pane) = focused {
+                    self.workspace.toggle_pin(pane);
+                }
+            }
             Action::Themes => {
                 self.cancel_theme_preview(Some(host));
                 match self.config_loader.themes(self.loaded.family) {
@@ -3011,6 +3062,9 @@ impl App {
         true
     }
     fn reconcile(&mut self, event_loop: &ActiveEventLoop) {
+        if self.workspace.reconcile_pinned_panes() {
+            self.changed();
+        }
         if self
             .theme_preview
             .as_ref()
@@ -4166,6 +4220,7 @@ impl App {
                                 bounds,
                                 centered: true,
                                 shared: true,
+                                pinned: false,
                                 attention,
                                 accent: tab_accent,
                                 active: members.iter().any(|id| {
@@ -4179,19 +4234,17 @@ impl App {
                         }
                     }
                     for (&id, &bounds) in &host.rects {
-                        if shared_labels.contains(&id) {
-                            continue;
-                        }
                         let Some(pane) = self.panes.get(&id) else {
                             continue;
                         };
+                        let pinned = self.workspace.pinned_panes.contains(&id);
                         let selected = host.peek.map_or(focused, |peek| peek.target) == id;
                         if let Some(label) = DirectoryLabel::new(
                             directory_name(&pane.cwd),
                             selected,
                             host.focused,
                             host.focus_hint.visible(id, now),
-                        ) {
+                        ).filter(|_| !shared_labels.contains(&id)) {
                             let centered = label.large(
                                 active.quadrant_zoom.is_some()
                                     && (host.peek.is_some() || active.zoom == active.quadrant_zoom),
@@ -4206,12 +4259,15 @@ impl App {
                                 bounds,
                                 centered,
                                 shared: false,
+                                pinned,
                                 flash,
                                 accent: tab_accent,
                                 active: pane.activity.is_active(),
                                 attention: pane.unseen,
                             }
                             .paint(ui);
+                        } else if pinned {
+                            paint_panel_pin(ui, id, bounds);
                         }
                     }
                 });
@@ -7218,11 +7274,13 @@ mod tests {
     fn unshared_directory_badges_use_large_type_when_it_fits_and_stay_top_right() {
         let context = egui::Context::default();
         configure_ui_fonts(&context);
-        for (name, size, font_size) in [
-            ("gitime", Vec2::new(740.0, 330.0), 22.0 * 0.7),
-            ("timesheets", Vec2::new(370.0, 330.0), 22.0 * 0.7),
-            ("gitoxide.stable-gix", Vec2::new(180.0, 200.0), 12.0),
-            ("gitime", Vec2::new(740.0, 38.0), 12.0),
+        for (name, size, font_size, pinned) in [
+            ("gitime", Vec2::new(740.0, 330.0), 22.0 * 0.7, false),
+            ("timesheets", Vec2::new(370.0, 330.0), 22.0 * 0.7, false),
+            ("gitoxide.stable-gix", Vec2::new(180.0, 200.0), 12.0, false),
+            ("gitime", Vec2::new(740.0, 38.0), 12.0, false),
+            ("gitime", Vec2::new(180.0, 200.0), 22.0 * 0.7, true),
+            ("gitoxide.stable-gix", Vec2::new(180.0, 200.0), 12.0, true),
         ] {
             let bounds = egui::Rect::from_min_size(Pos2::new(100.0, 50.0), size);
             let mut output = context.run_ui(
@@ -7238,6 +7296,7 @@ mod tests {
                         shared: false,
                         active: true,
                         attention: true,
+                        pinned,
                         flash: 0.0,
                         accent: TabAccent::new(None, [230, 185, 60]),
                     }
@@ -7275,7 +7334,8 @@ mod tests {
             } else {
                 Vec2::new(8.0, 4.0)
             };
-            assert!((text.pos - badge.min - padding).length() < 0.01);
+            let pin_offset = Vec2::new(if pinned { 20.0 } else { 0.0 }, 0.0);
+            assert!((text.pos - badge.min - padding - pin_offset).length() < 0.01);
         }
     }
 
@@ -7303,6 +7363,7 @@ mod tests {
                             bounds,
                             active: false,
                             attention: false,
+                            pinned: false,
                             flash: 0.0,
                             accent,
                         }

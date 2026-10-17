@@ -1068,24 +1068,26 @@ keybind = cmd+shift+f=toggle_quadrant_zoom
 }
 
 #[test]
-fn outliner_is_bindable_without_a_default_shortcut() {
-    let home = TestHome::new();
-    assert!(
-        home.loader
-            .load()
-            .config
-            .keybinds
-            .iter()
-            .all(|binding| !binding.actions.contains(&Action::ToggleOutliner))
-    );
-    home.own("keybind=ctrl+shift+o=toggle_outliner\n");
-    let loaded = home.loader.load();
-    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
-    assert_eq!(
-        action(&loaded.config, "ctrl+shift+o"),
-        Some(Action::ToggleOutliner)
-    );
-    assert!(Action::parse("toggle_outliner:extra").is_err());
+fn outliner_and_pin_are_bindable_without_default_shortcuts() {
+    for (name, expected) in [
+        ("toggle_outliner", Action::ToggleOutliner),
+        ("toggle_pin", Action::TogglePin),
+    ] {
+        let home = TestHome::new();
+        assert!(
+            home.loader
+                .load()
+                .config
+                .keybinds
+                .iter()
+                .all(|binding| !binding.actions.contains(&expected))
+        );
+        home.own(&format!("keybind=ctrl+shift+o={name}\n"));
+        let loaded = home.loader.load();
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        assert_eq!(action(&loaded.config, "ctrl+shift+o"), Some(expected));
+        assert!(Action::parse(&format!("{name}:extra")).is_err());
+    }
 }
 
 #[test]

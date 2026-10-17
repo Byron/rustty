@@ -696,9 +696,23 @@ pub struct Workspace {
     /// Logical dashboard positions; new reporters may reclaim inactive reservations.
     #[serde(default, deserialize_with = "deck_positions")]
     pub deck_positions: Vec<Option<Id>>,
+    /// User order; newly pinned panes append to the end.
+    #[serde(default, deserialize_with = "pinned_panes")]
+    pub pinned_panes: Vec<Id>,
 }
 
 pub const MAX_DECK_SLOTS: usize = 4096;
+const MAX_PINNED_PANES: usize = 4096;
+
+fn pinned_panes<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<Id>, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(value.as_array().map_or_else(Vec::new, |pins| {
+        pins.iter()
+            .take(MAX_PINNED_PANES)
+            .filter_map(serde_json::Value::as_u64)
+            .collect()
+    }))
+}
 
 fn deck_positions<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
@@ -720,11 +734,69 @@ impl Default for Workspace {
             next_id: 1,
             windows: Vec::new(),
             deck_positions: Vec::new(),
+            pinned_panes: Vec::new(),
         }
     }
 }
 
 impl Workspace {
+    pub fn reconcile_pinned_panes(&mut self) -> bool {
+        let live: HashSet<_> = self
+            .windows
+            .iter()
+            .flat_map(|window| &window.tabs)
+            .flat_map(|tab| tab.panes.keys().copied())
+            .collect();
+        let previous = self.pinned_panes.clone();
+        let mut seen = HashSet::new();
+        self.pinned_panes.truncate(MAX_PINNED_PANES);
+        self.pinned_panes
+            .retain(|pane| live.contains(pane) && seen.insert(*pane));
+        previous != self.pinned_panes
+    }
+
+    pub fn toggle_pin(&mut self, pane: Id) -> bool {
+        let changed = self.reconcile_pinned_panes();
+        if let Some(index) = self.pinned_panes.iter().position(|id| *id == pane) {
+            self.pinned_panes.remove(index);
+            return true;
+        }
+        if self.pinned_panes.len() < MAX_PINNED_PANES
+            && self
+                .windows
+                .iter()
+                .flat_map(|window| &window.tabs)
+                .any(|tab| tab.panes.contains_key(&pane))
+        {
+            self.pinned_panes.push(pane);
+            return true;
+        }
+        changed
+    }
+
+    pub fn reorder_pin(&mut self, pane: Id, before: Option<Id>) -> bool {
+        let changed = self.reconcile_pinned_panes();
+        let Some(from) = self.pinned_panes.iter().position(|id| *id == pane) else {
+            return changed;
+        };
+        let to = match before {
+            Some(id) => {
+                let Some(index) = self.pinned_panes.iter().position(|pane| *pane == id) else {
+                    return changed;
+                };
+                index
+            }
+            None => self.pinned_panes.len(),
+        };
+        let to = to.saturating_sub(usize::from(from < to));
+        if from == to {
+            return changed;
+        }
+        self.pinned_panes.remove(from);
+        self.pinned_panes.insert(to, pane);
+        true
+    }
+
     /// Auxiliary data must never prevent the terminal workspace from loading.
     pub fn reconcile_deck_positions(&mut self) -> bool {
         let live: HashSet<_> = self
@@ -751,6 +823,7 @@ impl Workspace {
     /// Validation and remapping finish before the current workspace changes.
     pub fn append_layout(&mut self, mut layout: Self) -> io::Result<Vec<Id>> {
         layout.validate()?;
+        layout.reconcile_pinned_panes();
         let mut next_id = self.next_id;
         let mut remap = BTreeMap::new();
         for window in &layout.windows {
@@ -802,6 +875,10 @@ impl Workspace {
         let mut merged = self.clone();
         merged.next_id = next_id;
         merged.windows.extend(layout.windows);
+        merged
+            .pinned_panes
+            .extend(layout.pinned_panes.into_iter().map(|pane| remap[&pane]));
+        merged.reconcile_pinned_panes();
         merged.validate()?;
         *self = merged;
         Ok(windows)
@@ -812,6 +889,8 @@ impl Workspace {
         previous.next_id = previous.next_id.max(self.next_id);
         previous.deck_positions.clone_from(&self.deck_positions);
         previous.reconcile_deck_positions();
+        previous.pinned_panes.clone_from(&self.pinned_panes);
+        previous.reconcile_pinned_panes();
         std::mem::replace(self, previous)
     }
     pub fn close_pane(&mut self, pane: Id) -> bool {
@@ -837,6 +916,7 @@ impl Workspace {
             }
         }
         self.reconcile_deck_positions();
+        self.reconcile_pinned_panes();
         true
     }
     pub fn id(&mut self) -> Id {
@@ -861,6 +941,7 @@ impl Workspace {
         let mut state: Self = serde_json::from_slice(&bytes).map_err(invalid)?;
         state.validate()?;
         state.reconcile_deck_positions();
+        state.reconcile_pinned_panes();
         Ok(Some(state))
     }
     pub fn save(&self, path: &Path) -> io::Result<()> {
@@ -1365,6 +1446,7 @@ mod tests {
             next_id: 100,
             version: 1,
             deck_positions: vec![Some(7), None, Some(2)],
+            pinned_panes: vec![7, 2],
             windows: vec![WindowState {
                 id: 20,
                 tabs: vec![quadrants()],
@@ -1378,6 +1460,7 @@ mod tests {
         let decoded: Workspace = serde_json::from_slice(&bytes).unwrap();
         decoded.validate().unwrap();
         assert_eq!(decoded.deck_positions, state.deck_positions);
+        assert_eq!(decoded.pinned_panes, state.pinned_panes);
         let tab = &decoded.windows[0].tabs[0];
         assert_eq!(tab.root.panes(), [2, 7, 3, 5]);
         assert_eq!(tab.focused, 7);
@@ -1437,5 +1520,77 @@ mod tests {
         );
         state.close_pane(pane);
         assert!(state.deck_positions.is_empty());
+    }
+
+    #[test]
+    fn pins_keep_their_order_and_ignore_layout_undo_while_pruning_closed_panes() {
+        let mut state = Workspace {
+            next_id: 100,
+            windows: vec![WindowState {
+                id: 20,
+                tabs: vec![quadrants()],
+                active_tab: 0,
+                frame: [0.0, 0.0, 800.0, 600.0],
+                quick: false,
+            }],
+            pinned_panes: vec![7, 999, 2, 7, 1],
+            ..Workspace::default()
+        };
+        assert!(state.reconcile_pinned_panes());
+        assert_eq!(state.pinned_panes, [7, 2]);
+        let prior = state.clone();
+        assert!(state.toggle_pin(5));
+        assert!(state.toggle_pin(2));
+        assert!(state.toggle_pin(2));
+        assert_eq!(state.pinned_panes, [7, 5, 2]);
+        assert!(state.reorder_pin(2, Some(7)));
+        assert_eq!(state.pinned_panes, [2, 7, 5]);
+        assert!(state.reorder_pin(2, None));
+        assert_eq!(state.pinned_panes, [7, 5, 2]);
+        assert!(!state.reorder_pin(5, Some(2)));
+        assert!(!state.reorder_pin(5, Some(5)));
+        assert!(!state.reorder_pin(5, Some(999)));
+        assert!(!state.reorder_pin(999, None));
+        assert!(!state.toggle_pin(999));
+        state.restore(prior);
+        assert_eq!(state.pinned_panes, [7, 5, 2]);
+        state.close_pane(7);
+        assert_eq!(state.pinned_panes, [5, 2]);
+    }
+
+    #[test]
+    fn malformed_or_oversized_pin_metadata_does_not_prevent_workspace_loading() {
+        let mut value = serde_json::to_value(Workspace::default()).unwrap();
+        value.as_object_mut().unwrap().remove("pinned_panes");
+        assert!(
+            serde_json::from_value::<Workspace>(value.clone())
+                .unwrap()
+                .pinned_panes
+                .is_empty()
+        );
+        for malformed in [
+            serde_json::Value::Null,
+            serde_json::json!({"invalid": true}),
+        ] {
+            value["pinned_panes"] = malformed;
+            assert!(
+                serde_json::from_value::<Workspace>(value.clone())
+                    .unwrap()
+                    .pinned_panes
+                    .is_empty()
+            );
+        }
+        value["pinned_panes"] = serde_json::json!([7, "bad", null, -1, 2]);
+        assert_eq!(
+            serde_json::from_value::<Workspace>(value.clone())
+                .unwrap()
+                .pinned_panes,
+            [7, 2]
+        );
+        value["pinned_panes"] = serde_json::json!(vec![7; MAX_PINNED_PANES + 10]);
+        let mut decoded = serde_json::from_value::<Workspace>(value).unwrap();
+        assert_eq!(decoded.pinned_panes.len(), MAX_PINNED_PANES);
+        assert!(decoded.reconcile_pinned_panes());
+        assert!(decoded.pinned_panes.is_empty());
     }
 }

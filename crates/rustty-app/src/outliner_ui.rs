@@ -1,7 +1,8 @@
 //! A movable hierarchy and its compact, neutral breadcrumb.
 use crate::{
-    outliner::{Expansion, Row, Target, Zoom, has_children},
+    outliner::{Expansion, Row, Target, Zoom, has_children, pinned_paths},
     presentation::TabAccent,
+    workspace::Id,
 };
 use egui::{Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 
@@ -9,14 +10,26 @@ const ROW_HEIGHT: f32 = 30.0;
 const ICON_SIZE: f32 = 20.0;
 const INDENT: f32 = 18.0;
 
-pub fn contents(ui: &mut egui::Ui, rows: &[Row], platform_accent: [u8; 3]) -> Option<Target> {
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Output {
+    pub selected: Option<Target>,
+    pub reorder: Option<(Id, Option<Id>)>,
+    pub unpin: Option<Id>,
+}
+
+pub fn contents(
+    ui: &mut egui::Ui,
+    rows: &[Row],
+    pinned_panes: &[Id],
+    platform_accent: [u8; 3],
+) -> Output {
     ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+    let mut output = pins(ui, &pinned_paths(rows, pinned_panes));
     let expansion_id = ui.id().with("outliner-expansion");
     let mut expansion = ui
         .data(|data| data.get_temp::<Expansion>(expansion_id))
         .unwrap_or_default();
     let changed = expansion.sync(rows);
-    let mut selected = None;
     egui::ScrollArea::vertical()
         .id_salt("outliner-rows")
         .auto_shrink([false, false])
@@ -33,8 +46,11 @@ pub fn contents(ui: &mut egui::Ui, rows: &[Row], platform_accent: [u8; 3]) -> Op
                 } else {
                     rect
                 };
-                let response =
-                    ui.interact(selection_rect, ui.id().with(row.target), Sense::click());
+                let response = ui.interact(
+                    selection_rect,
+                    egui::Id::new(("outliner-row", row.target)),
+                    Sense::click(),
+                );
                 let accent = TabAccent::new(row.color, platform_accent);
                 let accent_color = rgb(accent.background);
                 let foreground = if row.focused {
@@ -155,7 +171,21 @@ pub fn contents(ui: &mut egui::Ui, rows: &[Row], platform_accent: [u8; 3]) -> Op
                     );
                     left + ICON_SIZE + 7.0
                 };
-                paint_label(ui, row, rect, text_left, foreground);
+                let pinned =
+                    matches!(row.target, Target::Pane { pane, .. } if pinned_panes.contains(&pane));
+                let mut label_rect = rect;
+                if pinned {
+                    label_rect.max.x -= 20.0;
+                    paint_pin(
+                        ui.painter(),
+                        Rect::from_center_size(
+                            Pos2::new(rect.right() - 11.0, rect.center().y),
+                            Vec2::splat(14.0),
+                        ),
+                        foreground,
+                    );
+                }
+                paint_label(ui, &row.label, label_rect, text_left, foreground);
                 if row.focused && changed {
                     response.scroll_to_me(None);
                 }
@@ -164,12 +194,16 @@ pub fn contents(ui: &mut egui::Ui, rows: &[Row], platform_accent: [u8; 3]) -> Op
                         egui::WidgetType::SelectableLabel,
                         ui.is_enabled(),
                         row.focused,
-                        description(row),
+                        if pinned {
+                            format!("{} · Pinned", description(row))
+                        } else {
+                            description(row)
+                        },
                     )
                 });
                 if response.clicked() {
                     response.surrender_focus();
-                    selected = Some(row.target);
+                    output.selected = Some(row.target);
                 }
                 response.on_hover_text(description(row));
             }
@@ -177,7 +211,180 @@ pub fn contents(ui: &mut egui::Ui, rows: &[Row], platform_accent: [u8; 3]) -> Op
     if !ui.is_sizing_pass() {
         ui.data_mut(|data| data.insert_temp(expansion_id, expansion));
     }
-    selected
+    output
+}
+
+fn pins(ui: &mut egui::Ui, paths: &[Vec<Row>]) -> Output {
+    let mut output = Output::default();
+    if paths.is_empty() {
+        return output;
+    }
+    let panes: Vec<_> = paths
+        .iter()
+        .filter_map(|path| match path.last()?.target {
+            Target::Pane { pane, .. } => Some(pane),
+            _ => None,
+        })
+        .collect();
+    ui.label(egui::RichText::new("Pinned").small().weak());
+    egui::ScrollArea::vertical()
+        .id_salt("outliner-pins")
+        .max_height((ui.available_height() * 0.35).clamp(ROW_HEIGHT, 180.0))
+        .min_scrolled_height(ROW_HEIGHT)
+        .auto_shrink([false, true])
+        .animated(false)
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            for (index, (&pane, path)) in panes.iter().zip(paths).enumerate() {
+                let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), ROW_HEIGHT));
+                let handle_rect = Rect::from_min_size(rect.min, Vec2::new(22.0, ROW_HEIGHT));
+                let handle = ui.interact(
+                    handle_rect,
+                    egui::Id::new(("outliner-pin", pane)),
+                    Sense::click_and_drag(),
+                );
+                handle.dnd_set_drag_payload(pane);
+                if handle.hovered() || handle.has_focus() || handle.dragged() {
+                    ui.painter().rect_stroke(
+                        handle_rect.shrink(2.0),
+                        3,
+                        Stroke::new(1.0, ui.visuals().weak_text_color()),
+                        egui::StrokeKind::Inside,
+                    );
+                }
+                paint_pin(
+                    ui.painter(),
+                    Rect::from_center_size(handle_rect.center(), Vec2::splat(16.0)),
+                    ui.visuals().text_color(),
+                );
+                let label = format!("Unpin panel: {}", path.last().unwrap().label);
+                handle.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), &label)
+                });
+                ui.ctx().accesskit_node_builder(handle.id, |node| {
+                    if index > 0 {
+                        node.add_action(egui::accesskit::Action::Decrement);
+                    }
+                    if index + 1 < panes.len() {
+                        node.add_action(egui::accesskit::Action::Increment);
+                    }
+                });
+                if handle.clicked() {
+                    handle.surrender_focus();
+                    output.unpin = Some(pane);
+                }
+                let has_focus = handle.has_focus();
+                let (up, down) = ui.input_mut(|input| {
+                    (
+                        input.has_accesskit_action_request(
+                            handle.id,
+                            egui::accesskit::Action::Decrement,
+                        ) || has_focus
+                            && input.consume_key(egui::Modifiers::ALT, egui::Key::ArrowUp),
+                        input.has_accesskit_action_request(
+                            handle.id,
+                            egui::accesskit::Action::Increment,
+                        ) || has_focus
+                            && input.consume_key(egui::Modifiers::ALT, egui::Key::ArrowDown),
+                    )
+                });
+                if up && index > 0 {
+                    output.reorder = Some((pane, Some(panes[index - 1])));
+                } else if down && index + 1 < panes.len() {
+                    output.reorder = Some((pane, panes.get(index + 2).copied()));
+                }
+                handle
+                    .on_hover_cursor(egui::CursorIcon::Grab)
+                    .on_hover_text(format!("{label}\nDrag to reorder · Alt+↑/↓ to move"));
+
+                let crumb_rect = Rect::from_min_max(
+                    Pos2::new(handle_rect.right() + 3.0, rect.top() + 2.0),
+                    rect.max,
+                );
+                let mut child = ui.new_child(
+                    egui::UiBuilder::new()
+                        .id_salt(("pinned-path", pane))
+                        .max_rect(crumb_rect),
+                );
+                output.selected =
+                    breadcrumb(&mut child, path, crumb_rect.width()).or(output.selected);
+                let blank =
+                    Rect::from_min_max(Pos2::new(child.min_rect().right(), rect.top()), rect.max);
+                if blank.width() > 0.0 {
+                    let response =
+                        ui.interact(blank, ui.id().with(("pin-tail", pane)), Sense::click());
+                    response.widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::Button,
+                            ui.is_enabled(),
+                            format!("Pinned panel: {}", path.last().unwrap().label),
+                        )
+                    });
+                    if response.clicked() {
+                        output.selected = path.last().map(|row| row.target);
+                    }
+                }
+                let drop = ui.interact(
+                    rect,
+                    egui::Id::new(("outliner-pin-drop", pane)),
+                    Sense::hover(),
+                );
+                if let Some(dragged) = drop.dnd_hover_payload::<Id>()
+                    && *dragged != pane
+                {
+                    let after = ui.input(|input| {
+                        input
+                            .pointer
+                            .interact_pos()
+                            .is_some_and(|point| point.y > rect.center().y)
+                    });
+                    let before = if after {
+                        panes.get(index + 1).copied()
+                    } else {
+                        Some(pane)
+                    };
+                    ui.painter().hline(
+                        rect.x_range(),
+                        if after { rect.bottom() } else { rect.top() },
+                        Stroke::new(2.0, ui.visuals().text_color()),
+                    );
+                    if let Some(dragged) = drop.dnd_release_payload::<Id>() {
+                        output.reorder = Some((*dragged, before));
+                    }
+                }
+            }
+        });
+    ui.separator();
+    output
+}
+
+/// A neutral pushpin shared by the outliner and terminal directory badges.
+pub fn paint_pin(painter: &egui::Painter, rect: Rect, color: Color32) {
+    let point = |x: f32, y: f32| rect.min + Vec2::new(x * rect.width(), y * rect.height());
+    painter.line_segment(
+        [point(0.5, 0.55), point(0.5, 0.95)],
+        Stroke::new(1.2, color),
+    );
+    painter.rect_filled(
+        Rect::from_min_max(point(0.3, 0.1), point(0.7, 0.25)),
+        0,
+        color,
+    );
+    painter.rect_filled(
+        Rect::from_min_max(point(0.4, 0.25), point(0.6, 0.45)),
+        0,
+        color,
+    );
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            point(0.4, 0.4),
+            point(0.6, 0.4),
+            point(0.78, 0.6),
+            point(0.22, 0.6),
+        ],
+        color,
+        Stroke::NONE,
+    ));
 }
 
 /// Call in a right-aligned header; width is bounded even for long pane labels.
@@ -186,14 +393,28 @@ pub fn breadcrumb(ui: &mut egui::Ui, rows: &[Row], max_width: f32) -> Option<Tar
         return None;
     }
     let foreground = ui.visuals().text_color();
-    let mut widths: Vec<f32> = rows
+    let labels: Vec<_> = rows
         .iter()
         .map(|row| {
+            row.tab_index.map_or_else(
+                || row.label.clone(),
+                |index| format!("Cmd+{} {}", index + 1, row.label),
+            )
+        })
+        .collect();
+    let mut widths: Vec<f32> = rows
+        .iter()
+        .zip(&labels)
+        .map(|(row, label)| {
             ui.painter()
-                .layout_no_wrap(row.label.clone(), FontId::proportional(13.0), foreground)
+                .layout_no_wrap(label.clone(), FontId::proportional(13.0), foreground)
                 .size()
                 .x
-                + ICON_SIZE
+                + if row.tab_index.is_some() {
+                    0.0
+                } else {
+                    ICON_SIZE
+                }
                 + 15.0
         })
         .collect();
@@ -246,16 +467,21 @@ pub fn breadcrumb(ui: &mut egui::Ui, rows: &[Row], max_width: f32) -> Option<Tar
                 egui::StrokeKind::Inside,
             );
         }
-        paint_icon(
-            &painter,
-            Rect::from_center_size(
-                Pos2::new(x + ICON_SIZE / 2.0 + 3.0, rect.center().y),
-                Vec2::splat(ICON_SIZE),
-            ),
-            row,
-            foreground,
-        );
-        paint_label(ui, row, rect, x + ICON_SIZE + 8.0, foreground);
+        let text_left = if row.tab_index.is_some() {
+            x + 5.0
+        } else {
+            paint_icon(
+                &painter,
+                Rect::from_center_size(
+                    Pos2::new(x + ICON_SIZE / 2.0 + 3.0, rect.center().y),
+                    Vec2::splat(ICON_SIZE),
+                ),
+                row,
+                foreground,
+            );
+            x + ICON_SIZE + 8.0
+        };
+        paint_label(ui, &labels[index], rect, text_left, foreground);
         response.widget_info(|| {
             egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), description(row))
         });
@@ -269,13 +495,13 @@ pub fn breadcrumb(ui: &mut egui::Ui, rows: &[Row], max_width: f32) -> Option<Tar
     selected
 }
 
-fn paint_label(ui: &egui::Ui, row: &Row, rect: Rect, left: f32, foreground: Color32) {
+fn paint_label(ui: &egui::Ui, label: &str, rect: Rect, left: f32, foreground: Color32) {
     let width = (rect.right() - left - 6.0).max(0.0);
     if width == 0.0 {
         return;
     }
     let mut job = egui::text::LayoutJob::simple_singleline(
-        row.label.clone(),
+        label.to_owned(),
         FontId::proportional(13.0),
         foreground,
     );
@@ -452,7 +678,7 @@ mod tests {
                 target = if crumbs {
                     breadcrumb(ui, rows, 140.0)
                 } else {
-                    contents(ui, rows, [210, 110, 70])
+                    contents(ui, rows, &[], [210, 110, 70]).selected
                 };
             });
         });
@@ -520,6 +746,241 @@ mod tests {
             .or(target);
         }
         target
+    }
+
+    fn pin_frame(
+        context: &egui::Context,
+        rows: &[Row],
+        pins: &[Id],
+        events: Vec<egui::Event>,
+    ) -> (egui::FullOutput, Output) {
+        let mut result = Output::default();
+        let mut output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 420.0))),
+                focused: true,
+                events,
+                ..Default::default()
+            },
+            |root| {
+                egui::CentralPanel::default().show(root, |ui| {
+                    result = contents(ui, rows, pins, [210, 110, 70]);
+                });
+            },
+        );
+        output.textures_delta.clear();
+        (output, result)
+    }
+
+    #[test]
+    fn pinned_breadcrumbs_navigate_and_drag_reorders_without_selecting_a_panel() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let mut rows = rows();
+        rows.push(Row {
+            target: Target::Pane { tab: 1, pane: 4 },
+            label: "Build".into(),
+            focused: false,
+            ..rows.last().unwrap().clone()
+        });
+        let pins = [3, 4];
+        pin_frame(&context, &rows, &pins, Vec::new());
+        let (output, _) = pin_frame(&context, &rows, &pins, Vec::new());
+        let ancestors: Vec<_> = output
+            .platform_output
+            .accesskit_update
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .filter(|(_, node)| node.label() == Some(description(&rows[0]).as_str()))
+            .collect();
+        assert_eq!(
+            ancestors.len(),
+            3,
+            "each pinned path and the tree expose their own ancestor control"
+        );
+        assert_ne!(ancestors[0].0, ancestors[1].0);
+        let ancestor = ancestors[0].1.bounds().unwrap();
+        let point = Pos2::new(
+            (ancestor.x0 + ancestor.x1) as f32 / 2.0,
+            (ancestor.y0 + ancestor.y1) as f32 / 2.0,
+        );
+        pin_frame(
+            &context,
+            &rows,
+            &pins,
+            vec![egui::Event::PointerMoved(point)],
+        );
+        let mut selected = None;
+        for pressed in [true, false] {
+            let (_, output) = pin_frame(
+                &context,
+                &rows,
+                &pins,
+                vec![egui::Event::PointerButton {
+                    pos: point,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            assert_eq!(output.reorder, None);
+            selected = output.selected.or(selected);
+        }
+        assert_eq!(selected, Some(rows[0].target));
+
+        let from = context
+            .read_response(egui::Id::new(("outliner-pin", 4_u64)))
+            .unwrap()
+            .rect
+            .center();
+        let to = context
+            .read_response(egui::Id::new(("outliner-pin-drop", 3_u64)))
+            .unwrap()
+            .rect
+            .center_top()
+            + Vec2::new(0.0, 2.0);
+        pin_frame(
+            &context,
+            &rows,
+            &pins,
+            vec![egui::Event::PointerMoved(from)],
+        );
+        for pressed in [true, false] {
+            let (_, output) = pin_frame(
+                &context,
+                &rows,
+                &pins,
+                vec![egui::Event::PointerButton {
+                    pos: from,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            assert_eq!(
+                output,
+                Output {
+                    unpin: (!pressed).then_some(4),
+                    ..Output::default()
+                }
+            );
+        }
+        for event in [
+            egui::Event::PointerMoved(from),
+            egui::Event::PointerButton {
+                pos: from,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+            egui::Event::PointerMoved(to),
+            egui::Event::PointerMoved(to),
+        ] {
+            assert_eq!(
+                pin_frame(&context, &rows, &pins, vec![event]).1,
+                Output::default()
+            );
+        }
+        assert!(egui::DragAndDrop::has_payload_of_type::<Id>(&context));
+        let (_, output) = pin_frame(
+            &context,
+            &rows,
+            &pins,
+            vec![egui::Event::PointerButton {
+                pos: to,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert_eq!(
+            output,
+            Output {
+                selected: None,
+                reorder: Some((4, Some(3))),
+                unpin: None,
+            }
+        );
+
+        let id = egui::Id::new(("outliner-pin", 3_u64));
+        let (output, _) = pin_frame(&context, &rows, &pins, Vec::new());
+        let node_id = output
+            .platform_output
+            .accesskit_update
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|(_, node)| node.label() == Some("Unpin panel: Tests"))
+            .map(|(id, node)| {
+                assert!(node.supports_action(egui::accesskit::Action::Increment));
+                *id
+            })
+            .unwrap();
+        let (_, output) = pin_frame(
+            &context,
+            &rows,
+            &pins,
+            vec![egui::Event::AccessKitActionRequest(
+                egui::accesskit::ActionRequest {
+                    action: egui::accesskit::Action::Increment,
+                    target_tree: egui::accesskit::TreeId::ROOT,
+                    target_node: node_id,
+                    data: None,
+                },
+            )],
+        );
+        assert_eq!(
+            output,
+            Output {
+                selected: None,
+                reorder: Some((3, None)),
+                unpin: None,
+            }
+        );
+        context.memory_mut(|memory| memory.request_focus(id));
+        let (_, output) = pin_frame(
+            &context,
+            &rows,
+            &pins,
+            vec![egui::Event::Key {
+                key: egui::Key::ArrowDown,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::ALT,
+            }],
+        );
+        assert_eq!(
+            output,
+            Output {
+                selected: None,
+                reorder: Some((3, None)),
+                unpin: None,
+            }
+        );
+        let (_, output) = pin_frame(
+            &context,
+            &rows,
+            &pins,
+            vec![egui::Event::AccessKitActionRequest(
+                egui::accesskit::ActionRequest {
+                    action: egui::accesskit::Action::Click,
+                    target_tree: egui::accesskit::TreeId::ROOT,
+                    target_node: node_id,
+                    data: None,
+                },
+            )],
+        );
+        assert_eq!(
+            output,
+            Output {
+                unpin: Some(3),
+                ..Output::default()
+            }
+        );
     }
 
     #[test]
@@ -662,7 +1123,7 @@ mod tests {
                     egui::CentralPanel::default().show(root, |ui| {
                         scroll_id = ui.make_persistent_id(egui::IdSalt::new("outliner-rows"));
                         viewport = ui.available_rect_before_wrap();
-                        contents(ui, rows, [210, 110, 70]);
+                        contents(ui, rows, &[], [210, 110, 70]).selected;
                     });
                 },
             );
@@ -732,6 +1193,33 @@ mod tests {
                 .y
                 > offset
         );
+    }
+
+    #[test]
+    fn narrow_pinned_path_keeps_every_level_and_tab_shortcut() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let mut rows = rows();
+        rows[0].label = "Window with a very long name".repeat(5);
+        rows[2].label = "Quad with a very long name".repeat(5);
+        frame(&context, &rows, Vec::new(), true);
+        let (output, _) = frame(&context, &rows, Vec::new(), true);
+        let first = bounds(&output, &rows[0]);
+        let last = bounds(&output, rows.last().unwrap());
+        assert!((last.right() - first.left() - 140.0).abs() < 0.1);
+        for row in &rows {
+            let rect = bounds(&output, row);
+            assert!(
+                rect.width() > 0.0 && rect.left() >= first.left() && rect.right() <= last.right()
+            );
+            assert_eq!(
+                click(&context, &rows, rect.center(), true),
+                Some(row.target)
+            );
+        }
+        assert!(output.shapes.iter().any(|shape| {
+            matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text().starts_with("Cmd+1 Work"))
+        }), "tab breadcrumb paints its shortcut even when the visible text is elided");
     }
 
     #[test]
