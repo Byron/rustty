@@ -3165,18 +3165,26 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     if app.windows.contains_key(&utility_key) || !app.outliner.as_ref().unwrap().visible {
         return Err("Outliner is not an independent visible native window".into());
     }
+    if app
+        .outline_rows()
+        .iter()
+        .any(|row| matches!(row.target, Target::Window(_)))
+    {
+        return Err("Outliner retained a redundant single-window level".into());
+    }
     let quad = app.tab(window).unwrap().root.quadrant(first).unwrap();
     app.draw_outliner(event_loop, Some(&directory.join("outliner-collapsed.png")))?;
-    let disclosure_bounds = |app: &App, target| {
+    let widget_bounds = |app: &App, id| {
         app.context
             .viewport_for(app.outliner.as_ref().unwrap().viewport, |state| {
                 state
                     .prev_pass
                     .widgets
-                    .get(egui::Id::new(("outliner-disclosure", target)))
+                    .get(id)
                     .map(|widget| widget.interact_rect)
             })
     };
+    let disclosure = |target| egui::Id::new(("outliner-disclosure", target));
     for (shift, open, name) in [
         (false, false, "outliner-collapsed.png"),
         (false, true, "outliner.png"),
@@ -3184,7 +3192,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         (true, true, "outliner.png"),
     ] {
         let before = (serde_json::to_vec(&app.workspace)?, app.active);
-        let point = disclosure_bounds(app, Target::Window(window))
+        let point = widget_bounds(app, disclosure(Target::Tab(first_tab)))
             .ok_or("missing native Outliner disclosure")?
             .center();
         let modifiers = egui::Modifiers {
@@ -3225,16 +3233,28 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         if (serde_json::to_vec(&app.workspace)?, app.active) != before {
             return Err("Outliner disclosure changed terminal focus or zoom".into());
         }
-        if disclosure_bounds(app, Target::Tab(first_tab)).is_some() != open {
+        if widget_bounds(
+            app,
+            disclosure(Target::Quad {
+                tab: first_tab,
+                node: quad,
+            }),
+        )
+        .is_some()
+            != open
+        {
             return Err("Outliner disclosure did not show or hide its children".into());
         }
     }
-    if disclosure_bounds(
+    if widget_bounds(
         app,
-        Target::Quad {
-            tab: first_tab,
-            node: quad,
-        },
+        egui::Id::new((
+            "outliner-row",
+            Target::Pane {
+                tab: first_tab,
+                pane: first,
+            },
+        )),
     )
     .is_none()
     {
@@ -3314,6 +3334,93 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     }
     if app.focused(window) != Some(second) || app.tab(window).unwrap().zoom.is_some() {
         return Err("selecting another Outliner tab did not reveal its first pane".into());
+    }
+
+    for (tab, pane) in [(first_tab, first), (second_tab, second)] {
+        app.select_outline_target(Target::Pane { tab, pane });
+        action(app, Action::TogglePin);
+    }
+    if app.workspace.pinned_panes != [first, second] {
+        return Err("Toggle Pin did not append focused panels in order".into());
+    }
+    app.select_outline_target(Target::Pane {
+        tab: first_tab,
+        pane: first,
+    });
+    action(app, Action::ToggleQuadrantZoom);
+    action(app, Action::ToggleSplitZoom);
+    app.window_event(event_loop, utility_key, WindowEvent::Focused(true));
+    for _ in 0..2 {
+        app.draw_outliner(event_loop, Some(&directory.join("outliner-pinned.png")))?;
+    }
+    capture_terminal(app, "outliner-pinned-terminal.png")?;
+    let before = (serde_json::to_vec(&app.workspace.windows)?, app.active);
+    let from = widget_bounds(app, egui::Id::new(("outliner-pin", second)))
+        .ok_or("missing Outliner pin drag handle")?
+        .center();
+    let target = widget_bounds(app, egui::Id::new(("outliner-pin-drop", first)))
+        .ok_or("missing Outliner pin drop target")?;
+    let to = Pos2::new(target.center().x, target.top() + 2.0);
+    let utility_scale = app.outliner.as_ref().unwrap().window.scale_factor();
+    let pointer_move = |point: Pos2| WindowEvent::CursorMoved {
+        device_id: DeviceId::dummy(),
+        position: LogicalPosition::new(point.x, point.y).to_physical(utility_scale),
+    };
+    let pointer_button = |state| WindowEvent::MouseInput {
+        device_id: DeviceId::dummy(),
+        state,
+        button: MouseButton::Left,
+    };
+    for event in [
+        pointer_move(from),
+        pointer_button(ElementState::Pressed),
+        pointer_move(from - Vec2::new(0.0, 10.0)),
+        pointer_move(to),
+        pointer_button(ElementState::Released),
+    ] {
+        app.window_event(event_loop, utility_key, event);
+        app.draw_outliner(event_loop, Some(&directory.join("outliner-pinned.png")))?;
+    }
+    if app.workspace.pinned_panes != [second, first] {
+        return Err("dragging Outliner pins did not reorder them".into());
+    }
+    if (serde_json::to_vec(&app.workspace.windows)?, app.active) != before {
+        return Err("reordering Outliner pins changed terminal focus or zoom".into());
+    }
+    for _ in 0..2 {
+        app.draw_outliner(event_loop, Some(&directory.join("outliner-pinned.png")))?;
+    }
+    let target = widget_bounds(app, egui::Id::new(("outliner-pin-drop", second)))
+        .ok_or("reordered Outliner pin disappeared")?;
+    let point = Pos2::new(target.right() - 12.0, target.center().y);
+    for event in [
+        pointer_move(point),
+        pointer_button(ElementState::Pressed),
+        pointer_button(ElementState::Released),
+    ] {
+        app.window_event(event_loop, utility_key, event);
+        app.draw_outliner(event_loop, Some(&directory.join("outliner-pinned.png")))?;
+    }
+    if app.focused(window) != Some(second) || app.active != Some(window) {
+        return Err("clicking an Outliner pin did not reveal its panel in another tab".into());
+    }
+    let before = (serde_json::to_vec(&app.workspace.windows)?, app.active);
+    let point = widget_bounds(app, egui::Id::new(("outliner-pin", second)))
+        .ok_or("missing Outliner pin button")?
+        .center();
+    for event in [
+        pointer_move(point),
+        pointer_button(ElementState::Pressed),
+        pointer_button(ElementState::Released),
+    ] {
+        app.window_event(event_loop, utility_key, event);
+        app.draw_outliner(event_loop, Some(&directory.join("outliner-pinned.png")))?;
+    }
+    if app.workspace.pinned_panes != [first] {
+        return Err("clicking the Outliner pin button did not unpin the panel".into());
+    }
+    if (serde_json::to_vec(&app.workspace.windows)?, app.active) != before {
+        return Err("unpinning from Outliner changed terminal focus or zoom".into());
     }
 
     let other = app.add_window(false);
@@ -3483,8 +3590,8 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     fs::write(
         directory.join("result.json"),
         serde_json::to_vec_pretty(&serde_json::json!({
-            "checks": ["outliner-native-window", "outliner-hierarchy", "outliner-disclosure", "outliner-navigation", "outliner-zoom", "outliner-single-tab-bar", "outliner-narrow-tab-bar", "outliner-terminal-input", "outliner-quick-terminal", "outliner-close"],
-            "captures": ["outliner.png", "outliner-collapsed.png", "outliner-terminal.png", "outliner-quad.png", "outliner-quad-terminal.png", "outliner-nested.png", "outliner-nested-terminal.png", "outliner-pane.png", "outliner-pane-terminal.png", "outliner-narrow-terminal.png", "outliner-windows.png", "outliner-other-window.png", "outliner-quick.png", "outliner-flat.png"]
+            "checks": ["outliner-native-window", "outliner-hierarchy", "outliner-disclosure", "outliner-navigation", "outliner-zoom", "outliner-single-tab-bar", "outliner-narrow-tab-bar", "outliner-pins", "outliner-pin-drag", "outliner-terminal-input", "outliner-quick-terminal", "outliner-close"],
+            "captures": ["outliner.png", "outliner-collapsed.png", "outliner-terminal.png", "outliner-quad.png", "outliner-quad-terminal.png", "outliner-nested.png", "outliner-nested-terminal.png", "outliner-pane.png", "outliner-pane-terminal.png", "outliner-narrow-terminal.png", "outliner-pinned.png", "outliner-pinned-terminal.png", "outliner-windows.png", "outliner-other-window.png", "outliner-quick.png", "outliner-flat.png"]
         }))?,
     )?;
     eprintln!("Native Outliner smoke passed: {}", directory.display());

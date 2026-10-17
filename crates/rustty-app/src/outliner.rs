@@ -126,10 +126,16 @@ pub fn workspace_rows(
 ) -> Vec<Row> {
     let mut outline = Vec::new();
     let mut number = 0;
-    for window in &workspace.windows {
-        if window.quick && !quick_used.contains(&window.id) {
-            continue;
-        }
+    let windows: Vec<_> = workspace
+        .windows
+        .iter()
+        .filter(|window| {
+            (!window.quick || quick_used.contains(&window.id))
+                && window.tabs.get(window.active_tab).is_some()
+        })
+        .collect();
+    let has_windows = windows.len() > 1;
+    for window in windows {
         let Some(tab) = window.tabs.get(window.active_tab) else {
             continue;
         };
@@ -140,25 +146,48 @@ pub fn workspace_rows(
             number += 1;
             format!("Window {number} · {}", tab_label(tab, labels, tab_labels))
         };
-        outline.push(Row {
-            target: Target::Window(window.id),
-            depth: 0,
-            label,
-            tab_index: None,
-            rect: Rect::UNIT,
-            focused: false,
-            ancestor: active,
-            color: tab.color,
-            zoom: Zoom::None,
-        });
+        if has_windows {
+            outline.push(Row {
+                target: Target::Window(window.id),
+                depth: 0,
+                label,
+                tab_index: None,
+                rect: Rect::UNIT,
+                focused: false,
+                ancestor: active,
+                color: tab.color,
+                zoom: Zoom::None,
+            });
+        }
         outline.extend(rows(window, labels, tab_labels).into_iter().map(|mut row| {
-            row.depth += 1;
+            row.depth += usize::from(has_windows);
             row.focused &= active;
             row.ancestor &= active;
             row
         }));
     }
     outline
+}
+
+pub fn pinned_paths(rows: &[Row], pins: &[Id]) -> Vec<Vec<Row>> {
+    let pins_set: HashSet<_> = pins.iter().copied().collect();
+    let mut parents: Vec<&Row> = Vec::new();
+    let mut paths = HashMap::new();
+    for row in rows {
+        while parents
+            .last()
+            .is_some_and(|parent| parent.depth >= row.depth)
+        {
+            parents.pop();
+        }
+        parents.push(row);
+        if let Target::Pane { pane, .. } = row.target
+            && pins_set.contains(&pane)
+        {
+            paths.insert(pane, parents.iter().map(|row| (*row).clone()).collect());
+        }
+    }
+    pins.iter().filter_map(|pane| paths.remove(pane)).collect()
 }
 
 pub fn rows(
@@ -803,5 +832,85 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn single_visible_window_omits_its_level_until_a_used_quick_terminal_joins() {
+        let mut workspace = Workspace::default();
+        workspace.windows = vec![
+            window(),
+            WindowState {
+                id: 300,
+                quick: true,
+                tabs: vec![Tab::new(31, 32, "/tmp".into())],
+                ..window()
+            },
+        ];
+        let rows = workspace_rows(
+            &workspace,
+            Some(100),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashSet::new(),
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            (rows[0].target, rows[0].depth),
+            (Target::Pane { tab: 1, pane: 2 }, 0)
+        );
+        assert_eq!(pinned_paths(&rows, &[2])[0].len(), 1);
+
+        let rows = workspace_rows(
+            &workspace,
+            Some(100),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[300].into(),
+        );
+        assert_eq!(rows[0].target, Target::Window(100));
+        assert_eq!(rows[1].depth, 1);
+        assert_eq!(rows[2].target, Target::Window(300));
+        assert_eq!(pinned_paths(&rows, &[2])[0].len(), 2);
+
+        workspace.windows = vec![quads()];
+        let rows = workspace_rows(
+            &workspace,
+            Some(100),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashSet::new(),
+        );
+        assert_eq!(rows[0].target, Target::Quad { tab: 1, node: 10 });
+        assert_eq!(rows[0].depth, 0);
+        assert_eq!(pinned_paths(&rows, &[9])[0].len(), 2);
+    }
+
+    #[test]
+    fn pinned_paths_follow_pin_order_and_use_only_each_panes_current_ancestors() {
+        let rows = expansion_rows();
+        let paths = pinned_paths(&rows, &[22, 9, 999, 12, 22]);
+        let targets: Vec<Vec<_>> = paths
+            .iter()
+            .map(|path| path.iter().map(|row| row.target).collect())
+            .collect();
+        assert_eq!(
+            targets,
+            vec![
+                vec![Target::Window(200), Target::Pane { tab: 21, pane: 22 }],
+                vec![
+                    Target::Window(100),
+                    Target::Tab(1),
+                    Target::Quad { tab: 1, node: 10 },
+                    Target::Pane { tab: 1, pane: 9 }
+                ],
+                vec![
+                    Target::Window(100),
+                    Target::Tab(11),
+                    Target::Pane { tab: 11, pane: 12 }
+                ],
+            ]
+        );
+        assert!(paths[1].last().unwrap().focused);
+        assert!(!paths[0].last().unwrap().focused);
     }
 }
