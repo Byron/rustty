@@ -9,6 +9,7 @@ pub(super) struct OutlinerHost {
     pub focused: bool,
     pub modifiers: Modifiers,
     pub held_keys: HashSet<PhysicalKey>,
+    pub search: outliner_ui::SearchState,
     pub deadline: Option<Instant>,
     pub accesskit_active: bool,
 }
@@ -56,6 +57,7 @@ impl OutlinerHost {
             focused: false,
             modifiers: Modifiers::default(),
             held_keys: HashSet::new(),
+            search: outliner_ui::SearchState::default(),
             deadline: None,
             accesskit_active: false,
         })
@@ -82,6 +84,7 @@ impl OutlinerHost {
         }
         let mut input = self.egui.take_egui_input(&self.window);
         input.viewport_id = self.viewport;
+        input::filter_egui_events(&mut input, true);
         let context = self.egui.egui_ctx().clone();
         if self.accesskit_active {
             context.enable_accesskit();
@@ -91,7 +94,7 @@ impl OutlinerHost {
         let mut selection = outliner_ui::Output::default();
         let mut output = context.run_ui(input, |root| {
             egui::CentralPanel::default().show(root, |ui| {
-                selection = outliner_ui::contents(ui, rows, pinned_panes, accent);
+                selection = outliner_ui::contents(ui, rows, pinned_panes, &mut self.search, accent);
             });
         });
         self.egui.handle_platform_output_with_event_loop(
@@ -151,5 +154,39 @@ impl OutlinerHost {
             }
         }
         Ok(selection)
+    }
+}
+
+pub(super) fn opens_search(
+    key: &winit::keyboard::Key,
+    modifiers: winit::keyboard::ModifiersState,
+) -> bool {
+    matches!(key, winit::keyboard::Key::Character(text) if text == "/")
+        && !modifiers.control_key()
+        && !modifiers.alt_key()
+        && !modifiers.super_key()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use winit::keyboard::{Key, ModifiersState, NamedKey};
+
+    #[test]
+    fn search_slash_follows_the_keyboard_layout_without_taking_modified_shortcuts() {
+        let slash = Key::Character("/".into());
+        for modifiers in [ModifiersState::empty(), ModifiersState::SHIFT] {
+            assert!(opens_search(&slash, modifiers));
+            for shortcut in [
+                ModifiersState::CONTROL,
+                ModifiersState::ALT,
+                ModifiersState::SUPER,
+            ] {
+                assert!(!opens_search(&slash, modifiers | shortcut));
+            }
+        }
+        for key in [Key::Character("?".into()), Key::Named(NamedKey::Escape)] {
+            assert!(!opens_search(&key, ModifiersState::empty()));
+        }
     }
 }

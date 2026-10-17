@@ -1623,10 +1623,15 @@ impl App {
         }
         if let Some(target) = result.selected {
             self.select_outline_target(target);
+        } else if let Some(target) = result.preview {
+            self.select_outline_target_with_activation(target, false);
         }
         Ok(())
     }
     fn select_outline_target(&mut self, target: outliner::Target) {
+        self.select_outline_target_with_activation(target, true);
+    }
+    fn select_outline_target_with_activation(&mut self, target: outliner::Target, activate: bool) {
         let Some(id) = outliner::target_window(&self.workspace, target) else {
             return;
         };
@@ -1637,7 +1642,21 @@ impl App {
         else {
             return;
         };
-        if let Some(host) = &mut self.outliner {
+        if self.config().quick_terminal_autohide
+            && let Some(previous) = self.active.filter(|previous| *previous != id)
+            && self
+                .index(previous)
+                .is_some_and(|index| self.workspace.windows[index].quick)
+            && let Some(previous_key) = self.windows.iter().find_map(|(&key, host)| {
+                (host.id == previous && host.visible && !host.ui_input()).then_some(key)
+            })
+        {
+            // A previewed quick terminal never gained native focus to lose.
+            let mut previous_host = self.windows.remove(&previous_key).unwrap();
+            self.quick_visible(&mut previous_host, false, false);
+            self.windows.insert(previous_key, previous_host);
+        }
+        if activate && let Some(host) = &mut self.outliner {
             self.consumed_global_keys.extend(host.held_keys.drain());
         }
         let mut host = self.windows.remove(&key).unwrap();
@@ -1655,7 +1674,22 @@ impl App {
             self.focus_pane(id, pane);
         }
         let quick = self.workspace.windows[self.index(id).unwrap()].quick;
-        self.reveal_host(&mut host, quick);
+        if activate {
+            self.reveal_host(&mut host, quick);
+        } else if let Some(platform) = &self.platform {
+            match platform.preview_window(&host.window, quick, self.config()) {
+                Ok(()) => {
+                    host.visible = true;
+                    host.occluded = false;
+                    host.quick_used |= quick;
+                    if quick {
+                        self.remember_quick_frame(&host);
+                    }
+                    host.repaint();
+                }
+                Err(error) => self.errors.push(error),
+            }
+        }
         self.active = Some(id);
         self.windows.insert(key, host);
         self.repaint_outliner();
@@ -1670,6 +1704,19 @@ impl App {
         } = &event
         {
             input::key_is_consumed(&mut host.held_keys, key.physical_key, key.state, true);
+            if key.state == ElementState::Pressed
+                && !key.repeat
+                && !host.search.open
+                && outliner_host::opens_search(&key.logical_key, host.modifiers.state())
+            {
+                host.held_keys.remove(&key.physical_key);
+                self.consumed_global_keys.insert(key.physical_key);
+                host.search.start();
+                host.repaint();
+                self.outliner = Some(host);
+                // Do not translate the opening slash into text for the new editor.
+                return;
+            }
         }
         let response = host.egui.on_window_event(&host.window, &event);
         if response.repaint {
@@ -1681,7 +1728,10 @@ impl App {
             WindowEvent::CloseRequested => close = true,
             WindowEvent::Focused(focused) => {
                 host.focused = *focused;
-                if !focused {
+                if *focused {
+                    host.search.focus();
+                    host.repaint();
+                } else {
                     self.consumed_global_keys.extend(host.held_keys.drain());
                     host.modifiers = Modifiers::default();
                 }
@@ -1704,7 +1754,7 @@ impl App {
                 event: key,
                 is_synthetic: false,
                 ..
-            } if key.state == ElementState::Pressed && !key.repeat => {
+            } if key.state == ElementState::Pressed && !key.repeat && !host.search.open => {
                 close = key.logical_key
                     == winit::keyboard::Key::Named(winit::keyboard::NamedKey::Escape);
                 action = self.config().keybinds.iter().rev().find_map(|binding| {
@@ -3283,6 +3333,22 @@ impl App {
     }
 
     fn platform_action(&mut self, event_loop: &ActiveEventLoop, action: Action, all: bool) -> bool {
+        if self
+            .outliner
+            .as_ref()
+            .is_some_and(|host| host.visible && host.focused && host.search.open)
+        {
+            let clipboard = match action {
+                Action::PasteFromClipboard => self.outliner.as_mut().unwrap().egui.clipboard_text(),
+                Action::PasteFromSelection => self.selection_text(),
+                _ => None,
+            };
+            let host = self.outliner.as_mut().unwrap();
+            if input::edit_menu_action(host.egui.egui_input_mut(), &action, true, clipboard) {
+                host.repaint();
+                return true;
+            }
+        }
         if action == Action::ToggleOutliner {
             self.toggle_outliner(event_loop);
             return true;
