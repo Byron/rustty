@@ -144,6 +144,7 @@ impl Smoke {
     pub(super) fn configure(loaded: &mut LoadedConfig) {
         loaded.config.stream_deck = false;
         let timing = std::env::var_os("RUSTTY_SMOKE_TIMING").is_some();
+        let deck_only = std::env::var("RUSTTY_SMOKE_DECK").as_deref() == Ok("only");
         if timing {
             let renderer = loaded.config.renderer;
             loaded.config = Config::default();
@@ -157,7 +158,7 @@ impl Smoke {
             loaded.config.font_size = 13.0;
         }
         #[cfg(not(target_os = "windows"))]
-        let command = if timing {
+        let command = if timing || deck_only {
             config::Command::Direct(vec!["/bin/sleep".into(), "120".into()])
         } else {
             config::Command::Direct(vec!["/bin/sh".into(),"-c".into(),r"printf '\033[2J\033[H\033[30;107m  ✔️\033[5G  > selected row\033[0m\n\033[1;36mRustty native smoke\033[0m\n\033]7;file://localhost/tmp\007\033]9;4;1;65\007'; exec /bin/sh -i".into()])
@@ -177,7 +178,7 @@ impl Smoke {
                     )
                     .join("Git/bin/bash.exe")
                 });
-            if timing {
+            if timing || deck_only {
                 config::Command::Direct(vec![
                     shell.to_string_lossy().into_owned(),
                     "--noprofile".into(),
