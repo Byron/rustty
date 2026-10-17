@@ -5,6 +5,7 @@ use crate::{
     workspace::Id,
 };
 use egui::{Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
+use std::ops::Range;
 
 const ROW_HEIGHT: f32 = 30.0;
 const ICON_SIZE: f32 = 20.0;
@@ -13,25 +14,218 @@ const INDENT: f32 = 18.0;
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Output {
     pub selected: Option<Target>,
+    /// Change the focused panel while keeping keyboard input in the Outliner.
+    pub preview: Option<Target>,
     pub reorder: Option<(Id, Option<Id>)>,
     pub unpin: Option<Id>,
+}
+
+#[derive(Default)]
+pub struct SearchState {
+    pub open: bool,
+    pub query: String,
+    selected_pane: Option<Id>,
+    request_focus: bool,
+}
+
+impl SearchState {
+    pub fn start(&mut self) {
+        self.open = true;
+        self.query.clear();
+        self.selected_pane = None;
+        self.request_focus = true;
+    }
+
+    pub fn focus(&mut self) {
+        self.request_focus = self.open;
+    }
+
+    fn close(&mut self) {
+        self.open = false;
+        self.query.clear();
+        self.selected_pane = None;
+        self.request_focus = false;
+    }
+
+    fn footer(&mut self, ui: &mut egui::Ui) -> (bool, bool, Vec<egui::Key>) {
+        if !self.open {
+            return (false, false, Vec::new());
+        }
+        let mut navigation = Vec::new();
+        let accept = ui.input_mut(|input| {
+            input.events.retain(|event| {
+                if let egui::Event::Key {
+                    key,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } = event
+                    && matches!(key, egui::Key::N | egui::Key::P)
+                    && modifiers.matches_logically(egui::Modifiers::CTRL)
+                {
+                    navigation.push(*key);
+                    false
+                } else {
+                    true
+                }
+            });
+            input.consume_key(egui::Modifiers::NONE, egui::Key::Enter)
+                | input.consume_key(egui::Modifiers::NONE, egui::Key::Escape)
+                | input.consume_key(egui::Modifiers::CTRL, egui::Key::OpenBracket)
+        });
+        let available = ui.available_rect_before_wrap();
+        let footer = Rect::from_min_max(
+            Pos2::new(
+                available.left(),
+                (available.bottom() - 34.0).max(available.top()),
+            ),
+            available.max,
+        );
+        let mut child = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("outliner-search-footer")
+                .max_rect(footer),
+        );
+        child.painter().hline(
+            footer.x_range(),
+            footer.top(),
+            child.visuals().widgets.noninteractive.bg_stroke,
+        );
+        let field_id = egui::Id::new("outliner-search-query");
+        if self.request_focus || accept || !navigation.is_empty() {
+            child.memory_mut(|memory| memory.request_focus(field_id));
+            if !child.is_sizing_pass() {
+                self.request_focus = false;
+            }
+        }
+        let close_rect = Rect::from_min_max(
+            Pos2::new(footer.right() - 28.0, footer.top() + 5.0),
+            footer.max,
+        );
+        let field_rect = Rect::from_min_max(
+            footer.min + Vec2::new(0.0, 6.0),
+            Pos2::new(close_rect.left() - 4.0, footer.bottom()),
+        );
+        let editor = child.put(
+            field_rect,
+            egui::TextEdit::singleline(&mut self.query)
+                .id(field_id)
+                .hint_text("Find panels…"),
+        );
+        child
+            .ctx()
+            .accesskit_node_builder(editor.id, |node| node.set_label("Find panels"));
+        let close = child.interact(
+            close_rect,
+            egui::Id::new("outliner-search-close"),
+            Sense::click(),
+        );
+        if close.hovered() || close.has_focus() {
+            child
+                .painter()
+                .rect_filled(close_rect, 3, child.visuals().widgets.hovered.bg_fill);
+        }
+        child.painter().text(
+            close_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "×",
+            FontId::proportional(18.0),
+            child.visuals().text_color(),
+        );
+        close.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Close panel search")
+        });
+        if close.clicked() {
+            self.close();
+            ui.ctx().request_repaint();
+        }
+        close.on_hover_text("Close search");
+        let body_bottom = (footer.top() - 4.0).max(available.top());
+        ui.set_clip_rect(Rect::from_min_max(
+            ui.clip_rect().min,
+            Pos2::new(ui.clip_rect().right(), body_bottom),
+        ));
+        (accept && self.open, editor.changed(), navigation)
+    }
 }
 
 pub fn contents(
     ui: &mut egui::Ui,
     rows: &[Row],
     pinned_panes: &[Id],
+    search: &mut SearchState,
     platform_accent: [u8; 3],
 ) -> Output {
     ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+    let (accept, query_changed, navigation) = search.footer(ui);
+    let results = search
+        .open
+        .then(|| crate::outliner::search(rows, &search.query));
+    let searching = search.open && !search.query.trim().is_empty();
+    let panes: Vec<_> = results
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|result| match result.path.last()?.target {
+            target @ Target::Pane { pane, .. } => Some((pane, target)),
+            _ => None,
+        })
+        .collect();
+    let previous = search.selected_pane;
+    if query_changed
+        || search
+            .selected_pane
+            .is_some_and(|selected| !panes.iter().any(|(pane, _)| *pane == selected))
+        || searching && search.selected_pane.is_none()
+    {
+        search.selected_pane = panes.first().map(|(pane, _)| *pane);
+    }
+    if !panes.is_empty() {
+        for key in navigation {
+            let current = panes
+                .iter()
+                .position(|(pane, _)| Some(*pane) == search.selected_pane);
+            let next = if key == egui::Key::N {
+                current.map_or(0, |index| (index + 1) % panes.len())
+            } else {
+                current.map_or(panes.len() - 1, |index| {
+                    (index + panes.len() - 1) % panes.len()
+                })
+            };
+            search.selected_pane = Some(panes[next].0);
+        }
+    }
+    let selection_changed = search.selected_pane != previous;
+    let selected_target = panes
+        .iter()
+        .find(|(pane, _)| Some(*pane) == search.selected_pane)
+        .map(|(_, target)| *target);
     let mut output = pins(ui, &pinned_paths(rows, pinned_panes));
+    if selection_changed && !accept {
+        output.preview = selected_target;
+    }
     let expansion_id = ui.id().with("outliner-expansion");
     let mut expansion = ui
         .data(|data| data.get_temp::<Expansion>(expansion_id))
         .unwrap_or_default();
-    let changed = expansion.sync(rows);
-    egui::ScrollArea::vertical()
+    if searching {
+        let clicked = search_results(
+            ui,
+            results.as_deref().unwrap_or_default(),
+            search.selected_pane,
+            query_changed || selection_changed,
+        );
+        if let Some(Target::Pane { pane, .. }) = clicked {
+            search.selected_pane = Some(pane);
+            ui.ctx().request_repaint();
+        }
+        output.selected = clicked.or(output.selected);
+    } else {
+        let changed = expansion.sync(rows);
+        egui::ScrollArea::vertical()
         .id_salt("outliner-rows")
+        .max_height(ui.available_rect_before_wrap().intersect(ui.clip_rect()).height())
+        .min_scrolled_height(0.0)
         .auto_shrink([false, false])
         .animated(false)
         .show(ui, |ui| {
@@ -185,8 +379,8 @@ pub fn contents(
                         foreground,
                     );
                 }
-                paint_label(ui, &row.label, label_rect, text_left, foreground);
-                if row.focused && changed {
+                paint_label(ui, &row.label, label_rect, text_left, foreground, &[]);
+                if row.focused && changed || selection_changed && matches!(row.target, Target::Pane { pane, .. } if Some(pane) == search.selected_pane) {
                     response.scroll_to_me(None);
                 }
                 response.widget_info(|| {
@@ -204,14 +398,107 @@ pub fn contents(
                 if response.clicked() {
                     response.surrender_focus();
                     output.selected = Some(row.target);
+                    if search.open && let Target::Pane { pane, .. } = row.target {
+                        search.selected_pane = Some(pane);
+                    }
                 }
                 response.on_hover_text(description(row));
             }
         });
+    }
     if !ui.is_sizing_pass() {
         ui.data_mut(|data| data.insert_temp(expansion_id, expansion));
     }
+    if accept {
+        output.selected = selected_target.or_else(|| panes.first().map(|(_, target)| *target));
+        search.close();
+        ui.ctx().request_repaint();
+    }
+    if output.selected.is_some() {
+        output.preview = None;
+    }
     output
+}
+
+fn search_results(
+    ui: &mut egui::Ui,
+    results: &[crate::outliner::SearchResult],
+    selected_pane: Option<Id>,
+    changed: bool,
+) -> Option<Target> {
+    let scroll = egui::ScrollArea::vertical()
+        .id_salt("outliner-search-results")
+        .max_height(
+            ui.available_rect_before_wrap()
+                .intersect(ui.clip_rect())
+                .height(),
+        )
+        .min_scrolled_height(0.0)
+        .auto_shrink([false, false])
+        .animated(false);
+    let mut selected = None;
+    scroll.show(ui, |ui| {
+        ui.spacing_mut().item_spacing.y = 2.0;
+        if results.is_empty() {
+            ui.weak("No matching panels");
+        }
+        for result in results {
+            let Some(row) = result.path.last() else {
+                continue;
+            };
+            let Target::Pane { pane, .. } = row.target else {
+                continue;
+            };
+            let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), ROW_HEIGHT));
+            let response = ui.interact(
+                rect,
+                egui::Id::new(("outliner-search-result", pane)),
+                Sense::click(),
+            );
+            let active = selected_pane == Some(pane);
+            if active {
+                let color = ui.visuals().text_color();
+                ui.painter()
+                    .rect_filled(rect, 3, color.gamma_multiply(0.12));
+                ui.painter().rect_stroke(
+                    rect.shrink(0.5),
+                    3,
+                    Stroke::new(1.0, color),
+                    egui::StrokeKind::Inside,
+                );
+            } else if response.hovered() || response.has_focus() {
+                ui.painter()
+                    .rect_filled(rect, 3, ui.visuals().widgets.hovered.bg_fill);
+            }
+            let mut child = ui.new_child(
+                egui::UiBuilder::new()
+                    .id_salt(("search-path", pane))
+                    .max_rect(rect.shrink2(Vec2::new(3.0, 2.0))),
+            );
+            breadcrumb_with_matches(
+                &mut child,
+                &result.path,
+                rect.width() - 6.0,
+                Some(&result.highlights),
+            );
+            if active && changed {
+                response.scroll_to_me(None);
+            }
+            response.widget_info(|| {
+                egui::WidgetInfo::selected(
+                    egui::WidgetType::SelectableLabel,
+                    true,
+                    active,
+                    format!("Search result: {}", row.label),
+                )
+            });
+            if response.clicked() {
+                response.surrender_focus();
+                selected = Some(row.target);
+            }
+        }
+    });
+    selected
 }
 
 fn pins(ui: &mut egui::Ui, paths: &[Vec<Row>]) -> Output {
@@ -229,7 +516,13 @@ fn pins(ui: &mut egui::Ui, paths: &[Vec<Row>]) -> Output {
     ui.label(egui::RichText::new("Pinned").small().weak());
     egui::ScrollArea::vertical()
         .id_salt("outliner-pins")
-        .max_height((ui.available_height() * 0.35).clamp(ROW_HEIGHT, 180.0))
+        .max_height(
+            (ui.available_rect_before_wrap()
+                .intersect(ui.clip_rect())
+                .height()
+                * 0.35)
+                .clamp(ROW_HEIGHT, 180.0),
+        )
         .min_scrolled_height(ROW_HEIGHT)
         .auto_shrink([false, true])
         .animated(false)
@@ -389,17 +682,41 @@ pub fn paint_pin(painter: &egui::Painter, rect: Rect, color: Color32) {
 
 /// Call in a right-aligned header; width is bounded even for long pane labels.
 pub fn breadcrumb(ui: &mut egui::Ui, rows: &[Row], max_width: f32) -> Option<Target> {
+    breadcrumb_with_matches(ui, rows, max_width, None)
+}
+
+fn breadcrumb_with_matches(
+    ui: &mut egui::Ui,
+    rows: &[Row],
+    max_width: f32,
+    highlights: Option<&[Range<usize>]>,
+) -> Option<Target> {
     if rows.is_empty() || max_width <= 0.0 {
         return None;
     }
     let foreground = ui.visuals().text_color();
     let labels: Vec<_> = rows
         .iter()
-        .map(|row| {
-            row.tab_index.map_or_else(
-                || row.label.clone(),
-                |index| format!("Cmd+{} {}", index + 1, row.label),
-            )
+        .enumerate()
+        .map(|(index, row)| {
+            let repeated = |label: &str| {
+                rows[index + 1..]
+                    .iter()
+                    .any(|next| !matches!(next.target, Target::Quad { .. }) && next.label == label)
+            };
+            let label = if matches!(row.target, Target::Quad { .. })
+                || row.tab_index.is_none() && repeated(&row.label)
+            {
+                ""
+            } else if matches!(row.target, Target::Window(_)) {
+                row.label
+                    .split_once(" · ")
+                    .filter(|(_, suffix)| repeated(suffix))
+                    .map_or(row.label.as_str(), |(window, _)| window)
+            } else {
+                &row.label
+            };
+            label.to_owned()
         })
         .collect();
     let mut widths: Vec<f32> = rows
@@ -411,14 +728,15 @@ pub fn breadcrumb(ui: &mut egui::Ui, rows: &[Row], max_width: f32) -> Option<Tar
                 .size()
                 .x
                 + if row.tab_index.is_some() {
-                    0.0
+                    9.0
+                } else if label.is_empty() {
+                    ICON_SIZE + 6.0
                 } else {
-                    ICON_SIZE
+                    ICON_SIZE + 10.0
                 }
-                + 15.0
         })
         .collect();
-    let separator = 18.0;
+    let separator = 10.0;
     let width = (widths.iter().sum::<f32>() + separator * (rows.len() - 1) as f32)
         .min(max_width)
         .min(ui.available_width());
@@ -456,7 +774,11 @@ pub fn breadcrumb(ui: &mut egui::Ui, rows: &[Row], max_width: f32) -> Option<Tar
         let response = ui.interact(
             rect,
             ui.id().with(("breadcrumb", row.target)),
-            Sense::click(),
+            if highlights.is_some() {
+                Sense::hover()
+            } else {
+                Sense::click()
+            },
         );
         let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
         if response.hovered() || response.has_focus() {
@@ -468,7 +790,7 @@ pub fn breadcrumb(ui: &mut egui::Ui, rows: &[Row], max_width: f32) -> Option<Tar
             );
         }
         let text_left = if row.tab_index.is_some() {
-            x + 5.0
+            x + 3.0
         } else {
             paint_icon(
                 &painter,
@@ -479,11 +801,30 @@ pub fn breadcrumb(ui: &mut egui::Ui, rows: &[Row], max_width: f32) -> Option<Tar
                 row,
                 foreground,
             );
-            x + ICON_SIZE + 8.0
+            x + ICON_SIZE + 4.0
         };
-        paint_label(ui, &labels[index], rect, text_left, foreground);
+        paint_label(
+            ui,
+            &labels[index],
+            rect,
+            text_left,
+            foreground,
+            if index + 1 == rows.len() {
+                highlights.unwrap_or_default()
+            } else {
+                &[]
+            },
+        );
         response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), description(row))
+            egui::WidgetInfo::labeled(
+                if highlights.is_some() {
+                    egui::WidgetType::Label
+                } else {
+                    egui::WidgetType::Button
+                },
+                ui.is_enabled(),
+                description(row),
+            )
         });
         if response.clicked() {
             response.surrender_focus();
@@ -495,7 +836,14 @@ pub fn breadcrumb(ui: &mut egui::Ui, rows: &[Row], max_width: f32) -> Option<Tar
     selected
 }
 
-fn paint_label(ui: &egui::Ui, label: &str, rect: Rect, left: f32, foreground: Color32) {
+fn paint_label(
+    ui: &egui::Ui,
+    label: &str,
+    rect: Rect,
+    left: f32,
+    foreground: Color32,
+    highlights: &[Range<usize>],
+) {
     let width = (rect.right() - left - 6.0).max(0.0);
     if width == 0.0 {
         return;
@@ -505,6 +853,39 @@ fn paint_label(ui: &egui::Ui, label: &str, rect: Rect, left: f32, foreground: Co
         FontId::proportional(13.0),
         foreground,
     );
+    if !highlights.is_empty() {
+        let format = job.sections[0].format.clone();
+        job.sections.clear();
+        let mut start = 0;
+        for highlight in highlights {
+            if start < highlight.start {
+                job.sections.push(egui::text::LayoutSection {
+                    leading_space: 0.0,
+                    byte_range: egui::text::ByteIndex(start)
+                        ..egui::text::ByteIndex(highlight.start),
+                    format: format.clone(),
+                });
+            }
+            job.sections.push(egui::text::LayoutSection {
+                leading_space: 0.0,
+                byte_range: egui::text::ByteIndex(highlight.start)
+                    ..egui::text::ByteIndex(highlight.end),
+                format: egui::TextFormat {
+                    background: foreground.gamma_multiply(0.15),
+                    underline: Stroke::new(1.0, foreground),
+                    ..format.clone()
+                },
+            });
+            start = highlight.end;
+        }
+        if start < label.len() {
+            job.sections.push(egui::text::LayoutSection {
+                leading_space: 0.0,
+                byte_range: egui::text::ByteIndex(start)..egui::text::ByteIndex(label.len()),
+                format,
+            });
+        }
+    }
     job.wrap.max_width = width;
     job.wrap.max_rows = 1;
     let galley = ui.painter().layout_job(job);
@@ -678,7 +1059,7 @@ mod tests {
                 target = if crumbs {
                     breadcrumb(ui, rows, 140.0)
                 } else {
-                    contents(ui, rows, &[], [210, 110, 70]).selected
+                    contents(ui, rows, &[], &mut SearchState::default(), [210, 110, 70]).selected
                 };
             });
         });
@@ -764,12 +1145,791 @@ mod tests {
             },
             |root| {
                 egui::CentralPanel::default().show(root, |ui| {
-                    result = contents(ui, rows, pins, [210, 110, 70]);
+                    result = contents(ui, rows, pins, &mut SearchState::default(), [210, 110, 70]);
                 });
             },
         );
         output.textures_delta.clear();
         (output, result)
+    }
+
+    fn search_frame(
+        context: &egui::Context,
+        rows: &[Row],
+        pins: &[Id],
+        search: &mut SearchState,
+        mut input: egui::RawInput,
+    ) -> (egui::FullOutput, Output, egui::Id) {
+        input
+            .screen_rect
+            .get_or_insert(Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 420.0)));
+        let mut result = Output::default();
+        let mut scroll_id = egui::Id::NULL;
+        let mut output = context.run_ui(input, |root| {
+            egui::CentralPanel::default().show(root, |ui| {
+                result = contents(ui, rows, pins, search, [210, 110, 70]);
+                scroll_id = ui.make_persistent_id(egui::IdSalt::new(
+                    if search.open && !search.query.trim().is_empty() {
+                        "outliner-search-results"
+                    } else {
+                        "outliner-rows"
+                    },
+                ));
+            });
+        });
+        output.textures_delta.clear();
+        (output, result, scroll_id)
+    }
+
+    fn search_click(
+        context: &egui::Context,
+        rows: &[Row],
+        search: &mut SearchState,
+        pos: Pos2,
+    ) -> Output {
+        let mut result = Output::default();
+        for event in [
+            egui::Event::PointerMoved(pos),
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ] {
+            result = search_frame(
+                context,
+                rows,
+                &[],
+                search,
+                egui::RawInput {
+                    events: vec![event],
+                    ..Default::default()
+                },
+            )
+            .1;
+        }
+        result
+    }
+
+    fn navigation_rows() -> Vec<Row> {
+        let mut rows = rows();
+        for (pane, label) in [(4, "Tasks"), (5, "Tracks")] {
+            rows.push(Row {
+                target: Target::Pane { tab: 1, pane },
+                label: label.into(),
+                focused: false,
+                ..rows[3].clone()
+            });
+        }
+        rows
+    }
+
+    fn control_key(key: egui::Key, repeat: bool) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat,
+            modifiers: egui::Modifiers::CTRL,
+        }
+    }
+
+    #[test]
+    fn search_navigation_wraps_repeats_and_leaves_the_editor_focused() {
+        let context = egui::Context::default();
+        let rows = navigation_rows();
+        let mut search = SearchState::default();
+        search.start();
+        assert_eq!(
+            search_frame(&context, &rows, &[], &mut search, Default::default()).1,
+            Output::default()
+        );
+        for (key, repeat, pane) in [
+            (egui::Key::N, false, 3),
+            (egui::Key::N, true, 4),
+            (egui::Key::N, true, 5),
+            (egui::Key::N, true, 3),
+            (egui::Key::P, false, 5),
+        ] {
+            let (_, output, _) = search_frame(
+                &context,
+                &rows,
+                &[],
+                &mut search,
+                egui::RawInput {
+                    events: vec![control_key(key, repeat)],
+                    ..Default::default()
+                },
+            );
+            assert_eq!(
+                output,
+                Output {
+                    preview: Some(Target::Pane { tab: 1, pane }),
+                    ..Output::default()
+                }
+            );
+            assert_eq!(search.selected_pane, Some(pane));
+            assert!(search.query.is_empty());
+            assert!(
+                context.memory(|memory| memory.has_focus(egui::Id::new("outliner-search-query")))
+            );
+            assert_eq!(
+                search_frame(&context, &rows, &[], &mut search, Default::default()).1,
+                Output::default()
+            );
+        }
+        search.close();
+        search.start();
+        let (_, output, _) = search_frame(
+            &context,
+            &rows,
+            &[],
+            &mut search,
+            egui::RawInput {
+                events: vec![control_key(egui::Key::P, false)],
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            output.preview,
+            Some(rows[5].target),
+            "previous from no selection starts at the end"
+        );
+    }
+
+    #[test]
+    fn search_acceptance_uses_same_frame_typing_and_navigation() {
+        for (key, modifiers) in [
+            (egui::Key::Enter, egui::Modifiers::NONE),
+            (egui::Key::Escape, egui::Modifiers::NONE),
+            (egui::Key::OpenBracket, egui::Modifiers::CTRL),
+        ] {
+            let context = egui::Context::default();
+            let rows = navigation_rows();
+            let mut search = SearchState::default();
+            search.start();
+            search_frame(&context, &rows, &[], &mut search, Default::default());
+            let (_, output, _) = search_frame(
+                &context,
+                &rows,
+                &[],
+                &mut search,
+                egui::RawInput {
+                    events: vec![
+                        egui::Event::Text("ts".into()),
+                        control_key(egui::Key::N, false),
+                        egui::Event::Key {
+                            key,
+                            physical_key: None,
+                            pressed: true,
+                            repeat: false,
+                            modifiers,
+                        },
+                    ],
+                    ..Default::default()
+                },
+            );
+            assert_eq!(
+                output,
+                Output {
+                    selected: Some(rows[4].target),
+                    ..Output::default()
+                }
+            );
+            assert!(!search.open);
+        }
+    }
+
+    #[test]
+    fn search_selection_survives_reordering_and_resets_on_edits_or_removal() {
+        let context = egui::Context::default();
+        let mut rows = navigation_rows();
+        let mut search = SearchState::default();
+        search.start();
+        search_frame(&context, &rows, &[], &mut search, Default::default());
+        let (_, output, _) = search_frame(
+            &context,
+            &rows,
+            &[],
+            &mut search,
+            egui::RawInput {
+                events: vec![
+                    egui::Event::Text("t".into()),
+                    control_key(egui::Key::N, false),
+                ],
+                ..Default::default()
+            },
+        );
+        assert_eq!(output.preview, Some(rows[4].target));
+        rows.swap(3, 4);
+        assert_eq!(
+            search_frame(&context, &rows, &[], &mut search, Default::default()).1,
+            Output::default()
+        );
+        assert_eq!(search.selected_pane, Some(4));
+        rows.swap(3, 4);
+        let (_, output, _) = search_frame(
+            &context,
+            &rows,
+            &[],
+            &mut search,
+            egui::RawInput {
+                events: vec![egui::Event::Text("s".into())],
+                ..Default::default()
+            },
+        );
+        assert_eq!(search.query, "ts");
+        assert_eq!(
+            output.preview,
+            Some(rows[3].target),
+            "editing resets to the first match"
+        );
+        search_frame(
+            &context,
+            &rows,
+            &[],
+            &mut search,
+            egui::RawInput {
+                events: vec![control_key(egui::Key::N, false)],
+                ..Default::default()
+            },
+        );
+        rows.remove(4);
+        assert_eq!(
+            search_frame(&context, &rows, &[], &mut search, Default::default())
+                .1
+                .preview,
+            Some(rows[3].target)
+        );
+        let (_, output, _) = search_frame(
+            &context,
+            &rows,
+            &[],
+            &mut search,
+            egui::RawInput {
+                events: vec![
+                    egui::Event::Text("zzz".into()),
+                    control_key(egui::Key::N, false),
+                ],
+                ..Default::default()
+            },
+        );
+        assert_eq!(output, Output::default());
+        assert_eq!(search.selected_pane, None);
+        assert_eq!(
+            search_frame(
+                &context,
+                &rows,
+                &[],
+                &mut search,
+                egui::RawInput {
+                    events: vec![control_key(egui::Key::P, false)],
+                    ..Default::default()
+                }
+            )
+            .1,
+            Output::default()
+        );
+        let (_, output, _) = search_frame(
+            &context,
+            &rows,
+            &[],
+            &mut search,
+            egui::RawInput {
+                events: (0..5)
+                    .map(|_| egui::Event::Key {
+                        key: egui::Key::Backspace,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: true,
+                        modifiers: egui::Modifiers::NONE,
+                    })
+                    .collect(),
+                ..Default::default()
+            },
+        );
+        assert!(search.query.is_empty());
+        assert_eq!(
+            output.preview,
+            Some(rows[3].target),
+            "clearing the query selects the first tree panel"
+        );
+    }
+
+    #[test]
+    fn search_accepts_the_clicked_result_without_resetting_to_first() {
+        let context = egui::Context::default();
+        let rows = navigation_rows();
+        let mut search = SearchState::default();
+        search.start();
+        search.query = "ts".into();
+        for _ in 0..2 {
+            search_frame(&context, &rows, &[], &mut search, Default::default());
+        }
+        let result = context
+            .read_response(egui::Id::new(("outliner-search-result", 4_u64)))
+            .unwrap()
+            .rect;
+        assert_eq!(
+            search_click(&context, &rows, &mut search, result.center()).selected,
+            Some(rows[4].target)
+        );
+        assert_eq!(search.selected_pane, Some(4));
+        let (_, output, _) = search_frame(
+            &context,
+            &rows,
+            &[],
+            &mut search,
+            egui::RawInput {
+                events: vec![egui::Event::Key {
+                    key: egui::Key::Enter,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            output,
+            Output {
+                selected: Some(rows[4].target),
+                ..Output::default()
+            }
+        );
+        assert!(!search.open);
+    }
+
+    #[test]
+    fn search_navigation_reveals_selected_result_without_resetting_manual_scroll() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let template = rows().pop().unwrap();
+        let rows: Vec<_> = (0..30)
+            .map(|pane| Row {
+                target: Target::Pane { tab: 1, pane },
+                label: format!("Panel {pane}"),
+                depth: 0,
+                focused: pane == 0,
+                ..template.clone()
+            })
+            .collect();
+        let mut search = SearchState::default();
+        search.start();
+        search.query = "p".into();
+        let (_, _, scroll_id) = search_frame(&context, &rows, &[], &mut search, Default::default());
+        let mut state = egui::scroll_area::State::load(&context, scroll_id).unwrap();
+        state.offset.y = 96.0;
+        state.store(&context, scroll_id);
+        assert_eq!(
+            search_frame(&context, &rows, &[], &mut search, Default::default()).1,
+            Output::default()
+        );
+        assert_eq!(
+            egui::scroll_area::State::load(&context, scroll_id)
+                .unwrap()
+                .offset
+                .y,
+            96.0
+        );
+        let (_, output, _) = search_frame(
+            &context,
+            &rows,
+            &[],
+            &mut search,
+            egui::RawInput {
+                events: vec![egui::Event::Text("a".into())],
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            output,
+            Output::default(),
+            "refining the same selected panel does not preview again"
+        );
+        assert_eq!(
+            egui::scroll_area::State::load(&context, scroll_id)
+                .unwrap()
+                .offset
+                .y,
+            0.0,
+            "an explicit query edit reveals the selected result even when its ID is unchanged"
+        );
+        let mut state = egui::scroll_area::State::load(&context, scroll_id).unwrap();
+        state.offset.y = 96.0;
+        state.store(&context, scroll_id);
+        search_frame(
+            &context,
+            &rows,
+            &[],
+            &mut search,
+            egui::RawInput {
+                events: vec![control_key(egui::Key::N, false)],
+                ..Default::default()
+            },
+        );
+        let offset = egui::scroll_area::State::load(&context, scroll_id)
+            .unwrap()
+            .offset
+            .y;
+        assert!(
+            offset > 0.0 && offset < 96.0,
+            "only reveal the selected row above the viewport"
+        );
+        let (_, output, _) = search_frame(
+            &context,
+            &rows,
+            &[],
+            &mut search,
+            egui::RawInput {
+                events: (0..20).map(|_| control_key(egui::Key::N, true)).collect(),
+                ..Default::default()
+            },
+        );
+        assert_eq!(output.preview, Some(rows[21].target));
+        let (output, result, _) =
+            search_frame(&context, &rows, &[], &mut search, Default::default());
+        assert_eq!(result, Output::default());
+        let selected = node(&output, "Search result: Panel 21").unwrap();
+        assert_eq!(selected.toggled(), Some(egui::accesskit::Toggled::True));
+        let bounds = selected.bounds().unwrap();
+        assert!(bounds.y0 >= 8.0 && bounds.y1 <= 374.0, "{bounds:?}");
+        assert!(
+            egui::scroll_area::State::load(&context, scroll_id)
+                .unwrap()
+                .offset
+                .y
+                > 96.0
+        );
+        assert_eq!(search.query, "pa");
+    }
+
+    #[test]
+    fn search_typing_highlights_only_matching_panel_characters_in_neutral_colors() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let mut rows = rows();
+        rows[2].label = rows[3].label.clone();
+        let mut search = SearchState::default();
+        search.start();
+        search_frame(&context, &rows, &[3], &mut search, Default::default());
+        let (output, result, _) = search_frame(
+            &context,
+            &rows,
+            &[3],
+            &mut search,
+            egui::RawInput {
+                events: vec![egui::Event::Text("tst".into())],
+                ..Default::default()
+            },
+        );
+        assert_eq!(search.query, "tst");
+        assert_eq!(
+            result,
+            Output {
+                preview: Some(rows[3].target),
+                ..Output::default()
+            }
+        );
+        assert!(node(&output, "Search result: Tests").is_some());
+        assert!(node(&output, "Unpin panel: Tests").is_some());
+        assert_eq!(
+            output
+                .shapes
+                .iter()
+                .filter(|shape| {
+                    matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Tests")
+                })
+                .count(),
+            2,
+            "pin and search result each draw the repeated quad/panel name once"
+        );
+        let mut matched = Vec::new();
+        for shape in &output.shapes {
+            let egui::Shape::Text(text) = &shape.shape else {
+                continue;
+            };
+            for section in &text.galley.job.sections {
+                if section.format.underline != Stroke::NONE {
+                    assert_eq!(text.galley.job.text, "Tests");
+                    assert_eq!(section.format.underline.color, section.format.color);
+                    assert_ne!(section.format.color, rgb([210, 110, 70]));
+                    assert_eq!(
+                        section.format.background,
+                        section.format.color.gamma_multiply(0.15)
+                    );
+                    matched.push(
+                        text.galley.job.text[section.byte_range.start.0..section.byte_range.end.0]
+                            .to_owned(),
+                    );
+                }
+            }
+        }
+        assert_eq!(matched, ["T", "st"]);
+    }
+
+    #[test]
+    fn search_accept_keys_use_the_updated_query_and_close_only_search() {
+        for (key, modifiers) in [
+            (egui::Key::Enter, egui::Modifiers::NONE),
+            (egui::Key::Escape, egui::Modifiers::NONE),
+            (egui::Key::OpenBracket, egui::Modifiers::CTRL),
+        ] {
+            for (query, expected) in [("", Some(3)), ("bld", Some(5)), ("missing", None)] {
+                let context = egui::Context::default();
+                let mut rows = rows();
+                rows.push(Row {
+                    target: Target::Pane { tab: 1, pane: 4 },
+                    label: "Build artifacts".into(),
+                    focused: false,
+                    ..rows.last().unwrap().clone()
+                });
+                rows.push(Row {
+                    target: Target::Pane { tab: 1, pane: 5 },
+                    label: "Build".into(),
+                    ..rows.last().unwrap().clone()
+                });
+                let mut search = SearchState::default();
+                search.start();
+                search_frame(&context, &rows, &[], &mut search, Default::default());
+                let (_, result, _) = search_frame(
+                    &context,
+                    &rows,
+                    &[],
+                    &mut search,
+                    egui::RawInput {
+                        events: vec![
+                            egui::Event::Text(query.into()),
+                            egui::Event::ModifiersChanged(modifiers),
+                            egui::Event::Key {
+                                key,
+                                physical_key: None,
+                                pressed: true,
+                                repeat: false,
+                                modifiers,
+                            },
+                        ],
+                        ..Default::default()
+                    },
+                );
+                assert_eq!(
+                    result.selected,
+                    expected.map(|pane| Target::Pane { tab: 1, pane }),
+                    "{key:?} must select from this frame's {query:?} query"
+                );
+                assert!(!search.open);
+                assert!(search.query.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn search_result_ancestor_click_selects_panel_and_can_resume_typing() {
+        let context = egui::Context::default();
+        let rows = rows();
+        let mut search = SearchState::default();
+        search.start();
+        search.query = "ts".into();
+        for _ in 0..2 {
+            search_frame(&context, &rows, &[], &mut search, Default::default());
+        }
+        let result = context
+            .read_response(egui::Id::new(("outliner-search-result", 3_u64)))
+            .unwrap()
+            .rect;
+        let selected = search_click(
+            &context,
+            &rows,
+            &mut search,
+            result.left_center() + Vec2::new(10.0, 0.0),
+        );
+        assert_eq!(selected.selected, Some(rows[3].target));
+        assert!(search.open);
+        assert_eq!(search.query, "ts");
+        search_frame(
+            &context,
+            &rows,
+            &[],
+            &mut search,
+            egui::RawInput {
+                focused: false,
+                events: vec![egui::Event::WindowFocused(false)],
+                ..Default::default()
+            },
+        );
+        search.focus();
+        search_frame(
+            &context,
+            &rows,
+            &[],
+            &mut search,
+            egui::RawInput {
+                events: vec![
+                    egui::Event::WindowFocused(true),
+                    egui::Event::Text("t".into()),
+                ],
+                ..Default::default()
+            },
+        );
+        assert_eq!(search.query, "tst");
+        let close = context
+            .read_response(egui::Id::new("outliner-search-close"))
+            .unwrap()
+            .rect;
+        assert_eq!(
+            search_click(&context, &rows, &mut search, close.center()),
+            Output::default()
+        );
+        assert!(!search.open);
+    }
+
+    #[test]
+    fn search_footer_stays_below_pins_and_results_in_a_narrow_panel() {
+        for size in [Vec2::new(400.0, 420.0), Vec2::new(180.0, 180.0)] {
+            let context = egui::Context::default();
+            context.enable_accesskit();
+            let rows = rows();
+            let mut search = SearchState::default();
+            search.start();
+            search.query = "tst".into();
+            for _ in 0..2 {
+                search_frame(
+                    &context,
+                    &rows,
+                    &[3],
+                    &mut search,
+                    egui::RawInput {
+                        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+                        ..Default::default()
+                    },
+                );
+            }
+            let response = |id| context.read_response(id).unwrap().rect;
+            let field = response(egui::Id::new("outliner-search-query"));
+            let close = response(egui::Id::new("outliner-search-close"));
+            let result = response(egui::Id::new(("outliner-search-result", 3_u64)));
+            let pin = response(egui::Id::new(("outliner-pin", 3_u64)));
+            assert!(field.left() >= 0.0 && field.right() < close.left());
+            assert!(close.right() <= size.x && close.bottom() <= size.y);
+            assert!(
+                size.y - close.bottom() <= 10.0,
+                "footer stays at the bottom"
+            );
+            assert!(pin.bottom() < result.top() && result.bottom() < field.top());
+            assert!(result.right() <= size.x);
+        }
+    }
+
+    #[test]
+    fn search_preserves_tree_scroll_until_focus_changes_then_reveals_the_new_panel() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let template = rows().pop().unwrap();
+        let mut rows: Vec<_> = (0..30)
+            .map(|index| Row {
+                target: Target::Pane {
+                    tab: 1,
+                    pane: index,
+                },
+                label: format!("Panel {index}"),
+                focused: index == 0,
+                depth: 0,
+                ..template.clone()
+            })
+            .collect();
+        let mut search = SearchState::default();
+        let (_, _, scroll_id) = search_frame(&context, &rows, &[], &mut search, Default::default());
+        let mut scroll = egui::scroll_area::State::load(&context, scroll_id).unwrap();
+        scroll.offset.y = 96.0;
+        scroll.store(&context, scroll_id);
+        search.start();
+        search.query = "panel 29".into();
+        search_frame(&context, &rows, &[], &mut search, Default::default());
+        search.close();
+        search_frame(&context, &rows, &[], &mut search, Default::default());
+        assert_eq!(
+            egui::scroll_area::State::load(&context, scroll_id)
+                .unwrap()
+                .offset
+                .y,
+            96.0
+        );
+        search.start();
+        search.query = "panel 29".into();
+        rows[0].focused = false;
+        rows[29].focused = true;
+        search_frame(&context, &rows, &[], &mut search, Default::default());
+        search.close();
+        search_frame(&context, &rows, &[], &mut search, Default::default());
+        let (output, _, _) = search_frame(&context, &rows, &[], &mut search, Default::default());
+        let pane = bounds(&output, &rows[29]);
+        assert!(pane.top() >= 8.0 && pane.bottom() <= 412.0, "{pane:?}");
+    }
+
+    #[test]
+    fn search_footer_clips_long_trees_and_results_even_at_minimum_window_height() {
+        let template = rows().pop().unwrap();
+        let rows: Vec<_> = (0..30)
+            .map(|index| Row {
+                target: Target::Pane {
+                    tab: 1,
+                    pane: index,
+                },
+                label: format!("Panel {index}"),
+                depth: 0,
+                focused: index == 0,
+                ..template.clone()
+            })
+            .collect();
+        for size in [Vec2::new(400.0, 420.0), Vec2::new(220.0, 120.0)] {
+            for query in ["", "panel"] {
+                let context = egui::Context::default();
+                let mut search = SearchState::default();
+                search.start();
+                search.query = query.into();
+                for _ in 0..3 {
+                    search_frame(
+                        &context,
+                        &rows,
+                        &[0],
+                        &mut search,
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+                            ..Default::default()
+                        },
+                    );
+                }
+                let field = context
+                    .read_response(egui::Id::new("outliner-search-query"))
+                    .unwrap()
+                    .rect;
+                for row in &rows {
+                    let id = if query.is_empty() {
+                        egui::Id::new(("outliner-row", row.target))
+                    } else {
+                        let Target::Pane { pane, .. } = row.target else {
+                            unreachable!()
+                        };
+                        egui::Id::new(("outliner-search-result", pane))
+                    };
+                    let rect = context.read_response(id).unwrap().interact_rect;
+                    if rect.is_positive() {
+                        assert!(
+                            rect.bottom() < field.top(),
+                            "{size:?}: {rect:?} overlaps {field:?}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -899,6 +2059,7 @@ mod tests {
             output,
             Output {
                 selected: None,
+                preview: None,
                 reorder: Some((4, Some(3))),
                 unpin: None,
             }
@@ -936,6 +2097,7 @@ mod tests {
             output,
             Output {
                 selected: None,
+                preview: None,
                 reorder: Some((3, None)),
                 unpin: None,
             }
@@ -957,6 +2119,7 @@ mod tests {
             output,
             Output {
                 selected: None,
+                preview: None,
                 reorder: Some((3, None)),
                 unpin: None,
             }
@@ -1123,7 +2286,7 @@ mod tests {
                     egui::CentralPanel::default().show(root, |ui| {
                         scroll_id = ui.make_persistent_id(egui::IdSalt::new("outliner-rows"));
                         viewport = ui.available_rect_before_wrap();
-                        contents(ui, rows, &[], [210, 110, 70]).selected;
+                        contents(ui, rows, &[], &mut SearchState::default(), [210, 110, 70]);
                     });
                 },
             );
@@ -1196,7 +2359,7 @@ mod tests {
     }
 
     #[test]
-    fn narrow_pinned_path_keeps_every_level_and_tab_shortcut() {
+    fn narrow_pinned_path_keeps_every_level_and_tab_name() {
         let context = egui::Context::default();
         context.enable_accesskit();
         let mut rows = rows();
@@ -1217,9 +2380,84 @@ mod tests {
                 Some(row.target)
             );
         }
+        assert!(
+            output.shapes.iter().any(|shape| {
+                matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Work")
+            }),
+            "tab breadcrumb paints its name even when the visible text is elided"
+        );
+    }
+
+    #[test]
+    fn breadcrumb_compact_names_keep_icons_and_every_click_target() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let mut rows = rows();
+        rows[2].label = "Work".into();
+        rows[3].label = "Work".into();
+        let draw = |rows: &[Row], events| {
+            let mut selected = None;
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(600.0, 240.0))),
+                    events,
+                    ..Default::default()
+                },
+                |root| {
+                    egui::CentralPanel::default().show(root, |ui| {
+                        selected = breadcrumb(ui, rows, 580.0);
+                    });
+                },
+            );
+            output.textures_delta.clear();
+            (output, selected)
+        };
+        draw(&rows, Vec::new());
+        let (output, _) = draw(&rows, Vec::new());
+        let labels: Vec<_> = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Text(text)
+                    if text.galley.text() != "›" && !text.galley.text().is_empty() =>
+                {
+                    Some(text.galley.text())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(labels, ["Window 1", "Work", "Work"]);
+        for row in &rows {
+            let rect = bounds(&output, row);
+            assert!(rect.width() >= ICON_SIZE);
+            let pos = rect.center();
+            draw(&rows, vec![egui::Event::PointerMoved(pos)]);
+            for pressed in [true, false] {
+                let (_, selected) = draw(
+                    &rows,
+                    vec![egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                );
+                assert_eq!(selected, (!pressed).then_some(row.target));
+            }
+        }
+        rows[3].label = "Tests".into();
+        let (output, _) = draw(&rows, Vec::new());
+        assert!(
+            output.shapes.iter().any(|shape| {
+                matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Work")
+            }),
+            "a hidden quad name must not suppress the tab name"
+        );
+        rows[1].label = "Other".into();
+        let (output, _) = draw(&rows, Vec::new());
         assert!(output.shapes.iter().any(|shape| {
-            matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text().starts_with("Cmd+1 Work"))
-        }), "tab breadcrumb paints its shortcut even when the visible text is elided");
+            matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Window 1 · Work")
+        }), "a hidden quad name must not suppress the window's tab suffix");
     }
 
     #[test]
@@ -1235,12 +2473,21 @@ mod tests {
         let second = bounds(&output, &rows[1]);
         assert!(first.right() < second.left());
         assert!(second.width() >= ICON_SIZE + 20.0);
-        assert!((second.right() - first.left() - 140.0).abs() < 0.1);
+        assert!(second.right() - first.left() <= 140.0);
+        assert!((first.width() - ICON_SIZE - 6.0).abs() < 0.1);
+        assert!((second.left() - first.right() - 10.0).abs() < 0.1);
+        assert!(!output.shapes.iter().any(|shape| {
+            matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == rows[0].label)
+        }));
         for row in &rows {
             assert_eq!(
                 click(&context, &rows, bounds(&output, row).center(), true),
                 Some(row.target)
             );
         }
+        let (tree, _) = frame(&context, &rows, Vec::new(), false);
+        assert!(tree.shapes.iter().any(|shape| {
+            matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == rows[0].label)
+        }), "quad names remain visible in the tree");
     }
 }

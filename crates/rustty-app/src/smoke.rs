@@ -109,6 +109,11 @@ impl Smoke {
             "outliner-pane.png",
             "outliner-pane-terminal.png",
             "outliner-narrow-terminal.png",
+            "outliner-pinned.png",
+            "outliner-pinned-terminal.png",
+            "outliner-search.png",
+            "outliner-search-empty.png",
+            "outliner-search-navigation.png",
             "outliner-flat.png",
             "outliner-windows.png",
             "outliner-other-window.png",
@@ -3423,6 +3428,223 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         return Err("unpinning from Outliner changed terminal focus or zoom".into());
     }
 
+    let begin_search = |app: &mut App| -> Result<()> {
+        app.outliner.as_ref().unwrap().window.focus_window();
+        app.window_event(event_loop, utility_key, WindowEvent::Focused(true));
+        let host = app.outliner.as_mut().unwrap();
+        host.search.start();
+        host.egui.egui_input_mut().focused = true;
+        host.egui
+            .egui_input_mut()
+            .events
+            .push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+        app.draw_outliner(
+            event_loop,
+            Some(&directory.join("outliner-search-empty.png")),
+        )?;
+        Ok(())
+    };
+    let type_query = |app: &mut App, query: &str| -> Result<()> {
+        app.outliner
+            .as_mut()
+            .unwrap()
+            .egui
+            .egui_input_mut()
+            .events
+            .push(egui::Event::Text(query.into()));
+        for _ in 0..2 {
+            app.draw_outliner(event_loop, Some(&directory.join("outliner-search.png")))?;
+        }
+        Ok(())
+    };
+    let accept_search = |app: &mut App| -> Result<()> {
+        for pressed in [true, false] {
+            app.outliner
+                .as_mut()
+                .unwrap()
+                .egui
+                .egui_input_mut()
+                .events
+                .push(egui::Event::Key {
+                    key: egui::Key::Enter,
+                    physical_key: None,
+                    pressed,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                });
+            app.draw_outliner(event_loop, None)?;
+        }
+        Ok(())
+    };
+    for (key, physical, modifiers) in [
+        (egui::Key::Enter, KeyCode::Enter, egui::Modifiers::NONE),
+        (egui::Key::Escape, KeyCode::Escape, egui::Modifiers::NONE),
+        (
+            egui::Key::OpenBracket,
+            KeyCode::BracketLeft,
+            egui::Modifiers::CTRL,
+        ),
+    ] {
+        app.select_outline_target(Target::Pane {
+            tab: first_tab,
+            pane: first,
+        });
+        begin_search(app)?;
+        if !app.outliner.as_ref().unwrap().search.query.is_empty()
+            || widget_bounds(app, egui::Id::new(("outliner-row", Target::Tab(first_tab)))).is_none()
+        {
+            return Err("empty Outliner search did not retain the tree".into());
+        }
+        let field = widget_bounds(app, egui::Id::new("outliner-search-query"))
+            .ok_or("missing Outliner search field")?;
+        if app.outline_rows().iter().any(|row| {
+            widget_bounds(app, egui::Id::new(("outliner-row", row.target)))
+                .is_some_and(|rect| rect.is_positive() && rect.bottom() > field.top())
+        }) {
+            return Err("Outliner tree extended behind the search field".into());
+        }
+        type_query(app, "nts")?;
+        app.outliner
+            .as_mut()
+            .unwrap()
+            .held_keys
+            .insert(PhysicalKey::Code(physical));
+        for pressed in [true, false] {
+            app.outliner
+                .as_mut()
+                .unwrap()
+                .egui
+                .egui_input_mut()
+                .events
+                .push(egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed,
+                    repeat: false,
+                    modifiers,
+                });
+            app.draw_outliner(event_loop, None)?;
+        }
+        let host = app.outliner.as_ref().unwrap();
+        if host.search.open || !host.visible || app.focused(window) != Some(second) {
+            return Err(
+                "Outliner search did not focus its first result and exit without hiding".into(),
+            );
+        }
+        if !consumes_key_tail(app, physical) {
+            return Err("Outliner search leaked its activation key into the terminal".into());
+        }
+    }
+    begin_search(app)?;
+    type_query(app, "rty")?;
+    for (key, physical, repeat, expected) in [
+        (egui::Key::N, KeyCode::KeyN, false, sibling),
+        (egui::Key::N, KeyCode::KeyN, true, first),
+        (egui::Key::P, KeyCode::KeyP, false, sibling),
+        (egui::Key::P, KeyCode::KeyP, true, first),
+        (egui::Key::N, KeyCode::KeyN, false, sibling),
+    ] {
+        let host = app.outliner.as_mut().unwrap();
+        host.held_keys.insert(PhysicalKey::Code(physical));
+        host.egui.egui_input_mut().events.push(egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat,
+            modifiers: egui::Modifiers::CTRL,
+        });
+        app.draw_outliner(
+            event_loop,
+            Some(&directory.join("outliner-search-navigation.png")),
+        )?;
+        let host = app.outliner.as_ref().unwrap();
+        if app.focused(window) != Some(expected)
+            || !host.search.open
+            || host.search.query != "rty"
+            || !host.window.has_focus()
+            || !host.held_keys.contains(&PhysicalKey::Code(physical))
+            || app
+                .consumed_global_keys
+                .contains(&PhysicalKey::Code(physical))
+        {
+            return Err("Outliner match navigation failed to preview a panel while retaining keyboard focus".into());
+        }
+    }
+    accept_search(app)?;
+    if app.outliner.as_ref().unwrap().search.open
+        || app.focused(window) != Some(sibling)
+        || !consumes_key_tail(app, KeyCode::KeyN)
+        || !consumes_key_tail(app, KeyCode::KeyP)
+    {
+        return Err(
+            "Outliner Enter did not accept the navigated match and isolate held keys".into(),
+        );
+    }
+    begin_search(app)?;
+    type_query(app, "rty")?;
+    let point = widget_bounds(app, egui::Id::new(("outliner-search-result", sibling)))
+        .ok_or("missing Outliner fuzzy result")?
+        .center();
+    for event in [
+        pointer_move(point),
+        pointer_button(ElementState::Pressed),
+        pointer_button(ElementState::Released),
+    ] {
+        app.window_event(event_loop, utility_key, event);
+        app.draw_outliner(event_loop, None)?;
+    }
+    if app.focused(window) != Some(sibling)
+        || !app.outliner.as_ref().unwrap().search.open
+        || app.outliner.as_ref().unwrap().search.query != "rty"
+    {
+        return Err("clicking an Outliner search result did not preserve search mode".into());
+    }
+    app.window_event(event_loop, utility_key, WindowEvent::Focused(false));
+    app.panes
+        .get_mut(&sibling)
+        .unwrap()
+        .input
+        .push_back(Vec::new());
+    app.window_event(
+        event_loop,
+        key,
+        WindowEvent::Ime(Ime::Commit("search result typing".into())),
+    );
+    if app.panes[&sibling].input.back().map(Vec::as_slice)
+        != Some(b"search result typing".as_slice())
+        || app.outliner.as_ref().unwrap().search.query != "rty"
+    {
+        return Err("an unfocused Outliner search captured terminal typing".into());
+    }
+    let pane = app.panes.get_mut(&sibling).unwrap();
+    pane.input.clear();
+    pane.input_bytes = 0;
+    app.window_event(event_loop, utility_key, WindowEvent::Focused(true));
+    app.draw_outliner(event_loop, None)?;
+    type_query(app, "s")?;
+    if app.outliner.as_ref().unwrap().search.query != "rtys" {
+        return Err("returning to Outliner search did not restore editor focus".into());
+    }
+    app.platform_action(event_loop, Action::SelectAll, false);
+    type_query(app, "nts")?;
+    if app.outliner.as_ref().unwrap().search.query != "nts" {
+        return Err("native Select All did not edit the Outliner search query".into());
+    }
+    let point = widget_bounds(app, egui::Id::new("outliner-search-close"))
+        .ok_or("missing Outliner search close button")?
+        .center();
+    for event in [
+        pointer_move(point),
+        pointer_button(ElementState::Pressed),
+        pointer_button(ElementState::Released),
+    ] {
+        app.window_event(event_loop, utility_key, event);
+        app.draw_outliner(event_loop, None)?;
+    }
+    if app.outliner.as_ref().unwrap().search.open || app.focused(window) != Some(second) {
+        return Err("closing Outliner search changed panel focus or left search open".into());
+    }
+
     let other = app.add_window(false);
     app.reconcile(event_loop);
     app.tab_mut(other).unwrap().title = Some("Notes".into());
@@ -3452,6 +3674,22 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     let scale = other_host.window.scale_factor();
     let point = Pos2::new(40.0, 80.0);
     app.windows.insert(other_key, other_host);
+    app.panes.get_mut(&other_pane).unwrap().cwd = fixture_directory().join("remote-search-target");
+    app.select_outline_target(Target::Window(window));
+    app.windows[&other_key].window.set_minimized(true);
+    begin_search(app)?;
+    type_query(app, "remote-search")?;
+    if app.active != Some(other)
+        || !app.windows[&other_key].visible
+        || app.windows[&other_key].window.is_minimized() == Some(true)
+        || !app.outliner.as_ref().unwrap().window.has_focus()
+    {
+        return Err(
+            "Outliner search did not reveal a minimized window without taking keyboard focus"
+                .into(),
+        );
+    }
+    accept_search(app)?;
     app.draw_outliner(event_loop, Some(&directory.join("outliner-windows.png")))?;
     let layout = serde_json::to_vec(&app.workspace)?;
     let terminal_size = app.windows[&other_key].window.inner_size();
@@ -3560,6 +3798,28 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     if !quick_listed(app) {
         return Err("hiding the used quick terminal removed it from Outliner".into());
     }
+    let quick_pane = app.focused(quick).unwrap();
+    app.panes.get_mut(&quick_pane).unwrap().cwd = fixture_directory().join("quick-search-target");
+    begin_search(app)?;
+    type_query(app, "quick-search")?;
+    if !app.windows[&quick_key].visible
+        || app.active != Some(quick)
+        || !app.outliner.as_ref().unwrap().window.has_focus()
+    {
+        return Err("Outliner search did not preview the hidden quick terminal while retaining keyboard focus".into());
+    }
+    app.platform_action(event_loop, Action::SelectAll, false);
+    type_query(app, "remote-search")?;
+    if app.active != Some(other)
+        || app.config().quick_terminal_autohide && app.windows[&quick_key].visible
+        || !app.outliner.as_ref().unwrap().window.has_focus()
+    {
+        return Err(
+            "leaving a quick-terminal preview did not honor autohide and retain search focus"
+                .into(),
+        );
+    }
+    accept_search(app)?;
     app.select_outline_target(Target::Window(quick));
     if !app.windows[&quick_key].visible || app.active != Some(quick) {
         return Err("Outliner did not reveal the hidden quick terminal".into());
@@ -3590,8 +3850,8 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     fs::write(
         directory.join("result.json"),
         serde_json::to_vec_pretty(&serde_json::json!({
-            "checks": ["outliner-native-window", "outliner-hierarchy", "outliner-disclosure", "outliner-navigation", "outliner-zoom", "outliner-single-tab-bar", "outliner-narrow-tab-bar", "outliner-pins", "outliner-pin-drag", "outliner-terminal-input", "outliner-quick-terminal", "outliner-close"],
-            "captures": ["outliner.png", "outliner-collapsed.png", "outliner-terminal.png", "outliner-quad.png", "outliner-quad-terminal.png", "outliner-nested.png", "outliner-nested-terminal.png", "outliner-pane.png", "outliner-pane-terminal.png", "outliner-narrow-terminal.png", "outliner-pinned.png", "outliner-pinned-terminal.png", "outliner-windows.png", "outliner-other-window.png", "outliner-quick.png", "outliner-flat.png"]
+            "checks": ["outliner-native-window", "outliner-hierarchy", "outliner-disclosure", "outliner-navigation", "outliner-zoom", "outliner-single-tab-bar", "outliner-narrow-tab-bar", "outliner-pins", "outliner-pin-drag", "outliner-search", "outliner-search-navigation", "outliner-terminal-input", "outliner-quick-terminal", "outliner-close"],
+            "captures": ["outliner.png", "outliner-collapsed.png", "outliner-terminal.png", "outliner-quad.png", "outliner-quad-terminal.png", "outliner-nested.png", "outliner-nested-terminal.png", "outliner-pane.png", "outliner-pane-terminal.png", "outliner-narrow-terminal.png", "outliner-pinned.png", "outliner-pinned-terminal.png", "outliner-search.png", "outliner-search-empty.png", "outliner-search-navigation.png", "outliner-windows.png", "outliner-other-window.png", "outliner-quick.png", "outliner-flat.png"]
         }))?,
     )?;
     eprintln!("Native Outliner smoke passed: {}", directory.display());

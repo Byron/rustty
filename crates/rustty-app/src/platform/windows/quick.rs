@@ -141,7 +141,7 @@ impl QuickWindow {
         }
         saved_frame(self.hwnd)
     }
-    pub fn show(&mut self, config: &Config) -> Result<(), String> {
+    pub fn show(&mut self, config: &Config, activate: bool) -> Result<(), String> {
         let screen =
             screen(config.quick_terminal_screen).ok_or("no Windows monitor is available")?;
         self.monitor = Some(screen.monitor);
@@ -184,12 +184,21 @@ impl QuickWindow {
             from,
             target,
             1.0,
-            config.quick_terminal_animation_duration,
+            if activate {
+                config.quick_terminal_animation_duration
+            } else {
+                Duration::ZERO
+            },
             fade,
         )?;
         unsafe {
-            let _ = ShowWindow(self.hwnd, SW_SHOW);
-            let _ = SetForegroundWindow(self.hwnd);
+            let _ = ShowWindow(
+                self.hwnd,
+                if activate { SW_SHOW } else { SW_SHOWNOACTIVATE },
+            );
+            if activate {
+                let _ = SetForegroundWindow(self.hwnd);
+            }
         }
         Ok(())
     }

@@ -272,12 +272,60 @@ impl Platform {
         }
     }
     pub fn show_quick(&self, window: &Window, config: &Config) -> Result<(), String> {
+        self.show_quick_with_activation(window, config, true)
+    }
+    pub fn preview_window(
+        &self,
+        window: &Window,
+        quick: bool,
+        config: &Config,
+    ) -> Result<(), String> {
+        let native = hwnd(window)?;
+        let foreground = unsafe { GetForegroundWindow() };
+        if quick {
+            self.show_quick_with_activation(window, config, false)?;
+        } else {
+            unsafe {
+                let _ = ShowWindow(
+                    native,
+                    if IsIconic(native).as_bool() {
+                        SW_SHOWNOACTIVATE
+                    } else {
+                        SW_SHOWNA
+                    },
+                );
+            }
+        }
+        unsafe {
+            SetWindowPos(
+                native,
+                Some(if quick && !foreground.0.is_null() {
+                    foreground
+                } else {
+                    HWND_TOP
+                }),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
+            .map_err(err)?;
+        }
+        Ok(())
+    }
+    fn show_quick_with_activation(
+        &self,
+        window: &Window,
+        config: &Config,
+        activate: bool,
+    ) -> Result<(), String> {
         let native = hwnd(window)?;
         let mut states = self.quick.borrow_mut();
         states
             .entry(window.id())
             .or_insert_with(|| quick::QuickWindow::new(native))
-            .show(config)
+            .show(config, activate)
     }
     pub fn hide_quick(
         &self,

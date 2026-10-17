@@ -1,6 +1,7 @@
 //! The window hierarchy shared by the outliner and the focused-pane breadcrumb.
 use crate::workspace::{Id, Rect, Tab, Tree, WindowState, Workspace};
 use std::collections::{HashMap, HashSet};
+use std::ops::Range;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Target {
@@ -188,6 +189,87 @@ pub fn pinned_paths(rows: &[Row], pins: &[Id]) -> Vec<Vec<Row>> {
         }
     }
     pins.iter().filter_map(|pane| paths.remove(pane)).collect()
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SearchResult {
+    pub path: Vec<Row>,
+    pub highlights: Vec<Range<usize>>,
+}
+
+pub fn search(rows: &[Row], query: &str) -> Vec<SearchResult> {
+    let query: Vec<_> = query
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .flat_map(char::to_lowercase)
+        .collect();
+    let mut matches: Vec<_> = rows
+        .iter()
+        .filter_map(|row| {
+            let Target::Pane { pane, .. } = row.target else {
+                return None;
+            };
+            let (rank, highlights) = match_label(&row.label, &query)?;
+            Some((rank, pane, highlights))
+        })
+        .collect();
+    matches.sort_by_key(|(rank, ..)| *rank);
+    let panes: Vec<_> = matches.iter().map(|(_, pane, _)| *pane).collect();
+    pinned_paths(rows, &panes)
+        .into_iter()
+        .zip(matches)
+        .map(|(path, (_, _, highlights))| SearchResult { path, highlights })
+        .collect()
+}
+
+fn match_label(label: &str, query: &[char]) -> Option<([usize; 3], Vec<Range<usize>>)> {
+    let Some(&first) = query.first() else {
+        return Some(([0; 3], Vec::new()));
+    };
+    let letters: Vec<_> = label
+        .char_indices()
+        .filter(|(_, character)| !character.is_whitespace())
+        .flat_map(|(byte, character)| {
+            character
+                .to_lowercase()
+                .map(move |lowercase| (lowercase, byte..byte + character.len_utf8()))
+        })
+        .collect();
+    let mut best = None;
+    'starts: for (start, (letter, _)) in letters.iter().enumerate() {
+        if *letter != first {
+            continue;
+        }
+        let mut positions = vec![start];
+        let mut cursor = start + 1;
+        for needle in &query[1..] {
+            let Some(offset) = letters[cursor..]
+                .iter()
+                .position(|(letter, _)| letter == needle)
+            else {
+                continue 'starts;
+            };
+            positions.push(cursor + offset);
+            cursor += offset + 1;
+        }
+        let rank = [cursor - start - query.len(), start, letters.len()];
+        if best.as_ref().is_none_or(|(previous, _)| rank < *previous) {
+            best = Some((rank, positions));
+        }
+    }
+    let (rank, positions) = best?;
+    let mut highlights: Vec<Range<usize>> = Vec::new();
+    for position in positions {
+        let range = letters[position].1.clone();
+        if let Some(previous) = highlights.last_mut()
+            && range.start <= previous.end
+        {
+            previous.end = previous.end.max(range.end);
+        } else {
+            highlights.push(range);
+        }
+    }
+    Some((rank, highlights))
 }
 
 pub fn rows(
@@ -912,5 +994,88 @@ mod tests {
         );
         assert!(paths[1].last().unwrap().focused);
         assert!(!paths[0].last().unwrap().focused);
+    }
+
+    #[test]
+    fn search_matches_only_panel_names_and_preserves_their_optional_ancestor_paths() {
+        let mut rows = expansion_rows();
+        rows[0].label = "AncestorKeyword".into();
+        let panel = row_index(&rows, Target::Pane { tab: 1, pane: 9 });
+        rows[panel].label = "Rustty".into();
+        assert!(search(&rows, "AncestorKeyword").is_empty());
+        let matches = search(&rows, "rs");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].path, pinned_paths(&rows, &[9])[0]);
+        assert_eq!(matches[0].highlights, [0..1, 2..3]);
+
+        let labels = [(2, "Rustty".into())].into();
+        let flat = super::rows(&window(), &labels, &HashMap::new());
+        assert_eq!(search(&flat, "rust")[0].path.len(), 1);
+        let all = search(&rows, " \t\u{2003} ");
+        assert!(all.iter().all(|result| result.highlights.is_empty()));
+        assert_eq!(
+            all.iter()
+                .map(|result| result.path.last().unwrap().target)
+                .collect::<Vec<_>>(),
+            rows.iter()
+                .filter(|row| matches!(row.target, Target::Pane { .. }))
+                .map(|row| row.target)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    #[expect(clippy::single_range_in_vec_init)]
+    fn search_ranks_contiguous_prefixes_then_shorter_names_and_keeps_stable_ties() {
+        let template = super::rows(&window(), &HashMap::new(), &HashMap::new()).remove(0);
+        let rows: Vec<_> = ["fo o", "xxfoo", "f-x-o-o", "foo", "FOO", "fxxfoo", "food"]
+            .iter()
+            .enumerate()
+            .map(|(pane, label)| Row {
+                target: Target::Pane {
+                    tab: 1,
+                    pane: pane as Id,
+                },
+                label: (*label).into(),
+                ..template.clone()
+            })
+            .collect();
+        let matches = search(&rows, "fOo");
+        assert_eq!(
+            matches
+                .iter()
+                .map(|result| result.path.last().unwrap().target)
+                .collect::<Vec<_>>(),
+            [0, 3, 4, 6, 1, 5, 2].map(|pane| Target::Pane { tab: 1, pane })
+        );
+        let later_match = matches
+            .iter()
+            .find(|result| result.path.last().unwrap().label == "fxxfoo")
+            .unwrap();
+        assert_eq!(later_match.highlights, [3..6]);
+        assert!(search(&rows, "of").is_empty());
+        assert!(search(&rows, "ffff").is_empty());
+    }
+
+    #[test]
+    #[expect(clippy::single_range_in_vec_init)]
+    fn search_highlights_original_utf8_scalars_and_coalesces_lowercase_expansions() {
+        let template = super::rows(&window(), &HashMap::new(), &HashMap::new()).remove(0);
+        for (label, query, expected) in [
+            ("Été東京", "ét東", vec![0..3, 5..8]),
+            ("İstanbul", "i\u{307}s", vec![0..3]),
+            ("Ru\u{2003}St\tTy", "rU st tY", vec![0..2, 5..7, 8..10]),
+        ] {
+            let rows = [Row {
+                label: label.into(),
+                ..template.clone()
+            }];
+            let matches = search(&rows, query);
+            assert_eq!(matches.len(), 1, "{label:?} {query:?}");
+            assert_eq!(matches[0].highlights, expected);
+            for range in &matches[0].highlights {
+                assert!(label.get(range.clone()).is_some());
+            }
+        }
     }
 }
