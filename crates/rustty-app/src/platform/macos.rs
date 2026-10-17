@@ -386,6 +386,19 @@ impl Platform {
         )
     }
 
+    pub fn configure_outliner(&self, window: &Window) -> Result<(), String> {
+        let native = native_window(window)?;
+        native.setIdentifier(Some(&NSString::from_str("app.rustty.outliner")));
+        native.setAccessibilitySubrole(Some(&NSString::from_str("AXFloatingWindow")));
+        native.setTabbingMode(NSWindowTabbingMode::Disallowed);
+        native.setLevel(NSFloatingWindowLevel);
+        native.setCollectionBehavior(NSWindowCollectionBehavior::FullScreenAuxiliary);
+        native.setExcludedFromWindowsMenu(true);
+        native.setRestorable(false);
+        native.setHidesOnDeactivate(true);
+        Ok(())
+    }
+
     pub fn configure_window(
         &self,
         window: &Window,
@@ -1516,6 +1529,7 @@ fn make_menu(actions: &mut Vec<(MenuItem, Action)>) -> Result<(Menu, Submenu), S
     let view = Submenu::new("View", true);
     for (name, action) in [
         ("Command Palette…", Action::ToggleCommandPalette),
+        ("Outliner", Action::ToggleOutliner),
         ("Toggle Full Screen", Action::ToggleFullscreen),
         ("Toggle Split Zoom", Action::ToggleSplitZoom),
         ("Toggle Quadrant Zoom", Action::ToggleQuadrantZoom),

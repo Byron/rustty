@@ -15,6 +15,33 @@ pub fn zoom_label(tab: &Tab) -> Option<&'static str> {
     })
 }
 
+/// Draw tab zoom layers in square bounds: an outline for quad, a fill for pane.
+pub fn paint_zoom_icon(painter: &egui::Painter, rect: egui::Rect, tab: &Tab, color: egui::Color32) {
+    if tab.zoom.is_none() {
+        return;
+    }
+    let quad = tab.quadrant_zoom.is_some();
+    if quad {
+        painter.rect_stroke(
+            rect,
+            0,
+            egui::Stroke::new(1.5, color),
+            egui::StrokeKind::Inside,
+        );
+    }
+    if tab.zoom != tab.quadrant_zoom {
+        painter.rect_filled(
+            if quad {
+                rect.shrink(rect.width() * 0.25)
+            } else {
+                rect
+            },
+            0,
+            color,
+        );
+    }
+}
+
 /// Typing restarts the visible phase; idle redraws happen only at its boundaries.
 pub fn cursor_blink_phase(started: Instant, now: Instant) -> (bool, Instant) {
     let interval = Duration::from_millis(600).as_nanos();
@@ -357,6 +384,52 @@ mod tests {
         assert_eq!(zoom_label(&tab), Some("Quad-zoom"));
         tab.toggle_quadrant_zoom();
         assert_eq!(zoom_label(&tab), None);
+    }
+
+    #[test]
+    fn tab_zoom_icons_distinguish_outline_fill_and_nested_layers() {
+        let rect = egui::Rect::from_min_size(egui::pos2(10.0, 10.0), egui::Vec2::splat(12.0));
+        let color = egui::Color32::WHITE;
+        for (zoom, quad, expected) in [
+            (None, None, 0),
+            (Some(2), None, 1),
+            (Some(4), Some(4), 1),
+            (Some(2), Some(4), 2),
+        ] {
+            let mut tab = Tab::new(1, 2, "/tmp".into());
+            tab.zoom = zoom;
+            tab.quadrant_zoom = quad;
+            let context = egui::Context::default();
+            let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                paint_zoom_icon(ui.painter(), rect, &tab, color);
+            });
+            output.textures_delta.clear();
+            let rectangles: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect) => Some(rect),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(rectangles.len(), expected);
+            if zoom.is_some() {
+                assert_eq!(rectangles[0].rect, rect);
+                assert_eq!(
+                    rectangles[0].fill,
+                    if quad.is_some() {
+                        egui::Color32::TRANSPARENT
+                    } else {
+                        color
+                    }
+                );
+                assert_eq!(rectangles[0].stroke.width > 0.0, quad.is_some());
+            }
+            if expected == 2 {
+                assert_eq!(rectangles[1].fill, color);
+                assert_eq!(rectangles[1].rect, rect.shrink(3.0));
+            }
+        }
     }
 
     #[test]

@@ -62,6 +62,7 @@ impl NativeMenu {
         let view = Submenu::new("&View", true);
         for (name, action) in [
             ("Command Palette…", Action::ToggleCommandPalette),
+            ("Outliner", Action::ToggleOutliner),
             ("Toggle Full Screen", Action::ToggleFullscreen),
             ("Toggle Split Zoom", Action::ToggleSplitZoom),
             ("Toggle Quadrant Zoom", Action::ToggleQuadrantZoom),
