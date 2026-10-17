@@ -309,6 +309,7 @@ pub fn search_shortcut(action: &config::Action) -> bool {
             | ToggleFullscreen
             | ToggleCommandPalette
             | ToggleOutliner
+            | TogglePin
             | Themes
             | StreamDeck(_)
             | NextTab
@@ -1607,6 +1608,7 @@ mod tests {
             b"terminal input".to_vec()
         )));
         assert!(search_shortcut(&config::Action::ToggleOutliner));
+        assert!(search_shortcut(&config::Action::TogglePin));
     }
 
     #[derive(Default)]

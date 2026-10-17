@@ -70,27 +70,28 @@ impl OutlinerHost {
     pub fn draw(
         &mut self,
         event_loop: &ActiveEventLoop,
-        context: &egui::Context,
         painter: &mut painter::Painter,
         rows: &[outliner::Row],
+        pinned_panes: &[Id],
         accent: [u8; 3],
         capture: Option<&Path>,
-    ) -> Result<Option<outliner::Target>> {
+    ) -> Result<outliner_ui::Output> {
         let size = self.window.inner_size();
         if size.width == 0 || size.height == 0 {
-            return Ok(None);
+            return Ok(outliner_ui::Output::default());
         }
         let mut input = self.egui.take_egui_input(&self.window);
         input.viewport_id = self.viewport;
+        let context = self.egui.egui_ctx().clone();
         if self.accesskit_active {
             context.enable_accesskit();
         } else {
             context.disable_accesskit();
         }
-        let mut selected = None;
+        let mut selection = outliner_ui::Output::default();
         let mut output = context.run_ui(input, |root| {
             egui::CentralPanel::default().show(root, |ui| {
-                selected = outliner_ui::contents(ui, rows, accent);
+                selection = outliner_ui::contents(ui, rows, pinned_panes, accent);
             });
         });
         self.egui.handle_platform_output_with_event_loop(
@@ -149,6 +150,6 @@ impl OutlinerHost {
                 )?;
             }
         }
-        Ok(selected)
+        Ok(selection)
     }
 }
