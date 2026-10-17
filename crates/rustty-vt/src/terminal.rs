@@ -37,6 +37,8 @@ pub enum Effect {
         state: u8,
         value: Option<u8>,
     },
+    /// RIS discards progress without reporting a task outcome.
+    ProgressReset,
     UnknownSequence(String),
 }
 
@@ -2127,10 +2129,7 @@ impl Terminal {
                 if self.linefeed_mode_events {
                     effects.push(Effect::LinefeedMode(self.modes.get(false, 20)));
                 }
-                effects.push(Effect::Progress {
-                    state: 0,
-                    value: None,
-                });
+                effects.push(Effect::ProgressReset);
             }
             ([], b'=') => self.set_mode(true, 66, true),
             ([], b'>') => self.set_mode(true, 66, false),

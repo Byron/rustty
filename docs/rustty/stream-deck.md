@@ -111,12 +111,14 @@ to run it and close the menu, or tap Page again to cancel. Brightness still work
 Only fresh presses count; held keys and stale artwork cannot select an alternative.
 Sleep, disconnect and layout changes cancel the menu.
 
-Input, Working, Done and Idle cycle all live reporting panes in stable slot order,
+Attention, Working, Done and Idle cycle live agent and OSC progress panes in stable slot order,
 including off-page and hidden panes. They advance from the focused matching pane,
 otherwise from the group's last slot cursor, and wrap. Membership is recomputed
-each time; an empty group is dimmed and inert. The selected pane's page is revealed.
-Error, paused and unknown remain directly tappable and pageable without separate
-cycle keys. These actions never approve a request, submit a prompt or send agent
+each time; an empty group is dimmed and inert. The selected agent pane's page is revealed.
+Attention includes needs-input, error and paused states. Unknown remains directly
+tappable and pageable. Progress-only panes follow assigned panes in workspace order
+without occupying agent slots. Each pane counts once per group; independent agent
+and progress signals can put it in different groups. These actions never approve a request, submit a prompt or send agent
 keystrokes.
 
 Brightness starts at 100%; successive taps select **25 → 50 → 75 → 100 → 25%**.
@@ -135,7 +137,7 @@ support configurable shortcuts; none has a default binding. For example:
 keybind = ctrl+alt+p=stream_deck:pull_to_first
 ```
 
-The `stream_deck` arguments are `needs_input`, `working`, `done`, `idle`,
+The `stream_deck` arguments are `needs_input` (Attention), `working`, `done`, `idle`,
 `next_page`, `brightness` and `pull_to_first`. Shortcuts require the connected
 device. Rapid brightness presses preserve every cycle step while coalescing
 pending USB writes to the final level.
@@ -192,9 +194,24 @@ RIS and compaction are not exits. Normal end, pane/PTY exit, or a trustworthy
 foreground-command end clears registration. A crash with no observable cleanup
 boundary can leave uncertain state. There is no heartbeat or silence-to-done rule.
 
+OSC 9;4 progress additionally contributes to the aggregate controls: determinate
+and indeterminate progress join Working; error and paused progress join Attention.
+100% is still Working. An explicit clear or the 15-second progress timeout finishes
+with Attention unless a result is known. A foreground shell command that contained
+progress can resolve its result: exit 0 joins Done; nonzero or missing exit status
+joins Attention. Leading ✅ notifications mark success; leading ❌, ⚠, or ✅⚠ mark
+Attention, catering to `wait-pr` and `notify-me`. Error/warning evidence takes
+precedence over exit 0, including `wait-pr`'s “CI finished, but not merged” warning.
+Other notification prose is not interpreted as a result. A timeout alone never
+proves success. Terminal reset discards progress; disabling visual progress bars
+does not disable aggregate tracking. Finished progress remains until the pane is
+revealed/focused or a new foreground command/progress cycle begins. Active errors
+and pauses remain selectable until progress changes or finishes. These runtime
+signals are not persisted and do not change the pane's structured agent status.
+
 ## Empty board and persistence
 
-With zero live registered sessions the entire board becomes:
+With zero live registered sessions and no pending OSC progress the entire board becomes:
 
 | | | | | |
 |---|---|---|---|---|
@@ -206,7 +223,7 @@ These keys are decorative and inert while the Mac's displays are awake. Idle/don
 sessions still count. Transitions cancel gestures and suppress keys held across
 the change. The USB owner stays
 connected and preserves the selected brightness. The next begin restores the
-normal board and existing positions.
+normal board and existing positions. Progress alone also enables the aggregate controls.
 
 Workspace `deck_positions` stores a bounded vector of optional pane IDs. Status,
 thread/turn IDs, USB handles and gestures are never persisted. Ending a reporter
@@ -270,7 +287,7 @@ advances without incoming HID events. No external accessibility daemon is used.
 | Scope | One tile per reporting pane and one device. No hidden-subagent/outside-Rustty tiles, approval, command, usage, dial/touch/LCD or desktop Micro actions. |
 | Semantics | Done observes a turn completion, not task success. Any process sharing a PTY can spoof that pane's metadata. Unobserved crash cleanup remains uncertain. |
 | Multiplexers | One reporter through passthrough fits v1. Multiple tmux reporters sharing one Rustty PTY exceed the serialized single-reporter contract. |
-| Layout | Exact 9+6 region targets 5×3 devices; other layouts are rejected. Input/error/paused shapes are distinct; only the four listed groups cycle. Brightness is memory-only. |
+| Layout | Exact 9+6 region targets 5×3 devices; other layouts are rejected. Input/error/paused shapes are distinct; Attention groups these states. Brightness is memory-only. |
 | Persistence | Workspace save policy applies, IDs only reserve positions, and restored panes require a new begin report. Bounded completion-ack history is runtime-only. |
 | Input race | UI validates captured assignments and reporter generations. USB reports cannot identify which image generation was physically seen; a bounded upload/input race remains. Startup held-key baselines suppress stale presses. |
 | Verification | Offscreen/unit tests do not certify firmware, physical readability, button timing, OS focus, SSH/tmux/ConPTY or installed binaries. See the validation record below. |

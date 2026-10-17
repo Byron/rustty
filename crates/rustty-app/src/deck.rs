@@ -14,6 +14,116 @@ pub const PAGE_SIZE: usize = 9;
 pub const ACK_HISTORY: usize = 64;
 pub const GROUPS: [State; 4] = [State::NeedsInput, State::Working, State::Done, State::Idle];
 
+fn in_group(state: State, group: usize) -> bool {
+    GROUPS.get(group).is_some_and(|expected| {
+        state == *expected || group == 0 && matches!(state, State::Error | State::Paused)
+    })
+}
+
+/// OSC progress contributes only to aggregate controls, never to agent tiles.
+#[derive(Default)]
+pub struct ProgressReport {
+    state: Option<State>,
+    active: bool,
+    enclosing_command: bool,
+    outcome: Option<State>,
+    deadline: Option<Instant>,
+}
+impl ProgressReport {
+    pub fn state(&self) -> Option<State> {
+        self.state
+    }
+    pub fn deadline(&self) -> Option<Instant> {
+        self.deadline
+    }
+    pub fn expire(&mut self, now: Instant) {
+        if self.deadline.is_some_and(|deadline| deadline <= now) {
+            self.finish();
+        }
+    }
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+    pub fn apply(&mut self, effect: &rustty::vt::Effect, command_running: bool) {
+        use rustty::vt::Effect;
+        match effect {
+            Effect::Progress { state: 1..=4, .. } => {
+                if !self.active {
+                    self.clear();
+                    self.enclosing_command = command_running;
+                }
+                self.active = true;
+                self.deadline = Some(Instant::now() + crate::presentation::PROGRESS_TIMEOUT);
+                self.state = Some(match effect {
+                    Effect::Progress { state: 2, .. } => State::Error,
+                    Effect::Progress { state: 4, .. } => State::Paused,
+                    _ => State::Working,
+                });
+                if self.state == Some(State::Error) {
+                    self.outcome = Some(State::Error);
+                }
+            }
+            Effect::Progress { state: 0, .. } => self.finish(),
+            Effect::ProgressReset | Effect::CommandStart => self.clear(),
+            Effect::CommandEnd { exit_code } if self.enclosing_command => {
+                self.active = false;
+                self.deadline = None;
+                self.enclosing_command = false;
+                self.state = Some(match exit_code {
+                    _ if self.outcome == Some(State::Error) => State::Error,
+                    Some(0) => State::Done,
+                    Some(_) => State::Error,
+                    None => self.outcome.unwrap_or(State::NeedsInput),
+                });
+            }
+            Effect::Notification { title, body }
+                if self.state.is_some() || self.enclosing_command =>
+            {
+                // wait-pr/notify-me declare results with leading emoji; prose is not a status.
+                let message = if title.is_empty() { body } else { title };
+                let message = String::from_utf8_lossy(message);
+                let message = message.trim_start();
+                let outcome = if message.starts_with('❌')
+                    || message.starts_with('⚠')
+                    || message.starts_with("✅⚠")
+                {
+                    Some(State::Error)
+                } else if message.starts_with('✅') {
+                    Some(State::Done)
+                } else {
+                    None
+                };
+                if let Some(outcome) = outcome
+                    && self.outcome != Some(State::Error)
+                {
+                    self.outcome = Some(outcome);
+                    if !self.active {
+                        self.state = Some(outcome);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    /// Expiry/OSC removal alone says nothing about whether the work succeeded.
+    pub fn finish(&mut self) {
+        if self.active {
+            self.active = false;
+            self.deadline = None;
+            self.state = Some(self.outcome.unwrap_or(State::NeedsInput));
+        }
+    }
+    pub fn acknowledge(&mut self) {
+        // A clear may precede the shell's exit status in a later PTY read.
+        if !self.active {
+            self.state = None;
+            if !self.enclosing_command {
+                self.clear();
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Target {
     pub pane: Id,
@@ -227,6 +337,7 @@ pub struct Dashboard {
     cursors: [Option<usize>; 4],
     positions: Vec<Option<Id>>,
     last_activity: Vec<Option<Instant>>,
+    groups: [Vec<(usize, Id)>; 4],
 }
 impl Dashboard {
     pub fn screens_awake(&mut self, awake: bool) {
@@ -243,6 +354,7 @@ impl Dashboard {
         &mut self,
         workspace: &mut Workspace,
         reports: &HashMap<Id, PaneView>,
+        progress: &HashMap<Id, State>,
         focused: Option<Id>,
     ) -> bool {
         let mut changed = workspace.reconcile_deck_positions();
@@ -283,7 +395,9 @@ impl Dashboard {
                 }
             }
         }
-        let no_sessions = !live.iter().any(|id| reports.contains_key(id));
+        let no_sessions = !live
+            .iter()
+            .any(|id| reports.contains_key(id) || progress.contains_key(id));
         if self.positions != workspace.deck_positions || self.board.no_sessions != no_sessions {
             self.board.generation += 1;
             self.positions.clone_from(&workspace.deck_positions);
@@ -294,7 +408,6 @@ impl Dashboard {
             self.moving = false;
         }
         self.board.no_sessions = no_sessions;
-        self.board.counts = [0; 4];
         let mut names = HashMap::<&str, usize>::new();
         for id in &live {
             if let Some(report) = reports.get(id) {
@@ -307,13 +420,6 @@ impl Dashboard {
             .enumerate()
             .map(|(slot, id)| {
                 let report = id.and_then(|id| reports.get(&id));
-                if let Some(report) = report {
-                    for (i, state) in GROUPS.iter().enumerate() {
-                        if *state == report.state {
-                            self.board.counts[i] += 1;
-                        }
-                    }
-                }
                 let label = report.map_or_else(String::new, |r| {
                     if !r.label.is_empty() && names.get(r.label.as_str()).copied().unwrap_or(0) > 1
                     {
@@ -337,6 +443,24 @@ impl Dashboard {
                 }
             })
             .collect();
+        self.groups = std::array::from_fn(|group| {
+            workspace
+                .deck_positions
+                .iter()
+                .enumerate()
+                .filter_map(|(slot, id)| id.map(|id| (slot, id)))
+                .chain(live.iter().enumerate().filter_map(|(index, id)| {
+                    (!workspace.deck_positions.contains(&Some(*id)))
+                        .then_some((workspace.deck_positions.len() + index, *id))
+                }))
+                .filter(|(_, id)| {
+                    live.contains(id)
+                        && (reports.get(id).is_some_and(|r| in_group(r.state, group))
+                            || progress.get(id).is_some_and(|s| in_group(*s, group)))
+                })
+                .collect()
+        });
+        self.board.counts = std::array::from_fn(|group| self.groups[group].len());
         self.last_activity = workspace
             .deck_positions
             .iter()
@@ -345,31 +469,30 @@ impl Dashboard {
         self.board.page = self.board.page.min(self.board.pages() - 1);
         changed
     }
-    pub fn cycle(&mut self, group: usize, focused: Option<Id>) -> Option<Capture> {
+    pub fn cycle(&mut self, group: usize, focused: Option<Id>) -> Option<Id> {
         if self.moving {
             return None;
         }
-        let state = *GROUPS.get(group)?;
-        let members: Vec<_> = self
-            .board
-            .tiles
-            .iter()
-            .filter(|t| t.state == Some(state))
-            .map(|t| t.capture)
-            .collect();
+        let members = self.groups.get(group)?;
         let cursor = members
             .iter()
-            .find(|c| c.assignment == focused)
-            .map(|c| c.slot)
+            .find(|(_, id)| Some(*id) == focused)
+            .map(|(slot, _)| *slot)
             .or(self.cursors[group]);
         let next = cursor
-            .and_then(|slot| members.iter().find(|c| c.slot > slot))
+            .and_then(|slot| members.iter().find(|(rank, _)| *rank > slot))
             .or_else(|| members.first())
             .copied()?;
         // Keep the slot cursor after Done acknowledgement removes its member.
-        self.cursors[group] = Some(next.slot);
-        self.board.page = next.slot / PAGE_SIZE;
-        Some(next)
+        self.cursors[group] = Some(next.0);
+        if let Some(tile) =
+            self.board.tiles.iter().find(|tile| {
+                tile.capture.assignment == Some(next.1) && tile.capture.target.is_some()
+            })
+        {
+            self.board.page = tile.capture.slot / PAGE_SIZE;
+        }
+        Some(next.1)
     }
     pub fn page(&mut self) {
         self.board.page = (self.board.page + 1) % self.board.pages();
@@ -509,6 +632,172 @@ mod tests {
             thread_id: Some(thread.into()),
             turn_id: turn.map(str::to_owned),
         }
+    }
+    #[test]
+    fn wait_pr_and_notify_me_results_survive_split_reads() {
+        use rustty::vt::{Effect, Terminal};
+        for (ending, expected) in [
+            (
+                "\x1b]9;✅ PR #42 merged: title\x1b\\\x1b]9;4;0\x1b\\\x1b]133;D;0\x07",
+                State::Done,
+            ),
+            (
+                "\x1b]9;❌ PR #42 CI failed: title\x1b\\\x1b]9;4;0\x1b\\\x1b]133;D;1\x07",
+                State::Error,
+            ),
+            (
+                "\x1b]9;✅⚠️ PR #42 CI finished, but is not merged: title\x1b\\\x1b]9;4;0\x1b\\\x1b]133;D;0\x07",
+                State::Error,
+            ),
+            (
+                "\x1b]9;4;0\x1b\\\x1b]9;✅ task finished\x1b\\\x1b]133;D;0\x07",
+                State::Done,
+            ),
+            (
+                "\x1b]9;4;0\x1b\\\x1b]9;❌ task failed\x1b\\\x1b]133;D;1\x07",
+                State::Error,
+            ),
+            ("\x1b]9;4;0\x1b\\\x1b]133;D;0\x07", State::Done),
+            ("\x1b]9;4;0\x1b\\\x1b]133;D;2\x07", State::Error),
+            ("\x1b]9;4;0\x1b\\\x1b]133;D\x07", State::NeedsInput),
+        ] {
+            let stream = format!("\x1b]133;C\x07\x1b]9;4;3\x1b\\{ending}");
+            for split in 0..=stream.len() {
+                let mut terminal = Terminal::new(80, 24, 0);
+                terminal.shell_command_events = true;
+                let mut report = ProgressReport::default();
+                let mut running = false;
+                for bytes in [&stream.as_bytes()[..split], &stream.as_bytes()[split..]] {
+                    for effect in terminal.feed(bytes) {
+                        report.apply(&effect, running);
+                        match effect {
+                            Effect::CommandStart => running = true,
+                            Effect::CommandEnd { .. } => running = false,
+                            _ => {}
+                        }
+                    }
+                }
+                assert_eq!(report.state(), Some(expected), "{ending:?} at {split}");
+                report.acknowledge();
+                assert_eq!(report.state(), None);
+            }
+        }
+    }
+    #[test]
+    fn progress_expiry_reset_and_acknowledgement_never_invent_success() {
+        use rustty::vt::Effect;
+        let mut report = ProgressReport::default();
+        let progress = |state| Effect::Progress {
+            state,
+            value: Some(100),
+        };
+        for (state, expected) in [
+            (1, State::Working),
+            (3, State::Working),
+            (2, State::Error),
+            (4, State::Paused),
+        ] {
+            report.clear();
+            report.apply(&progress(state), false);
+            report.acknowledge();
+            assert_eq!(report.state(), Some(expected));
+            report.expire(report.deadline().unwrap());
+            assert_eq!(
+                report.state(),
+                Some(if state == 2 {
+                    State::Error
+                } else {
+                    State::NeedsInput
+                })
+            );
+            report.acknowledge();
+            assert_eq!(report.state(), None);
+        }
+        report.apply(&progress(3), true);
+        report.apply(&progress(0), true);
+        report.acknowledge();
+        assert_eq!(report.state(), None);
+        report.apply(&Effect::CommandEnd { exit_code: Some(1) }, true);
+        assert_eq!(report.state(), Some(State::Error));
+        report.apply(&Effect::CommandStart, false);
+        assert_eq!(report.state(), None);
+        report.apply(&progress(1), true);
+        report.apply(&Effect::ProgressReset, true);
+        report.apply(&Effect::CommandEnd { exit_code: Some(0) }, true);
+        assert_eq!(report.state(), None);
+        for ending in [progress(0), Effect::CommandEnd { exit_code: Some(0) }] {
+            report.apply(&ending, false);
+            assert_eq!(report.state(), None);
+        }
+        report.apply(&progress(3), false);
+        report.apply(&progress(0), false);
+        assert_eq!(report.state(), Some(State::NeedsInput));
+        report.apply(
+            &Effect::Notification {
+                title: Vec::new(),
+                body: "✅ task finished".as_bytes().to_vec(),
+            },
+            false,
+        );
+        assert_eq!(report.state(), Some(State::Done));
+        report.acknowledge();
+        report.apply(&progress(3), true);
+        report.apply(&progress(0), true);
+        report.acknowledge();
+        report.apply(
+            &Effect::Notification {
+                title: Vec::new(),
+                body: "✅⚠️ task needs attention".as_bytes().to_vec(),
+            },
+            true,
+        );
+        report.apply(&Effect::CommandEnd { exit_code: Some(0) }, true);
+        assert_eq!(report.state(), Some(State::Error));
+    }
+    #[test]
+    fn progress_aggregates_deduplicate_without_allocating_agent_slots() {
+        let (mut workspace, mut reports) = setup(3);
+        let ids: Vec<_> = workspace
+            .windows
+            .iter()
+            .map(|w| w.tabs[0].root.panes()[0])
+            .collect();
+        let mut progress = HashMap::from([
+            (ids[0], State::Error),
+            (ids[1], State::Working),
+            (ids[2], State::Working),
+        ]);
+        reports.get_mut(&ids[0]).unwrap().state = State::Paused;
+        reports.get_mut(&ids[1]).unwrap().state = State::Working;
+        reports.remove(&ids[2]);
+        let mut deck = Dashboard::default();
+        deck.update(&mut workspace, &reports, &progress, None);
+        assert_eq!(deck.board.counts, [1, 2, 0, 0]);
+        assert_eq!(workspace.deck_positions, [Some(ids[0]), Some(ids[1])]);
+        assert_eq!(deck.board.tile(0).state, Some(State::Paused));
+        assert_eq!(deck.cycle(1, None), Some(ids[1]));
+        assert_eq!(deck.cycle(1, Some(ids[1])), Some(ids[2]));
+        reports.clear();
+        deck.update(&mut workspace, &reports, &progress, None);
+        assert!(!deck.board.no_sessions);
+        assert!(deck.board.tiles.iter().all(|t| t.state.is_none()));
+        let positions = workspace.deck_positions.clone();
+        progress.insert(ids[1], State::Done);
+        progress.insert(ids[2], State::Done);
+        deck.update(&mut workspace, &reports, &progress, None);
+        assert_eq!(deck.cycle(2, None), Some(ids[1]));
+        progress.remove(&ids[1]);
+        deck.update(&mut workspace, &reports, &progress, Some(ids[1]));
+        assert_eq!(deck.cycle(2, Some(ids[1])), Some(ids[2]));
+        workspace.close_pane(ids[2]);
+        deck.update(&mut workspace, &reports, &progress, None);
+        assert_eq!(deck.board.counts[2], 0);
+        progress.clear();
+        let mode = deck.board.mode_generation;
+        deck.update(&mut workspace, &reports, &progress, None);
+        assert!(deck.board.no_sessions);
+        assert!(deck.board.mode_generation > mode);
+        assert_eq!(workspace.deck_positions, positions);
     }
     #[test]
     fn reporter_lifecycle_and_completion_acknowledgement() {
@@ -667,20 +956,20 @@ mod tests {
             view.label = "foo-bar".into();
         }
         let mut dashboard = Dashboard::default();
-        dashboard.update(&mut workspace, &reports, None);
+        dashboard.update(&mut workspace, &reports, &HashMap::new(), None);
         assert_eq!(dashboard.board.tile(0).label, "foo-bar ·1");
         assert_eq!(dashboard.board.tile(1).label, "foo-bar ·2");
         let positions = workspace.deck_positions.clone();
         let capture = dashboard.board.tile(0).capture;
         reports.get_mut(&positions[0].unwrap()).unwrap().state = State::Done;
-        dashboard.update(&mut workspace, &reports, positions[1]);
+        dashboard.update(&mut workspace, &reports, &HashMap::new(), positions[1]);
         assert_eq!(workspace.deck_positions, positions);
         assert_eq!(dashboard.board.tile(0).capture, capture);
         assert_eq!(dashboard.board.tile(0).label, "foo-bar ·1");
         for view in reports.values_mut() {
             view.label.clear();
         }
-        dashboard.update(&mut workspace, &reports, positions[1]);
+        dashboard.update(&mut workspace, &reports, &HashMap::new(), positions[1]);
         assert!(dashboard.board.tile(0).label.is_empty());
         assert!(dashboard.board.tile(1).label.is_empty());
     }
@@ -746,7 +1035,7 @@ mod tests {
     fn pull_prioritizes_categories_and_recency_without_reordering_kept_agents() {
         let (mut workspace, mut reports) = setup(17);
         let mut deck = Dashboard::default();
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         let initial = workspace.deck_positions.clone();
         for report in reports.values_mut() {
             report.state = State::Idle;
@@ -768,7 +1057,7 @@ mod tests {
             report.state = state;
             report.last_activity = Some(now - std::time::Duration::from_secs(age));
         }
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert!(deck.pull_to_first(&mut workspace));
         for (destination, source) in [(0, 10), (2, 9), (3, 11), (5, 12), (7, 13), (8, 14)] {
             assert_eq!(workspace.deck_positions[destination], initial[source]);
@@ -778,7 +1067,7 @@ mod tests {
             assert_eq!(workspace.deck_positions[kept], initial[kept]);
         }
         assert!(!deck.pull_to_first(&mut workspace));
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         let pulled = workspace.deck_positions.clone();
         assert!(!deck.pull_to_first(&mut workspace));
         assert_eq!(workspace.deck_positions, pulled);
@@ -787,7 +1076,7 @@ mod tests {
     fn pull_prefers_empty_then_reserved_then_oldest_idle_and_preserves_assignments() {
         let (mut workspace, mut reports) = setup(12);
         let mut deck = Dashboard::default();
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         let initial = workspace.deck_positions.clone();
         reports.remove(&initial[0].unwrap());
         workspace.close_pane(initial[0].unwrap());
@@ -802,7 +1091,7 @@ mod tests {
             };
             report.last_activity = Some(now - std::time::Duration::from_secs(slot as u64));
         }
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         let before = workspace.deck_positions.clone();
         let capture = deck.board.tile(9).capture;
         deck.gesture = Some(capture);
@@ -830,7 +1119,7 @@ mod tests {
     fn pull_selects_nine_and_evicts_least_recent_nonselected_agents_first() {
         let (mut workspace, mut reports) = setup(18);
         let mut deck = Dashboard::default();
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         let initial = workspace.deck_positions.clone();
         let now = Instant::now();
         for (slot, id) in initial.iter().enumerate() {
@@ -841,7 +1130,7 @@ mod tests {
         for id in &initial[9..18] {
             reports.get_mut(&id.unwrap()).unwrap().state = State::NeedsInput;
         }
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert!(deck.pull_to_first(&mut workspace));
         for destination in 0..9 {
             assert_eq!(
@@ -855,14 +1144,14 @@ mod tests {
     fn pull_never_promotes_idle_or_retained_closed_agents_and_returns_to_first_page() {
         let (mut workspace, mut reports) = setup(12);
         let mut deck = Dashboard::default();
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         let initial = workspace.deck_positions.clone();
         for report in reports.values_mut() {
             report.state = State::Idle;
         }
         reports.get_mut(&initial[11].unwrap()).unwrap().state = State::NeedsInput;
         workspace.close_pane(initial[11].unwrap());
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         let positions = workspace.deck_positions.clone();
         deck.board.page = 1;
         assert!(!deck.pull_to_first(&mut workspace));
@@ -879,7 +1168,7 @@ mod tests {
     fn pull_without_moves_still_invalidates_worker_control_mode() {
         let (mut workspace, reports) = setup(2);
         let mut deck = Dashboard::default();
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         for _ in 0..2 {
             let mode = deck.board.mode_generation;
             let layout = deck.board.generation;
@@ -902,29 +1191,29 @@ mod tests {
     fn slots_reservations_cycles_and_closed_panes() {
         let (mut workspace, mut reports) = setup(12);
         let mut deck = Dashboard::default();
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert_eq!(deck.board.pages(), 2);
         assert_eq!(deck.board.counts, [3; 4]);
         let initial = workspace.deck_positions.clone();
         let input = deck.cycle(0, None).unwrap();
-        assert_eq!(input.slot, 0);
-        assert_eq!(deck.cycle(0, input.assignment).unwrap().slot, 4);
-        assert_eq!(deck.cycle(0, None).unwrap().slot, 8);
-        assert_eq!(deck.cycle(0, None).unwrap().slot, 0);
+        assert_eq!(Some(input), initial[0]);
+        assert_eq!(Some(deck.cycle(0, Some(input)).unwrap()), initial[4]);
+        assert_eq!(Some(deck.cycle(0, None).unwrap()), initial[8]);
+        assert_eq!(Some(deck.cycle(0, None).unwrap()), initial[0]);
         let done = deck.cycle(2, None).unwrap();
-        reports.get_mut(&done.assignment.unwrap()).unwrap().state = State::Idle;
-        deck.update(&mut workspace, &reports, done.assignment);
-        assert_eq!(deck.cycle(2, done.assignment).unwrap().slot, 6);
+        reports.get_mut(&done).unwrap().state = State::Idle;
+        deck.update(&mut workspace, &reports, &HashMap::new(), Some(done));
+        assert_eq!(Some(deck.cycle(2, Some(done)).unwrap()), initial[6]);
         let ended = initial[0].unwrap();
         let saved = reports.remove(&ended).unwrap();
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert!(deck.board.tile(0).reserved);
         assert!(deck.board.tile(0).capture.target.is_none());
         reports.insert(ended, saved);
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert_eq!(workspace.deck_positions, initial);
         workspace.close_pane(ended);
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert_eq!(workspace.deck_positions[0], None);
         assert_eq!(deck.board.counts[0], 2); // retained closed pane is not counted
         deck.page();
@@ -932,7 +1221,7 @@ mod tests {
         deck.page();
         assert_eq!(deck.board.page, 0);
         reports.clear();
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert!(deck.board.no_sessions);
         assert!(deck.cycle(0, None).is_none());
         assert_eq!(workspace.deck_positions[1..], initial[1..]);
@@ -943,18 +1232,18 @@ mod tests {
         let newcomer = workspace.windows[9].tabs[0].root.panes()[0];
         let new_report = reports.remove(&newcomer).unwrap();
         let mut deck = Dashboard::default();
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         let positions = workspace.deck_positions.clone();
         let returning = positions[0].unwrap();
         let old_report = reports[&returning].clone();
         let old_capture = deck.board.tile(0).capture;
         reports.clear();
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert!(deck.board.no_sessions);
         assert_eq!(workspace.deck_positions, positions);
 
         reports.insert(newcomer, new_report);
-        assert!(deck.update(&mut workspace, &reports, None));
+        assert!(deck.update(&mut workspace, &reports, &HashMap::new(), None));
         assert!(!deck.board.no_sessions);
         assert_eq!(deck.board.pages(), 1);
         assert_eq!(workspace.deck_positions[0], Some(newcomer));
@@ -963,11 +1252,11 @@ mod tests {
         assert_eq!(workspace.windows.len(), 10);
 
         reports.insert(returning, old_report);
-        assert!(deck.update(&mut workspace, &reports, None));
+        assert!(deck.update(&mut workspace, &reports, &HashMap::new(), None));
         assert_eq!(workspace.deck_positions[0], Some(newcomer));
         assert_eq!(workspace.deck_positions[1], Some(returning));
         assert_eq!(deck.board.pages(), 1);
-        assert!(!deck.update(&mut workspace, &reports, None));
+        assert!(!deck.update(&mut workspace, &reports, &HashMap::new(), None));
     }
     #[test]
     fn holes_precede_eviction_and_all_registered_states_keep_their_slots() {
@@ -977,7 +1266,7 @@ mod tests {
         let first_report = reports.remove(&first).unwrap();
         let second_report = reports.remove(&second).unwrap();
         let mut deck = Dashboard::default();
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         let positions = workspace.deck_positions.clone();
         let reserved = positions[0].unwrap();
         let returning = reports.remove(&reserved).unwrap();
@@ -995,20 +1284,20 @@ mod tests {
             reports.get_mut(&id.unwrap()).unwrap().state = state;
         }
         reports.insert(first, first_report);
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert_eq!(workspace.deck_positions[0], Some(reserved));
         assert_eq!(workspace.deck_positions[1], Some(first));
         let reservation_capture = deck.board.tile(0).capture;
 
         reports.insert(second, second_report);
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert_eq!(workspace.deck_positions[0], Some(second));
         assert_eq!(workspace.deck_positions[2..], positions[2..]);
         assert!(!deck.board.valid(reservation_capture));
         assert_eq!(deck.board.pages(), 1);
 
         reports.insert(reserved, returning);
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert_eq!(workspace.deck_positions[9], Some(reserved));
         assert_eq!(workspace.deck_positions[2..9], positions[2..]);
         assert_eq!(deck.board.pages(), 2);
@@ -1017,14 +1306,14 @@ mod tests {
     fn screen_sleep_preserves_information_and_invalidates_pending_keys() {
         let (mut workspace, reports) = setup(2);
         let mut deck = Dashboard::default();
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         let positions = workspace.deck_positions.clone();
         let capture = deck.board.tile(0).capture;
         deck.gesture = Some(capture);
         deck.moving = true;
         deck.board.brightness = 25;
         deck.screens_awake(false);
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert!(!deck.board.valid(capture));
         assert!(deck.gesture.is_none());
         assert!(!deck.moving);
@@ -1032,7 +1321,7 @@ mod tests {
         deck.screens_awake(false);
         assert_eq!(deck.board.mode_generation, generation);
         deck.screens_awake(true);
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert_eq!(workspace.deck_positions, positions);
         assert_eq!(deck.board.brightness, 25);
         assert_eq!(deck.board.tile(0).state, Some(State::NeedsInput));
@@ -1045,22 +1334,22 @@ mod tests {
         let newcomer = workspace.windows[2].tabs[0].root.panes()[0];
         let new_report = reports.remove(&newcomer).unwrap();
         let mut deck = Dashboard::default();
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         let positions = workspace.deck_positions.clone();
         reports.remove(&positions[1].unwrap());
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         let source = deck.board.tile(0).capture;
         let destination = deck.board.tile(1).capture;
         deck.gesture = Some(source);
         reports.insert(newcomer, new_report);
-        assert!(!deck.update(&mut workspace, &reports, None));
+        assert!(!deck.update(&mut workspace, &reports, &HashMap::new(), None));
         assert_eq!(workspace.deck_positions, positions);
         assert!(deck.board.valid(destination));
         deck.moving = true;
-        assert!(!deck.update(&mut workspace, &reports, None));
+        assert!(!deck.update(&mut workspace, &reports, &HashMap::new(), None));
         assert!(deck.swap(&mut workspace, source, destination));
 
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert_eq!(workspace.deck_positions, [Some(newcomer), positions[0]]);
         assert!(!deck.board.valid(destination));
         assert_eq!(deck.board.pages(), 1);
@@ -1069,19 +1358,19 @@ mod tests {
     fn swap_reservations_holes_and_freeze_assignments() {
         let (mut workspace, mut reports) = setup(3);
         let mut deck = Dashboard::default();
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         let initial = workspace.deck_positions.clone();
         let source = deck.board.tile(0).capture;
         deck.gesture = Some(source);
         deck.moving = true;
         let destination = deck.board.tile(8).capture;
         assert!(deck.swap(&mut workspace, source, destination));
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert_eq!(workspace.deck_positions[8], initial[0]);
         assert_eq!(workspace.deck_positions[0], None);
         let reserved = initial[1].unwrap();
         reports.remove(&reserved);
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         let source = deck.board.tile(8).capture;
         let destination = deck.board.tile(1).capture;
         deck.gesture = Some(source);
@@ -1089,7 +1378,7 @@ mod tests {
         assert!(deck.cycle(0, None).is_none());
         deck.page();
         assert!(deck.swap(&mut workspace, source, destination));
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert_eq!(workspace.deck_positions[8], Some(reserved));
         let source = deck.board.tile(1).capture;
         deck.gesture = Some(source);
@@ -1099,7 +1388,7 @@ mod tests {
             .unwrap()
             .target
             .generation += 1;
-        deck.update(&mut workspace, &reports, None);
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
         assert!(deck.gesture.is_none());
         assert!(!deck.swap(&mut workspace, source, deck.board.tile(0).capture));
     }

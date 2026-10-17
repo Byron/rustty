@@ -134,12 +134,8 @@ impl App {
         } else {
             self.deck_focused()
         };
-        if let Some(capture) = self.deck.dashboard.cycle(group, focused)
-            && let Some(target) = capture
-                .target
-                .filter(|target| self.live_deck_target(*target))
-        {
-            self.reveal_pane_with_host(target.pane, host);
+        if let Some(pane) = self.deck.dashboard.cycle(group, focused) {
+            self.reveal_pane_with_host(pane, host);
         }
     }
     fn pull_deck_to_first(&mut self) {
@@ -218,6 +214,7 @@ impl App {
             .or_else(|| self.deck_focused());
         if let Some(pane) = focused.and_then(|id| self.panes.get_mut(&id)) {
             pane.agent.acknowledge();
+            pane.deck_progress.acknowledge();
         }
         let reports = self
             .workspace
@@ -238,10 +235,16 @@ impl App {
                     .collect::<Vec<_>>()
             })
             .collect();
+        let progress = self
+            .panes
+            .iter()
+            .filter(|(_, pane)| !pane.exited)
+            .filter_map(|(&id, pane)| pane.deck_progress.state().map(|state| (id, state)))
+            .collect();
         if self
             .deck
             .dashboard
-            .update(&mut self.workspace, &reports, focused)
+            .update(&mut self.workspace, &reports, &progress, focused)
         {
             self.changed();
         }
@@ -296,6 +299,7 @@ impl App {
         self.active = Some(id);
         if let Some(state) = self.panes.get_mut(&pane) {
             state.agent.acknowledge();
+            state.deck_progress.acknowledge();
         }
         // Detached hosts are restored before their caller synchronizes session focus.
         if host.is_none() {
@@ -769,6 +773,62 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
         ],
         input_before
     );
+    // Progress-only panes use aggregate reveal without registering an agent tile.
+    use rustty::vt::Effect;
+    for pane in app.panes.values_mut() {
+        pane.agent.clear();
+        pane.deck_progress.clear();
+    }
+    let positions = app.workspace.deck_positions.clone();
+    app.panes.get_mut(&second).unwrap().deck_progress.apply(
+        &Effect::Progress {
+            state: 3,
+            value: None,
+        },
+        true,
+    );
+    app.reveal_pane(first);
+    app.sync_deck();
+    assert!(!app.deck.dashboard.board.no_sessions);
+    assert_eq!(app.deck.dashboard.board.counts, [0, 1, 0, 0]);
+    assert!(
+        app.deck
+            .dashboard
+            .board
+            .tiles
+            .iter()
+            .all(|t| t.state.is_none())
+    );
+    assert!(app.deck_command(StreamDeckAction::Working));
+    assert_eq!(app.focused(app.active.unwrap()), Some(second));
+    app.reveal_pane(first);
+    app.panes
+        .get_mut(&second)
+        .unwrap()
+        .deck_progress
+        .apply(&Effect::CommandEnd { exit_code: Some(1) }, true);
+    app.sync_deck();
+    assert_eq!(app.deck.dashboard.board.counts, [1, 0, 0, 0]);
+    assert!(app.deck_command(StreamDeckAction::NeedsInput));
+    assert_eq!(app.focused(app.active.unwrap()), Some(second));
+    assert_eq!(app.panes[&second].deck_progress.state(), None);
+    app.reveal_pane(first);
+    let report = &mut app.panes.get_mut(&second).unwrap().deck_progress;
+    report.apply(
+        &Effect::Progress {
+            state: 1,
+            value: Some(100),
+        },
+        true,
+    );
+    report.apply(&Effect::CommandEnd { exit_code: Some(0) }, true);
+    app.sync_deck();
+    assert_eq!(app.deck.dashboard.board.counts, [0, 0, 1, 0]);
+    assert!(app.deck_command(StreamDeckAction::Done));
+    assert_eq!(app.focused(app.active.unwrap()), Some(second));
+    assert_eq!(app.panes[&second].deck_progress.state(), None);
+    assert_eq!(app.workspace.deck_positions, positions);
+    assert_eq!(app.panes[&second].input_bytes, input_before[1]);
     app.deck_action(Action::Disconnected(Ok(())));
     assert!(!app.deck_command(StreamDeckAction::PullToFirst));
     app.loaded.config.stream_deck = enabled;
@@ -786,7 +846,7 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
     assert!(app.deck.worker.is_none());
     assert!(app.deck.discovery.is_none());
     eprintln!(
-        "Native Stream Deck smoke: exact panes across windows/tabs, minimized reveal, quick animation request, completion acknowledgement, menu/shortcut chains, pull-to-first, stale control rejection, disconnected gating, input preservation, pane removal and save-state-never passed; no USB used"
+        "Native Stream Deck smoke: exact panes across windows/tabs, minimized reveal, quick animation request, completion acknowledgement, progress-only Working/Attention/Done cycling, menu/shortcut chains, pull-to-first, stale control rejection, disconnected gating, input preservation, pane removal and save-state-never passed; no USB used"
     );
     Ok(())
 }
