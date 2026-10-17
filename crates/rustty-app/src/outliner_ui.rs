@@ -1,6 +1,6 @@
 //! A movable hierarchy and its compact, neutral breadcrumb.
 use crate::{
-    outliner::{Expansion, Row, Target, Zoom, has_children, pinned_paths},
+    outliner::{Expansion, Row, Target, Zoom, has_children, panel_groups, pinned_paths},
     presentation::TabAccent,
     workspace::Id,
 };
@@ -162,6 +162,7 @@ pub fn contents(
         .open
         .then(|| crate::outliner::search(rows, &search.query));
     let searching = search.open && !search.query.trim().is_empty();
+    let result_groups = search_groups(results.as_deref().unwrap_or_default());
     let panes: Vec<_> = results
         .as_deref()
         .unwrap_or_default()
@@ -170,6 +171,11 @@ pub fn contents(
             target @ Target::Pane { pane, .. } => Some((pane, target)),
             _ => None,
         })
+        .collect();
+    let panes: Vec<_> = result_groups
+        .iter()
+        .flatten()
+        .map(|index| panes[*index])
         .collect();
     let previous = search.selected_pane;
     if query_changed
@@ -212,6 +218,7 @@ pub fn contents(
         let clicked = search_results(
             ui,
             results.as_deref().unwrap_or_default(),
+            &result_groups,
             search.selected_pane,
             query_changed || selection_changed,
         );
@@ -230,7 +237,16 @@ pub fn contents(
         .animated(false)
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
-            for index in expansion.visible(rows) {
+            for group in panel_groups(rows, &expansion.visible(rows)) {
+                let index = group[0];
+                if group.len() > 1 {
+                    let selected = grouped_tree_row(ui, rows, &group, pinned_panes, platform_accent, changed || selection_changed);
+                    if let Some(Target::Pane { pane, .. }) = selected {
+                        output.selected = selected;
+                        if search.open { search.selected_pane = Some(pane); }
+                    }
+                    continue;
+                }
                 let row = &rows[index];
                 let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), ROW_HEIGHT));
                 let left = rect.left() + 7.0 + row.depth as f32 * INDENT;
@@ -420,9 +436,142 @@ pub fn contents(
     output
 }
 
+fn grouped_tree_row(
+    ui: &mut egui::Ui,
+    rows: &[Row],
+    group: &[usize],
+    pins: &[Id],
+    platform_accent: [u8; 3],
+    reveal: bool,
+) -> Option<Target> {
+    let first = &rows[group[0]];
+    let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), ROW_HEIGHT));
+    let accent = TabAccent::new(first.color, platform_accent);
+    let focused = group.iter().any(|index| rows[*index].focused);
+    if focused {
+        ui.painter().rect_filled(rect, 4, rgb(accent.background));
+    }
+    let foreground = if focused {
+        rgb(accent.foreground)
+    } else {
+        ui.visuals().text_color()
+    };
+    let left = rect.left() + 10.0 + first.depth as f32 * INDENT + INDENT;
+    let mut selected = None;
+    for (slot, &index) in group.iter().enumerate() {
+        let row = &rows[index];
+        let icon_rect = Rect::from_min_size(
+            Pos2::new(left + slot as f32 * 26.0, rect.top()),
+            Vec2::new(26.0, ROW_HEIGHT),
+        );
+        let response = ui.interact(
+            icon_rect,
+            egui::Id::new(("outliner-row", row.target)),
+            Sense::click(),
+        );
+        paint_icon(
+            ui.painter(),
+            Rect::from_center_size(icon_rect.center(), Vec2::splat(ICON_SIZE)),
+            row,
+            foreground,
+        );
+        if row.focused || response.hovered() || response.has_focus() {
+            ui.painter().rect_stroke(
+                icon_rect.shrink(0.5),
+                3,
+                Stroke::new(1.0, foreground),
+                egui::StrokeKind::Inside,
+            );
+        }
+        let pinned = matches!(row.target, Target::Pane { pane, .. } if pins.contains(&pane));
+        if pinned {
+            paint_pin(
+                ui.painter(),
+                Rect::from_center_size(
+                    icon_rect.right_bottom() - Vec2::new(4.0, 5.0),
+                    Vec2::splat(9.0),
+                ),
+                foreground,
+            );
+        }
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::SelectableLabel,
+                ui.is_enabled(),
+                row.focused,
+                if pinned {
+                    format!("{} · Pinned", description(row))
+                } else {
+                    description(row)
+                },
+            )
+        });
+        if row.focused && reveal {
+            response.scroll_to_me(None);
+        }
+        if response.clicked() {
+            response.surrender_focus();
+            selected = Some(row.target);
+        }
+        response.on_hover_text(description(row));
+    }
+    let label_rect = Rect::from_min_max(
+        Pos2::new(left + group.len() as f32 * 26.0 + 3.0, rect.top()),
+        rect.max,
+    );
+    paint_label(
+        ui,
+        &first.label,
+        label_rect,
+        label_rect.left(),
+        foreground,
+        &[],
+    );
+    let label = ui.interact(
+        label_rect,
+        ui.id().with(("panel-group-name", first.target)),
+        Sense::click(),
+    );
+    label.widget_info(|| {
+        egui::WidgetInfo::labeled(
+            egui::WidgetType::Button,
+            ui.is_enabled(),
+            format!("Select first panel: {}", first.label),
+        )
+    });
+    if label.clicked() {
+        label.surrender_focus();
+        selected = Some(first.target);
+    }
+    selected
+}
+
+fn search_groups(results: &[crate::outliner::SearchResult]) -> Vec<Vec<usize>> {
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    let mut names = std::collections::HashMap::new();
+    for (index, result) in results.iter().enumerate() {
+        let Some(row) = result.path.last() else {
+            continue;
+        };
+        let Target::Pane { tab, .. } = row.target else {
+            continue;
+        };
+        let parent = result.path.iter().rev().nth(1).map(|row| row.target);
+        let group = *names
+            .entry((parent, tab, row.label.as_str()))
+            .or_insert_with(|| {
+                groups.push(Vec::new());
+                groups.len() - 1
+            });
+        groups[group].push(index);
+    }
+    groups
+}
+
 fn search_results(
     ui: &mut egui::Ui,
     results: &[crate::outliner::SearchResult],
+    groups: &[Vec<usize>],
     selected_pane: Option<Id>,
     changed: bool,
 ) -> Option<Target> {
@@ -442,7 +591,8 @@ fn search_results(
         if results.is_empty() {
             ui.weak("No matching panels");
         }
-        for result in results {
+        for group in groups {
+            let result = &results[group[0]];
             let Some(row) = result.path.last() else {
                 continue;
             };
@@ -452,10 +602,10 @@ fn search_results(
             let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), ROW_HEIGHT));
             let response = ui.interact(
                 rect,
-                egui::Id::new(("outliner-search-result", pane)),
+                if group.len() > 1 { egui::Id::new(("outliner-search-group", pane)) } else { egui::Id::new(("outliner-search-result", pane)) },
                 Sense::click(),
             );
-            let active = selected_pane == Some(pane);
+            let active = group.iter().any(|index| matches!(results[*index].path.last().unwrap().target, Target::Pane { pane, .. } if selected_pane == Some(pane)));
             if active {
                 let color = ui.visuals().text_color();
                 ui.painter()
@@ -475,11 +625,15 @@ fn search_results(
                     .id_salt(("search-path", pane))
                     .max_rect(rect.shrink2(Vec2::new(3.0, 2.0))),
             );
-            breadcrumb_with_matches(
+            let panels: Vec<_> = group.iter().map(|index| results[*index].path.last().unwrap()).collect();
+            let clicked = breadcrumb_with_panels(
                 &mut child,
                 &result.path,
                 rect.width() - 6.0,
                 Some(&result.highlights),
+                &panels,
+                selected_pane,
+                "outliner-search-result",
             );
             if active && changed {
                 response.scroll_to_me(None);
@@ -492,7 +646,9 @@ fn search_results(
                     format!("Search result: {}", row.label),
                 )
             });
-            if response.clicked() {
+            if let Some(target) = clicked {
+                selected = Some(target);
+            } else if response.clicked() {
                 response.surrender_focus();
                 selected = Some(row.target);
             }
@@ -691,6 +847,26 @@ fn breadcrumb_with_matches(
     max_width: f32,
     highlights: Option<&[Range<usize>]>,
 ) -> Option<Target> {
+    breadcrumb_with_panels(
+        ui,
+        rows,
+        max_width,
+        highlights,
+        &[],
+        None,
+        "breadcrumb-panel",
+    )
+}
+
+fn breadcrumb_with_panels(
+    ui: &mut egui::Ui,
+    rows: &[Row],
+    max_width: f32,
+    highlights: Option<&[Range<usize>]>,
+    panels: &[&Row],
+    selected_pane: Option<Id>,
+    icon_id: &str,
+) -> Option<Target> {
     if rows.is_empty() || max_width <= 0.0 {
         return None;
     }
@@ -722,7 +898,8 @@ fn breadcrumb_with_matches(
     let mut widths: Vec<f32> = rows
         .iter()
         .zip(&labels)
-        .map(|(row, label)| {
+        .enumerate()
+        .map(|(index, (row, label))| {
             ui.painter()
                 .layout_no_wrap(label.clone(), FontId::proportional(13.0), foreground)
                 .size()
@@ -733,6 +910,12 @@ fn breadcrumb_with_matches(
                     ICON_SIZE + 6.0
                 } else {
                     ICON_SIZE + 10.0
+                }
+                + if index + 1 == rows.len() {
+                    panels.len().saturating_sub(1) as f32 * (ICON_SIZE + 4.0)
+                        + if panels.len() > 1 { 3.0 } else { 0.0 }
+                } else {
+                    0.0
                 }
         })
         .collect();
@@ -789,7 +972,46 @@ fn breadcrumb_with_matches(
                 egui::StrokeKind::Inside,
             );
         }
-        let text_left = if row.tab_index.is_some() {
+        let text_left = if index + 1 == rows.len() && panels.len() > 1 {
+            for (slot, panel) in panels.iter().enumerate() {
+                let Target::Pane { pane, .. } = panel.target else {
+                    continue;
+                };
+                let icon = Rect::from_min_size(
+                    Pos2::new(x + 3.0 + slot as f32 * (ICON_SIZE + 4.0), rect.top()),
+                    Vec2::new(ICON_SIZE + 4.0, rect.height()),
+                );
+                let response = ui.interact(icon, egui::Id::new((icon_id, pane)), Sense::click());
+                paint_icon(
+                    &painter,
+                    Rect::from_center_size(icon.center(), Vec2::splat(ICON_SIZE)),
+                    panel,
+                    foreground,
+                );
+                if panel.focused || selected_pane == Some(pane) {
+                    painter.rect_stroke(
+                        icon.shrink(0.5),
+                        3,
+                        Stroke::new(1.0, foreground),
+                        egui::StrokeKind::Inside,
+                    );
+                }
+                response.widget_info(|| {
+                    egui::WidgetInfo::selected(
+                        egui::WidgetType::SelectableLabel,
+                        ui.is_enabled(),
+                        selected_pane == Some(pane),
+                        description(panel),
+                    )
+                });
+                if response.clicked() {
+                    response.surrender_focus();
+                    selected = Some(panel.target);
+                }
+                response.on_hover_text(description(panel));
+            }
+            x + 3.0 + panels.len() as f32 * (ICON_SIZE + 4.0)
+        } else if row.tab_index.is_some() {
             x + 3.0
         } else {
             paint_icon(
@@ -2144,6 +2366,81 @@ mod tests {
                 ..Output::default()
             }
         );
+    }
+
+    #[test]
+    fn sibling_panels_share_a_name_but_keep_individual_tree_and_search_targets() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let mut rows = rows();
+        rows.push(Row {
+            target: Target::Pane { tab: 1, pane: 4 },
+            focused: false,
+            ..rows[3].clone()
+        });
+        for _ in 0..2 {
+            frame(&context, &rows, Vec::new(), false);
+        }
+        let (output, _) = frame(&context, &rows, Vec::new(), false);
+        assert_eq!(output.shapes.iter().filter(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Tests")).count(), 1);
+        for row in &rows[3..] {
+            let rect = bounds(&output, row);
+            assert_eq!(
+                click(&context, &rows, rect.center(), false),
+                Some(row.target)
+            );
+        }
+        let name = node(&output, "Select first panel: Tests")
+            .unwrap()
+            .bounds()
+            .unwrap();
+        let pos = Pos2::new(
+            (name.x0 + name.x1) as f32 / 2.0,
+            (name.y0 + name.y1) as f32 / 2.0,
+        );
+        assert_eq!(click(&context, &rows, pos, false), Some(rows[3].target));
+        let mut search = SearchState::default();
+        search.start();
+        search.query = "tst".into();
+        for _ in 0..2 {
+            search_frame(&context, &rows, &[], &mut search, Default::default());
+        }
+        let (output, _, _) = search_frame(&context, &rows, &[], &mut search, Default::default());
+        assert_eq!(output.shapes.iter().filter(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Tests")).count(), 1);
+        let second = context
+            .read_response(egui::Id::new(("outliner-search-result", 4_u64)))
+            .unwrap()
+            .rect;
+        assert_eq!(
+            search_click(&context, &rows, &mut search, second.center()).selected,
+            Some(rows[4].target)
+        );
+        assert!(search.open);
+        let group = context
+            .read_response(egui::Id::new(("outliner-search-group", 3_u64)))
+            .unwrap()
+            .rect;
+        assert_eq!(
+            search_click(
+                &context,
+                &rows,
+                &mut search,
+                group.right_center() - Vec2::new(10.0, 0.0)
+            )
+            .selected,
+            Some(rows[3].target)
+        );
+        let (_, output, _) = search_frame(
+            &context,
+            &rows,
+            &[],
+            &mut search,
+            egui::RawInput {
+                events: vec![control_key(egui::Key::N, false)],
+                ..Default::default()
+            },
+        );
+        assert_eq!(output.preview, Some(rows[4].target));
     }
 
     #[test]

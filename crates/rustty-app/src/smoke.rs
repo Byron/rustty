@@ -3537,6 +3537,17 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     }
     begin_search(app)?;
     type_query(app, "rty")?;
+    let native_focus_available = app.outliner.as_ref().unwrap().window.has_focus();
+    if !native_focus_available {
+        if std::env::var_os("RUSTTY_SMOKE_OFFSCREEN").is_none() {
+            return Err(
+                "Outliner could not acquire native focus for the surface smoke test".into(),
+            );
+        }
+        eprintln!(
+            "Native Outliner smoke: session did not grant focus; checking offscreen input isolation"
+        );
+    }
     for (key, physical, repeat, expected) in [
         (egui::Key::N, KeyCode::KeyN, false, sibling),
         (egui::Key::N, KeyCode::KeyN, true, first),
@@ -3561,7 +3572,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         if app.focused(window) != Some(expected)
             || !host.search.open
             || host.search.query != "rty"
-            || !host.window.has_focus()
+            || native_focus_available && !host.window.has_focus()
             || !host.held_keys.contains(&PhysicalKey::Code(physical))
             || app
                 .consumed_global_keys
@@ -3682,7 +3693,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     if app.active != Some(other)
         || !app.windows[&other_key].visible
         || app.windows[&other_key].window.is_minimized() == Some(true)
-        || !app.outliner.as_ref().unwrap().window.has_focus()
+        || native_focus_available && !app.outliner.as_ref().unwrap().window.has_focus()
     {
         return Err(
             "Outliner search did not reveal a minimized window without taking keyboard focus"
@@ -3804,7 +3815,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     type_query(app, "quick-search")?;
     if !app.windows[&quick_key].visible
         || app.active != Some(quick)
-        || !app.outliner.as_ref().unwrap().window.has_focus()
+        || native_focus_available && !app.outliner.as_ref().unwrap().window.has_focus()
     {
         return Err("Outliner search did not preview the hidden quick terminal while retaining keyboard focus".into());
     }
@@ -3812,7 +3823,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     type_query(app, "remote-search")?;
     if app.active != Some(other)
         || app.config().quick_terminal_autohide && app.windows[&quick_key].visible
-        || !app.outliner.as_ref().unwrap().window.has_focus()
+        || native_focus_available && !app.outliner.as_ref().unwrap().window.has_focus()
     {
         return Err(
             "leaving a quick-terminal preview did not honor autohide and retain search focus"
@@ -3850,6 +3861,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     fs::write(
         directory.join("result.json"),
         serde_json::to_vec_pretty(&serde_json::json!({
+            "native_search_focus_checked": native_focus_available,
             "checks": ["outliner-native-window", "outliner-hierarchy", "outliner-disclosure", "outliner-navigation", "outliner-zoom", "outliner-single-tab-bar", "outliner-narrow-tab-bar", "outliner-pins", "outliner-pin-drag", "outliner-search", "outliner-search-navigation", "outliner-terminal-input", "outliner-quick-terminal", "outliner-close"],
             "captures": ["outliner.png", "outliner-collapsed.png", "outliner-terminal.png", "outliner-quad.png", "outliner-quad-terminal.png", "outliner-nested.png", "outliner-nested-terminal.png", "outliner-pane.png", "outliner-pane-terminal.png", "outliner-narrow-terminal.png", "outliner-pinned.png", "outliner-pinned-terminal.png", "outliner-search.png", "outliner-search-empty.png", "outliner-search-navigation.png", "outliner-windows.png", "outliner-other-window.png", "outliner-quick.png", "outliner-flat.png"]
         }))?,

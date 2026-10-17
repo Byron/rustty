@@ -118,6 +118,43 @@ pub fn has_children(rows: &[Row], index: usize) -> bool {
         .is_some_and(|(row, next)| next.depth > row.depth)
 }
 
+/// Group equal panel names only among siblings, preserving their layout order.
+pub fn panel_groups(rows: &[Row], order: &[usize]) -> Vec<Vec<usize>> {
+    let mut parents = Vec::<usize>::new();
+    let scopes: Vec<_> = rows
+        .iter()
+        .enumerate()
+        .map(|(index, row)| {
+            while parents
+                .last()
+                .is_some_and(|parent| rows[*parent].depth >= row.depth)
+            {
+                parents.pop();
+            }
+            let parent = parents.last().map(|parent| rows[*parent].target);
+            parents.push(index);
+            parent
+        })
+        .collect();
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    let mut names = HashMap::new();
+    for &index in order {
+        let row = &rows[index];
+        if let Target::Pane { tab, .. } = row.target {
+            let group = *names
+                .entry((scopes[index], tab, row.label.as_str()))
+                .or_insert_with(|| {
+                    groups.push(Vec::new());
+                    groups.len() - 1
+                });
+            groups[group].push(index);
+        } else {
+            groups.push(vec![index]);
+        }
+    }
+    groups
+}
+
 pub fn workspace_rows(
     workspace: &Workspace,
     active_window: Option<Id>,
@@ -1021,6 +1058,30 @@ mod tests {
                 .filter(|row| matches!(row.target, Target::Pane { .. }))
                 .map(|row| row.target)
                 .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn equal_panel_names_group_only_under_the_same_parent_and_tab() {
+        let mut rows = expansion_rows();
+        for row in &mut rows {
+            if matches!(row.target, Target::Pane { .. }) {
+                row.label = "same".into();
+            }
+        }
+        let groups = panel_groups(&rows, &(0..rows.len()).collect::<Vec<_>>());
+        let panels: Vec<_> = groups
+            .into_iter()
+            .filter(|group| matches!(rows[group[0]].target, Target::Pane { .. }))
+            .collect();
+        assert_eq!(
+            panels.iter().map(Vec::len).collect::<Vec<_>>(),
+            [2, 1, 1, 1, 1, 1]
+        );
+        assert!(
+            panels
+                .iter()
+                .all(|group| group.windows(2).all(|pair| pair[0] < pair[1]))
         );
     }
 
