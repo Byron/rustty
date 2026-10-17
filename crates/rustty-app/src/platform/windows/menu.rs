@@ -90,7 +90,7 @@ impl NativeMenu {
         }
         let stream_deck = Submenu::new("&Stream Deck", true);
         for (name, action) in [
-            ("Next Needing Input", StreamDeckAction::NeedsInput),
+            ("Next Attention", StreamDeckAction::NeedsInput),
             ("Next Working", StreamDeckAction::Working),
             ("Next Done", StreamDeckAction::Done),
             ("Next Idle", StreamDeckAction::Idle),
