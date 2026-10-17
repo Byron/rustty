@@ -99,6 +99,20 @@ impl Smoke {
             "find-focused.png",
             "find-unfocused.png",
             "theme-picker.png",
+            "outliner.png",
+            "outliner-collapsed.png",
+            "outliner-terminal.png",
+            "outliner-quad.png",
+            "outliner-quad-terminal.png",
+            "outliner-nested.png",
+            "outliner-nested-terminal.png",
+            "outliner-pane.png",
+            "outliner-pane-terminal.png",
+            "outliner-narrow-terminal.png",
+            "outliner-flat.png",
+            "outliner-windows.png",
+            "outliner-other-window.png",
+            "outliner-quick.png",
             "result.json",
             "timing.json",
         ] {
@@ -145,6 +159,7 @@ impl Smoke {
         loaded.config.stream_deck = false;
         let timing = std::env::var_os("RUSTTY_SMOKE_TIMING").is_some();
         let deck_only = std::env::var("RUSTTY_SMOKE_DECK").as_deref() == Ok("only");
+        let outliner = std::env::var_os("RUSTTY_SMOKE_OUTLINER").is_some();
         if timing {
             let renderer = loaded.config.renderer;
             loaded.config = Config::default();
@@ -158,7 +173,7 @@ impl Smoke {
             loaded.config.font_size = 13.0;
         }
         #[cfg(not(target_os = "windows"))]
-        let command = if timing || deck_only {
+        let command = if timing || deck_only || outliner {
             config::Command::Direct(vec!["/bin/sleep".into(), "120".into()])
         } else {
             config::Command::Direct(vec!["/bin/sh".into(),"-c".into(),r"printf '\033[2J\033[H\033[30;107m  ✔️\033[5G  > selected row\033[0m\n\033[1;36mRustty native smoke\033[0m\n\033]7;file://localhost/tmp\007\033]9;4;1;65\007'; exec /bin/sh -i".into()])
@@ -178,7 +193,7 @@ impl Smoke {
                     )
                     .join("Git/bin/bash.exe")
                 });
-            if timing || deck_only {
+            if timing || deck_only || outliner {
                 config::Command::Direct(vec![
                     shell.to_string_lossy().into_owned(),
                     "--noprofile".into(),
@@ -240,6 +255,10 @@ impl Smoke {
         }
     }
     pub fn step(&mut self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
+        if std::env::var_os("RUSTTY_SMOKE_OUTLINER").is_some() {
+            check_outliner(app, event_loop, &self.directory)?;
+            return Ok(true);
+        }
         if std::env::var("RUSTTY_SMOKE_DECK").as_deref() == Ok("only") {
             super::deck_host::check_native_deck(app, event_loop)?;
             return Ok(true);
@@ -457,9 +476,12 @@ impl Smoke {
                     app.action(event_loop, host, action, true);
                     let tab = app.tab(host.id).unwrap();
                     if zoom_label(tab) != Some(label)
-                        || !app.tab_label(tab).0.ends_with(&format!(" [{label}]"))
+                        || app.tab_label(tab).0.ends_with(&format!(" [{label}]"))
                     {
-                        return Err("zoom modes did not have distinct labels".into());
+                        return Err(
+                            "zoom mode was lost or added text to its graphical tab indicator"
+                                .into(),
+                        );
                     }
                     app.draw(event_loop, host)?;
                     capture_window(app, event_loop, host, &self.directory.join(capture))?;
@@ -3008,6 +3030,464 @@ fn check_link_hover(app: &mut App, host: &mut Host, focused: Id, hovered: Id) ->
     eprintln!(
         "Native smoke: Command-hover links followed the pane, modifiers, wide cells, capture policy, and changed text without repeat redraws"
     );
+    Ok(())
+}
+
+fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path) -> Result<()> {
+    use outliner::Target;
+    use winit::event::DeviceId;
+    use winit::keyboard::KeyCode;
+
+    let consumes_key_tail = |app: &mut App, key: KeyCode| {
+        let key = PhysicalKey::Code(key);
+        input::global_key_is_consumed(
+            &mut app.consumed_global_keys,
+            key,
+            ElementState::Pressed,
+            true,
+        ) && input::global_key_is_consumed(
+            &mut app.consumed_global_keys,
+            key,
+            ElementState::Released,
+            false,
+        ) && !input::global_key_is_consumed(
+            &mut app.consumed_global_keys,
+            key,
+            ElementState::Pressed,
+            false,
+        )
+    };
+
+    if app.windows.is_empty() {
+        app.add_window(false);
+        app.reconcile(event_loop);
+    }
+    let key = *app.windows.keys().next().ok_or("missing Outliner host")?;
+    let mut host = app.windows.remove(&key).unwrap();
+    host.visible = true;
+    host.occluded = false;
+    host.focused = true;
+    let window = host.id;
+    let first = app.focused(window).ok_or("missing Outliner pane")?;
+    let first_tab = app.tab(window).unwrap().id;
+    for direction in [Direction::Right, Direction::Down] {
+        app.action(event_loop, &mut host, Action::NewSplit(direction), true);
+    }
+    let bottom_right = app.focused(window).unwrap();
+    let right = app.tab(window).unwrap().root.panes()[1];
+    app.focus_pane(window, first);
+    app.action(
+        event_loop,
+        &mut host,
+        Action::NewSplit(Direction::Down),
+        true,
+    );
+    let bottom_left = app.focused(window).unwrap();
+    app.focus_pane(window, first);
+    app.action(
+        event_loop,
+        &mut host,
+        Action::NewSplit(Direction::Right),
+        true,
+    );
+    let sibling = app.focused(window).unwrap();
+    app.focus_pane(window, right);
+    app.action(
+        event_loop,
+        &mut host,
+        Action::NewSplit(Direction::Right),
+        true,
+    );
+    let mixed = app.focused(window).unwrap();
+    let tab = app.tab_mut(window).unwrap();
+    tab.title = Some("Rustty".into());
+    tab.color = Some([121, 96, 205]);
+    app.action(event_loop, &mut host, Action::NewTab, true);
+    let second = app.focused(window).unwrap();
+    let second_tab = app.tab(window).unwrap().id;
+    app.action(
+        event_loop,
+        &mut host,
+        Action::NewSplit(Direction::Right),
+        true,
+    );
+    let second_last = app.focused(window).unwrap();
+    let tab = app.tab_mut(window).unwrap();
+    tab.title = Some("Research".into());
+    tab.color = Some([48, 149, 125]);
+    tab.toggle_zoom();
+    for (pane, label) in [
+        (first, "rustty"),
+        (sibling, "rustty"),
+        (right, "tests"),
+        (mixed, "docs"),
+        (bottom_left, "build"),
+        (bottom_right, "reviews"),
+        (second, "notes"),
+        (second_last, "reference"),
+    ] {
+        let pane = app.panes.get_mut(&pane).unwrap();
+        pane.cwd = fixture_directory().join(label);
+        pane.title = label.into();
+        pane.session.terminal()?.feed(
+            format!("\x1b[2J\x1b[H\x1b[1;36m{label}\x1b[0m\r\nOutliner navigation fixture\r\n")
+                .as_bytes(),
+        );
+    }
+    app.windows.insert(key, host);
+    let action = |app: &mut App, action| {
+        let mut host = app.windows.remove(&key).unwrap();
+        app.action(event_loop, &mut host, action, true);
+        app.windows.insert(key, host);
+    };
+    let capture_terminal = |app: &mut App, name: &str| -> Result<()> {
+        let mut host = app.windows.remove(&key).unwrap();
+        let capture = capture_window(app, event_loop, &mut host, &directory.join(name));
+        let header_height = host.content.y;
+        app.windows.insert(key, host);
+        capture?;
+        if header_height != 38.0 {
+            return Err("breadcrumb consumed space below the single tab bar".into());
+        }
+        Ok(())
+    };
+    app.select_outline_target(Target::Pane {
+        tab: first_tab,
+        pane: first,
+    });
+    action(app, Action::ToggleOutliner);
+    let utility_key = app
+        .outliner
+        .as_ref()
+        .ok_or("Outliner window did not open")?
+        .window
+        .id();
+    if app.windows.contains_key(&utility_key) || !app.outliner.as_ref().unwrap().visible {
+        return Err("Outliner is not an independent visible native window".into());
+    }
+    let quad = app.tab(window).unwrap().root.quadrant(first).unwrap();
+    app.draw_outliner(event_loop, Some(&directory.join("outliner-collapsed.png")))?;
+    let disclosure_bounds = |app: &App, target| {
+        app.context
+            .viewport_for(app.outliner.as_ref().unwrap().viewport, |state| {
+                state
+                    .prev_pass
+                    .widgets
+                    .get(egui::Id::new(("outliner-disclosure", target)))
+                    .map(|widget| widget.interact_rect)
+            })
+    };
+    for (shift, open, name) in [
+        (false, false, "outliner-collapsed.png"),
+        (false, true, "outliner.png"),
+        (true, false, "outliner-collapsed.png"),
+        (true, true, "outliner.png"),
+    ] {
+        let before = (serde_json::to_vec(&app.workspace)?, app.active);
+        let point = disclosure_bounds(app, Target::Window(window))
+            .ok_or("missing native Outliner disclosure")?
+            .center();
+        let modifiers = egui::Modifiers {
+            shift,
+            ..Default::default()
+        };
+        for event in [
+            egui::Event::PointerMoved(point),
+            egui::Event::PointerButton {
+                pos: point,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers,
+            },
+            egui::Event::PointerButton {
+                pos: point,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers,
+            },
+        ] {
+            let input = app.outliner.as_mut().unwrap().egui.egui_input_mut();
+            input.events.push(egui::Event::ModifiersChanged(modifiers));
+            input.events.push(event);
+            app.draw_outliner(event_loop, Some(&directory.join(name)))?;
+        }
+        app.outliner
+            .as_mut()
+            .unwrap()
+            .egui
+            .egui_input_mut()
+            .events
+            .push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+        // Retire the previous pass's hit rectangles before checking hidden descendants.
+        for _ in 0..2 {
+            app.draw_outliner(event_loop, Some(&directory.join(name)))?;
+        }
+        if (serde_json::to_vec(&app.workspace)?, app.active) != before {
+            return Err("Outliner disclosure changed terminal focus or zoom".into());
+        }
+        if disclosure_bounds(app, Target::Tab(first_tab)).is_some() != open {
+            return Err("Outliner disclosure did not show or hide its children".into());
+        }
+    }
+    if disclosure_bounds(
+        app,
+        Target::Quad {
+            tab: first_tab,
+            node: quad,
+        },
+    )
+    .is_none()
+    {
+        return Err("Shift-expand did not reveal nested Outliner branches".into());
+    }
+    capture_terminal(app, "outliner-terminal.png")?;
+    for (command, expected, name) in [
+        (Action::ToggleQuadrantZoom, "Quad-zoom", "outliner-quad.png"),
+        (
+            Action::ToggleSplitZoom,
+            "Zoom within quad-zoom",
+            "outliner-nested.png",
+        ),
+    ] {
+        action(app, command);
+        if zoom_label(app.tab(window).unwrap()) != Some(expected) {
+            return Err("Outliner zoom fixture lost its zoom layer".into());
+        }
+        app.draw_outliner(event_loop, Some(&directory.join(name)))?;
+        capture_terminal(app, &name.replace(".png", "-terminal.png"))?;
+    }
+    for ancestor in [
+        Target::Window(window),
+        Target::Tab(first_tab),
+        Target::Quad {
+            tab: first_tab,
+            node: quad,
+        },
+    ] {
+        app.select_outline_target(ancestor);
+        let tab = app.tab(window).unwrap();
+        if tab.focused != first || tab.zoom != Some(first) || tab.quadrant_zoom != Some(quad) {
+            return Err("selecting an Outliner ancestor disturbed nested zoom".into());
+        }
+    }
+    app.select_outline_target(Target::Pane {
+        tab: first_tab,
+        pane: sibling,
+    });
+    if app.focused(window) != Some(sibling)
+        || zoom_label(app.tab(window).unwrap()) != Some("Quad-zoom")
+    {
+        return Err("Outliner did not reveal the sibling hidden by nested zoom".into());
+    }
+    action(app, Action::ToggleQuadrantZoom);
+    action(app, Action::ToggleSplitZoom);
+    if zoom_label(app.tab(window).unwrap()) != Some("Zoom") {
+        return Err("Outliner pane zoom was not distinct".into());
+    }
+    app.draw_outliner(event_loop, Some(&directory.join("outliner-pane.png")))?;
+    capture_terminal(app, "outliner-pane-terminal.png")?;
+    let original_size = app.windows[&key].window.inner_size();
+    let _ = app.windows[&key]
+        .window
+        .request_inner_size(LogicalSize::new(360.0, 500.0));
+    let narrow_size = app.windows[&key].window.inner_size();
+    if narrow_size
+        .to_logical::<f64>(app.windows[&key].window.scale_factor())
+        .width
+        > 380.0
+    {
+        return Err("native window did not resize for the narrow tab-bar check".into());
+    }
+    app.window_event(event_loop, key, WindowEvent::Resized(narrow_size));
+    capture_terminal(app, "outliner-narrow-terminal.png")?;
+    let _ = app.windows[&key].window.request_inner_size(original_size);
+    let restored_size = app.windows[&key].window.inner_size();
+    app.window_event(event_loop, key, WindowEvent::Resized(restored_size));
+    app.outliner
+        .as_mut()
+        .unwrap()
+        .held_keys
+        .insert(PhysicalKey::Code(KeyCode::Enter));
+    app.select_outline_target(Target::Tab(second_tab));
+    if !consumes_key_tail(app, KeyCode::Enter) {
+        return Err("Outliner selection leaked its activation key into the terminal".into());
+    }
+    if app.focused(window) != Some(second) || app.tab(window).unwrap().zoom.is_some() {
+        return Err("selecting another Outliner tab did not reveal its first pane".into());
+    }
+
+    let other = app.add_window(false);
+    app.reconcile(event_loop);
+    app.tab_mut(other).unwrap().title = Some("Notes".into());
+    let other_key = app
+        .windows
+        .iter()
+        .find_map(|(&key, host)| (host.id == other).then_some(key))
+        .unwrap();
+    let other_pane = app.focused(other).unwrap();
+    app.select_outline_target(Target::Window(window));
+    app.select_outline_target(Target::Window(other));
+    if app.active != Some(other)
+        || !app.windows[&other_key].visible
+        || app.focused(other) != Some(other_pane)
+    {
+        return Err("Outliner did not select and reveal another terminal window".into());
+    }
+    let mut other_host = app.windows.remove(&other_key).unwrap();
+    other_host.visible = true;
+    other_host.occluded = false;
+    capture_window(
+        app,
+        event_loop,
+        &mut other_host,
+        &directory.join("outliner-other-window.png"),
+    )?;
+    let scale = other_host.window.scale_factor();
+    let point = Pos2::new(40.0, 80.0);
+    app.windows.insert(other_key, other_host);
+    app.draw_outliner(event_loop, Some(&directory.join("outliner-windows.png")))?;
+    let layout = serde_json::to_vec(&app.workspace)?;
+    let terminal_size = app.windows[&other_key].window.inner_size();
+    let utility = &app.outliner.as_ref().unwrap().window;
+    if !utility.is_resizable() {
+        return Err("Outliner native window cannot be resized independently".into());
+    }
+    utility.set_outer_position(LogicalPosition::new(80.0, 120.0));
+    let _ = utility.request_inner_size(LogicalSize::new(420.0, 720.0));
+    app.window_event(
+        event_loop,
+        utility_key,
+        WindowEvent::Moved(winit::dpi::PhysicalPosition::new(80, 120)),
+    );
+    app.window_event(
+        event_loop,
+        utility_key,
+        WindowEvent::Resized(winit::dpi::PhysicalSize::new(420, 720)),
+    );
+    app.window_event(event_loop, utility_key, WindowEvent::Focused(true));
+    if serde_json::to_vec(&app.workspace)? != layout
+        || app.windows[&other_key].window.inner_size() != terminal_size
+        || app.active != Some(other)
+    {
+        return Err("moving, resizing, or focusing Outliner changed terminal state".into());
+    }
+    app.outliner
+        .as_mut()
+        .unwrap()
+        .held_keys
+        .insert(PhysicalKey::Code(KeyCode::Space));
+    app.window_event(event_loop, utility_key, WindowEvent::Focused(false));
+    if !consumes_key_tail(app, KeyCode::Space) {
+        return Err("leaving Outliner leaked a held key into the terminal".into());
+    }
+    let pane = app.panes.get_mut(&other_pane).unwrap();
+    pane.session.terminal()?.feed(b"\x1b[?1000h\x1b[?1006h");
+    // Observe reports without sending test input to the child process.
+    pane.input.push_back(Vec::new());
+    app.window_event(
+        event_loop,
+        other_key,
+        WindowEvent::CursorMoved {
+            device_id: DeviceId::dummy(),
+            position: LogicalPosition::new(point.x, point.y).to_physical(scale),
+        },
+    );
+    for state in [ElementState::Pressed, ElementState::Released] {
+        app.window_event(
+            event_loop,
+            other_key,
+            WindowEvent::MouseInput {
+                device_id: DeviceId::dummy(),
+                state,
+                button: MouseButton::Left,
+            },
+        );
+    }
+    let reports = &app.panes[&other_pane].input;
+    if reports.len() != 3
+        || !reports[1].starts_with(b"\x1b[<0;")
+        || !reports[1].ends_with(b"M")
+        || !reports[2].starts_with(b"\x1b[<0;")
+        || !reports[2].ends_with(b"m")
+    {
+        return Err("Outliner prevented ordinary terminal mouse input".into());
+    }
+    app.window_event(
+        event_loop,
+        other_key,
+        WindowEvent::Ime(Ime::Commit("outliner typing".into())),
+    );
+    if app.panes[&other_pane].input.back().map(Vec::as_slice) != Some(b"outliner typing".as_slice())
+    {
+        return Err("Outliner blocked terminal text input".into());
+    }
+    let pane = app.panes.get_mut(&other_pane).unwrap();
+    pane.input.clear();
+    pane.input_bytes = 0;
+    pane.session.terminal()?.feed(b"\x1b[?1000l\x1b[?1006l");
+
+    let quick = app.add_window(true);
+    app.reconcile(event_loop);
+    let quick_key = app
+        .windows
+        .iter()
+        .find_map(|(&key, host)| (host.id == quick).then_some(key))
+        .unwrap();
+    let quick_listed = |app: &App| {
+        app.outline_rows()
+            .iter()
+            .any(|row| row.target == Target::Window(quick))
+    };
+    if quick_listed(app) || app.windows[&quick_key].quick_used {
+        return Err("unused quick terminal appeared in Outliner".into());
+    }
+    let mut quick_host = app.windows.remove(&quick_key).unwrap();
+    app.quick_visible(&mut quick_host, true, false);
+    app.windows.insert(quick_key, quick_host);
+    if !quick_listed(app) || !app.windows[&quick_key].quick_used {
+        return Err("first quick-terminal use did not add it to Outliner".into());
+    }
+    let mut quick_host = app.windows.remove(&quick_key).unwrap();
+    app.quick_visible(&mut quick_host, false, false);
+    app.windows.insert(quick_key, quick_host);
+    if !quick_listed(app) {
+        return Err("hiding the used quick terminal removed it from Outliner".into());
+    }
+    app.select_outline_target(Target::Window(quick));
+    if !app.windows[&quick_key].visible || app.active != Some(quick) {
+        return Err("Outliner did not reveal the hidden quick terminal".into());
+    }
+    app.draw_outliner(event_loop, Some(&directory.join("outliner-quick.png")))?;
+    app.select_outline_target(Target::Tab(second_tab));
+    let index = app.index(window).unwrap();
+    app.workspace.windows[index].tabs.remove(0);
+    app.workspace.windows[index].active_tab = 0;
+    app.draw_outliner(event_loop, Some(&directory.join("outliner-flat.png")))?;
+    let layout = serde_json::to_vec(&app.workspace)?;
+    let terminals = app.panes.len();
+    app.outliner
+        .as_mut()
+        .unwrap()
+        .held_keys
+        .insert(PhysicalKey::Code(KeyCode::Escape));
+    app.window_event(event_loop, utility_key, WindowEvent::CloseRequested);
+    if app.outliner.as_ref().is_some_and(|host| host.visible)
+        || serde_json::to_vec(&app.workspace)? != layout
+        || app.panes.len() != terminals
+    {
+        return Err("closing Outliner changed terminal windows or panes".into());
+    }
+    if !consumes_key_tail(app, KeyCode::Escape) {
+        return Err("closing Outliner leaked a held key into the terminal".into());
+    }
+    fs::write(
+        directory.join("result.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "checks": ["outliner-native-window", "outliner-hierarchy", "outliner-disclosure", "outliner-navigation", "outliner-zoom", "outliner-single-tab-bar", "outliner-narrow-tab-bar", "outliner-terminal-input", "outliner-quick-terminal", "outliner-close"],
+            "captures": ["outliner.png", "outliner-collapsed.png", "outliner-terminal.png", "outliner-quad.png", "outliner-quad-terminal.png", "outliner-nested.png", "outliner-nested-terminal.png", "outliner-pane.png", "outliner-pane-terminal.png", "outliner-narrow-terminal.png", "outliner-windows.png", "outliner-other-window.png", "outliner-quick.png", "outliner-flat.png"]
+        }))?,
+    )?;
+    eprintln!("Native Outliner smoke passed: {}", directory.display());
     Ok(())
 }
 

@@ -289,11 +289,13 @@ impl App {
         self.workspace.windows[index].active_tab = tab;
         self.focus_pane(id, pane);
         if let Some(host) = host.as_deref_mut().filter(|host| host.id == id) {
-            self.reveal_deck_host(host, quick);
+            host.peek = None;
+            self.reveal_host(host, quick);
         } else if let Some(native) = native
             && let Some(mut host) = self.windows.remove(&native)
         {
-            self.reveal_deck_host(&mut host, quick);
+            host.peek = None;
+            self.reveal_host(&mut host, quick);
             self.windows.insert(native, host);
         }
         self.active = Some(id);
@@ -306,8 +308,7 @@ impl App {
             self.sync_host_state();
         }
     }
-    fn reveal_deck_host(&mut self, host: &mut Host, quick: bool) {
-        host.peek = None;
+    pub(super) fn reveal_host(&mut self, host: &mut Host, quick: bool) {
         if quick {
             self.quick_visible(host, true, false);
         } else {

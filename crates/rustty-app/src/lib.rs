@@ -7,6 +7,8 @@ pub mod deck_device;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub mod deck_render;
 pub mod input;
+pub mod outliner;
+pub mod outliner_ui;
 pub mod platform;
 pub mod presentation;
 pub mod search;

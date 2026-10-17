@@ -37,6 +37,31 @@ pub fn mouse_reporting(
     terminal.mouse_mode != 0 && (!modifiers.shift_key() || capture)
 }
 
+/// Preserve a window's hit regions when another viewport renders on the shared context.
+#[derive(Default)]
+pub struct UiAreas {
+    hit_test: Option<Box<dyn Fn(egui::Pos2) -> bool>>,
+}
+
+impl UiAreas {
+    pub fn capture(&mut self, context: &egui::Context) {
+        let (areas, transforms) =
+            context.memory(|memory| (memory.areas().clone(), memory.to_global.clone()));
+        // egui exposes Areas through Memory but does not export its type.
+        self.hit_test = Some(Box::new(move |position| {
+            areas
+                .layer_id_at(position, &transforms)
+                .is_some_and(|layer| layer.order != egui::Order::Background)
+        }));
+    }
+
+    pub fn contains(&self, position: egui::Pos2) -> bool {
+        self.hit_test
+            .as_ref()
+            .is_some_and(|hit_test| hit_test(position))
+    }
+}
+
 /// Convert precise scrolling to terminal rows without losing the momentum tail.
 #[derive(Default)]
 pub struct ScrollAccumulator {
@@ -283,6 +308,7 @@ pub fn search_shortcut(action: &config::Action) -> bool {
             | ToggleQuickTerminal
             | ToggleFullscreen
             | ToggleCommandPalette
+            | ToggleOutliner
             | Themes
             | StreamDeck(_)
             | NextTab
@@ -831,6 +857,61 @@ mod tests {
                 assert!(!mouse_reporting(&terminal, ModifiersState::SHIFT, policy));
             }
         }
+    }
+
+    #[test]
+    fn ui_hit_regions_belong_to_their_viewport_after_another_window_renders() {
+        let context = egui::Context::default();
+        let first = egui::ViewportId::from_hash_of("first");
+        let second = egui::ViewportId::from_hash_of("second");
+        let draw = |viewport| {
+            for _ in 0..2 {
+                let mut raw = egui::RawInput {
+                    viewport_id: viewport,
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(320.0, 240.0),
+                    )),
+                    ..Default::default()
+                };
+                for id in [first, second] {
+                    raw.viewports.entry(id).or_default();
+                }
+                let mut output = context.run_ui(raw, |root| {
+                    egui::CentralPanel::default().show(root, |_| {});
+                    if viewport == first {
+                        for (id, x, interactive) in
+                            [("outliner", 20.0, true), ("tooltip", 160.0, false)]
+                        {
+                            egui::Area::new(egui::Id::new(id))
+                                .fixed_pos(egui::pos2(x, 20.0))
+                                .interactable(interactive)
+                                .show(root.ctx(), |ui| {
+                                    ui.allocate_space(egui::vec2(80.0, 80.0));
+                                });
+                        }
+                    }
+                });
+                output.textures_delta.clear();
+            }
+            let mut areas = UiAreas::default();
+            areas.capture(&context);
+            areas
+        };
+        let first_areas = draw(first);
+        let second_areas = draw(second);
+        let point = egui::pos2(40.0, 40.0);
+        assert!(first_areas.contains(point));
+        assert!(!first_areas.contains(egui::pos2(180.0, 40.0)));
+        assert!(!second_areas.contains(point));
+        let _ = draw(first);
+        assert!(
+            context
+                .layer_id_at(point)
+                .is_some_and(|layer| layer.order != egui::Order::Background)
+        );
+        assert!(!second_areas.contains(point));
+        assert!(first_areas.contains(point));
     }
 
     #[test]
@@ -1525,6 +1606,7 @@ mod tests {
         assert!(!search_shortcut(&config::Action::Text(
             b"terminal input".to_vec()
         )));
+        assert!(search_shortcut(&config::Action::ToggleOutliner));
     }
 
     #[derive(Default)]

@@ -1068,6 +1068,27 @@ keybind = cmd+shift+f=toggle_quadrant_zoom
 }
 
 #[test]
+fn outliner_is_bindable_without_a_default_shortcut() {
+    let home = TestHome::new();
+    assert!(
+        home.loader
+            .load()
+            .config
+            .keybinds
+            .iter()
+            .all(|binding| !binding.actions.contains(&Action::ToggleOutliner))
+    );
+    home.own("keybind=ctrl+shift+o=toggle_outliner\n");
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(
+        action(&loaded.config, "ctrl+shift+o"),
+        Some(Action::ToggleOutliner)
+    );
+    assert!(Action::parse("toggle_outliner:extra").is_err());
+}
+
+#[test]
 fn stream_deck_commands_are_bindable_and_reject_unknown_arguments() {
     for (name, command) in [
         ("needs_input", StreamDeckAction::NeedsInput),

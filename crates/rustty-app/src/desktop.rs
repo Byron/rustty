@@ -2,6 +2,8 @@
 mod command_palette;
 #[path = "deck_host.rs"]
 mod deck_host;
+#[path = "outliner_host.rs"]
+mod outliner_host;
 #[path = "desktop_painter.rs"]
 mod painter;
 #[path = "smoke.rs"]
@@ -18,11 +20,11 @@ use rustty::{
 };
 use rustty_app::{
     accessibility::TerminalText,
-    input,
+    input, outliner, outliner_ui,
     platform::{Platform, PlatformEvent},
     presentation::{
         Activity, CompletionFlash, DirectoryLabel, FocusHint, Progress, TabAccent,
-        common_directory_name, cursor_blink_phase, directory_name, zoom_label,
+        common_directory_name, cursor_blink_phase, directory_name, paint_zoom_icon, zoom_label,
     },
     search::{self, Search},
     workspace::{self, Axis, Id, Peek, Rect, SavedPane, Tab, WindowState, Workspace},
@@ -448,12 +450,14 @@ struct Host {
     focus_hint: FocusHint,
     cursor_blink_started: Instant,
     visible: bool,
+    quick_used: bool,
     occluded: bool,
     deadline: Option<Instant>,
     search_focus: Option<Id>,
     search_rects: BTreeMap<Id, egui::Rect>,
     focus_text_input: bool,
     popup_open: bool,
+    ui_areas: input::UiAreas,
     messages_open: bool,
     layout_picker: Option<LayoutPicker>,
     palette: CommandPalette,
@@ -608,6 +612,7 @@ struct App {
     activity_flashes: HashMap<Id, CompletionFlash>,
     closing: Vec<Session>,
     windows: HashMap<WindowId, Host>,
+    outliner: Option<outliner_host::OutlinerHost>,
     platform: Option<Platform>,
     consumed_global_keys: HashSet<PhysicalKey>,
     context: egui::Context,
@@ -765,6 +770,7 @@ pub fn run() -> Result<()> {
         activity_flashes: HashMap::new(),
         closing: Vec::new(),
         windows: HashMap::new(),
+        outliner: None,
         platform: None,
         consumed_global_keys: HashSet::new(),
         context,
@@ -965,6 +971,7 @@ impl App {
         }
     }
     fn changed(&mut self) {
+        self.repaint_outliner();
         // Continuous resizing or title updates must not postpone saving forever.
         self.save_at
             .get_or_insert_with(|| Instant::now() + Duration::from_millis(500));
@@ -1220,12 +1227,14 @@ impl App {
             focus_hint: FocusHint::default(),
             cursor_blink_started: Instant::now(),
             visible: !quick,
+            quick_used: false,
             occluded: false,
             deadline: None,
             search_focus: None,
             search_rects: BTreeMap::new(),
             focus_text_input: false,
             popup_open: false,
+            ui_areas: input::UiAreas::default(),
             messages_open: false,
             layout_picker: None,
             palette: CommandPalette::default(),
@@ -1256,11 +1265,13 @@ impl App {
         match result {
             Ok(()) => {
                 host.visible = visible;
+                host.quick_used |= visible;
                 if !visible {
                     self.cancel_selection_drag(host);
                 }
                 self.remember_quick_frame(host);
                 host.repaint();
+                self.repaint_outliner();
             }
             Err(error) => self.errors.push(error),
         }
@@ -1359,12 +1370,7 @@ impl App {
         }
     }
     fn drop_file(&mut self, host: &mut Host, position: Pos2, path: &Path) {
-        if host.modal_input()
-            || self
-                .context
-                .layer_id_at(position)
-                .is_some_and(|layer| layer.order != egui::Order::Background)
-        {
+        if host.modal_input() || host.ui_areas.contains(position) {
             return;
         }
         let Some(pane) = host.pane_at(position) else {
@@ -1451,14 +1457,251 @@ impl App {
         }
         self.changed();
     }
-    fn tab_label(&self, tab: &Tab) -> (String, bool) {
+    fn select_outline(&mut self, host: &mut Host, target: outliner::Target) {
+        let previous = self.focused(host.id);
+        let Some(index) = self.index(host.id) else {
+            return;
+        };
+        if let Some(pane) = outliner::select(&mut self.workspace.windows[index], target) {
+            if let Some(previous) = previous.and_then(|id| self.panes.get_mut(&id)) {
+                previous.reset_selection_gesture();
+            }
+            self.cancel_selection_drag(host);
+            host.search_focus = None;
+            host.search_rects.clear();
+            host.peek = None;
+            self.focus_pane(host.id, pane);
+            host.repaint();
+        }
+    }
+    fn repaint_outliner(&self) {
+        if let Some(host) = &self.outliner {
+            host.repaint();
+        }
+    }
+    fn hide_outliner(&mut self) {
+        if let Some(host) = &mut self.outliner {
+            self.consumed_global_keys.extend(host.held_keys.drain());
+            host.visible = false;
+            host.focused = false;
+            host.deadline = None;
+            host.window.set_visible(false);
+        }
+    }
+    fn toggle_outliner(&mut self, event_loop: &ActiveEventLoop) {
+        if self.outliner.as_ref().is_some_and(|host| host.visible) {
+            self.hide_outliner();
+            return;
+        }
+        if self.outliner.is_none() {
+            let Some(platform) = &self.platform else {
+                return;
+            };
+            match outliner_host::OutlinerHost::new(
+                event_loop,
+                &self.context,
+                &mut self.painter,
+                platform,
+                self.proxy.clone(),
+            ) {
+                Ok(host) => self.outliner = Some(host),
+                Err(error) => {
+                    self.errors.push(error.to_string());
+                    return;
+                }
+            }
+        }
+        let host = self.outliner.as_mut().unwrap();
+        host.visible = true;
+        host.window.set_visible(true);
+        host.repaint();
+    }
+    fn outline_rows(&self) -> Vec<outliner::Row> {
+        let labels = self
+            .panes
+            .iter()
+            .map(|(&id, pane)| {
+                (
+                    id,
+                    directory_name(&pane.cwd).unwrap_or_else(|| "Terminal".into()),
+                )
+            })
+            .collect();
+        let tab_labels = self
+            .workspace
+            .windows
+            .iter()
+            .flat_map(|window| &window.tabs)
+            .map(|tab| (tab.id, self.tab_name(tab).to_owned()))
+            .collect();
+        let quick_used = self
+            .windows
+            .values()
+            .filter(|host| host.quick_used)
+            .map(|host| host.id)
+            .collect();
+        outliner::workspace_rows(
+            &self.workspace,
+            self.active,
+            &labels,
+            &tab_labels,
+            &quick_used,
+        )
+    }
+    fn draw_outliner(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        capture: Option<&Path>,
+    ) -> Result<()> {
+        let rows = self.outline_rows();
+        let Some(mut host) = self.outliner.take() else {
+            return Ok(());
+        };
+        if !host.visible {
+            self.outliner = Some(host);
+            return Ok(());
+        }
+        host.deadline = None;
+        let accent = self
+            .platform
+            .as_ref()
+            .and_then(Platform::accent_color)
+            .unwrap_or([70, 130, 210]);
+        let result = host.draw(
+            event_loop,
+            &self.context,
+            &mut self.painter,
+            &rows,
+            accent,
+            capture,
+        );
+        self.outliner = Some(host);
+        if let Some(target) = result? {
+            self.select_outline_target(target);
+        }
+        Ok(())
+    }
+    fn select_outline_target(&mut self, target: outliner::Target) {
+        let Some(id) = outliner::target_window(&self.workspace, target) else {
+            return;
+        };
+        let Some(key) = self
+            .windows
+            .iter()
+            .find_map(|(&key, host)| (host.id == id).then_some(key))
+        else {
+            return;
+        };
+        if let Some(host) = &mut self.outliner {
+            self.consumed_global_keys.extend(host.held_keys.drain());
+        }
+        let mut host = self.windows.remove(&key).unwrap();
+        let previous = self.focused(id);
+        if let Some((_, pane)) =
+            outliner::select_workspace(&mut self.workspace, self.active, target)
+        {
+            if let Some(previous) = previous.and_then(|id| self.panes.get_mut(&id)) {
+                previous.reset_selection_gesture();
+            }
+            self.cancel_selection_drag(&mut host);
+            host.search_focus = None;
+            host.search_rects.clear();
+            host.peek = None;
+            self.focus_pane(id, pane);
+        }
+        let quick = self.workspace.windows[self.index(id).unwrap()].quick;
+        self.reveal_host(&mut host, quick);
+        self.active = Some(id);
+        self.windows.insert(key, host);
+        self.repaint_outliner();
+        self.sync_host_state();
+    }
+    fn outliner_window_event(&mut self, event_loop: &ActiveEventLoop, event: WindowEvent) {
+        let mut host = self.outliner.take().unwrap();
+        if let WindowEvent::KeyboardInput {
+            event: key,
+            is_synthetic: false,
+            ..
+        } = &event
+        {
+            input::key_is_consumed(&mut host.held_keys, key.physical_key, key.state, true);
+        }
+        let response = host.egui.on_window_event(&host.window, &event);
+        if response.repaint {
+            host.repaint();
+        }
+        let mut close = false;
+        let mut action = None;
+        match &event {
+            WindowEvent::CloseRequested => close = true,
+            WindowEvent::Focused(focused) => {
+                host.focused = *focused;
+                if !focused {
+                    self.consumed_global_keys.extend(host.held_keys.drain());
+                    host.modifiers = Modifiers::default();
+                }
+            }
+            WindowEvent::ModifiersChanged(modifiers) => host.modifiers = *modifiers,
+            WindowEvent::Resized(size) => {
+                if let (Some(width), Some(height)) =
+                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+                {
+                    self.painter.on_window_resized(host.viewport, width, height);
+                }
+                host.repaint();
+            }
+            WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Occluded(false) => host.repaint(),
+            WindowEvent::ThemeChanged(theme) => {
+                self.update_system_theme(event_loop.system_theme().or(Some(*theme)), None);
+                host.repaint();
+            }
+            WindowEvent::KeyboardInput {
+                event: key,
+                is_synthetic: false,
+                ..
+            } if key.state == ElementState::Pressed && !key.repeat => {
+                close = key.logical_key
+                    == winit::keyboard::Key::Named(winit::keyboard::NamedKey::Escape);
+                action = self.config().keybinds.iter().rev().find_map(|binding| {
+                    (binding.table.is_none()
+                        && binding.trigger.len() == 1
+                        && input::matches(&binding.trigger[0], key, host.modifiers.state())
+                        && binding.actions.len() == 1
+                        && matches!(
+                            binding.actions[0],
+                            Action::ToggleOutliner
+                                | Action::CloseSurface
+                                | Action::CloseTab
+                                | Action::CloseWindow
+                                | Action::Quit
+                        ))
+                    .then(|| binding.actions[0].clone())
+                });
+            }
+            _ => {}
+        }
+        self.outliner = Some(host);
+        if close {
+            self.hide_outliner();
+        } else if let Some(action) = action {
+            self.platform_action(event_loop, action, false);
+        } else if matches!(event, WindowEvent::RedrawRequested)
+            && let Err(error) = self.draw_outliner(event_loop, None)
+        {
+            self.errors.push(error.to_string());
+            self.hide_outliner();
+        }
+    }
+    fn tab_name<'a>(&'a self, tab: &'a Tab) -> &'a str {
         let pane = self.panes.get(&tab.focused);
-        let title = tab
-            .title
+        tab.title
             .as_deref()
             .filter(|s| !s.is_empty())
             .or_else(|| pane.map(|p| p.title.as_str()).filter(|s| !s.is_empty()))
-            .unwrap_or("Terminal");
+            .unwrap_or("Terminal")
+    }
+    fn tab_label(&self, tab: &Tab) -> (String, bool) {
+        let title = self.tab_name(tab);
         let working = tab
             .panes
             .keys()
@@ -1485,10 +1728,7 @@ impl App {
                 String::new()
             }
         );
-        let mut label = format!("{}{suffix}", title.chars().take(26).collect::<String>());
-        if let Some(zoom) = zoom_label(tab) {
-            label.push_str(&format!(" [{zoom}]"));
-        }
+        let label = format!("{}{suffix}", title.chars().take(26).collect::<String>());
         (label, is_active)
     }
 
@@ -1503,6 +1743,10 @@ impl App {
 
     fn drain(&mut self, event_loop: &ActiveEventLoop, id: Id) {
         let previous_tab_label = self.pane_tab_label(id);
+        let previous_directory = self
+            .panes
+            .get(&id)
+            .and_then(|pane| directory_name(&pane.cwd));
         let live = previous_tab_label.is_some();
         let previous_errors = self.errors.len();
         let mut content_changed = false;
@@ -1693,6 +1937,14 @@ impl App {
         // Only a change in the rendered tab label/underline warrants a hidden-tab
         // repaint. Raw titles can be masked by a custom title or another pane.
         let indicators_changed = stopped || previous_tab_label != self.pane_tab_label(id);
+        let directory_changed = previous_directory
+            != self
+                .panes
+                .get(&id)
+                .and_then(|pane| directory_name(&pane.cwd));
+        if directory_changed || title_changed {
+            self.repaint_outliner();
+        }
         if stopped {
             self.activity_stopped(id, Instant::now());
         }
@@ -2339,6 +2591,9 @@ impl App {
                 }
                 host.focus_text_input = host.palette.open || host.search_focus.is_some();
             }
+            Action::ToggleOutliner => {
+                self.toggle_outliner(event_loop);
+            }
             Action::Themes => {
                 self.cancel_theme_preview(Some(host));
                 match self.config_loader.themes(self.loaded.family) {
@@ -2785,7 +3040,12 @@ impl App {
                 self.painter.remove_window(
                     host.viewport,
                     host.id,
-                    &self.windows.values().map(|host| host.viewport).collect(),
+                    &self
+                        .windows
+                        .values()
+                        .map(|host| host.viewport)
+                        .chain(self.outliner.iter().map(|host| host.viewport))
+                        .collect(),
                 );
             }
         }
@@ -2969,6 +3229,22 @@ impl App {
     }
 
     fn platform_action(&mut self, event_loop: &ActiveEventLoop, action: Action, all: bool) -> bool {
+        if action == Action::ToggleOutliner {
+            self.toggle_outliner(event_loop);
+            return true;
+        }
+        if self
+            .outliner
+            .as_ref()
+            .is_some_and(|host| host.focused && host.visible)
+            && matches!(
+                action,
+                Action::CloseSurface | Action::CloseTab | Action::CloseWindow
+            )
+        {
+            self.hide_outliner();
+            return true;
+        }
         if let Action::StreamDeck(command) = action {
             return self.deck_command(command);
         }
@@ -3184,6 +3460,25 @@ impl App {
         }
         let active = &state.tabs[state.active_tab];
         let focused = active.focused;
+        let pane_labels = state
+            .tabs
+            .iter()
+            .filter(|tab| state.tabs.len() > 1 && tab.id == active.id)
+            .flat_map(|tab| tab.root.panes())
+            .map(|id| {
+                let label = self
+                    .panes
+                    .get(&id)
+                    .and_then(|pane| directory_name(&pane.cwd))
+                    .unwrap_or_else(|| "Terminal".into());
+                (id, label)
+            })
+            .collect();
+        let breadcrumb = if state.tabs.len() > 1 {
+            outliner::breadcrumb(active, &pane_labels)
+        } else {
+            Vec::new()
+        };
         if host
             .selection_drag
             .as_ref()
@@ -3232,6 +3527,7 @@ impl App {
         let mut search_commands = Vec::new();
         let mut layout_command = None;
         let mut tab_selection = None;
+        let mut outline_selection = None;
         let mut presentation_changed = false;
         let mut retry_pane = None;
         let mut render_error = None;
@@ -3272,63 +3568,127 @@ impl App {
                     .show(root_ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.add_space(72.0);
-                            for (index, tab) in state.tabs.iter().enumerate() {
-                                let (label, is_active) = self.tab_label(tab);
-                                let selected = index == state.active_tab;
-                                let colors = TabAccent::new(tab.color, platform_accent);
-                                let color = Color32::from_rgb(
-                                    colors.background[0],
-                                    colors.background[1],
-                                    colors.background[2],
-                                );
-                                let mut text = egui::RichText::new(label);
-                                if !selected && is_active {
-                                    text = text.underline();
-                                }
-                                if selected {
-                                    text = text.color(Color32::from_rgb(
-                                        colors.foreground[0],
-                                        colors.foreground[1],
-                                        colors.foreground[2],
-                                    ));
-                                }
-                                let flash =
-                                    self.flash_opacity(tab.id, now, &mut animation_deadline) * 0.45;
-                                let fill = if selected {
-                                    color
-                                } else {
-                                    color.gamma_multiply(flash.max(if tab.color.is_some() {
-                                        0.12
-                                    } else {
-                                        0.0
-                                    }))
-                                };
-                                let response =
-                                    ui.add(egui::Button::selectable(selected, text).fill(fill));
-                                if tab.color.is_some() {
-                                    ui.painter().line_segment(
-                                        [
-                                            response.rect.left_top() + Vec2::new(4.0, 1.0),
-                                            response.rect.right_top() + Vec2::new(-4.0, 1.0),
-                                        ],
-                                        egui::Stroke::new(2.0, color),
-                                    );
-                                }
-                                if response.clicked() {
-                                    tab_selection = Some(index);
-                                }
-                                let window_index = self.index(host.id).unwrap();
-                                let actual = &mut self.workspace.windows[window_index].tabs[index];
-                                let (changed, close) = show_tab_context_menu(&response, actual, platform_accent);
-                                presentation_changed |= changed;
-                                if close {
-                                    tab_selection = Some(index);
-                                    commands.push(Action::CloseTab);
-                                }
+                            let available = ui.available_width();
+                            let crumb_width = (available * 0.4)
+                                .min(420.0)
+                                .min((available - 160.0).max(0.0));
+                            let tabs_width =
+                                (available - crumb_width - 24.0 - 2.0 * ui.spacing().item_spacing.x)
+                                    .max(1.0);
+                            let focus_id = egui::Id::new(("tab-strip-focus", host.id));
+                            let focus_changed =
+                                ui.data(|data| data.get_temp::<Id>(focus_id)) != Some(active.id);
+                            egui::ScrollArea::horizontal()
+                                .id_salt(("tab-strip", host.id))
+                                .max_width(tabs_width)
+                                .max_height(26.0)
+                                .auto_shrink([true, true])
+                                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        for (index, tab) in state.tabs.iter().enumerate() {
+                                            let (label, is_active) = self.tab_label(tab);
+                                            let selected = index == state.active_tab;
+                                            let colors = TabAccent::new(tab.color, platform_accent);
+                                            let color = Color32::from_rgb(
+                                                colors.background[0],
+                                                colors.background[1],
+                                                colors.background[2],
+                                            );
+                                            let foreground = if selected {
+                                                Color32::from_rgb(
+                                                    colors.foreground[0],
+                                                    colors.foreground[1],
+                                                    colors.foreground[2],
+                                                )
+                                            } else {
+                                                ui.visuals().text_color()
+                                            };
+                                            let mut text = egui::RichText::new(label).color(foreground);
+                                            if !selected && is_active {
+                                                text = text.underline();
+                                            }
+                                            let flash =
+                                                self.flash_opacity(tab.id, now, &mut animation_deadline)
+                                                    * 0.45;
+                                            let fill = if selected {
+                                                color
+                                            } else {
+                                                color.gamma_multiply(flash.max(if tab.color.is_some() {
+                                                    0.12
+                                                } else {
+                                                    0.0
+                                                }))
+                                            };
+                                            let icon_id = egui::Id::new(("tab-zoom", tab.id));
+                                            let mut atoms = egui::Atoms::new(text);
+                                            if tab.zoom.is_some() {
+                                                atoms.push_right(egui::Atom::custom(
+                                                    icon_id,
+                                                    Vec2::splat(12.0),
+                                                ));
+                                            }
+                                            let button = egui::Button::selectable(selected, atoms)
+                                                .fill(fill)
+                                                .atom_ui(ui);
+                                            if let Some(rect) = button.rect(icon_id) {
+                                                paint_zoom_icon(ui.painter(), rect, tab, foreground);
+                                            }
+                                            let response = button.response;
+                                            if let Some(zoom) = zoom_label(tab) {
+                                                response.widget_info(|| {
+                                                    egui::WidgetInfo::selected(
+                                                        egui::WidgetType::SelectableLabel,
+                                                        ui.is_enabled(),
+                                                        selected,
+                                                        format!("{} · {zoom}", self.tab_name(tab)),
+                                                    )
+                                                });
+                                            }
+                                            if selected && focus_changed {
+                                                response.scroll_to_me(None);
+                                            }
+                                            if tab.color.is_some() {
+                                                ui.painter().line_segment(
+                                                    [
+                                                        response.rect.left_top() + Vec2::new(4.0, 1.0),
+                                                        response.rect.right_top() + Vec2::new(-4.0, 1.0),
+                                                    ],
+                                                    egui::Stroke::new(2.0, color),
+                                                );
+                                            }
+                                            if response.clicked() {
+                                                tab_selection = Some(index);
+                                            }
+                                            let window_index = self.index(host.id).unwrap();
+                                            let actual =
+                                                &mut self.workspace.windows[window_index].tabs[index];
+                                            let (changed, close) =
+                                                show_tab_context_menu(&response, actual, platform_accent);
+                                            presentation_changed |= changed;
+                                            if close {
+                                                tab_selection = Some(index);
+                                                commands.push(Action::CloseTab);
+                                            }
+                                            if let Some(zoom) = zoom_label(tab) {
+                                                response.on_hover_text(zoom);
+                                            }
+                                        }
+                                    });
+                                });
+                            if !ui.is_sizing_pass() {
+                                ui.data_mut(|data| data.insert_temp(focus_id, active.id));
                             }
-                            if ui.button("+").on_hover_text("New tab").clicked() {
+                            if ui
+                                .add_sized([24.0, 22.0], egui::Button::new("+"))
+                                .on_hover_text("New tab")
+                                .clicked()
+                            {
                                 commands.push(Action::NewTab);
                             }
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                outline_selection = outliner_ui::breadcrumb(ui, &breadcrumb, crumb_width);
+                            });
                         });
                     });
             }
@@ -3734,18 +4094,15 @@ impl App {
                     if let Some(zoom) = zoom_label(active)
                         && host.peek.is_none()
                         && active.panes.len() > 1
+                        && state.tabs.len() == 1
                     {
-                        ui.put(
-                            egui::Rect::from_min_size(
-                                content.left_top() + Vec2::new(80.0, 3.0),
-                                Vec2::new((content.width() - 88.0).max(0.0), 14.0),
-                            ),
-                            egui::Label::new(
-                                egui::RichText::new(zoom).size(11.0).color(rgb(config.foreground)),
-                            )
-                            .truncate()
-                            .halign(egui::Align::Center),
+                        let bounds = egui::Rect::from_center_size(
+                            Pos2::new(content.center().x, content.top() + 10.0),
+                            Vec2::splat(12.0),
                         );
+                        paint_zoom_icon(ui.painter(), bounds, active, rgb(config.foreground));
+                        ui.interact(bounds, egui::Id::new(("window-zoom", host.id)), Sense::hover())
+                            .on_hover_text(zoom);
                     }
                     self.update_hover_link(host);
                     if let Some(link) = &host.hovered_link
@@ -4076,6 +4433,7 @@ impl App {
             let _ = show_messages(ctx, &mut self.errors);
             host.messages_open = !self.errors.is_empty();
         });
+        host.ui_areas.capture(&context);
         if presentation_changed {
             self.changed();
         }
@@ -4094,6 +4452,9 @@ impl App {
             host.search_rects.clear();
             host.peek = None;
             host.repaint();
+        }
+        if let Some(target) = outline_selection {
+            self.select_outline(host, target);
         }
         if let Some(id) = retry_pane {
             self.failed_panes.remove(&id);
@@ -4163,6 +4524,7 @@ impl App {
                 output.pixels_per_point,
                 target,
             );
+            output.textures_delta.clear();
         } else {
             self.painter.paint(
                 host.viewport,
@@ -4199,10 +4561,7 @@ impl App {
                 host.rects.iter().any(|(id, rect)| {
                     // Undo the painting inset: split gaps only change the native cursor.
                     rect.expand(1.0).contains(position) && !self.failed_panes.contains_key(id)
-                }) && self
-                    .context
-                    .layer_id_at(position)
-                    .is_none_or(|layer| layer.order == egui::Order::Background)
+                }) && !host.ui_areas.contains(position)
             })
     }
     fn layout_command(&mut self, host: &mut Host, command: LayoutCommand) {
@@ -4344,11 +4703,7 @@ impl App {
         if host.modal_input()
             || host.peek.is_some()
             || host.divider_drag.is_some()
-            || host.selection_drag.is_none()
-                && self
-                    .context
-                    .layer_id_at(host.mouse)
-                    .is_some_and(|layer| layer.order != egui::Order::Background)
+            || host.selection_drag.is_none() && host.ui_areas.contains(host.mouse)
         {
             return;
         }
@@ -4436,10 +4791,7 @@ impl App {
                 || host.peek.is_some()
                 || host.divider_drag.is_some()
                 || self.platform.is_none()
-                || self
-                    .context
-                    .layer_id_at(host.mouse)
-                    .is_some_and(|layer| layer.order != egui::Order::Background)
+                || host.ui_areas.contains(host.mouse)
             {
                 return None;
             }
@@ -4623,11 +4975,7 @@ impl App {
                 host.repaint();
                 return;
             }
-            if self
-                .context
-                .layer_id_at(host.mouse)
-                .is_none_or(|layer| layer.order == egui::Order::Background)
-            {
+            if !host.ui_areas.contains(host.mouse) {
                 host.search_focus = None;
             }
         }
@@ -4653,11 +5001,7 @@ impl App {
             host.repaint();
             return;
         }
-        if self
-            .context
-            .layer_id_at(host.mouse)
-            .is_some_and(|layer| layer.order != egui::Order::Background)
-        {
+        if host.ui_areas.contains(host.mouse) {
             return;
         }
         if !host.modal_input() && host.peek.is_none() {
@@ -4677,11 +5021,7 @@ impl App {
         if hit.is_none() && (action == vt::MouseAction::Press || host.mouse_button.is_none()) {
             return;
         }
-        if self
-            .context
-            .layer_id_at(host.mouse)
-            .is_some_and(|layer| layer.order != egui::Order::Background)
-        {
+        if host.ui_areas.contains(host.mouse) {
             return;
         }
         if let Some(peek) = &mut host.peek {
@@ -4933,6 +5273,17 @@ impl ApplicationHandler<Event> for App {
                         host.deadline =
                             Some(host.deadline.map_or(deadline, |old| old.min(deadline)));
                     }
+                } else if let Some(host) = self
+                    .outliner
+                    .as_mut()
+                    .filter(|host| host.viewport == info.viewport_id)
+                {
+                    if deadline <= Instant::now() {
+                        host.repaint();
+                    } else {
+                        host.deadline =
+                            Some(host.deadline.map_or(deadline, |old| old.min(deadline)));
+                    }
                 }
             }
             Event::Platform(event) => {
@@ -4977,6 +5328,21 @@ impl ApplicationHandler<Event> for App {
             }
             Event::Access(event) => {
                 use egui_winit::accesskit_winit::WindowEvent as AccessEvent;
+                if let Some(host) = self
+                    .outliner
+                    .as_mut()
+                    .filter(|host| host.window.id() == event.window_id)
+                {
+                    match event.window_event {
+                        AccessEvent::ActionRequested(request) => {
+                            host.egui.on_accesskit_action_request(request)
+                        }
+                        AccessEvent::InitialTreeRequested => host.accesskit_active = true,
+                        AccessEvent::AccessibilityDeactivated => host.accesskit_active = false,
+                    }
+                    host.repaint();
+                    return;
+                }
                 if let Some(mut host) = self.windows.remove(&event.window_id) {
                     match event.window_event {
                         AccessEvent::ActionRequested(request) => {
@@ -5067,6 +5433,14 @@ impl ApplicationHandler<Event> for App {
                 event.repeat,
             )
         {
+            return;
+        }
+        if self
+            .outliner
+            .as_ref()
+            .is_some_and(|host| host.window.id() == window)
+        {
+            self.outliner_window_event(event_loop, event);
             return;
         }
         let Some(mut host) = self.windows.remove(&window) else {
@@ -5543,6 +5917,17 @@ impl ApplicationHandler<Event> for App {
                 }
             }
         }
+        if let Some(host) = &mut self.outliner
+            && host.visible
+            && let Some(deadline) = host.deadline
+        {
+            if deadline <= now {
+                host.deadline = None;
+                host.repaint();
+            } else {
+                next = Some(next.map_or(deadline, |old| old.min(deadline)));
+            }
+        }
         event_loop.set_control_flow(next.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
     fn exiting(&mut self, _: &ActiveEventLoop) {
@@ -5564,6 +5949,7 @@ impl ApplicationHandler<Event> for App {
 impl App {
     fn shutdown(&mut self) {
         self.deck.stop();
+        self.hide_outliner();
         for host in self.windows.values() {
             host.window.set_visible(false);
         }
