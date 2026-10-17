@@ -77,7 +77,7 @@ impl CommandPalette {
             .corner_radius(10)
             .inner_margin(0);
         let mut action = None;
-        egui::Area::new(id)
+        let response = egui::Area::new(id)
             .order(egui::Order::Foreground)
             .pivot(egui::Align2::CENTER_TOP)
             .fixed_pos(egui::pos2(bounds.center().x, top))
@@ -267,6 +267,11 @@ impl CommandPalette {
                     self.open = false;
                 }
             });
+        if response.response.clicked_elsewhere() {
+            self.open = false;
+            root.ctx().request_repaint();
+            return None;
+        }
         action
     }
 }
@@ -973,6 +978,60 @@ mod tests {
         );
         assert_eq!(action, None);
         assert!(!palette.open);
+    }
+
+    #[test]
+    fn clicking_outside_cancels_commands_and_themes_but_query_clicks_stay_open() {
+        for theme_picker in [false, true] {
+            let context = egui::Context::default();
+            let config = Config::default();
+            let mut palette = CommandPalette::default();
+            let mut focus = true;
+            if theme_picker {
+                palette.show_themes(themes());
+            } else {
+                palette.toggle();
+            }
+            draw(&context, &mut palette, &config, &mut focus, vec![]);
+            draw(&context, &mut palette, &config, &mut focus, vec![]);
+            let query = context
+                .read_response(egui::Id::new("palette").with("query"))
+                .unwrap()
+                .rect
+                .center();
+            for (pos, stays_open) in [(query, true), (egui::pos2(20.0, 380.0), false)] {
+                draw(
+                    &context,
+                    &mut palette,
+                    &config,
+                    &mut focus,
+                    vec![egui::Event::PointerMoved(pos)],
+                );
+                assert!(palette.open, "moving outside must not dismiss the palette");
+                for pressed in [true, false] {
+                    let (event, _) = draw(
+                        &context,
+                        &mut palette,
+                        &config,
+                        &mut focus,
+                        vec![egui::Event::PointerButton {
+                            pos,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        }],
+                    );
+                    assert_eq!(
+                        event, None,
+                        "dismissal must not execute a command or accept a theme"
+                    );
+                    if pressed {
+                        assert!(palette.open, "consume the full click before dismissing");
+                    }
+                }
+                assert_eq!(palette.open, stays_open);
+            }
+        }
     }
 
     #[test]
