@@ -178,13 +178,11 @@ pub fn contents(
         .map(|index| panes[*index])
         .collect();
     let previous = search.selected_pane;
-    if query_changed
-        || search
-            .selected_pane
-            .is_some_and(|selected| !panes.iter().any(|(pane, _)| *pane == selected))
-        || searching && search.selected_pane.is_none()
+    if search
+        .selected_pane
+        .is_some_and(|selected| !panes.iter().any(|(pane, _)| *pane == selected))
     {
-        search.selected_pane = panes.first().map(|(pane, _)| *pane);
+        search.selected_pane = None;
     }
     if !panes.is_empty() {
         for key in navigation {
@@ -426,7 +424,7 @@ pub fn contents(
         ui.data_mut(|data| data.insert_temp(expansion_id, expansion));
     }
     if accept {
-        output.selected = selected_target.or_else(|| panes.first().map(|(_, target)| *target));
+        output.selected = selected_target;
         search.close();
         ui.ctx().request_repaint();
     }
@@ -1562,7 +1560,7 @@ mod tests {
                 .windows(2)
                 .all(|pair| pair[0].bottom() < pair[1].top())
         );
-        for pane in [4, 5, 23, 3] {
+        for pane in [3, 4, 5, 23, 3] {
             let (_, output, _) = search_frame(
                 &context,
                 &rows,
@@ -1681,7 +1679,7 @@ mod tests {
             assert_eq!(
                 output,
                 Output {
-                    selected: Some(rows[4].target),
+                    selected: Some(rows[3].target),
                     ..Output::default()
                 }
             );
@@ -1690,7 +1688,7 @@ mod tests {
     }
 
     #[test]
-    fn search_selection_survives_reordering_and_resets_on_edits_or_removal() {
+    fn search_selection_survives_edits_and_reordering_but_clears_on_removal() {
         let context = egui::Context::default();
         let mut rows = navigation_rows();
         let mut search = SearchState::default();
@@ -1704,6 +1702,7 @@ mod tests {
             egui::RawInput {
                 events: vec![
                     egui::Event::Text("t".into()),
+                    control_key(egui::Key::N, false),
                     control_key(egui::Key::N, false),
                 ],
                 ..Default::default()
@@ -1728,28 +1727,25 @@ mod tests {
             },
         );
         assert_eq!(search.query, "ts");
+        assert_eq!(output, Output::default());
+        assert_eq!(search.selected_pane, Some(4));
+        rows.remove(4);
         assert_eq!(
-            output.preview,
-            Some(rows[3].target),
-            "editing resets to the first match"
+            search_frame(&context, &rows, &[], &mut search, Default::default()).1,
+            Output::default()
         );
-        search_frame(
+        assert_eq!(search.selected_pane, None);
+        let (_, output, _) = search_frame(
             &context,
             &rows,
             &[],
             &mut search,
             egui::RawInput {
-                events: vec![control_key(egui::Key::N, false)],
+                events: vec![control_key(egui::Key::P, false)],
                 ..Default::default()
             },
         );
-        rows.remove(4);
-        assert_eq!(
-            search_frame(&context, &rows, &[], &mut search, Default::default())
-                .1
-                .preview,
-            Some(rows[3].target)
-        );
+        assert_eq!(output.preview, Some(rows[4].target));
         let (_, output, _) = search_frame(
             &context,
             &rows,
@@ -1765,20 +1761,6 @@ mod tests {
         );
         assert_eq!(output, Output::default());
         assert_eq!(search.selected_pane, None);
-        assert_eq!(
-            search_frame(
-                &context,
-                &rows,
-                &[],
-                &mut search,
-                egui::RawInput {
-                    events: vec![control_key(egui::Key::P, false)],
-                    ..Default::default()
-                }
-            )
-            .1,
-            Output::default()
-        );
         let (_, output, _) = search_frame(
             &context,
             &rows,
@@ -1798,11 +1780,8 @@ mod tests {
             },
         );
         assert!(search.query.is_empty());
-        assert_eq!(
-            output.preview,
-            Some(rows[3].target),
-            "clearing the query selects the first tree panel"
-        );
+        assert_eq!(output, Output::default());
+        assert_eq!(search.selected_pane, None);
     }
 
     #[test]
@@ -1868,6 +1847,16 @@ mod tests {
         search.start();
         search.query = "p".into();
         let (_, _, scroll_id) = search_frame(&context, &rows, &[], &mut search, Default::default());
+        search_frame(
+            &context,
+            &rows,
+            &[],
+            &mut search,
+            egui::RawInput {
+                events: vec![control_key(egui::Key::N, false)],
+                ..Default::default()
+            },
+        );
         let mut state = egui::scroll_area::State::load(&context, scroll_id).unwrap();
         state.offset.y = 96.0;
         state.store(&context, scroll_id);
@@ -1974,13 +1963,8 @@ mod tests {
             },
         );
         assert_eq!(search.query, "tst");
-        assert_eq!(
-            result,
-            Output {
-                preview: Some(rows[3].target),
-                ..Output::default()
-            }
-        );
+        assert_eq!(result, Output::default());
+        assert_eq!(search.selected_pane, None);
         assert!(node(&output, "Search result: Tests").is_some());
         assert!(node(&output, "Unpin panel: Tests").is_some());
         assert_eq!(
@@ -2019,13 +2003,13 @@ mod tests {
     }
 
     #[test]
-    fn search_accept_keys_use_the_updated_query_and_close_only_search() {
+    fn search_accept_keys_without_navigation_close_without_selecting() {
         for (key, modifiers) in [
             (egui::Key::Enter, egui::Modifiers::NONE),
             (egui::Key::Escape, egui::Modifiers::NONE),
             (egui::Key::OpenBracket, egui::Modifiers::CTRL),
         ] {
-            for (query, expected) in [("", Some(3)), ("bld", Some(5)), ("missing", None)] {
+            for query in ["", "bld", "missing"] {
                 let context = egui::Context::default();
                 let mut rows = rows();
                 rows.push(Row {
@@ -2063,9 +2047,8 @@ mod tests {
                     },
                 );
                 assert_eq!(
-                    result.selected,
-                    expected.map(|pane| Target::Pane { tab: 1, pane }),
-                    "{key:?} must select from this frame's {query:?} query"
+                    result.selected, None,
+                    "{key:?} must close without selecting for {query:?}"
                 );
                 assert!(!search.open);
                 assert!(search.query.is_empty());
