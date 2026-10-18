@@ -38,7 +38,9 @@ impl ProgressReport {
     }
     pub fn expire(&mut self, now: Instant) {
         if self.deadline.is_some_and(|deadline| deadline <= now) {
-            self.finish();
+            self.active = false;
+            self.deadline = None;
+            self.state = None;
         }
     }
     pub fn clear(&mut self) {
@@ -105,7 +107,7 @@ impl ProgressReport {
             _ => {}
         }
     }
-    /// Expiry/OSC removal alone says nothing about whether the work succeeded.
+    /// OSC removal alone says nothing about whether the work succeeded.
     pub fn finish(&mut self) {
         if self.active {
             self.active = false;
@@ -702,14 +704,8 @@ mod tests {
             report.acknowledge();
             assert_eq!(report.state(), Some(expected));
             report.expire(report.deadline().unwrap());
-            assert_eq!(
-                report.state(),
-                Some(if state == 2 {
-                    State::Error
-                } else {
-                    State::NeedsInput
-                })
-            );
+            assert_eq!(report.state(), None);
+            assert_eq!(report.deadline(), None);
             report.acknowledge();
             assert_eq!(report.state(), None);
         }
@@ -751,6 +747,47 @@ mod tests {
             },
             true,
         );
+        report.apply(&Effect::CommandEnd { exit_code: Some(0) }, true);
+        assert_eq!(report.state(), Some(State::Error));
+    }
+    #[test]
+    fn progress_timeout_loses_tracking_until_fresh_progress_or_a_command_result() {
+        use rustty::vt::Effect;
+        let mut report = ProgressReport::default();
+        let progress = Effect::Progress {
+            state: 3,
+            value: None,
+        };
+        report.apply(&progress, true);
+        let deadline = report.deadline().unwrap();
+        report.expire(deadline - std::time::Duration::from_nanos(1));
+        assert_eq!(report.state(), Some(State::Working));
+        report.expire(deadline);
+        assert_eq!(report.state(), None);
+        assert_eq!(report.deadline(), None);
+        report.expire(deadline);
+        assert_eq!(report.state(), None);
+        report.apply(&progress, true);
+        assert_eq!(report.state(), Some(State::Working));
+        assert!(report.deadline().is_some());
+
+        for (exit_code, expected) in [(Some(0), State::Done), (Some(1), State::Error)] {
+            report.clear();
+            report.apply(&progress, true);
+            report.expire(report.deadline().unwrap());
+            report.apply(&Effect::CommandEnd { exit_code }, true);
+            assert_eq!(report.state(), Some(expected));
+        }
+        report.clear();
+        report.apply(
+            &Effect::Progress {
+                state: 2,
+                value: None,
+            },
+            true,
+        );
+        report.expire(report.deadline().unwrap());
+        assert_eq!(report.state(), None);
         report.apply(&Effect::CommandEnd { exit_code: Some(0) }, true);
         assert_eq!(report.state(), Some(State::Error));
     }

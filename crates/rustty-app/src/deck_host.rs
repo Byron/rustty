@@ -807,6 +807,14 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
     assert!(app.deck_command(StreamDeckAction::Working));
     assert_eq!(app.focused(app.active.unwrap()), Some(second));
     app.reveal_pane(first);
+    let report = &mut app.panes.get_mut(&second).unwrap().deck_progress;
+    report.expire(report.deadline().unwrap());
+    app.sync_deck();
+    assert_eq!(app.deck.dashboard.board.counts, [0; 4]);
+    assert!(app.deck.dashboard.board.no_sessions);
+    assert!(app.deck.dashboard.cycle(0, Some(first)).is_none());
+    assert!(app.deck_command(StreamDeckAction::NeedsInput));
+    assert_eq!(app.focused(app.active.unwrap()), Some(first));
     app.panes
         .get_mut(&second)
         .unwrap()
@@ -851,7 +859,7 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
     assert!(app.deck.worker.is_none());
     assert!(app.deck.discovery.is_none());
     eprintln!(
-        "Native Stream Deck smoke: exact panes across windows/tabs, completion acknowledgement, progress-only Working/Attention/Done cycling, menu/shortcut chains, pull-to-first, stale control rejection, disconnected gating, input preservation, pane removal and save-state-never passed; no USB used; native minimization and quick animation {}",
+        "Native Stream Deck smoke: exact panes across windows/tabs, completion acknowledgement, progress-only Working/Attention/Done cycling and timeout removal, menu/shortcut chains, pull-to-first, stale control rejection, disconnected gating, input preservation, pane removal and save-state-never passed; no USB used; native minimization and quick animation {}",
         if app.background_smoke {
             "skipped"
         } else {
