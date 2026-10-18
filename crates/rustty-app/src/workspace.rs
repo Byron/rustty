@@ -774,6 +774,51 @@ impl Workspace {
         changed
     }
 
+    /// Resolve a pin and preserve the source's quad-zoom mode before selection.
+    pub fn prepare_pin_navigation(
+        &mut self,
+        index: usize,
+        from: Id,
+        peek: &mut Option<Peek>,
+    ) -> Option<(Id, Id, Id)> {
+        let pane = *self.pinned_panes.get(index.checked_sub(1)?)?;
+        let (window, tab) = self
+            .windows
+            .iter()
+            .enumerate()
+            .find_map(|(window, state)| {
+                state
+                    .tabs
+                    .iter()
+                    .position(|tab| tab.panes.contains_key(&pane) && tab.root.contains(pane))
+                    .map(|tab| (window, tab))
+            })?;
+        let source = self.windows.iter_mut().find(|window| window.id == from)?;
+        let source = source.tabs.get_mut(source.active_tab)?;
+        let quad_zoom = source.quadrant_zoom.is_some() || peek.is_some();
+        if let Some(peek) = peek.take() {
+            let target = source.finish_peek(peek);
+            source.focus(target);
+        }
+        let destination = &mut self.windows[window].tabs[tab];
+        if destination.quadrant_zoom.is_some() != quad_zoom {
+            if quad_zoom {
+                destination.quadrant_zoom = destination.root.quadrant(pane);
+                destination.zoom = destination.quadrant_zoom;
+            } else {
+                if destination.zoom == destination.quadrant_zoom {
+                    destination.zoom = None;
+                }
+                destination.quadrant_zoom = None;
+            }
+        }
+        Some((
+            self.windows[window].id,
+            self.windows[window].tabs[tab].id,
+            pane,
+        ))
+    }
+
     pub fn reorder_pin(&mut self, pane: Id, before: Option<Id>) -> bool {
         let changed = self.reconcile_pinned_panes();
         let Some(from) = self.pinned_panes.iter().position(|id| *id == pane) else {
@@ -1520,6 +1565,132 @@ mod tests {
         );
         state.close_pane(pane);
         assert!(state.deck_positions.is_empty());
+    }
+
+    #[test]
+    fn pin_navigation_preserves_starting_quad_zoom_with_and_without_peek() {
+        fn tab(offset: Id, mode: usize) -> Tab {
+            let mut tab = Tab::new(offset + 1, offset + 2, "/tmp".into());
+            tab.split(offset + 3, offset + 4, Direction::Right, "/tmp".into());
+            tab.split(offset + 5, offset + 6, Direction::Down, "/tmp".into());
+            tab.focus(offset + 2);
+            tab.split(offset + 7, offset + 8, Direction::Down, "/tmp".into());
+            tab.focus(offset + 5);
+            tab.split(offset + 11, offset + 12, Direction::Right, "/tmp".into());
+            tab.focus(offset + 2);
+            tab.split(offset + 9, offset + 10, Direction::Right, "/tmp".into());
+            if mode >= 2 {
+                tab.toggle_quadrant_zoom();
+            }
+            if mode == 1 || mode == 3 {
+                tab.toggle_zoom();
+            }
+            tab
+        }
+        let chord = Modifiers {
+            super_key: true,
+            shift: true,
+            ..Modifiers::default()
+        };
+        for source_mode in 0..4 {
+            for destination_mode in 0..4 {
+                for location in 0..3 {
+                    for target in [2, 9, 11] {
+                        let offset = if location == 0 { 0 } else { 100 };
+                        let pane = offset + target;
+                        let mut initial = Workspace {
+                            next_id: 1000,
+                            windows: vec![WindowState {
+                                id: 20,
+                                tabs: vec![tab(0, source_mode)],
+                                active_tab: 0,
+                                frame: [0.0, 0.0, 800.0, 600.0],
+                                quick: false,
+                            }],
+                            pinned_panes: vec![pane],
+                            ..Workspace::default()
+                        };
+                        if location == 1 {
+                            initial.windows[0].tabs.push(tab(offset, destination_mode));
+                        } else if location == 2 {
+                            let mut window = initial.windows[0].clone();
+                            window.id = 200;
+                            window.tabs = vec![tab(offset, destination_mode)];
+                            initial.windows.push(window);
+                        }
+                        let mut without_peek = None;
+                        for overlap in [false, true] {
+                            let mut state = initial.clone();
+                            let mut peek = if overlap {
+                                state.windows[0].tabs[0].begin_peek(chord)
+                            } else {
+                                None
+                            };
+                            assert_eq!(peek.is_some(), overlap && source_mode >= 2);
+                            let (window, tab, resolved) =
+                                state.prepare_pin_navigation(1, 20, &mut peek).unwrap();
+                            assert_eq!(resolved, pane);
+                            assert!(peek.is_none(), "pin navigation must end the peek");
+                            crate::outliner::select_workspace(
+                                &mut state,
+                                Some(20),
+                                crate::outliner::Target::Pane { tab, pane },
+                            );
+                            let window = state.windows.iter().find(|w| w.id == window).unwrap();
+                            let destination = &window.tabs[window.active_tab];
+                            assert_eq!(destination.focused, pane);
+                            assert_eq!(
+                                destination.quadrant_zoom,
+                                if source_mode >= 2 {
+                                    destination.root.quadrant(pane)
+                                } else {
+                                    None
+                                }
+                            );
+                            assert!(destination.visible_tree(false).contains(pane));
+                            state.validate().unwrap();
+                            let windows = serde_json::to_value(&state.windows).unwrap();
+                            if overlap {
+                                assert_eq!(Some(windows), without_peek);
+                            } else {
+                                without_peek = Some(windows);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn missing_pin_navigation_leaves_peek_intact_for_modifier_release() {
+        let mut tab = quadrants();
+        tab.toggle_quadrant_zoom();
+        let mut peek = tab.begin_peek(Modifiers {
+            super_key: true,
+            ..Modifiers::default()
+        });
+        let mut state = Workspace {
+            windows: vec![WindowState {
+                id: 20,
+                tabs: vec![tab],
+                active_tab: 0,
+                frame: [0.0, 0.0, 800.0, 600.0],
+                quick: false,
+            }],
+            pinned_panes: vec![999],
+            ..Workspace::default()
+        };
+        let before = serde_json::to_value(&state.windows).unwrap();
+        for index in [0, 1, 2, usize::MAX] {
+            assert!(state.prepare_pin_navigation(index, 20, &mut peek).is_none());
+            assert!(peek.is_some());
+            assert_eq!(serde_json::to_value(&state.windows).unwrap(), before);
+        }
+        let tab = &mut state.windows[0].tabs[0];
+        let target = tab.finish_peek(peek.take().unwrap());
+        tab.focus(target);
+        assert_eq!((tab.zoom, tab.quadrant_zoom), (Some(target), Some(target)));
     }
 
     #[test]
