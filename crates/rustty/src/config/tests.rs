@@ -1091,6 +1091,45 @@ fn outliner_and_pin_are_bindable_without_default_shortcuts() {
 }
 
 #[test]
+fn goto_pin_accepts_positive_indices_and_rejects_invalid_arguments() {
+    for index in [1, 9, 10, usize::MAX] {
+        let binding = KeyBinding::parse(&format!("ctrl+p=goto_pin:{index}")).unwrap();
+        assert_eq!(binding.actions, [Action::GotoPin(index)]);
+    }
+    for invalid in [
+        "goto_pin",
+        "goto_pin:",
+        "goto_pin:0",
+        "goto_pin:-1",
+        "goto_pin:one",
+        "goto_pin:1:extra",
+        "goto_pin:18446744073709551616",
+    ] {
+        assert!(Action::parse(invalid).is_err(), "{invalid}");
+    }
+}
+
+#[test]
+#[cfg(target_os = "macos")]
+fn pin_shortcuts_add_shift_to_tab_shortcuts_without_replacing_them() {
+    let config = Config::default();
+    for index in 1..=9 {
+        assert_eq!(
+            action(&config, &format!("cmd+shift+{index}")),
+            Some(Action::GotoPin(index))
+        );
+        assert_eq!(
+            action(&config, &format!("cmd+{index}")),
+            Some(if index == 9 {
+                Action::LastTab
+            } else {
+                Action::GotoTab(index)
+            })
+        );
+    }
+}
+
+#[test]
 fn stream_deck_commands_are_bindable_and_reject_unknown_arguments() {
     for (name, command) in [
         ("needs_input", StreamDeckAction::NeedsInput),
