@@ -232,6 +232,12 @@ pub fn contents(
         output.selected = clicked.or(output.selected);
     } else {
         let changed = expansion.sync(rows);
+        let visible = expansion.visible(rows);
+        let focus = visible
+            .iter()
+            .rev()
+            .copied()
+            .find(|&index| rows[index].focused || rows[index].ancestor);
         egui::ScrollArea::vertical()
         .id_salt("outliner-rows")
         .max_height(ui.available_rect_before_wrap().intersect(ui.clip_rect()).height())
@@ -240,7 +246,7 @@ pub fn contents(
         .animated(false)
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
-            for index in expansion.visible(rows) {
+            for index in visible {
                 let row = &rows[index];
                 let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), ROW_HEIGHT));
                 let left = rect.left() + 7.0 + row.depth as f32 * INDENT;
@@ -392,7 +398,7 @@ pub fn contents(
                 if !matches!(row.target, Target::Quad { .. }) || !expansion.is_open(row.target) {
                     paint_label(ui, &row.label, label_rect, text_left, foreground, &[]);
                 }
-                if row.focused && changed || selection_changed && matches!(row.target, Target::Pane { pane, .. } if Some(pane) == search.selected_pane) {
+                if (changed || selection_changed) && focus == Some(index) {
                     response.scroll_to_me(None);
                 }
                 response.widget_info(|| {
@@ -2970,6 +2976,12 @@ mod tests {
         for row in &mut flat[2..] {
             row.depth -= 1;
         }
+        frame(&context, &rows, Vec::new(), false);
+        let disclosure = context
+            .read_response(egui::Id::new(("outliner-disclosure", rows[2].target)))
+            .unwrap()
+            .rect;
+        assert_eq!(click(&context, &rows, disclosure.center(), false), None);
         for tree in [&rows, &flat] {
             for _ in 0..2 {
                 frame(&context, tree, Vec::new(), false);
@@ -3044,6 +3056,11 @@ mod tests {
         context.enable_accesskit();
         let rows = rows();
         frame(&context, &rows, Vec::new(), false);
+        let disclosure = context
+            .read_response(egui::Id::new(("outliner-disclosure", rows[2].target)))
+            .unwrap()
+            .rect;
+        assert_eq!(click(&context, &rows, disclosure.center(), false), None);
         let (output, _) = frame(&context, &rows, Vec::new(), false);
         for row in &rows {
             let rect = bounds(&output, row);
@@ -3080,14 +3097,23 @@ mod tests {
             .collect();
         rows.extend(sibling);
         frame(&context, &rows, Vec::new(), false);
+        let disclosure = context
+            .read_response(egui::Id::new(("outliner-disclosure", rows[4].target)))
+            .unwrap()
+            .rect;
+        assert_eq!(click(&context, &rows, disclosure.center(), false), None);
         let (output, _) = frame(&context, &rows, Vec::new(), false);
         assert!(
-            node(&output, &description(&rows[3])).is_some(),
-            "focused path starts open"
+            node(&output, &description(&rows[2])).is_some(),
+            "quads start visible"
+        );
+        assert!(
+            node(&output, &description(&rows[3])).is_none(),
+            "panels start collapsed"
         );
         assert!(
             node(&output, &description(&rows[5])).is_none(),
-            "unrelated branches start closed"
+            "manually collapsed branches stay closed"
         );
         let tab = &rows[4];
         let disclosure = context
@@ -3238,16 +3264,103 @@ mod tests {
         draw(&context, &rows);
         let (output, _, _) = draw(&context, &rows);
         assert!(
-            viewport.contains_rect(bounds(&output, &rows[13])),
-            "the same focused panel is revealed after gaining ancestors"
+            viewport.contains_rect(bounds(&output, &rows[10])),
+            "a new collapsed window is revealed after the same focused panel gains ancestors"
         );
-        assert!(
-            egui::scroll_area::State::load(&context, scroll_id)
+        assert!(node(&output, &description(&rows[13])).is_none());
+        assert!(node(&output, &description(&rows[12])).is_none());
+    }
+
+    #[test]
+    fn focus_scrolls_to_the_visible_quad_tab_or_previously_expanded_panel() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let template = rows();
+        let mut rows = Vec::new();
+        for index in 0..15 {
+            let tab = 100 + index * 3;
+            for (level, target) in [
+                Target::Tab(tab),
+                Target::Quad { tab, node: tab + 1 },
+                Target::Pane { tab, pane: tab + 2 },
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                rows.push(Row {
+                    target,
+                    depth: level,
+                    label: format!("Entry {tab} {level}"),
+                    focused: index == 0 && level == 2,
+                    ancestor: index == 0 && level < 2,
+                    ..template[level + 1].clone()
+                });
+            }
+        }
+        frame(&context, &rows, Vec::new(), false);
+        let last = rows.len() - 1;
+        for row in &mut rows[..3] {
+            row.focused = false;
+            row.ancestor = false;
+        }
+        rows[last].focused = true;
+        rows[last - 1].ancestor = true;
+        rows[last - 2].ancestor = true;
+        for _ in 0..2 {
+            frame(&context, &rows, Vec::new(), false);
+        }
+        let (output, _) = frame(&context, &rows, Vec::new(), false);
+        let viewport = Rect::from_min_max(Pos2::new(8.0, 8.0), Pos2::new(312.0, 232.0));
+        assert!(viewport.contains_rect(bounds(&output, &rows[last - 1])));
+        assert!(node(&output, &description(&rows[last])).is_none());
+        let disclosure = |target| {
+            context
+                .read_response(egui::Id::new(("outliner-disclosure", target)))
                 .unwrap()
-                .offset
-                .y
-                > offset
+                .rect
+                .center()
+        };
+        assert_eq!(
+            click(&context, &rows, disclosure(rows[last - 1].target), false),
+            None
         );
+        let (output, _) = frame(&context, &rows, Vec::new(), false);
+        assert!(node(&output, &description(&rows[last])).is_some());
+        assert_eq!(
+            click(&context, &rows, disclosure(rows[last - 2].target), false),
+            None
+        );
+        let (output, _) = frame(&context, &rows, Vec::new(), false);
+        assert!(viewport.contains_rect(bounds(&output, &rows[last - 2])));
+        assert!(node(&output, &description(&rows[last - 1])).is_none());
+
+        for focused in [0, 14] {
+            for (index, row) in rows.iter_mut().enumerate() {
+                row.focused = index / 3 == focused && index % 3 == 2;
+                row.ancestor = index / 3 == focused && index % 3 < 2;
+            }
+            for _ in 0..2 {
+                frame(&context, &rows, Vec::new(), false);
+            }
+        }
+        let (output, _) = frame(&context, &rows, Vec::new(), false);
+        assert!(viewport.contains_rect(bounds(&output, &rows[last - 2])));
+        assert!(node(&output, &description(&rows[last - 1])).is_none());
+        assert_eq!(
+            click(&context, &rows, disclosure(rows[last - 2].target), false),
+            None
+        );
+        for focused in [0, 14] {
+            for (index, row) in rows.iter_mut().enumerate() {
+                row.focused = index / 3 == focused && index % 3 == 2;
+                row.ancestor = index / 3 == focused && index % 3 < 2;
+            }
+            for _ in 0..2 {
+                frame(&context, &rows, Vec::new(), false);
+            }
+        }
+        let (output, _) = frame(&context, &rows, Vec::new(), false);
+        assert!(viewport.contains_rect(bounds(&output, &rows[last])));
     }
 
     #[test]
@@ -3385,7 +3498,7 @@ mod tests {
         context.enable_accesskit();
         let rows = rows();
         frame(&context, &rows, Vec::new(), false);
-        for open in [true, false, true] {
+        for open in [false, true, false] {
             let (output, _) = frame(&context, &rows, Vec::new(), false);
             let has_text = |label: &str| {
                 output.shapes.iter().any(|shape| {

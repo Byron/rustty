@@ -3237,6 +3237,65 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
             })
     };
     let disclosure = |target| egui::Id::new(("outliner-disclosure", target));
+    for _ in 0..2 {
+        app.draw_outliner(event_loop, Some(&directory.join("outliner-collapsed.png")))?;
+    }
+    if widget_bounds(
+        app,
+        disclosure(Target::Quad {
+            tab: first_tab,
+            node: quad,
+        }),
+    )
+    .is_none()
+        || widget_bounds(
+            app,
+            egui::Id::new((
+                "outliner-row",
+                Target::Pane {
+                    tab: first_tab,
+                    pane: first,
+                },
+            )),
+        )
+        .is_some()
+        || widget_bounds(
+            app,
+            egui::Id::new((
+                "outliner-row",
+                Target::Pane {
+                    tab: second_tab,
+                    pane: second,
+                },
+            )),
+        )
+        .is_some()
+    {
+        return Err("Outliner did not initially stop at quads and quadless tabs".into());
+    }
+    for pane in [sibling, first] {
+        app.select_outline_target(Target::Pane {
+            tab: first_tab,
+            pane,
+        });
+        for _ in 0..2 {
+            app.draw_outliner(event_loop, Some(&directory.join("outliner-collapsed.png")))?;
+        }
+        if widget_bounds(
+            app,
+            egui::Id::new((
+                "outliner-row",
+                Target::Pane {
+                    tab: first_tab,
+                    pane,
+                },
+            )),
+        )
+        .is_some()
+        {
+            return Err("Following Outliner focus expanded a collapsed quad".into());
+        }
+    }
     for (shift, open, name) in [
         (false, false, "outliner-collapsed.png"),
         (false, true, "outliner.png"),
