@@ -389,7 +389,9 @@ pub fn contents(
                         foreground,
                     );
                 }
-                paint_label(ui, &row.label, label_rect, text_left, foreground, &[]);
+                if !matches!(row.target, Target::Quad { .. }) || !expansion.is_open(row.target) {
+                    paint_label(ui, &row.label, label_rect, text_left, foreground, &[]);
+                }
                 if row.focused && changed || selection_changed && matches!(row.target, Target::Pane { pane, .. } if Some(pane) == search.selected_pane) {
                     response.scroll_to_me(None);
                 }
@@ -3375,9 +3377,33 @@ mod tests {
                 Some(row.target)
             );
         }
-        let (tree, _) = frame(&context, &rows, Vec::new(), false);
-        assert!(tree.shapes.iter().any(|shape| {
-            matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == rows[0].label)
-        }), "quad names remain visible in the tree");
+    }
+
+    #[test]
+    fn expanded_quads_show_panel_labels_and_collapsed_quads_show_their_own_label() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let rows = rows();
+        frame(&context, &rows, Vec::new(), false);
+        for open in [true, false, true] {
+            let (output, _) = frame(&context, &rows, Vec::new(), false);
+            let has_text = |label: &str| {
+                output.shapes.iter().any(|shape| {
+                matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == label)
+            })
+            };
+            assert_eq!(has_text(&rows[2].label), !open);
+            assert_eq!(has_text(&rows[3].label), open);
+            assert!(has_text(&rows[1].label));
+            assert_eq!(
+                click(&context, &rows, bounds(&output, &rows[2]).center(), false),
+                Some(rows[2].target)
+            );
+            let disclosure = context
+                .read_response(egui::Id::new(("outliner-disclosure", rows[2].target)))
+                .unwrap()
+                .rect;
+            assert_eq!(click(&context, &rows, disclosure.center(), false), None);
+        }
     }
 }
