@@ -456,6 +456,7 @@ struct Host {
     search_focus: Option<Id>,
     search_rects: BTreeMap<Id, egui::Rect>,
     focus_text_input: bool,
+    unfocus_text_input: bool,
     popup_open: bool,
     ui_areas: input::UiAreas,
     messages_open: bool,
@@ -1267,6 +1268,7 @@ impl App {
             search_focus: None,
             search_rects: BTreeMap::new(),
             focus_text_input: false,
+            unfocus_text_input: false,
             popup_open: false,
             ui_areas: input::UiAreas::default(),
             messages_open: false,
@@ -1496,13 +1498,15 @@ impl App {
         let Some(index) = self.index(host.id) else {
             return;
         };
+        host.search_focus = None;
+        host.search_rects.clear();
+        host.focus_text_input = false;
+        host.unfocus_text_input = true;
         if let Some(pane) = outliner::select(&mut self.workspace.windows[index], target) {
             if let Some(previous) = previous.and_then(|id| self.panes.get_mut(&id)) {
                 previous.reset_selection_gesture();
             }
             self.cancel_selection_drag(host);
-            host.search_focus = None;
-            host.search_rects.clear();
             host.peek = None;
             self.focus_pane(host.id, pane);
             host.repaint();
@@ -1661,15 +1665,18 @@ impl App {
         }
         let mut host = self.windows.remove(&key).unwrap();
         let previous = self.focused(id);
-        if let Some((_, pane)) =
-            outliner::select_workspace(&mut self.workspace, self.active, target)
-        {
+        let selected = outliner::select_workspace(&mut self.workspace, self.active, target);
+        if activate || selected.is_some() {
+            host.search_focus = None;
+            host.search_rects.clear();
+            host.focus_text_input = false;
+            host.unfocus_text_input = true;
+        }
+        if let Some((_, pane)) = selected {
             if let Some(previous) = previous.and_then(|id| self.panes.get_mut(&id)) {
                 previous.reset_selection_gesture();
             }
             self.cancel_selection_drag(&mut host);
-            host.search_focus = None;
-            host.search_rects.clear();
             host.peek = None;
             self.focus_pane(id, pane);
         }
@@ -1704,6 +1711,25 @@ impl App {
         } = &event
         {
             input::key_is_consumed(&mut host.held_keys, key.physical_key, key.state, true);
+            if key.state == ElementState::Pressed
+                && let Some(binding) = self
+                    .config()
+                    .keybinds
+                    .iter()
+                    .rev()
+                    .find(|binding| {
+                        binding.table.is_none()
+                            && binding.trigger.len() == 1
+                            && input::matches(&binding.trigger[0], key, host.modifiers.state())
+                            && matches!(binding.actions.as_slice(), [Action::GotoPin(_)])
+                    })
+                    .cloned()
+            {
+                self.consumed_global_keys.extend(host.held_keys.drain());
+                self.outliner = Some(host);
+                self.platform_binding(event_loop, binding);
+                return;
+            }
             if key.state == ElementState::Pressed
                 && !key.repeat
                 && !host.search.open
@@ -2695,6 +2721,32 @@ impl App {
                     self.workspace.toggle_pin(pane);
                 }
             }
+            Action::GotoPin(index) => {
+                let Some(&pane) = index
+                    .checked_sub(1)
+                    .and_then(|index| self.workspace.pinned_panes.get(index))
+                else {
+                    return false;
+                };
+                let Some((window, tab)) = self.workspace.windows.iter().find_map(|window| {
+                    window
+                        .tabs
+                        .iter()
+                        .find(|tab| tab.panes.contains_key(&pane))
+                        .map(|tab| (window.id, tab.id))
+                }) else {
+                    return false;
+                };
+                let target = outliner::Target::Pane { tab, pane };
+                if window == host.id {
+                    self.select_outline(host, target);
+                    let quick = self.workspace.windows[self.index(window).unwrap()].quick;
+                    self.reveal_host(host, quick);
+                    self.active = Some(window);
+                } else {
+                    self.select_outline_target(target);
+                }
+            }
             Action::Themes => {
                 self.cancel_theme_preview(Some(host));
                 match self.config_loader.themes(self.loaded.family) {
@@ -3272,12 +3324,13 @@ impl App {
         dispatch_binding(binding, |action, all| {
             let navigation = matches!(
                 action,
-                Action::StreamDeck(
-                    config::StreamDeckAction::NeedsInput
-                        | config::StreamDeckAction::Working
-                        | config::StreamDeckAction::Done
-                        | config::StreamDeckAction::Idle
-                )
+                Action::GotoPin(_)
+                    | Action::StreamDeck(
+                        config::StreamDeckAction::NeedsInput
+                            | config::StreamDeckAction::Working
+                            | config::StreamDeckAction::Done
+                            | config::StreamDeckAction::Idle
+                    )
             );
             let performed = if target == host.id {
                 self.binding_action(event_loop, host, action, all)
@@ -3459,11 +3512,20 @@ impl App {
                 host.sequence_len = 0;
                 let binding = self.config().keybinds[index].clone();
                 let flags = binding.flags;
+                let pin_navigation = binding
+                    .actions
+                    .iter()
+                    .any(|action| matches!(action, Action::GotoPin(_)));
                 let performed = self.host_binding(event_loop, host, binding);
                 if flags.consumed && (!flags.performable || performed) {
-                    if ui_input || host.ui_input() {
-                        host.consumed_keys.insert(key.physical_key);
-                    }
+                    let ui_input = ui_input || host.ui_input();
+                    input::consume_shortcut_key(
+                        &mut host.consumed_keys,
+                        &mut self.consumed_global_keys,
+                        key.physical_key,
+                        pin_navigation,
+                        ui_input,
+                    );
                     return true;
                 }
             } else if !matched.is_empty() {
@@ -3669,6 +3731,10 @@ impl App {
             context.disable_accesskit();
         }
         let mut output = context.run_ui(raw, |root_ui| {
+            // The shared context must be inside this window's viewport before clearing focus.
+            if std::mem::take(&mut host.unfocus_text_input) {
+                root_ui.memory_mut(egui::Memory::stop_text_input);
+            }
             let ctx = &context;
             root_ui.visuals_mut().selection.bg_fill = accent;
             root_ui.visuals_mut().selection.stroke.color = Color32::from_rgb(
