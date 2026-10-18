@@ -95,8 +95,9 @@ The tab bar uses compact zoom symbols: an empty square for quad zoom, a filled
 square for panel zoom, and a filled square inside an empty square for panel zoom
 within a quad. The same symbols appear in a single-tab window's header.
 
-The focused panel has a solid accent background. Its window, tab, and quad have a subtle
-accent background and an accent line, making the path easy to follow. Focus changes
+The focused panel has a solid accent background in both the tree and the Pinned
+section. Its window, tab, and quad have a subtle accent background and an accent
+line, making the path easy to follow. Focus changes
 scroll only when the selected panel is outside the visible area, moving just enough
 to reveal it; ordinary scrolling remains under your control.
 
