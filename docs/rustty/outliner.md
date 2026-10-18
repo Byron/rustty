@@ -54,10 +54,11 @@ with matching names distinguishable. Click a breadcrumb level to select it using
 the tree's navigation rules. A neutral pin also marks the panel
 in the tree and beside its terminal label, or in its corner while the label is hidden.
 
-New pins are appended to the list. Drag a pin icon to change its order and shortcut
-number; a focused pin icon also supports Alt+↑/↓. Clicking the pin icon or toggling
-an existing pin removes it. Pins and their order are saved with the workspace,
-and closing a panel removes its pin.
+New pins are appended to the list. Drag a pin's number to change its order and shortcut
+number; a focused number also supports Alt+↑/↓. The number shows an open-hand cursor
+for dragging, while the pin icon shows a pointing hand for clicking to unpin.
+Clicking the pin icon or toggling an existing pin removes it. Pins and their order
+are saved with the workspace, and closing a panel removes its pin.
 
 With the Outliner focused, press `/` to open a search field at the bottom. The tree
 stays visible until you type, then becomes a list of matching panel breadcrumbs.

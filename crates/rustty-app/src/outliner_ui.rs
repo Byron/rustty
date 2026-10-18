@@ -661,6 +661,25 @@ fn pins(
                 } else {
                     ui.visuals().weak_text_color()
                 };
+                let number_rect =
+                    Rect::from_min_size(rect.min, Vec2::new(number_width, ROW_HEIGHT));
+                let number_handle = ui.interact(
+                    number_rect,
+                    egui::Id::new(("outliner-pin-number", pane)),
+                    Sense::drag(),
+                );
+                number_handle.dnd_set_drag_payload(pane);
+                if number_handle.dragged() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                }
+                if number_handle.hovered() || number_handle.has_focus() || number_handle.dragged() {
+                    ui.painter().rect_stroke(
+                        number_rect.shrink(2.0),
+                        3,
+                        Stroke::new(1.0, weak_foreground),
+                        egui::StrokeKind::Inside,
+                    );
+                }
                 ui.painter().text(
                     Pos2::new(rect.left() + number_width - 6.0, rect.center().y),
                     egui::Align2::RIGHT_CENTER,
@@ -675,10 +694,9 @@ fn pins(
                 let handle = ui.interact(
                     handle_rect,
                     egui::Id::new(("outliner-pin", pane)),
-                    Sense::click_and_drag(),
+                    Sense::click(),
                 );
-                handle.dnd_set_drag_payload(pane);
-                if handle.hovered() || handle.has_focus() || handle.dragged() {
+                if handle.hovered() || handle.has_focus() {
                     ui.painter().rect_stroke(
                         handle_rect.shrink(2.0),
                         3,
@@ -697,6 +715,23 @@ fn pins(
                 });
                 ui.ctx().accesskit_node_builder(handle.id, |node| {
                     node.set_description(format!("Pin {}", number + 1));
+                });
+                if handle.clicked() {
+                    handle.surrender_focus();
+                    output.unpin = Some(pane);
+                }
+                handle
+                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                    .on_hover_text(label);
+                number_handle.widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::WidgetType::Button,
+                        ui.is_enabled(),
+                        format!("Reorder pinned panel: {}", path.last().unwrap().label),
+                    )
+                });
+                ui.ctx().accesskit_node_builder(number_handle.id, |node| {
+                    node.set_description(format!("Pin {}", number + 1));
                     if index > 0 {
                         node.add_action(egui::accesskit::Action::Decrement);
                     }
@@ -704,20 +739,16 @@ fn pins(
                         node.add_action(egui::accesskit::Action::Increment);
                     }
                 });
-                if handle.clicked() {
-                    handle.surrender_focus();
-                    output.unpin = Some(pane);
-                }
-                let has_focus = handle.has_focus();
+                let has_focus = number_handle.has_focus();
                 let (up, down) = ui.input_mut(|input| {
                     (
                         input.has_accesskit_action_request(
-                            handle.id,
+                            number_handle.id,
                             egui::accesskit::Action::Decrement,
                         ) || has_focus
                             && input.consume_key(egui::Modifiers::ALT, egui::Key::ArrowUp),
                         input.has_accesskit_action_request(
-                            handle.id,
+                            number_handle.id,
                             egui::accesskit::Action::Increment,
                         ) || has_focus
                             && input.consume_key(egui::Modifiers::ALT, egui::Key::ArrowDown),
@@ -728,9 +759,7 @@ fn pins(
                 } else if down && index + 1 < panes.len() {
                     output.reorder = Some((pane, panes.get(index + 2).copied()));
                 }
-                handle
-                    .on_hover_cursor(egui::CursorIcon::Grab)
-                    .on_hover_text(format!("{label}\nDrag to reorder · Alt+↑/↓ to move"));
+                number_handle.on_hover_text("Drag to reorder · Alt+↑/↓ to move");
 
                 let crumb_rect = Rect::from_min_max(
                     Pos2::new(handle_rect.right() + 3.0, rect.top() + 2.0),
@@ -2698,7 +2727,7 @@ mod tests {
         }
         assert_eq!(selected, Some(rows[1].target));
 
-        let from = context
+        let pin = context
             .read_response(egui::Id::new(("outliner-pin", 4_u64)))
             .unwrap()
             .rect
@@ -2709,11 +2738,10 @@ mod tests {
             .rect
             .center_top()
             + Vec2::new(0.0, 2.0);
-        pin_frame(
-            &context,
-            &rows,
-            &pins,
-            vec![egui::Event::PointerMoved(from)],
+        let (output, _) = pin_frame(&context, &rows, &pins, vec![egui::Event::PointerMoved(pin)]);
+        assert_eq!(
+            output.platform_output.cursor_icon,
+            egui::CursorIcon::PointingHand
         );
         for pressed in [true, false] {
             let (_, output) = pin_frame(
@@ -2721,7 +2749,7 @@ mod tests {
                 &rows,
                 &pins,
                 vec![egui::Event::PointerButton {
-                    pos: from,
+                    pos: pin,
                     button: egui::PointerButton::Primary,
                     pressed,
                     modifiers: egui::Modifiers::NONE,
@@ -2733,6 +2761,58 @@ mod tests {
                     unpin: (!pressed).then_some(4),
                     ..Output::default()
                 }
+            );
+        }
+        for event in [
+            egui::Event::PointerButton {
+                pos: pin,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+            egui::Event::PointerMoved(to),
+            egui::Event::PointerMoved(to),
+            egui::Event::PointerButton {
+                pos: to,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ] {
+            assert_eq!(
+                pin_frame(&context, &rows, &pins, vec![event]).1,
+                Output::default()
+            );
+            assert!(!egui::DragAndDrop::has_payload_of_type::<Id>(&context));
+        }
+        let from = context
+            .read_response(egui::Id::new(("outliner-pin-number", 4_u64)))
+            .unwrap()
+            .rect
+            .center();
+        assert!(from.x < pin.x);
+        let (output, _) = pin_frame(
+            &context,
+            &rows,
+            &pins,
+            vec![egui::Event::PointerMoved(from)],
+        );
+        assert_eq!(output.platform_output.cursor_icon, egui::CursorIcon::Grab);
+        for pressed in [true, false] {
+            assert_eq!(
+                pin_frame(
+                    &context,
+                    &rows,
+                    &pins,
+                    vec![egui::Event::PointerButton {
+                        pos: from,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                )
+                .1,
+                Output::default()
             );
         }
         for event in [
@@ -2752,6 +2832,11 @@ mod tests {
             );
         }
         assert!(egui::DragAndDrop::has_payload_of_type::<Id>(&context));
+        let (output, _) = pin_frame(&context, &rows, &pins, Vec::new());
+        assert_eq!(
+            output.platform_output.cursor_icon,
+            egui::CursorIcon::Grabbing
+        );
         let (_, output) = pin_frame(
             &context,
             &rows,
@@ -2773,7 +2858,7 @@ mod tests {
             }
         );
 
-        let id = egui::Id::new(("outliner-pin", 3_u64));
+        let id = egui::Id::new(("outliner-pin-number", 3_u64));
         let (output, _) = pin_frame(&context, &rows, &pins, Vec::new());
         let node_id = output
             .platform_output
@@ -2782,7 +2867,7 @@ mod tests {
             .unwrap()
             .nodes
             .iter()
-            .find(|(_, node)| node.label() == Some("Unpin panel: Tests"))
+            .find(|(_, node)| node.label() == Some("Reorder pinned panel: Tests"))
             .map(|(id, node)| {
                 assert!(node.supports_action(egui::accesskit::Action::Increment));
                 *id
@@ -2832,6 +2917,20 @@ mod tests {
                 unpin: None,
             }
         );
+        let (output, _) = pin_frame(&context, &rows, &pins, Vec::new());
+        let node_id = output
+            .platform_output
+            .accesskit_update
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|(_, node)| node.label() == Some("Unpin panel: Tests"))
+            .map(|(id, node)| {
+                assert!(!node.supports_action(egui::accesskit::Action::Increment));
+                *id
+            })
+            .unwrap();
         let (_, output) = pin_frame(
             &context,
             &rows,
