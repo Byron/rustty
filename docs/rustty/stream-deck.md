@@ -196,9 +196,11 @@ boundary can leave uncertain state. There is no heartbeat or silence-to-done rul
 
 OSC 9;4 progress additionally contributes to the aggregate controls: determinate
 and indeterminate progress join Working; error and paused progress join Attention.
-100% is still Working. An explicit clear or the 15-second progress timeout finishes
-with Attention unless a result is known. A foreground shell command that contained
-progress can resolve its result: exit 0 joins Done; nonzero or missing exit status
+100% is still Working. The 15-second progress timeout drops the stale entry from
+the aggregate controls without marking it Attention or Done; fresh progress resumes
+tracking. An explicit clear finishes with Attention unless a result is known.
+A foreground shell command that contained progress can resolve its result:
+exit 0 joins Done; nonzero or missing exit status
 joins Attention. Leading ✅ notifications mark success; leading ❌, ⚠, or ✅⚠ mark
 Attention, catering to `wait-pr` and `notify-me`. Error/warning evidence takes
 precedence over exit 0, including `wait-pr`'s “CI finished, but not merged” warning.
@@ -206,8 +208,9 @@ Other notification prose is not interpreted as a result. A timeout alone never
 proves success. Terminal reset discards progress; disabling visual progress bars
 does not disable aggregate tracking. Finished progress remains until the pane is
 revealed/focused or a new foreground command/progress cycle begins. Active errors
-and pauses remain selectable until progress changes or finishes. These runtime
-signals are not persisted and do not change the pane's structured agent status.
+and pauses remain selectable until progress changes, finishes, or times out.
+These runtime signals are not persisted and do not change the pane's structured
+agent status.
 
 ## Empty board and persistence
 
