@@ -111,6 +111,8 @@ to all its descendants. These buttons only change the tree's visibility, leaving
 terminal focus and zoom alone. When panel focus changes, its ancestor branches open
 automatically so the focused panel stays visible. A manually collapsed branch stays
 collapsed until focus moves into it or its focused path changes.
+Expanded quads show only their icon, letting the panel entries provide the text;
+collapsed quads show their label.
 
 Clicking the focused panel or one of its ancestors leaves focus and zoom alone.
 Clicking another window, tab, quad, or panel selects its first descendant panel and
