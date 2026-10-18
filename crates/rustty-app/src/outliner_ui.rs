@@ -564,7 +564,7 @@ fn search_results(
                 Some(&result.highlights),
                 &panels,
                 selected_pane,
-                "outliner-search-result",
+                None,
             );
             if active && changed {
                 response.scroll_to_me(None);
@@ -641,14 +641,22 @@ fn pins(
                 };
                 let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), ROW_HEIGHT));
                 let row = path.last().unwrap();
+                let quad_focused = path
+                    .iter()
+                    .any(|row| row.ancestor && matches!(row.target, Target::Quad { .. }));
                 let accent = TabAccent::new(row.color, platform_accent);
+                // Reserve the background behind the controls until breadcrumb layout locates the quad.
+                let quad_highlight = (quad_focused && !row.focused)
+                    .then(|| (rect, accent, ui.painter().add(egui::Shape::Noop)));
                 let foreground = if row.focused {
                     ui.painter().rect_filled(rect, 4, rgb(accent.background));
+                    rgb(accent.foreground)
+                } else if quad_focused {
                     rgb(accent.foreground)
                 } else {
                     ui.visuals().text_color()
                 };
-                let weak_foreground = if row.focused {
+                let weak_foreground = if row.focused || quad_focused {
                     foreground
                 } else {
                     ui.visuals().weak_text_color()
@@ -737,8 +745,13 @@ fn pins(
                     child.visuals_mut().override_text_color = Some(foreground);
                     child.visuals_mut().weak_text_color = Some(foreground);
                 }
-                output.selected =
-                    breadcrumb(&mut child, path, crumb_rect.width()).or(output.selected);
+                output.selected = breadcrumb_with_pin_highlight(
+                    &mut child,
+                    path,
+                    crumb_rect.width(),
+                    quad_highlight,
+                )
+                .or(output.selected);
                 let blank =
                     Rect::from_min_max(Pos2::new(child.min_rect().right(), rect.top()), rect.max);
                 if blank.width() > 0.0 {
@@ -820,24 +833,16 @@ pub fn paint_pin(painter: &egui::Painter, rect: Rect, color: Color32) {
 
 /// Call in a right-aligned header; width is bounded even for long pane labels.
 pub fn breadcrumb(ui: &mut egui::Ui, rows: &[Row], max_width: f32) -> Option<Target> {
-    breadcrumb_with_matches(ui, rows, max_width, None)
+    breadcrumb_with_pin_highlight(ui, rows, max_width, None)
 }
 
-fn breadcrumb_with_matches(
+fn breadcrumb_with_pin_highlight(
     ui: &mut egui::Ui,
     rows: &[Row],
     max_width: f32,
-    highlights: Option<&[Range<usize>]>,
+    pin_highlight: Option<(Rect, TabAccent, egui::layers::ShapeIdx)>,
 ) -> Option<Target> {
-    breadcrumb_with_panels(
-        ui,
-        rows,
-        max_width,
-        highlights,
-        &[],
-        None,
-        "breadcrumb-panel",
-    )
+    breadcrumb_with_panels(ui, rows, max_width, None, &[], None, pin_highlight)
 }
 
 fn breadcrumb_with_panels(
@@ -847,11 +852,16 @@ fn breadcrumb_with_panels(
     highlights: Option<&[Range<usize>]>,
     panels: &[&Row],
     selected_pane: Option<Id>,
-    icon_id: &str,
+    pin_highlight: Option<(Rect, TabAccent, egui::layers::ShapeIdx)>,
 ) -> Option<Target> {
     if rows.is_empty() || max_width <= 0.0 {
         return None;
     }
+    let pin_highlight = pin_highlight.and_then(|(rect, accent, shape)| {
+        rows.iter()
+            .position(|row| row.ancestor && matches!(row.target, Target::Quad { .. }))
+            .map(|index| (index, rect, accent, shape))
+    });
     let foreground = ui.visuals().text_color();
     let labels: Vec<_> = rows
         .iter()
@@ -919,6 +929,14 @@ fn breadcrumb_with_panels(
     let mut x = bounds.left();
     let mut selected = None;
     for (index, row) in rows.iter().enumerate() {
+        let foreground = pin_highlight
+            .filter(|(quad, ..)| index <= *quad)
+            .map_or(foreground, |(_, _, accent, _)| rgb(accent.foreground));
+        let weak_foreground = pin_highlight
+            .filter(|(quad, ..)| index <= *quad)
+            .map_or(ui.visuals().weak_text_color(), |(_, _, accent, _)| {
+                rgb(accent.foreground)
+            });
         if index > 0 {
             ui.painter()
                 .with_clip_rect(bounds.intersect(ui.clip_rect()))
@@ -927,7 +945,7 @@ fn breadcrumb_with_panels(
                     egui::Align2::CENTER_CENTER,
                     "›",
                     FontId::proportional(16.0),
-                    ui.visuals().weak_text_color(),
+                    weak_foreground,
                 );
             x += separator;
         }
@@ -936,6 +954,15 @@ fn breadcrumb_with_panels(
             Pos2::new(x, bounds.top()),
             Vec2::new(width, bounds.height()),
         );
+        if let Some((quad, mut highlight_rect, accent, shape)) = pin_highlight
+            && index == quad
+        {
+            highlight_rect.max.x = rect.right();
+            ui.painter().set(
+                shape,
+                egui::Shape::rect_filled(highlight_rect, 4, rgb(accent.background)),
+            );
+        }
         let response = ui.interact(
             rect,
             ui.id().with(("breadcrumb", row.target)),
@@ -950,7 +977,7 @@ fn breadcrumb_with_panels(
             painter.rect_stroke(
                 rect.shrink(0.5),
                 3,
-                Stroke::new(1.0, ui.visuals().weak_text_color()),
+                Stroke::new(1.0, weak_foreground),
                 egui::StrokeKind::Inside,
             );
         }
@@ -963,7 +990,11 @@ fn breadcrumb_with_panels(
                     Pos2::new(x + 3.0 + slot as f32 * (ICON_SIZE + 4.0), rect.top()),
                     Vec2::new(ICON_SIZE + 4.0, rect.height()),
                 );
-                let response = ui.interact(icon, egui::Id::new((icon_id, pane)), Sense::click());
+                let response = ui.interact(
+                    icon,
+                    egui::Id::new(("outliner-search-result", pane)),
+                    Sense::click(),
+                );
                 paint_icon(
                     &painter,
                     Rect::from_center_size(icon.center(), Vec2::splat(ICON_SIZE)),
@@ -2298,9 +2329,13 @@ mod tests {
                         .rect;
                     let row = &rows[index];
                     let accent = TabAccent::new(row.color, [210, 110, 70]);
+                    let pin_rect = context
+                        .read_response(egui::Id::new(("outliner-pin-drop", pane as Id)))
+                        .unwrap()
+                        .rect;
                     let highlighted = output.shapes.iter().any(|shape| {
                         matches!(&shape.shape, egui::Shape::Rect(rect)
-                            if rect.rect.contains_rect(handle) && rect.fill == rgb(accent.background))
+                            if rect.rect.contains_rect(pin_rect) && rect.fill == rgb(accent.background))
                     });
                     assert_eq!(highlighted, row.focused, "pin {pane}, focus {focused:?}");
                     if row.focused {
@@ -2324,6 +2359,127 @@ mod tests {
                                 .sections
                                 .iter()
                                 .all(|section| { section.format.color == rgb(accent.foreground) })
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn pinned_quad_highlight_stops_before_the_panel_and_follows_its_current_quad() {
+        use crate::workspace::{Tab, WindowState, Workspace};
+        use rustty::config::Direction;
+        let mut tab = Tab::new(1, 2, "/tmp".into());
+        tab.split(3, 4, Direction::Right, "/tmp".into());
+        tab.split(5, 6, Direction::Down, "/tmp".into());
+        tab.focus(2);
+        tab.split(7, 8, Direction::Down, "/tmp".into());
+        tab.focus(2);
+        tab.split(9, 10, Direction::Right, "/tmp".into());
+        let mut changed = tab.clone();
+        changed.close(9);
+        let mut flat = Tab::new(1, 2, "/tmp".into());
+        flat.split(3, 4, Direction::Right, "/tmp".into());
+        let labels = [(2, "Pinned".into())].into();
+        for visuals in [egui::Visuals::dark(), egui::Visuals::light()] {
+            let context = egui::Context::default();
+            let neutral = visuals.text_color();
+            context.set_visuals(visuals);
+            context.enable_accesskit();
+            for tab in [tab.clone(), changed.clone(), flat.clone()] {
+                let focuses: Vec<_> = [2, 9, 7, 3, 2]
+                    .into_iter()
+                    .filter(|pane| tab.root.contains(*pane))
+                    .collect();
+                let mut workspace = Workspace::default();
+                workspace.windows.push(WindowState {
+                    id: 100,
+                    tabs: vec![tab],
+                    active_tab: 0,
+                    frame: [0.0; 4],
+                    quick: false,
+                });
+                for focused in focuses {
+                    workspace.windows[0].tabs[0].focus(focused);
+                    let rows = crate::outliner::workspace_rows(
+                        &workspace,
+                        Some(100),
+                        &labels,
+                        &Default::default(),
+                        &Default::default(),
+                    );
+                    let path = &pinned_paths(&rows, &[2])[0];
+                    let quad = path
+                        .iter()
+                        .find(|row| matches!(row.target, Target::Quad { .. }));
+                    pin_frame(&context, &rows, &[2], Vec::new());
+                    let (output, _) = pin_frame(&context, &rows, &[2], Vec::new());
+                    let handle = context
+                        .read_response(egui::Id::new(("outliner-pin", 2_u64)))
+                        .unwrap()
+                        .rect;
+                    let highlight = output.shapes.iter().find_map(|shape| match &shape.shape {
+                        egui::Shape::Rect(rect)
+                            if rect.rect.contains_rect(handle)
+                                && rect.fill == rgb([210, 110, 70]) =>
+                        {
+                            Some(rect)
+                        }
+                        _ => None,
+                    });
+                    let panel = path.last().unwrap();
+                    let pin_bounds = |row: &Row| {
+                        let bounds = output
+                            .platform_output
+                            .accesskit_update
+                            .as_ref()
+                            .unwrap()
+                            .nodes
+                            .iter()
+                            .filter_map(|(_, node)| {
+                                (node.label() == Some(description(row).as_str()))
+                                    .then(|| node.bounds())
+                                    .flatten()
+                            })
+                            .find(|bounds| {
+                                bounds.y0 < handle.bottom() as f64
+                                    && bounds.y1 > handle.top() as f64
+                            })
+                            .unwrap();
+                        Rect::from_min_max(
+                            Pos2::new(bounds.x0 as f32, bounds.y0 as f32),
+                            Pos2::new(bounds.x1 as f32, bounds.y1 as f32),
+                        )
+                    };
+                    assert_eq!(
+                        highlight.is_some(),
+                        panel.focused || quad.is_some_and(|quad| quad.ancestor)
+                    );
+                    if let Some(quad) = quad.filter(|quad| quad.ancestor && !panel.focused) {
+                        let highlight = highlight.unwrap();
+                        assert_eq!(highlight.rect.right(), pin_bounds(quad).right());
+                        assert!(highlight.rect.right() < pin_bounds(panel).left());
+                        let text = output
+                            .shapes
+                            .iter()
+                            .find_map(|shape| match &shape.shape {
+                                egui::Shape::Text(text)
+                                    if text.galley.text() == "Pinned"
+                                        && (text.pos.y - handle.center().y).abs()
+                                            < ROW_HEIGHT / 2.0 =>
+                                {
+                                    Some(text)
+                                }
+                                _ => None,
+                            })
+                            .unwrap();
+                        assert!(
+                            text.galley
+                                .job
+                                .sections
+                                .iter()
+                                .all(|section| section.format.color == neutral)
                         );
                     }
                 }
