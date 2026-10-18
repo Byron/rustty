@@ -354,7 +354,12 @@ fn tab_rows(tab: &Tab, labels: &HashMap<Id, String>, depth: usize, active: bool)
             }
             let node = tab.root.node(quad).unwrap();
             let children = node.layout(Rect::UNIT);
-            let first_label = pane_label(children[0].0, labels);
+            let mut names: Vec<_> = children
+                .iter()
+                .map(|(pane, _)| pane_label(*pane, labels))
+                .collect();
+            names.sort_unstable();
+            names.dedup();
             let rect = layout
                 .iter()
                 .filter(|(pane, _)| node.contains(*pane))
@@ -372,14 +377,7 @@ fn tab_rows(tab: &Tab, labels: &HashMap<Id, String>, depth: usize, active: bool)
                     node: quad,
                 },
                 depth,
-                label: if children
-                    .iter()
-                    .all(|(pane, _)| pane_label(*pane, labels) == first_label)
-                {
-                    first_label.to_owned()
-                } else {
-                    spatial_name(rect).to_owned()
-                },
+                label: names.join(", "),
                 tab_index: None,
                 rect,
                 focused: false,
@@ -450,16 +448,6 @@ fn zoom(tab: &Tab) -> Zoom {
         (Some(_), None) => Zoom::Pane,
         (Some(pane), Some(quad)) if pane == quad => Zoom::Quad,
         _ => Zoom::PaneInQuad,
-    }
-}
-
-fn spatial_name(rect: Rect) -> &'static str {
-    let [x, y] = rect.center();
-    match (x < 0.5, y < 0.5) {
-        (true, true) => "Top left",
-        (false, true) => "Top right",
-        (true, false) => "Bottom left",
-        (false, false) => "Bottom right",
     }
 }
 
@@ -768,7 +756,51 @@ mod tests {
         assert_eq!(crumb[1].rect, first[2].rect);
 
         let labels = [(2, "editor".into()), (9, "tests".into())].into();
-        assert_eq!(rows(&window, &labels, &HashMap::new())[0].label, "Top left");
+        assert_eq!(
+            rows(&window, &labels, &HashMap::new())[0].label,
+            "editor, tests"
+        );
+    }
+
+    #[test]
+    fn quad_names_sort_and_deduplicate_panel_labels_independent_of_focus_and_zoom() {
+        let mut window = quads();
+        window.tabs[0].split(11, 12, Direction::Down, "/tmp".into());
+        for (labels, expected) in [
+            (
+                [
+                    (2, "zebra".into()),
+                    (9, "Alpha".into()),
+                    (11, "zebra".into()),
+                ]
+                .into(),
+                "Alpha, zebra",
+            ),
+            (
+                [(2, "editor".into()), (9, String::new())].into(),
+                "Terminal, editor",
+            ),
+        ] {
+            for pane in [2, 9, 11] {
+                let tab = &mut window.tabs[0];
+                tab.zoom = None;
+                tab.quadrant_zoom = None;
+                tab.focus(pane);
+                for zoomed in [false, true] {
+                    if zoomed {
+                        window.tabs[0].toggle_quadrant_zoom();
+                        window.tabs[0].toggle_zoom();
+                    }
+                    let outline = rows(&window, &labels, &HashMap::new());
+                    assert_eq!(outline[0].label, expected);
+                    assert_eq!(breadcrumb(&window.tabs[0], &labels)[0].label, expected);
+                    let mut expansion = Expansion::default();
+                    expansion.sync(&outline);
+                    expansion.toggle(&outline, 0, false);
+                    assert_eq!(outline[expansion.visible(&outline)[0]].label, expected);
+                }
+            }
+        }
     }
 
     #[test]

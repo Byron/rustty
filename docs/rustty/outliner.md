@@ -16,9 +16,9 @@ Within each window, the hierarchy includes only the levels present:
 - One tab with quads: quads → panels.
 - Multiple tabs: tabs → optional quads → panels.
 
-Panels use the same directory basename as their on-screen labels. A quad uses that
-name when all its panels share it; otherwise it uses its position, such as
-“Top left.” Tab rows show `Cmd+N` followed by the tab name, without activity counts
+Panels use the same directory basename as their on-screen labels. A quad lists its
+distinct panel names in alphabetical order, separated by commas, whether expanded
+or collapsed. Tab rows show `Cmd+N` followed by the tab name, without activity counts
 or repeated zoom suffixes. Tab accents carry through their descendants.
 
 Search for **Toggle Pin** in the command palette to pin or unpin the focused panel.
