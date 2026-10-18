@@ -261,8 +261,40 @@ impl Smoke {
     }
     pub fn step(&mut self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
         if std::env::var_os("RUSTTY_SMOKE_OUTLINER").is_some() {
-            check_outliner(app, event_loop, &self.directory)?;
-            return Ok(true);
+            let now = Instant::now();
+            match self.stage {
+                0 => {
+                    check_outliner(app, event_loop, &self.directory)?;
+                    app.toggle_outliner(event_loop);
+                    self.stage = 1;
+                    self.next = Instant::now() + Duration::from_millis(500);
+                }
+                1 if now >= self.next => {
+                    self.idle_frames = app.outliner.as_ref().unwrap().frames;
+                    self.stage = 2;
+                    self.next = now + Duration::from_millis(1500);
+                }
+                2 if now >= self.next => {
+                    let frames = app.outliner.as_ref().unwrap().frames - self.idle_frames;
+                    if frames > 4 {
+                        return Err(
+                            format!("idle Outliner kept repainting: {frames} frames").into()
+                        );
+                    }
+                    let path = self.directory.join("result.json");
+                    let mut report: serde_json::Value = serde_json::from_slice(&fs::read(&path)?)?;
+                    report["idle_frames"] = frames.into();
+                    report["checks"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push("outliner-idle-rendering".into());
+                    fs::write(path, serde_json::to_vec_pretty(&report)?)?;
+                    eprintln!("Native Outliner idle: {frames} frames in 1.5 seconds");
+                    return Ok(true);
+                }
+                _ => {}
+            }
+            return Ok(false);
         }
         if std::env::var("RUSTTY_SMOKE_DECK").as_deref() == Ok("only") {
             super::deck_host::check_native_deck(app, event_loop)?;
