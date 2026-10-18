@@ -1090,15 +1090,7 @@ fn paint_icon(painter: &egui::Painter, rect: Rect, row: &Row, color: Color32) {
     let outer = rect.shrink(3.0);
     let quad = matches!(row.target, Target::Quad { .. });
     painter.rect_stroke(outer, 1, Stroke::new(1.0, color), egui::StrokeKind::Inside);
-    let inner = outer.shrink(if quad { 3.0 } else { 1.5 });
-    if quad {
-        painter.rect_stroke(
-            outer.shrink(2.0),
-            0,
-            Stroke::new(1.0, color),
-            egui::StrokeKind::Inside,
-        );
-    }
+    let inner = outer.shrink(1.5);
     let position = Rect::from_min_size(
         inner.min + Vec2::new(row.rect.x * inner.width(), row.rect.y * inner.height()),
         Vec2::new(
@@ -1106,7 +1098,16 @@ fn paint_icon(painter: &egui::Painter, rect: Rect, row: &Row, color: Color32) {
             row.rect.height * inner.height(),
         ),
     );
-    painter.rect_filled(position, 0, color);
+    if quad {
+        painter.rect_stroke(
+            position,
+            0,
+            Stroke::new(1.0, color),
+            egui::StrokeKind::Inside,
+        );
+    } else {
+        painter.rect_filled(position, 0, color);
+    }
     if zoomed {
         // Corner brackets mark zoom without hiding the pane's original position.
         for (corner, direction) in [
@@ -1159,6 +1160,79 @@ fn rgb([r, g, b]: [u8; 3]) -> Color32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quad_icons_match_panel_geometry_without_fills_or_an_extra_square() {
+        let context = egui::Context::default();
+        let icon = Rect::from_min_size(Pos2::new(10.0, 10.0), Vec2::splat(ICON_SIZE));
+        let mut row = rows()[2].clone();
+        for position in [
+            crate::workspace::Rect::UNIT,
+            crate::workspace::Rect {
+                x: 0.5,
+                width: 0.5,
+                ..crate::workspace::Rect::UNIT
+            },
+            crate::workspace::Rect {
+                x: 0.2,
+                y: 0.5,
+                width: 0.3,
+                height: 0.5,
+            },
+        ] {
+            row.rect = position;
+            for zoom in [Zoom::None, Zoom::Quad] {
+                row.zoom = zoom;
+                let draw = |target| {
+                    let mut row = row.clone();
+                    row.target = target;
+                    let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                        paint_icon(ui.painter(), icon, &row, Color32::WHITE);
+                    });
+                    output.textures_delta.clear();
+                    output
+                };
+                let quad = draw(Target::Quad { tab: 1, node: 2 });
+                let panel = draw(Target::Pane { tab: 1, pane: 3 });
+                let rectangles = |output: &egui::FullOutput| {
+                    output
+                        .shapes
+                        .iter()
+                        .filter_map(|shape| match &shape.shape {
+                            egui::Shape::Rect(rect) => Some(rect.clone()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                };
+                let quad_rects = rectangles(&quad);
+                let panel_rects = rectangles(&panel);
+                assert_eq!(quad_rects.len(), 2);
+                assert_eq!(panel_rects.len(), 2);
+                for (quad, panel) in quad_rects.iter().zip(&panel_rects) {
+                    assert_eq!(quad.rect, panel.rect);
+                    assert_eq!(quad.fill, Color32::TRANSPARENT);
+                    assert_eq!(quad.stroke.color, Color32::WHITE);
+                    assert_eq!(quad.stroke.width, 1.0);
+                }
+                assert_eq!(panel_rects[1].fill, Color32::WHITE);
+                let brackets = |output: &egui::FullOutput| {
+                    output
+                        .shapes
+                        .iter()
+                        .filter_map(|shape| match &shape.shape {
+                            egui::Shape::LineSegment { points, stroke } => Some((*points, *stroke)),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(brackets(&quad), brackets(&panel));
+                assert_eq!(
+                    brackets(&quad).len(),
+                    if zoom == Zoom::None { 0 } else { 8 }
+                );
+            }
+        }
+    }
 
     fn rows() -> Vec<Row> {
         vec![
