@@ -12,6 +12,7 @@ pub(super) struct OutlinerHost {
     pub search: outliner_ui::SearchState,
     pub deadline: Option<Instant>,
     pub accesskit_active: bool,
+    pub frames: u64,
 }
 
 impl OutlinerHost {
@@ -60,6 +61,7 @@ impl OutlinerHost {
             search: outliner_ui::SearchState::default(),
             deadline: None,
             accesskit_active: false,
+            frames: 0,
         })
     }
 
@@ -153,6 +155,7 @@ impl OutlinerHost {
                 )?;
             }
         }
+        self.frames += 1;
         Ok(selection)
     }
 }

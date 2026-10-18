@@ -1719,7 +1719,7 @@ impl App {
             }
         }
         let response = host.egui.on_window_event(&host.window, &event);
-        if response.repaint {
+        if response.repaint && !matches!(event, WindowEvent::RedrawRequested) {
             host.repaint();
         }
         let mut close = false;
