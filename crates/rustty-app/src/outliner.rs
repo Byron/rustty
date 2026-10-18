@@ -38,10 +38,11 @@ pub struct Row {
 pub struct Expansion {
     open: HashSet<Target>,
     focused_path: Vec<Target>,
+    initialized: bool,
 }
 
 impl Expansion {
-    /// Open a changed focus path and report whether it needs revealing.
+    /// Initialize the visible hierarchy once, then only track focus changes.
     pub fn sync(&mut self, rows: &[Row]) -> bool {
         let branches: HashSet<_> = rows
             .windows(2)
@@ -49,18 +50,29 @@ impl Expansion {
             .map(|pair| pair[0].target)
             .collect();
         self.open.retain(|target| branches.contains(target));
+        let initialize = !self.initialized && !rows.is_empty();
+        if initialize {
+            for (index, row) in rows.iter().enumerate() {
+                if branches.contains(&row.target)
+                    && (matches!(row.target, Target::Window(_))
+                        || matches!(row.target, Target::Tab(_))
+                            && rows[index + 1..]
+                                .iter()
+                                .take_while(|child| child.depth > row.depth)
+                                .any(|child| matches!(child.target, Target::Quad { .. })))
+                {
+                    self.open.insert(row.target);
+                }
+            }
+            self.initialized = true;
+        }
         let path: Vec<_> = rows
             .iter()
             .filter(|row| row.ancestor || row.focused)
             .map(|row| row.target)
             .collect();
-        let changed = path != self.focused_path;
+        let changed = initialize || path != self.focused_path;
         if changed {
-            self.open.extend(
-                path.iter()
-                    .filter(|target| branches.contains(target))
-                    .copied(),
-            );
             self.focused_path = path;
         }
         changed
@@ -534,7 +546,7 @@ mod tests {
     }
 
     #[test]
-    fn expansion_starts_closed_and_opens_only_the_focused_path() {
+    fn expansion_initially_shows_quads_or_tabs_without_opening_panels() {
         let rows = expansion_rows();
         let mut expansion = Expansion::default();
         assert_eq!(
@@ -548,15 +560,15 @@ mod tests {
         expansion.sync(&rows);
         assert_eq!(
             expansion.open,
-            [
-                Target::Window(100),
-                Target::Tab(1),
-                Target::Quad { tab: 1, node: 10 }
-            ]
-            .into()
+            [Target::Window(100), Target::Tab(1), Target::Window(200)].into()
         );
         assert!(
             expansion
+                .visible(&rows)
+                .contains(&row_index(&rows, Target::Quad { tab: 1, node: 10 }))
+        );
+        assert!(
+            !expansion
                 .visible(&rows)
                 .contains(&row_index(&rows, Target::Pane { tab: 1, pane: 9 }))
         );
@@ -574,6 +586,7 @@ mod tests {
         let quad = Target::Quad { tab: 1, node: 10 };
         let mut expansion = Expansion::default();
         expansion.sync(&rows);
+        expansion.toggle(&rows, row_index(&rows, quad), false);
         expansion.toggle(&rows, tab, false);
         assert!(!expansion.is_open(Target::Tab(1)));
         assert!(expansion.is_open(quad));
@@ -588,25 +601,26 @@ mod tests {
             }
         }
         assert!(!expansion.is_open(Target::Tab(11)));
-        assert!(!expansion.is_open(Target::Window(200)));
+        assert!(expansion.is_open(Target::Window(200)));
     }
 
     #[test]
-    fn manual_collapse_stays_until_focus_moves_then_only_the_new_path_opens() {
+    fn focus_changes_preserve_expansion_including_manually_collapsed_branches() {
         let mut rows = expansion_rows();
         let quad = Target::Quad { tab: 1, node: 10 };
         let mut expansion = Expansion::default();
         expansion.sync(&rows);
         expansion.toggle(&rows, row_index(&rows, quad), false);
+        expansion.toggle(&rows, row_index(&rows, Target::Tab(1)), false);
+        let before = expansion.open.clone();
         rows[0].label = "Renamed window".into();
         expansion.sync(&rows);
-        assert!(!expansion.is_open(quad));
+        assert!(!expansion.is_open(Target::Tab(1)));
         for row in &mut rows {
             row.focused = row.target == Target::Pane { tab: 1, pane: 2 };
         }
         expansion.sync(&rows);
-        assert!(expansion.is_open(quad));
-        let before = expansion.open.clone();
+        assert_eq!(expansion.open, before);
         for row in &mut rows {
             row.focused = row.target == Target::Pane { tab: 1, pane: 7 };
             if matches!(row.target, Target::Quad { .. }) {
@@ -614,35 +628,55 @@ mod tests {
             }
         }
         expansion.sync(&rows);
-        assert_eq!(
-            expansion
-                .open
-                .difference(&before)
-                .copied()
-                .collect::<HashSet<_>>(),
-            [Target::Quad { tab: 1, node: 7 }].into()
-        );
+        assert_eq!(expansion.open, before);
     }
 
     #[test]
-    fn changed_ancestry_opens_the_new_path_for_the_same_focused_panel_and_prunes_old_keys() {
+    fn changed_ancestry_prunes_old_keys_without_opening_the_new_path() {
         let mut rows = expansion_rows();
         let previous = Target::Quad { tab: 1, node: 10 };
         let next = Target::Quad { tab: 1, node: 20 };
         let mut expansion = Expansion::default();
         expansion.sync(&rows);
+        expansion.toggle(&rows, row_index(&rows, previous), false);
         expansion.toggle(&rows, row_index(&rows, Target::Tab(1)), false);
         let index = row_index(&rows, previous);
         rows[index].target = next;
         expansion.sync(&rows);
         assert!(!expansion.is_open(previous));
-        assert!(expansion.is_open(next));
-        assert!(expansion.is_open(Target::Tab(1)));
+        assert!(!expansion.is_open(next));
+        assert!(!expansion.is_open(Target::Tab(1)));
         assert!(
-            expansion
+            !expansion
                 .visible(&rows)
                 .contains(&row_index(&rows, Target::Pane { tab: 1, pane: 9 }))
         );
+    }
+
+    #[test]
+    fn initial_expansion_reaches_all_quads_and_waits_for_nonempty_rows() {
+        let mut outline = expansion_rows();
+        let tab = row_index(&outline, Target::Tab(11));
+        outline[tab + 1].target = Target::Quad { tab: 11, node: 30 };
+        let mut pane = outline[tab + 1].clone();
+        pane.target = Target::Pane { tab: 11, pane: 12 };
+        pane.depth += 1;
+        outline.insert(tab + 2, pane);
+        let mut expansion = Expansion::default();
+        assert!(!expansion.sync(&[]));
+        assert!(expansion.sync(&outline));
+        assert!(expansion.is_open(Target::Tab(11)));
+        assert!(!expansion.is_open(Target::Quad { tab: 11, node: 30 }));
+        let visible = expansion.visible(&outline);
+        for (index, row) in outline.iter().enumerate() {
+            if matches!(row.target, Target::Quad { .. }) {
+                assert!(visible.contains(&index));
+            }
+        }
+        expansion.toggle(&outline, tab, false);
+        expansion.sync(&[]);
+        expansion.sync(&outline);
+        assert!(!expansion.is_open(Target::Tab(11)));
     }
 
     #[test]
