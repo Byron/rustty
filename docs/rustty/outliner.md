@@ -96,10 +96,13 @@ square for panel zoom, and a filled square inside an empty square for panel zoom
 within a quad. The same symbols appear in a single-tab window's header.
 
 The focused panel has a solid accent background in both the tree and the Pinned
-section. Its window, tab, and quad have a subtle accent background and an accent
-line, making the path easy to follow. Focus changes
-scroll only when the selected panel is outside the visible area, moving just enough
-to reveal it; ordinary scrolling remains under your control.
+section. A pin also includes its panel's current quad, when present: focusing a
+different panel in that quad highlights the pin entry only through the quad icon,
+leaving the pinned panel's icon and name neutral. In the tree, the focused panel's
+window, tab, and quad have a subtle accent background and an accent line, making
+the path easy to follow. Focus changes scroll only when the selected panel is
+outside the visible area, moving just enough to reveal it; ordinary scrolling
+remains under your control.
 
 Branches start collapsed except for the path to the focused panel. Click a branch's
 `+` or `−` button to expand or collapse one level; Shift-click applies the same change
