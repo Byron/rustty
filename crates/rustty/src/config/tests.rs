@@ -1110,6 +1110,31 @@ fn goto_pin_accepts_positive_indices_and_rejects_invalid_arguments() {
 }
 
 #[test]
+fn pin_hotkeys_can_be_remapped_and_disabled_in_config() {
+    let home = TestHome::new();
+    home.own(
+        "keybind = cmd+shift+1=unbind\n\
+         keybind = ctrl+alt+1=goto_pin:1\n\
+         keybind = cmd+shift+2=goto_pin:10\n",
+    );
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(action(&loaded.config, "cmd+shift+1"), None);
+    assert_eq!(
+        action(&loaded.config, "ctrl+alt+1"),
+        Some(Action::GotoPin(1))
+    );
+    assert_eq!(
+        action(&loaded.config, "cmd+shift+2"),
+        Some(Action::GotoPin(10))
+    );
+    assert_eq!(
+        action(&loaded.config, "cmd+1"),
+        action(&Config::default(), "cmd+1"),
+    );
+}
+
+#[test]
 #[cfg(target_os = "macos")]
 fn pin_shortcuts_add_shift_to_tab_shortcuts_without_replacing_them() {
     let config = Config::default();
