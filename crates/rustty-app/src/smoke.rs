@@ -3504,6 +3504,23 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
             return Err("Outliner tree extended behind the search field".into());
         }
         type_query(app, "nts")?;
+        if app.focused(window) != Some(first) {
+            return Err("typing an Outliner query changed terminal focus".into());
+        }
+        app.outliner
+            .as_mut()
+            .unwrap()
+            .egui
+            .egui_input_mut()
+            .events
+            .push(egui::Event::Key {
+                key: egui::Key::N,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::CTRL,
+            });
+        app.draw_outliner(event_loop, None)?;
         app.outliner
             .as_mut()
             .unwrap()
@@ -3549,7 +3566,8 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         );
     }
     for (key, physical, repeat, expected) in [
-        (egui::Key::N, KeyCode::KeyN, false, sibling),
+        (egui::Key::N, KeyCode::KeyN, false, first),
+        (egui::Key::N, KeyCode::KeyN, true, sibling),
         (egui::Key::N, KeyCode::KeyN, true, first),
         (egui::Key::P, KeyCode::KeyP, false, sibling),
         (egui::Key::P, KeyCode::KeyP, true, first),
@@ -3652,7 +3670,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         app.window_event(event_loop, utility_key, event);
         app.draw_outliner(event_loop, None)?;
     }
-    if app.outliner.as_ref().unwrap().search.open || app.focused(window) != Some(second) {
+    if app.outliner.as_ref().unwrap().search.open || app.focused(window) != Some(sibling) {
         return Err("closing Outliner search changed panel focus or left search open".into());
     }
 
@@ -3665,6 +3683,22 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         .find_map(|(&key, host)| (host.id == other).then_some(key))
         .unwrap();
     let other_pane = app.focused(other).unwrap();
+    let navigate_search = |app: &mut App| -> Result<()> {
+        app.outliner
+            .as_mut()
+            .unwrap()
+            .egui
+            .egui_input_mut()
+            .events
+            .push(egui::Event::Key {
+                key: egui::Key::N,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::CTRL,
+            });
+        app.draw_outliner(event_loop, None)
+    };
     app.select_outline_target(Target::Window(window));
     app.select_outline_target(Target::Window(other));
     if app.active != Some(other)
@@ -3690,6 +3724,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     app.windows[&other_key].window.set_minimized(true);
     begin_search(app)?;
     type_query(app, "remote-search")?;
+    navigate_search(app)?;
     if app.active != Some(other)
         || !app.windows[&other_key].visible
         || app.windows[&other_key].window.is_minimized() == Some(true)
@@ -3813,6 +3848,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     app.panes.get_mut(&quick_pane).unwrap().cwd = fixture_directory().join("quick-search-target");
     begin_search(app)?;
     type_query(app, "quick-search")?;
+    navigate_search(app)?;
     if !app.windows[&quick_key].visible
         || app.active != Some(quick)
         || native_focus_available && !app.outliner.as_ref().unwrap().window.has_focus()
@@ -3821,6 +3857,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     }
     app.platform_action(event_loop, Action::SelectAll, false);
     type_query(app, "remote-search")?;
+    navigate_search(app)?;
     if app.active != Some(other)
         || app.config().quick_terminal_autohide && app.windows[&quick_key].visible
         || native_focus_available && !app.outliner.as_ref().unwrap().window.has_focus()
