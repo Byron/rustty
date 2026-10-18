@@ -28,6 +28,21 @@ Cmd+Shift+1 through Cmd+Shift+9 focus the corresponding pinned panel, even with
 the Outliner closed or its search field focused. A missing pin number leaves
 focus unchanged. Custom bindings can use `goto_pin:N` with a positive pin number.
 macOS screenshot shortcuts may intercept Cmd+Shift+3, 4, or 5 before Rustty receives them.
+
+Configure each pin shortcut with a `keybind` entry. For example, move pin 1 to
+Ctrl+Alt+1 and disable its default shortcut:
+
+```ini
+keybind = cmd+shift+1=unbind
+keybind = ctrl+alt+1=goto_pin:1
+```
+
+Repeat for other pin numbers. Adding a new shortcut keeps the default unless you
+unbind it; assigning another action to the same shortcut replaces it. Numbers
+above 9 also work, for example `keybind = ctrl+alt+0=goto_pin:10`. Reload the
+configuration with Cmd+Shift+, on macOS, or **Reload Configuration** in the command
+palette. The configured shortcuts also work while the Outliner's search is focused.
+
 Each pin shows a neutral breadcrumb omitting the Window level, making panels
 with matching names distinguishable. Click a breadcrumb level to select it using
 the tree's navigation rules. A neutral pin also marks the panel
