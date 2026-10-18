@@ -101,16 +101,17 @@ section. A pin also includes its panel's current quad, when present: focusing a
 different panel in that quad highlights the pin entry only through the quad icon,
 leaving the pinned panel's icon and name neutral. In the tree, the focused panel's
 window, tab, and quad have a subtle accent background and an accent line, making
-the path easy to follow. Focus changes scroll only when the selected panel is
-outside the visible area, moving just enough to reveal it; ordinary scrolling
-remains under your control.
+the path easy to follow. Focus changes scroll only when the deepest visible
+highlighted entry is outside the viewport, moving just enough to reveal it.
+Collapsed branches stay collapsed; the entry may be a quad or tab instead of
+the panel. Ordinary scrolling remains under your control.
 
-Branches start collapsed except for the path to the focused panel. Click a branch's
+On first open, the tree shows quads with their panels collapsed. Tabs without
+quads stay collapsed, and windows open to show their tabs. Click a branch's
 `+` or `−` button to expand or collapse one level; Shift-click applies the same change
 to all its descendants. These buttons only change the tree's visibility, leaving
-terminal focus and zoom alone. When panel focus changes, its ancestor branches open
-automatically so the focused panel stays visible. A manually collapsed branch stays
-collapsed until focus moves into it or its focused path changes.
+terminal focus and zoom alone. Expansion is preserved when panel focus changes
+and when the Outliner is reopened.
 Expanded quads show only their icon, letting the panel entries provide the text;
 collapsed quads show their label.
 
