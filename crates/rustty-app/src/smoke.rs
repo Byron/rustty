@@ -111,6 +111,7 @@ impl Smoke {
             "outliner-narrow-terminal.png",
             "outliner-pinned.png",
             "outliner-pinned-terminal.png",
+            "outliner-pin-find.png",
             "outliner-search.png",
             "outliner-search-empty.png",
             "outliner-search-navigation.png",
@@ -3380,6 +3381,41 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     if app.workspace.pinned_panes != [first, second] {
         return Err("Toggle Pin did not append focused panels in order".into());
     }
+    let pin_shortcut = |app: &mut App, slot: usize| -> Result<()> {
+        let binding = config::KeyBinding::parse(&format!("super+shift+{slot}=goto_pin:{slot}"))?;
+        let mut host = app.windows.remove(&key).unwrap();
+        let performed = app.host_binding(event_loop, &mut host, binding);
+        app.windows.insert(key, host);
+        if !performed {
+            return Err("pin shortcut did not select an existing pin".into());
+        }
+        Ok(())
+    };
+    pin_shortcut(app, 1)?;
+    if app.focused(window) != Some(first) {
+        return Err("pin 1 did not focus its panel in another tab".into());
+    }
+    pin_shortcut(app, 2)?;
+    if app.focused(window) != Some(second) {
+        return Err("pin 2 did not focus its panel in another tab".into());
+    }
+    action(app, Action::StartSearch);
+    capture_terminal(app, "outliner-pin-find.png")?;
+    if app.windows[&key].search_focus != Some(second) {
+        return Err("pin focus check did not open terminal Find".into());
+    }
+    pin_shortcut(app, 2)?;
+    capture_terminal(app, "outliner-pin-find.png")?;
+    if app.windows[&key].ui_input() || app.windows[&key].egui.egui_ctx().text_edit_focused() {
+        return Err("activating the current pin left terminal Find focused".into());
+    }
+    action(app, Action::EndSearch);
+    let before = (serde_json::to_vec(&app.workspace)?, app.active);
+    if app.platform_action(event_loop, Action::GotoPin(9), false)
+        || (serde_json::to_vec(&app.workspace)?, app.active) != before
+    {
+        return Err("a missing pin shortcut changed focus or layout".into());
+    }
     app.select_outline_target(Target::Pane {
         tab: first_tab,
         pane: first,
@@ -3423,6 +3459,10 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     }
     if (serde_json::to_vec(&app.workspace.windows)?, app.active) != before {
         return Err("reordering Outliner pins changed terminal focus or zoom".into());
+    }
+    pin_shortcut(app, 1)?;
+    if app.focused(window) != Some(second) {
+        return Err("pin shortcut did not follow the reordered list".into());
     }
     for _ in 0..2 {
         app.draw_outliner(event_loop, Some(&directory.join("outliner-pinned.png")))?;
@@ -3742,6 +3782,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     let mut other_host = app.windows.remove(&other_key).unwrap();
     other_host.visible = true;
     other_host.occluded = false;
+    app.search_action(&mut other_host, other_pane, Action::StartSearch);
     capture_window(
         app,
         event_loop,
@@ -3753,6 +3794,46 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     app.windows.insert(other_key, other_host);
     app.panes.get_mut(&other_pane).unwrap().cwd = fixture_directory().join("remote-search-target");
     app.select_outline_target(Target::Window(window));
+    app.windows[&other_key].window.set_minimized(true);
+    app.workspace.toggle_pin(other_pane);
+    app.outliner.as_mut().unwrap().search.start();
+    pin_shortcut(app, 2)?;
+    let mut other_host = app.windows.remove(&other_key).unwrap();
+    capture_window(
+        app,
+        event_loop,
+        &mut other_host,
+        &directory.join("outliner-other-window.png"),
+    )?;
+    app.windows.insert(other_key, other_host);
+    if app.active != Some(other)
+        || app.focused(other) != Some(other_pane)
+        || app.windows[&other_key].window.is_minimized() == Some(true)
+        || app.windows[&other_key].ui_input()
+        || app.windows[&other_key].egui.egui_ctx().text_edit_focused()
+    {
+        return Err("pin shortcut did not focus its terminal in a minimized window".into());
+    }
+    app.platform_action(event_loop, Action::EndSearch, false);
+    app.outliner
+        .as_mut()
+        .unwrap()
+        .held_keys
+        .insert(PhysicalKey::Code(KeyCode::Digit1));
+    app.platform_binding(
+        event_loop,
+        config::KeyBinding::parse("super+shift+1=goto_pin:1")?,
+    );
+    if app.active != Some(window)
+        || app.focused(window) != Some(first)
+        || !consumes_key_tail(app, KeyCode::Digit1)
+    {
+        return Err(
+            "pin shortcut from Outliner search failed to focus its panel and consume the held key"
+                .into(),
+        );
+    }
+    app.workspace.toggle_pin(other_pane);
     app.windows[&other_key].window.set_minimized(true);
     begin_search(app)?;
     type_query(app, "remote-search")?;
@@ -3894,10 +3975,12 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         || app.config().quick_terminal_autohide && app.windows[&quick_key].visible
         || native_focus_available && !app.outliner.as_ref().unwrap().window.has_focus()
     {
-        return Err(
-            "leaving a quick-terminal preview did not honor autohide and retain search focus"
-                .into(),
-        );
+        return Err(format!(
+            "leaving a quick-terminal preview failed: active={:?}, expected={other}, quick_visible={}, query={:?}",
+            app.active,
+            app.windows[&quick_key].visible,
+            app.outliner.as_ref().unwrap().search.query,
+        ).into());
     }
     accept_search(app)?;
     app.select_outline_target(Target::Window(quick));

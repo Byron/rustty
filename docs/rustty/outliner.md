@@ -23,16 +23,20 @@ or repeated zoom suffixes. Tab accents carry through their descendants.
 
 Search for **Toggle Pin** in the command palette to pin or unpin the focused panel.
 It can also be bound with `keybind = ctrl+alt+p=toggle_pin`; no shortcut is assigned
-by default. Pinned panels appear in a separate section above the tree. Each pin
-shows a neutral breadcrumb with the same levels and position icons as the
-tree, making panels with matching names distinguishable. Click a breadcrumb level
-to select it using the tree's navigation rules. A neutral pin also marks the panel
+by default. Pinned panels appear in a numbered section above the tree. On macOS,
+Cmd+Shift+1 through Cmd+Shift+9 focus the corresponding pinned panel, even with
+the Outliner closed or its search field focused. A missing pin number leaves
+focus unchanged. Custom bindings can use `goto_pin:N` with a positive pin number.
+macOS screenshot shortcuts may intercept Cmd+Shift+3, 4, or 5 before Rustty receives them.
+Each pin shows a neutral breadcrumb omitting the Window level, making panels
+with matching names distinguishable. Click a breadcrumb level to select it using
+the tree's navigation rules. A neutral pin also marks the panel
 in the tree and beside its terminal label, or in its corner while the label is hidden.
 
-New pins are appended to the list. Drag a pin icon to change its order; a focused
-pin icon also supports Alt+↑/↓. Clicking the pin icon or toggling an existing pin
-removes it. Pins and their order are saved with the workspace, and closing a panel
-removes its pin.
+New pins are appended to the list. Drag a pin icon to change its order and shortcut
+number; a focused pin icon also supports Alt+↑/↓. Clicking the pin icon or toggling
+an existing pin removes it. Pins and their order are saved with the workspace,
+and closing a panel removes its pin.
 
 With the Outliner focused, press `/` to open a search field at the bottom. The tree
 stays visible until you type, then becomes a list of matching panel breadcrumbs.

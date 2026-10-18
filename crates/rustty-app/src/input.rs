@@ -268,6 +268,22 @@ pub fn key_is_consumed(
     }
 }
 
+/// Focus-changing shortcuts may release in another window, bypassing local key cleanup.
+pub fn consume_shortcut_key(
+    local: &mut HashSet<PhysicalKey>,
+    global: &mut HashSet<PhysicalKey>,
+    key: PhysicalKey,
+    pin_navigation: bool,
+    ui_input: bool,
+) {
+    if pin_navigation {
+        local.remove(&key);
+        global.insert(key);
+    } else if ui_input {
+        local.insert(key);
+    }
+}
+
 /// Unregistering a held global hotkey can expose its repeats and release to Winit.
 pub fn global_key_is_consumed(
     consumed: &mut HashSet<PhysicalKey>,
@@ -310,6 +326,7 @@ pub fn search_shortcut(action: &config::Action) -> bool {
             | ToggleCommandPalette
             | ToggleOutliner
             | TogglePin
+            | GotoPin(_)
             | Themes
             | StreamDeck(_)
             | NextTab
@@ -1452,6 +1469,41 @@ mod tests {
     }
 
     #[test]
+    fn pin_shortcuts_consume_key_tails_without_swallowing_the_next_digit() {
+        let key = PhysicalKey::Code(KeyCode::Digit1);
+        for (pin_navigation, ui_input) in [(true, false), (true, true), (false, true)] {
+            // An earlier UI handler may already have recorded this press locally.
+            let mut local = if pin_navigation {
+                HashSet::from([key])
+            } else {
+                HashSet::new()
+            };
+            let mut global = HashSet::new();
+            consume_shortcut_key(&mut local, &mut global, key, pin_navigation, ui_input);
+            for (state, repeat) in [
+                (ElementState::Pressed, true),
+                (ElementState::Released, false),
+            ] {
+                let consumed = global_key_is_consumed(&mut global, key, state, repeat);
+                assert_eq!(consumed, pin_navigation);
+                assert!(consumed || key_is_consumed(&mut local, key, state, false));
+            }
+            assert!(!global_key_is_consumed(
+                &mut global,
+                key,
+                ElementState::Pressed,
+                false,
+            ));
+            assert!(!key_is_consumed(
+                &mut local,
+                key,
+                ElementState::Pressed,
+                false,
+            ));
+        }
+    }
+
+    #[test]
     fn rebuilding_global_hotkeys_consumes_orphan_events_and_clears_stale_keys() {
         let key = PhysicalKey::Code(KeyCode::F20);
         let other = PhysicalKey::Code(KeyCode::KeyA);
@@ -1609,6 +1661,7 @@ mod tests {
         )));
         assert!(search_shortcut(&config::Action::ToggleOutliner));
         assert!(search_shortcut(&config::Action::TogglePin));
+        assert!(search_shortcut(&config::Action::GotoPin(1)));
     }
 
     #[derive(Default)]

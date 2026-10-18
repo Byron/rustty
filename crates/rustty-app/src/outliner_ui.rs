@@ -204,7 +204,7 @@ pub fn contents(
         .iter()
         .find(|(pane, _)| Some(*pane) == search.selected_pane)
         .map(|(_, target)| *target);
-    let mut output = pins(ui, &pinned_paths(rows, pinned_panes));
+    let mut output = pins(ui, &pinned_paths(rows, pinned_panes), pinned_panes);
     if selection_changed && !accept {
         output.preview = selected_target;
     }
@@ -702,7 +702,7 @@ fn search_results(
     selected
 }
 
-fn pins(ui: &mut egui::Ui, paths: &[Vec<Row>]) -> Output {
+fn pins(ui: &mut egui::Ui, paths: &[Vec<Row>], pinned_panes: &[Id]) -> Output {
     let mut output = Output::default();
     if paths.is_empty() {
         return output;
@@ -729,13 +729,37 @@ fn pins(ui: &mut egui::Ui, paths: &[Vec<Row>]) -> Output {
         .animated(false)
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
+            let number_width = ui
+                .painter()
+                .layout_no_wrap(
+                    pinned_panes.len().to_string(),
+                    FontId::monospace(11.0),
+                    ui.visuals().weak_text_color(),
+                )
+                .size()
+                .x
+                + 6.0;
+            let mut pin_numbers = pinned_panes.iter().enumerate();
             for (index, (&pane, path)) in panes.iter().zip(paths).enumerate() {
+                let (number, _) = pin_numbers
+                    .find(|(_, id)| **id == pane)
+                    .expect("pinned paths follow pin order");
                 let path = match path.first().map(|row| row.target) {
                     Some(Target::Window(_)) => &path[1..],
                     _ => path.as_slice(),
                 };
                 let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), ROW_HEIGHT));
-                let handle_rect = Rect::from_min_size(rect.min, Vec2::new(22.0, ROW_HEIGHT));
+                ui.painter().text(
+                    Pos2::new(rect.left() + number_width - 6.0, rect.center().y),
+                    egui::Align2::RIGHT_CENTER,
+                    (number + 1).to_string(),
+                    FontId::monospace(11.0),
+                    ui.visuals().weak_text_color(),
+                );
+                let handle_rect = Rect::from_min_size(
+                    rect.min + Vec2::new(number_width, 0.0),
+                    Vec2::new(22.0, ROW_HEIGHT),
+                );
                 let handle = ui.interact(
                     handle_rect,
                     egui::Id::new(("outliner-pin", pane)),
@@ -760,6 +784,7 @@ fn pins(ui: &mut egui::Ui, paths: &[Vec<Row>]) -> Output {
                     egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), &label)
                 });
                 ui.ctx().accesskit_node_builder(handle.id, |node| {
+                    node.set_description(format!("Pin {}", number + 1));
                     if index > 0 {
                         node.add_action(egui::accesskit::Action::Decrement);
                     }
@@ -2312,7 +2337,7 @@ mod tests {
                 },
                 |root| {
                     egui::CentralPanel::default().show(root, |ui| {
-                        pins(ui, &paths);
+                        pins(ui, &paths, &[2, 4, 22]);
                     });
                 },
             );
@@ -2331,10 +2356,13 @@ mod tests {
                 text,
                 [
                     "Pinned",
+                    "1",
                     "agents",
                     "gitoxide.check",
+                    "2",
                     "misc",
                     "ghostty",
+                    "3",
                     "remote"
                 ]
             );
@@ -2356,6 +2384,57 @@ mod tests {
                             .supports_action(egui::accesskit::Action::Click)
                     );
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn pin_numbers_follow_pin_order_after_reordering_unpinning_and_hidden_paths() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let mut rows = rows();
+        rows.push(Row {
+            target: Target::Pane { tab: 1, pane: 4 },
+            label: "Build".into(),
+            focused: false,
+            ..rows.last().unwrap().clone()
+        });
+        for pins in [
+            &[3, 4][..],
+            &[4, 3],
+            &[3],
+            &[99, 3, 4],
+            &[10, 11, 12, 13, 14, 15, 16, 17, 18, 3, 4],
+        ] {
+            pin_frame(&context, &rows, pins, Vec::new());
+            let (output, _) = pin_frame(&context, &rows, pins, Vec::new());
+            for (index, pane) in pins
+                .iter()
+                .enumerate()
+                .filter(|(_, pane)| matches!(pane, 3 | 4))
+            {
+                let number = (index + 1).to_string();
+                let handle = context
+                    .read_response(egui::Id::new(("outliner-pin", pane)))
+                    .unwrap()
+                    .rect;
+                let text = output
+                    .shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == number => Some(text),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert!(text.pos.x + text.galley.size().x < handle.left());
+                assert!((text.pos.y + text.galley.size().y / 2.0 - handle.center().y).abs() < 1.0);
+                let label = if *pane == 3 { "Tests" } else { "Build" };
+                assert_eq!(
+                    node(&output, &format!("Unpin panel: {label}"))
+                        .unwrap()
+                        .description(),
+                    Some(format!("Pin {number}").as_str()),
+                );
             }
         }
     }
