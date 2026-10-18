@@ -730,6 +730,10 @@ fn pins(ui: &mut egui::Ui, paths: &[Vec<Row>]) -> Output {
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
             for (index, (&pane, path)) in panes.iter().zip(paths).enumerate() {
+                let path = match path.first().map(|row| row.target) {
+                    Some(Target::Window(_)) => &path[1..],
+                    _ => path.as_slice(),
+                };
                 let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), ROW_HEIGHT));
                 let handle_rect = Rect::from_min_size(rect.min, Vec2::new(22.0, ROW_HEIGHT));
                 let handle = ui.interact(
@@ -2258,6 +2262,105 @@ mod tests {
     }
 
     #[test]
+    fn pinned_labels_skip_windows_and_stay_stable_when_switching_tabs() {
+        use crate::workspace::{Tab, WindowState, Workspace};
+        let mut workspace = Workspace::default();
+        let mut window = WindowState {
+            id: 100,
+            tabs: vec![Tab::new(1, 2, "/tmp".into()), Tab::new(3, 4, "/tmp".into())],
+            active_tab: 0,
+            frame: [0.0; 4],
+            quick: false,
+        };
+        window.tabs[0].title = Some("agents".into());
+        window.tabs[1].title = Some("misc".into());
+        workspace.windows = vec![
+            window.clone(),
+            WindowState {
+                id: 200,
+                tabs: vec![Tab::new(21, 22, "/tmp".into())],
+                ..window
+            },
+        ];
+        let labels = [
+            (2, "gitoxide.check".into()),
+            (4, "ghostty".into()),
+            (22, "remote".into()),
+        ]
+        .into();
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        for active_tab in [0, 1, 0] {
+            workspace.windows[0].active_tab = active_tab;
+            let rows = crate::outliner::workspace_rows(
+                &workspace,
+                Some(100),
+                &labels,
+                &Default::default(),
+                &Default::default(),
+            );
+            let paths = pinned_paths(&rows, &[2, 4, 22]);
+            assert!(
+                paths
+                    .iter()
+                    .all(|path| matches!(path[0].target, Target::Window(_)))
+            );
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(500.0, 500.0))),
+                    ..Default::default()
+                },
+                |root| {
+                    egui::CentralPanel::default().show(root, |ui| {
+                        pins(ui, &paths);
+                    });
+                },
+            );
+            output.textures_delta.clear();
+            let text: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() != "›" => {
+                        Some(text.galley.text())
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                text,
+                [
+                    "Pinned",
+                    "agents",
+                    "gitoxide.check",
+                    "misc",
+                    "ghostty",
+                    "remote"
+                ]
+            );
+            let nodes = &output
+                .platform_output
+                .accesskit_update
+                .as_ref()
+                .unwrap()
+                .nodes;
+            assert!(!nodes.iter().any(|(_, node)| {
+                node.label()
+                    .is_some_and(|label| label.starts_with("Window:"))
+            }));
+            for path in &paths {
+                for row in &path[1..] {
+                    assert!(
+                        node(&output, &description(row))
+                            .unwrap()
+                            .supports_action(egui::accesskit::Action::Click)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn pinned_breadcrumbs_navigate_and_drag_reorders_without_selecting_a_panel() {
         let context = egui::Context::default();
         context.enable_accesskit();
@@ -2278,7 +2381,7 @@ mod tests {
             .unwrap()
             .nodes
             .iter()
-            .filter(|(_, node)| node.label() == Some(description(&rows[0]).as_str()))
+            .filter(|(_, node)| node.label() == Some(description(&rows[1]).as_str()))
             .collect();
         assert_eq!(
             ancestors.len(),
@@ -2313,7 +2416,7 @@ mod tests {
             assert_eq!(output.reorder, None);
             selected = output.selected.or(selected);
         }
-        assert_eq!(selected, Some(rows[0].target));
+        assert_eq!(selected, Some(rows[1].target));
 
         let from = context
             .read_response(egui::Id::new(("outliner-pin", 4_u64)))
