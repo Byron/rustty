@@ -13,6 +13,7 @@ pub(super) struct OutlinerHost {
     pub deadline: Option<Instant>,
     pub accesskit_active: bool,
     pub frames: u64,
+    background: bool,
 }
 
 impl OutlinerHost {
@@ -22,6 +23,7 @@ impl OutlinerHost {
         painter: &mut painter::Painter,
         platform: &Platform,
         proxy: EventLoopProxy<Event>,
+        background: bool,
     ) -> Result<Self> {
         let attributes = Window::default_attributes()
             .with_title("Outliner")
@@ -49,7 +51,9 @@ impl OutlinerHost {
             window.theme(),
             Some(painter.max_texture_side()),
         );
-        egui.init_accesskit(event_loop, &window, proxy);
+        if !background {
+            egui.init_accesskit(event_loop, &window, proxy);
+        }
         Ok(Self {
             window,
             viewport,
@@ -62,6 +66,7 @@ impl OutlinerHost {
             deadline: None,
             accesskit_active: false,
             frames: 0,
+            background,
         })
     }
 
@@ -99,11 +104,13 @@ impl OutlinerHost {
                 selection = outliner_ui::contents(ui, rows, pinned_panes, &mut self.search, accent);
             });
         });
-        self.egui.handle_platform_output_with_event_loop(
-            &self.window,
-            event_loop,
-            output.platform_output,
-        );
+        if !self.background {
+            self.egui.handle_platform_output_with_event_loop(
+                &self.window,
+                event_loop,
+                output.platform_output,
+            );
+        }
         let primitives = context.tessellate(output.shapes, output.pixels_per_point);
         if let Some(path) = capture
             && let Some(state) = painter.render_state()
@@ -118,6 +125,18 @@ impl OutlinerHost {
             );
             output.textures_delta.clear();
             result?;
+        } else if self.background
+            && let Some(state) = painter.render_state()
+        {
+            smoke::submit_offscreen(
+                &state,
+                &primitives,
+                &output.textures_delta,
+                [size.width, size.height],
+                output.pixels_per_point,
+                None,
+            );
+            output.textures_delta.clear();
         } else {
             painter.paint(
                 self.viewport,

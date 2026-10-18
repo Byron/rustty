@@ -260,7 +260,21 @@ impl Smoke {
             self.next = Instant::now() + Duration::from_millis(1500);
         }
     }
+    pub fn check_background_windows(&self, app: &App) -> Result<()> {
+        if app.background_smoke
+            && app
+                .windows
+                .values()
+                .map(|host| &host.window)
+                .chain(app.outliner.iter().map(|host| &host.window))
+                .any(|window| window.is_visible() == Some(true) || window.has_focus())
+        {
+            return Err("offscreen smoke exposed a native window or took keyboard focus".into());
+        }
+        Ok(())
+    }
     pub fn step(&mut self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
+        self.check_background_windows(app)?;
         if std::env::var_os("RUSTTY_SMOKE_OUTLINER").is_some() {
             let now = Instant::now();
             match self.stage {
@@ -3501,7 +3515,9 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     }
 
     let begin_search = |app: &mut App| -> Result<()> {
-        app.outliner.as_ref().unwrap().window.focus_window();
+        if !app.background_smoke {
+            app.outliner.as_ref().unwrap().window.focus_window();
+        }
         app.window_event(event_loop, utility_key, WindowEvent::Focused(true));
         let host = app.outliner.as_mut().unwrap();
         host.search.start();
@@ -3626,16 +3642,13 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     }
     begin_search(app)?;
     type_query(app, "rty")?;
-    let native_focus_available = app.outliner.as_ref().unwrap().window.has_focus();
+    let native_focus_available = !app.background_smoke;
     if !native_focus_available {
-        if std::env::var_os("RUSTTY_SMOKE_OFFSCREEN").is_none() {
-            return Err(
-                "Outliner could not acquire native focus for the surface smoke test".into(),
-            );
-        }
         eprintln!(
-            "Native Outliner smoke: session did not grant focus; checking offscreen input isolation"
+            "Native Outliner smoke: checking internal input isolation; native focus and minimization skipped"
         );
+    } else if !app.outliner.as_ref().unwrap().window.has_focus() {
+        return Err("Outliner could not acquire native focus for the surface smoke test".into());
     }
     for (key, physical, repeat, expected) in [
         (egui::Key::N, KeyCode::KeyN, false, first),
@@ -3794,7 +3807,9 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     app.windows.insert(other_key, other_host);
     app.panes.get_mut(&other_pane).unwrap().cwd = fixture_directory().join("remote-search-target");
     app.select_outline_target(Target::Window(window));
-    app.windows[&other_key].window.set_minimized(true);
+    if !app.background_smoke {
+        app.windows[&other_key].window.set_minimized(true);
+    }
     app.workspace.toggle_pin(other_pane);
     app.outliner.as_mut().unwrap().search.start();
     pin_shortcut(app, 2)?;
@@ -3808,7 +3823,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     app.windows.insert(other_key, other_host);
     if app.active != Some(other)
         || app.focused(other) != Some(other_pane)
-        || app.windows[&other_key].window.is_minimized() == Some(true)
+        || native_focus_available && app.windows[&other_key].window.is_minimized() == Some(true)
         || app.windows[&other_key].ui_input()
         || app.windows[&other_key].egui.egui_ctx().text_edit_focused()
     {
@@ -3834,13 +3849,15 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         );
     }
     app.workspace.toggle_pin(other_pane);
-    app.windows[&other_key].window.set_minimized(true);
+    if !app.background_smoke {
+        app.windows[&other_key].window.set_minimized(true);
+    }
     begin_search(app)?;
     type_query(app, "remote-search")?;
     navigate_search(app)?;
     if app.active != Some(other)
         || !app.windows[&other_key].visible
-        || app.windows[&other_key].window.is_minimized() == Some(true)
+        || native_focus_available && app.windows[&other_key].window.is_minimized() == Some(true)
         || native_focus_available && !app.outliner.as_ref().unwrap().window.has_focus()
     {
         return Err(
@@ -4014,6 +4031,8 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         directory.join("result.json"),
         serde_json::to_vec_pretty(&serde_json::json!({
             "native_search_focus_checked": native_focus_available,
+            "native_minimization_checked": native_focus_available,
+            "background": app.background_smoke,
             "checks": ["outliner-native-window", "outliner-hierarchy", "outliner-disclosure", "outliner-navigation", "outliner-zoom", "outliner-single-tab-bar", "outliner-narrow-tab-bar", "outliner-pins", "outliner-pin-drag", "outliner-search", "outliner-search-navigation", "outliner-terminal-input", "outliner-quick-terminal", "outliner-close"],
             "captures": ["outliner.png", "outliner-collapsed.png", "outliner-terminal.png", "outliner-quad.png", "outliner-quad-terminal.png", "outliner-nested.png", "outliner-nested-terminal.png", "outliner-pane.png", "outliner-pane-terminal.png", "outliner-narrow-terminal.png", "outliner-pinned.png", "outliner-pinned-terminal.png", "outliner-search.png", "outliner-search-empty.png", "outliner-search-navigation.png", "outliner-windows.png", "outliner-other-window.png", "outliner-quick.png", "outliner-flat.png"]
         }))?,
@@ -4134,8 +4153,10 @@ pub(super) fn submit_offscreen(
     delta: &egui::TexturesDelta,
     size: [u32; 2],
     scale: f32,
-    target: &wgpu::Texture,
+    target: Option<&wgpu::Texture>,
 ) {
+    let texture = target.is_none().then(|| offscreen_texture(state, size));
+    let target = target.or(texture.as_ref()).unwrap();
     let (encoder, commands) = offscreen_commands(state, primitives, delta, size, scale, target);
     state
         .queue
@@ -4199,7 +4220,11 @@ fn save_texture(
         .map_async(wgpu::MapMode::Read, move |result| {
             let _ = tx.send(result);
         });
-    device.poll(wgpu::PollType::wait_indefinitely())?;
+    // The channel timeout cannot protect an unbounded wait on the GPU.
+    device.poll(wgpu::PollType::Wait {
+        submission_index: None,
+        timeout: Some(Duration::from_secs(5)),
+    })?;
     rx.recv_timeout(Duration::from_secs(5))??;
     let mapped = buffer.slice(..).get_mapped_range()?;
     let mut pixels = Vec::with_capacity((size[0] * size[1] * 4) as usize);
