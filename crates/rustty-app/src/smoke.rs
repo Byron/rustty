@@ -3442,7 +3442,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     }
     capture_terminal(app, "outliner-pinned-terminal.png")?;
     let before = (serde_json::to_vec(&app.workspace.windows)?, app.active);
-    let from = widget_bounds(app, egui::Id::new(("outliner-pin", second)))
+    let from = widget_bounds(app, egui::Id::new(("outliner-pin-number", second)))
         .ok_or("missing Outliner pin drag handle")?
         .center();
     let target = widget_bounds(app, egui::Id::new(("outliner-pin-drop", first)))
