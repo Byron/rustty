@@ -313,9 +313,11 @@ impl App {
             self.quick_visible(host, true, false);
         } else {
             host.visible = true;
-            host.window.set_visible(true);
-            host.window.set_minimized(false);
-            host.window.focus_window();
+            if !self.background_smoke {
+                host.window.set_visible(true);
+                host.window.set_minimized(false);
+                host.window.focus_window();
+            }
         }
         host.repaint();
     }
@@ -609,7 +611,9 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
         .iter()
         .find_map(|(key, host)| (host.id == one).then_some(*key))
         .unwrap();
-    app.windows[&native].window.set_minimized(true);
+    if !app.background_smoke {
+        app.windows[&native].window.set_minimized(true);
+    }
     app.reveal_pane(hidden);
     assert!(
         !app.panes[&hidden]
@@ -847,7 +851,12 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
     assert!(app.deck.worker.is_none());
     assert!(app.deck.discovery.is_none());
     eprintln!(
-        "Native Stream Deck smoke: exact panes across windows/tabs, minimized reveal, quick animation request, completion acknowledgement, progress-only Working/Attention/Done cycling, menu/shortcut chains, pull-to-first, stale control rejection, disconnected gating, input preservation, pane removal and save-state-never passed; no USB used"
+        "Native Stream Deck smoke: exact panes across windows/tabs, completion acknowledgement, progress-only Working/Attention/Done cycling, menu/shortcut chains, pull-to-first, stale control rejection, disconnected gating, input preservation, pane removal and save-state-never passed; no USB used; native minimization and quick animation {}",
+        if app.background_smoke {
+            "skipped"
+        } else {
+            "checked"
+        },
     );
     Ok(())
 }

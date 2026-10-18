@@ -259,7 +259,7 @@ Validation:
 cargo test --workspace --all-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo +1.95.0 run --release --offline -p rustty-vt --example parity-runner
-RUSTTY_SMOKE_DIR=/tmp/rustty-native-smoke target/debug/Rustty.app/Contents/MacOS/rustty
+RUSTTY_SMOKE_DIR=/tmp/rustty-native-smoke RUSTTY_SMOKE_OFFSCREEN=1 target/debug/Rustty.app/Contents/MacOS/rustty
 ```
 
 The windowless hotkey regression runs explicitly on a macOS desktop with
@@ -290,12 +290,17 @@ quadrant zoom from nested pane zoom returns to the quadrant before unzooming.
 Theme checks capture `theme-picker.png` and verify preview, cancellation,
 acceptance, reload and unchanged configuration files using isolated themes.
 
-On a locked or headless Mac, set `RUSTTY_SMOKE_OFFSCREEN=1` for an offscreen
-Metal capture of the same host primitives. The report labels this mode; it does
-not verify that macOS presents the window on a physical display.
-Offscreen smoke checks keep the test host rendering if macOS occludes its window.
+Use `RUSTTY_SMOKE_OFFSCREEN=1` while working on the same desktop, or on a locked
+or headless Mac. It renders the same host primitives into Metal textures while
+keeping native windows hidden, without activating the app or taking keyboard focus.
+Native focus, minimization, accessibility, and input-method updates are skipped;
+internal navigation and input routing are still checked. Each smoke step checks
+that no native window became visible or focused. GPU readback waits are bounded.
+
+Omit `RUSTTY_SMOKE_OFFSCREEN` only for an attended foreground run on an idle
+desktop. That run shows, focuses, and minimizes native windows to check OS behavior.
 The native smoke report includes event counts during its idle phase, distinguishing
 unchanged cursor events, actual pointer movement and egui repaint requests.
-Set `RUSTTY_SMOKE_HOVER=1` to require a stationary pointer over a shell pane
+Set `RUSTTY_SMOKE_HOVER=1` in a foreground run to require a stationary pointer over a shell pane
 during the idle interval. Move the pointer into a test pane before the 45-second
 timeout; leaving the pane or moving the pointer restarts the interval.

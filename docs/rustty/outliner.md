@@ -108,3 +108,7 @@ The fixture uses its own workspace and quiet child processes, disables USB, and
 checks pinning and drag order, fuzzy search, disclosure controls, navigation, zoom,
 native movement/resizing, quick-terminal visibility,
 terminal typing, and input isolation between native windows.
+Offscreen runs keep all native windows hidden and simulate focus inside the fixture;
+the report marks native focus and minimization checks as skipped. Omit
+`RUSTTY_SMOKE_OFFSCREEN` only for an attended run on an idle desktop, since the
+foreground checks repeatedly show and focus windows.
