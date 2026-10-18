@@ -204,7 +204,12 @@ pub fn contents(
         .iter()
         .find(|(pane, _)| Some(*pane) == search.selected_pane)
         .map(|(_, target)| *target);
-    let mut output = pins(ui, &pinned_paths(rows, pinned_panes), pinned_panes);
+    let mut output = pins(
+        ui,
+        &pinned_paths(rows, pinned_panes),
+        pinned_panes,
+        platform_accent,
+    );
     if selection_changed && !accept {
         output.preview = selected_target;
     }
@@ -583,7 +588,12 @@ fn search_results(
     selected
 }
 
-fn pins(ui: &mut egui::Ui, paths: &[Vec<Row>], pinned_panes: &[Id]) -> Output {
+fn pins(
+    ui: &mut egui::Ui,
+    paths: &[Vec<Row>],
+    pinned_panes: &[Id],
+    platform_accent: [u8; 3],
+) -> Output {
     let mut output = Output::default();
     if paths.is_empty() {
         return output;
@@ -630,12 +640,25 @@ fn pins(ui: &mut egui::Ui, paths: &[Vec<Row>], pinned_panes: &[Id]) -> Output {
                     _ => path.as_slice(),
                 };
                 let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), ROW_HEIGHT));
+                let row = path.last().unwrap();
+                let accent = TabAccent::new(row.color, platform_accent);
+                let foreground = if row.focused {
+                    ui.painter().rect_filled(rect, 4, rgb(accent.background));
+                    rgb(accent.foreground)
+                } else {
+                    ui.visuals().text_color()
+                };
+                let weak_foreground = if row.focused {
+                    foreground
+                } else {
+                    ui.visuals().weak_text_color()
+                };
                 ui.painter().text(
                     Pos2::new(rect.left() + number_width - 6.0, rect.center().y),
                     egui::Align2::RIGHT_CENTER,
                     (number + 1).to_string(),
                     FontId::monospace(11.0),
-                    ui.visuals().weak_text_color(),
+                    weak_foreground,
                 );
                 let handle_rect = Rect::from_min_size(
                     rect.min + Vec2::new(number_width, 0.0),
@@ -651,14 +674,14 @@ fn pins(ui: &mut egui::Ui, paths: &[Vec<Row>], pinned_panes: &[Id]) -> Output {
                     ui.painter().rect_stroke(
                         handle_rect.shrink(2.0),
                         3,
-                        Stroke::new(1.0, ui.visuals().weak_text_color()),
+                        Stroke::new(1.0, weak_foreground),
                         egui::StrokeKind::Inside,
                     );
                 }
                 paint_pin(
                     ui.painter(),
                     Rect::from_center_size(handle_rect.center(), Vec2::splat(16.0)),
-                    ui.visuals().text_color(),
+                    foreground,
                 );
                 let label = format!("Unpin panel: {}", path.last().unwrap().label);
                 handle.widget_info(|| {
@@ -710,6 +733,10 @@ fn pins(ui: &mut egui::Ui, paths: &[Vec<Row>], pinned_panes: &[Id]) -> Output {
                         .id_salt(("pinned-path", pane))
                         .max_rect(crumb_rect),
                 );
+                if row.focused {
+                    child.visuals_mut().override_text_color = Some(foreground);
+                    child.visuals_mut().weak_text_color = Some(foreground);
+                }
                 output.selected =
                     breadcrumb(&mut child, path, crumb_rect.width()).or(output.selected);
                 let blank =
@@ -2242,6 +2269,69 @@ mod tests {
     }
 
     #[test]
+    fn pinned_highlight_follows_focus_with_readable_accent_colors() {
+        let mut rows = rows();
+        rows[3].color = Some([40, 70, 110]);
+        for (pane, label) in [(4, "Build"), (5, "Unpinned")] {
+            rows.push(Row {
+                target: Target::Pane { tab: 1, pane },
+                label: label.into(),
+                color: None,
+                ..rows[3].clone()
+            });
+        }
+        for visuals in [egui::Visuals::dark(), egui::Visuals::light()] {
+            let context = egui::Context::default();
+            context.set_visuals(visuals);
+            context.enable_accesskit();
+            for focused in [Some(3), Some(4), Some(5), None] {
+                for row in &mut rows {
+                    row.focused =
+                        matches!(row.target, Target::Pane { pane, .. } if Some(pane) == focused);
+                }
+                pin_frame(&context, &rows, &[3, 4], Vec::new());
+                let (output, _) = pin_frame(&context, &rows, &[3, 4], Vec::new());
+                for (index, pane) in [(3, 3), (4, 4)] {
+                    let handle = context
+                        .read_response(egui::Id::new(("outliner-pin", pane as Id)))
+                        .unwrap()
+                        .rect;
+                    let row = &rows[index];
+                    let accent = TabAccent::new(row.color, [210, 110, 70]);
+                    let highlighted = output.shapes.iter().any(|shape| {
+                        matches!(&shape.shape, egui::Shape::Rect(rect)
+                            if rect.rect.contains_rect(handle) && rect.fill == rgb(accent.background))
+                    });
+                    assert_eq!(highlighted, row.focused, "pin {pane}, focus {focused:?}");
+                    if row.focused {
+                        let text = output
+                            .shapes
+                            .iter()
+                            .find_map(|shape| match &shape.shape {
+                                egui::Shape::Text(text)
+                                    if text.galley.text() == row.label
+                                        && (text.pos.y - handle.center().y).abs()
+                                            < ROW_HEIGHT / 2.0 =>
+                                {
+                                    Some(text)
+                                }
+                                _ => None,
+                            })
+                            .unwrap();
+                        assert!(
+                            text.galley
+                                .job
+                                .sections
+                                .iter()
+                                .all(|section| { section.format.color == rgb(accent.foreground) })
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn pinned_labels_skip_windows_and_stay_stable_when_switching_tabs() {
         use crate::workspace::{Tab, WindowState, Workspace};
         let mut workspace = Workspace::default();
@@ -2292,7 +2382,7 @@ mod tests {
                 },
                 |root| {
                     egui::CentralPanel::default().show(root, |ui| {
-                        pins(ui, &paths, &[2, 4, 22]);
+                        pins(ui, &paths, &[2, 4, 22], [210, 110, 70]);
                     });
                 },
             );
