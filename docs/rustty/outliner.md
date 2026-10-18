@@ -78,8 +78,9 @@ Enter, Escape, and `Ctrl+[` focus the selected result and exit search, using the
 first result until you select another. With no matches, they exit without changing
 focus. The `×` button closes search without changing panel focus.
 
-A square icon maps each panel's position within its parent. Quad icons use a double
-square and map the quad's position within the tab. Corner brackets mark zoom while
+A square icon maps each panel's position within its parent using a filled shape.
+Quad icons use the same geometry with an outlined position shape and map the quad's
+position within the tab. Corner brackets mark zoom while
 preserving this position map: brackets around a quad mean quad zoom, brackets
 around a panel mean panel zoom, and brackets around both mean a panel zoomed within
 a quad. Tooltips name the exact zoom state.
