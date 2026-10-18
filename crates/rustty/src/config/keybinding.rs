@@ -213,6 +213,7 @@ pub enum Action {
     ToggleCommandPalette,
     ToggleOutliner,
     TogglePin,
+    GotoPin(usize),
     Themes,
     StreamDeck(StreamDeckAction),
     Reset,
@@ -277,6 +278,13 @@ impl Action {
                     .ok()
                     .filter(|n| *n > 0)
                     .ok_or("tab index must be positive")?,
+            ),
+            "goto_pin" => Self::GotoPin(
+                required()?
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|n| *n > 0)
+                    .ok_or("pin index must be positive")?,
             ),
             "move_tab" => Self::MoveTab(required()?.parse().map_err(|_| "invalid tab offset")?),
             "jump_to_prompt" => {
@@ -615,6 +623,15 @@ const MACOS_DEFAULTS: &[&str] = &[
     "super+7=goto_tab:7",
     "super+8=goto_tab:8",
     "super+9=last_tab",
+    "super+shift+1=goto_pin:1",
+    "super+shift+2=goto_pin:2",
+    "super+shift+3=goto_pin:3",
+    "super+shift+4=goto_pin:4",
+    "super+shift+5=goto_pin:5",
+    "super+shift+6=goto_pin:6",
+    "super+shift+7=goto_pin:7",
+    "super+shift+8=goto_pin:8",
+    "super+shift+9=goto_pin:9",
     "performable:super+f=start_search",
     "performable:super+e=search_selection",
     "performable:super+shift+f=end_search",
