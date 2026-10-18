@@ -662,6 +662,7 @@ struct App {
     initial_command_pane: Option<Id>,
     close_at: Option<Instant>,
     smoke: Option<smoke::Smoke>,
+    background_smoke: bool,
     smoke_error: Option<String>,
     startup_error: Option<String>,
 }
@@ -676,7 +677,17 @@ pub fn run() -> Result<()> {
     }
     let show_config = args.iter().any(|arg| arg == "--config-info");
     args.retain(|arg| arg != "--config-info");
+    // Keep this policy available while Smoke::step temporarily owns the fixture.
+    let background_smoke = std::env::var_os("RUSTTY_SMOKE_DIR").is_some()
+        && std::env::var_os("RUSTTY_SMOKE_OFFSCREEN").is_some();
     let mut builder = EventLoop::<Event>::with_user_event();
+    #[cfg(target_os = "macos")]
+    if background_smoke {
+        use winit::platform::macos::{ActivationPolicy, EventLoopBuilderExtMacOS};
+        builder
+            .with_activation_policy(ActivationPolicy::Accessory)
+            .with_activate_ignoring_other_apps(false);
+    }
     #[cfg(target_os = "windows")]
     rustty_app::platform::configure_event_loop(&mut builder);
     let event_loop = builder.build()?;
@@ -820,6 +831,7 @@ pub fn run() -> Result<()> {
         initial_command_pane: None,
         close_at,
         smoke,
+        background_smoke,
         smoke_error: None,
         startup_error: None,
     };
@@ -1184,6 +1196,7 @@ impl App {
         }
         let attributes = Window::default_attributes()
             .with_title("Rustty")
+            .with_active(!self.background_smoke)
             .with_decorations(!quick)
             .with_visible(false)
             .with_inner_size(LogicalSize::new(
@@ -1223,13 +1236,15 @@ impl App {
             window.theme(),
             Some(self.painter.max_texture_side()),
         );
-        egui.init_accesskit(event_loop, &window, self.proxy.clone());
+        if !self.background_smoke {
+            egui.init_accesskit(event_loop, &window, self.proxy.clone());
+        }
         for tab in &state.tabs {
             for (&pane, saved) in &tab.panes {
                 self.spawn_pane(pane, saved.working_directory.clone(), None)?;
             }
         }
-        window.set_visible(!quick);
+        window.set_visible(!quick && !self.background_smoke);
         let host = Host {
             id,
             viewport,
@@ -1282,14 +1297,18 @@ impl App {
         };
         self.windows.insert(window.id(), host);
         if !quick {
-            window.focus_window();
+            if !self.background_smoke {
+                window.focus_window();
+            }
             self.active = Some(id);
         }
         window.request_redraw();
         Ok(())
     }
     fn quick_visible(&mut self, host: &mut Host, visible: bool, restore_focus: bool) {
-        let result = if let Some(platform) = &self.platform {
+        let result = if self.background_smoke {
+            Ok(())
+        } else if let Some(platform) = &self.platform {
             if visible {
                 platform.show_quick(&host.window, self.config())
             } else {
@@ -1541,6 +1560,7 @@ impl App {
                 &mut self.painter,
                 platform,
                 self.proxy.clone(),
+                self.background_smoke,
             ) {
                 Ok(host) => self.outliner = Some(host),
                 Err(error) => {
@@ -1551,7 +1571,9 @@ impl App {
         }
         let host = self.outliner.as_mut().unwrap();
         host.visible = true;
-        host.window.set_visible(true);
+        if !self.background_smoke {
+            host.window.set_visible(true);
+        }
         host.repaint();
     }
     fn outline_rows(&self) -> Vec<outliner::Row> {
@@ -1684,7 +1706,12 @@ impl App {
         if activate {
             self.reveal_host(&mut host, quick);
         } else if let Some(platform) = &self.platform {
-            match platform.preview_window(&host.window, quick, self.config()) {
+            let result = if self.background_smoke {
+                Ok(())
+            } else {
+                platform.preview_window(&host.window, quick, self.config())
+            };
+            match result {
                 Ok(()) => {
                     host.visible = true;
                     host.occluded = false;
@@ -2120,7 +2147,8 @@ impl App {
                 self.sync_window_title(host);
             }
             // OSC 22 changes native cursor metadata without changing terminal pixels.
-            if host.hovered_pane() == Some(id)
+            if !self.background_smoke
+                && host.hovered_pane() == Some(id)
                 && let Some(cursor) = self.pointer_cursor(host)
             {
                 host.window.set_cursor(cursor);
@@ -2674,6 +2702,9 @@ impl App {
                 }
             }
             Action::ToggleFullscreen => {
+                if self.background_smoke {
+                    return false;
+                }
                 host.window
                     .set_fullscreen(if host.window.fullscreen().is_some() {
                         None
@@ -2989,7 +3020,7 @@ impl App {
         self.cancel_theme_preview(host.as_deref_mut());
         let previous_renderer = self.loaded.config.renderer;
         self.loaded = load_config(&mut self.config_loader, &self.config_args, None);
-        if self.smoke.is_some() {
+        if self.background_smoke || self.smoke.is_some() {
             smoke::Smoke::configure(&mut self.loaded);
         }
         self.errors = self
@@ -4675,12 +4706,16 @@ impl App {
                 pane.accessibility(id).append_to(update);
             }
         }
-        host.egui.handle_platform_output_with_event_loop(
-            &host.window,
-            event_loop,
-            output.platform_output,
-        );
-        if let Some(cursor) = self.pointer_cursor(host) {
+        if !self.background_smoke {
+            host.egui.handle_platform_output_with_event_loop(
+                &host.window,
+                event_loop,
+                output.platform_output,
+            );
+        }
+        if !self.background_smoke
+            && let Some(cursor) = self.pointer_cursor(host)
+        {
             host.window.set_cursor(cursor);
         }
         let primitives = self
@@ -4702,7 +4737,7 @@ impl App {
             )?;
             host.capture = false;
         }
-        if let Some(target) = offscreen {
+        if offscreen.is_some() || self.background_smoke && !self.painter.is_software() {
             let state = self.painter.render_state().ok_or("GPU unavailable")?;
             smoke::submit_offscreen(
                 &state,
@@ -4710,7 +4745,7 @@ impl App {
                 &output.textures_delta,
                 [size.width, size.height],
                 output.pixels_per_point,
-                target,
+                offscreen,
             );
             output.textures_delta.clear();
         } else {
@@ -5170,7 +5205,9 @@ impl App {
         if self.update_hover_link(host) {
             host.repaint();
         }
-        if let Some(cursor) = self.pointer_cursor(host) {
+        if !self.background_smoke
+            && let Some(cursor) = self.pointer_cursor(host)
+        {
             host.window.set_cursor(cursor);
         }
         if let Some((id, axis, bounds)) = host.divider_drag {
@@ -5549,7 +5586,9 @@ impl ApplicationHandler<Event> for App {
                                 match request.action {
                                     AccessAction::Focus => {
                                         self.focus_pane(host.id, id);
-                                        host.window.focus_window();
+                                        if !self.background_smoke {
+                                            host.window.focus_window();
+                                        }
                                         handled = true;
                                     }
                                     AccessAction::ScrollUp | AccessAction::ScrollDown => {
@@ -5988,7 +6027,11 @@ impl ApplicationHandler<Event> for App {
             platform.tick();
         }
         if let Some(mut smoke) = self.smoke.take() {
-            match smoke.step(self, event_loop) {
+            let result = smoke.step(self, event_loop).and_then(|done| {
+                smoke.check_background_windows(self)?;
+                Ok(done)
+            });
+            match result {
                 Ok(false) => self.smoke = Some(smoke),
                 Ok(true) => {
                     event_loop.exit();

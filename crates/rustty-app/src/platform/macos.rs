@@ -257,11 +257,15 @@ impl Platform {
         let delegate = NotificationDelegate::new(callback.clone());
         // UNUserNotificationCenter raises an Objective-C exception for an unbundled
         // command-line executable. The app still works when launched by cargo run.
-        let notifications = NSBundle::mainBundle().bundleIdentifier().map(|_| {
-            let center = UNUserNotificationCenter::currentNotificationCenter();
-            center.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
-            center
-        });
+        let notifications = NSBundle::mainBundle()
+            .bundleIdentifier()
+            // The bundled fixture shares Rustty's notification namespace and cleanup.
+            .filter(|_| std::env::var_os("RUSTTY_SMOKE_DIR").is_none())
+            .map(|_| {
+                let center = UNUserNotificationCenter::currentNotificationCenter();
+                center.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+                center
+            });
         let center = NSWorkspace::sharedWorkspace().notificationCenter();
         // SAFETY: these AppKit notification names are valid process-lifetime constants.
         let power_observers = unsafe {
