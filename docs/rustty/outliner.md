@@ -29,6 +29,12 @@ the Outliner closed or its search field focused. A missing pin number leaves
 focus unchanged. Custom bindings can use `goto_pin:N` with a positive pin number.
 macOS screenshot shortcuts may intercept Cmd+Shift+3, 4, or 5 before Rustty receives them.
 
+Pin navigation keeps the quad-zoom mode from where you started, including when the
+pin is in another tab or window. If its shortcut overlaps the quad-peek modifiers,
+selecting a pin ends the peek and restores quad zoom around the pinned panel when
+it was enabled before the prefix. A missing pin leaves the peek active until you
+release the modifiers.
+
 Configure each pin shortcut with a `keybind` entry. For example, move pin 1 to
 Ctrl+Alt+1 and disable its default shortcut:
 

@@ -2753,19 +2753,10 @@ impl App {
                 }
             }
             Action::GotoPin(index) => {
-                let Some(&pane) = index
-                    .checked_sub(1)
-                    .and_then(|index| self.workspace.pinned_panes.get(index))
+                let Some((window, tab, pane)) =
+                    self.workspace
+                        .prepare_pin_navigation(index, host.id, &mut host.peek)
                 else {
-                    return false;
-                };
-                let Some((window, tab)) = self.workspace.windows.iter().find_map(|window| {
-                    window
-                        .tabs
-                        .iter()
-                        .find(|tab| tab.panes.contains_key(&pane))
-                        .map(|tab| (window.id, tab.id))
-                }) else {
                     return false;
                 };
                 let target = outliner::Target::Pane { tab, pane };
