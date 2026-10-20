@@ -307,7 +307,7 @@ timeout; leaving the pane or moving the pointer restarts the interval.
 
 ### tmuxx windows
 
-The **tmuxx** menu and command palette create native terminal windows backed by a
+The native application **tmuxx** menu and command palette create terminal windows backed by a
 multiplexer. Ordinary Rustty windows can remain open alongside any of these:
 
 | Choice | Owner and lifetime |
@@ -315,6 +315,9 @@ multiplexer. Ordinary Rustty windows can remain open alongside any of these:
 | New temporary window | Embedded engine, reached through typed Rust APIs; ends when its last window closes or Rustty exits |
 | New persistent window | Local daemon started with the same executable, `rustty tmux`; survives Rustty exiting |
 | Connect | Existing native tmuxx endpoint or stock tmux over SSH |
+
+Connected windows show a **tmuxx** tag at the top right and in the outliner.
+Hover over the tag for the connection source. Ordinary windows have no tag.
 
 Both window types can coexist. Each connection projects only its attached
 sessions. A server session appears as a Rustty window, a server window as a tab,

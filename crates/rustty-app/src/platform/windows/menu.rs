@@ -23,6 +23,7 @@ pub(super) fn message_hook(message: *const c_void) -> bool {
 pub(super) struct NativeMenu {
     menu: Menu,
     actions: Vec<(MenuItem, Action)>,
+    tmuxx_menu: crate::tmuxx_menu::native::NativeMenu,
     stream_deck_menu: Submenu,
     stream_deck_connected: bool,
     _paint: paint::Runtime,
@@ -112,12 +113,17 @@ impl NativeMenu {
             }),
         ))
         .map_err(err)?;
-        menu.append_items(&[&file, &edit, &view, &window, &help])
+        let tmuxx_menu = crate::tmuxx_menu::native::NativeMenu::new();
+        for (label, action) in crate::tmuxx_menu::actions() {
+            append(&tmuxx_menu.menu, &mut actions, label, action)?;
+        }
+        menu.append_items(&[&file, &edit, &view, &window, &tmuxx_menu.menu, &help])
             .map_err(err)?;
         let routed = actions
             .iter()
             .map(|(_, action)| action.clone())
             .collect::<Vec<_>>();
+        let tmuxx_routes = tmuxx_menu.routes.clone();
         MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
             if let Some(action) = event
                 .id
@@ -127,11 +133,18 @@ impl NativeMenu {
                 .and_then(|i| routed.get(i))
             {
                 callback(PlatformEvent::Action(action.clone()));
+            } else if let Some(command) = tmuxx_routes
+                .lock()
+                .ok()
+                .and_then(|routes| routes.get(&event.id.0))
+            {
+                callback(PlatformEvent::Tmuxx(command));
             }
         }));
         Ok(Self {
             menu,
             actions,
+            tmuxx_menu,
             stream_deck_menu: stream_deck,
             stream_deck_connected: false,
             _paint: paint,
@@ -161,6 +174,9 @@ impl NativeMenu {
         .map_err(err)?;
         self.stream_deck_connected = connected;
         Ok(())
+    }
+    pub fn set_tmuxx_menu(&mut self, entries: Vec<crate::tmuxx_menu::Entry>) -> Result<(), String> {
+        self.tmuxx_menu.update(entries)
     }
     pub fn update(&self, config: &Config) -> Result<(), String> {
         for (item, action) in &self.actions {
@@ -408,7 +424,7 @@ mod tests {
         );
 
         let root = unsafe { GetMenu(fixture.normal.0) };
-        assert_eq!(unsafe { GetMenuItemCount(Some(root)) }, 5);
+        assert_eq!(unsafe { GetMenuItemCount(Some(root)) }, 6);
         fixture.menu.set_stream_deck_connected(false).unwrap();
         config
             .keybinds
@@ -421,7 +437,7 @@ mod tests {
             }
             fixture.menu.set_stream_deck_connected(true).unwrap();
             fixture.menu.set_stream_deck_connected(true).unwrap();
-            assert_eq!(unsafe { GetMenuItemCount(Some(root)) }, 6);
+            assert_eq!(unsafe { GetMenuItemCount(Some(root)) }, 7);
             let deck = unsafe { GetSubMenu(root, 4) };
             assert_eq!(unsafe { GetMenuItemCount(Some(deck)) }, 7);
             let length = unsafe { GetMenuStringW(deck, 6, Some(&mut text), MF_BYPOSITION) };
@@ -460,7 +476,7 @@ mod tests {
             );
             fixture.menu.set_stream_deck_connected(false).unwrap();
             fixture.menu.set_stream_deck_connected(false).unwrap();
-            assert_eq!(unsafe { GetMenuItemCount(Some(root)) }, 5);
+            assert_eq!(unsafe { GetMenuItemCount(Some(root)) }, 6);
         }
     }
 }
