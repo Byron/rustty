@@ -6,6 +6,31 @@ use std::collections::BTreeSet;
 
 pub(super) use rustty_app::tmuxx_menu::{Command as MenuCommand, Source, Target};
 
+#[cfg(unix)]
+pub(super) const LOCAL_TARGET_HINT: &str = "unix:/path/socket.native";
+#[cfg(windows)]
+pub(super) const LOCAL_TARGET_HINT: &str = "pipe:INSTANCE";
+
+pub(super) fn temporary_endpoint(name: &str) -> std::io::Result<PathBuf> {
+    #[cfg(windows)]
+    return rustty::tmuxx::windows_endpoint(name);
+    #[cfg(unix)]
+    Ok(std::path::absolute(tmuxx_cli::default_native_endpoint()?)?
+        .with_file_name(format!("{name}.native")))
+}
+
+pub(super) fn local_endpoint(target: &str) -> Result<PathBuf> {
+    #[cfg(unix)]
+    if let Some(path) = target.strip_prefix("unix:") {
+        return Ok(std::path::absolute(path)?);
+    }
+    #[cfg(windows)]
+    if let Some(instance) = target.strip_prefix("pipe:") {
+        return Ok(rustty::tmuxx::windows_endpoint(instance)?);
+    }
+    Err(format!("Use {LOCAL_TARGET_HINT}, ssh:HOST, or system-ssh:HOST").into())
+}
+
 pub(super) fn connection_timeout(source: &Source) -> Duration {
     match source {
         Source::Ssh(_) | Source::SystemSsh(_) => Duration::from_secs(120),
@@ -518,12 +543,11 @@ impl App {
             return Err("Close a tmuxx connection before opening another".into());
         }
         if temporary {
-            let endpoint = std::path::absolute(tmuxx_cli::default_native_endpoint()?)?
-                .with_file_name(format!(
-                    "rustty-{}-{}.native",
-                    std::process::id(),
-                    self.workspace.id()
-                ));
+            let endpoint = temporary_endpoint(&format!(
+                "rustty-{}-{}",
+                std::process::id(),
+                self.workspace.id()
+            ))?;
             let initial = match self.config().command.as_ref() {
                 Some(config::Command::Shell(command)) => vec![command.as_bytes().to_vec()],
                 Some(config::Command::Direct(argv)) => {
@@ -568,28 +592,23 @@ impl App {
                 .as_ref()
                 .is_none_or(Connection::is_closed)
             {
-                #[cfg(unix)]
-                {
-                    let connection = Connection::unix(&endpoint, self.tmuxx_wake()).ok();
-                    if connection.is_none() {
-                        let mut child =
-                            tmuxx_cli::native_daemon_command(&endpoint, &["tmux"])?.spawn()?;
-                        std::thread::spawn(move || {
-                            let _ = child.wait();
-                        });
-                    }
-                    let entry = &mut self.tmuxx[index];
-                    entry.restore = entry.saved_attachments(&self.workspace);
-                    entry.connection = connection;
-                    entry.connection_deadline = entry
-                        .connection
-                        .is_some()
-                        .then(|| Instant::now() + Duration::from_secs(10));
-                    entry.replacing = true;
-                    entry.retry_at = Some(Instant::now());
+                let connection = Connection::native(&endpoint, self.tmuxx_wake()).ok();
+                if connection.is_none() {
+                    let mut child =
+                        tmuxx_cli::native_daemon_command(&endpoint, &["tmux"])?.spawn()?;
+                    std::thread::spawn(move || {
+                        let _ = child.wait();
+                    });
                 }
-                #[cfg(not(unix))]
-                return Err("TODO(Windows): implement native tmuxx hosting and transport".into());
+                let entry = &mut self.tmuxx[index];
+                entry.restore = entry.saved_attachments(&self.workspace);
+                entry.connection = connection;
+                entry.connection_deadline = entry
+                    .connection
+                    .is_some()
+                    .then(|| Instant::now() + Duration::from_secs(10));
+                entry.replacing = true;
+                entry.retry_at = Some(Instant::now());
             }
             let name = format!("rustty-{}-{}", std::process::id(), self.workspace.id());
             self.tmuxx[index].reconnect_enabled = true;
@@ -603,10 +622,8 @@ impl App {
             Source::SystemSsh(host.into())
         } else if let Some(host) = target.strip_prefix("ssh:") {
             Source::Ssh(host.into())
-        } else if let Some(path) = target.strip_prefix("unix:") {
-            Source::Local(std::path::absolute(path)?)
         } else {
-            return Err("Use unix:/path/to/socket.native, ssh:HOST, or system-ssh:HOST".into());
+            Source::Local(local_endpoint(target)?)
         };
         let existing = self.tmuxx.iter().position(|entry| entry.source == source);
         if let Some(index) = existing
@@ -639,9 +656,8 @@ impl App {
                 &self.config().env,
                 self.tmuxx_wake(),
             )?,
-            #[cfg(unix)]
-            Source::Local(path) => Connection::unix(path, self.tmuxx_wake())?,
-            _ => return Err("TODO(Windows): implement native tmuxx local transport".into()),
+            Source::Local(path) => Connection::native(path, self.tmuxx_wake())?,
+            Source::Embedded(_) => unreachable!("connect targets refer to existing owners"),
         };
         if let Some(index) = existing {
             let entry = &mut self.tmuxx[index];
@@ -675,14 +691,13 @@ impl App {
                 });
             self.tmuxx[index].restore.push(saved);
         }
-        #[cfg(unix)]
         if self.tmuxx.len() < 64
             && let Ok(endpoint) = tmuxx_cli::default_native_endpoint().and_then(std::path::absolute)
             && !self
                 .tmuxx
                 .iter()
                 .any(|entry| entry.source == Source::Local(endpoint.clone()))
-            && let Ok(connection) = Connection::unix(&endpoint, self.tmuxx_wake())
+            && let Ok(connection) = Connection::native(&endpoint, self.tmuxx_wake())
         {
             self.tmuxx.push(Attachment::new(
                 Source::Local(endpoint),
@@ -867,15 +882,13 @@ impl App {
                 continue;
             }
             // Cloning a macOS event-loop proxy wakes it; only do so for an actual retry.
-            #[cfg(unix)]
             let wake = {
                 let proxy = self.proxy.clone();
                 Arc::new(move || {
                     let _ = proxy.send_event(Event::Tmuxx);
                 })
             };
-            #[cfg(unix)]
-            match Connection::unix(endpoint, wake) {
+            match Connection::native(endpoint, wake) {
                 Ok(connection) => {
                     entry.restore = entry.saved_attachments(&self.workspace);
                     entry.connection = Some(connection);
@@ -888,11 +901,6 @@ impl App {
                     entry.status = Some(error.to_string());
                     entry.retry_at = Some(now + Duration::from_secs(2));
                 }
-            }
-            #[cfg(not(unix))]
-            {
-                let _ = endpoint;
-                entry.status = Some("TODO(Windows): local tmuxx transport".into());
             }
         }
         if self.errors.len() > error_count {
@@ -1098,6 +1106,41 @@ impl App {
 mod tests {
     use super::*;
     use rustty::tmuxx::{Graph, ServerSession};
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires TMUXX_CONPTY_RESOURCES from a verified bundle; run with --ignored"]
+    fn temporary_window_endpoint_starts_a_windows_session() {
+        let name = format!("rustty-window-test-{}", std::process::id());
+        let endpoint = temporary_endpoint(&name).unwrap();
+        let connection = Connection::embedded_with_command(
+            &endpoint,
+            Arc::new(|| {}),
+            ["cmd.exe", "/D", "/Q"]
+                .map(|arg| arg.as_bytes().to_vec())
+                .to_vec(),
+        )
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let errors = connection.errors();
+            assert!(errors.is_empty(), "{errors:?}");
+            if connection.graph().is_some_and(|graph| {
+                graph.sessions.len() == 1 && graph.panes.len() == 1 && graph.panes[0].pid.is_some()
+            }) {
+                break;
+            }
+            assert!(Instant::now() < deadline, "temporary session did not start");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        // The Connect dialog resolves the same instance without losing its
+        // account namespace; an invalid filename replacement cannot bind here.
+        let target = local_endpoint(&format!("pipe:{name}")).unwrap();
+        let attached = Connection::native(&target, Arc::new(|| {})).unwrap();
+        drop(attached);
+        drop(connection);
+        assert!(Connection::native(&target, Arc::new(|| {})).is_err());
+    }
 
     fn graph(sessions: &[(u64, &str)]) -> Graph {
         Graph {
