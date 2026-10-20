@@ -33,6 +33,95 @@ fn one_large_snapshot_does_not_consume_the_slow_output_budget() {
     assert!(matches!(rx.recv().unwrap(), ServerMessage::Snapshot { .. }));
     assert!(host.clients[&1].delivery_bytes.load(Ordering::Acquire) < 1024);
 }
+
+#[test]
+fn pane_removal_notifies_other_views_when_requester_gets_a_snapshot() {
+    fn request(host: &mut Host, client: u64, argv: Vec<Vec<u8>>, subscribe: bool) {
+        host.request(
+            client,
+            Request {
+                request_id: client,
+                argv,
+                stdin: None,
+                subscribe,
+                control: false,
+            },
+        );
+        for _ in 0..1024 {
+            if !host.scheduled_work() {
+                return;
+            }
+        }
+        panic!("native request queue failed to quiesce");
+    }
+
+    let (mut host, first) = host();
+    let (tx, second) = mpsc::sync_channel(32);
+    host.clients.insert(
+        2,
+        Client {
+            tx,
+            delivery_bytes: Arc::new(AtomicUsize::new(0)),
+            ..host.clients[&1].clone()
+        },
+    );
+    for command in tmuxx_command::parse(b"new-session -d -s removal ''; new-window -d ''").unwrap()
+    {
+        host.engine
+            .execute(&command, &mut ClientContext::default())
+            .unwrap();
+    }
+    for (pane, subscribe) in [(0, true), (1, false)] {
+        request(
+            &mut host,
+            1,
+            vec![
+                b"kill-pane".to_vec(),
+                b"-t".to_vec(),
+                format!("%{pane}").into_bytes(),
+            ],
+            subscribe,
+        );
+        let replies = first.try_iter().collect::<Vec<_>>();
+        assert!(replies.iter().any(
+            |message| matches!(message, ServerMessage::Reply(reply) if reply.error.is_none())
+        ));
+        assert_eq!(
+            replies
+                .iter()
+                .filter(|message| matches!(message, ServerMessage::Snapshot { .. }))
+                .count(),
+            usize::from(subscribe)
+        );
+        assert_eq!(
+            replies
+                .iter()
+                .filter(|message| matches!(message, ServerMessage::Changed { .. }))
+                .count(),
+            usize::from(!subscribe),
+            "a requester receiving a snapshot needs no redundant change notice"
+        );
+        assert_eq!(
+            second.try_iter().filter(|message| matches!(message, ServerMessage::Changed { sequence } if *sequence == host.engine.sequence)).count(),
+            1,
+            "the other view must learn that the last pane in a window disappeared"
+        );
+
+        request(&mut host, 2, Vec::new(), true);
+        let state = second
+            .try_iter()
+            .find_map(|message| match message {
+                ServerMessage::Snapshot { state, .. } => Some(state),
+                _ => None,
+            })
+            .expect("the notified view must be able to refresh its graph");
+        for key in ["panes", "windows"] {
+            assert_eq!(state[key].as_array().unwrap().len(), 1 - pane);
+        }
+        assert_eq!(state["sessions"].as_array().unwrap().len(), 1 - pane);
+        host.snapshots_pending.clear();
+    }
+}
 #[test]
 fn image_snapshots_stream_atomically_and_rejection_preserves_the_live_owner() {
     let (mut host, rx) = host();
