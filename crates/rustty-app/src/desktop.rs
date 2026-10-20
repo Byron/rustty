@@ -846,14 +846,15 @@ pub fn run() -> Result<()> {
         } else if let Some(host) = mode.strip_prefix("system-ssh:") {
             (
                 tmuxx_host::Source::SystemSsh(host.into()),
-                rustty::tmuxx::Connection::system_ssh(host, wake)?,
+                rustty::tmuxx::Connection::system_ssh_with_env(host, &loaded.config.env, wake)?,
             )
         } else if let Some(host) = mode.strip_prefix("ssh:") {
             (
                 tmuxx_host::Source::Ssh(host.into()),
-                rustty::tmuxx::Connection::ssh_command(
+                rustty::tmuxx::Connection::ssh_command_with_env(
                     host,
                     loaded.config.tmuxx_ssh_command_for(host),
+                    &loaded.config.env,
                     wake,
                 )?,
             )
@@ -871,7 +872,7 @@ pub fn run() -> Result<()> {
                 return Err("expected --tmuxx=embedded or ssh:HOST".into());
             }
         };
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + tmuxx_host::connection_timeout(&source);
         while connection.graph().is_none() {
             if Instant::now() > deadline {
                 return Err("timed out waiting for tmuxx snapshot".into());

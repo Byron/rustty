@@ -8,7 +8,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak, mpsc};
 use std::thread;
@@ -16,6 +16,7 @@ use std::time::Duration;
 pub use tmuxx_layout::{Axis, Kind, Layout};
 use tmuxx_protocol::native::{Hello, Request, ServerMessage, SnapshotAssembler};
 
+mod ssh;
 mod system;
 
 const RECORD_LIMIT: usize = 128 * 1024 * 1024;
@@ -126,8 +127,12 @@ enum Source {
     Ssh {
         host: String,
         command: String,
+        environment: BTreeMap<String, String>,
     },
-    SystemSsh(String),
+    SystemSsh {
+        host: String,
+        environment: BTreeMap<String, String>,
+    },
 }
 type SizeViews = BTreeMap<u64, (Connection, (u16, u16, u16, u16))>;
 
@@ -512,6 +517,15 @@ impl Connection {
         remote_command: &str,
         wake: Arc<dyn Fn() + Send + Sync>,
     ) -> io::Result<Self> {
+        Self::ssh_command_with_env(host, remote_command, &BTreeMap::new(), wake)
+    }
+    /// Apply application environment overrides to SSH, including agent/askpass settings.
+    pub fn ssh_command_with_env(
+        host: &str,
+        remote_command: &str,
+        environment: &BTreeMap<String, String>,
+        wake: Arc<dyn Fn() + Send + Sync>,
+    ) -> io::Result<Self> {
         if host.trim().is_empty() || host.contains('\0') {
             return Err(err("SSH host must be nonempty and contain no NUL"));
         }
@@ -522,6 +536,7 @@ impl Connection {
             Source::Ssh {
                 host: host.to_owned(),
                 command: remote_command.to_owned(),
+                environment: environment.clone(),
             },
             wake,
             true,
@@ -548,17 +563,12 @@ impl Connection {
                 connection.socket = Some(stream);
                 connection
             }
-            Source::Ssh { host, command } => {
-                let mut child = Command::new("ssh")
-                    .args([
-                        "-T",
-                        "-o",
-                        "BatchMode=yes",
-                        "-o",
-                        "LogLevel=ERROR",
-                        "--",
-                        host,
-                    ])
+            Source::Ssh {
+                host,
+                command,
+                environment,
+            } => {
+                let mut child = ssh::command(host, environment)
                     .arg(command)
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
@@ -593,7 +603,9 @@ impl Connection {
                     }
                 }
             }
-            Source::SystemSsh(host) => return Self::system_ssh(host, wake),
+            Source::SystemSsh { host, environment } => {
+                return Self::system_ssh_with_env(host, environment, wake);
+            }
             Source::None => return Err(err("stream caller must provide a size client")),
         };
         connection.source = source;

@@ -428,8 +428,31 @@ remain unimplemented.
 
 This is a remote shell command from trusted configuration: quote paths containing
 spaces for the remote shell. Hosts, ports, identities, and jump hosts use normal
-SSH aliases/configuration. SSH uses noninteractive authentication; establish keys
-or an agent before connecting. Authentication/helper failures are shown in Rustty.
+SSH aliases/configuration. Agent identities can be shared between applications,
+but an app launched from Finder/Dock does not inherit environment changes from
+your shell's startup files. If your shell selects a particular agent, configure
+its socket in `~/.ssh/config` so menu connections use the same agent, for example:
+
+```sshconfig
+Host 20.240.208.217
+    IdentityAgent ~/.gnupg/S.gpg-agent.ssh
+```
+
+Use your actual agent socket (the shell's `SSH_AUTH_SOCK`), which may differ from
+this GPG example. Alternatively, Rustty's existing `env` settings now apply to
+SSH children as well as terminal shells:
+
+```ini
+env = SSH_AUTH_SOCK=/Users/byron/.gnupg/S.gpg-agent.ssh
+```
+
+Rustty honors SSH's configured authentication and host-key checks. For an SSH
+askpass helper, set `env = SSH_ASKPASS=/absolute/path/to/helper`; Rustty uses that
+helper without requiring a controlling terminal or `DISPLAY`, unless an explicit
+`SSH_ASKPASS_REQUIRE` policy overrides it. Agent-owned prompts such as GPG pinentry
+continue to be handled by the agent. SSH connections allow two minutes for the
+initial authentication and session snapshot. Authentication/helper failures are
+shown in Rustty.
 
 For stock tmux, create a remote session with ordinary tmux and use
 `--tmuxx=system-ssh:my-host`. No Rust helper is required on that host. This adapter
