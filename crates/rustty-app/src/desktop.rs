@@ -4328,7 +4328,7 @@ impl App {
                         width: content.width(),
                         height: content.height(),
                     };
-                    let layout = active.layout(host.content, host.peek.is_some());
+                    let layout = active.layout(host.content, host.peek.is_some(), host.fonts.metrics().cell_height as f32 / scale);
                     host.pane_order = layout.iter().map(|(id, _)| *id).collect();
                     host.modal_pane = active.modal_pane();
                     host.overlay_panes = active.overlays.iter().map(|overlay| overlay.pane).collect();
@@ -4368,10 +4368,10 @@ impl App {
                     {
                         let metrics = host.fonts.metrics();
                         let (cols, rows) = self.tab(host.id).map(|tab| rustty_app::tmuxx_workspace::grid_size(
-                            &tab.root, host.content,
+                            tab, host.content, host.peek.is_some(),
                             [metrics.cell_width as f32 / scale, metrics.cell_height as f32 / scale],
-                            [config.window_padding_x.start + config.window_padding_x.end,
-                             config.window_padding_y.start + config.window_padding_y.end + header_height],
+                            [config.window_padding_x.start + config.window_padding_x.end + 2.0,
+                             config.window_padding_y.start + config.window_padding_y.end + header_height + 2.0],
                         )).unwrap_or((80, 24));
                         if let Err(error) = connection.view_size(*session, cols, rows, metrics.cell_width.min(u16::MAX.into()) as u16, metrics.cell_height.min(u16::MAX.into()) as u16) { render_error = Some(error.to_string()); }
                     }
