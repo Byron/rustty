@@ -261,7 +261,7 @@ impl PaneInput {
         shared.requests.try_send(Request {
             request_id, argv: vec![b"tmuxx-host-state".to_vec(), b"-t".to_vec(), format!("%{}", self.pane).into_bytes()],
             stdin: Some(serde_json::to_vec(&serde_json::json!({"focused":focused,"visible":visible,"color_scheme":if dark { "dark" } else { "light" }})).map_err(err)?),
-            subscribe: true, control: false,
+            subscribe: false, control: false,
         }).map_err(err)?;
         pane.host_state = Some((focused, visible, dark));
         Ok(())
@@ -303,7 +303,8 @@ impl PaneInput {
                     format!("%{}", self.pane).into_bytes(),
                 ],
                 stdin: Some(serde_json::to_vec(input).map_err(err)?),
-                subscribe: true,
+                // Subscription persists; requesting it again transfers every pane's snapshot.
+                subscribe: false,
                 control: false,
             })
             .map_err(|error| match error {
@@ -686,12 +687,13 @@ impl Connection {
     }
     fn stream_inner(
         reader: impl Read + Send + 'static,
-        mut writer: impl Write + Send + 'static,
+        writer: impl Write + Send + 'static,
         wake: Arc<dyn Fn() + Send + Sync>,
         host_effects: bool,
         subscribe: bool,
     ) -> io::Result<Self> {
         let (connection, requests) = Self::base(wake, subscribe);
+        let mut writer = io::BufWriter::new(writer);
         write_record(
             &mut writer,
             &Hello {
@@ -1284,7 +1286,7 @@ fn host_reply(shared: &Shared, event_id: u64, response: HostResponse) -> io::Res
                 event_id.to_string().into_bytes(),
             ],
             stdin: Some(serde_json::to_vec(&response).map_err(err)?),
-            subscribe: true,
+            subscribe: false,
             control: false,
         })
         .map_err(err)
@@ -1339,6 +1341,51 @@ mod tests {
             assert!(Instant::now() < deadline, "tmuxx view did not converge");
             thread::sleep(Duration::from_millis(5));
         }
+    }
+
+    #[test]
+    fn native_interaction_keeps_output_subscription_without_requesting_snapshots() {
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        let terminal = tmuxx_terminal::Terminal::new(20, 3, 20);
+        apply(&connection.shared, ServerMessage::Snapshot {
+            instance_id: "input".into(), sequence: 1,
+            state: serde_json::json!({
+                "sessions": [{"id":1,"name":"input","active":0,"windows":{"0":2}}],
+                "windows": [{"id":2,"name":"shell","active":7,"cols":20,"rows":3,"panes":[7],"layout":Layout::pane(7,20,3).to_legacy().unwrap()}],
+                "panes": [{"id":7,"window":2,"cols":20,"rows":3,"status":null,"terminal":terminal.snapshot()}],
+            }),
+        }).unwrap();
+        let view = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        requests.try_iter().for_each(drop);
+        view.write_input(&Input::Text(b"x".to_vec())).unwrap();
+        view.set_host_state(true, true, rustty_vt::query::ColorScheme::Dark)
+            .unwrap();
+        host_reply(
+            &connection.shared,
+            1,
+            HostResponse::Read(rustty_vt::clipboard::ReadResult::Denied),
+        )
+        .unwrap();
+        let interactive = requests.try_iter().collect::<Vec<_>>();
+        assert_eq!(interactive.len(), 3);
+        assert!(
+            interactive
+                .iter()
+                .all(|request| !request.subscribe && !request.control)
+        );
+        apply(
+            &connection.shared,
+            ServerMessage::PaneOutput {
+                sequence: 2,
+                pane_id: 7,
+                data: b"x".to_vec(),
+            },
+        )
+        .unwrap();
+        assert!(view.terminal().unwrap().plain_text().contains('x'));
+        assert!(requests.try_recv().is_err());
+        connection.command(std::iter::empty::<&str>()).unwrap();
+        assert!(requests.try_recv().unwrap().subscribe);
     }
 
     #[test]
