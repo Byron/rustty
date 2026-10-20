@@ -850,8 +850,11 @@ pub fn run() -> Result<()> {
                     None => Vec::new(),
                 }
             };
-            let connection =
-                rustty::tmuxx::Connection::embedded_with_command(&endpoint, wake, initial)?;
+            let connection = rustty::tmuxx::Connection::embedded_with_options(
+                tmuxx_host::server_options(&loaded.config, &endpoint)?,
+                wake,
+                initial,
+            )?;
             (tmuxx_host::Source::Embedded(endpoint), connection)
         } else if let Some(host) = mode.strip_prefix("system-ssh:") {
             (

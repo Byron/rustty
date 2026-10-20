@@ -66,6 +66,77 @@ fn args(values: &[&str]) -> Vec<String> {
 }
 
 #[test]
+fn tmuxx_config_file_resolves_paths_without_requiring_the_file() {
+    let home = TestHome::new();
+    assert_eq!(home.loader.load().config.tmuxx_config_file, None);
+    let absolute = home.root.join("tmuxx config.conf");
+    home.own(&format!("tmuxx-config-file=\"{}\"\n", absolute.display()));
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(loaded.config.tmuxx_config_file, Some(absolute));
+
+    let config = home.own("tmuxx-config-file=\"server settings/tmuxx.conf\"\n");
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(
+        loaded.config.tmuxx_config_file,
+        Some(config.parent().unwrap().join("server settings/tmuxx.conf"))
+    );
+
+    home.own("tmuxx-config-file=~/tmuxx config.conf\n");
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(
+        loaded.config.tmuxx_config_file,
+        Some(home.loader.home.join("tmuxx config.conf"))
+    );
+    let loaded = home
+        .loader
+        .load_with_args(&args(&["--tmuxx-config-file=cli settings/tmuxx.conf"]));
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(
+        loaded.config.tmuxx_config_file,
+        Some(
+            home.loader
+                .working_directory
+                .join("cli settings/tmuxx.conf")
+        )
+    );
+}
+
+#[test]
+fn tmuxx_config_file_uses_the_declaring_include_directory() {
+    let home = TestHome::new();
+    home.own("config-file=~/shared/config.rustty\n");
+    let included = home.write(
+        "shared/config.rustty",
+        "tmuxx-config-file=server/tmuxx.conf\n",
+    );
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(
+        loaded.config.tmuxx_config_file,
+        Some(included.parent().unwrap().join("server/tmuxx.conf"))
+    );
+}
+
+#[test]
+fn tmuxx_config_file_resets_and_rejects_nul_without_replacing_the_previous_path() {
+    let home = TestHome::new();
+    let config = home.own("tmuxx-config-file=tmuxx.conf\ntmuxx-config-file=bad\0path\n");
+    let loaded = home.loader.load();
+    assert_eq!(loaded.diagnostics.len(), 1);
+    assert_eq!(
+        loaded.config.tmuxx_config_file,
+        Some(config.parent().unwrap().join("tmuxx.conf"))
+    );
+    home.own("tmuxx-config-file=tmuxx.conf\n");
+    let loaded = home.loader.load_with_args(&args(&["--tmuxx-config-file="]));
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(loaded.config.tmuxx_config_file, None);
+}
+
+#[test]
 fn native_ssh_command_preserves_shell_quoting_and_resets_to_rustty_helper() {
     let home = TestHome::new();
     let default = "rustty tmux --native-stdio";
