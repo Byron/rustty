@@ -10,6 +10,8 @@ mod painter;
 mod smoke;
 #[path = "theme_preview.rs"]
 mod theme_preview;
+#[path = "tmuxx_host.rs"]
+mod tmuxx_host;
 use command_palette::{CommandPalette, PaletteEvent};
 use egui::{Color32, Pos2, Sense, Vec2, ViewportId};
 use rustty::{
@@ -229,6 +231,11 @@ struct PendingPaste {
 
 enum Confirmation {
     Close(Action),
+    TmuxxClose {
+        target: tmuxx_host::Target,
+        session: u64,
+    },
+    TmuxxTerminate(tmuxx_host::MenuCommand),
     Paste(PendingPaste),
     OpenUrl {
         uri: String,
@@ -475,6 +482,7 @@ struct Host {
     layout_picker: Option<LayoutPicker>,
     palette: CommandPalette,
     confirm: Option<Confirmation>,
+    tmuxx_connect: Option<String>,
     clipboard_request: VecDeque<(Id, vt::Effect)>,
     capture: bool,
     frames: u64,
@@ -515,6 +523,7 @@ impl Host {
             || self.messages_open
             || self.layout_picker.is_some()
             || self.confirm.is_some()
+            || self.tmuxx_connect.is_some()
             || !self.clipboard_request.is_empty()
     }
     fn repaint(&self) {
@@ -676,9 +685,7 @@ struct ThemePreview {
 
 struct App {
     deck: deck_host::Connection,
-    tmuxx: Option<rustty::tmuxx::Connection>,
-    tmuxx_mapping: rustty_app::tmuxx_workspace::Mapping,
-    tmuxx_instance: String,
+    tmuxx: Vec<tmuxx_host::Attachment>,
     tmuxx_smoke: Option<PathBuf>,
     loaded: LoadedConfig,
     config_loader: config::ConfigLoader,
@@ -716,7 +723,7 @@ pub fn run() -> Result<()> {
     let mut args = std::env::args().skip(1).collect::<Vec<_>>();
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!(
-            "Rustty — native Rust terminal\n\nUsage: rustty [--config-file=PATH] [--key=value] [-e COMMAND ...]\n       rustty --tmuxx=embedded|unix:PATH|ssh:HOST|system-ssh:HOST\n       rustty --config-info\n\nRustty settings override Ghostty settings. See crates/rustty-app/README.md."
+            "Rustty — native Rust terminal\n\nUsage: rustty [--config-file=PATH] [--key=value] [-e COMMAND ...]\n       rustty --tmuxx=embedded|persistent|unix:PATH|ssh:HOST|system-ssh:HOST\n       rustty tmux [tmuxx options and commands]\n       rustty --config-info\n\nRustty settings override Ghostty settings. See crates/rustty-app/README.md."
         );
         return Ok(());
     }
@@ -788,6 +795,8 @@ pub fn run() -> Result<()> {
         .collect::<Vec<_>>();
     if let Some(smoke) = &smoke {
         state_path = smoke.directory.join("workspace.json");
+    } else if let Some(directory) = &tmuxx_smoke {
+        state_path = directory.join("workspace.json");
     }
     let mut workspace = if smoke.is_some() {
         Workspace::default()
@@ -803,29 +812,18 @@ pub fn run() -> Result<()> {
         Workspace::default()
     };
     let proxy = event_loop.create_proxy();
-    let mut tmuxx_mapping = rustty_app::tmuxx_workspace::Mapping::default();
-    let tmuxx = if let Some(mode) = tmuxx_mode {
+    let tmuxx = if let Some(mode) = tmuxx_mode.as_deref().filter(|mode| *mode != "persistent") {
         let wake_proxy = proxy.clone();
         let wake = Arc::new(move || {
             let _ = wake_proxy.send_event(Event::Tmuxx);
         });
-        let connection = if mode == "embedded" {
-            let endpoint = if let Some(path) = std::env::var_os("TMUXX_ENDPOINT") {
-                PathBuf::from(path)
-            } else {
-                #[cfg(target_os = "macos")]
-                let user = unsafe { libc::geteuid() }.to_string();
-                #[cfg(target_os = "windows")]
-                let user = std::env::var("USERNAME").unwrap_or_default();
-                let directory = std::env::temp_dir().join(format!("tmuxx-{user}"));
-                std::fs::create_dir_all(&directory)?;
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
-                }
-                directory.join("default.native")
-            };
+        let (source, connection) = if mode == "embedded" {
+            let endpoint = std::env::var_os("TMUXX_ENDPOINT")
+                .map(PathBuf::from)
+                .unwrap_or(
+                    tmuxx_cli::default_native_endpoint()?
+                        .with_file_name(format!("rustty-{}-startup.native", std::process::id())),
+                );
             let initial = if tmuxx_smoke.is_some() {
                 vec![b"/bin/sh".to_vec()]
             } else {
@@ -842,21 +840,31 @@ pub fn run() -> Result<()> {
                     None => Vec::new(),
                 }
             };
-            rustty::tmuxx::Connection::embedded_with_command(&endpoint, wake, initial)?
+            let connection =
+                rustty::tmuxx::Connection::embedded_with_command(&endpoint, wake, initial)?;
+            (tmuxx_host::Source::Embedded(endpoint), connection)
         } else if let Some(host) = mode.strip_prefix("system-ssh:") {
-            rustty::tmuxx::Connection::system_ssh(host, wake)?
+            (
+                tmuxx_host::Source::SystemSsh(host.into()),
+                rustty::tmuxx::Connection::system_ssh(host, wake)?,
+            )
         } else if let Some(host) = mode.strip_prefix("ssh:") {
-            rustty::tmuxx::Connection::ssh(host, wake)?
+            (
+                tmuxx_host::Source::Ssh(host.into()),
+                rustty::tmuxx::Connection::ssh_command(
+                    host,
+                    &loaded.config.tmuxx_ssh_command,
+                    wake,
+                )?,
+            )
         } else {
             #[cfg(unix)]
             {
-                rustty::tmuxx::Connection::unix(
-                    Path::new(
-                        mode.strip_prefix("unix:")
-                            .ok_or("expected --tmuxx=embedded, unix:PATH or ssh:HOST")?,
-                    ),
-                    wake,
-                )?
+                let endpoint = std::path::absolute(mode.strip_prefix("unix:").ok_or(
+                    "expected --tmuxx=embedded, persistent, unix:PATH, ssh:HOST or system-ssh:HOST",
+                )?)?;
+                let connection = rustty::tmuxx::Connection::unix(&endpoint, wake)?;
+                (tmuxx_host::Source::Local(endpoint), connection)
             }
             #[cfg(not(unix))]
             {
@@ -918,11 +926,20 @@ pub fn run() -> Result<()> {
                 }
             }
         }
-        workspace = Workspace::default();
-        tmuxx_mapping.apply(&mut workspace, &connection.graph().unwrap())?;
-        Some(connection)
+        if tmuxx_smoke.is_some() {
+            workspace = Workspace::default();
+        }
+        let mut attachment = tmuxx_host::Attachment::new(source, Some(connection), false);
+        let graph = attachment.connection.as_ref().unwrap().graph().unwrap();
+        attachment
+            .selected
+            .extend(graph.sessions.iter().map(|s| s.id));
+        attachment
+            .mapping
+            .apply(&mut workspace, &graph, &attachment.selected)?;
+        vec![attachment]
     } else {
-        None
+        Vec::new()
     };
     let context = egui::Context::default();
     context.set_theme(ui_theme(&loaded.config));
@@ -978,9 +995,7 @@ pub fn run() -> Result<()> {
     let mut app = App {
         deck: deck_host::Connection::default(),
         tmuxx_smoke: tmuxx_smoke.clone(),
-        tmuxx_instance: tmuxx.as_ref().map_or_else(String::new, |c| c.instance()),
         tmuxx,
-        tmuxx_mapping,
         loaded,
         config_loader,
         config_args: args,
@@ -1012,6 +1027,10 @@ pub fn run() -> Result<()> {
         smoke_error: None,
         startup_error: None,
     };
+    app.restore_tmuxx();
+    if tmuxx_mode.as_deref() == Some("persistent") {
+        app.start_tmuxx(false)?;
+    }
     let result = event_loop.run_app(&mut app);
     app.shutdown();
     result?;
@@ -1206,13 +1225,10 @@ impl App {
             .get_or_insert_with(|| Instant::now() + Duration::from_millis(500));
     }
     fn remember(&mut self) {
-        if self.tmuxx.is_some() {
-            return;
-        }
         if !self.config().undo_timeout.is_zero() {
             self.history.push((
                 Instant::now() + self.config().undo_timeout,
-                self.workspace.clone(),
+                self.saved_workspace(),
             ));
         }
         if self.history.len() > 50 {
@@ -1222,6 +1238,14 @@ impl App {
     }
     fn directory(&self, window: Id) -> PathBuf {
         self.focused(window)
+            .filter(|_| {
+                !self.tmuxx_window(window).is_some_and(|entry| {
+                    matches!(
+                        &entry.source,
+                        tmuxx_host::Source::Ssh(_) | tmuxx_host::Source::SystemSsh(_)
+                    )
+                })
+            })
             .and_then(|id| self.panes.get(&id))
             .map(|pane| pane.cwd.clone())
             .or_else(|| self.config().working_directory.clone())
@@ -1300,14 +1324,14 @@ impl App {
                     .is_some_and(|tab| tab.focused == id)
         });
         let host_state = (visible, focused, color_scheme(self.config_loader.dark_mode));
-        let created = if let Some(connection) = &self.tmuxx {
+        let tmuxx = self.tmuxx_pane(id);
+        let created = if let Some(entry) = tmuxx {
             Session::attach_tmuxx(
-                connection,
-                *self
-                    .tmuxx_mapping
-                    .panes
-                    .get(&id)
-                    .ok_or("missing tmuxx pane mapping")?,
+                entry
+                    .connection
+                    .as_ref()
+                    .ok_or("tmuxx connection is offline")?,
+                entry.mapping.panes[&id],
                 wake,
             )
         } else {
@@ -1332,7 +1356,7 @@ impl App {
                 return Err(error.into());
             }
         };
-        if self.tmuxx.is_some() {
+        if self.tmuxx_pane(id).is_some() {
             session.set_host_state(host_state.0, host_state.1, host_state.2)?;
         }
         if let Some(diagnostic) = session.shell().diagnostic()
@@ -1494,6 +1518,7 @@ impl App {
             layout_picker: None,
             palette: CommandPalette::default(),
             confirm: None,
+            tmuxx_connect: None,
             clipboard_request: VecDeque::new(),
             capture: false,
             frames: 0,
@@ -1558,11 +1583,8 @@ impl App {
 
     fn save(&mut self) {
         self.save_at = None;
-        if self.tmuxx.is_some() {
-            return;
-        }
         if self.config().window_save_state != config::WindowSaveState::Never
-            && let Err(error) = self.workspace.save(&self.state_path)
+            && let Err(error) = self.saved_workspace().save(&self.state_path)
         {
             self.errors.push(format!("Could not save windows: {error}"));
         }
@@ -1708,13 +1730,30 @@ impl App {
         Ok(emitted)
     }
     fn focus_pane(&mut self, window: Id, pane: Id) {
-        if let Some(connection) = &self.tmuxx
-            && let Some(pid) = self.tmuxx_mapping.panes.get(&pane)
-            && self.focused(window) != Some(pane)
-            && let Err(error) =
-                connection.command(["select-pane".into(), "-t".into(), format!("%{pid}")])
+        if let Some(entry) = self.tmuxx_pane(pane)
+            && let Some(connection) = &entry.connection
+            && let Some(pid) = entry.mapping.panes.get(&pane)
         {
-            self.errors.push(error.to_string());
+            let tab = self
+                .index(window)
+                .map(|i| self.workspace.windows[i].active_tab + 1);
+            let selected = tab.and_then(|i| {
+                entry
+                    .mapping
+                    .action(&self.workspace, window, &Action::GotoTab(i))
+            });
+            let result = selected
+                .transpose()
+                .map_err(std::io::Error::other)
+                .and_then(|command| {
+                    if let Some(command) = command {
+                        connection.command(command)?;
+                    }
+                    connection.command(["select-pane".into(), "-t".into(), format!("%{pid}")])
+                });
+            if let Err(error) = result {
+                self.errors.push(error.to_string());
+            }
         }
 
         if let Some(previous) = self.focused(window).filter(|&id| id != pane)
@@ -2435,6 +2474,9 @@ impl App {
                 }
             })
             .unwrap_or_else(|| "Rustty".into());
+        let title = self.tmuxx_window(host.id).map_or(title.clone(), |entry| {
+            format!("{title} — {}", entry.label())
+        });
         let zoom = self.tab(host.id).and_then(zoom_label);
         let title = if let Some(zoom) = zoom {
             format!("{title} [{zoom}] — Rustty")
@@ -2637,6 +2679,16 @@ impl App {
             return true;
         }
         let focused = self.focused(host.id);
+        if action == Action::CloseWindow
+            && let Some(entry) = self.tmuxx_window(host.id)
+        {
+            host.confirm = Some(Confirmation::TmuxxClose {
+                target: entry.target(),
+                session: entry.mapping.sessions[&host.id],
+            });
+            host.repaint();
+            return true;
+        }
         let exits_app = self.config().quit_after_last_window_closed
             && closes_last_window(&self.workspace, host.id, &action);
         if !approved
@@ -2674,6 +2726,11 @@ impl App {
                     .collect(),
             };
             let needs_confirmation = candidates.iter().any(|id| {
+                if matches!(action, Action::Quit | Action::CloseAllWindows)
+                    && self.tmuxx_pane(*id).is_some_and(|e| !e.temporary())
+                {
+                    return false;
+                }
                 self.panes.get(id).is_some_and(|p| {
                     !p.exited
                         && (self.config().confirm_close_surface
@@ -2686,21 +2743,43 @@ impl App {
                 })
             });
             if needs_confirmation {
-                host.confirm = Some(Confirmation::Close(action));
+                host.confirm = if matches!(action, Action::CloseSurface | Action::CloseTab)
+                    && let Some(entry) = self.tmuxx_window(host.id)
+                    && let Some(Ok(argv)) = entry.mapping.action(&self.workspace, host.id, &action)
+                {
+                    Some(Confirmation::TmuxxTerminate(
+                        tmuxx_host::MenuCommand::Execute(entry.target(), argv),
+                    ))
+                } else {
+                    Some(Confirmation::Close(action))
+                };
                 host.repaint();
                 return true;
             }
         }
-        if let Some(connection) = &self.tmuxx
-            && let Some(command) = self.tmuxx_mapping.action(&self.workspace, host.id, &action)
+        if let Some(entry) = self.tmuxx_window(host.id)
+            && let Some(command) = entry.mapping.action(&self.workspace, host.id, &action)
         {
-            match command {
-                Ok(argv) => {
-                    if let Err(error) = connection.command(argv) {
-                        self.errors.push(error.to_string());
-                    }
-                }
-                Err(error) => self.errors.push(error),
+            let result = command.and_then(|argv| {
+                entry
+                    .connection
+                    .as_ref()
+                    .filter(|connection| {
+                        !connection.is_closed() && connection.instance() == entry.instance
+                    })
+                    .ok_or_else(|| {
+                        "The tmuxx connection is offline; reconnect before changing its panels"
+                            .to_owned()
+                    })
+                    .and_then(|connection| {
+                        connection
+                            .command(argv)
+                            .map(|_| ())
+                            .map_err(|error| error.to_string())
+                    })
+            });
+            if let Err(error) = result {
+                self.errors.push(error);
             }
             return true;
         }
@@ -2894,6 +2973,7 @@ impl App {
             }
             Action::CloseAllWindows => {
                 self.remember();
+                self.detach_all_tmuxx();
                 self.workspace.windows.clear();
             }
             Action::Quit => {
@@ -2977,21 +3057,17 @@ impl App {
             Action::ToggleOutliner => {
                 self.toggle_outliner(event_loop);
             }
-            Action::TogglePanePersistence => {
-                if let Some(connection) = &self.tmuxx
-                    && connection.persistence_survives_app()
-                    && let Some(view) = focused
-                    && let Some(pid) = self.tmuxx_mapping.panes.get(&view)
-                    && let Some(graph) = connection.graph()
-                    && let Some(pane) = graph.panes.iter().find(|p| p.id == *pid)
-                    && let Some(session) = self.panes.get(&view).map(|p| &p.session)
-                {
-                    if let Err(error) = session.set_persistent(!pane.persistent) {
-                        self.errors.push(error.to_string());
-                    }
-                } else {
-                    self.errors.push("To keep a pane across app restarts, create it in a standalone tmuxx connection.".into());
+            Action::NewTemporaryTmuxxWindow | Action::NewPersistentTmuxxWindow => {
+                if let Err(error) = self.start_tmuxx(action == Action::NewTemporaryTmuxxWindow) {
+                    self.errors.push(error.to_string());
                 }
+            }
+            Action::ConnectTmuxx => {
+                host.tmuxx_connect = Some("ssh:".into());
+            }
+            Action::NewFloatingPane => {
+                self.errors
+                    .push("Floating panels require a tmuxx window.".into());
             }
             Action::TogglePin => {
                 if let Some(pane) = focused {
@@ -3232,10 +3308,18 @@ impl App {
         } else {
             self.history.pop()
         };
-        let Some((_, previous)) = previous else {
+        let Some((_, mut previous)) = previous else {
             return false;
         };
-        let current = self.workspace.restore(previous);
+        let current = self.saved_workspace();
+        previous.windows.extend(
+            self.workspace
+                .windows
+                .iter()
+                .filter(|window| self.tmuxx_window(window.id).is_some())
+                .cloned(),
+        );
+        self.workspace.restore(previous);
         let record = (now + self.config().undo_timeout, current);
         if redo {
             self.history.push(record);
@@ -3538,6 +3622,7 @@ impl App {
         self.sync_host_state();
         if self.config().quit_after_last_window_closed
             && !self.workspace.windows.iter().any(window_keeps_app_running)
+            && !self.tmuxx.iter().any(|entry| entry.waiting_for_window())
         {
             self.save();
             event_loop.exit();
@@ -3670,14 +3755,18 @@ impl App {
                 return true;
             }
         }
-        if let Some(connection) = &self.tmuxx
-            && self.windows.is_empty()
-            && matches!(action, Action::NewWindow | Action::NewTab)
-        {
-            if let Err(error) = connection.command(["new-session", "-d"]) {
+        if matches!(
+            action,
+            Action::NewTemporaryTmuxxWindow | Action::NewPersistentTmuxxWindow
+        ) {
+            if let Err(error) = self.start_tmuxx(action == Action::NewTemporaryTmuxxWindow) {
                 self.errors.push(error.to_string());
             }
             return true;
+        }
+        if action == Action::ConnectTmuxx && self.windows.is_empty() {
+            self.add_window(false);
+            self.reconcile(event_loop);
         }
         if action == Action::ToggleOutliner {
             self.toggle_outliner(event_loop);
@@ -4027,6 +4116,7 @@ impl App {
         );
         self.activity_flashes.remove(&active.id);
         let mut commands = Vec::new();
+        let mut tmuxx_menu_command = None;
         let mut palette_event = None;
         let mut search_commands = Vec::new();
         let mut layout_command = None;
@@ -4065,7 +4155,7 @@ impl App {
                 tab_accent.foreground[2],
             );
             root_ui.visuals_mut().hyperlink_color = accent;
-            if state.tabs.len() > 1 {
+            {
                 egui::Panel::top("tabs")
                     .exact_size(38.0)
                     .frame(
@@ -4076,6 +4166,48 @@ impl App {
                     .show(root_ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.add_space(72.0);
+                            ui.menu_button("tmuxx", |ui| {
+                                for (label, action) in [
+                                    ("New temporary window", Action::NewTemporaryTmuxxWindow),
+                                    ("New persistent window", Action::NewPersistentTmuxxWindow),
+                                    ("Connect…", Action::ConnectTmuxx),
+                                ] {
+                                    if ui.button(label).clicked() { commands.push(action); ui.close(); }
+                                }
+                                if self.tmuxx_window(host.id).is_some() && ui.button("New floating panel").clicked() {
+                                    commands.push(Action::NewFloatingPane); ui.close();
+                                }
+                                for entry in &self.tmuxx {
+                                    ui.separator();
+                                    ui.menu_button(entry.label(), |ui| {
+                                        if let Some(status) = &entry.status { ui.label(status); }
+                                        if let tmuxx_host::Source::Embedded(endpoint) = &entry.source {
+                                            ui.label(format!("Native endpoint: {}", endpoint.display()));
+                                        }
+                                        if let Some(graph) = entry.connection.as_ref().and_then(|c| c.graph()) {
+                                            for session in &graph.sessions {
+                                                ui.menu_button(&session.name, |ui| {
+                                                    if ui.button(if entry.selected.contains(&session.id) { "Focus window" } else { "Open window" }).clicked() {
+                                                        tmuxx_menu_command = Some(tmuxx_host::MenuCommand::Open(entry.target(), session.id)); ui.close();
+                                                    }
+                                                    for (_, window) in &session.windows {
+                                                        if let Some(window) = graph.windows.iter().find(|w| w.id == *window) { ui.label(format!("Tab: {}", window.name)); }
+                                                    }
+                                                    if ui.button("Terminate session…").clicked() {
+                                                        host.confirm = Some(Confirmation::TmuxxTerminate(tmuxx_host::MenuCommand::Kill(entry.target(), session.id))); ui.close();
+                                                    }
+                                                });
+                                            }
+                                        }
+                                        if !entry.temporary() && ui.button("Disconnect").clicked() {
+                                            tmuxx_menu_command = Some(tmuxx_host::MenuCommand::Disconnect(entry.target())); ui.close();
+                                        }
+                                        if ui.button("Stop server…").clicked() {
+                                            host.confirm = Some(Confirmation::TmuxxTerminate(tmuxx_host::MenuCommand::Shutdown(entry.target()))); ui.close();
+                                        }
+                                    });
+                                }
+                            });
                             let available = ui.available_width();
                             let crumb_width = (available * 0.4)
                                 .min(420.0)
@@ -4258,8 +4390,9 @@ impl App {
                     host.prepared.retain(|id, _| host.rects.contains_key(id));
                     let mut composed = None;
                     let mut accessible = Vec::new();
-                    if let Some(connection) = &self.tmuxx
-                        && let Some(session) = self.tmuxx_mapping.sessions.get(&host.id)
+                    if let Some(entry) = self.tmuxx_window(host.id)
+                        && let Some(connection) = &entry.connection
+                        && let Some(session) = entry.mapping.sessions.get(&host.id)
                     {
                         let metrics = host.fonts.metrics();
                         let (cols, rows) = self.tab(host.id).map(|tab| rustty_app::tmuxx_workspace::grid_size(
@@ -4823,10 +4956,36 @@ impl App {
                     host.focus_text_input = host.search_focus.is_some();
                 }
             }
+            if let Some(mut target) = host.tmuxx_connect.clone() {
+                let mut connect = false;
+                let mut cancel = false;
+                egui::Window::new("Connect to tmuxx")
+                    .collapsible(false).resizable(false)
+                    .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                    .show(ctx, |ui| {
+                        ui.label("unix:/path/socket.native · ssh:HOST · system-ssh:HOST");
+                        ui.text_edit_singleline(&mut target);
+                        ui.label("SSH uses your SSH configuration; it never reconnects automatically.");
+                        ui.horizontal(|ui| {
+                            cancel = ui.button("Cancel").clicked();
+                            connect = ui.button("Connect").clicked();
+                        });
+                    });
+                host.tmuxx_connect = if cancel { None } else { Some(target.clone()) };
+                if connect {
+                    match self.connect_tmuxx(&target) {
+                        Ok(()) => host.tmuxx_connect = None,
+                        Err(error) => self.errors.push(error.to_string()),
+                    }
+                }
+            }
+            let mut detached = false;
             let mut confirmed = None;
             if let Some(confirmation) = &host.confirm {
                 let (title, button) = match confirmation {
                     Confirmation::Close(_) => ("Close running commands?", "Close"),
+                    Confirmation::TmuxxClose { .. } => ("Close tmuxx window?", "Terminate session"),
+                    Confirmation::TmuxxTerminate(_) => ("Terminate tmuxx programs?", "Terminate"),
                     Confirmation::Paste(_) => ("Paste potentially unsafe text?", "Paste"),
                     Confirmation::OpenUrl { .. } => {
                         ("Open link from terminal output?", "Open Link")
@@ -4838,6 +4997,16 @@ impl App {
                     .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                     .show(ctx, |ui| {
                         match confirmation {
+                            Confirmation::TmuxxClose { .. } => {
+                                if self.tmuxx_window(host.id).is_some_and(|entry| entry.temporary()) {
+                                    ui.label("This temporary session ends when its window closes.");
+                                } else {
+                                    ui.label("Close the window to keep programs running, or terminate the session.");
+                                }
+                            }
+                            Confirmation::TmuxxTerminate(_) => {
+                                ui.label("This stops the selected server programs, including work in other clients.");
+                            }
                             Confirmation::Close(_) => {
                                 ui.label("Closing this terminal will stop its running commands.");
                             }
@@ -4887,17 +5056,29 @@ impl App {
                             {
                                 confirmed = Some(false);
                             }
+                            if matches!(confirmation, Confirmation::TmuxxClose { .. })
+                                && self.tmuxx_window(host.id).is_some_and(|entry| !entry.temporary())
+                                && ui.button("Close window · keep session").clicked()
+                            { detached = true; }
                             if ui.button(button).clicked() {
                                 confirmed = Some(true);
                             }
                         });
                     });
             }
+            if detached {
+                host.confirm = None;
+                self.close_tmuxx_window(host.id);
+            }
             if let Some(approved) = confirmed
                 && let Some(confirmation) = host.confirm.take()
                 && approved
             {
                 match confirmation {
+                    Confirmation::TmuxxClose { target, session } => self.tmuxx_menu_command(
+                        tmuxx_host::MenuCommand::Kill(target, session)
+                    ),
+                    Confirmation::TmuxxTerminate(command) => self.tmuxx_menu_command(command),
                     Confirmation::Close(action) => {
                         self.action(event_loop, host, action, true);
                     }
@@ -5000,6 +5181,9 @@ impl App {
         {
             self.cancel_theme_preview(Some(host));
         }
+        if let Some(command) = tmuxx_menu_command {
+            self.tmuxx_menu_command(command);
+        }
         for action in commands {
             self.action(event_loop, host, action, false);
         }
@@ -5048,7 +5232,7 @@ impl App {
         if let Some(directory) = &self.tmuxx_smoke
             && self.started.elapsed() > Duration::from_secs(1)
             && !directory.join("result.json").exists()
-            && host.prepared.len() >= 2
+            && !host.prepared.is_empty()
         {
             let state = self.painter.render_state().ok_or("GPU unavailable")?;
             smoke::capture(
@@ -5059,7 +5243,7 @@ impl App {
                 output.pixels_per_point,
                 &directory.join("window.png"),
             )?;
-            let result = serde_json::json!({ "panes": host.prepared.len(), "windows": self.workspace.windows.len(), "instance": self.tmuxx_instance, "errors": self.errors, "hidden": !host.window.is_visible().unwrap_or(false), "focused": host.window.has_focus(), "floating_panes": host.overlay_panes.len(), "draw_order": host.pane_order });
+            let result = serde_json::json!({ "panes": host.prepared.len(), "windows": self.workspace.windows.len(), "instance": self.tmuxx.first().map(|entry| &entry.instance), "errors": self.errors, "hidden": !host.window.is_visible().unwrap_or(false), "focused": host.window.has_focus(), "floating_panes": host.overlay_panes.len(), "draw_order": host.pane_order });
             std::fs::write(
                 directory.join("result.json"),
                 serde_json::to_vec_pretty(&result)?,
@@ -5561,8 +5745,10 @@ impl App {
                     Axis::Horizontal => (host.mouse.x - bounds.x) / bounds.width,
                     Axis::Vertical => (host.mouse.y - bounds.y) / bounds.height,
                 };
-                if let Some(connection) = &self.tmuxx {
-                    if let Some((pane, axis, total)) = self.tmuxx_mapping.dividers.get(&id) {
+                if let Some(entry) = self.tmuxx_window(host.id) {
+                    if let Some(connection) = &entry.connection
+                        && let Some((pane, axis, total)) = entry.mapping.dividers.get(&id)
+                    {
                         let amount =
                             (ratio.clamp(0.01, 0.99) * *total as f32).round().max(1.0) as u32;
                         if let Err(error) = connection.command([
@@ -5600,8 +5786,9 @@ impl App {
                 action,
                 button,
             )
-            && let Some(pane) = self.tmuxx_mapping.panes.get(&modal.pane)
-            && let Some(connection) = &self.tmuxx
+            && let Some(entry) = self.tmuxx_window(host.id)
+            && let Some(pane) = entry.mapping.panes.get(&modal.pane)
+            && let Some(connection) = &entry.connection
         {
             if let Err(error) =
                 connection.command(["kill-pane".into(), "-t".into(), format!("%{pane}")])
@@ -5826,11 +6013,21 @@ impl ApplicationHandler<Event> for App {
                 Err(error) => self.errors.push(error),
             }
         }
-        if self.tmuxx.is_none() && self.workspace.windows.iter().all(|w| w.quick) {
+        self.retry_tmuxx(Instant::now());
+        if self.workspace.windows.iter().all(|w| w.quick)
+            && (!self.tmuxx.iter().any(|entry| entry.waiting_for_window())
+                || self
+                    .tmuxx
+                    .iter()
+                    .all(|entry| entry.connection.is_none() && !entry.creating_window()))
+        {
             self.add_window(false);
         }
         self.reconcile(event_loop);
-        if self.windows.is_empty() && !self.errors.is_empty() {
+        if self.windows.is_empty()
+            && !self.errors.is_empty()
+            && !self.tmuxx.iter().any(|entry| entry.waiting_for_window())
+        {
             // Initialization failed before there was a client area in which to
             // show diagnostics. Let main report it instead of running invisibly.
             self.startup_error = Some(self.errors.join("\n"));
@@ -5839,46 +6036,7 @@ impl ApplicationHandler<Event> for App {
     }
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
         match event {
-            Event::Tmuxx => {
-                let mut lifecycle = Vec::new();
-                if let Some(connection) = &self.tmuxx {
-                    self.errors.extend(connection.errors());
-                    let instance = connection.instance();
-                    if self.tmuxx_instance != instance {
-                        self.tmuxx_instance = instance;
-                        self.tmuxx_mapping = Default::default();
-                        self.workspace.windows.clear();
-                    }
-                    if let Some(graph) = connection.graph() {
-                        if let Err(error) = self.tmuxx_mapping.apply(&mut self.workspace, &graph) {
-                            self.errors.push(error);
-                        }
-                        lifecycle = graph.panes.iter().map(|p| (p.id, p.status)).collect();
-                    }
-                }
-                self.reconcile(event_loop);
-                for (view, remote) in &self.tmuxx_mapping.panes {
-                    if let Some(pane) = self.panes.get_mut(view)
-                        && let Some((_, status)) = lifecycle.iter().find(|(id, _)| id == remote)
-                    {
-                        if let Some(status) = status {
-                            pane.exited = true;
-                            pane.running = None;
-                            pane.agent.clear();
-                            pane.deck_progress.clear();
-                            pane.exit_message =
-                                Some(format!("Exited {status} — press any key to close"));
-                        } else if pane.exited {
-                            pane.exited = false;
-                            pane.exit_message = None;
-                            pane.started = Instant::now();
-                        }
-                    }
-                }
-                for host in self.windows.values() {
-                    host.repaint();
-                }
-            }
+            Event::Tmuxx => self.refresh_tmuxx(event_loop),
             Event::DeckWake => {}
             Event::Output(id) => {
                 if let Some(smoke) = &mut self.smoke {
@@ -6449,6 +6607,11 @@ impl ApplicationHandler<Event> for App {
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let now = Instant::now();
+        self.retry_tmuxx(now);
+        if self.workspace.windows.is_empty() && !self.errors.is_empty() && !self.tmuxx.is_empty() {
+            self.add_window(false);
+            self.reconcile(event_loop);
+        }
         for pane in self.panes.values_mut() {
             pane.deck_progress.expire(now);
         }
@@ -6541,6 +6704,7 @@ impl ApplicationHandler<Event> for App {
             .save_at
             .into_iter()
             .chain(self.close_at)
+            .chain(self.tmuxx.iter().filter_map(|entry| entry.deadline()))
             .chain(self.deck.deadline())
             .chain(self.panes.values().flat_map(|pane| {
                 pane.activity
