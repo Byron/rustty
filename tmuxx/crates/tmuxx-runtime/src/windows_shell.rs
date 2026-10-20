@@ -5,13 +5,13 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
-pub(super) struct ResolvedShell {
+pub struct ResolvedShell {
     pub argv: Vec<String>,
     pub source: String,
 }
 
 #[cfg(windows)]
-pub(super) fn resolve() -> io::Result<ResolvedShell> {
+pub fn resolve() -> io::Result<ResolvedShell> {
     let local = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .ok_or_else(|| invalid("LOCALAPPDATA is unavailable"))?;
@@ -28,7 +28,55 @@ pub(super) fn resolve() -> io::Result<ResolvedShell> {
     }
     // User fragments override machine fragments with the same identity.
     fragments.push(local.join("Microsoft/Windows Terminal/Fragments"));
-    resolve_paths(&settings, &fragments)
+    let mut shell = resolve_paths(&settings, &fragments)?;
+    let program = find_program(&shell.argv[0]).ok_or_else(|| {
+        invalid(format!(
+            "Windows Terminal shell executable was not found: {}",
+            shell.argv[0]
+        ))
+    })?;
+    let program = std::path::absolute(program)?
+        .into_os_string()
+        .into_string()
+        .map_err(|_| invalid("Windows Terminal shell executable path must be Unicode"))?;
+    if !super::scheduler::suitable_shell(program.as_bytes()) {
+        return Err(invalid(format!(
+            "Windows Terminal shell executable is unsuitable: {program}"
+        )));
+    }
+    shell.argv[0] = program;
+    Ok(shell)
+}
+
+#[cfg(windows)]
+pub fn find_program(program: &str) -> Option<PathBuf> {
+    find_program_in(
+        program,
+        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
+    )
+}
+
+fn find_program_in(
+    program: &str,
+    directories: impl IntoIterator<Item = PathBuf>,
+) -> Option<PathBuf> {
+    let path = Path::new(program);
+    if path.is_absolute() || path.components().count() > 1 {
+        return std::path::absolute(path).ok().filter(|path| path.is_file());
+    }
+    for directory in directories.into_iter().filter(|path| path.is_absolute()) {
+        let path = directory.join(program);
+        if path.is_file() {
+            return Some(path);
+        }
+        if path.extension().is_none() {
+            let path = path.with_extension("exe");
+            if path.is_file() {
+                return Some(path);
+            }
+        }
+    }
+    None
 }
 
 fn invalid(message: impl Into<String>) -> io::Error {
@@ -400,6 +448,27 @@ mod tests {
     }
 
     #[test]
+    fn executable_resolution_uses_absolute_paths_and_skips_relative_search_directories() {
+        let fixture = Fixture::new();
+        let executable = fixture.write("bin/profile-shell.exe", "");
+        assert_eq!(
+            find_program_in(executable.to_str().unwrap(), []),
+            Some(executable.clone())
+        );
+        assert_eq!(
+            find_program_in("profile-shell", [fixture.0.join("bin")]),
+            Some(executable)
+        );
+        let current = std::env::current_dir().unwrap();
+        let directory = current.file_name().unwrap().to_str().unwrap();
+        assert!(find_program_in("Cargo.toml", [PathBuf::from("."), PathBuf::new()]).is_none());
+        assert_eq!(
+            find_program_in(&format!("../{directory}/Cargo.toml"), []),
+            std::path::absolute(format!("../{directory}/Cargo.toml")).ok()
+        );
+    }
+
+    #[test]
     fn windows_commandline_quotes_and_environment() {
         assert_eq!(
             split_command_line(r#""C:\Program Files\shell.exe" "" "a b" "C:\tail\\" "a\"b""#)
@@ -413,6 +482,7 @@ mod tests {
             ]
         );
         assert!(split_command_line("\"unclosed").is_err());
+        assert!(split_command_line("shell.exe\0 --login").is_err());
         assert_eq!(
             expand_environment(r#""%ROOT%\bin\bash.exe" -l"#, |key| (key == "ROOT")
                 .then(|| "C:/Git".into()))

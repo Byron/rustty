@@ -22,6 +22,13 @@ Rustty's macOS and Windows bundles include `tmuxx` or `tmuxx.exe` beside the GUI
 executable. Use the console `tmuxx.exe` for Windows commands and SSH access; it
 shares the bundle's ConPTY resources with Rustty.
 
+Windows servers inherit the account's Windows Terminal default shell and its
+arguments at startup, including Git Bash's login flags. Explicit `default-shell`
+or command options override that preference for new panes. Load server settings
+with `-f PATH`, or set `tmuxx-config-file` in Rustty's settings for GUI-launched
+servers; SSH clients use the remote server's settings. See the
+[Rustty configuration guide](../crates/rustty-app/README.md#tmuxx-windows) for examples.
+
 An unmodified supported tmux client can send commands and use control mode with
 tmuxx. Ordinary interactive tmux TTY attachment is unsupported: Rustty supplies
 the pane UI. Conversely, Rustty can attach to stock tmux with

@@ -7,9 +7,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-#[cfg(any(windows, test))]
-#[path = "windows_shell.rs"]
-mod windows_shell;
+#[cfg(windows)]
+use tmuxx_runtime::windows_shell::{self, find_program};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ShellKind {
@@ -231,16 +230,7 @@ impl ShellInfo {
 pub fn default_shell() -> ShellInfo {
     #[cfg(windows)]
     {
-        let resolved = windows_shell::resolve().and_then(|resolved| {
-            if find_program(&resolved.argv[0]).is_none() {
-                return Err(error(format!(
-                    "Windows Terminal shell executable was not found: {}",
-                    resolved.argv[0]
-                )));
-            }
-            Ok(resolved)
-        });
-        match resolved {
+        match windows_shell::resolve() {
             Ok(resolved) => ShellInfo::new(resolved.argv, resolved.source),
             Err(error) => {
                 let program = std::env::var("ComSpec")
@@ -272,6 +262,7 @@ pub fn resolve_shell(command: Option<&Command>) -> ShellInfo {
     }
 }
 
+#[cfg(not(windows))]
 fn find_program(program: &str) -> Option<PathBuf> {
     let path = Path::new(program);
     if path.is_file() {
@@ -284,13 +275,6 @@ fn find_program(program: &str) -> Option<PathBuf> {
         let path = directory.join(program);
         if path.is_file() {
             return Some(path);
-        }
-        #[cfg(windows)]
-        if path.extension().is_none() {
-            let path = path.with_extension("exe");
-            if path.is_file() {
-                return Some(path);
-            }
         }
     }
     None
