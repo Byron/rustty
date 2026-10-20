@@ -1,0 +1,71 @@
+name: Rustty
+
+on:
+  push: {}
+  pull_request: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUSTUP_TOOLCHAIN: 1.95.0
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Rustty (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025]
+    steps:
+      - name: Preserve source line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: rustup toolchain install 1.95.0 --profile minimal --component clippy --component rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy with default features
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      - name: Clippy with all features
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+      - name: Use short Unix socket paths
+        if: runner.os == 'macOS'
+        run: echo "TMPDIR=/tmp" >> "$GITHUB_ENV"
+
+      - name: Prepare Windows runtime and fixtures
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $python = python -c "import os, sys; assert os.name == 'nt' and os.path.isabs(sys.executable); print(sys.executable)"
+          if ($LASTEXITCODE -ne 0) { throw 'Native Python is required for Windows fixtures.' }
+          ./crates/rustty-app/build.ps1
+          $resources = (Resolve-Path target/debug/Rustty/resources).Path
+          $executable = (Resolve-Path target/debug/Rustty/rustty.exe).Path
+          "TMUXX_CONPTY_RESOURCES=$resources" >> $env:GITHUB_ENV
+          "TMUXX_REMOTE_PYTHON=$python" >> $env:GITHUB_ENV
+          "RUSTTY_TEST_EXE=$executable" >> $env:GITHUB_ENV
+
+      - name: Test workspace
+        run: cargo test --locked --workspace --no-fail-fast
+
+      - name: Test packaged Windows sidecar and retained sessions
+        if: runner.os == 'Windows'
+        run: cargo test --locked -p rustty-app --test tmux_cli_windows -- --ignored --test-threads=1

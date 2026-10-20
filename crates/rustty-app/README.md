@@ -6,6 +6,37 @@ a portable frame renderer and a native desktop application. All crates are
 DirectComposition on Windows. Windows also supports CPU rendering with GDI
 presentation. CoreText and DirectWrite supply the respective native font backends.
 
+## Continuous integration
+
+[Rustty CI](../../.github/workflows/rustty.yml) runs on pushes, pull requests, and
+manual dispatch, using hosted macOS 15 ARM64 and Windows Server 2025 x64 runners.
+It pins Rust 1.95.0 and checks formatting, Clippy, and the ordinary workspace tests.
+The two Clippy passes cover both optimized kernels and the optional scalar kernels:
+
+```sh
+cargo +1.95.0 fmt --all --check
+cargo +1.95.0 clippy --locked --workspace --all-targets -- -D warnings
+cargo +1.95.0 clippy --locked --workspace --all-targets --all-features -- -D warnings
+cargo +1.95.0 test --locked --workspace --no-fail-fast
+```
+
+macOS tests use `TMPDIR=/tmp` to keep Unix socket paths short. Windows CI builds
+the debug bundle for its pinned ConPTY runtime, selects the runner's native Python,
+and runs the packaged sidecar/retained-session tests described below. To reproduce
+Windows tests locally, follow the [Windows bundle prerequisites](#windows-11-x64),
+put native Python on `PATH`, and prepare these variables before running the tests:
+
+```powershell
+$env:RUSTUP_TOOLCHAIN = '1.95.0'
+./crates/rustty-app/build.ps1
+$env:TMUXX_CONPTY_RESOURCES = (Resolve-Path target/debug/Rustty/resources).Path
+$env:TMUXX_REMOTE_PYTHON = python -c "import sys; print(sys.executable)"
+$env:RUSTTY_TEST_EXE = (Resolve-Path target/debug/Rustty/rustty.exe).Path
+```
+
+Ordinary tests need no C tmux checkout. Other ignored desktop and C/SSH reference
+tests remain opt-in; the workflow uses no secrets.
+
 ## Stream Deck agent dashboard
 
 Opt in with `stream-deck = true` to show reporting panes on a 5×3 Stream Deck.
