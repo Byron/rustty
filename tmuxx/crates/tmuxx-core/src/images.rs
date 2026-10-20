@@ -43,6 +43,7 @@ impl Clone for Engine {
             started: self.started,
             identity: self.identity.clone(),
             default_child_path: self.default_child_path.clone(),
+            default_shell_argv: self.default_shell_argv.clone(),
             sessions: self.sessions.clone(),
             windows: self.windows.clone(),
             panes,

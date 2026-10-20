@@ -46,6 +46,8 @@ mod windows_conpty;
 mod windows_host;
 #[cfg(windows)]
 mod windows_job;
+#[cfg(any(windows, test))]
+pub mod windows_shell;
 #[cfg(windows)]
 pub use windows_conpty::{ConptyIdentity, initialize_conpty};
 #[cfg(windows)]

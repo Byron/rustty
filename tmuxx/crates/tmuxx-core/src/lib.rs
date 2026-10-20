@@ -338,6 +338,8 @@ pub struct Engine {
     /// Owner-supplied search path used only when PATH is absent at every level.
     /// Explicit hidden/removed values and pane/client overrides still win.
     pub default_child_path: String,
+    /// Owner-supplied shell argv; explicit default-shell settings override it.
+    pub default_shell_argv: Vec<Vec<u8>>,
     pub sessions: BTreeMap<Id, Session>,
     pub windows: BTreeMap<Id, Window>,
     pub panes: BTreeMap<Id, Pane>,
@@ -375,6 +377,7 @@ impl Default for Engine {
             started: now,
             identity: BTreeMap::new(),
             default_child_path: "/usr/bin:/bin".into(),
+            default_shell_argv: Vec::new(),
             sessions: BTreeMap::new(),
             windows: BTreeMap::new(),
             panes: BTreeMap::new(),
@@ -612,7 +615,16 @@ impl Engine {
                         .filter(|value| !value.is_empty())
                 })
                 .map(|value| vec![value.as_bytes().to_vec()])
-                .unwrap_or(argv)
+                .unwrap_or_else(|| {
+                    if self.default_shell_argv.len() > 1
+                        && self.default_shell_argv[0] == shell.as_bytes()
+                        && !self.sessions[&sid].options.contains_key("default-shell")
+                    {
+                        self.default_shell_argv.clone()
+                    } else {
+                        argv
+                    }
+                })
         } else {
             argv
         };

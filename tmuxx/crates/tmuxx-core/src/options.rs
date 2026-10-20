@@ -584,6 +584,9 @@ impl Engine {
             if name == "history-limit" {
                 self.update_history_limits();
             }
+            if name == "default-shell" && matches!(target, Target::Global(_)) {
+                self.default_shell_argv.clear();
+            }
             return Ok(self.option_changed(target, name == "pane-border-status"));
         }
         let inherited = self.effective_map(target);
@@ -673,6 +676,9 @@ impl Engine {
             return Err(error);
         }
         let layout = name == "pane-border-status";
+        if name == "default-shell" && matches!(target, Target::Global(_)) {
+            self.default_shell_argv.clear();
+        }
         let map = self.option_map_mut(target);
         if let Kind::Array(separator) = kind {
             map.entry(name.clone()).or_default();
@@ -1066,6 +1072,126 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn inherited_shell_argv_reaches_new_panes_and_survives_respawn() {
+        let argv = [
+            "C:/Program Files/Git/bin/bash.exe",
+            "--login",
+            "-i",
+            "a 'quote'",
+        ]
+        .map(|arg| arg.as_bytes().to_vec())
+        .to_vec();
+        let mut e = Engine {
+            default_shell_argv: argv.clone(),
+            ..Engine::default()
+        };
+        e.options.insert("default-shell".into(), text(&argv[0]));
+        let mut c = ClientContext::default();
+        for command in [
+            vec!["new", "-d", "-s", "first"],
+            vec!["neww"],
+            vec!["splitw", "-h"],
+            vec!["new", "-d", "-s", "second"],
+        ] {
+            let out = run(&mut e, &mut c, &command);
+            assert!(out.effects.iter().any(|effect| {
+                matches!(effect, Effect::Spawn { argv: actual, .. } if actual == &argv)
+            }));
+        }
+        e = e.clone();
+        assert_eq!(e.default_shell_argv, argv);
+        run(
+            &mut e,
+            &mut c,
+            &[
+                "set",
+                "-g",
+                "default-shell",
+                "C:/Program Files/Git/bin/bash.exe",
+            ],
+        );
+        assert!(e.default_shell_argv.is_empty());
+        let out = run(&mut e, &mut c, &["respawnp", "-k", "-t", "%0"]);
+        assert!(out.effects.iter().any(|effect| {
+            matches!(effect, Effect::Spawn { argv: actual, .. } if actual == &argv)
+        }));
+    }
+
+    #[test]
+    fn inherited_shell_argv_yields_to_explicit_options_and_commands() {
+        let inherited = ["/bin/sh", "-l"]
+            .map(|arg| arg.as_bytes().to_vec())
+            .to_vec();
+        for (settings, command, expected) in [
+            (
+                vec![vec!["set", "-goq", "default-shell", "/bin/sh"]],
+                vec!["neww"],
+                inherited.clone(),
+            ),
+            (
+                vec![vec!["set", "default-shell", "/bin/sh"]],
+                vec!["neww"],
+                vec![],
+            ),
+            (
+                vec![
+                    vec!["set", "default-shell", "/bin/sh"],
+                    vec!["set", "-u", "default-shell"],
+                ],
+                vec!["neww"],
+                inherited.clone(),
+            ),
+            (
+                vec![vec!["set", "-g", "default-sh", "/bin/sh"]],
+                vec!["neww"],
+                vec![],
+            ),
+            (
+                vec![vec!["set", "-gu", "default-shell"]],
+                vec!["neww"],
+                vec![],
+            ),
+            (
+                vec![vec!["set", "-g", "default-command", "echo configured"]],
+                vec!["neww"],
+                vec![b"echo configured".to_vec()],
+            ),
+            (
+                vec![vec!["set", "-gw", "window-default-command", "echo window"]],
+                vec!["neww"],
+                vec![b"echo window".to_vec()],
+            ),
+            (
+                vec![],
+                vec!["neww", "echo explicit"],
+                vec![b"echo explicit".to_vec()],
+            ),
+            (
+                vec![],
+                vec!["neww", "/bin/custom", "literal a 'b'"],
+                vec![b"/bin/custom".to_vec(), b"literal a 'b'".to_vec()],
+            ),
+        ] {
+            let mut e = Engine {
+                default_shell_argv: inherited.clone(),
+                ..Engine::default()
+            };
+            let mut c = ClientContext::default();
+            run(&mut e, &mut c, &["new", "-d"]);
+            for setting in &settings {
+                run(&mut e, &mut c, setting);
+            }
+            let out = run(&mut e, &mut c, &command);
+            assert!(
+                out.effects.iter().any(|effect| {
+                    matches!(effect, Effect::Spawn { argv, .. } if argv == &expected)
+                }),
+                "settings: {settings:?}, command: {command:?}"
+            );
+        }
+    }
+
     #[test]
     fn window_default_command_overrides_session_and_is_fixed_for_respawn() {
         let mut e = Engine::default();

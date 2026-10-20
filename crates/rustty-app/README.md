@@ -467,6 +467,27 @@ reloading Rustty settings affects only future servers. Use `source-file` on a
 running server to reload its tmuxx configuration. Headless servers can load the
 same file with `rustty tmux -f /path/to/tmuxx.conf ...` or `tmuxx.exe -D -f PATH`.
 
+On Windows, new tmuxx servers inherit the server account's Windows Terminal
+default shell and its arguments, just like ordinary Rustty terminals. This
+includes Git Bash's login flags and applies to later sessions, tabs, and panes,
+including panes created by clients connected over SSH. The preference is read
+when the server starts. If it cannot be resolved, tmuxx uses its existing
+`SHELL`, `COMSPEC`, or system `cmd.exe` fallback.
+
+Explicit tmuxx `default-shell`, `default-command`, `window-default-command`, and
+pane commands take precedence over inherited shell arguments. To choose a shell
+independently of Windows Terminal, put this in the **server machine's** tmuxx
+configuration file:
+
+```tmux
+set -g default-shell 'C:/Program Files/Git/bin/bash.exe'
+set -g default-command 'exec "$SHELL" --login -i'
+```
+
+Setting `default-shell` alone replaces the inherited profile and its arguments;
+the second line explicitly requests Git Bash's login mode. The SSH login shell
+still launches the tmuxx bridge, while the tmuxx server chooses each pane's shell.
+
 To use a remote native daemon, install the Rustty executable on that host and
 create the session once:
 
