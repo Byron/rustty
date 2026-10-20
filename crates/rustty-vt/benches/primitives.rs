@@ -97,7 +97,7 @@ fn stream_checksum(screen: &Screen) -> u64 {
 
 fn check_stream(terminal: &Terminal, name: &str, styled: bool) -> u64 {
     let screen = terminal.screen();
-    assert!(!screen.history().next().is_none());
+    assert!(screen.history().next().is_some());
     assert!(screen.history_len() <= HISTORY_LINES);
     assert_eq!(screen.cursor.row, usize::from(ROWS) - 1);
     assert_eq!(screen.cursor.col, 0);

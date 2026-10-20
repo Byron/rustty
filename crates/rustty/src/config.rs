@@ -1218,9 +1218,9 @@ impl ConfigLoader {
                     continue;
                 }
                 let path = fs::canonicalize(path)?;
-                if !path
+                if path
                     .to_str()
-                    .is_some_and(|path| !path.chars().any(char::is_control))
+                    .is_none_or(|path| path.chars().any(char::is_control))
                 {
                     continue;
                 }

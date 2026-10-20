@@ -167,7 +167,7 @@ fn complete_display_erasure_scrolls_a_bottom_prompt_into_history() {
     terminal.feed(b"\x1b]133;P\x07one\r\ntwo\r\nthree\x1b[2;2H\x1b[2J");
     assert_eq!(terminal.screen().cursor.row, 0);
     assert_eq!(terminal.screen().cursor.col, 0);
-    assert!(!terminal.screen().history().next().is_none());
+    assert!(terminal.screen().history().next().is_some());
     assert!(terminal.screen().rows().all(|row| {
         row.semantic == SemanticContent::Output
             && row.cells.iter().all(|cell| cell.codepoint().is_none())

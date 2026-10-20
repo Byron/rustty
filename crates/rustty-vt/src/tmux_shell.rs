@@ -233,7 +233,7 @@ impl Screen {
                     .filter(|&x| y < cursor.0 || x <= cursor.1)
                     .map(|x| (y, x))
             })
-            .last();
+            .next_back();
         let mut start = None;
         let mut end = None;
         let mut stopped = false;

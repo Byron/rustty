@@ -459,7 +459,9 @@ mod tests {
         let mut terminal = Terminal::new(20, 4, 100);
         terminal.tmux_graphics = true;
         terminal.set_tmux_strings(true);
-        terminal.feed(b"\x1bP9;1q\"1;1;8;1#0;2;100;0;0!8@\x1b\\\x1b[H\x1bP9;1q\"1;1;4;1#0;2;0;0;100!4@\x1b\\");
+        terminal.feed(
+            b"\x1bP9;1q\"1;1;8;1#0;2;100;0;0!8@\x1b\\\x1b[H\x1bP9;1q\"1;1;4;1#0;2;0;0;100!4@\x1b\\",
+        );
         let (mut renderer, options) = renderer();
         let mut images = terminal.graphics().images.values().collect::<Vec<_>>();
         images.sort_by_key(|image| image.tmux_order);
@@ -468,7 +470,11 @@ mod tests {
         let before = renderer.image_tile(images[0], 0, 0).unwrap().uv;
         let after = renderer.image_tile(images[1], 0, 0).unwrap().uv;
         let frame = renderer.prepare(terminal.screen(), &options).unwrap();
-        let sprites = frame.quads.iter().filter(|q| q.paint == Paint::Color).collect::<Vec<_>>();
+        let sprites = frame
+            .quads
+            .iter()
+            .filter(|q| q.paint == Paint::Color)
+            .collect::<Vec<_>>();
         assert_eq!(sprites.len(), 2);
         assert_eq!(sprites[0].uv, before);
         assert_eq!(sprites[1].uv, after);

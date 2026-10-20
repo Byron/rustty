@@ -748,10 +748,10 @@ mod platform_defaults_tests {
                 "duplicate shortcut: {text}"
             );
             assert!(
-                !(trigger.modifiers.control
-                    && !trigger.modifiers.shift
-                    && !trigger.modifiers.alt
-                    && matches!(trigger.key.as_str(), "c" | "v" | "w" | "z")),
+                !trigger.modifiers.control
+                    || trigger.modifiers.shift
+                    || trigger.modifiers.alt
+                    || !matches!(trigger.key.as_str(), "c" | "v" | "w" | "z"),
                 "{text} intercepts a shell control key"
             );
         }

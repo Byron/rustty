@@ -743,8 +743,8 @@ impl Screen {
             && self.pages.total_rows() > rows
             && self.all_rows().next_back().is_some_and(|r| {
                 r.id != cursor.row
-                    && !saved.is_some_and(|p| p.row == r.id)
-                    && !self.viewport_pin.is_some_and(|p| p.row == r.id)
+                    && saved.is_none_or(|p| p.row != r.id)
+                    && self.viewport_pin.is_none_or(|p| p.row != r.id)
                     && !self
                         .tracked
                         .0

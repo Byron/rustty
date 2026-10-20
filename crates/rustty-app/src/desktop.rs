@@ -6484,14 +6484,12 @@ impl ApplicationHandler<Event> for App {
                 event,
                 is_synthetic: false,
                 ..
-            } => {
-                if self.keyboard(event_loop, &mut host, &event) {
-                    // Retain UI events queued by actions, but discard this key's native translation.
-                    host.egui
-                        .egui_input_mut()
-                        .events
-                        .drain(egui_event_start..egui_event_end);
-                }
+            } if self.keyboard(event_loop, &mut host, &event) => {
+                // Retain UI events queued by actions, but discard this key's native translation.
+                host.egui
+                    .egui_input_mut()
+                    .events
+                    .drain(egui_event_start..egui_event_end);
             }
             WindowEvent::Ime(ime) if !host.ui_input() => {
                 host.egui

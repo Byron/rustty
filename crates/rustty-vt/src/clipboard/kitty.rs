@@ -368,9 +368,9 @@ impl Transaction {
     }
 
     fn data(&mut self, mime: &[u8], payload: &[u8]) -> Result<(), &'static str> {
-        if !self
+        if self
             .current
-            .is_some_and(|index| self.entries[index].0 == mime)
+            .is_none_or(|index| self.entries[index].0 != mime)
         {
             self.decoder.finish()?;
             self.current =

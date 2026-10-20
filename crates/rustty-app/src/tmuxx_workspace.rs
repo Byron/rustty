@@ -600,7 +600,7 @@ mod tests {
 
     #[test]
     fn tiled_views_fill_native_rectangles_without_server_cell_gutters() {
-        let cases: [(&str, &[(u64, u64, Axis)]); 4] = [
+        let cases: [(&str, &[_]); 4] = [
             (
                 r#"{"V":2,"L":{"t":"h","w":81,"h":24,"x":0,"y":0,"c":[{"t":"p","w":40,"h":24,"x":0,"y":0,"i":0,"I":"%7"},{"t":"p","w":40,"h":24,"x":41,"y":0,"i":1,"I":"%8"}]}}"#,
                 &[(7, 8, Axis::Horizontal)],

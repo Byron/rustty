@@ -221,13 +221,13 @@ impl Screen {
             let end_limit = end.0;
             // Native cellIterator bounds the final row, not the final column.
             // Keep that behavior when semantic boundaries fall within a row.
-            while !codepoint(grid.cell(start)).is_some_and(|c| !whitespace.contains(&c)) {
+            while codepoint(grid.cell(start)).is_none_or(|c| whitespace.contains(&c)) {
                 start = grid.next(start)?;
                 if start.0 > end_limit {
                     return None;
                 }
             }
-            while !codepoint(grid.cell(end)).is_some_and(|c| !whitespace.contains(&c)) {
+            while codepoint(grid.cell(end)).is_none_or(|c| whitespace.contains(&c)) {
                 end = grid.previous(end)?;
                 if end.0 < start_limit {
                     return None;
