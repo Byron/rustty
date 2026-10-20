@@ -925,6 +925,7 @@ fn serve_connection(
         cwd: hello.cwd,
         environment: hello.environment,
         host_effects: hello.host_effects,
+        compact_snapshots: hello.compact_snapshots,
         ..ClientContext::default()
     };
     #[cfg(windows)]
@@ -1464,7 +1465,9 @@ impl Host {
             self.snapshots_requested.insert(id);
             return;
         }
-        let state = self.engine.snapshot();
+        let state = self
+            .engine
+            .snapshot_with_compact_cells(self.clients[&id].context.compact_snapshots);
         if let Err(error) = tmuxx_protocol::native::snapshot_bytes(&state, self.snapshot_limit) {
             self.send(
                 id,

@@ -46,6 +46,7 @@ struct RowsRef<'a> {
     screen: &'a Screen,
     start: usize,
     len: usize,
+    compact: bool,
 }
 impl Serialize for RowsRef<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -60,7 +61,7 @@ impl Serialize for RowsRef<'_> {
                     wrap_continuation: row.wrap_continuation,
                     semantic: row.semantic,
                     dirty: row.dirty,
-                    cells: CellsRef(row),
+                    cells: CellsRef(row, self.compact),
                 }),
         )
     }
@@ -74,24 +75,52 @@ struct RowRef<'a> {
     dirty: bool,
     cells: CellsRef<'a>,
 }
-struct CellsRef<'a>(RowView<'a>);
+struct CellsRef<'a>(RowView<'a>, bool);
 impl Serialize for CellsRef<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if self.1 {
+            #[derive(Serialize)]
+            struct Runs<'a> {
+                runs: Vec<(usize, CellRef<'a>)>,
+            }
+            let cells = self.0.cells();
+            let mut runs = Vec::new();
+            let mut start = 0;
+            while start < cells.len() {
+                let mut end = start + 1;
+                // Graphemes and links live outside the packed cell, in its page.
+                while end < cells.len()
+                    && cells[start] == cells[end]
+                    && *self.0.text(start) == *self.0.text(end)
+                    && self.0.hyperlink(start) == self.0.hyperlink(end)
+                {
+                    end += 1;
+                }
+                runs.push((end - start, self.cell(start, &cells[start])));
+                start = end;
+            }
+            return Runs { runs }.serialize(serializer);
+        }
         serializer.collect_seq(
             self.0
                 .cells()
                 .iter()
                 .enumerate()
-                .map(|(col, cell)| CellRef {
-                    text: self.0.text(col),
-                    width: cell.width(),
-                    style: self.0.style(col),
-                    hyperlink: self.0.hyperlink(col),
-                    protected: cell.protected(),
-                    semantic: cell.semantic(),
-                    spacer_head: cell.spacer_head(),
-                }),
+                .map(|(col, cell)| self.cell(col, cell)),
         )
+    }
+}
+impl<'a> CellsRef<'a> {
+    fn cell(&self, col: usize, cell: &Cell) -> CellRef<'a> {
+        CellRef {
+            text: self.0.text(col),
+            width: cell.width(),
+            style: self.0.style(col),
+            hyperlink: self.0.hyperlink(col),
+            protected: cell.protected(),
+            semantic: cell.semantic(),
+            spacer_head: cell.spacer_head(),
+        }
     }
 }
 #[derive(Serialize)]
@@ -117,6 +146,16 @@ fn serialize_link<S: Serializer>(
 }
 impl Serialize for Screen {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.serializable(false).serialize(serializer)
+    }
+}
+impl Screen {
+    /// Lossless cell runs for peers that negotiate compact native snapshots.
+    pub fn compact(&self) -> impl Serialize + '_ {
+        self.serializable(true)
+    }
+
+    fn serializable(&self, compact: bool) -> ScreenRef<'_> {
         ScreenRef {
             screen: self,
             history_bytes: self.history_bytes(),
@@ -124,14 +163,15 @@ impl Serialize for Screen {
                 screen: self,
                 start: self.history_len(),
                 len: self.height,
+                compact,
             },
             history: RowsRef {
                 screen: self,
                 start: 0,
                 len: self.history_len(),
+                compact,
             },
         }
-        .serialize(serializer)
     }
 }
 #[derive(Deserialize)]
@@ -148,7 +188,13 @@ struct RowWire {
     wrap_continuation: bool,
     semantic: SemanticContent,
     dirty: bool,
-    cells: Vec<CellWire>,
+    cells: CellsWire,
+}
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum CellsWire {
+    Expanded(Vec<CellWire>),
+    Compact { runs: Vec<(usize, CellWire)> },
 }
 #[derive(Deserialize)]
 struct CellWire {
@@ -229,10 +275,22 @@ impl<'de> Deserialize<'de> for Screen {
             if row.id >= screen.next_row || !row_ids.insert(row.id) {
                 return Err(D::Error::custom("invalid screen row identity"));
             }
-            if row.cells.len() != screen.physical_row(absolute).cells.len() {
+            let runs = match row.cells {
+                CellsWire::Expanded(cells) => cells.into_iter().map(|cell| (1, cell)).collect(),
+                CellsWire::Compact { runs } => runs,
+            };
+            let width = runs.iter().try_fold(0usize, |total, (count, _)| {
+                if *count == 0 {
+                    None
+                } else {
+                    total.checked_add(*count)
+                }
+            });
+            if width != Some(screen.physical_row(absolute).cells.len()) {
                 return Err(D::Error::custom("screen row width differs from its page"));
             }
-            for (col, wire) in row.cells.into_iter().enumerate() {
+            let mut col = 0;
+            for (count, wire) in runs {
                 if wire.width > 2
                     || wire
                         .hyperlink
@@ -275,9 +333,14 @@ impl<'de> Deserialize<'de> for Screen {
                     link_id: 0,
                     text: (suffix > 0).then(|| (Arc::from(wire.text), suffix as u8)),
                 };
-                screen
-                    .install_cell(absolute, col, copy, false)
-                    .map_err(|_| D::Error::custom("screen cell resources exceed page capacity"))?;
+                for _ in 0..count {
+                    screen
+                        .install_cell(absolute, col, copy.clone(), false)
+                        .map_err(|_| {
+                            D::Error::custom("screen cell resources exceed page capacity")
+                        })?;
+                    col += 1;
+                }
             }
             let (index, relative) = screen.locate(absolute);
             let page = &mut screen.pages.pages[index];
@@ -297,6 +360,48 @@ impl<'de> Deserialize<'de> for Screen {
 mod tests {
     use super::*;
     use crate::{Terminal, snapshot};
+
+    #[test]
+    fn compact_cells_preserve_screens_and_bound_expansion() {
+        let mut terminal = Terminal::new(139, 84, 1000);
+        let expanded = serde_json::to_vec(terminal.screen()).unwrap();
+        let compact = serde_json::to_vec(&terminal.screen().compact()).unwrap();
+        assert!(compact.len() * 50 < expanded.len());
+        for input in [
+            b"".as_slice(),
+            "aa\u{301}a\u{302}\u{754c}\u{754c}\r\n".as_bytes(),
+            b"\x1b[31mred\t\x1b[0m\x1b[1\"qprotected\x1b[0\"q",
+            b"\x1b]8;id=one;https://example.org/\xff\x07xx\x1b]8;id=two;https://example.org/\xff\x07xx\x1b]8;;\x07",
+            b"\x1b[84;1Hhistory\r\n\r\n",
+        ] {
+            terminal.feed(input);
+            let legacy: Screen = serde_json::from_value(serde_json::to_value(terminal.screen()).unwrap()).unwrap();
+            let compact: Screen = serde_json::from_value(serde_json::to_value(terminal.screen().compact()).unwrap()).unwrap();
+            assert_eq!(serde_json::to_value(legacy).unwrap(), serde_json::to_value(compact).unwrap());
+        }
+
+        let terminal = Terminal::new(8, 2, 0);
+        let value = serde_json::to_value(terminal.screen().compact()).unwrap();
+        for count in [0, 7, 9, u64::MAX] {
+            let mut invalid = value.clone();
+            invalid["rows"][0]["cells"]["runs"][0][0] = count.into();
+            assert!(serde_json::from_value::<Screen>(invalid).is_err());
+        }
+        let mut invalid = value.clone();
+        invalid["rows"][0]["cells"]["runs"][0][1]["width"] = 3.into();
+        assert!(serde_json::from_value::<Screen>(invalid).is_err());
+        let mut invalid = value.clone();
+        invalid["rows"][0]["cells"]["runs"][0][1]["text"] = "a".repeat(66).into();
+        assert!(serde_json::from_value::<Screen>(invalid).is_err());
+        let mut invalid = value;
+        let mut run = invalid["rows"][0]["cells"]["runs"][0].clone();
+        run[0] = u64::MAX.into();
+        invalid["rows"][0]["cells"]["runs"]
+            .as_array_mut()
+            .unwrap()
+            .push(run);
+        assert!(serde_json::from_value::<Screen>(invalid).is_err());
+    }
 
     #[test]
     fn contextual_json_preserves_graphemes_through_live_mutation_and_native_snapshots() {
