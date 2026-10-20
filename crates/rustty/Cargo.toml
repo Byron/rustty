@@ -9,13 +9,22 @@ description = "Public Rustty API, configuration, and terminal sessions."
 
 [features]
 default = []
-sessions = ["dep:portable-pty", "dep:libc", "dep:serde_json"]
+sessions = ["dep:portable-pty", "dep:libc", "dep:serde_json", "dep:serde", "dep:tmuxx-runtime", "dep:tmuxx-terminal", "dep:tmuxx-protocol", "dep:tmuxx-layout", "dep:tmuxx-client", "dep:tmuxx-command", "dep:getrandom"]
 
 [dependencies]
 rustty-parser.workspace = true
 rustty-vt.workspace = true
 portable-pty = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+
+serde = { workspace = true, optional = true }
+tmuxx-terminal = { path = "../../../../tmux/tmux/rust/crates/tmuxx-terminal", optional = true }
+tmuxx-runtime = { path = "../../../../tmux/tmux/rust/crates/tmuxx-runtime", optional = true }
+tmuxx-protocol = { path = "../../../../tmux/tmux/rust/crates/tmuxx-protocol", optional = true }
+tmuxx-layout = { path = "../../../../tmux/tmux/rust/crates/tmuxx-layout", optional = true }
+tmuxx-client = { path = "../../../../tmux/tmux/rust/crates/tmuxx-client", optional = true }
+tmuxx-command = { path = "../../../../tmux/tmux/rust/crates/tmuxx-command", optional = true }
+getrandom = { version = "0.3", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = { version = "0.2", optional = true }

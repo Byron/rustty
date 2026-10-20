@@ -313,6 +313,9 @@ impl GhosttyState {
             zoom,
             quadrant_zoom,
             remembered: BTreeMap::new(),
+            overlays: Vec::new(),
+            server_size: None,
+            server_view: None,
             panes,
         })
     }

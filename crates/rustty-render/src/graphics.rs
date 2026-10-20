@@ -25,6 +25,7 @@ pub(super) struct CachedTile {
 struct Geometry {
     image: u32,
     placement: PlacementId,
+    order: u64,
     z: i32,
     source: [f32; 4],
     rect: [f32; 4],
@@ -71,7 +72,7 @@ impl Renderer {
         }
         let metrics = self.metrics();
         let mut placements = geometry(screen, metrics, options);
-        placements.sort_by_key(|p| (p.z, p.image, p.placement));
+        placements.sort_by_key(|p| (p.z, p.order, p.placement));
         let clip = [
             options.padding[0],
             options.padding[1],
@@ -297,6 +298,7 @@ fn geometry(screen: &Screen, metrics: FontMetrics, options: &RenderOptions) -> V
             .map(|v| v as f32);
         result.push(Geometry {
             image: image.id,
+            order: image.tmux_order.unwrap_or(u64::from(image.id)),
             placement: placement.placement_id,
             z: placement.z,
             source,
@@ -412,6 +414,7 @@ fn virtual_geometry(
     }
     result.push(Geometry {
         image: id,
+        order: image.tmux_order.unwrap_or(u64::from(image.id)),
         placement: p.placement_id,
         z: -1,
         source: geometry.source.map(|value| value as f32),
@@ -449,6 +452,26 @@ mod tests {
                 .as_bytes(),
         );
         assert!(t.screen().graphics.images.contains_key(&id));
+    }
+
+    #[test]
+    fn tmux_sixel_overlap_renders_in_owner_creation_order() {
+        let mut terminal = Terminal::new(20, 4, 100);
+        terminal.tmux_graphics = true;
+        terminal.set_tmux_strings(true);
+        terminal.feed(b"\x1bP9;1q\"1;1;8;1#0;2;100;0;0!8@\x1b\\\x1b[H\x1bP9;1q\"1;1;4;1#0;2;0;0;100!4@\x1b\\");
+        let (mut renderer, options) = renderer();
+        let mut images = terminal.graphics().images.values().collect::<Vec<_>>();
+        images.sort_by_key(|image| image.tmux_order);
+        assert_eq!(images.len(), 2);
+        assert!(images[0].id > images[1].id);
+        let before = renderer.image_tile(images[0], 0, 0).unwrap().uv;
+        let after = renderer.image_tile(images[1], 0, 0).unwrap().uv;
+        let frame = renderer.prepare(terminal.screen(), &options).unwrap();
+        let sprites = frame.quads.iter().filter(|q| q.paint == Paint::Color).collect::<Vec<_>>();
+        assert_eq!(sprites.len(), 2);
+        assert_eq!(sprites[0].uv, before);
+        assert_eq!(sprites[1].uv, after);
     }
 
     #[test]
