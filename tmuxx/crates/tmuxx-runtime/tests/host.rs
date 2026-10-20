@@ -190,7 +190,6 @@ fn native_handshake_rejects_mismatched_versions_before_requests() {
     let mut data = Vec::new();
     stream.read_to_end(&mut data).unwrap();
     let hello = serde_json::from_slice::<tmuxx_protocol::native::Hello>(&data).unwrap();
-    #[cfg(windows)]
     let hello = {
         let mut hello = hello;
         assert!(

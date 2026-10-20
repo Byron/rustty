@@ -32,6 +32,12 @@ interop without requiring extensions in stock tmux. Terminal snapshots have
 their own version and validation. Compatibility with arbitrary future or older
 snapshot formats is not implied by sharing a native protocol version.
 
+Rustty validates the native greeting before sending queued commands. Window-size
+connections also verify the primary connection's server incarnation, so a daemon
+replacement cannot resize unrelated sessions that reuse the same numeric IDs.
+Older daemons without an incarnation in their greeting are checked through a
+read-only snapshot on that connection before any size commands are sent.
+
 ## Source and maintenance
 
 Imported from [Byron/tmux](https://github.com/Byron/tmux) commit
