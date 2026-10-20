@@ -15,6 +15,7 @@ use std::thread;
 use std::time::Duration;
 pub use tmuxx_layout::{Axis, Kind, Layout};
 use tmuxx_protocol::native::{Hello, Request, ServerMessage, SnapshotAssembler};
+pub use tmuxx_runtime::Options as ServerOptions;
 #[cfg(windows)]
 pub use tmuxx_runtime::initialize_conpty;
 #[cfg(windows)]
@@ -490,7 +491,16 @@ impl Connection {
         wake: Arc<dyn Fn() + Send + Sync>,
         initial: Vec<Vec<u8>>,
     ) -> io::Result<Self> {
-        let owner = tmuxx_runtime::start(tmuxx_runtime::Options::new(endpoint))?;
+        Self::embedded_with_options(ServerOptions::new(endpoint), wake, initial)
+    }
+    /// Start a private owner, loading its configuration before the first session.
+    pub fn embedded_with_options(
+        options: ServerOptions,
+        wake: Arc<dyn Fn() + Send + Sync>,
+        initial: Vec<Vec<u8>>,
+    ) -> io::Result<Self> {
+        let endpoint = options.endpoint.clone();
+        let owner = tmuxx_runtime::start(options)?;
         let client = owner.connect_with_context(tmuxx_runtime::ClientContext {
             host_effects: true,
             ..Default::default()
@@ -2909,6 +2919,42 @@ mod tests {
         .unwrap();
         assert_eq!(first.events().count(), 0);
         assert_eq!(second.events().count(), 0);
+    }
+
+    #[test]
+    fn embedded_configuration_applies_before_first_session_and_later_remote_panes() {
+        let directory =
+            std::env::temp_dir().join(format!("rustty-tmuxx-config-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("server settings.conf");
+        std::fs::write(&path, "set -g default-shell /bin/sh\nset -g default-command 'printf CONFIGURED; exec /bin/sh'\n").unwrap();
+        let endpoint = directory.join("server.native");
+        let mut options = ServerOptions::new(&endpoint);
+        options.config.push(path.clone());
+        let connection =
+            Connection::embedded_with_options(options, Arc::new(|| {}), Vec::new()).unwrap();
+        let graph = wait(&connection, |g| g.panes.len() == 1);
+        let first = graph.panes[0].id;
+        let session = Session::attach_tmuxx(&connection, first, Arc::new(|| {})).unwrap();
+        wait_text(&connection, &session, "CONFIGURED");
+
+        // Attaching an external client neither rereads the file nor resets defaults.
+        std::fs::write(
+            &path,
+            "set -g default-command 'printf RELOADED; exec /bin/sh'\n",
+        )
+        .unwrap();
+        let remote = Connection::native(&endpoint, Arc::new(|| {})).unwrap();
+        remote
+            .command(["split-window", "-d", "-t", &format!("%{first}")])
+            .unwrap();
+        let graph = wait(&remote, |g| g.panes.len() == 2);
+        let second = graph.panes.iter().find(|p| p.id != first).unwrap().id;
+        let session = Session::attach_tmuxx(&remote, second, Arc::new(|| {})).unwrap();
+        wait_text(&remote, &session, "CONFIGURED");
+        drop(remote);
+        drop(connection);
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     fn test_owner(script: &str) -> Connection {
