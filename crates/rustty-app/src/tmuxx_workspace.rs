@@ -567,7 +567,7 @@ mod tests {
                 modal_capture_keys: false,
                 modal_close_click: false,
                 modal_close_cancel: false,
-                terminal: serde_json::Value::Null,
+                terminal: serde_json::Value::Null.into(),
             }],
         }
     }
