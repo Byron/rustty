@@ -11,14 +11,14 @@ license = "MIT"
 
 [workspace.dependencies]
 rustty-parser = { path = "crates/rustty-parser" }
-rustty-vt = { package = "tmuxx-vendored-rustty-vt", path = "../../tmux/tmux/rust/vendor/rustty-vt" }
-tmuxx-cli = { path = "../../tmux/tmux/rust/crates/tmuxx-cli" }
-tmuxx-terminal = { path = "../../tmux/tmux/rust/crates/tmuxx-terminal" }
-tmuxx-runtime = { path = "../../tmux/tmux/rust/crates/tmuxx-runtime" }
-tmuxx-protocol = { path = "../../tmux/tmux/rust/crates/tmuxx-protocol" }
-tmuxx-layout = { path = "../../tmux/tmux/rust/crates/tmuxx-layout" }
-tmuxx-client = { path = "../../tmux/tmux/rust/crates/tmuxx-client" }
-tmuxx-command = { path = "../../tmux/tmux/rust/crates/tmuxx-command" }
+rustty-vt = { package = "tmuxx-vendored-rustty-vt", git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
+tmuxx-cli = { git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
+tmuxx-terminal = { git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
+tmuxx-runtime = { git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
+tmuxx-protocol = { git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
+tmuxx-layout = { git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
+tmuxx-client = { git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
+tmuxx-command = { git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
 rustty-font = { path = "crates/rustty-font" }
 rustty-render = { path = "crates/rustty-render" }
 rustty-render-wgpu = { path = "crates/rustty-render-wgpu" }
