@@ -1727,39 +1727,25 @@ impl App {
         Ok(emitted)
     }
     fn focus_pane(&mut self, window: Id, pane: Id) {
-        if let Some(entry) = self.tmuxx_pane(pane)
-            && let Some(connection) = &entry.connection
-            && let Some(pid) = entry.mapping.panes.get(&pane)
-        {
-            let tab = self
-                .index(window)
-                .map(|i| self.workspace.windows[i].active_tab + 1);
-            let selected = tab.and_then(|i| {
-                entry
-                    .mapping
-                    .action(&self.workspace, window, &Action::GotoTab(i))
-            });
-            let result = selected
-                .transpose()
-                .map_err(std::io::Error::other)
-                .and_then(|command| {
-                    if let Some(command) = command {
-                        connection.command(command)?;
-                    }
-                    connection.command(["select-pane".into(), "-t".into(), format!("%{pid}")])
-                });
-            if let Err(error) = result {
-                self.errors.push(error.to_string());
-            }
+        let previous = self.focused(window);
+        if let Some(tab) = self.tab_mut(window) {
+            tab.focus(pane);
         }
-
-        if let Some(previous) = self.focused(window).filter(|&id| id != pane)
+        if self.focused(window) != Some(pane) {
+            return;
+        }
+        if let Some(previous) = previous.filter(|&id| id != pane)
             && let Some(state) = self.panes.get_mut(&previous)
         {
             state.reset_selection_gesture();
         }
-        if let Some(tab) = self.tab_mut(window) {
-            tab.focus(pane);
+        if let Some(entry) = self.tmuxx_pane(pane)
+            && let Some(connection) = &entry.connection
+            && let Some((session, index, pid)) =
+                entry.mapping.focus_target(&self.workspace, window, pane)
+            && let Err(error) = connection.focus_pane(session, index, pid)
+        {
+            self.errors.push(error.to_string());
         }
         if let Some(state) = self.panes.get_mut(&pane) {
             state.unseen = false;
