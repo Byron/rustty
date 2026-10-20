@@ -10,6 +10,31 @@ use std::ops::Range;
 const ROW_HEIGHT: f32 = 30.0;
 const ICON_SIZE: f32 = 20.0;
 const INDENT: f32 = 18.0;
+pub const TMUXX_TAG_WIDTH: f32 = 44.0;
+
+pub fn tmuxx_tag(ui: &mut egui::Ui, tooltip: &str) {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(TMUXX_TAG_WIDTH, 18.0), Sense::hover());
+    paint_tmuxx_tag(ui.painter(), rect, ui.visuals().text_color());
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "tmuxx window"));
+    response.on_hover_text(tooltip);
+}
+
+fn paint_tmuxx_tag(painter: &egui::Painter, rect: Rect, color: Color32) {
+    painter.rect_stroke(
+        rect,
+        3,
+        Stroke::new(1.0, color.gamma_multiply(0.65)),
+        egui::StrokeKind::Inside,
+    );
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        "tmuxx",
+        FontId::proportional(11.0),
+        color,
+    );
+}
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Output {
@@ -384,6 +409,11 @@ pub fn contents(
                 let pinned =
                     matches!(row.target, Target::Pane { pane, .. } if pinned_panes.contains(&pane));
                 let mut label_rect = rect;
+                if row.tmuxx.is_some() {
+                    let tag = Rect::from_center_size(Pos2::new(rect.right() - TMUXX_TAG_WIDTH / 2.0 - 4.0, rect.center().y), Vec2::new(TMUXX_TAG_WIDTH, 18.0));
+                    paint_tmuxx_tag(ui.painter(), tag, foreground);
+                    label_rect.max.x = tag.left() - 6.0;
+                }
                 if pinned {
                     label_rect.max.x -= 20.0;
                     paint_pin(
@@ -420,7 +450,7 @@ pub fn contents(
                         search.selected_pane = Some(pane);
                     }
                 }
-                response.on_hover_text(description(row));
+                response.on_hover_text(row.tmuxx.as_ref().map_or_else(|| description(row), |source| format!("{}\n{source}", description(row))));
             }
         });
     }
@@ -1231,6 +1261,9 @@ fn description(row: &Row) -> String {
         Target::Pane { .. } => "Panel",
     };
     let mut description = format!("{kind}: {}", row.label);
+    if row.tmuxx.is_some() {
+        description.push_str(" · tmuxx");
+    }
     if let Some(index) = row.tab_index {
         description.push_str(&format!(" · Cmd+{}", index + 1));
     }
@@ -1341,6 +1374,7 @@ mod tests {
                 ancestor: true,
                 color: Some([210, 110, 70]),
                 zoom: Zoom::None,
+                tmuxx: None,
             },
             Row {
                 target: Target::Tab(1),
@@ -1352,6 +1386,7 @@ mod tests {
                 ancestor: true,
                 color: Some([210, 110, 70]),
                 zoom: Zoom::PaneInQuad,
+                tmuxx: None,
             },
             Row {
                 target: Target::Quad { tab: 1, node: 2 },
@@ -1367,6 +1402,7 @@ mod tests {
                 ancestor: true,
                 color: Some([210, 110, 70]),
                 zoom: Zoom::Quad,
+                tmuxx: None,
             },
             Row {
                 target: Target::Pane { tab: 1, pane: 3 },
@@ -1383,6 +1419,7 @@ mod tests {
                 ancestor: false,
                 color: Some([210, 110, 70]),
                 zoom: Zoom::PaneInQuad,
+                tmuxx: None,
             },
         ]
     }
@@ -1411,6 +1448,24 @@ mod tests {
         });
         output.textures_delta.clear();
         (output, target)
+    }
+
+    #[test]
+    fn tmuxx_tag_is_shared_by_window_rows_and_toolbar_without_becoming_a_button() {
+        let context = egui::Context::default();
+        let mut rows = rows();
+        let has_tag = |output: &egui::FullOutput| {
+            output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "tmuxx"))
+        };
+        frame(&context, &rows, Vec::new(), false);
+        assert!(!has_tag(&frame(&context, &rows, Vec::new(), false).0));
+        rows[0].tmuxx = Some("tmuxx · local".into());
+        assert!(has_tag(&frame(&context, &rows, Vec::new(), false).0));
+        assert!(description(&rows[0]).contains("tmuxx"));
+        let output = context.run_ui(egui::RawInput::default(), |ui| {
+            tmuxx_tag(ui, "tmuxx · local")
+        });
+        assert!(has_tag(&output));
     }
 
     fn node<'a>(output: &'a egui::FullOutput, label: &str) -> Option<&'a egui::accesskit::Node> {
@@ -2445,6 +2500,7 @@ mod tests {
                         &labels,
                         &Default::default(),
                         &Default::default(),
+                        &Default::default(),
                     );
                     let path = &pinned_paths(&rows, &[2])[0];
                     let quad = path
@@ -2559,6 +2615,7 @@ mod tests {
                 &workspace,
                 Some(100),
                 &labels,
+                &Default::default(),
                 &Default::default(),
                 &Default::default(),
             );

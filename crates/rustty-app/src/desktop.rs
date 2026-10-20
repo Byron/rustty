@@ -1866,6 +1866,11 @@ impl App {
             &labels,
             &tab_labels,
             &quick_used,
+            &self
+                .tmuxx
+                .iter()
+                .flat_map(|entry| entry.mapping.sessions.keys().map(|id| (*id, entry.label())))
+                .collect(),
         )
     }
     fn draw_outliner(
@@ -3620,6 +3625,7 @@ impl App {
             }
         }
         self.sync_host_state();
+        self.sync_tmuxx_menu();
         if self.config().quit_after_last_window_closed
             && !self.workspace.windows.iter().any(window_keeps_app_running)
             && !self.tmuxx.iter().any(|entry| entry.waiting_for_window())
@@ -4067,6 +4073,7 @@ impl App {
                 (id, label)
             })
             .collect();
+        let tmuxx_tag = self.tmuxx_window(host.id).map(|entry| entry.label());
         let breadcrumb = if state.tabs.len() > 1 {
             outliner::breadcrumb(active, &pane_labels)
         } else {
@@ -4116,7 +4123,6 @@ impl App {
         );
         self.activity_flashes.remove(&active.id);
         let mut commands = Vec::new();
-        let mut tmuxx_menu_command = None;
         let mut palette_event = None;
         let mut search_commands = Vec::new();
         let mut layout_command = None;
@@ -4155,7 +4161,7 @@ impl App {
                 tab_accent.foreground[2],
             );
             root_ui.visuals_mut().hyperlink_color = accent;
-            {
+            if state.tabs.len() > 1 {
                 egui::Panel::top("tabs")
                     .exact_size(38.0)
                     .frame(
@@ -4166,49 +4172,8 @@ impl App {
                     .show(root_ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.add_space(72.0);
-                            ui.menu_button("tmuxx", |ui| {
-                                for (label, action) in [
-                                    ("New temporary window", Action::NewTemporaryTmuxxWindow),
-                                    ("New persistent window", Action::NewPersistentTmuxxWindow),
-                                    ("Connect…", Action::ConnectTmuxx),
-                                ] {
-                                    if ui.button(label).clicked() { commands.push(action); ui.close(); }
-                                }
-                                if self.tmuxx_window(host.id).is_some() && ui.button("New floating panel").clicked() {
-                                    commands.push(Action::NewFloatingPane); ui.close();
-                                }
-                                for entry in &self.tmuxx {
-                                    ui.separator();
-                                    ui.menu_button(entry.label(), |ui| {
-                                        if let Some(status) = &entry.status { ui.label(status); }
-                                        if let tmuxx_host::Source::Embedded(endpoint) = &entry.source {
-                                            ui.label(format!("Native endpoint: {}", endpoint.display()));
-                                        }
-                                        if let Some(graph) = entry.connection.as_ref().and_then(|c| c.graph()) {
-                                            for session in &graph.sessions {
-                                                ui.menu_button(&session.name, |ui| {
-                                                    if ui.button(if entry.selected.contains(&session.id) { "Focus window" } else { "Open window" }).clicked() {
-                                                        tmuxx_menu_command = Some(tmuxx_host::MenuCommand::Open(entry.target(), session.id)); ui.close();
-                                                    }
-                                                    for (_, window) in &session.windows {
-                                                        if let Some(window) = graph.windows.iter().find(|w| w.id == *window) { ui.label(format!("Tab: {}", window.name)); }
-                                                    }
-                                                    if ui.button("Terminate session…").clicked() {
-                                                        host.confirm = Some(Confirmation::TmuxxTerminate(tmuxx_host::MenuCommand::Kill(entry.target(), session.id))); ui.close();
-                                                    }
-                                                });
-                                            }
-                                        }
-                                        if !entry.temporary() && ui.button("Disconnect").clicked() {
-                                            tmuxx_menu_command = Some(tmuxx_host::MenuCommand::Disconnect(entry.target())); ui.close();
-                                        }
-                                        if ui.button("Stop server…").clicked() {
-                                            host.confirm = Some(Confirmation::TmuxxTerminate(tmuxx_host::MenuCommand::Shutdown(entry.target()))); ui.close();
-                                        }
-                                    });
-                                }
-                            });
-                            let available = ui.available_width();
+                            let tag_width = tmuxx_tag.as_ref().map_or(0.0, |_| outliner_ui::TMUXX_TAG_WIDTH + ui.spacing().item_spacing.x);
+                            let available = (ui.available_width() - tag_width).max(1.0);
                             let crumb_width = (available * 0.4)
                                 .min(420.0)
                                 .min((available - 160.0).max(0.0));
@@ -4327,6 +4292,7 @@ impl App {
                                 commands.push(Action::NewTab);
                             }
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if let Some(tooltip) = &tmuxx_tag { outliner_ui::tmuxx_tag(ui, tooltip); }
                                 outline_selection = outliner_ui::breadcrumb(ui, &breadcrumb, crumb_width);
                             });
                         });
@@ -4875,6 +4841,16 @@ impl App {
                         }
                     }
                 });
+            if state.tabs.len() == 1 && let Some(tooltip) = &tmuxx_tag {
+                let bounds = root_ui.max_rect();
+                let rect = egui::Rect::from_min_size(
+                    Pos2::new(bounds.right() - outliner_ui::TMUXX_TAG_WIDTH - 8.0, bounds.top() + 6.0),
+                    Vec2::new(outliner_ui::TMUXX_TAG_WIDTH, 18.0),
+                );
+                let mut tag_ui = root_ui.new_child(egui::UiBuilder::new().id_salt("tmuxx-window-tag").max_rect(rect));
+                tag_ui.painter().rect_filled(rect.expand(3.0), 4, rgb(config.background));
+                outliner_ui::tmuxx_tag(&mut tag_ui, tooltip);
+            }
             #[cfg(target_os = "macos")]
             if state.tabs.len() == 1
                 && let Some([x, y, width, height]) = Platform::window_controls_rect(&host.window)
@@ -5180,9 +5156,6 @@ impl App {
                 .is_some_and(|preview| preview.owner == host.id)
         {
             self.cancel_theme_preview(Some(host));
-        }
-        if let Some(command) = tmuxx_menu_command {
-            self.tmuxx_menu_command(command);
         }
         for action in commands {
             self.action(event_loop, host, action, false);
@@ -6104,6 +6077,7 @@ impl ApplicationHandler<Event> for App {
                     PlatformEvent::NotificationClicked(pane) => {
                         self.reveal_pane(pane);
                     }
+                    PlatformEvent::Tmuxx(command) => self.native_tmuxx_command(event_loop, command),
                     PlatformEvent::Action(action) => {
                         self.platform_action(event_loop, action, false);
                     }
