@@ -537,7 +537,7 @@ impl Connection {
         let source = Source::Unix(endpoint.to_owned());
         #[cfg(windows)]
         let source = Source::Windows(endpoint.to_owned());
-        Self::connect_source(source, wake, true, true)
+        Self::connect_source(source, wake, true, true, None)
     }
     #[cfg(unix)]
     pub fn unix(endpoint: &Path, wake: Arc<dyn Fn() + Send + Sync>) -> io::Result<Self> {
@@ -580,6 +580,7 @@ impl Connection {
             wake,
             true,
             true,
+            None,
         )
     }
     fn connect_source(
@@ -587,6 +588,7 @@ impl Connection {
         wake: Arc<dyn Fn() + Send + Sync>,
         host_effects: bool,
         subscribe: bool,
+        expected_instance: Option<String>,
     ) -> io::Result<Self> {
         let mut connection = match &source {
             #[cfg(unix)]
@@ -598,6 +600,7 @@ impl Connection {
                     wake,
                     host_effects,
                     subscribe,
+                    expected_instance,
                 )?;
                 connection.socket = Some(stream);
                 connection
@@ -611,6 +614,7 @@ impl Connection {
                     wake,
                     host_effects,
                     subscribe,
+                    expected_instance,
                 )?;
                 connection.socket = Some(stream);
                 connection
@@ -632,6 +636,7 @@ impl Connection {
                     wake,
                     host_effects,
                     subscribe,
+                    expected_instance,
                 ) {
                     Ok(mut connection) => {
                         let stderr = child.stderr.take().unwrap();
@@ -685,12 +690,35 @@ impl Connection {
                     false,
                 )?
             } else {
-                Self::connect_source(self.source.clone(), self.shared.wake.clone(), false, false)?
+                let instance = self.instance();
+                if instance.is_empty() {
+                    return Err(err("tmuxx size client requires an initial snapshot"));
+                }
+                Self::connect_source(
+                    self.source.clone(),
+                    self.shared.wake.clone(),
+                    false,
+                    false,
+                    Some(instance),
+                )?
             };
-            connection.command(["attach-session".into(), "-t".into(), format!("${session}")])?;
+            connection.command([
+                "attach-session".into(),
+                "-f".into(),
+                "no-output".into(),
+                "-t".into(),
+                format!("${session}"),
+            ])?;
             entry.insert((connection, (0, 0, 0, 0)));
         }
         let (connection, size) = views.get_mut(&session).unwrap();
+        let errors = connection.errors();
+        if !errors.is_empty() {
+            return Err(err(errors.join("; ")));
+        }
+        if connection.is_closed() {
+            return Err(err("tmuxx size connection is closed"));
+        }
         if *size != (cols, rows, cell_width, cell_height) {
             connection.command([
                 "refresh-client".into(),
@@ -703,10 +731,6 @@ impl Connection {
                 cell_height.to_string(),
             ])?;
             *size = (cols, rows, cell_width, cell_height);
-        }
-        let errors = connection.errors();
-        if !errors.is_empty() {
-            return Err(err(errors.join("; ")));
         }
         Ok(())
     }
@@ -721,7 +745,7 @@ impl Connection {
         writer: impl Write + Send + 'static,
         wake: Arc<dyn Fn() + Send + Sync>,
     ) -> io::Result<Self> {
-        Self::stream_inner(reader, writer, wake, true, true)
+        Self::stream_inner(reader, writer, wake, true, true, None)
     }
     fn stream_inner(
         reader: impl Read + Send + 'static,
@@ -729,6 +753,7 @@ impl Connection {
         wake: Arc<dyn Fn() + Send + Sync>,
         host_effects: bool,
         subscribe: bool,
+        expected_instance: Option<String>,
     ) -> io::Result<Self> {
         let (connection, requests) = Self::base(wake, subscribe);
         let mut writer = io::BufWriter::new(writer);
@@ -752,6 +777,55 @@ impl Connection {
                     if hello.version != tmuxx_protocol::native::VERSION {
                         return Err(err("unsupported tmuxx native version"));
                     }
+                    let mut snapshots = SnapshotAssembler::default();
+                    if let Some(expected) = expected_instance {
+                        let actual = if let Some(instance) = hello.instance_id {
+                            instance
+                        } else {
+                            // Legacy owners expose incarnation only in read-only snapshots.
+                            write_record(
+                                &mut writer,
+                                &Request {
+                                    request_id: 0,
+                                    argv: Vec::new(),
+                                    stdin: None,
+                                    subscribe: true,
+                                    control: true,
+                                },
+                            )?;
+                            loop {
+                                let bytes = record(&mut reader)?
+                                    .ok_or_else(|| err("missing tmuxx identity snapshot"))?;
+                                match snapshots
+                                    .push(serde_json::from_slice(&bytes).map_err(err)?)?
+                                {
+                                    Some(ServerMessage::Snapshot { instance_id, .. }) => {
+                                        break instance_id;
+                                    }
+                                    Some(ServerMessage::Reply(reply)) => {
+                                        if let Some(error) = reply.error {
+                                            return Err(err(error));
+                                        }
+                                    }
+                                    Some(ServerMessage::SnapshotAborted { error, .. }) => {
+                                        return Err(err(error));
+                                    }
+                                    Some(ServerMessage::Exit { reason }) => {
+                                        return Err(err(reason));
+                                    }
+                                    Some(ServerMessage::Detached { .. }) => {
+                                        return Err(err("tmuxx identity probe detached"));
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        };
+                        if actual != expected {
+                            return Err(err(
+                                "tmuxx server incarnation changed; size was not applied",
+                            ));
+                        }
+                    }
                     // No queued command may reach a peer before negotiation succeeds.
                     let shared_writer = shared.clone();
                     thread::Builder::new()
@@ -770,7 +844,6 @@ impl Connection {
                                 }
                             }
                         })?;
-                    let mut snapshots = SnapshotAssembler::default();
                     while !shared.closed.load(Ordering::Acquire) {
                         let Some(bytes) = record(&mut reader)? else {
                             snapshots.finish()?;
@@ -1094,6 +1167,16 @@ fn replace_view(view: &mut Terminal, source: &Terminal) {
     }
 }
 fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
+    if !shared.subscribe
+        && matches!(
+            message,
+            ServerMessage::Snapshot { .. }
+                | ServerMessage::PaneOutput { .. }
+                | ServerMessage::Changed { .. }
+        )
+    {
+        return Ok(());
+    }
     let mut model = shared.model.lock().map_err(err)?;
     match message {
         ServerMessage::File { .. } => {
@@ -1568,6 +1651,90 @@ mod tests {
                 thread::sleep(Duration::from_millis(5));
             }
             assert!(!connection.errors().is_empty());
+        }
+    }
+
+    #[test]
+    fn native_size_identity_checks_current_and_legacy_peers_before_commands() {
+        for advertised in [true, false] {
+            for actual in ["owner", "replacement"] {
+                let (stream, peer) = std::os::unix::net::UnixStream::pair().unwrap();
+                let connection = Connection::stream_inner(
+                    stream.try_clone().unwrap(),
+                    stream,
+                    Arc::new(|| {}),
+                    false,
+                    false,
+                    Some("owner".into()),
+                )
+                .unwrap();
+                connection.command(["attach-session", "-t", "$0"]).unwrap();
+                peer.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                let mut peer = BufReader::new(peer);
+                let hello: Hello =
+                    serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+                assert!(hello.instance_id.is_none());
+                write_record(
+                    peer.get_mut(),
+                    &Hello {
+                        instance_id: advertised.then(|| actual.into()),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                if !advertised {
+                    let probe: Request =
+                        serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+                    assert_eq!(probe.request_id, 0);
+                    assert!(probe.argv.is_empty() && probe.subscribe && probe.control);
+                    assert!(probe.stdin.is_none());
+                    tmuxx_protocol::native::write_snapshot(
+                        peer.get_mut(),
+                        actual,
+                        0,
+                        &serde_json::json!({}),
+                        tmuxx_protocol::native::MAX_SNAPSHOT_BYTES,
+                    )
+                    .unwrap();
+                }
+                if actual == "owner" {
+                    let request: Request =
+                        serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+                    assert_eq!(request.argv[0], b"attach-session");
+                    assert!(!request.subscribe);
+                    for message in [
+                        ServerMessage::PaneOutput {
+                            sequence: 1,
+                            pane_id: 0,
+                            data: b"ignored size-only output".to_vec(),
+                        },
+                        ServerMessage::Changed { sequence: 2 },
+                    ] {
+                        write_record(peer.get_mut(), &message).unwrap();
+                    }
+                    peer.get_ref()
+                        .set_read_timeout(Some(Duration::from_millis(100)))
+                        .unwrap();
+                    assert!(matches!(
+                        record(&mut peer).unwrap_err().kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                    ));
+                    assert!(connection.errors().is_empty());
+                    assert!(connection.graph().is_none());
+                } else {
+                    let mut requests = Vec::new();
+                    peer.read_to_end(&mut requests).unwrap();
+                    assert!(requests.is_empty(), "wrong owner received size commands");
+                    let deadline = Instant::now() + Duration::from_secs(5);
+                    while !connection.is_closed() {
+                        assert!(Instant::now() < deadline, "wrong owner was accepted");
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    assert!(connection.errors().join(";").contains("incarnation"));
+                }
+                drop(connection);
+                let _ = peer.get_ref().shutdown(std::net::Shutdown::Both);
+            }
         }
     }
 
@@ -2467,6 +2634,47 @@ mod tests {
         connection.view_size(session, 50, 10, 8, 16).unwrap();
         wait(&connection, |g| {
             g.windows[0].cols == 50 && g.windows[0].rows == 10
+        });
+    }
+
+    #[test]
+    fn native_size_clients_reject_replaced_owners_with_reused_session_ids() {
+        let original = test_owner("import time; time.sleep(30)");
+        let Source::Unix(endpoint) = &original.source else {
+            panic!("missing endpoint");
+        };
+        let endpoint = endpoint.clone();
+        let stale = Connection::native(&endpoint, Arc::new(|| {})).unwrap();
+        let graph = wait(&stale, |g| !g.panes.is_empty());
+        let session = graph.sessions[0].id;
+        let original_instance = stale.instance();
+        drop(original);
+
+        let replacement = Connection::embedded(&endpoint, Arc::new(|| {})).unwrap();
+        let graph = wait(&replacement, |g| !g.panes.is_empty());
+        assert_eq!(graph.sessions[0].id, session);
+        assert_ne!(replacement.instance(), original_instance);
+        let initial_size = (graph.windows[0].cols, graph.windows[0].rows);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let error = loop {
+            if let Err(error) = stale.view_size(session, 51, 13, 8, 16) {
+                break error;
+            }
+            assert!(Instant::now() < deadline, "stale size client was accepted");
+            thread::sleep(Duration::from_millis(5));
+        };
+        assert!(error.to_string().contains("incarnation"), "{error}");
+        for _ in 0..3 {
+            assert!(stale.view_size(session, 51, 13, 8, 16).is_err());
+        }
+        let graph = replacement.graph().unwrap();
+        assert_eq!((graph.windows[0].cols, graph.windows[0].rows), initial_size);
+
+        let fresh = Connection::native(&endpoint, Arc::new(|| {})).unwrap();
+        wait(&fresh, |g| !g.panes.is_empty());
+        fresh.view_size(session, 60, 20, 8, 16).unwrap();
+        wait(&replacement, |g| {
+            g.windows[0].cols == 60 && g.windows[0].rows == 20
         });
     }
 

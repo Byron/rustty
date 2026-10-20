@@ -556,6 +556,8 @@ pub fn start(options: Options) -> io::Result<ServerHandle> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     let watchdog = watchdog::Watchdog::start()?;
     let (tx, rx) = mpsc::sync_channel(1024);
+    let mut host = Host::new(tx.clone(), &options, environment);
+    let instance = host.instance.clone();
     let next_client = Arc::new(AtomicU64::new(0));
     let accept_ids = next_client.clone();
     let stopped = Arc::new(AtomicBool::new(false));
@@ -591,6 +593,7 @@ pub fn start(options: Options) -> io::Result<ServerHandle> {
                             };
                             let tx = accept_tx.clone();
                             let ipc = *ipc;
+                            let instance = instance.clone();
                             let _ = thread::Builder::new()
                                 .name(format!("tmuxx-client-{id}"))
                                 .spawn(move || {
@@ -598,7 +601,7 @@ pub fn start(options: Options) -> io::Result<ServerHandle> {
                                     let result = if ipc {
                                         unix_ipc::serve(stream, id, tx)
                                     } else {
-                                        serve_connection(stream, id, tx, None)
+                                        serve_connection(stream, id, tx, Some(instance))
                                     };
                                     if let Err(error) = result {
                                         eprintln!("tmuxx: connection {id}: {error}");
@@ -617,13 +620,11 @@ pub fn start(options: Options) -> io::Result<ServerHandle> {
         thread: Some(accept),
         connections,
     };
-    let engine_tx = tx.clone();
     let engine = thread::Builder::new()
         .name("tmuxx-owner".into())
         .spawn(move || {
             let _paths = paths;
             let accept = accept;
-            let mut host = Host::new(engine_tx, &options, environment);
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             {
                 host.watchdog = Some(watchdog);
