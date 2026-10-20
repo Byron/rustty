@@ -4388,6 +4388,7 @@ impl App {
                     let mut accessible = Vec::new();
                     if let Some(entry) = self.tmuxx_window(host.id)
                         && let Some(connection) = &entry.connection
+                        && !connection.is_closed()
                         && let Some(session) = entry.mapping.sessions.get(&host.id)
                     {
                         let metrics = host.fonts.metrics();

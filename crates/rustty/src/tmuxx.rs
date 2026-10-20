@@ -287,10 +287,13 @@ impl PaneInput {
         if !self.native {
             return Ok(());
         }
-        let shared = self
-            .shared
-            .upgrade()
-            .ok_or_else(|| io::Error::from(io::ErrorKind::BrokenPipe))?;
+        // Disconnected views keep their snapshots, but have no host to notify.
+        let Some(shared) = self.shared.upgrade() else {
+            return Ok(());
+        };
+        if shared.closed.load(Ordering::Acquire) {
+            return Ok(());
+        }
         let mut model = shared.model.lock().map_err(err)?;
         let Some(pane) = model.panes.get_mut(&self.pane) else {
             return Ok(());
@@ -2233,6 +2236,20 @@ mod tests {
         assert!(requests.try_recv().is_err());
         connection.command(std::iter::empty::<&str>()).unwrap();
         assert!(requests.try_recv().unwrap().subscribe);
+        for _ in 0..256 {
+            view.write(b"x").unwrap();
+        }
+        assert!(
+            view.set_host_state(false, false, rustty_vt::query::ColorScheme::Light)
+                .is_err()
+        );
+        assert_eq!(requests.try_iter().count(), 256);
+        view.set_host_state(false, false, rustty_vt::query::ColorScheme::Light)
+            .unwrap();
+        let retry = requests.try_recv().unwrap();
+        assert_eq!(retry.argv[0], b"tmuxx-host-state");
+        assert!(!retry.subscribe && !retry.control);
+        assert!(requests.try_recv().is_err());
         view.close();
         let release = requests.try_recv().unwrap();
         assert_eq!(release.argv[0], b"tmuxx-release-pane");
@@ -2504,7 +2521,7 @@ mod tests {
 
     #[test]
     fn native_command_errors_keep_connection_and_transport_errors_keep_live_panes() {
-        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
         let terminal = tmuxx_terminal::Terminal::new(20, 4, 20);
         apply(&connection.shared, ServerMessage::Snapshot {
             instance_id: "owner".into(), sequence: 1,
@@ -2531,11 +2548,23 @@ mod tests {
         fail(&connection.shared, "connection lost");
         assert!(connection.is_closed());
         assert!(!view.has_exited());
+        drop(requests);
+        for focused in [true, false, true] {
+            view.set_host_state(true, focused, rustty_vt::query::ColorScheme::Dark)
+                .unwrap();
+        }
+        assert_eq!(
+            view.write(b"x").unwrap_err().kind(),
+            io::ErrorKind::BrokenPipe
+        );
         assert!(
             matches!(view.events().next(), Some(SessionEvent::Error(message)) if message == "connection lost")
         );
         fail(&connection.shared, "duplicate worker error");
         assert_eq!(connection.errors(), ["connection lost"]);
+        drop(connection);
+        view.set_host_state(false, false, rustty_vt::query::ColorScheme::Light)
+            .unwrap();
     }
 
     #[test]
