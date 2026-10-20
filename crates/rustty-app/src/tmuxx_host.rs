@@ -402,7 +402,11 @@ impl App {
         let connection = match &source {
             Source::SystemSsh(host) => Connection::system_ssh(host, self.tmuxx_wake())?,
             Source::Ssh(host) => {
-                Connection::ssh_command(host, &self.config().tmuxx_ssh_command, self.tmuxx_wake())?
+                Connection::ssh_command(
+                    host,
+                    self.config().tmuxx_ssh_command_for(host),
+                    self.tmuxx_wake(),
+                )?
             }
             #[cfg(unix)]
             Source::Local(path) => Connection::unix(path, self.tmuxx_wake())?,
