@@ -95,6 +95,41 @@ struct Model {
     panes: BTreeMap<u64, PaneState>,
     errors: Vec<String>,
     last_host_event: Option<u64>,
+    pending_focus: Vec<PendingFocus>,
+}
+struct PendingFocus {
+    request_id: u64,
+    session: u64,
+    index: u32,
+    window: u64,
+    pane: u64,
+    acknowledged: bool,
+}
+impl PendingFocus {
+    fn valid(&self, graph: &Graph) -> bool {
+        graph.sessions.iter().any(|session| {
+            session.id == self.session && session.windows.get(&self.index) == Some(&self.window)
+        }) && graph
+            .windows
+            .iter()
+            .any(|window| window.id == self.window && window.panes.contains(&self.pane))
+    }
+}
+impl Model {
+    fn focus_reply(&mut self, request_id: u64, failed: bool) {
+        self.pending_focus.retain_mut(|focus| {
+            if focus.request_id == request_id {
+                focus.acknowledged = true;
+                !failed
+            } else {
+                true
+            }
+        });
+    }
+    fn focus_snapshot(&mut self, graph: &Graph) {
+        self.pending_focus
+            .retain(|focus| !focus.acknowledged && focus.valid(graph));
+    }
 }
 struct PaneState {
     host_state: Option<(bool, bool, bool)>,
@@ -883,6 +918,45 @@ impl Connection {
     pub fn command_bytes(&self, argv: Vec<Vec<u8>>) -> io::Result<u64> {
         send(&self.shared, argv)
     }
+    /// Keep a local focus choice until its command and subsequent snapshot arrive.
+    pub fn focus_pane(&self, session: u64, index: u32, pane: u64) -> io::Result<()> {
+        let mut model = self.shared.model.lock().map_err(err)?;
+        let graph = model
+            .graph
+            .as_ref()
+            .ok_or_else(|| err("missing tmuxx graph"))?;
+        let window = graph
+            .sessions
+            .iter()
+            .find(|s| s.id == session)
+            .and_then(|s| s.windows.get(&index))
+            .copied()
+            .ok_or_else(|| err("tmuxx focus window is unavailable"))?;
+        let mut focus = PendingFocus {
+            request_id: 0,
+            session,
+            index,
+            window,
+            pane,
+            acknowledged: false,
+        };
+        if !focus.valid(graph) {
+            return Err(err("tmuxx focus pane is unavailable"));
+        }
+        focus.request_id = self.command([
+            "select-window".into(),
+            "-t".into(),
+            format!("${session}:{index}"),
+            ";".into(),
+            "select-pane".into(),
+            "-t".into(),
+            format!("%{pane}"),
+        ])?;
+        model.pending_focus.retain(|focus| focus.session != session);
+        // Linked windows share pane focus: later intents must be projected last.
+        model.pending_focus.push(focus);
+        Ok(())
+    }
     pub fn persistence_survives_app(&self) -> bool {
         self.owner.is_none() && self.system.is_none()
     }
@@ -894,7 +968,24 @@ impl Connection {
             .unwrap_or_default()
     }
     pub fn graph(&self) -> Option<Graph> {
-        self.shared.model.lock().ok()?.graph.clone()
+        let model = self.shared.model.lock().ok()?;
+        let mut graph = model.graph.clone()?;
+        for focus in &model.pending_focus {
+            if !focus.valid(&graph) {
+                continue;
+            }
+            graph
+                .sessions
+                .iter_mut()
+                .find(|s| s.id == focus.session)?
+                .active = u64::from(focus.index);
+            graph
+                .windows
+                .iter_mut()
+                .find(|w| w.id == focus.window)?
+                .active = focus.pane;
+        }
+        Some(graph)
     }
     /// Session metadata without cloning terminal snapshots for native menus.
     pub fn sessions(&self) -> Vec<SessionInfo> {
@@ -1005,6 +1096,9 @@ impl Connection {
 impl Drop for Connection {
     fn drop(&mut self) {
         self.shared.closed.store(true, Ordering::Release);
+        if let Ok(mut model) = self.shared.model.lock() {
+            model.pending_focus.clear();
+        }
         if let Some(system) = &mut self.system {
             system.close();
         }
@@ -1081,6 +1175,7 @@ fn fail(shared: &Shared, error: impl std::fmt::Display) {
         return;
     }
     if let Ok(mut model) = shared.model.lock() {
+        model.pending_focus.clear();
         model.errors.push(error.to_string());
         for pane in model.panes.values() {
             for view in &pane.views {
@@ -1204,6 +1299,7 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
                 }
                 model.panes.clear();
                 model.last_host_event = None;
+                model.pending_focus.clear();
             }
             for (id, (terminal, agent_status)) in restored {
                 let remote = graph.panes.iter().find(|p| p.id == id).unwrap();
@@ -1258,6 +1354,7 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
             });
             model.instance = instance_id;
             model.sequence = sequence;
+            model.focus_snapshot(&graph);
             model.graph = Some(graph);
             (shared.wake)();
         }
@@ -1356,6 +1453,7 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
             send(shared, Vec::new())?;
         }
         ServerMessage::Reply(reply) => {
+            model.focus_reply(reply.request_id, reply.error.is_some());
             if let Some(error) = reply.error {
                 model.errors.push(error);
                 (shared.wake)();
@@ -1363,6 +1461,7 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
         }
         ServerMessage::Detached { .. } => {
             shared.closed.store(true, Ordering::Release);
+            model.pending_focus.clear();
             for pane in model.panes.values() {
                 close_views(pane);
             }
@@ -1427,6 +1526,183 @@ fn view_effect(effect: &Effect) -> bool {
 fn feed_view(terminal: &mut Terminal, data: &[u8], events: &mpsc::SyncSender<SessionEvent>) {
     for effect in terminal.feed(data).into_iter().filter(view_effect) {
         let _ = events.try_send(SessionEvent::Effect(effect));
+    }
+}
+
+#[cfg(test)]
+mod focus_tests {
+    use super::*;
+
+    fn state() -> serde_json::Value {
+        let terminal = tmuxx_terminal::Terminal::new(10, 4, 10).snapshot();
+        let layout = r#"{"V":2,"L":{"t":"h","w":21,"h":4,"x":0,"y":0,"c":[{"t":"p","w":10,"h":4,"x":0,"y":0,"i":0,"I":"%7"},{"t":"p","w":10,"h":4,"x":11,"y":0,"i":1,"I":"%8"}]}}"#;
+        serde_json::json!({
+            "sessions": [
+                {"id":0,"name":"one","active":0,"windows":{"0":1,"2":2}},
+                {"id":1,"name":"two","active":0,"windows":{"0":1,"2":2}}
+            ],
+            "windows": [
+                {"id":1,"name":"split","active":7,"cols":21,"rows":4,"panes":[7,8],"layout":layout},
+                {"id":2,"name":"single","active":9,"cols":10,"rows":4,"panes":[9],"layout":Layout::pane(9,10,4).to_legacy().unwrap()}
+            ],
+            "panes": [
+                {"id":7,"window":1,"cols":10,"rows":4,"status":null,"terminal":terminal},
+                {"id":8,"window":1,"cols":10,"rows":4,"status":null,"terminal":terminal},
+                {"id":9,"window":2,"cols":10,"rows":4,"status":null,"terminal":terminal}
+            ]
+        })
+    }
+    fn snapshot(connection: &Connection, sequence: u64, state: serde_json::Value) {
+        apply(
+            &connection.shared,
+            ServerMessage::Snapshot {
+                instance_id: "owner".into(),
+                sequence,
+                state,
+            },
+        )
+        .unwrap();
+    }
+    fn reply(connection: &Connection, request_id: u64, error: Option<&str>) {
+        apply(
+            &connection.shared,
+            ServerMessage::Reply(tmuxx_protocol::native::Response {
+                request_id,
+                status: None,
+                output: Vec::new(),
+                error: error.map(str::to_owned),
+            }),
+        )
+        .unwrap();
+    }
+    fn active(connection: &Connection) -> u64 {
+        connection.graph().unwrap().windows[0].active
+    }
+
+    #[test]
+    fn focus_waits_for_its_snapshot_and_preserves_newer_clicks_and_external_changes() {
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        snapshot(&connection, 1, state());
+        connection.focus_pane(0, 0, 8).unwrap();
+        let first = requests.try_recv().unwrap();
+        assert_eq!(tmuxx_command::parse_argv(&first.argv).unwrap().len(), 2);
+        assert!(requests.try_recv().is_err());
+        assert_eq!(active(&connection), 8);
+        snapshot(&connection, 2, state());
+        assert_eq!(active(&connection), 8, "old snapshot reversed the click");
+        reply(&connection, first.request_id, None);
+        assert_eq!(active(&connection), 8, "reply exposed the cached graph");
+
+        connection.focus_pane(0, 0, 7).unwrap();
+        let second = requests.try_recv().unwrap();
+        let mut selected = state();
+        selected["windows"][0]["active"] = 8.into();
+        snapshot(&connection, 3, selected.clone());
+        assert_eq!(
+            active(&connection),
+            7,
+            "earlier click replaced the latest one"
+        );
+        reply(&connection, second.request_id, None);
+        snapshot(&connection, 4, state());
+        assert!(
+            connection
+                .shared
+                .model
+                .lock()
+                .unwrap()
+                .pending_focus
+                .is_empty()
+        );
+        snapshot(&connection, 5, selected);
+        assert_eq!(active(&connection), 8, "later external focus was hidden");
+    }
+
+    #[test]
+    fn focus_projection_orders_linked_sessions_and_protects_active_tabs() {
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        snapshot(&connection, 1, state());
+        connection.focus_pane(1, 0, 8).unwrap();
+        connection.focus_pane(0, 0, 7).unwrap();
+        assert_eq!(
+            active(&connection),
+            7,
+            "session ID ordering reversed the latest click"
+        );
+        let first = requests.try_recv().unwrap();
+        let second = requests.try_recv().unwrap();
+        reply(&connection, first.request_id, None);
+        let mut selected = state();
+        selected["windows"][0]["active"] = 8.into();
+        snapshot(&connection, 2, selected);
+        assert_eq!(active(&connection), 7);
+        reply(&connection, second.request_id, None);
+        snapshot(&connection, 3, state());
+        connection.focus_pane(0, 2, 9).unwrap();
+        let third = requests.try_recv().unwrap();
+        snapshot(&connection, 4, state());
+        assert_eq!(connection.graph().unwrap().sessions[0].active, 2);
+        reply(&connection, third.request_id, None);
+        // A server hook may choose a different tab than the requested one.
+        snapshot(&connection, 5, state());
+        assert_eq!(connection.graph().unwrap().sessions[0].active, 0);
+    }
+
+    #[test]
+    fn focus_releases_rejected_removed_replaced_and_disconnected_targets() {
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        snapshot(&connection, 1, state());
+        connection.focus_pane(0, 0, 8).unwrap();
+        reply(
+            &connection,
+            requests.try_recv().unwrap().request_id,
+            Some("denied"),
+        );
+        assert_eq!(active(&connection), 7);
+        assert_eq!(connection.errors(), ["denied"]);
+
+        connection.focus_pane(0, 0, 8).unwrap();
+        let mut removed = state();
+        removed["windows"][0]["panes"] = serde_json::json!([7]);
+        removed["windows"][0]["layout"] = Layout::pane(7, 21, 4).to_legacy().unwrap().into();
+        removed["panes"].as_array_mut().unwrap().remove(1);
+        snapshot(&connection, 2, removed);
+        assert_eq!(active(&connection), 7);
+        assert!(
+            connection
+                .shared
+                .model
+                .lock()
+                .unwrap()
+                .pending_focus
+                .is_empty()
+        );
+
+        snapshot(&connection, 3, state());
+        connection.focus_pane(0, 0, 8).unwrap();
+        apply(
+            &connection.shared,
+            ServerMessage::Snapshot {
+                instance_id: "replacement".into(),
+                sequence: 1,
+                state: state(),
+            },
+        )
+        .unwrap();
+        assert_eq!(active(&connection), 7);
+        assert!(
+            connection
+                .shared
+                .model
+                .lock()
+                .unwrap()
+                .pending_focus
+                .is_empty()
+        );
+        connection.focus_pane(0, 0, 8).unwrap();
+        fail(&connection.shared, "disconnected");
+        assert_eq!(active(&connection), 7);
+        assert!(connection.focus_pane(0, 0, 8).is_err());
     }
 }
 

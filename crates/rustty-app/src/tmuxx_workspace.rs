@@ -327,6 +327,23 @@ impl Mapping {
             },
         })
     }
+    pub fn focus_target(
+        &self,
+        workspace: &Workspace,
+        host: Id,
+        pane: Id,
+    ) -> Option<(u64, u32, u64)> {
+        let window = workspace.windows.iter().find(|window| window.id == host)?;
+        let tab = window
+            .tabs
+            .get(window.active_tab)
+            .filter(|tab| tab.panes.contains_key(&pane))?;
+        Some((
+            *self.sessions.get(&host)?,
+            *self.window_indices.get(&tab.id)?,
+            *self.panes.get(&pane)?,
+        ))
+    }
     pub fn action(
         &self,
         workspace: &Workspace,
@@ -564,6 +581,14 @@ mod tests {
         assert_ne!(window.tabs[0].focused, window.tabs[1].focused);
         assert_eq!(mapping.panes[&window.tabs[0].focused], 7);
         assert_eq!(mapping.panes[&window.tabs[1].focused], 7);
+        assert_eq!(
+            mapping.focus_target(&workspace, window.id, window.tabs[1].focused),
+            Some((0, 8, 7))
+        );
+        assert_eq!(
+            mapping.focus_target(&workspace, window.id, window.tabs[0].focused),
+            None
+        );
         assert_eq!(
             mapping
                 .action(&workspace, window.id, &Action::GotoTab(2))

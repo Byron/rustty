@@ -99,6 +99,7 @@ struct Actor {
     sizes: Option<(u16, u16)>,
     direct_buffers: BTreeMap<u64, Vec<u8>>,
     cleanup_requests: std::collections::BTreeSet<u64>,
+    focus_requests: BTreeMap<u64, (u64, u64)>,
     recovery: Option<DiscoveryRecovery>,
 }
 
@@ -226,6 +227,7 @@ impl Actor {
             sizes: None,
             direct_buffers: BTreeMap::new(),
             cleanup_requests: Default::default(),
+            focus_requests: BTreeMap::new(),
             recovery: None,
         };
         actor.flush()?;
@@ -351,102 +353,147 @@ fn manage(
                     let Some(actor) = actors.get_mut(&id) else {
                         continue;
                     };
-                    let revision = actor.client.state().revision();
-                    let updates = actor.client.feed(&bytes);
-                    if actor.client.state().revision() != revision
-                        && let Some(recovery) = &mut actor.recovery
-                    {
-                        recovery.quiet_since = Instant::now();
-                    }
-                    actor.session = actor.client.state().attached_session.or(actor.session);
-                    let session = actor.session;
-                    for update in updates {
-                        match update {
-                            SystemEvent::State(next) if id == primary && !next.disconnected => {
-                                state = next;
-                                topology_changed = true;
-                                publish_graph(&shared, &state);
-                            }
-                            SystemEvent::PaneCapture {
-                                pane_id,
-                                data,
-                                cols,
-                                rows,
-                            } if owns(&state, session, pane_id) => {
-                                if let Err(error) = capture(&shared, pane_id, data, cols, rows) {
-                                    fail(&shared, error);
+                    // Apply reply snapshots before later notifications in the same read.
+                    for record in bytes.split_inclusive(|byte| *byte == b'\n') {
+                        let revision = actor.client.state().revision();
+                        let updates = actor.client.feed(record);
+                        if actor.client.state().revision() != revision
+                            && let Some(recovery) = &mut actor.recovery
+                        {
+                            recovery.quiet_since = Instant::now();
+                        }
+                        actor.session = actor.client.state().attached_session.or(actor.session);
+                        let session = actor.session;
+                        for update in updates {
+                            match update {
+                                SystemEvent::State(next) if id == primary && !next.disconnected => {
+                                    state = next;
+                                    topology_changed = true;
+                                    publish_graph(&shared, &state);
                                 }
-                                publish_graph(&shared, &state);
-                            }
-                            SystemEvent::PaneOutput { pane_id, data }
-                                if owns(&state, session, pane_id) =>
-                            {
-                                if let Err(error) = live(&shared, pane_id, &data) {
-                                    fail(&shared, error);
-                                }
-                            }
-                            SystemEvent::CommandFinished {
-                                request_id,
-                                failed,
-                                output,
-                            } => {
-                                if actor.cleanup_requests.remove(&request_id) {
-                                    continue;
-                                }
-                                if let Some(name) = actor.direct_buffers.remove(&request_id)
-                                    && failed
-                                {
-                                    // A live connection can remove a buffer left by a failed paste.
-                                    if let Ok(id) =
-                                        actor.client.queue(vec![tmuxx_command::Command {
-                                            blocks: Default::default(),
-                                            args: vec![
-                                                b"delete-buffer".to_vec(),
-                                                b"-b".to_vec(),
-                                                name,
-                                            ],
-                                        }])
+                                SystemEvent::PaneCapture {
+                                    pane_id,
+                                    data,
+                                    cols,
+                                    rows,
+                                } if owns(&state, session, pane_id) => {
+                                    if let Err(error) = capture(&shared, pane_id, data, cols, rows)
                                     {
-                                        actor.cleanup_requests.insert(id);
+                                        fail(&shared, error);
+                                    }
+                                    publish_graph(&shared, &state);
+                                }
+                                SystemEvent::PaneOutput { pane_id, data }
+                                    if owns(&state, session, pane_id) =>
+                                {
+                                    if let Err(error) = live(&shared, pane_id, &data) {
+                                        fail(&shared, error);
                                     }
                                 }
-                                if failed {
-                                    report(&shared, String::from_utf8_lossy(&output).trim());
+                                SystemEvent::CommandFinished {
+                                    request_id,
+                                    failed,
+                                    output,
+                                } => {
+                                    if let Some((request, session)) =
+                                        actor.focus_requests.remove(&request_id)
+                                    {
+                                        let result = if failed {
+                                            Err(err(String::from_utf8_lossy(&output).trim()))
+                                        } else {
+                                            apply_focus_snapshot(
+                                                &mut actor.client,
+                                                request,
+                                                session,
+                                                &output,
+                                            )
+                                        };
+                                        if let Ok(mut model) = shared.model.lock() {
+                                            model.focus_reply(request, result.is_err());
+                                        }
+                                        if let Err(error) = result {
+                                            report(&shared, error);
+                                        } else if id == primary {
+                                            state = actor.client.state().clone();
+                                            publish_graph(&shared, &state);
+                                        }
+                                        continue;
+                                    }
+                                    if actor.cleanup_requests.remove(&request_id) {
+                                        continue;
+                                    }
+                                    if let Some(name) = actor.direct_buffers.remove(&request_id)
+                                        && failed
+                                    {
+                                        // A live connection can remove a buffer left by a failed paste.
+                                        if let Ok(id) =
+                                            actor.client.queue(vec![tmuxx_command::Command {
+                                                blocks: Default::default(),
+                                                args: vec![
+                                                    b"delete-buffer".to_vec(),
+                                                    b"-b".to_vec(),
+                                                    name,
+                                                ],
+                                            }])
+                                        {
+                                            actor.cleanup_requests.insert(id);
+                                        }
+                                    }
+                                    if failed {
+                                        report(&shared, String::from_utf8_lossy(&output).trim());
+                                    }
                                 }
-                            }
-                            SystemEvent::UnframedOutput { data } => {
-                                report(&shared, String::from_utf8_lossy(&data));
-                            }
-                            SystemEvent::Indeterminate { request_id } => report(
-                                &shared,
-                                format!(
-                                    "SSH disconnected before command {request_id} was confirmed; it was not retried"
-                                ),
-                            ),
-                            SystemEvent::Error(error) => {
-                                fail(&shared, error);
-                                shared.closed.store(true, Ordering::Release);
-                            }
-                            SystemEvent::DiscoveryDeferred => {
-                                if actor
-                                    .recovery
-                                    .as_ref()
-                                    .is_some_and(|recovery| recovery.resumed)
-                                {
-                                    fail(
-                                        &shared,
-                                        "stock tmux discovery remained stale after bounded quiet-period recovery",
-                                    );
-                                } else if actor.recovery.is_none() {
-                                    actor.recovery = Some(DiscoveryRecovery::new(Instant::now()));
+                                SystemEvent::UnframedOutput { data } => {
+                                    report(&shared, String::from_utf8_lossy(&data));
                                 }
+                                SystemEvent::Indeterminate { request_id }
+                                | SystemEvent::Cancelled { request_id } => {
+                                    if let Some((request, _)) =
+                                        actor.focus_requests.remove(&request_id)
+                                        && let Ok(mut model) = shared.model.lock()
+                                    {
+                                        model.focus_reply(request, true);
+                                    }
+                                    if matches!(update, SystemEvent::Indeterminate { .. }) {
+                                        report(
+                                            &shared,
+                                            format!(
+                                                "SSH disconnected before command {request_id} was confirmed; it was not retried"
+                                            ),
+                                        );
+                                    }
+                                }
+                                SystemEvent::Error(error) => {
+                                    fail(&shared, error);
+                                    shared.closed.store(true, Ordering::Release);
+                                }
+                                SystemEvent::DiscoveryDeferred => {
+                                    if actor
+                                        .recovery
+                                        .as_ref()
+                                        .is_some_and(|recovery| recovery.resumed)
+                                    {
+                                        fail(
+                                            &shared,
+                                            "stock tmux discovery remained stale after bounded quiet-period recovery",
+                                        );
+                                    } else if actor.recovery.is_none() {
+                                        actor.recovery =
+                                            Some(DiscoveryRecovery::new(Instant::now()));
+                                    }
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
                     }
                 }
                 TransportEvent::Closed(id) => {
                     if let Some(mut actor) = actors.remove(&id) {
+                        if let Ok(mut model) = shared.model.lock() {
+                            for &(request, _) in actor.focus_requests.values() {
+                                model.focus_reply(request, true);
+                            }
+                        }
                         for update in actor.client.finish() {
                             if let SystemEvent::Indeterminate { request_id } = update {
                                 report(
@@ -642,16 +689,41 @@ fn manage(
                         "stock tmux control does not support native stdin payloads",
                     ));
                 }
-                let commands = tmuxx_command::parse_argv(&request.argv).map_err(err)?;
-                actors
+                let mut commands = tmuxx_command::parse_argv(&request.argv).map_err(err)?;
+                let focus_session = shared
+                    .model
+                    .lock()
+                    .map_err(err)?
+                    .pending_focus
+                    .iter()
+                    .find(|focus| focus.request_id == request.request_id)
+                    .map(|focus| focus.session);
+                if let Some(session) = focus_session {
+                    // Control notifications may arrive after the command barrier.
+                    commands.push(tmuxx_command::Command {
+                        blocks: Default::default(),
+                        args: vec![
+                            b"display-message".to_vec(), b"-p".to_vec(), b"-t".to_vec(),
+                            format!("${session}").into_bytes(),
+                            format!("rustty-focus-{}|#{{session_id}}|#{{window_index}}|#{{window_id}}|#{{pane_id}}", request.request_id).into_bytes(),
+                        ],
+                    });
+                }
+                let actor = actors
                     .get_mut(&primary)
-                    .ok_or_else(|| err("SSH control stream is not ready"))?
-                    .client
-                    .queue(commands)
-                    .map_err(err)?;
+                    .ok_or_else(|| err("SSH control stream is not ready"))?;
+                let queued = actor.client.queue(commands).map_err(err)?;
+                if let Some(session) = focus_session {
+                    actor
+                        .focus_requests
+                        .insert(queued, (request.request_id, session));
+                }
                 Ok(())
             })();
             if let Err(error) = result {
+                if let Ok(mut model) = shared.model.lock() {
+                    model.focus_reply(request.request_id, true);
+                }
                 report(&shared, error);
             }
         }
@@ -698,6 +770,42 @@ fn report(shared: &Shared, error: impl std::fmt::Display) {
         model.errors.push(error.to_string());
     }
     (shared.wake)();
+}
+fn apply_focus_snapshot(
+    client: &mut SystemClient,
+    request: u64,
+    expected_session: u64,
+    output: &[u8],
+) -> io::Result<()> {
+    let prefix = format!("rustty-focus-{request}|");
+    let line = output
+        .split(|byte| *byte == b'\n')
+        .rfind(|line| !line.is_empty())
+        .and_then(|line| line.strip_prefix(prefix.as_bytes()))
+        .ok_or_else(|| err("missing stock tmux focus snapshot"))?;
+    let fields: Vec<_> = std::str::from_utf8(line).map_err(err)?.split('|').collect();
+    let [session, index, window, pane] = fields.as_slice() else {
+        return Err(err("invalid stock tmux focus snapshot"));
+    };
+    let id = |value: &str, prefix| -> io::Result<u64> {
+        value
+            .strip_prefix(prefix)
+            .ok_or_else(|| err("invalid stock tmux focus ID"))?
+            .parse()
+            .map_err(err)
+    };
+    let session = id(session, '$')?;
+    if session != expected_session {
+        return Err(err("stock tmux focus snapshot belongs to another session"));
+    }
+    client
+        .apply_focus_snapshot(
+            session,
+            index.parse().map_err(err)?,
+            id(window, '@')?,
+            id(pane, '%')?,
+        )
+        .map_err(err)
 }
 fn publish_graph(shared: &Shared, state: &State) {
     let Ok(mut model) = shared.model.lock() else {
@@ -800,6 +908,7 @@ fn publish_graph(shared: &Shared, state: &State) {
             false
         }
     });
+    model.focus_snapshot(&graph);
     model.graph = Some(graph);
     (shared.wake)();
 }
@@ -856,6 +965,52 @@ mod tests {
     use std::process::Command;
     use std::time::Instant;
     #[test]
+    fn focus_queries_validate_scope_and_keep_authoritative_state_before_notifications() {
+        let mut client = SystemClient::new(b"focus".to_vec()).unwrap();
+        client.bootstrap().unwrap();
+        for data in [
+            b"$0\n".as_slice(),
+            b"$0|@1|0|1|layout|layout|*\n$0|@1|4|0|layout|layout|\n",
+            b"%7|@1|10|4|0|0|1\n%8|@1|10|4|11|0|0\n",
+        ] {
+            let commands = tmuxx_command::parse(&client.take_writes()[0]).unwrap();
+            let marker = &commands.last().unwrap().args[2];
+            let guard = tmuxx_protocol::Guard {
+                time: 1,
+                number: 1,
+                flags: 1,
+            };
+            let mut bytes = tmuxx_protocol::encode_command_result(guard, data, false);
+            bytes.extend(tmuxx_protocol::encode_command_result(guard, marker, false));
+            client.feed(&bytes);
+        }
+        let initial = client.state().clone();
+        for malformed in [
+            b"".as_slice(),
+            b"rustty-focus-2|$0|4|@1|%8\n",
+            b"rustty-focus-1|$1|4|@1|%8\n",
+            b"rustty-focus-1|$0|4|@1\n",
+            b"rustty-focus-1|$0|4|@1|%99\n",
+        ] {
+            assert!(apply_focus_snapshot(&mut client, 1, 0, malformed).is_err());
+            assert_eq!(client.state(), &initial);
+        }
+        apply_focus_snapshot(
+            &mut client,
+            1,
+            0,
+            b"hook output\nrustty-focus-1|$0|4|@1|%8\n",
+        )
+        .unwrap();
+        assert_eq!(client.state().sessions[&0].active_index, Some(4));
+        assert_eq!(client.state().windows[&1].active_pane, Some(8));
+        client.feed(b"%window-renamed @1 renamed\n");
+        assert_eq!(client.state().windows[&1].active_pane, Some(8));
+        client.feed(b"%window-pane-changed @1 %7\n");
+        assert_eq!(client.state().windows[&1].active_pane, Some(7));
+    }
+
+    #[test]
     fn discovery_recovery_waits_for_quiet_once_without_extending_its_deadline() {
         let start = Instant::now();
         let mut recovery = DiscoveryRecovery::new(start);
@@ -902,6 +1057,201 @@ mod tests {
             assert!(Instant::now() < deadline, "missing {expected}: {text:?}");
             thread::sleep(Duration::from_millis(5));
         }
+    }
+    fn stock_focus_is_confirmed_without_reverting(connection: &Connection) {
+        let graph = connection.graph().unwrap();
+        let session = graph.sessions.iter().find(|s| s.name == "one").unwrap().id;
+        let window = graph
+            .sessions
+            .iter()
+            .find(|s| s.id == session)
+            .unwrap()
+            .windows[&0];
+        let panes = graph
+            .windows
+            .iter()
+            .find(|w| w.id == window)
+            .unwrap()
+            .panes
+            .clone();
+        let (first, second) = (panes[0], panes[1]);
+        let wait = |expected, projected| {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                let errors = connection.errors();
+                assert!(errors.is_empty(), "{errors:?}");
+                let model = connection.shared.model.lock().unwrap();
+                let pending = !model.pending_focus.is_empty();
+                let actual = model
+                    .graph
+                    .as_ref()
+                    .unwrap()
+                    .windows
+                    .iter()
+                    .find(|w| w.id == window)
+                    .unwrap()
+                    .active;
+                drop(model);
+                if !pending {
+                    assert_eq!(actual, expected);
+                    break;
+                }
+                if projected {
+                    assert_eq!(
+                        connection
+                            .graph()
+                            .unwrap()
+                            .windows
+                            .iter()
+                            .find(|w| w.id == window)
+                            .unwrap()
+                            .active,
+                        expected
+                    );
+                }
+                assert!(Instant::now() < deadline, "stock focus was never confirmed");
+                thread::sleep(Duration::from_millis(1));
+            }
+        };
+        // The second selection is a no-op and emits no pane-change notification.
+        for _ in 0..2 {
+            connection.focus_pane(session, 0, second).unwrap();
+            wait(second, true);
+        }
+        connection.focus_pane(session, 0, first).unwrap();
+        connection.focus_pane(session, 0, second).unwrap();
+        wait(second, true);
+        connection.focus_pane(session, 0, first).unwrap();
+        wait(first, true);
+        connection
+            .command([
+                "set-hook".into(),
+                "-t".into(),
+                format!("${session}"),
+                "after-select-pane".into(),
+                format!("select-pane -t %{first}"),
+            ])
+            .unwrap();
+        connection.focus_pane(session, 0, second).unwrap();
+        wait(first, false);
+        connection
+            .command([
+                "set-hook".into(),
+                "-u".into(),
+                "-t".into(),
+                format!("${session}"),
+                "after-select-pane".into(),
+            ])
+            .unwrap();
+        connection.focus_pane(session, 0, second).unwrap();
+        wait(second, true);
+        connection.focus_pane(session, 0, first).unwrap();
+        wait(first, true);
+    }
+    fn stock_focus_releases_a_lost_primary_with_a_surviving_session(
+        connection: &Connection,
+        host: &str,
+    ) {
+        let graph = connection.graph().unwrap();
+        let session = graph.sessions.iter().find(|s| s.name == "one").unwrap().id;
+        let window = graph
+            .sessions
+            .iter()
+            .find(|s| s.id == session)
+            .unwrap()
+            .windows[&0];
+        let panes = graph
+            .windows
+            .iter()
+            .find(|w| w.id == window)
+            .unwrap()
+            .panes
+            .clone();
+        let remote = |command: &str| {
+            let output = Command::new("ssh")
+                .args(["-T", "--", host, command])
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{:?}", output.stderr);
+            output.stdout
+        };
+        // Block the primary queue after identifying it, leaving focus queued behind it.
+        connection
+            .command([
+                "set-option",
+                "-gF",
+                "@rustty-focus-blocked",
+                "#{client_name}",
+                ";",
+                "wait-for",
+                "rustty-focus-block",
+            ])
+            .unwrap();
+        connection.focus_pane(session, 0, panes[1]).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let primary = loop {
+            let name = remote("exec tmux show-options -gqv @rustty-focus-blocked");
+            if !name.iter().all(u8::is_ascii_whitespace) {
+                break String::from_utf8(name)
+                    .unwrap()
+                    .trim()
+                    .replace('\'', "'\\''");
+            }
+            assert!(
+                Instant::now() < deadline,
+                "primary did not reach its focus blocker"
+            );
+            thread::sleep(Duration::from_millis(5));
+        };
+        remote(&format!("exec tmux detach-client -t '{primary}'"));
+        remote("exec tmux wait-for -S rustty-focus-block");
+        loop {
+            assert!(
+                !connection.is_closed(),
+                "losing one actor closed the shared connection"
+            );
+            if connection
+                .shared
+                .model
+                .lock()
+                .unwrap()
+                .pending_focus
+                .is_empty()
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "lost primary retained optimistic focus"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        remote(&format!("exec tmux select-pane -t '%{}'", panes[0]));
+        loop {
+            let errors = connection.errors();
+            assert!(
+                errors.iter().all(|error| error.contains("SSH")),
+                "{errors:?}"
+            );
+            if connection
+                .graph()
+                .unwrap()
+                .windows
+                .iter()
+                .find(|w| w.id == window)
+                .unwrap()
+                .active
+                == panes[0]
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "lost focus intent hid the surviving actor's state"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        remote("exec tmux set-option -gu @rustty-focus-blocked");
     }
     fn stock_mouse_is_targeted(connection: &Connection, first: &Session, host: &str) {
         let program = |first: bool| {
@@ -1101,6 +1451,8 @@ mod tests {
                 .sum::<usize>(),
             3
         );
+        stock_focus_is_confirmed_without_reverting(&connection);
+        stock_focus_releases_a_lost_primary_with_a_surviving_session(&connection, &host);
         let first = Session::attach_tmuxx(&connection, 0, Arc::new(|| {})).unwrap();
         let second = Session::attach_tmuxx(&connection, 0, Arc::new(|| {})).unwrap();
         {
