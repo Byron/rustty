@@ -126,17 +126,27 @@ impl Mapping {
                 tab.panes = panes;
                 tab.focused = focused;
                 tab.title = Some(window.name.clone());
-                tab.zoom = window.zoomed.then(|| {
-                    self.id(
-                        workspace,
-                        format!("pane:{key}:{}", window.zoomed_pane.unwrap_or(window.active)),
-                    )
-                });
                 let visible = if window.zoomed && !window.visible_layout.is_empty() {
                     Layout::parse(&window.visible_layout).map_err(|e| e.to_string())?
                 } else {
                     layout.clone()
                 };
+                tab.zoom = window.zoomed.then(|| {
+                    let target = window
+                        .zoomed_pane
+                        .or_else(|| {
+                            if window.visible_layout.is_empty() {
+                                return None;
+                            }
+                            // Stock tmux identifies the zoomed pane through its visible layout.
+                            let mut panes =
+                                visible.panes().into_iter().filter(|pane| pane.z.is_none());
+                            let id = panes.next()?.id?;
+                            panes.next().is_none().then_some(u64::from(id))
+                        })
+                        .unwrap_or(window.active);
+                    self.id(workspace, format!("pane:{key}:{target}"))
+                });
                 tab.server_view = if (window.zoomed && !window.visible_layout.is_empty())
                     || graph
                         .panes
@@ -244,6 +254,14 @@ impl Mapping {
                         layout.geometry.height,
                     ),
                 };
+                let reserved_top = (i64::from(y) - i64::from(layout.geometry.y))
+                    .clamp(0, i64::from(layout.geometry.height))
+                    as u32;
+                let reserved_bottom = layout
+                    .geometry
+                    .height
+                    .saturating_sub(reserved_top)
+                    .saturating_sub(rows);
                 out.push((
                     pane.z,
                     PaneRect {
@@ -252,6 +270,8 @@ impl Mapping {
                         y,
                         cols,
                         rows,
+                        reserved_top,
+                        reserved_bottom,
                     },
                 ));
             }
@@ -442,9 +462,11 @@ impl Mapping {
 
 /// Compute the server grid from actual leaf content areas, including per-pane
 /// padding/headers and the server's one-cell split borders.
+// shortcut: A shared grid can clip asymmetric panes after padding; exact per-pane fit must also update layout and divider placement.
 pub fn grid_size(
-    tree: &Tree,
+    tab: &Tab,
     bounds: crate::workspace::Rect,
+    peek: bool,
     cell: [f32; 2],
     padding: [f32; 2],
 ) -> (u16, u16) {
@@ -483,6 +505,17 @@ pub fn grid_size(
             }
         }
     }
+    let overlay;
+    let tree = if !peek
+        && let Some(id) = tab
+            .zoom
+            .filter(|id| tab.overlays.iter().any(|overlay| overlay.pane == *id))
+    {
+        overlay = Tree::leaf(id);
+        &overlay
+    } else {
+        tab.visible_tree(peek)
+    };
     let (cols, rows) = inner(tree, bounds.width, bounds.height, cell, padding);
     (cols.clamp(1, 10000) as u16, rows.clamp(1, 10000) as u16)
 }
@@ -537,6 +570,182 @@ mod tests {
                 terminal: serde_json::Value::Null,
             }],
         }
+    }
+    fn tiled_graph(layout: &str) -> Graph {
+        let mut graph = graph();
+        let parsed = Layout::parse(layout).unwrap();
+        let template = graph.panes[0].clone();
+        graph.panes = parsed
+            .panes()
+            .into_iter()
+            .map(|pane| {
+                let id = pane.id.unwrap();
+                let geometry = parsed.find(id).unwrap().geometry;
+                let mut pane = template.clone();
+                pane.id = u64::from(id);
+                pane.x = Some(geometry.x);
+                pane.y = Some(geometry.y);
+                pane.cols = geometry.width as u16;
+                pane.rows = geometry.height as u16;
+                pane
+            })
+            .collect();
+        graph.windows[0].layout = layout.into();
+        graph.windows[0].panes = graph.panes.iter().map(|pane| pane.id).collect();
+        graph.windows[0].cols = parsed.geometry.width as u16;
+        graph.windows[0].rows = parsed.geometry.height as u16;
+        graph
+    }
+    const FOUR_TILES: &str = r#"{"V":2,"L":{"t":"h","w":81,"h":49,"x":0,"y":0,"c":[{"t":"v","w":40,"h":49,"x":0,"y":0,"c":[{"t":"p","w":40,"h":24,"x":0,"y":0,"i":0,"I":"%7"},{"t":"p","w":40,"h":24,"x":0,"y":25,"i":1,"I":"%8"}]},{"t":"v","w":40,"h":49,"x":41,"y":0,"c":[{"t":"p","w":40,"h":24,"x":41,"y":0,"i":2,"I":"%9"},{"t":"p","w":40,"h":24,"x":41,"y":25,"i":3,"I":"%10"}]}]}}"#;
+
+    #[test]
+    fn tiled_views_fill_native_rectangles_without_server_cell_gutters() {
+        let cases: [(&str, &[(u64, u64, Axis)]); 4] = [
+            (
+                r#"{"V":2,"L":{"t":"h","w":81,"h":24,"x":0,"y":0,"c":[{"t":"p","w":40,"h":24,"x":0,"y":0,"i":0,"I":"%7"},{"t":"p","w":40,"h":24,"x":41,"y":0,"i":1,"I":"%8"}]}}"#,
+                &[(7, 8, Axis::Horizontal)],
+            ),
+            (
+                r#"{"V":2,"L":{"t":"v","w":80,"h":49,"x":0,"y":0,"c":[{"t":"p","w":80,"h":24,"x":0,"y":0,"i":0,"I":"%7"},{"t":"p","w":80,"h":24,"x":0,"y":25,"i":1,"I":"%8"}]}}"#,
+                &[(7, 8, Axis::Vertical)],
+            ),
+            (
+                FOUR_TILES,
+                &[
+                    (7, 8, Axis::Vertical),
+                    (9, 10, Axis::Vertical),
+                    (7, 9, Axis::Horizontal),
+                    (8, 10, Axis::Horizontal),
+                ],
+            ),
+            (
+                r#"{"V":2,"L":{"t":"h","w":96,"h":24,"x":0,"y":0,"c":[{"t":"p","w":67,"h":24,"x":0,"y":0,"i":0,"I":"%7"},{"t":"p","w":28,"h":24,"x":68,"y":0,"i":1,"I":"%8"}]}}"#,
+                &[(7, 8, Axis::Horizontal)],
+            ),
+        ];
+        let bounds = crate::workspace::Rect {
+            x: 13.0,
+            y: 17.0,
+            width: 1000.0,
+            height: 490.0,
+        };
+        for (layout, neighbors) in cases {
+            let mut mapping = Mapping::default();
+            let mut workspace = Workspace::default();
+            mapping
+                .apply(&mut workspace, &tiled_graph(layout), &[0].into())
+                .unwrap();
+            let rects: BTreeMap<_, _> = workspace.windows[0].tabs[0]
+                .layout(bounds, false, 10.0)
+                .into_iter()
+                .map(|(id, rect)| (mapping.panes[&id], rect))
+                .collect();
+            let area: f32 = rects.values().map(|rect| rect.width * rect.height).sum();
+            assert!((area - bounds.width * bounds.height).abs() < 0.01);
+            for &(first, second, axis) in neighbors {
+                let a = rects[&first];
+                let b = rects[&second];
+                let gap = match axis {
+                    Axis::Horizontal => b.x - (a.x + a.width),
+                    Axis::Vertical => b.y - (a.y + a.height),
+                };
+                assert!(gap.abs() < 0.001, "server cell left a {gap}-unit gutter");
+                let inner = |rect: crate::workspace::Rect| {
+                    egui::Rect::from_min_size(
+                        egui::pos2(rect.x, rect.y),
+                        egui::vec2(rect.width, rect.height),
+                    )
+                    .shrink(1.0)
+                };
+                let gap = match axis {
+                    Axis::Horizontal => inner(b).left() - inner(a).right(),
+                    Axis::Vertical => inner(b).top() - inner(a).bottom(),
+                };
+                assert!((gap - 2.0).abs() < 0.001);
+            }
+        }
+    }
+
+    #[test]
+    fn view_grid_and_status_rows_fit_real_cells_after_headers_padding_and_frames() {
+        let cell = [8.0, 10.0];
+        // Horizontal padding 12; vertical padding 8 + header 20; frame 2 on both axes.
+        let padding = [14.0, 30.0];
+        for (width, height, cols, rows) in [(654.0, 270.0, 80, 24), (652.0, 268.0, 79, 23)] {
+            for (top, bottom) in [(0, 0), (1, 0), (0, 1)] {
+                let mut graph = graph();
+                graph.windows[0].cols = cols;
+                graph.windows[0].rows = rows;
+                graph.windows[0].layout = Layout::pane(7, u32::from(cols), u32::from(rows))
+                    .to_legacy()
+                    .unwrap();
+                graph.panes[0].x = Some(0);
+                graph.panes[0].y = Some(top);
+                graph.panes[0].cols = cols;
+                graph.panes[0].rows = rows - (top + bottom) as u16;
+                let mut mapping = Mapping::default();
+                let mut workspace = Workspace::default();
+                mapping.apply(&mut workspace, &graph, &[0].into()).unwrap();
+                let tab = &workspace.windows[0].tabs[0];
+                let bounds = crate::workspace::Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width,
+                    height,
+                };
+                assert_eq!(grid_size(tab, bounds, false, cell, padding), (cols, rows));
+                let rect = tab.layout(bounds, false, cell[1])[0].1;
+                assert_eq!(rect.y, top as f32 * cell[1]);
+                assert_eq!(((rect.width - padding[0]) / cell[0]).floor() as u16, cols);
+                assert_eq!(
+                    ((rect.height - padding[1]) / cell[1]).floor() as u16,
+                    graph.panes[0].rows
+                );
+                if top + bottom != 0 {
+                    let tiny = tab.layout(
+                        crate::workspace::Rect {
+                            height: 5.0,
+                            ..bounds
+                        },
+                        false,
+                        cell[1],
+                    )[0]
+                    .1;
+                    assert_eq!(tiny.height, 0.0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn zoom_sizes_use_visible_content_while_peek_keeps_the_full_tree() {
+        let mut graph = tiled_graph(FOUR_TILES);
+        graph.windows[0].zoomed = true;
+        graph.windows[0].zoomed_pane = Some(7);
+        graph.windows[0].visible_layout = Layout::pane(7, 81, 49).to_legacy().unwrap();
+        graph.panes[0].cols = 81;
+        graph.panes[0].rows = 49;
+        let mut mapping = Mapping::default();
+        let mut workspace = Workspace::default();
+        mapping.apply(&mut workspace, &graph, &[0].into()).unwrap();
+        let tab = &workspace.windows[0].tabs[0];
+        let bounds = crate::workspace::Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 654.0,
+            height: 270.0,
+        };
+        assert_eq!(
+            grid_size(tab, bounds, false, [8.0, 10.0], [14.0, 30.0]),
+            (80, 24)
+        );
+        assert_eq!(
+            grid_size(tab, bounds, true, [8.0, 10.0], [14.0, 30.0]),
+            (79, 21)
+        );
+        let visible = tab.layout(bounds, false, 10.0);
+        assert_eq!(visible.len(), 1);
+        assert_eq!([visible[0].1.width, visible[0].1.height], [654.0, 270.0]);
     }
     #[test]
     fn linked_windows_get_independent_views_and_commands_use_server_ids() {
@@ -630,6 +839,7 @@ mod tests {
                 height: 240.0,
             },
             false,
+            10.0,
         );
         assert_eq!(
             layout
@@ -666,7 +876,10 @@ mod tests {
             .unwrap();
         let tab = &workspace.windows[0].tabs[0];
         assert!(tab.root.panes().is_empty());
-        assert_eq!(tab.layout(crate::workspace::Rect::UNIT, false).len(), 2);
+        assert_eq!(
+            tab.layout(crate::workspace::Rect::UNIT, false, 0.0).len(),
+            2
+        );
         workspace.validate().unwrap();
     }
     #[test]
@@ -703,6 +916,7 @@ mod tests {
                 height: 240.0,
             },
             false,
+            10.0,
         );
         assert_eq!(
             visible
@@ -729,8 +943,51 @@ mod tests {
         tab.focus(tab.focused);
         assert_eq!(tab.zoom, Some(zoom));
         workspace.validate().unwrap();
+
+        // Stock tmux omits zoomed_pane while the floating pane has focus.
+        graph.windows[0].zoomed_pane = None;
+        mapping
+            .apply(&mut workspace, &graph, &[0, 1].into())
+            .unwrap();
+        let tab = &workspace.windows[0].tabs[0];
+        assert_eq!(mapping.panes[&tab.zoom.unwrap()], 7);
+        let bounds = crate::workspace::Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 800.0,
+            height: 240.0,
+        };
+        let visible = tab.layout(bounds, false, 10.0);
+        assert_eq!([visible[0].1.width, visible[0].1.height], [800.0, 240.0]);
+
+        // A floating zoom target uses the full view, including its status-row reservation.
+        graph.windows[0].zoomed_pane = Some(42);
+        graph.windows[0].visible_layout = Layout::pane(42, 80, 24).to_legacy().unwrap();
+        graph.panes[1].x = Some(0);
+        graph.panes[1].y = Some(1);
+        graph.panes[1].rows = 23;
+        mapping
+            .apply(&mut workspace, &graph, &[0, 1].into())
+            .unwrap();
+        let tab = &workspace.windows[0].tabs[0];
+        let visible = tab.layout(bounds, false, 10.0);
+        assert_eq!(visible.len(), 1);
+        assert_eq!(mapping.panes[&visible[0].0], 42);
+        assert_eq!(
+            [
+                visible[0].1.x,
+                visible[0].1.y,
+                visible[0].1.width,
+                visible[0].1.height
+            ],
+            [0.0, 10.0, 800.0, 230.0]
+        );
+        assert_eq!(
+            grid_size(tab, bounds, false, [8.0, 10.0], [14.0, 30.0]),
+            (98, 21)
+        );
         let before = serde_json::to_value(&workspace).unwrap();
-        graph.windows[0].visible_layout = graph.windows[0].visible_layout.replace("%42", "%999");
+        graph.windows[0].visible_layout = Layout::pane(999, 80, 24).to_legacy().unwrap();
         assert!(
             mapping
                 .apply(&mut workspace, &graph, &[0, 1].into())
@@ -760,6 +1017,7 @@ mod tests {
                 height: 240.0,
             },
             false,
+            10.0,
         )[0]
         .1;
         assert_eq!(
@@ -780,6 +1038,7 @@ mod tests {
                 height: 240.0,
             },
             false,
+            10.0,
         )[0]
         .1;
         assert_eq!([rect.y, rect.height], [10.0, 230.0]);
