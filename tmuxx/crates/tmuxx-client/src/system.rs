@@ -114,6 +114,38 @@ impl SystemClient {
     pub fn state(&self) -> &State {
         &self.client.state
     }
+    /// Apply a read-only focus query completed after a selection command.
+    pub fn apply_focus_snapshot(
+        &mut self,
+        session: u64,
+        index: u32,
+        window: u64,
+        pane: u64,
+    ) -> Result<(), Error> {
+        let state = &mut self.client.state;
+        if state
+            .sessions
+            .get(&session)
+            .and_then(|s| s.windows.get(&index))
+            != Some(&window)
+            || !state
+                .windows
+                .get(&window)
+                .is_some_and(|w| w.panes.contains(&pane))
+            || !state
+                .panes
+                .get(&pane)
+                .is_some_and(|p| p.window_id == window)
+        {
+            return Err(Error::UnknownObject);
+        }
+        let session = state.sessions.get_mut(&session).unwrap();
+        session.active_window = Some(window);
+        session.active_index = Some(index);
+        state.windows.get_mut(&window).unwrap().active_pane = Some(pane);
+        state.revision = state.revision.wrapping_add(1);
+        Ok(())
+    }
     pub fn discovery_pending(&self) -> bool {
         self.bootstrap_requested
             || self.scan.is_some()
