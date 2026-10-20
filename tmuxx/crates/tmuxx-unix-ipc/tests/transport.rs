@@ -57,6 +57,7 @@ fn short_header_and_invalid_lengths_fail() {
 #[test]
 fn fragmented_message_reassembles() {
     let (mut writer, reader) = UnixStream::pair().unwrap();
+    let mut reader = Connection::new(reader, Schema::Modern { version: 8 }).unwrap();
     let mut bytes = Vec::new();
     for field in [200_u32, 21, 8, u32::MAX] {
         bytes.extend_from_slice(&field.to_ne_bytes());
@@ -67,7 +68,6 @@ fn fragmented_message_reassembles() {
             writer.write_all(&[byte]).unwrap();
         }
     });
-    let mut reader = Connection::new(reader, Schema::Modern { version: 8 }).unwrap();
     assert_eq!(reader.recv().unwrap().unwrap().payload, b"hello");
     task.join().unwrap();
 }
