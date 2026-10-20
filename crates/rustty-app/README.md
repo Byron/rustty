@@ -409,12 +409,11 @@ ordinary windows retain their local layout commands. Windows native hosting and
 local transport remain TODOs for a Windows agent; `rustty.exe tmux` dispatch is in
 place, but does not claim a working Windows daemon.
 
-Development currently uses the sibling `github.com/tmux/tmux/rust` workspace.
+The tmuxx crates are pinned together to GitHub revision
+`74a61967e8c13883efc462a160044952b0063cd5`; no sibling checkout is needed to build.
 The engine and all Rustty renderers share its `tmuxx-vendored-rustty-vt` package so
-native checkpoint/replay uses the same implementation. The centralized Cargo
-dependencies must be moved together to one published Git revision after the new
-CLI and retained-agent changes are published; a sibling checkout remains required
-until then.
+native checkpoint/replay uses the same implementation. Update these dependencies
+together when changing the terminal implementation.
 
 Targeted verification:
 
