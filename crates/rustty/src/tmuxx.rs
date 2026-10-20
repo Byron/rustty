@@ -15,6 +15,8 @@ use std::thread;
 use std::time::Duration;
 pub use tmuxx_layout::{Axis, Kind, Layout};
 use tmuxx_protocol::native::{Hello, Request, ServerMessage, SnapshotAssembler};
+#[cfg(windows)]
+pub use tmuxx_runtime::initialize_conpty;
 
 mod ssh;
 mod system;
