@@ -85,7 +85,7 @@ pub struct ServerPane {
     #[serde(default)]
     pub modal_close_cancel: bool,
     #[serde(default)]
-    pub terminal: serde_json::Value,
+    pub terminal: Arc<serde_json::Value>,
 }
 
 #[derive(Default)]
@@ -1653,6 +1653,27 @@ mod focus_tests {
     }
     fn active(connection: &Connection) -> u64 {
         connection.graph().unwrap().windows[0].active
+    }
+
+    #[test]
+    fn graph_copies_share_terminal_snapshots_without_sharing_focus() {
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        snapshot(&connection, 1, state());
+        let original = connection.graph().unwrap();
+        connection.focus_pane(1, 0, 8).unwrap();
+        let projected = connection.graph().unwrap();
+        assert_eq!(original.windows[0].active, 7);
+        assert_eq!(projected.windows[0].active, 8);
+        for (old, new) in original.panes.iter().zip(&projected.panes) {
+            assert!(Arc::ptr_eq(&old.terminal, &new.terminal));
+            assert!(new.terminal["primary"]["rows"].is_array());
+        }
+        snapshot(&connection, 2, state());
+        let refreshed = connection.graph().unwrap();
+        assert!(!Arc::ptr_eq(
+            &original.panes[0].terminal,
+            &refreshed.panes[0].terminal
+        ));
     }
 
     #[test]
@@ -3325,7 +3346,7 @@ mod tests {
         let graph = wait(&connection, |g| g.panes[0].status == Some(17));
         assert!(session.has_exited());
         let terminal: tmuxx_terminal::Snapshot =
-            serde_json::from_value(graph.panes[0].terminal.clone()).unwrap();
+            serde_json::from_value((*graph.panes[0].terminal).clone()).unwrap();
         assert!(terminal.agent_status.snapshot.is_none());
         assert!(session.events().any(|event| matches!(
             event,
