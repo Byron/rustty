@@ -11,14 +11,14 @@ license = "MIT"
 
 [workspace.dependencies]
 rustty-parser = { path = "crates/rustty-parser" }
-rustty-vt = { package = "tmuxx-vendored-rustty-vt", git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
-tmuxx-cli = { git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
-tmuxx-terminal = { git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
-tmuxx-runtime = { git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
-tmuxx-protocol = { git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
-tmuxx-layout = { git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
-tmuxx-client = { git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
-tmuxx-command = { git = "https://github.com/Byron/tmux", rev = "74a61967e8c13883efc462a160044952b0063cd5" }
+rustty-vt = { package = "tmuxx-vendored-rustty-vt", git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
+tmuxx-cli = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
+tmuxx-terminal = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
+tmuxx-runtime = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
+tmuxx-protocol = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
+tmuxx-layout = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
+tmuxx-client = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
+tmuxx-command = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
 rustty-font = { path = "crates/rustty-font" }
 rustty-render = { path = "crates/rustty-render" }
 rustty-render-wgpu = { path = "crates/rustty-render-wgpu" }
@@ -48,6 +48,7 @@ objc2-user-notifications = "0.3.2"
 
 [patch.crates-io]
 winit = { path = "vendor/winit" }
+portable-pty = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
 
 [profile.release]
 lto = "thin"
