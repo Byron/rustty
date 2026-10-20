@@ -9,6 +9,16 @@ pub enum Source {
     SystemSsh(String),
 }
 
+impl Source {
+    pub fn ssh_target(&self) -> Option<String> {
+        match self {
+            Self::Ssh(host) => Some(format!("ssh:{host}")),
+            Self::SystemSsh(host) => Some(format!("system-ssh:{host}")),
+            Self::Embedded(_) | Self::Local(_) => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Target {
     pub source: Source,
@@ -17,6 +27,7 @@ pub struct Target {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
+    Connect(String),
     Open(Target, u64),
     Kill(Target, u64),
     Execute(Target, Vec<String>),
@@ -143,8 +154,12 @@ pub(crate) mod native {
         }
     }
     fn item(entry: &Entry, routes: &mut Routes) -> Result<Box<dyn IsMenuItem>, String> {
+        #[cfg(target_os = "windows")]
+        let label = entry.label.replace('&', "&&");
+        #[cfg(not(target_os = "windows"))]
+        let label = &entry.label;
         if !entry.children.is_empty() {
-            let menu = Submenu::new(&entry.label, true);
+            let menu = Submenu::new(&label, true);
             for child in &entry.children {
                 menu.append(item(child, routes)?.as_ref())
                     .map_err(|e| e.to_string())?;
@@ -153,12 +168,12 @@ pub(crate) mod native {
         } else if let Some(command) = &entry.command {
             Ok(Box::new(MenuItem::with_id(
                 routes.insert(command.clone()),
-                &entry.label,
+                &label,
                 true,
                 None,
             )))
         } else {
-            Ok(Box::new(MenuItem::new(&entry.label, false, None)))
+            Ok(Box::new(MenuItem::new(&label, false, None)))
         }
     }
 
@@ -207,5 +222,6 @@ mod tests {
         assert!(Command::Execute(target.clone(), vec!["kill-pane".into()]).requires_confirmation());
         assert!(!Command::Open(target.clone(), 7).requires_confirmation());
         assert!(!Command::Disconnect(target).requires_confirmation());
+        assert!(!Command::Connect("ssh:build-host".into()).requires_confirmation());
     }
 }

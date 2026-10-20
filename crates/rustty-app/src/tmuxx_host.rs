@@ -240,12 +240,22 @@ impl Attachment {
         }
         saved.into_values().collect()
     }
-    pub fn label(&self) -> String {
+    pub fn label(&self, names: &BTreeMap<String, String>) -> String {
         let source = match &self.source {
             Source::Embedded(_) => "temporary".into(),
             Source::Local(path) => format!("local · {}", path.display()),
             Source::Ssh(host) | Source::SystemSsh(host) => format!("SSH · {host}"),
         };
+        let source = self
+            .source
+            .ssh_target()
+            .and_then(|target| {
+                names
+                    .iter()
+                    .find(|(_, value)| **value == target)
+                    .map(|(name, _)| format!("{name} · {source}"))
+            })
+            .unwrap_or(source);
         if self.connection.as_ref().is_none_or(Connection::is_closed) {
             format!("tmuxx · {source} · disconnected")
         } else {
@@ -254,76 +264,182 @@ impl Attachment {
     }
 }
 
-impl App {
-    pub(super) fn sync_tmuxx_menu(&mut self) {
+impl Attachment {
+    fn menu_entry(&self, name: Option<&str>) -> rustty_app::tmuxx_menu::Entry {
         use rustty_app::tmuxx_menu::Entry;
-        let entries = self
-            .tmuxx
+        let mut children = Vec::new();
+        if let Some(status) = &self.status {
+            children.push(Entry::label(status));
+        }
+        if let Source::Embedded(endpoint) = &self.source {
+            children.push(Entry::label(format!(
+                "Native endpoint: {}",
+                endpoint.display()
+            )));
+        }
+        let target = self.target();
+        let live = self.connection.as_ref().is_some_and(|connection| {
+            !connection.is_closed()
+                && !target.instance.is_empty()
+                && connection.instance() == target.instance
+        });
+        for session in self
+            .connection
+            .as_ref()
+            .map(Connection::sessions)
+            .unwrap_or_default()
+        {
+            let label = if self.selected.contains(&session.id) {
+                "Focus Window"
+            } else {
+                "Open Window"
+            };
+            let session_entries = if live {
+                let mut items = vec![Entry::command(
+                    label,
+                    MenuCommand::Open(target.clone(), session.id),
+                )];
+                items.extend(
+                    session
+                        .windows
+                        .into_iter()
+                        .map(|name| Entry::label(format!("Tab: {name}"))),
+                );
+                items.push(Entry::command(
+                    "Terminate Session…",
+                    MenuCommand::Kill(target.clone(), session.id),
+                ));
+                items
+            } else {
+                vec![Entry::label("Disconnected")]
+            };
+            children.push(Entry::submenu(session.name, session_entries));
+        }
+        if !self.temporary() {
+            children.push(Entry::command(
+                "Disconnect",
+                MenuCommand::Disconnect(target.clone()),
+            ));
+        }
+        if live {
+            children.push(Entry::command(
+                "Stop Server…",
+                MenuCommand::Shutdown(target),
+            ));
+        }
+        if name.is_some()
+            && let Some(target) = self.source.ssh_target()
+        {
+            children.insert(0, Entry::label(target));
+        }
+        if self.connection.as_ref().is_none_or(Connection::is_closed)
+            && let Some(target) = self.source.ssh_target()
+        {
+            children.insert(
+                usize::from(name.is_some()),
+                Entry::command("Reconnect", MenuCommand::Connect(target)),
+            );
+        } else if self.instance.is_empty() && self.status.is_none() {
+            children.insert(0, Entry::label("Connecting…"));
+        }
+        Entry::submenu(
+            name.map(str::to_owned).unwrap_or_else(|| {
+                self.label(&BTreeMap::new())
+                    .trim_start_matches("tmuxx · ")
+                    .to_owned()
+            }),
+            children,
+        )
+    }
+}
+
+fn menu_entries(
+    attachments: &[Attachment],
+    names: &BTreeMap<String, String>,
+) -> Vec<rustty_app::tmuxx_menu::Entry> {
+    use rustty_app::tmuxx_menu::Entry;
+    let mut entries: Vec<_> = names
+        .iter()
+        .map(|(name, target)| {
+            attachments
+                .iter()
+                .find(|entry| entry.source.ssh_target().as_ref() == Some(target))
+                .map_or_else(
+                    || Entry::command(name, MenuCommand::Connect(target.clone())),
+                    |entry| entry.menu_entry(Some(name)),
+                )
+        })
+        .collect();
+    entries.extend(
+        attachments
             .iter()
-            .map(|entry| {
-                let mut children = Vec::new();
-                if let Some(status) = &entry.status {
-                    children.push(Entry::label(status));
-                }
-                if let Source::Embedded(endpoint) = &entry.source {
-                    children.push(Entry::label(format!(
-                        "Native endpoint: {}",
-                        endpoint.display()
-                    )));
-                }
-                let target = entry.target();
-                let live = entry.connection.as_ref().is_some_and(|connection| {
-                    !connection.is_closed()
-                        && !target.instance.is_empty()
-                        && connection.instance() == target.instance
-                });
-                for session in entry
-                    .connection
-                    .as_ref()
-                    .map(Connection::sessions)
-                    .unwrap_or_default()
-                {
-                    let label = if entry.selected.contains(&session.id) {
-                        "Focus Window"
-                    } else {
-                        "Open Window"
-                    };
-                    let session_entries = if live {
-                        let mut items = vec![Entry::command(
-                            label,
-                            MenuCommand::Open(target.clone(), session.id),
-                        )];
-                        items.extend(
-                            session
-                                .windows
-                                .into_iter()
-                                .map(|name| Entry::label(format!("Tab: {name}"))),
-                        );
-                        items.push(Entry::command(
-                            "Terminate Session…",
-                            MenuCommand::Kill(target.clone(), session.id),
-                        ));
-                        items
-                    } else {
-                        vec![Entry::label("Disconnected")]
-                    };
-                    children.push(Entry::submenu(session.name, session_entries));
-                }
-                if !entry.temporary() {
-                    children.push(Entry::command(
-                        "Disconnect",
-                        MenuCommand::Disconnect(target.clone()),
-                    ));
-                }
-                if live {
-                    children.push(Entry::command(
-                        "Stop Server…",
-                        MenuCommand::Shutdown(target),
-                    ));
-                }
-                Entry::submenu(entry.label().trim_start_matches("tmuxx · "), children)
+            .filter(|entry| {
+                entry
+                    .source
+                    .ssh_target()
+                    .is_none_or(|target| !names.values().any(|value| *value == target))
             })
-            .collect();
+            .map(|entry| entry.menu_entry(None)),
+    );
+    entries
+}
+
+fn hidden_error_window(
+    background: bool,
+    active: Option<Id>,
+    windows: impl Iterator<Item = (Id, bool)>,
+) -> Option<Id> {
+    if background {
+        return None;
+    }
+    let mut target = None;
+    for (id, visible) in windows {
+        if visible {
+            return None;
+        }
+        if target.is_none() || active == Some(id) {
+            target = Some(id);
+        }
+    }
+    target
+}
+
+impl App {
+    fn reveal_tmuxx_errors(&mut self) {
+        for host in self.windows.values_mut() {
+            host.messages_open = true;
+            host.repaint();
+        }
+        let target = hidden_error_window(
+            self.background_smoke,
+            self.active,
+            self.windows.values().map(|host| {
+                (
+                    host.id,
+                    host.visible && host.window.is_minimized() != Some(true),
+                )
+            }),
+        );
+        if let Some(id) = target
+            && let Some(native) = self
+                .windows
+                .iter()
+                .find_map(|(native, host)| (host.id == id).then_some(*native))
+            && let Some(mut host) = self.windows.remove(&native)
+        {
+            let quick = self
+                .workspace
+                .windows
+                .iter()
+                .any(|window| window.id == id && window.quick);
+            self.reveal_host(&mut host, quick);
+            self.active = Some(id);
+            self.windows.insert(native, host);
+        }
+    }
+
+    pub(super) fn sync_tmuxx_menu(&mut self) {
+        let entries = menu_entries(&self.tmuxx, &self.config().tmuxx_connections);
         if let Some(platform) = &mut self.platform
             && let Err(error) = platform.set_tmuxx_menu(entries)
         {
@@ -337,7 +453,16 @@ impl App {
         command: MenuCommand,
     ) {
         if !command.requires_confirmation() {
+            let connecting = matches!(command, MenuCommand::Connect(_));
+            let error_count = self.errors.len();
             self.tmuxx_menu_command(command);
+            if connecting && self.errors.len() > error_count {
+                if self.windows.is_empty() {
+                    self.add_window(false);
+                    self.reconcile(event_loop);
+                }
+                self.reveal_tmuxx_errors();
+            }
             return;
         }
         if self.windows.is_empty() {
@@ -477,13 +602,22 @@ impl App {
             return Err("Use unix:/path/to/socket.native, ssh:HOST, or system-ssh:HOST".into());
         };
         let existing = self.tmuxx.iter().position(|entry| entry.source == source);
-        if existing.is_some_and(|index| {
-            self.tmuxx[index]
-                .connection
-                .as_ref()
-                .is_some_and(|connection| !connection.is_closed())
-        }) {
-            return Err("This server is already connected in the tmuxx menu".into());
+        if let Some(index) = existing
+            && let Some(connection) = self.tmuxx[index].connection.as_ref()
+            && !connection.is_closed()
+        {
+            let entry = &self.tmuxx[index];
+            if !entry.instance.is_empty() && connection.instance() == entry.instance {
+                let sessions = connection.sessions();
+                if let Some(session) = sessions
+                    .iter()
+                    .find(|session| entry.selected.contains(&session.id))
+                    .or_else(|| sessions.first())
+                {
+                    self.tmuxx_menu_command(MenuCommand::Open(entry.target(), session.id));
+                }
+            }
+            return Ok(());
         }
         if existing.is_none() && self.tmuxx.len() >= 64 {
             return Err("Close a tmuxx connection before opening another".into());
@@ -548,6 +682,7 @@ impl App {
         }
     }
     pub(super) fn refresh_tmuxx(&mut self, event_loop: &ActiveEventLoop) {
+        let mut connection_error = false;
         let mut reset = Vec::new();
         let mut remove = Vec::new();
         for (index, entry) in self.tmuxx.iter_mut().enumerate() {
@@ -559,6 +694,7 @@ impl App {
             };
             let errors = connection.errors();
             if !errors.is_empty() {
+                connection_error = true;
                 entry.pending_session = None;
                 entry.status = Some(errors.join("; "));
                 self.errors.extend(errors);
@@ -658,7 +794,15 @@ impl App {
             self.panes.remove(&view);
             self.failed_panes.remove(&view);
         }
+        if connection_error {
+            if self.windows.is_empty() && self.workspace.windows.is_empty() {
+                self.add_window(false);
+            }
+        }
         self.reconcile(event_loop);
+        if connection_error {
+            self.reveal_tmuxx_errors();
+        }
         for entry in &self.tmuxx {
             let Some(graph) = entry.connection.as_ref().and_then(Connection::graph) else {
                 continue;
@@ -688,6 +832,7 @@ impl App {
         }
     }
     pub(super) fn retry_tmuxx(&mut self, now: Instant) {
+        let error_count = self.errors.len();
         for entry in &mut self.tmuxx {
             if entry.expire_connection(now) {
                 if let Some(status) = &entry.status {
@@ -740,6 +885,9 @@ impl App {
                 entry.status = Some("TODO(Windows): local tmuxx transport".into());
             }
         }
+        if self.errors.len() > error_count {
+            self.reveal_tmuxx_errors();
+        }
     }
     pub(super) fn close_tmuxx_window(&mut self, window: Id) {
         let Some(index) = self
@@ -766,6 +914,17 @@ impl App {
     }
     pub(super) fn tmuxx_menu_command(&mut self, command: MenuCommand) {
         let target = match &command {
+            MenuCommand::Connect(target) => {
+                if let Err(error) = self.connect_tmuxx(target) {
+                    self.errors.push(error.to_string());
+                    for host in self.windows.values_mut() {
+                        host.messages_open = true;
+                        host.repaint();
+                    }
+                }
+                self.sync_tmuxx_menu();
+                return;
+            }
             MenuCommand::Open(target, _)
             | MenuCommand::Kill(target, _)
             | MenuCommand::Execute(target, _)
@@ -796,6 +955,7 @@ impl App {
             return;
         }
         match command {
+            MenuCommand::Connect(_) => unreachable!("connection command handled above"),
             MenuCommand::Open(_, session) => {
                 let entry = &mut self.tmuxx[index];
                 if entry.connection.as_ref().is_none_or(|connection| {
@@ -951,6 +1111,93 @@ mod tests {
             None,
             false,
         )
+    }
+
+    #[test]
+    fn connection_errors_reveal_hidden_hosts_without_exposing_background_smoke() {
+        assert_eq!(
+            hidden_error_window(false, Some(2), [(1, false), (2, false)].into_iter()),
+            Some(2)
+        );
+        assert_eq!(
+            hidden_error_window(false, None, [(1, false)].into_iter()),
+            Some(1)
+        );
+        assert_eq!(
+            hidden_error_window(false, Some(2), [(1, true), (2, false)].into_iter()),
+            None
+        );
+        assert_eq!(
+            hidden_error_window(true, Some(2), [(1, false), (2, false)].into_iter()),
+            None
+        );
+        assert_eq!(hidden_error_window(false, None, [].into_iter()), None);
+    }
+
+    #[test]
+    fn configured_connections_are_available_before_connecting() {
+        let names = BTreeMap::from([
+            ("Azure Linux".into(), "ssh:20.240.208.217".into()),
+            ("Legacy".into(), "system-ssh:old-host".into()),
+        ]);
+        let entries = menu_entries(&[], &names);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].label, "Azure Linux");
+        assert_eq!(
+            entries[0].command,
+            Some(MenuCommand::Connect("ssh:20.240.208.217".into()))
+        );
+        assert_eq!(
+            entries[1].command,
+            Some(MenuCommand::Connect("system-ssh:old-host".into()))
+        );
+    }
+
+    #[test]
+    fn configured_connection_reuses_its_entry_and_reconnects_only_on_request() {
+        let names = BTreeMap::from([("Azure Linux".into(), "ssh:20.240.208.217".into())]);
+        let mut entry = Attachment::new(Source::Ssh("20.240.208.217".into()), None, false);
+        entry.status = Some("Disconnected".into());
+        let entries = menu_entries(std::slice::from_ref(&entry), &names);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].label, "Azure Linux");
+        assert!(
+            entries[0]
+                .children
+                .iter()
+                .any(|item| item.label == "Reconnect"
+                    && item.command == Some(MenuCommand::Connect("ssh:20.240.208.217".into())))
+        );
+        assert_eq!(
+            entry.label(&names),
+            "tmuxx · Azure Linux · SSH · 20.240.208.217 · disconnected"
+        );
+        assert!(!entry.reconnect_enabled);
+        assert!(entry.retry_at.is_none());
+
+        let cleared = BTreeMap::new();
+        let entries = menu_entries(std::slice::from_ref(&entry), &cleared);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].label, "SSH · 20.240.208.217 · disconnected");
+        assert!(!entry.label(&cleared).contains("Azure Linux"));
+    }
+
+    #[test]
+    fn configured_sources_match_the_transport_and_keep_all_friendly_aliases() {
+        let entry = Attachment::new(Source::Ssh("host".into()), None, false);
+        let names = BTreeMap::from([
+            ("Native".into(), "ssh:host".into()),
+            ("Native alias".into(), "ssh:host".into()),
+            ("Stock".into(), "system-ssh:host".into()),
+        ]);
+        let entries = menu_entries(&[entry], &names);
+        assert_eq!(entries.len(), 3);
+        assert!(entries[0].command.is_none());
+        assert!(entries[1].command.is_none());
+        assert_eq!(
+            entries[2].command,
+            Some(MenuCommand::Connect("system-ssh:host".into()))
+        );
     }
 
     fn saved(instance: &str, session: u64) -> workspace::SavedAttachment {
