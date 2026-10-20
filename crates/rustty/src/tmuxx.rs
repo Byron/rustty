@@ -96,6 +96,7 @@ struct Model {
     panes: BTreeMap<u64, PaneState>,
     errors: Vec<String>,
     last_host_event: Option<u64>,
+    refresh_pending: bool,
     pending_focus: Vec<PendingFocus>,
     pending_replies: BTreeMap<u64, mpsc::Sender<io::Result<Vec<u8>>>>,
 }
@@ -118,6 +119,14 @@ impl PendingFocus {
     }
 }
 impl Model {
+    fn request_refresh(&mut self, shared: &Shared) -> io::Result<()> {
+        // Snapshots follow preceding change notices on the same ordered stream.
+        if !self.refresh_pending {
+            send(shared, Vec::new())?;
+            self.refresh_pending = true;
+        }
+        Ok(())
+    }
     fn fail_replies(&mut self, message: &str) {
         for reply in std::mem::take(&mut self.pending_replies).into_values() {
             let _ = reply.send(Err(err(message)));
@@ -233,13 +242,14 @@ impl PaneInput {
         if last {
             // Release is idempotent after kill-pane; a preceding host-state is not.
             pane.host_state = None;
-            let _ = send(
+            let _ = send_with_snapshot(
                 &shared,
                 vec![
                     b"tmuxx-release-pane".to_vec(),
                     b"-t".to_vec(),
                     format!("%{}", self.pane).into_bytes(),
                 ],
+                false,
             );
         } else {
             drop(model);
@@ -254,7 +264,7 @@ impl PaneInput {
             .shared
             .upgrade()
             .ok_or_else(|| io::Error::from(io::ErrorKind::BrokenPipe))?;
-        send(
+        send_with_snapshot(
             &shared,
             vec![
                 b"tmuxx-retain-pane".to_vec(),
@@ -266,6 +276,7 @@ impl PaneInput {
                     b"off".to_vec()
                 },
             ],
+            false,
         )
         .map(|_| ())
     }
@@ -442,6 +453,9 @@ fn err(error: impl std::fmt::Display) -> io::Error {
     io::Error::other(error.to_string())
 }
 fn send(shared: &Shared, argv: Vec<Vec<u8>>) -> io::Result<u64> {
+    send_with_snapshot(shared, argv, true)
+}
+fn send_with_snapshot(shared: &Shared, argv: Vec<Vec<u8>>, snapshot: bool) -> io::Result<u64> {
     if shared.closed.load(Ordering::Acquire) {
         return Err(err("tmuxx connection is closed"));
     }
@@ -452,7 +466,7 @@ fn send(shared: &Shared, argv: Vec<Vec<u8>>) -> io::Result<u64> {
             request_id,
             argv,
             stdin: None,
-            subscribe: shared.subscribe,
+            subscribe: shared.subscribe && snapshot,
             control: !shared.subscribe,
         })
         .map_err(err)?;
@@ -1077,13 +1091,14 @@ impl Connection {
         let owners = pane_state.owners.clone();
         let native = self.system.is_none();
         if owners.fetch_add(1, Ordering::AcqRel) == 0 && native {
-            send(
+            send_with_snapshot(
                 &self.shared,
                 vec![
                     b"tmuxx-claim-pane".to_vec(),
                     b"-t".to_vec(),
                     format!("%{pane}").into_bytes(),
                 ],
+                false,
             )?;
         }
         let terminal = Arc::new(Mutex::new(pane_state.terminal.clone()));
@@ -1321,6 +1336,9 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
             state,
         } => {
             if model.instance == instance_id && sequence < model.sequence {
+                if std::mem::take(&mut model.refresh_pending) {
+                    model.request_refresh(shared)?;
+                }
                 return Ok(());
             }
             let graph: Graph = serde_json::from_value(state).map_err(err)?;
@@ -1390,6 +1408,7 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
             });
             model.instance = instance_id;
             model.sequence = sequence;
+            model.refresh_pending = false;
             model.focus_snapshot(&graph);
             model.graph = Some(graph);
             (shared.wake)();
@@ -1430,7 +1449,7 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
                     true
                 });
             } else {
-                send(shared, Vec::new())?;
+                model.request_refresh(shared)?;
             }
         }
         ServerMessage::HostEffect {
@@ -1486,7 +1505,7 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
             }
         }
         ServerMessage::Changed { .. } => {
-            send(shared, Vec::new())?;
+            model.request_refresh(shared)?;
         }
         ServerMessage::Reply(reply) => {
             model.focus_reply(reply.request_id, reply.error.is_some());
@@ -1621,6 +1640,86 @@ mod focus_tests {
     }
     fn active(connection: &Connection) -> u64 {
         connection.graph().unwrap().windows[0].active
+    }
+
+    #[test]
+    fn refresh_coalesces_changes_and_unknown_output_until_a_current_snapshot_arrives() {
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        snapshot(&connection, 1, state());
+        for sequence in 2..=4 {
+            apply(&connection.shared, ServerMessage::Changed { sequence }).unwrap();
+            apply(
+                &connection.shared,
+                ServerMessage::PaneOutput {
+                    sequence,
+                    pane_id: 99,
+                    data: b"unknown pane".to_vec(),
+                },
+            )
+            .unwrap();
+        }
+        let request = requests.try_recv().unwrap();
+        assert!(request.argv.is_empty() && request.subscribe && !request.control);
+        assert!(requests.try_recv().is_err());
+
+        snapshot(&connection, 3, state());
+        assert!(
+            requests.try_recv().unwrap().subscribe,
+            "stale snapshot must retry"
+        );
+        apply(&connection.shared, ServerMessage::Changed { sequence: 4 }).unwrap();
+        assert!(requests.try_recv().is_err());
+
+        snapshot(&connection, 4, state());
+        apply(&connection.shared, ServerMessage::Changed { sequence: 5 }).unwrap();
+        assert!(requests.try_recv().unwrap().subscribe);
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
+    fn failed_refresh_send_does_not_prevent_retry_or_change_command_snapshots() {
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        for _ in 0..256 {
+            connection.command(["display-message", "queued"]).unwrap();
+        }
+        assert!(apply(&connection.shared, ServerMessage::Changed { sequence: 1 }).is_err());
+        assert!(!connection.shared.model.lock().unwrap().refresh_pending);
+        assert!(requests.try_iter().all(|request| request.subscribe));
+        apply(&connection.shared, ServerMessage::Changed { sequence: 1 }).unwrap();
+        assert!(requests.try_recv().unwrap().subscribe);
+
+        let _reply = connection
+            .command_with_reply(vec![b"display-message".to_vec()])
+            .unwrap();
+        assert!(
+            requests.try_recv().unwrap().subscribe,
+            "command replies keep their snapshot barrier"
+        );
+
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        drop(requests);
+        assert!(apply(&connection.shared, ServerMessage::Changed { sequence: 1 }).is_err());
+        assert!(!connection.shared.model.lock().unwrap().refresh_pending);
+    }
+
+    #[test]
+    fn unchanged_focus_still_requests_a_snapshot_and_releases_its_projection() {
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        snapshot(&connection, 1, state());
+        connection.focus_pane(0, 0, 7).unwrap();
+        let request = requests.try_recv().unwrap();
+        assert!(request.subscribe);
+        reply(&connection, request.request_id, None);
+        snapshot(&connection, 1, state());
+        assert!(
+            connection
+                .shared
+                .model
+                .lock()
+                .unwrap()
+                .pending_focus
+                .is_empty()
+        );
     }
 
     #[test]
@@ -2100,7 +2199,10 @@ mod tests {
             }),
         }).unwrap();
         let view = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
-        requests.try_iter().for_each(drop);
+        let claim = requests.try_recv().unwrap();
+        assert_eq!(claim.argv[0], b"tmuxx-claim-pane");
+        assert!(!claim.subscribe && !claim.control);
+        assert!(requests.try_recv().is_err());
         view.write_input(&Input::Text(b"x".to_vec())).unwrap();
         view.set_host_state(true, true, rustty_vt::query::ColorScheme::Dark)
             .unwrap();
@@ -2110,8 +2212,9 @@ mod tests {
             HostResponse::Read(rustty_vt::clipboard::ReadResult::Denied),
         )
         .unwrap();
+        view.set_persistent(true).unwrap();
         let interactive = requests.try_iter().collect::<Vec<_>>();
-        assert_eq!(interactive.len(), 3);
+        assert_eq!(interactive.len(), 4);
         assert!(
             interactive
                 .iter()
@@ -2130,6 +2233,10 @@ mod tests {
         assert!(requests.try_recv().is_err());
         connection.command(std::iter::empty::<&str>()).unwrap();
         assert!(requests.try_recv().unwrap().subscribe);
+        view.close();
+        let release = requests.try_recv().unwrap();
+        assert_eq!(release.argv[0], b"tmuxx-release-pane");
+        assert!(!release.subscribe && !release.control);
     }
 
     #[test]
@@ -2316,8 +2423,8 @@ mod tests {
                     assert_eq!(reply.unwrap_err().to_string(), "command failed");
                 }
                 assert!(matches!(
-                    receiver.try_recv(),
-                    Err(mpsc::TryRecvError::Disconnected)
+                    receiver.recv_timeout(Duration::from_secs(1)),
+                    Err(mpsc::RecvTimeoutError::Disconnected)
                 ));
             }
         });
