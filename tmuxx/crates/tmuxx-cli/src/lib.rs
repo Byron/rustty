@@ -473,18 +473,19 @@ fn connect_or_start(
     }
 }
 
-/// Prepare an independent native daemon using this executable and its CLI prefix.
+/// Prepare an independent native daemon using the given executable and CLI prefix.
 /// The caller may append `-f` options before spawning; stdio is disconnected.
 #[cfg(any(unix, windows))]
 pub fn native_daemon_command(
+    executable: &std::path::Path,
     endpoint: &std::path::Path,
     launcher_prefix: &[&str],
-) -> io::Result<std::process::Command> {
+) -> std::process::Command {
     #[cfg(unix)]
     use std::os::unix::process::CommandExt;
     #[cfg(windows)]
     use std::os::windows::process::CommandExt;
-    let mut process = std::process::Command::new(std::env::current_exe()?);
+    let mut process = std::process::Command::new(executable);
     process
         .args(launcher_prefix)
         .arg("-D")
@@ -511,7 +512,7 @@ pub fn native_daemon_command(
         windows_sys::Win32::System::Threading::DETACHED_PROCESS
             | windows_sys::Win32::System::Threading::CREATE_NEW_PROCESS_GROUP,
     );
-    Ok(process)
+    process
 }
 
 #[cfg(unix)]
@@ -521,7 +522,7 @@ fn server_command(
     tmux_socket: Option<&PathBuf>,
 ) -> io::Result<std::process::Command> {
     let prefix: Vec<_> = cli.launcher_prefix.iter().map(String::as_str).collect();
-    let mut process = native_daemon_command(endpoint, &prefix)?;
+    let mut process = native_daemon_command(&std::env::current_exe()?, endpoint, &prefix);
     process
         .arg("--report-startup-error")
         .stdout(std::process::Stdio::piped());

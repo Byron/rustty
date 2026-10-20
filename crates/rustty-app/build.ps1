@@ -100,7 +100,7 @@ $conptyPackage = Get-ConPtyPackage
 if (!$SkipBuild) {
     $cargoArguments = @('build', '--manifest-path', (Join-Path $repository 'Cargo.toml'),
         '--target-dir', $targetRoot, '--target', $triple,
-        '--locked', '-p', 'rustty-app', '--bin', 'rustty')
+        '--locked', '-p', 'rustty-app', '--bin', 'rustty', '-p', 'tmuxx-cli', '--bin', 'tmuxx')
     if ($Release) { $cargoArguments += '--release' }
     if ($Offline) { $cargoArguments += '--offline' }
     # Explicit target keeps host proc-macros dynamic while the shipped executable
@@ -120,9 +120,11 @@ if (!$SkipBuild) {
     }
 }
 
-$executable = Join-Path $buildOutput 'rustty.exe'
-if (!(Test-Path -LiteralPath $executable -PathType Leaf)) {
-    throw "Build the Windows executable first: $executable"
+foreach ($name in @('rustty', 'tmuxx')) {
+    $executable = Join-Path $buildOutput "$name.exe"
+    if (!(Test-Path -LiteralPath $executable -PathType Leaf)) {
+        throw "Build the Windows executable first: $executable"
+    }
 }
 Assert-BuildPath $stage
 Assert-BuildPath $bundle
@@ -133,10 +135,12 @@ try {
     $licenses = Join-Path $resources 'licenses'
     New-Item -ItemType Directory -Path $licenses -Force | Out-Null
     Install-ConPty $conptyPackage (Join-Path $resources 'conpty')
-    Copy-Item -LiteralPath $executable -Destination (Join-Path $stage 'rustty.exe')
-    $symbols = Join-Path $buildOutput 'rustty.pdb'
-    if (Test-Path -LiteralPath $symbols) {
-        Copy-Item -LiteralPath $symbols -Destination $stage
+    foreach ($name in @('rustty', 'tmuxx')) {
+        Copy-Item -LiteralPath (Join-Path $buildOutput "$name.exe") -Destination $stage
+        $symbols = Join-Path $buildOutput "$name.pdb"
+        if (Test-Path -LiteralPath $symbols) {
+            Copy-Item -LiteralPath $symbols -Destination $stage
+        }
     }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'resources/themes') -Destination $resources -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $repository 'src/shell-integration') -Destination $resources -Recurse -Force
@@ -150,6 +154,7 @@ try {
         [IO.File]::WriteAllText($_.FullName, $content.Replace("`r`n", "`n"), $utf8)
     }
     Copy-Item -LiteralPath (Join-Path $repository 'LICENSE') -Destination (Join-Path $licenses 'Ghostty-MIT.txt')
+    Copy-Item -LiteralPath (Join-Path $repository 'tmuxx/COPYING') -Destination (Join-Path $licenses 'tmuxx-COPYING.txt')
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'resources/iTerm2-Color-Schemes-LICENSE.txt') -Destination $licenses
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'resources/ConPTY-LICENSE.txt') -Destination $licenses
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../rustty-font/resources/JetBrainsMono-OFL.txt') -Destination $licenses
@@ -157,7 +162,8 @@ try {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'resources/README.md') -Destination (Join-Path $licenses 'Resources.md')
     @'
 Run rustty.exe to open the terminal.
-Keep the resources folder with rustty.exe; it contains the required ConPTY runtime.
+Run tmuxx.exe for console commands or --native-stdio SSH access.
+Keep rustty.exe, tmuxx.exe, and resources together; they share the required ConPTY runtime.
 Run rustty.exe --register to add this location to the Start Menu and enable toast activation.
 Run rustty.exe --unregister before removing or moving the registered application.
 Configuration: %APPDATA%\Rustty\rustty.txt

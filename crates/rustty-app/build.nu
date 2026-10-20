@@ -22,11 +22,12 @@ def main [
         | append (if $offline { [--offline] } else { [] })
 
     do --capture-errors {
-        ^cargo build --manifest-path ($root | path join Cargo.toml) --target-dir $target --locked -p rustty-app --bin rustty ...$flags
+        ^cargo build --manifest-path ($root | path join Cargo.toml) --target-dir $target --locked -p rustty-app --bin rustty -p tmuxx-cli --bin tmuxx ...$flags
     }
     rm --recursive --force $stage
     mkdir ($contents | path join MacOS) $data
     cp ($output | path join rustty) ($contents | path join MacOS rustty)
+    cp ($output | path join tmuxx) ($contents | path join MacOS tmuxx)
 
     let version = (open ($root | path join Cargo.toml) | get workspace.package.version | split row '-' | first)
     open --raw ($source | path join Info.plist)
@@ -44,6 +45,7 @@ def main [
     let notices = ($resources | path join licenses)
     mkdir $notices
     cp ($root | path join LICENSE) ($notices | path join Ghostty-MIT.txt)
+    cp ($root | path join tmuxx COPYING) ($notices | path join tmuxx-COPYING.txt)
     cp ($source | path join iTerm2-Color-Schemes-LICENSE.txt) $notices
     cp ($root | path join crates rustty-font resources JetBrainsMono-OFL.txt) $notices
     cp ($root | path join crates rustty-font resources NerdFontsSymbols-LICENSE.txt) $notices
@@ -63,6 +65,7 @@ def main [
     }
     do --capture-errors { ^iconutil -c icns $iconset -o ($resources | path join Rustty.icns) }
     do --capture-errors { ^plutil -lint ($contents | path join Info.plist) }
+    do --capture-errors { ^codesign --force --sign - ($contents | path join MacOS tmuxx) }
     do --capture-errors { ^codesign --force --sign - $app }
     do --capture-errors { ^codesign --verify --strict $app }
 

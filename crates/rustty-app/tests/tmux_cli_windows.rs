@@ -1,4 +1,4 @@
-//! Exercise the executable used by both the GUI daemon launcher and SSH servers.
+//! Exercise the sidecar used by both the GUI daemon launcher and SSH servers.
 //! Build the Windows bundle first; RUSTTY_CONPTY_RESOURCES selects its resources.
 #![cfg(windows)]
 
@@ -18,10 +18,12 @@ fn executable() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_rustty")))
 }
+
+fn sidecar() -> PathBuf {
+    executable().with_file_name("tmuxx.exe")
+}
 const TIMEOUT: Duration = Duration::from_secs(15);
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-const DETACHED_PROCESS: u32 = 0x0000_0008;
-const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 
 struct OwnedChild(Child);
 impl Drop for OwnedChild {
@@ -54,7 +56,7 @@ fn output(command: &mut Command) -> Output {
         if let Some(status) = child.0.try_wait().unwrap() {
             break status;
         }
-        assert!(Instant::now() < deadline, "rustty tmux command timed out");
+        assert!(Instant::now() < deadline, "tmuxx command timed out");
         std::thread::sleep(Duration::from_millis(10));
     };
     Output {
@@ -62,6 +64,46 @@ fn output(command: &mut Command) -> Output {
         stdout: stdout.join().unwrap(),
         stderr: stderr.join().unwrap(),
     }
+}
+
+#[test]
+#[ignore = "requires tmuxx.exe beside the Rustty executable; build the Windows bundle first"]
+fn packaged_tmuxx_uses_console_stdio_and_exit_status() {
+    // cmd.exe waits for console executables; attaching a GUI process later does
+    // not give it the same waiting and exit-code behavior.
+    let bytes = std::fs::read(sidecar()).unwrap();
+    assert_eq!(&bytes[..2], b"MZ");
+    let pe = u32::from_le_bytes(bytes[0x3c..0x40].try_into().unwrap()) as usize;
+    assert_eq!(&bytes[pe..pe + 4], b"PE\0\0");
+    let subsystem = pe + 4 + 20 + 68;
+    assert_eq!(
+        u16::from_le_bytes(bytes[subsystem..subsystem + 2].try_into().unwrap()),
+        3,
+        "tmuxx.exe must use the Windows console subsystem"
+    );
+
+    let run = |args: &[&str]| {
+        output(
+            Command::new(sidecar())
+                .args(args)
+                .creation_flags(CREATE_NO_WINDOW),
+        )
+    };
+    let version = run(&["-V"]);
+    assert!(version.status.success(), "{version:?}");
+    assert!(version.stdout.starts_with(b"tmuxx "), "{version:?}");
+    assert!(version.stderr.is_empty(), "{version:?}");
+    let help = run(&["--help"]);
+    assert!(help.status.success(), "{help:?}");
+    assert!(
+        String::from_utf8_lossy(&help.stdout).contains("--native-stdio"),
+        "{help:?}"
+    );
+    assert!(help.stderr.is_empty(), "{help:?}");
+    let invalid = run(&["--rustty-invalid-option"]);
+    assert!(!invalid.status.success(), "{invalid:?}");
+    assert!(invalid.stdout.is_empty(), "{invalid:?}");
+    assert!(!invalid.stderr.is_empty(), "{invalid:?}");
 }
 
 struct Server {
@@ -74,9 +116,8 @@ struct Server {
 
 impl Server {
     fn command_with(resources: &Path) -> Command {
-        let mut command = Command::new(executable());
+        let mut command = Command::new(sidecar());
         command
-            .arg("tmux")
             .creation_flags(CREATE_NO_WINDOW)
             .env("TMUXX_CONPTY_RESOURCES", resources)
             .env_remove("TMUX")
@@ -116,14 +157,9 @@ impl Server {
         assert!(!missing.status.success(), "{missing:?}");
         assert!(Connection::native(&endpoint, Arc::new(|| {})).is_err());
 
-        // The helper uses current_exe, which is the test runner here. Exercise its
-        // production arguments with the actual Rustty executable instead.
-        let prepared = tmuxx_cli::native_daemon_command(&endpoint, &["tmux"]).unwrap();
         let owner = OwnedChild(
-            Command::new(executable())
-                .args(prepared.get_args())
+            tmuxx_cli::native_daemon_command(&sidecar(), &endpoint, &[])
                 .args(["-f", "NUL"])
-                .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
                 .env("TMUXX_CONPTY_RESOURCES", &resources)
                 .env_remove("TMUX")
                 .env_remove("TMUXX_ENDPOINT")

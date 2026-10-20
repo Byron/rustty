@@ -594,8 +594,12 @@ impl App {
             {
                 let connection = Connection::native(&endpoint, self.tmuxx_wake()).ok();
                 if connection.is_none() {
+                    let executable = std::env::current_exe()?;
+                    #[cfg(windows)]
+                    let executable = executable.with_file_name("tmuxx.exe");
+                    let prefix: &[&str] = if cfg!(windows) { &[] } else { &["tmux"] };
                     let mut child =
-                        tmuxx_cli::native_daemon_command(&endpoint, &["tmux"])?.spawn()?;
+                        tmuxx_cli::native_daemon_command(&executable, &endpoint, prefix).spawn()?;
                     std::thread::spawn(move || {
                         let _ = child.wait();
                     });
