@@ -1426,6 +1426,8 @@ mod tests {
             let listener = UnixListener::bind(&path).unwrap();
             let connection = Connection::unix(&path, Arc::new(|| {})).unwrap();
             let (mut peer, _) = listener.accept().unwrap();
+            // macOS rejects socket options once the disconnected peer has closed.
+            peer.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
             std::fs::remove_file(path).unwrap();
             let mut entry = Attachment::new(source, Some(connection), true);
             let saved = saved("daemon-a", 7);
@@ -1447,7 +1449,6 @@ mod tests {
                 assert!(entry.retry_at.is_none());
                 assert!(!entry.waiting_for_window());
             }
-            peer.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
             let mut bytes = Vec::new();
             peer.read_to_end(&mut bytes).unwrap();
         }
