@@ -96,6 +96,7 @@ struct Model {
     errors: Vec<String>,
     last_host_event: Option<u64>,
     pending_focus: Vec<PendingFocus>,
+    pending_replies: BTreeMap<u64, mpsc::Sender<io::Result<Vec<u8>>>>,
 }
 struct PendingFocus {
     request_id: u64,
@@ -116,6 +117,11 @@ impl PendingFocus {
     }
 }
 impl Model {
+    fn fail_replies(&mut self, message: &str) {
+        for reply in std::mem::take(&mut self.pending_replies).into_values() {
+            let _ = reply.send(Err(err(message)));
+        }
+    }
     fn focus_reply(&mut self, request_id: u64, failed: bool) {
         self.pending_focus.retain_mut(|focus| {
             if focus.request_id == request_id {
@@ -918,6 +924,24 @@ impl Connection {
     pub fn command_bytes(&self, argv: Vec<Vec<u8>>) -> io::Result<u64> {
         send(&self.shared, argv)
     }
+    /// Receive this native command's output or error without consuming other command errors.
+    pub fn command_with_reply(
+        &self,
+        argv: Vec<Vec<u8>>,
+    ) -> io::Result<mpsc::Receiver<io::Result<Vec<u8>>>> {
+        if self.system.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "command replies require a native tmuxx connection",
+            ));
+        }
+        let (reply, receiver) = mpsc::channel();
+        // Hold the model lock until registration so a fast reply cannot arrive first.
+        let mut model = self.shared.model.lock().map_err(err)?;
+        let request_id = send(&self.shared, argv)?;
+        model.pending_replies.insert(request_id, reply);
+        Ok(receiver)
+    }
     /// Keep a local focus choice until its command and subsequent snapshot arrive.
     pub fn focus_pane(&self, session: u64, index: u32, pane: u64) -> io::Result<()> {
         let mut model = self.shared.model.lock().map_err(err)?;
@@ -1098,6 +1122,7 @@ impl Drop for Connection {
         self.shared.closed.store(true, Ordering::Release);
         if let Ok(mut model) = self.shared.model.lock() {
             model.pending_focus.clear();
+            model.fail_replies("tmuxx connection is closed");
         }
         if let Some(system) = &mut self.system {
             system.close();
@@ -1176,6 +1201,7 @@ fn fail(shared: &Shared, error: impl std::fmt::Display) {
     }
     if let Ok(mut model) = shared.model.lock() {
         model.pending_focus.clear();
+        model.fail_replies(&error.to_string());
         model.errors.push(error.to_string());
         for pane in model.panes.values() {
             for view in &pane.views {
@@ -1454,7 +1480,14 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
         }
         ServerMessage::Reply(reply) => {
             model.focus_reply(reply.request_id, reply.error.is_some());
-            if let Some(error) = reply.error {
+            if let Some(receiver) = model.pending_replies.remove(&reply.request_id) {
+                let _ = receiver.send(
+                    reply
+                        .error
+                        .map_or(Ok(reply.output), |error| Err(err(error))),
+                );
+                (shared.wake)();
+            } else if let Some(error) = reply.error {
                 model.errors.push(error);
                 (shared.wake)();
             }
@@ -1462,6 +1495,7 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
         ServerMessage::Detached { .. } => {
             shared.closed.store(true, Ordering::Release);
             model.pending_focus.clear();
+            model.fail_replies("tmuxx detached");
             for pane in model.panes.values() {
                 close_views(pane);
             }
@@ -2239,6 +2273,116 @@ mod tests {
         assert_eq!(first.events().count(), 0);
         let third = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
         assert_eq!(third.events().count(), 0);
+    }
+
+    #[test]
+    fn native_command_replies_are_registered_before_delivery() {
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        thread::scope(|scope| {
+            let shared = &connection.shared;
+            scope.spawn(move || {
+                for index in 0..32 {
+                    let request = requests.recv_timeout(Duration::from_secs(1)).unwrap();
+                    apply(
+                        shared,
+                        ServerMessage::Reply(tmuxx_protocol::native::Response {
+                            request_id: request.request_id,
+                            output: vec![index],
+                            status: None,
+                            error: (index % 2 == 1).then(|| "command failed".into()),
+                        }),
+                    )
+                    .unwrap();
+                }
+            });
+            for index in 0..32 {
+                let receiver = connection
+                    .command_with_reply(vec![b"test".to_vec()])
+                    .unwrap();
+                let reply = receiver.recv_timeout(Duration::from_secs(1)).unwrap();
+                if index % 2 == 0 {
+                    assert_eq!(reply.unwrap(), [index]);
+                } else {
+                    assert_eq!(reply.unwrap_err().to_string(), "command failed");
+                }
+                assert!(matches!(
+                    receiver.try_recv(),
+                    Err(mpsc::TryRecvError::Disconnected)
+                ));
+            }
+        });
+        assert!(
+            connection
+                .shared
+                .model
+                .lock()
+                .unwrap()
+                .pending_replies
+                .is_empty()
+        );
+        assert!(connection.errors().is_empty());
+    }
+
+    #[test]
+    fn native_command_replies_end_on_failure_detach_and_drop() {
+        for mode in 0..3 {
+            let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+            let receiver = connection
+                .command_with_reply(vec![b"test".to_vec()])
+                .unwrap();
+            let shared = connection.shared.clone();
+            match mode {
+                0 => fail(&shared, "transport failed"),
+                1 => apply(
+                    &shared,
+                    ServerMessage::Detached {
+                        session: "test".into(),
+                        hangup: false,
+                    },
+                )
+                .unwrap(),
+                _ => drop(connection),
+            }
+            assert!(
+                receiver
+                    .recv_timeout(Duration::from_secs(1))
+                    .unwrap()
+                    .is_err()
+            );
+            assert!(shared.model.lock().unwrap().pending_replies.is_empty());
+            assert!(matches!(
+                receiver.try_recv(),
+                Err(mpsc::TryRecvError::Disconnected)
+            ));
+        }
+    }
+
+    #[test]
+    fn native_command_reply_send_failure_leaves_no_pending_reply() {
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        for _ in 0..256 {
+            connection.command(["test"]).unwrap();
+        }
+        assert!(
+            connection
+                .command_with_reply(vec![b"test".to_vec()])
+                .is_err()
+        );
+        drop(requests);
+        assert!(
+            connection
+                .command_with_reply(vec![b"test".to_vec()])
+                .is_err()
+        );
+        assert!(
+            connection
+                .shared
+                .model
+                .lock()
+                .unwrap()
+                .pending_replies
+                .is_empty()
+        );
     }
 
     #[test]

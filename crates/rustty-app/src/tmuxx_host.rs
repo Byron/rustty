@@ -1,6 +1,7 @@
 //! Window attachments own views; only temporary attachments own the engine.
 use super::*;
 use rustty::tmuxx::Connection;
+use rustty_app::tmuxx_copy::{CopiedWindow, WindowCopy};
 use rustty_app::tmuxx_workspace::Mapping;
 use std::collections::BTreeSet;
 
@@ -42,6 +43,8 @@ struct PendingSession {
     name: String,
     submitted: bool,
     deadline: Instant,
+    copy: Option<WindowCopy>,
+    copying: bool,
 }
 
 pub(super) struct Attachment {
@@ -55,6 +58,7 @@ pub(super) struct Attachment {
     reconnect_enabled: bool,
     open_all: bool,
     pending_session: Option<PendingSession>,
+    copied_window: Option<CopiedWindow>,
     connection_deadline: Option<Instant>,
     shutdown_deadline: Option<Instant>,
     restore: Vec<workspace::SavedAttachment>,
@@ -77,6 +81,7 @@ impl Attachment {
             status: None,
             open_all,
             pending_session: None,
+            copied_window: None,
             connection_deadline,
             shutdown_deadline: None,
             restore: Vec::new(),
@@ -138,6 +143,8 @@ impl Attachment {
             name,
             submitted: false,
             deadline: now + Duration::from_secs(15),
+            copy: None,
+            copying: false,
         });
         Ok(())
     }
@@ -149,6 +156,7 @@ impl Attachment {
             .is_some_and(|pending| pending.deadline <= now)
         {
             self.pending_session = None;
+            self.copied_window = None;
             expired = true;
             self.status = Some(
                 "Session creation timed out; check the server session list before trying again"
@@ -174,6 +182,7 @@ impl Attachment {
         self.connection_deadline = None;
         if !self.instance.is_empty() && self.instance != instance {
             self.selected.clear();
+            self.copied_window = None;
             if self
                 .pending_session
                 .as_ref()
@@ -191,10 +200,17 @@ impl Attachment {
         }
         if let Some(pending) = &self.pending_session
             && pending.submitted
-            && let Some(session) = graph
-                .sessions
-                .iter()
-                .find(|session| session.name == pending.name)
+            && !pending.copying
+            && self
+                .copied_window
+                .as_ref()
+                .is_none_or(|copied| copy_is_visible(copied, graph))
+            && let Some(session) = graph.sessions.iter().find(|session| {
+                self.copied_window.as_ref().map_or_else(
+                    || session.name == pending.name,
+                    |copied| session.id == copied.session,
+                )
+            })
         {
             self.selected.insert(session.id);
             self.pending_session = None;
@@ -297,6 +313,15 @@ impl Attachment {
 }
 
 impl Attachment {
+    fn copying_session(&self, session: u64, name: &str) -> bool {
+        self.copied_window
+            .as_ref()
+            .is_some_and(|copied| copied.session == session)
+            || self.pending_session.as_ref().is_some_and(|pending| {
+                pending.name == name && (pending.copy.is_some() || pending.copying)
+            })
+    }
+
     fn menu_entry(&self, name: Option<&str>) -> rustty_app::tmuxx_menu::Entry {
         use rustty_app::tmuxx_menu::Entry;
         let mut children = Vec::new();
@@ -321,6 +346,10 @@ impl Attachment {
             .map(Connection::sessions)
             .unwrap_or_default()
         {
+            if self.copying_session(session.id, &session.name) {
+                children.push(Entry::label(format!("{} · copying…", session.name)));
+                continue;
+            }
             let label = if self.selected.contains(&session.id) {
                 "Focus Window"
             } else {
@@ -436,7 +465,104 @@ fn hidden_error_window(
     target
 }
 
+fn copy_is_visible(copied: &CopiedWindow, graph: &rustty::tmuxx::Graph) -> bool {
+    let Some(session) = graph
+        .sessions
+        .iter()
+        .find(|session| session.id == copied.session)
+    else {
+        return false;
+    };
+    let expected: Vec<_> = copied
+        .window
+        .tabs
+        .iter()
+        .map(|tab| copied.tabs[&tab.id])
+        .collect();
+    session
+        .windows
+        .values()
+        .copied()
+        .eq(expected.iter().copied())
+        && session.windows.get(&(session.active as u32)) == expected.get(copied.window.active_tab)
+        && copied.window.tabs.iter().all(|tab| {
+            let zoomed = tab.zoom.and_then(|id| copied.panes.get(&id));
+            graph.windows.iter().any(|window| {
+                window.id == copied.tabs[&tab.id]
+                    && window.active == *zoomed.unwrap_or(&copied.panes[&tab.focused])
+                    && window.zoomed == zoomed.is_some()
+                    && window.panes.len() == tab.panes.len()
+                    && tab
+                        .panes
+                        .keys()
+                        .all(|id| window.panes.contains(&copied.panes[id]))
+            })
+        })
+}
+
+fn apply_copy_metadata(copied: CopiedWindow, mapping: &Mapping, workspace: &mut Workspace) {
+    let Some(window) = workspace
+        .windows
+        .iter_mut()
+        .find(|window| mapping.sessions.get(&window.id) == Some(&copied.session))
+    else {
+        return;
+    };
+    window.frame = copied.window.frame;
+    window.frame[0] += 30.0;
+    window.frame[1] += 30.0;
+    for tab in &mut window.tabs {
+        let Some(source) = copied
+            .window
+            .tabs
+            .iter()
+            .find(|source| mapping.windows.get(&tab.id) == copied.tabs.get(&source.id))
+        else {
+            continue;
+        };
+        tab.color = source.color;
+        for (id, saved) in &mut tab.panes {
+            if let Some(source) = source.panes.iter().find_map(|(source, saved)| {
+                (mapping.panes.get(id) == copied.panes.get(source)).then_some(saved)
+            }) {
+                *saved = source.clone();
+            }
+        }
+    }
+}
+
 impl App {
+    pub(super) fn finish_tmuxx_copy(
+        &mut self,
+        target: Target,
+        name: String,
+        result: std::result::Result<CopiedWindow, String>,
+    ) {
+        let Some(entry) = self.tmuxx.iter_mut().find(|entry| {
+            entry.target() == target
+                && entry
+                    .pending_session
+                    .as_ref()
+                    .is_some_and(|pending| pending.name == name)
+        }) else {
+            return;
+        };
+        match result {
+            Ok(copied) => {
+                entry.copied_window = Some(copied);
+                let pending = entry.pending_session.as_mut().unwrap();
+                pending.copying = false;
+                pending.deadline = Instant::now() + Duration::from_secs(15);
+            }
+            Err(error) => {
+                entry.pending_session = None;
+                entry.status = Some(error.clone());
+                self.errors.push(error);
+                self.reveal_tmuxx_errors();
+            }
+        }
+    }
+
     fn reveal_tmuxx_errors(&mut self) {
         for host in self.windows.values_mut() {
             host.messages_open = true;
@@ -539,6 +665,63 @@ impl App {
         })
     }
     pub(super) fn start_tmuxx(&mut self, temporary: bool) -> Result<()> {
+        self.start_tmuxx_with_copy(temporary, None)
+    }
+
+    pub(super) fn copy_window_to_tmuxx(&mut self, host: &Host) -> Result<()> {
+        if self
+            .tmuxx_window(host.id)
+            .is_some_and(|entry| matches!(entry.source, Source::Ssh(_) | Source::SystemSsh(_)))
+        {
+            return Err(
+                "Copying remote panes into a local session cannot retain their working directories"
+                    .into(),
+            );
+        }
+        let mut window = self.workspace.windows
+            [self.index(host.id).ok_or("Window is no longer available")?]
+        .clone();
+        for tab in &mut window.tabs {
+            tab.title = Some(self.tab_name(tab).to_owned());
+            for (id, saved) in &mut tab.panes {
+                if let Some(pane) = self.panes.get(id) {
+                    pane.update_saved(saved);
+                }
+            }
+        }
+        let metrics = host.fonts.metrics();
+        let scale = host.window.scale_factor() as f32;
+        let config = self.config();
+        let size = window
+            .tabs
+            .iter()
+            .map(|tab| {
+                rustty_app::tmuxx_workspace::grid_size(
+                    tab,
+                    host.content,
+                    true,
+                    [
+                        metrics.cell_width as f32 / scale,
+                        metrics.cell_height as f32 / scale,
+                    ],
+                    [
+                        config.window_padding_x.start + config.window_padding_x.end + 2.0,
+                        config.window_padding_y.start
+                            + config.window_padding_y.end
+                            + if tab.panes.len() > 1 { 18.0 } else { 0.0 }
+                            + 2.0,
+                    ],
+                )
+            })
+            .fold((1, 1), |(cols, rows), size| {
+                (cols.max(size.0), rows.max(size.1))
+            });
+        let copy = WindowCopy { window, size };
+        copy.validate()?;
+        self.start_tmuxx_with_copy(false, Some(copy))
+    }
+
+    fn start_tmuxx_with_copy(&mut self, temporary: bool, copy: Option<WindowCopy>) -> Result<()> {
         if temporary && self.tmuxx.len() >= 64 {
             return Err("Close a tmuxx connection before opening another".into());
         }
@@ -617,6 +800,7 @@ impl App {
             let name = format!("rustty-{}-{}", std::process::id(), self.workspace.id());
             self.tmuxx[index].reconnect_enabled = true;
             self.tmuxx[index].request_session(name, Instant::now())?;
+            self.tmuxx[index].pending_session.as_mut().unwrap().copy = copy;
         }
         let _ = self.proxy.send_event(Event::Tmuxx);
         Ok(())
@@ -724,7 +908,15 @@ impl App {
             let errors = connection.errors();
             if !errors.is_empty() {
                 connection_error = true;
-                entry.pending_session = None;
+                if entry.copied_window.is_none()
+                    && !entry
+                        .pending_session
+                        .as_ref()
+                        .is_some_and(|pending| pending.copying || pending.copy.is_some())
+                {
+                    entry.pending_session = None;
+                    entry.copied_window = None;
+                }
                 entry.status = Some(errors.join("; "));
                 self.errors.extend(errors);
             }
@@ -773,20 +965,61 @@ impl App {
             if let Some(pending) = &mut entry.pending_session
                 && !pending.submitted
             {
-                match entry.connection.as_ref().unwrap().command([
-                    "new-session",
-                    "-d",
-                    "-s",
-                    &pending.name,
-                ]) {
-                    Ok(_) => {
-                        pending.submitted = true;
-                        entry.status = Some("Creating session…".into());
-                    }
-                    Err(error) => {
-                        entry.pending_session = None;
-                        entry.status = Some(error.to_string());
-                        self.errors.push(error.to_string());
+                if let Some(copy) = pending.copy.take() {
+                    let Source::Local(endpoint) = &entry.source else {
+                        unreachable!("window copies use the local persistent server")
+                    };
+                    let endpoint = endpoint.clone();
+                    let name = pending.name.clone();
+                    let target = Target {
+                        source: entry.source.clone(),
+                        instance: entry.instance.clone(),
+                    };
+                    let proxy = self.proxy.clone();
+                    let pane_count: usize =
+                        copy.window.tabs.iter().map(|tab| tab.panes.len()).sum();
+                    pending.deadline =
+                        Instant::now() + Duration::from_secs(30 + pane_count as u64 * 120);
+                    pending.submitted = true;
+                    pending.copying = true;
+                    entry.status = Some("Copying window into a persistent session…".into());
+                    std::thread::spawn(move || {
+                        let result = (|| {
+                            let connection = Connection::native(&endpoint, Arc::new(|| {}))
+                                .map_err(|e| e.to_string())?;
+                            let deadline = Instant::now() + Duration::from_secs(10);
+                            while connection.instance().is_empty() {
+                                if connection.is_closed() || Instant::now() >= deadline {
+                                    return Err("Could not connect to the destination server; window was not copied".into());
+                                }
+                                std::thread::sleep(Duration::from_millis(5));
+                            }
+                            if connection.instance() != target.instance {
+                                return Err(
+                                    "The destination server was replaced; window was not copied"
+                                        .into(),
+                                );
+                            }
+                            copy.run(&connection, &name)
+                        })();
+                        let _ = proxy.send_event(Event::TmuxxCopied(target, name, result));
+                    });
+                } else {
+                    match entry.connection.as_ref().unwrap().command([
+                        "new-session",
+                        "-d",
+                        "-s",
+                        &pending.name,
+                    ]) {
+                        Ok(_) => {
+                            pending.submitted = true;
+                            entry.status = Some("Creating session…".into());
+                        }
+                        Err(error) => {
+                            entry.pending_session = None;
+                            entry.status = Some(error.to_string());
+                            self.errors.push(error.to_string());
+                        }
                     }
                 }
             }
@@ -808,6 +1041,11 @@ impl App {
                 {
                     window.frame = frame;
                 }
+            }
+            if entry.pending_session.is_none()
+                && let Some(copied) = entry.copied_window.take()
+            {
+                apply_copy_metadata(copied, &entry.mapping, &mut self.workspace);
             }
             if entry.temporary() && !entry.waiting_for_window() && entry.selected.is_empty() {
                 remove.push(index);
@@ -978,6 +1216,19 @@ impl App {
             MenuCommand::Connect(_) => unreachable!("connection command handled above"),
             MenuCommand::Open(_, session) => {
                 let entry = &mut self.tmuxx[index];
+                if entry
+                    .connection
+                    .as_ref()
+                    .and_then(Connection::graph)
+                    .is_some_and(|graph| {
+                        graph
+                            .sessions
+                            .iter()
+                            .any(|s| s.id == session && entry.copying_session(s.id, &s.name))
+                    })
+                {
+                    return;
+                }
                 if entry.connection.as_ref().is_none_or(|connection| {
                     connection.is_closed()
                         || connection
@@ -1062,6 +1313,7 @@ impl App {
                 entry.reconnect_enabled = false;
                 entry.retry_at = None;
                 entry.pending_session = None;
+                entry.copied_window = None;
                 entry.shutdown_deadline = Some(Instant::now() + Duration::from_secs(15));
                 entry.open_all = false;
                 entry.restore.clear();
@@ -1076,6 +1328,7 @@ impl App {
             entry.selected.clear();
             entry.restore.clear();
             entry.pending_session = None;
+            entry.copied_window = None;
             entry.open_all = false;
             if let Some(connection) = &entry.connection {
                 for session in entry.mapping.sessions.values() {
@@ -1166,6 +1419,92 @@ mod tests {
             None,
             false,
         )
+    }
+
+    #[test]
+    fn copied_window_waits_for_completion_and_restores_local_metadata() {
+        let mut source = WindowState {
+            id: 1,
+            tabs: vec![
+                Tab::new(2, 3, "/tmp/first".into()),
+                Tab::new(4, 5, "/tmp/second".into()),
+            ],
+            active_tab: 1,
+            frame: [100.0, 200.0, 900.0, 600.0],
+            quick: false,
+        };
+        source.tabs[1].color = Some([12, 34, 56]);
+        source.tabs[1].panes.get_mut(&5).unwrap().title_override = Some("Build".into());
+        let before = serde_json::to_value(&source).unwrap();
+        let copied = CopiedWindow {
+            session: 7,
+            window: source.clone(),
+            tabs: [(2, 8), (4, 9)].into(),
+            panes: [(3, 10), (5, 11)].into(),
+        };
+        let mut graph: Graph = serde_json::from_value(serde_json::json!({
+            "sessions": [{"id": 7, "name": "copy", "active": 5, "windows": {"4": 8, "5": 9}}],
+            "windows": [
+                {"id": 8, "name": "one", "active": 10, "cols": 80, "rows": 24, "panes": [10],
+                 "layout": rustty::tmuxx::Layout::pane(10, 80, 24).to_legacy().unwrap()},
+                {"id": 9, "name": "two", "active": 11, "cols": 80, "rows": 24, "panes": [11],
+                 "layout": rustty::tmuxx::Layout::pane(11, 80, 24).to_legacy().unwrap()}
+            ],
+            "panes": [
+                {"id": 10, "window": 8, "cols": 80, "rows": 24},
+                {"id": 11, "window": 9, "cols": 80, "rows": 24}
+            ]
+        }))
+        .unwrap();
+        let mut entry = local();
+        entry
+            .request_session("copy".into(), Instant::now())
+            .unwrap();
+        let pending = entry.pending_session.as_mut().unwrap();
+        pending.submitted = true;
+        pending.copying = true;
+        entry.observe_graph(&graph, "daemon".into());
+        assert!(entry.copying_session(7, "copy"));
+        assert!(entry.selected.is_empty(), "partial copies must stay hidden");
+        entry.copied_window = Some(copied);
+        entry.pending_session.as_mut().unwrap().copying = false;
+        graph.sessions[0].active = 4;
+        entry.observe_graph(&graph, "daemon".into());
+        assert!(
+            entry.selected.is_empty(),
+            "wait for the final selection snapshot"
+        );
+        graph.sessions[0].active = 5;
+        graph.sessions[0].name = "renamed while copying".into();
+        entry.observe_graph(&graph, "daemon".into());
+        assert_eq!(entry.selected, [7].into());
+        assert!(entry.pending_session.is_none());
+        assert!(entry.copying_session(7, "renamed while copying"));
+        let mut workspace = Workspace::default();
+        entry
+            .mapping
+            .apply(&mut workspace, &graph, &entry.selected)
+            .unwrap();
+        apply_copy_metadata(
+            entry.copied_window.take().unwrap(),
+            &entry.mapping,
+            &mut workspace,
+        );
+        assert!(!entry.copying_session(7, "renamed while copying"));
+        let window = &workspace.windows[0];
+        assert_eq!(window.frame, [130.0, 230.0, 900.0, 600.0]);
+        assert_eq!(window.active_tab, 1);
+        let tab = &window.tabs[1];
+        assert_eq!(tab.color, Some([12, 34, 56]));
+        assert_eq!(
+            tab.panes[&tab.focused].working_directory,
+            PathBuf::from("/tmp/second")
+        );
+        assert_eq!(
+            tab.panes[&tab.focused].title_override.as_deref(),
+            Some("Build")
+        );
+        assert_eq!(serde_json::to_value(&source).unwrap(), before);
     }
 
     #[test]

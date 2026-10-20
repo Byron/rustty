@@ -371,6 +371,10 @@ fn actions() -> Vec<(&'static str, Action)> {
             "New Persistent tmuxx Window",
             Action::NewPersistentTmuxxWindow,
         ),
+        (
+            "Copy Window to Persistent tmuxx Session",
+            Action::CopyWindowToTmuxx,
+        ),
         ("Connect to tmuxx Server…", Action::ConnectTmuxx),
         ("New Tab", Action::NewTab),
         ("Split Right", Action::NewSplit(Direction::Right)),
@@ -418,6 +422,14 @@ mod tests {
             loaded.config.keybinds
         };
         let defaults = load(&[]);
+        assert_eq!(shortcut_label(&defaults, &Action::CopyWindowToTmuxx), None);
+        assert!(
+            shortcut_label(
+                &load(&["--keybind=super+shift+m=copy_window_to_tmuxx"]),
+                &Action::CopyWindowToTmuxx,
+            )
+            .is_some()
+        );
         assert_eq!(
             shortcut_label(&defaults, &Action::NewWindow).as_deref(),
             Some(if cfg!(windows) {
@@ -827,11 +839,16 @@ mod tests {
     }
 
     #[test]
-    fn palette_exposes_recovery_outliner_and_pin_without_sending_terminal_input() {
+    fn palette_exposes_actions_without_sending_terminal_input() {
         for (query, command, expected) in [
             ("reset terminal", "reset", Action::Reset),
             ("outliner", "toggle_outliner", Action::ToggleOutliner),
             ("toggle pin", "toggle_pin", Action::TogglePin),
+            (
+                "copy window",
+                "copy_window_to_tmuxx",
+                Action::CopyWindowToTmuxx,
+            ),
         ] {
             let context = egui::Context::default();
             let config = Config::default();
@@ -1153,20 +1170,20 @@ mod tests {
                 "o",
                 vec![
                     "Connect to tmuxx Server…",
+                    "Copy Window to Persistent tmuxx Session",
                     "New Floating Panel",
                     "New Persistent tmuxx Window",
                     "New Temporary tmuxx Window",
-                    "New Window",
                 ],
             ),
             (
                 "",
                 vec![
                     "Connect to tmuxx Server…",
+                    "Copy Window to Persistent tmuxx Session",
                     "Equalize Splits",
                     "Find",
                     "New Floating Panel",
-                    "New Persistent tmuxx Window",
                 ],
             ),
         ] {
