@@ -356,11 +356,13 @@ These commands use the same implementation as the menu:
 rustty --tmuxx=embedded
 rustty --tmuxx=persistent
 rustty --tmuxx=unix:/path/to/default.native
+rustty --tmuxx=pipe:default
 rustty --tmuxx=ssh:my-host
 rustty --tmuxx=system-ssh:my-host
 ```
 
-There is one executable. The CLI mode can create and manage persistent servers:
+`unix:PATH` selects a local Unix socket; `pipe:INSTANCE` selects a local Windows
+owner. There is one executable. Its CLI mode manages the same servers:
 
 ```sh
 rustty tmux new-session -d -s work
@@ -369,6 +371,13 @@ rustty tmux kill-session -t work
 rustty tmux kill-server
 ```
 
+On Windows, create an owner with **New persistent window** or
+`rustty.exe --tmuxx=persistent` before using those CLI commands. A headless owner
+can instead run as `rustty.exe tmux -D` in a separate process; use another terminal
+to run `rustty.exe tmux new-session -d -s work`. Command clients and SSH bridges
+attach to existing Windows owners; they do not start one implicitly. Unix command
+clients retain their automatic daemon startup.
+
 Rustty's CLI mode exposes only the native endpoint by default. No tmux command
 socket is needed for native SSH access. The standalone tmuxx CLI retains its
 stock command/control socket behavior; ordinary interactive `tmux attach` is not
@@ -376,7 +385,8 @@ an implemented tmuxx client mode. The GUI still supports a real stock tmux serve
 through its SSH control-mode adapter.
 
 Native GUI and CLI endpoint discovery share `TMUXX_ENDPOINT`, or the native
-`default.native` socket in the per-user tmux directory (`TMUX_TMPDIR` or `/tmp`).
+`default.native` socket in the per-user tmux directory (`TMUX_TMPDIR` or `/tmp`)
+on Unix. Windows uses an account-scoped named pipe for the `default` instance.
 Temporary menu windows use unique endpoints, shown in their connection submenu.
 For a known embedded endpoint, start with
 `TMUXX_ENDPOINT=/path/to/private/socket.native rustty --tmuxx=embedded`.
@@ -407,7 +417,7 @@ tmuxx-connection = Azure Linux = ssh:20.240.208.217
 tmuxx-ssh-command-host = 20.240.208.217 = /home/byron/.cargo/bin/tmuxx -L rustty --native-stdio
 tmuxx-connection = Stock tmux = system-ssh:legacy-linux
 tmuxx-connection = Windows = ssh:windows
-tmuxx-ssh-command-host = windows = rustty.exe tmux --native-stdio
+tmuxx-ssh-command-host = windows = "C:/Apps/Rustty/rustty.exe" tmux --native-stdio
 ```
 
 Connection labels such as `Azure Linux` appear in the menu and identify attached
@@ -425,8 +435,25 @@ uses the same syntax, for example
 `rustty --tmuxx=ssh:linux '--tmuxx-ssh-command-host=linux=/home/byron/.cargo/bin/tmuxx -L rustty --native-stdio'`.
 The Azure example connects to the existing daemon named `rustty`; the stock tmux
 entry requires an existing ordinary tmux session and no tmuxx helper. The Windows
-entry shows how to select that executable; Windows native hosting and transport
-remain unimplemented.
+entry runs the packaged executable through an existing OpenSSH server using its
+default cmd.exe shell. If that server uses PowerShell, prefix the quoted
+executable with `&`. Keep the complete `Rustty` folder, including `resources`,
+on the Windows host.
+
+The Windows SSH bridge connects to the running owner's local named pipe under
+the same Windows account; SSH authentication and transport remain OpenSSH's
+responsibility. With one owner, `rustty.exe tmux --native-stdio` discovers it.
+If multiple temporary or persistent owners are running, select the exact native
+endpoint shown in Rustty's tmuxx submenu:
+
+```ini
+tmuxx-ssh-command-host = windows = "C:/Apps/Rustty/rustty.exe" tmux --native-endpoint "\\.\pipe\tmuxx-SID-ENCODED_INSTANCE" --native-stdio
+```
+
+Replace the example pipe with the displayed endpoint. The bridge carries binary
+protocol data over stdin/stdout, without a remote PTY or another terminal window.
+Connecting does not change the owner's lifetime: temporary owners end with their
+Rustty window/application, and persistent owners survive GUI and SSH disconnects.
 
 This is a remote shell command from trusted configuration: quote paths containing
 spaces for the remote shell. Hosts, ports, identities, and jump hosts use normal
@@ -469,9 +496,9 @@ replay clipboard/notification actions. Stock Codex detection is not added.
 Live PTY handover and embedded-to-daemon promotion are deliberately absent.
 Create a persistent window from the outset when programs must survive Rustty.
 Moving tabs, loading a local layout, and layout undo in tmuxx windows are disabled;
-ordinary windows retain their local layout commands. Windows native hosting and
-local transport remain TODOs for a Windows agent; `rustty.exe tmux` dispatch is in
-place, but does not claim a working Windows daemon.
+ordinary windows retain their local layout commands. Windows embedded owners,
+persistent owners, local named-pipe attachments, and native SSH bridges use the
+same tmuxx runtime as the standalone driver.
 
 The tmuxx crates are pinned together to GitHub revision
 `700884116bc7239d032e6c91fb4e37e7c540c335`; no sibling checkout is needed to build.
@@ -497,6 +524,19 @@ cargo +1.95.0 test --locked --offline -p rustty-app --lib tmuxx_workspace::tests
 cargo +1.95.0 test --locked --offline -p rustty-app --bin rustty tmuxx_host::tests::
 cargo +1.95.0 test --locked --offline -p rustty-app --test tmux_cli
 ```
+
+Windows native lifecycle tests require the bundled ConPTY resources. Set
+`TMUXX_CONPTY_RESOURCES` to the absolute `target/release/Rustty/resources` directory
+(or the equivalent debug bundle), then run:
+
+```powershell
+cargo +1.95.0 test --locked --offline --target x86_64-pc-windows-msvc -p rustty --features sessions --lib tmuxx::windows_tests:: -- --include-ignored --test-threads=1
+cargo +1.95.0 test --locked --offline --target x86_64-pc-windows-msvc -p rustty-app --bin rustty tmuxx_host::tests:: -- --include-ignored --test-threads=1
+cargo +1.95.0 test --locked --offline --target x86_64-pc-windows-msvc -p rustty-app --test tmux_cli_windows -- --ignored --test-threads=1
+```
+
+Set `RUSTTY_TEST_EXE` to a packaged `rustty.exe` to run the CLI/bridge test against
+that bundle instead of Cargo's executable.
 
 For a hidden macOS smoke capture with disposable panes:
 

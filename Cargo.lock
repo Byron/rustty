@@ -3361,6 +3361,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tmuxx-cli",
+ "tmuxx-protocol",
  "unicode-segmentation",
  "wgpu",
  "windows",
