@@ -164,18 +164,25 @@ impl PaneInput {
         if self.released.swap(true, Ordering::AcqRel) {
             return;
         }
-        let _ = self.set_host_state(false, false, self.dark.load(Ordering::Acquire));
-        if self.owners.fetch_sub(1, Ordering::AcqRel) == 1
-            && self.native
-            && let Some(shared) = self.shared.upgrade()
-        {
-            if shared
-                .model
-                .lock()
-                .is_ok_and(|model| !model.panes.contains_key(&self.pane))
-            {
-                return;
-            }
+        self.focused.store(false, Ordering::Release);
+        self.visible.store(false, Ordering::Release);
+        let Some(shared) = self.shared.upgrade() else {
+            self.owners.fetch_sub(1, Ordering::AcqRel);
+            return;
+        };
+        let Ok(mut model) = shared.model.lock() else {
+            return;
+        };
+        let last = self.owners.fetch_sub(1, Ordering::AcqRel) == 1;
+        let Some(pane) = model.panes.get_mut(&self.pane) else {
+            return;
+        };
+        if !self.native || !Arc::ptr_eq(&pane.owners, &self.owners) {
+            return;
+        }
+        if last {
+            // Release is idempotent after kill-pane; a preceding host-state is not.
+            pane.host_state = None;
             let _ = send(
                 &shared,
                 vec![
@@ -184,6 +191,9 @@ impl PaneInput {
                     format!("%{}", self.pane).into_bytes(),
                 ],
             );
+        } else {
+            drop(model);
+            let _ = self.set_host_state(false, false, self.dark.load(Ordering::Acquire));
         }
     }
     pub fn set_persistent(&self, persistent: bool) -> io::Result<()> {
@@ -224,6 +234,9 @@ impl PaneInput {
         let Some(pane) = model.panes.get_mut(&self.pane) else {
             return Ok(());
         };
+        if !Arc::ptr_eq(&pane.owners, &self.owners) || pane.owners.load(Ordering::Acquire) == 0 {
+            return Ok(());
+        }
         let focused = pane.views.iter().any(|v| {
             v.terminal.strong_count() > 0
                 && v.focused.load(Ordering::Acquire)
@@ -1327,6 +1340,62 @@ mod tests {
             thread::sleep(Duration::from_millis(5));
         }
     }
+
+    #[test]
+    fn native_release_updates_other_views_but_only_releases_the_last_view() {
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        connection.shared.model.lock().unwrap().panes.insert(
+            7,
+            PaneState {
+                host_state: None,
+                owners: Arc::new(AtomicUsize::new(0)),
+                terminal: tmuxx_terminal::Terminal::new(20, 4, 20).into_backend(),
+                agent_status: tmuxx_terminal::AgentStatus::default(),
+                views: Vec::new(),
+            },
+        );
+        let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        assert_eq!(requests.try_recv().unwrap().argv[0], b"tmuxx-claim-pane");
+        assert!(requests.try_recv().is_err());
+        first
+            .set_host_state(true, true, rustty_vt::query::ColorScheme::Dark)
+            .unwrap();
+        requests.try_recv().unwrap();
+        first.close();
+        let blur = requests.try_recv().unwrap();
+        assert_eq!(blur.argv[0], b"tmuxx-host-state");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&blur.stdin.unwrap()).unwrap(),
+            serde_json::json!({"focused":false,"visible":false,"color_scheme":"dark"})
+        );
+        second
+            .set_host_state(true, true, rustty_vt::query::ColorScheme::Dark)
+            .unwrap();
+        requests.try_recv().unwrap();
+        second.close();
+        // A partial release can finish its host update after the last owner released.
+        first
+            .set_host_state(false, false, rustty_vt::query::ColorScheme::Dark)
+            .unwrap();
+        drop(first);
+        drop(second);
+        assert_eq!(requests.try_recv().unwrap().argv[0], b"tmuxx-release-pane");
+        assert!(requests.try_recv().is_err());
+
+        let reopened = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        reopened
+            .set_host_state(true, true, rustty_vt::query::ColorScheme::Dark)
+            .unwrap();
+        assert_eq!(requests.try_recv().unwrap().argv[0], b"tmuxx-claim-pane");
+        assert_eq!(requests.try_recv().unwrap().argv[0], b"tmuxx-host-state");
+        connection.command(["kill-pane", "-t", "%7"]).unwrap();
+        drop(reopened);
+        assert_eq!(requests.try_recv().unwrap().argv[0], b"kill-pane");
+        assert_eq!(requests.try_recv().unwrap().argv[0], b"tmuxx-release-pane");
+        assert!(requests.try_recv().is_err());
+    }
+
     #[test]
     fn native_agent_status_attach_live_and_resync_do_not_replay_host_actions() {
         use rustty_vt::agent::{Event, State};

@@ -2164,6 +2164,7 @@ impl App {
 
     fn drain(&mut self, event_loop: &ActiveEventLoop, id: Id) {
         let previous_tab_label = self.pane_tab_label(id);
+        let tmuxx = self.tmuxx_pane(id).is_some();
         let previous_directory = self
             .panes
             .get(&id)
@@ -2332,7 +2333,8 @@ impl App {
                     }
                     close = live && !hold_after_exit(config, runtime);
                 }
-                SessionEvent::Error(error) => self.errors.push(error),
+                // The connection reports a shared transport failure once for all its panes.
+                SessionEvent::Error(error) if !tmuxx => self.errors.push(error),
                 _ => {}
             }
             let registered = pane.agent.is_registered() || pane.deck_progress.state().is_some();
