@@ -33,6 +33,12 @@ pub struct ServerSession {
     pub active: u64,
     pub windows: BTreeMap<u32, u64>,
 }
+#[derive(Clone, Debug)]
+pub struct SessionInfo {
+    pub id: u64,
+    pub name: String,
+    pub windows: Vec<String>,
+}
 #[derive(Clone, Debug, Deserialize)]
 pub struct ServerWindow {
     pub id: u64,
@@ -751,6 +757,37 @@ impl Connection {
     pub fn graph(&self) -> Option<Graph> {
         self.shared.model.lock().ok()?.graph.clone()
     }
+    /// Session metadata without cloning terminal snapshots for native menus.
+    pub fn sessions(&self) -> Vec<SessionInfo> {
+        self.shared
+            .model
+            .lock()
+            .ok()
+            .and_then(|model| {
+                model.graph.as_ref().map(|graph| {
+                    graph
+                        .sessions
+                        .iter()
+                        .map(|session| SessionInfo {
+                            id: session.id,
+                            name: session.name.clone(),
+                            windows: session
+                                .windows
+                                .values()
+                                .filter_map(|id| {
+                                    graph
+                                        .windows
+                                        .iter()
+                                        .find(|window| window.id == *id)
+                                        .map(|window| window.name.clone())
+                                })
+                                .collect(),
+                        })
+                        .collect()
+                })
+            })
+            .unwrap_or_default()
+    }
     pub fn errors(&self) -> Vec<String> {
         self.shared
             .model
@@ -1207,6 +1244,22 @@ mod tests {
     use super::*;
     use crate::session::Session;
     use std::time::Instant;
+
+    #[test]
+    fn session_menu_metadata_keeps_tab_order_and_duplicate_links() {
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), false);
+        connection.shared.model.lock().unwrap().graph = Some(serde_json::from_value(serde_json::json!({
+            "sessions": [{"id": 7, "name": "work", "active": 0, "windows": {"0": 2, "1": 3, "2": 2}}],
+            "windows": [
+                {"id": 2, "name": "editor", "active": 0, "cols": 80, "rows": 24, "panes": [], "layout": ""},
+                {"id": 3, "name": "logs", "active": 0, "cols": 80, "rows": 24, "panes": [], "layout": ""}
+            ], "panes": []
+        })).unwrap());
+        let sessions = connection.sessions();
+        assert_eq!((sessions[0].id, sessions[0].name.as_str()), (7, "work"));
+        assert_eq!(sessions[0].windows, ["editor", "logs", "editor"]);
+    }
+
     fn wait(connection: &Connection, predicate: impl Fn(&Graph) -> bool) -> Graph {
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {

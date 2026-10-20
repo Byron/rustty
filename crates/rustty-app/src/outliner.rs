@@ -31,6 +31,7 @@ pub struct Row {
     pub focused: bool,
     pub ancestor: bool,
     pub color: Option<[u8; 3]>,
+    pub tmuxx: Option<String>,
     pub zoom: Zoom,
 }
 
@@ -136,6 +137,7 @@ pub fn workspace_rows(
     labels: &HashMap<Id, String>,
     tab_labels: &HashMap<Id, String>,
     quick_used: &HashSet<Id>,
+    tmuxx_windows: &HashMap<Id, String>,
 ) -> Vec<Row> {
     let mut outline = Vec::new();
     let mut number = 0;
@@ -147,7 +149,10 @@ pub fn workspace_rows(
                 && window.tabs.get(window.active_tab).is_some()
         })
         .collect();
-    let has_windows = windows.len() > 1;
+    let has_windows = windows.len() > 1
+        || windows
+            .iter()
+            .any(|window| tmuxx_windows.contains_key(&window.id));
     for window in windows {
         let Some(tab) = window.tabs.get(window.active_tab) else {
             continue;
@@ -169,6 +174,7 @@ pub fn workspace_rows(
                 focused: false,
                 ancestor: active,
                 color: tab.color,
+                tmuxx: tmuxx_windows.get(&window.id).cloned(),
                 zoom: Zoom::None,
             });
         }
@@ -304,6 +310,7 @@ pub fn rows(
                 ancestor: active,
                 color: tab.color,
                 zoom: zoom(tab),
+                tmuxx: None,
             });
         }
         rows.extend(tab_rows(tab, labels, usize::from(has_tabs), active));
@@ -358,6 +365,7 @@ fn tab_rows(tab: &Tab, labels: &HashMap<Id, String>, depth: usize, active: bool)
                 focused: false,
                 ancestor: active && node.contains(tab.focused),
                 color: tab.color,
+                tmuxx: None,
                 zoom: if tab.quadrant_zoom == Some(quad) {
                     Zoom::Quad
                 } else {
@@ -391,6 +399,7 @@ fn pane_row(
         focused: active && tab.focused == pane,
         ancestor: false,
         color: tab.color,
+        tmuxx: None,
         zoom: if tab.zoom == Some(pane) && tab.zoom != tab.quadrant_zoom {
             zoom(tab)
         } else {
@@ -560,7 +569,47 @@ mod tests {
             &HashMap::new(),
             &HashMap::new(),
             &HashSet::new(),
+            &Default::default(),
         )
+    }
+
+    #[test]
+    fn tmuxx_windows_keep_their_window_row_and_normal_windows_have_no_tag() {
+        let mut workspace = Workspace::default();
+        workspace.windows = vec![window()];
+        let tags = HashMap::from([(100, "tmuxx · SSH · build-host".into())]);
+        let rows = workspace_rows(
+            &workspace,
+            Some(100),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashSet::new(),
+            &tags,
+        );
+        assert_eq!(rows[0].target, Target::Window(100));
+        assert_eq!(rows[0].tmuxx.as_deref(), Some("tmuxx · SSH · build-host"));
+        assert!(rows[1..].iter().all(|row| row.tmuxx.is_none()));
+
+        workspace.windows.push(WindowState {
+            id: 200,
+            tabs: vec![Tab::new(21, 22, "/tmp".into())],
+            ..window()
+        });
+        let rows = workspace_rows(
+            &workspace,
+            Some(100),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashSet::new(),
+            &tags,
+        );
+        assert!(
+            rows.iter()
+                .find(|row| row.target == Target::Window(200))
+                .unwrap()
+                .tmuxx
+                .is_none()
+        );
     }
 
     fn row_index(rows: &[Row], target: Target) -> usize {
@@ -915,6 +964,7 @@ mod tests {
             &HashMap::new(),
             &titles,
             &HashSet::new(),
+            &Default::default(),
         );
         assert_eq!(rows[0].target, Target::Window(100));
         assert_eq!(rows[0].label, "Window 1 · Work");
@@ -936,6 +986,7 @@ mod tests {
             &HashMap::new(),
             &titles,
             &[300].into(),
+            &Default::default(),
         );
         let quick = rows
             .iter()
@@ -1022,6 +1073,7 @@ mod tests {
             &HashMap::new(),
             &HashMap::new(),
             &HashSet::new(),
+            &Default::default(),
         );
         assert_eq!(rows.len(), 1);
         assert_eq!(
@@ -1036,6 +1088,7 @@ mod tests {
             &HashMap::new(),
             &HashMap::new(),
             &[300].into(),
+            &Default::default(),
         );
         assert_eq!(rows[0].target, Target::Window(100));
         assert_eq!(rows[1].depth, 1);
@@ -1049,6 +1102,7 @@ mod tests {
             &HashMap::new(),
             &HashMap::new(),
             &HashSet::new(),
+            &Default::default(),
         );
         assert_eq!(rows[0].target, Target::Quad { tab: 1, node: 10 });
         assert_eq!(rows[0].depth, 0);
