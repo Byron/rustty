@@ -1,0 +1,118 @@
+# These narrow byte comparisons do not certify the complete terminal profile.
+[[suites]]
+id = "capture-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "capture_reference", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "capture-reference-rendition"
+tests = ["capture_sgr_color_origins_spaces_escaping_and_ranges_match_c"]
+description = "Exact C capture bytes for ANSI and palette spelling, RGB and underline colors, trailing spaces, escaped output, history and reversed bounds."
+
+[[suites.assertions]]
+id = "capture-reference-alternate"
+tests = ["capture_alternate_history_and_missing_screen_match_c"]
+description = "Exact C active and saved-screen captures including retained history, missing alternate error and quiet output."
+
+[[suites.assertions]]
+id = "capture-reference-pending"
+tests = ["capture_pending_input_raw_and_octal_match_c"]
+description = "Exact C unfinished CSI/OSC bytes including already-executed control, high byte and backslash octal escaping."
+
+[[suites.assertions]]
+id = "capture-reference-allocations"
+tests = ["capture_allocations_after_erase_insert_delete_and_scroll_match_c"]
+description = "Exact C allocated and used row lengths after partial/full erase, insertion, deletion, scrolling and snapshot restoration."
+
+[[suites.assertions]]
+id = "capture-reference-backgrounds"
+tests = ["capture_background_erase_and_scroll_colors_match_c"]
+description = "Exact C erase-background color spelling through scrolling and styled blank cells."
+
+[[suites.assertions]]
+id = "capture.c-hyperlink-list-numbering-and-mode-fallback"
+tests = ["capture_hyperlink_lists_numbers_and_flag_precedence_match_c"]
+description = "Exact C hyperlink URI lists retain implicit/explicit identity, deduplication, history/range/line numbering and H precedence over pending captures. An absent tmux mode uses the base screen. Snapshots preserve the results."
+
+[[suites.assertions]]
+id = "capture.c-line-flags-and-history-timestamps"
+tests = ["capture_line_flags_follow_shell_wrap_hyperlink_and_extended_lifetimes", "capture_line_timestamps_follow_history_entry_and_reflow"]
+description = "C line numbering/flags match for shell markers, wrapping, overwritten links and extended cells across width changes. History-entry timestamps obey bounded C wall-time relations and an exact Rust owner clock, survive reflow/restore and remain zero for unscrolled visible rows."
+
+[[suites.assertions]]
+id = "capture.c-reflow-allocation-bytes"
+tests = ["capture_reflow_allocations_preserve_spaces_colors_and_snapshot_bytes"]
+description = "Exact C N/eN/NT/NJ/L bytes through repeated 20/8/32/6/20-column resizes retain spare-space allocation, used trailing blanks, wide-cell repair, original color spelling and snapshot continuation."
+
+[[suites.assertions]]
+id = "capture.c-clear-history-and-shared-hyperlink-reset"
+tests = ["clear_history_hyperlinks_keep_text_and_remove_saved_screen_links_like_c"]
+description = "clear-history retains visible text; -H removes active and saved-screen links. Open hyperlink state crosses alternate-screen switches like C, and restored captures keep the same bytes."
+
+[[suites.assertions]]
+id = "capture.c-retained-tabs-edits-and-normal-reflow"
+tests = ["retained_tabs_capture_overwrite_erase_shift_and_snapshot_match_c", "retained_tabs_reflow_at_normal_widths_matches_c"]
+description = "Exact C p/N/eNT/eNJ/L capture bytes retain HT spelling, styled/link cells, printable/wide overwrite, partial erase/insertion/deletion fragments, repeated20/8/32/10/20-column reflow and native snapshots. CSI forward-tab remains ignored like C."
+
+[[suites.assertions]]
+id = "capture.native-safe-tab-reflow-difference"
+tests = ["native_reflow_expands_oversized_and_fractured_tabs_without_hidden_cells"]
+description = "Independent C/native outcomes for an8-column tab narrowed to6 and a tab fractured by partial erase: native expands to bounded visible cells, preserves X throughout resize/restore, and records C's hidden-cell/extra-wrap behavior without normalization."
+
+[[suites]]
+id = "capture-contracts"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "capture_reference"]
+env = {}
+
+[[suites.assertions]]
+id = "capture-allocation-diagnostic"
+tests = ["allocation_sensitive_trailing_capture_survives_empty_resize"]
+description = "An empty width resize retains exact zero-allocation rows, so -N returns the expected blank lines."
+
+[[suites.assertions]]
+id = "capture.snapshot-metadata-bounds"
+tests = ["invalid_snapshot_capture_metadata_is_rejected_before_reflow", "snapshot_restores_after_non_reflow_width_shrink", "snapshot_restores_after_reflow_discards_unknown_capture_rows"]
+description = "Restore rejects missing-row timestamps, unknown flags, used lengths beyond row width, and unbounded allocation lengths before resize can allocate from untrusted metadata. Native snapshots remain valid after non-reflow width shrink and reflow that replaces rows with unknown capture metadata."
+
+[[suites.assertions]]
+id = "capture-restore-color-origin"
+tests = ["snapshot_restore_preserves_color_spelling_in_history_and_saved_cursor"]
+description = "Snapshot restores capture color origin through history, alternate screen and saved cursor without changing GHOSTSNP wire."
+
+[[suites.assertions]]
+id = "capture.snapshot-tabs-malformed-utf8-and-query-boundaries"
+tests = ["malformed_utf8_strings_and_tabs_resume_after_every_snapshot_boundary", "invalid_snapshot_tab_metadata_is_rejected", "snapshot_json_retains_row_flags_times_and_rejects_duplicate_ids"]
+description = "JSON/native restore at every byte of malformed UTF8, retained HT, duplicate OSC8 IDs and unsupported DECRQSS preserves exact capture, cursor and one-time replies. Metadata bounds reject invalid/nonblank/cursor tab markers and duplicate/noncanonical/overflow row IDs; nonempty row flags/timestamps retain their existing JSON object shape."
+
+[[suites]]
+id = "capture-raw-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "raw_capture_reference", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "terminal.c-raw-grid-shared-cell-fields"
+tests = ["raw_grid_common_cells_styles_links_markers_and_snapshot_match_c"]
+description = "Raw-grid C record grammar preserves overlapping text/SGR/RGB/256-color/underline/hyperlink/wide/combining/shell-marker fields, flag precedence and snapshots. Allocator and cell encoding differences have a separate assertion."
+
+[[suites.assertions]]
+id = "terminal.native-raw-grid-storage-differences"
+tests = ["raw_grid_native_slot_charset_tab_and_clear_differences_are_explicit"]
+description = "Independent exact C/R examples expose actual native full row slots, Unicode ACS glyphs, expanded tabs and native blank-cell diagnostics; these representations are deliberate differences, not literal raw-grid parity."
+
+[[suites]]
+id = "unicode-cells-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "unicode_reference", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "terminal.c-unicode-combining-cells-and-snapshots"
+tests = ["unicode_cells_cursor_and_snapshot_match_c"]
+description = "Exact C visible text, cursor and populated raw cells at one/three/full byte boundaries and restored snapshots: regional-indicator pairing with odd width-one cells, skin-tone direction, ZWJ sequences, Hangul filler, zero-width-at-left rejection, wide wrapping and the 31-byte combined-cell cap. Padding and unused-slot diagnostic storage retain their separately tested differences."

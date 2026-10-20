@@ -132,6 +132,7 @@ impl State {
                     name: meta.name,
                     granted,
                     can_remember: !password.is_empty(),
+                    tmux_selector: None,
                     protocol: Protocol::Kitty {
                         id: meta.id,
                         password,

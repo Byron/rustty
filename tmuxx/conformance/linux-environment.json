@@ -1,0 +1,185 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-20T03:38:49.935817+00:00",
+  "qualification_scope": "Environment and source/build identities only; executable profile qualification belongs to the fresh Linux conformance report. No musl, other architecture, Windows or Linux GUI claim.",
+  "host": {
+    "name": "cr1",
+    "distribution": {
+      "NAME": "Ubuntu",
+      "ID": "ubuntu",
+      "PRETTY_NAME": "Ubuntu 26.04.1 LTS",
+      "VERSION_ID": "26.04",
+      "VERSION": "26.04.1 LTS (Resolute Raccoon)",
+      "VERSION_CODENAME": "resolute",
+      "ID_LIKE": "debian",
+      "HOME_URL": "https://www.ubuntu.com/",
+      "SUPPORT_URL": "https://help.ubuntu.com/",
+      "BUG_REPORT_URL": "https://bugs.launchpad.net/ubuntu/",
+      "PRIVACY_POLICY_URL": "https://www.ubuntu.com/legal/terms-and-policies/privacy-policy",
+      "UBUNTU_CODENAME": "resolute",
+      "LOGO": "ubuntu-logo"
+    },
+    "kernel": "7.0.0-1012-azure",
+    "kernel_version": "#12-Ubuntu SMP PREEMPT Thu Aug  6 19:07:58 UTC 2026",
+    "architecture": "aarch64",
+    "libc": [
+      "glibc",
+      "2.43"
+    ],
+    "gnu_target": "aarch64-unknown-linux-gnu",
+    "rust": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2",
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+    "python": "3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]",
+    "python_executable": "/usr/bin/python3",
+    "openssh_client": "OpenSSH_10.2p1 Ubuntu-2ubuntu3.8, OpenSSL 3.5.5 27 Jan 2026",
+    "openssh_server": "OpenSSH_10.2p1 Ubuntu-2ubuntu3.8, OpenSSL 3.5.5 27 Jan 2026",
+    "sshd_privilege_separation_directory": {
+      "path": "/run/sshd",
+      "exists": true
+    },
+    "tty_utility": "tty (uutils coreutils) 0.10.0"
+  },
+  "dependency_install": {
+    "argv": [
+      "sudo",
+      "-n",
+      "apt-get",
+      "install",
+      "-y",
+      "build-essential",
+      "autoconf",
+      "automake",
+      "bison",
+      "pkg-config",
+      "libevent-dev",
+      "libncurses-dev",
+      "libutf8proc-dev",
+      "libpng-dev",
+      "openssh-client",
+      "openssh-server"
+    ],
+    "packages": [
+      "autoconf\t2.72-3.1ubuntu2",
+      "automake\t1:1.18.1-3build1",
+      "bison\t2:3.8.2+dfsg-1ubuntu0.26.04.1",
+      "build-essential\t12.12ubuntu2.26.04.2",
+      "libevent-dev\t2.1.12-stable-10ubuntu0.2",
+      "libncurses-dev:arm64\t6.6+20251231-1",
+      "libpng-dev:arm64\t1.6.57-1ubuntu0.1",
+      "libutf8proc-dev:arm64\t2.10.0-2",
+      "openssh-client\t1:10.2p1-2ubuntu3.8",
+      "openssh-server\t1:10.2p1-2ubuntu3.8",
+      "pkg-config:arm64\t2.5.1-4"
+    ],
+    "cargo_cache": "Existing /home/byron/.cargo cache reused with cargo +1.95.0 fetch --locked in both workspaces. Build/test execution uses --locked --offline."
+  },
+  "references": {
+    "current": {
+      "source_directory": "/tmp/tmuxx-linux-references/current",
+      "source_revision": "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d",
+      "source_git_archive_sha256": "f61ab262cb599b327c4b57746d28d49c646ede708b0e90ec25d734164afb97c0",
+      "source_files_verified_against_revision": 739,
+      "path": "/tmp/tmuxx-linux-references/current/tmux",
+      "version": "tmux next-3.9",
+      "sha256": "9256661d4093be45b007f8888d1ed0dc9514cd78a7ae4b18a46ea80aee53e1dc",
+      "configure_argv": [
+        "./configure",
+        "--enable-utf8proc",
+        "--enable-images"
+      ],
+      "config_status": "--enable-utf8proc --enable-images",
+      "verified_defines": [
+        "HAVE_UTF8PROC",
+        "ENABLE_IMAGES",
+        "HAVE_LIBPNG"
+      ],
+      "compiler": "cc (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+      "build_argv": [
+        "make",
+        "-j4"
+      ],
+      "build_logs": {
+        "autogen.log": {
+          "path": "/tmp/tmuxx-linux-references/current/autogen.log",
+          "sha256": "98401fd458e36b074864ef2eadcf6be2e2e24651c28f3875335a382d671a192a"
+        },
+        "configure.log": {
+          "path": "/tmp/tmuxx-linux-references/current/configure.log",
+          "sha256": "f2d8cbb741b59efc5ddea8e37f2ef29f6fdd3edca7c98bb65a11986aae2f0199"
+        },
+        "config.log": {
+          "path": "/tmp/tmuxx-linux-references/current/config.log",
+          "sha256": "367b0a91d4dcc35b35bf5d418097b72da75fbb9910e69cbd22cb12a0a830ebc2"
+        },
+        "build.log": {
+          "path": "/tmp/tmuxx-linux-references/current/build.log",
+          "sha256": "2bc22927c351ff345280e7c9a657ceb8ec10ca2c3312e8465fa0df6f4a8d1b4b"
+        }
+      },
+      "dynamic_libraries": "linux-vdso.so.1 (0x0000e0923cf8c000)\n\tlibpng16.so.16 => /usr/lib/aarch64-linux-gnu/libpng16.so.16 (0x0000e0923cd60000)\n\tlibz.so.1 => /usr/lib/aarch64-linux-gnu/libz.so.1 (0x0000e0923cd20000)\n\tlibutf8proc.so.3 => /usr/lib/aarch64-linux-gnu/libutf8proc.so.3 (0x0000e0923cca0000)\n\tlibtinfo.so.6 => /usr/lib/aarch64-linux-gnu/libtinfo.so.6 (0x0000e0923cc40000)\n\tlibevent_core-2.1.so.7 => /usr/lib/aarch64-linux-gnu/libevent_core-2.1.so.7 (0x0000e0923cbe0000)\n\tlibm.so.6 => /usr/lib/aarch64-linux-gnu/libm.so.6 (0x0000e0923cb10000)\n\tlibresolv.so.2 => /usr/lib/aarch64-linux-gnu/libresolv.so.2 (0x0000e0923cae0000)\n\tlibc.so.6 => /usr/lib/aarch64-linux-gnu/libc.so.6 (0x0000e0923c910000)\n\t/lib/ld-linux-aarch64.so.1 (0x0000e0923cf50000)"
+    },
+    "older": {
+      "source_directory": "/tmp/tmuxx-linux-references/3.7c",
+      "source_revision": "e476c1230b958df0cb12977517d24b3dc931375b",
+      "source_git_archive_sha256": "4d55d8361692663e48a75c520acbb5d369e75082cfbc283c667840f4eec6ad43",
+      "source_files_verified_against_revision": 326,
+      "path": "/tmp/tmuxx-linux-references/3.7c/tmux",
+      "version": "tmux 3.7c",
+      "sha256": "2e192ac3e722e5959ee39bebc2cba0e94c8b0690266ca3a89e273f1446376c47",
+      "configure_argv": [
+        "./configure",
+        "--enable-utf8proc",
+        "--enable-sixel"
+      ],
+      "config_status": "--enable-utf8proc --enable-sixel",
+      "verified_defines": [
+        "HAVE_UTF8PROC",
+        "ENABLE_SIXEL"
+      ],
+      "compiler": "cc (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+      "build_argv": [
+        "make",
+        "-j4"
+      ],
+      "build_logs": {
+        "autogen.log": {
+          "path": "/tmp/tmuxx-linux-references/3.7c/autogen.log",
+          "sha256": "98401fd458e36b074864ef2eadcf6be2e2e24651c28f3875335a382d671a192a"
+        },
+        "configure.log": {
+          "path": "/tmp/tmuxx-linux-references/3.7c/configure.log",
+          "sha256": "1fc3345ebc752f8e02a4a50f0261fe0721a34adbb2f316dd6efbc0149725fd8c"
+        },
+        "config.log": {
+          "path": "/tmp/tmuxx-linux-references/3.7c/config.log",
+          "sha256": "823f82b3146287bd8de7de9a4492a0a412ca73c8bd1eddfe3a4822868a583764"
+        },
+        "build.log": {
+          "path": "/tmp/tmuxx-linux-references/3.7c/build.log",
+          "sha256": "c6dfb9570152b15dc3e87c30f41681ea8dfe0438815325286b1ac6cc4abae34a"
+        }
+      },
+      "dynamic_libraries": "linux-vdso.so.1 (0x0000ffc327bdc000)\n\tlibutf8proc.so.3 => /usr/lib/aarch64-linux-gnu/libutf8proc.so.3 (0x0000ffc3279e0000)\n\tlibtinfo.so.6 => /usr/lib/aarch64-linux-gnu/libtinfo.so.6 (0x0000ffc327980000)\n\tlibevent_core-2.1.so.7 => /usr/lib/aarch64-linux-gnu/libevent_core-2.1.so.7 (0x0000ffc327920000)\n\tlibm.so.6 => /usr/lib/aarch64-linux-gnu/libm.so.6 (0x0000ffc327850000)\n\tlibresolv.so.2 => /usr/lib/aarch64-linux-gnu/libresolv.so.2 (0x0000ffc327820000)\n\tlibc.so.6 => /usr/lib/aarch64-linux-gnu/libc.so.6 (0x0000ffc327650000)\n\t/lib/ld-linux-aarch64.so.1 (0x0000ffc327ba0000)",
+      "image_option_difference": "3.7c does not recognize --enable-images. Its configure.ac exposes --enable-sixel for the supported SIXEL images; the final build uses that option. Initial unsupported-option log is retained at /tmp/tmuxx-linux-references/3.7c/configure-modern-flag.log."
+    }
+  },
+  "distribution_tmux": {
+    "path": "/usr/bin/tmux",
+    "version": "tmux 3.6",
+    "sha256": "969426248a9edcf79ae10229640852728714e3fc035fd0ac0a1bf2a5259d4e64",
+    "qualification": "Not used as either reference; installed binary left unchanged."
+  },
+  "rustty": {
+    "path": "/tmp/tmuxx-linux-sources/ghostty-org/ghostty",
+    "repository": "https://github.com/Byron/rustty",
+    "base_revision": "cb67824a77fc00bd20e811cce40012893f79b999",
+    "manifest_sha256": "dd2d86fa682aa8ef66e229b0c6f5582c3d88589c59419e68d46e1c5ec91b6d72",
+    "patch_sha256": "cb52f7dbf3ff3b6dd96f813c099a74557842bda8a8664f19895dece285309588",
+    "verified_base_file_hashes": 20,
+    "verified_integrated_file_hashes": 20,
+    "patch_application": "All base hashes matched before git apply --check and git apply; all result hashes matched afterwards. Newly cloned isolated checkout; no unrelated changes were present.",
+    "sibling_tmux_symlink": "/tmp/tmuxx-linux-sources/tmux/tmux",
+    "sibling_tmux_resolves_to": "/home/byron/dev/tmux",
+    "environment_variable": "TMUXX_RUSTTY_ROOT=/tmp/tmuxx-linux-sources/ghostty-org/ghostty"
+  }
+}

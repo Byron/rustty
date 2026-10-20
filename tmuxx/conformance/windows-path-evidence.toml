@@ -1,0 +1,12 @@
+[[suites]]
+id = "windows-path-formats"
+platforms = ["win32"]
+profiles = ["windows"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-format", "--lib", "windows_paths::tests::"]
+env = {}
+timeout = 60
+
+[[suites.assertions]]
+id = "windows.format-path-prefixes-and-byte-identity"
+tests = ["windows_paths::tests::path_modifiers_cover_drive_relative_unc_and_extended_roots", "windows_paths::tests::path_modifiers_preserve_malformed_bytes_and_literal_spelling"]
+description = "The actual b/d dispatcher recognizes Windows separators, drive-relative/root paths, UNC volumes, verbatim and device prefixes. It preserves Unicode, distinct malformed bytes, prefix spelling, dots/spaces and verbatim forward slashes without filesystem access or normalization. The exact policy is documented in tmuxx-format/WINDOWS-PATHS.md; Unix helpers and remote C values are unchanged."

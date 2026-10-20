@@ -1,0 +1,337 @@
+# These are specific lifetime contracts; OS-daemonized new sessions require a
+# different containment mechanism and are not certified by PTY session cleanup.
+[[suites]]
+id = "runtime-native-ui-policy"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "native_policy", "--", "--test-threads=1"]
+env = {}
+
+[[suites.assertions]]
+id = "native.ui-command-rejection-state-and-queue"
+tests = ["every_scoped_native_ui_command_rejects_without_state_or_input_mutation"]
+description = "Every native UI command listed in scope.json, nested action arguments and dependent injection/presentation flags reject explicitly; graph/process IDs, terminal input, buffers and options remain unchanged and the queue remains live."
+
+[[suites.assertions]]
+id = "native.control-popup-rejection-and-reply"
+tests = ["control_popup_rejection_preserves_pane_and_next_guarded_reply"]
+description = "An attached control client receives explicit popup rejection, then the next correlated command reply; retained pane/process IDs, buffers, screen and options remain unchanged."
+
+[[suites]]
+id = "runtime-tilde-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "scheduler", "named_user_tilde", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "config.c-tilde-accounts-home-fallback-and-aliases"
+tests = ["named_user_tilde_and_empty_home_fallback_match_c"]
+description = "C/R output agrees for named-account homes, empty/missing/configured HOME, quoted/concatenated words, preparation assignments and aliases; unknown and excessive usernames retain exact source error bytes and status."
+
+[[suites]]
+id = "runtime-host-lifetimes"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["app-owned", "standalone", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "host"]
+env = {}
+
+[[suites.assertions]]
+id = "runtime.pty-session-descendant-cleanup"
+tests = ["shutdown_terminates_pty_descendants_after_the_leader_exits"]
+description = "After the PTY leader exits, shutdown reclaims its background descendant while an independent host retains the same live PID. Unix checks a same-session process group ignoring SIGHUP; Windows checks an owned Job Object process group ignoring console control signals through an exact process handle."
+
+[[suites.assertions]]
+id = "runtime.socket-client-admission-and-close"
+tests = ["socket_clients_are_bounded_and_shutdown_closes_idle_peers"]
+description = "At most 128 simultaneous socket clients, including identification, obtain worker slots; close releases a slot and owner shutdown closes idle peers."
+
+[[suites.assertions]]
+id = "runtime.native-endpoint-identity-and-version"
+tests = ["refuses_to_replace_existing_endpoint", "cleanup_does_not_remove_a_replacement_endpoint", "stale_owned_socket_is_recovered_but_regular_files_are_preserved", "second_endpoint_failure_removes_only_owned_bindings", "native_handshake_rejects_mismatched_versions_before_requests"]
+description = "Unix lifetime locks and inode checks protect live/replaced paths and recover stale sockets selectively. Windows checks named-pipe kernel-handle lifetime, replacement-owner survival after old peers close, and preservation of rejected regular-file endpoints. Both preserve an existing owner after failed multi-endpoint setup and reject wrong versions before mutation."
+
+[[suites.assertions]]
+id = "runtime.native-snapshot-stream-and-recoverable-cap"
+tests = ["native_socket_streams_snapshots_and_cap_rejection_keeps_the_process"]
+description = "Negotiated real Unix sockets or Windows named pipes stream an atomic graph; a sixteen-byte server cap returns an explicit abort while the original PTY PID survives, and normal-budget reconnect retains that PID."
+
+[[suites]]
+id = "native-snapshot-owner-bounds"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["app-owned", "standalone", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--lib", "snapshots::"]
+env = {}
+
+[[suites.assertions]]
+id = "runtime.snapshot-large-message-and-image-restore"
+tests = ["snapshots::one_large_snapshot_does_not_consume_the_slow_output_budget", "snapshots::image_snapshots_stream_atomically_and_rejection_preserves_the_live_owner"]
+description = "A65MiB immutable snapshot does not trip the64MiB live-output queue; complete image data survives atomic multi-chunk restore, repeated requests coalesce, small image/snapshot caps fail explicitly without modifying the owner, and a larger-budget retry succeeds."
+
+[[suites]]
+id = "native-snapshot-framing"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["app-owned", "standalone", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-protocol", "--features", "native", "native::snapshot::tests"]
+env = {}
+
+[[suites.assertions]]
+id = "protocol.snapshot-atomicity-offsets-and-truncation"
+tests = ["native::snapshot::tests::streaming_is_atomic_bounded_and_recoverable"]
+description = "Snapshot fragments stay below512KiB per wire record; only a validated end publishes state. Invalid offsets, declared oversize, truncation and recoverable aborts cannot install partial state."
+
+[[suites]]
+id = "layout-legacy-floating-wire"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["system-client", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-layout", "--lib", "c37_floating_suffix_keeps_signed_geometry_and_z_without_duplicate_ids"]
+env = {}
+
+[[suites.assertions]]
+id = "layout.c37-floating-suffix"
+tests = ["tests::c37_floating_suffix_keeps_signed_geometry_and_z_without_duplicate_ids"]
+description = "Exact C3.7c layout_dump wire examples (git tag 3.7c layout-custom.c): signed coordinates, suffix stacking order, duplicated float identities, mixed and all-floating roots; malformed suffixes fail explicitly."
+
+
+[[suites]]
+id = "runtime-pty-ownership-reference"
+platforms = ["darwin", "linux"]
+profiles = ["app-owned", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "host", "pty_descendant_cleanup_difference_matches_c", "--", "--ignored", "--exact"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "runtime.c-pty-ownership-boundary"
+tests = ["pty_descendant_cleanup_difference_matches_c"]
+description = "Both C references leave ignored-SIGHUP background-group and setsid descendants alive; Rust deliberately kills the former and retains the shared setsid ownership boundary, cleaning all experiment children afterward."
+
+[[suites]]
+id = "runtime-process-names-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "standalone", "app-owned"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "process_names", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "runtime.c-foreground-command-path-and-automatic-name"
+tests = ["foreground_path_and_automatic_names_follow_real_processes"]
+description = "OS foreground command/cwd and automatic-rename format follow real children, fire window-renamed hooks and stop automatic renaming after an explicit name. pane_tty equals the child's actual tty path, while pane_start_path remains the original directory after foreground cwd changes."
+
+[[suites]]
+id = "runtime-session-lifecycle-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "standalone", "app-owned"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "lifecycle", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "runtime.c-session-destruction-and-client-fallback"
+tests = ["destroyed_sessions_move_or_detach_attached_clients_by_policy", "self_destruction_wraps_session_order_and_respects_no_detach_fallback", "destroy_unattached_respects_group_keep_policies"]
+description = "Current C/Rust owners agree on detach-on-destroy policies, session-name wraparound, no-detach client overrides, current-client session destruction, session-changed hook fields and destroy-unattached grouped keep policies."
+
+[[suites.assertions]]
+id = "runtime.c-exit-unattached-flush-and-job-drain"
+tests = ["exit_unattached_flushes_channels_locks_and_event_waiters", "exit_unattached_waits_for_background_jobs_before_terminating"]
+description = "exit-empty off overrides exit-unattached; enabling exit releases waiting channels, lock contenders and event waiters, while connected clients and active background jobs keep the owner alive until drained."
+
+[[suites.assertions]]
+id = "format.c-activity-sorting-and-timestamp-relations"
+tests = ["activity_sorting_and_timestamp_relations_follow_attach_and_output"]
+description = "S/W/L activity sorting, reverse and sort-flag precedence match C across attachment and real application output; creation/activity/last-attach/start-time fields satisfy the same relations without comparing unrelated clock samples."
+
+[[suites.assertions]]
+id = "runtime.c-alert-hooks-and-silence-timers"
+tests = ["alert_hooks_clear_on_selection_repeat_bells_and_reset_silence"]
+description = "C and Rust owners agree on alert payloads, repeated bells versus suppressed repeated activity, attached-current clearing, action suppression and silence deadline reset/disable with live timers."
+
+[[suites.assertions]]
+id = "runtime.c-shell-event-snapshot-payloads"
+tests = ["shell_marker_hooks_have_c_pane_payloads"]
+description = "OSC133 prompt/start/end in one input chunk preserve C event order, pane/session/winlink fields and each marker's command-line/status/duration snapshot."
+
+[[suites]]
+id = "runtime-format-jobs-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "standalone", "app-owned"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "format_jobs", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "format.c-asynchronous-jobs-stream-cache-and-expansion"
+tests = ["asynchronous_format_jobs_stream_cache_expand_and_restart_like_c", "repeated_format_jobs_share_live_work_and_report_not_ready", "format_jobs_stop_with_the_requesting_client"]
+description = "Persistent C/Rust clients observe immediate empty results, last-complete-line updates, final partial output, cached expansion, changed-command restart, suppressed nested/output jobs, stderr/status policy, one shared live job per command, delayed-output placeholders and real process termination when the requesting client detaches."
+
+[[suites]]
+id = "core-format-job-effects"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "app-owned", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--lib", "format_jobs::tests::"]
+env = {}
+
+[[suites.assertions]]
+id = "format.job-effect-ownership-cache-bound-and-stale-results"
+tests = ["format_jobs::tests::job_effects_are_scoped_cancel_stale_results_and_bound_the_cache"]
+description = "The core emits explicit job requests only when enabled, keeps results scoped to clients, ignores stale callbacks after client loss, suppresses nested jobs and bounds cached commands."
+
+[[suites]]
+id = "runtime-identity-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "identity", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "format.c-authenticated-client-identity-and-lists"
+tests = ["authenticated_client_identity_and_graph_lists_match_c"]
+description = "Identical Rust control identities against C/R servers preserve peer UID/user rather than forged environment, PID/TERM/features, insertion/name/time/size client lists and filters, single/multiple session and group attachments, live/dead previous sessions and exact server socket/PID relations."
+
+[[suites.assertions]]
+id = "format.c-absent-ui-tty-and-selected-client-contexts"
+tests = ["authenticated_client_identity_and_graph_lists_match_c"]
+description = "Every field enumerated by the absent-context scope is queried without an attached client and through real control clients. Static widget templates retain C bytes; tty-only dimensions remain absent for control clients. Display best-client selection, explicit -c, list contexts and context-free list-commands match C."
+
+[[suites.assertions]]
+id = "format.c-control-tty-counters"
+tests = ["authenticated_client_identity_and_graph_lists_match_c"]
+description = "C client_written/client_discarded are absent without a client and zero for attached control clients even after live PTY output and command replies: they count tty rendering bytes, not control transport traffic. window_bigger likewise observes actual control tty offset state (zero) and is absent without a format client."
+
+[[suites]]
+id = "native-stream-consistency"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["app-owned", "standalone", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "native_stream_consistency", "--", "--test-threads=1"]
+env = {}
+
+[[suites.assertions]]
+id = "native.atomic-live-snapshot-update-cut"
+tests = ["live_native_snapshot_has_one_cut_and_updates_follow_its_end"]
+description = "A real native Unix socket or Windows pipe stops after its first image snapshot chunk while the live owner changes output, alternate screen, size and window name. The old snapshot installs only at its end, newer output is delivered exactly once afterward, and the next complete snapshot has the new graph/screen state and a newer sequence."
+
+[[suites.assertions]]
+id = "native.blocked-view-overflow-and-reconnect"
+tests = ["blocked_native_view_disconnects_while_healthy_view_and_pty_survive"]
+description = "A real PTY emits 20MiB while one native view stops reading. Only the blocked 256-record view disconnects; the healthy view receives every byte with increasing sequences. Reconnect returns the same live PID and current screen."
+
+[[suites]]
+id = "native-byte-backlog"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["app-owned", "standalone", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--lib", "snapshots::native_byte_backlog_disconnects_before_record_capacity", "--", "--exact"]
+env = {}
+
+[[suites.assertions]]
+id = "native.backlog-byte-cap"
+tests = ["snapshots::native_byte_backlog_disconnects_before_record_capacity"]
+description = "With record capacity raised to 1024, 32768-byte pane output crosses the independent 64MiB delivery charge exactly at the first over-budget record. The slow client is removed, snapshot bookkeeping is cleared, and the healthy client receives every record while the owner keeps advancing."
+
+[[suites]]
+id = "client-command-flags-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "unix-ipc", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "client_commands", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "clients.c-targets-navigation-cwd-and-zoom"
+tests = ["attach_switch_targets_navigation_and_zoom_match_c"]
+description = "Real C/R control clients compare named/colon client targets, next/previous/last sessions, sort modes, readonly toggles, format-expanded attach cwd, window/pane selection and zoom retention. External command clients target other attached clients with matching errors."
+
+[[suites.assertions]]
+id = "clients.c-detach-selection-and-ipc-acknowledgement"
+tests = ["detach_targets_all_session_and_attach_displacement_match_c_ipc"]
+description = "Detach a named client, all other clients or a session, attach -d/-x and new-session -AD/-AX: real identified clients receive exact DETACH/DETACHKILL payloads and complete EXITING/EXITED. The remaining client and sessions remain usable."
+
+[[suites.assertions]]
+id = "clients.c-session-notification-routing"
+tests = ["client_session_notifications_are_targeted_like_c"]
+description = "Full non-output event streams after self-switch, targeted other-client switch, attach and detach match C through reply barriers. The changed client alone receives session-changed; peers receive client-session-changed and the final client-detached record."
+
+[[suites.assertions]]
+id = "clients.c-window-and-config-notification-routing"
+tests = ["window_and_config_notifications_follow_each_client_session_like_c"]
+description = "Full non-output streams for two C/R clients compare create/link/rename/unlink/close, active pane creation/removal and split/zoom records, recipient flags and unzoom-before-destruction. A batched create-through-kill transaction preserves each event's original graph and legacy/new-layouts payload. Source config-error targets only its origin after the reply; an application-originated legacy OSC rename preserves linked/unlinked recipient routing."
+
+[[suites.assertions]]
+id = "clients.c-grouped-notification-order-and-multiplicity"
+tests = ["grouped_sessions_preserve_complete_notification_order_like_c"]
+description = "Three grouped sessions and duplicate winlinks compare every non-output C/R notification in order through group creation, transient initial windows, rebuilding, selection, unlink, swap, kill, final-link group destruction, move from a final-link session and rename."
+
+[[suites.assertions]]
+id = "clients.c-pane-movement-and-zoom-notification-order"
+tests = ["pane_moves_and_zoom_preserve_complete_notification_order_like_c"]
+description = "Two subscribed clients compare every non-output record through active splits, rotate/swap, hidden-pane and retained-zoom selection, kill, cross/same-window join/move and last-pane break with rename. A shared window makes legacy and new-layouts records independently observable, including emission-time active indices and unzoom-before-removal."
+
+[[suites.assertions]]
+id = "control.c-direct-prepared-blocks-and-environment"
+tests = ["direct_control_preserves_prepared_blocks_environment_and_aliases_like_c"]
+description = "Strict complete event streams compare each command guard, output boundary, flags and notification through explicit barriers. Cases cover direct brace/environment/alias preparation, delayed if/run-shell, background -C delivery, hook flags0, source groups and preparation errors, synchronous source cancellation, deferred raw job output and buffer events. Guard timestamps and server-global number gaps vary, but monotonic begin numbers and exact matching close identity are checked before comparison. Native batch completion remains separate."
+
+[[suites.assertions]]
+id = "difference.control-independent-session-close-order"
+tests = ["independent_session_window_closes_keep_explicit_order_and_causal_boundaries"]
+description = "C's exact five-window RB-root removal sequence and Rust's exact deterministic winlink sequence are asserted independently. Both contain the same close records after sessions-changed and before a following rename in the same external queue; final session/window/pane graphs agree. No event sorting or cross-boundary normalization is applied."
+
+[[suites.assertions]]
+id = "clients.c-automatic-window-sizing-and-caps"
+tests = ["automatic_resize_uses_linked_clients_and_window_caps_like_c"]
+description = "resize-window -a/-A and combined flags choose smallest/largest linked-client dimensions, respect per-window caps and ignore-size, and set manual sizing with matching pane dimensions."
+
+[[suites]]
+id = "client-detach-delivery"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--lib", "control::tests::detach_drains_existing_output_before_closing_and_bounds_stalled_peers", "--", "--exact"]
+env = {}
+
+[[suites.assertions]]
+id = "control.detach-drains-and-bounds-queued-delivery"
+tests = ["control::tests::detach_drains_existing_output_before_closing_and_bounds_stalled_peers"]
+description = "A full delivery channel retains existing output followed by the exact detach record until drained; a peer still stalled after ten seconds is disconnected and cannot retain the owner indefinitely."
+
+[[suites]]
+id = "control-fifo-eof"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--lib", "unix_ipc::tests::silent_fifo_eof_closes_control_reader_and_restores_shared_flags", "--", "--exact"]
+env = {}
+
+[[suites.assertions]]
+id = "control.silent-fifo-eof-and-descriptor-flags"
+tests = ["unix_ipc::tests::silent_fifo_eof_closes_control_reader_and_restores_shared_flags"]
+description = "A real FIFO held open without output keeps the reader alive; closing the writer ends the control input even when Darwin poll omits EOF readiness, and the caller's shared blocking flags are restored."
+
+[[suites]]
+id = "runtime-endpoint-access"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["standalone", "app-owned", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "endpoint_access"]
+env = {}
+
+[[suites.assertions]]
+id = "runtime.owner-private-sockets-and-lock-paths"
+tests = ["native_and_ipc_endpoints_are_owner_private_and_lock_symlinks_are_rejected"]
+description = "Unix endpoint types have owner mode0600 and private locks. Windows inspects the actual pipe owner and protected single-account DACL, rejects a second owner, removes discovery on shutdown and assigns a new incarnation on replacement. Both perform a real handshake and preserve an unrelated target behind rejected filesystem/lock redirection; Windows explicitly rejects Unix IPC configuration. Cross-account and cross-logon admission has separate executable obligations."
+
+[[suites]]
+id = "native-file-type-policy"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "app-owned", "standalone", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "native_files"]
+env = {}
+
+[[suites.assertions]]
+id = "difference.native-special-file-policy"
+tests = ["special_native_files_reject_without_blocking_owner_or_changing_buffers"]
+description = "Native load/save/source reject Unix FIFOs or Windows named pipes, symlinks to those endpoints and non-null devices before mutation; each rejection leaves buffers/PID intact and the owner responds. Regular files and regular-file symlinks retain binary bytes. Unix /dev/null and Windows NUL (including admitted absolute spellings) retain no-op behavior; Windows reserved-device aliases are rejected and source enumeration never opens a pipe symlink."
+
+[[suites]]
+id = "native-diagnostic-byte-bounds"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "app-owned", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--lib", "messages::tests::diagnostic_bounds_count_escaped_bytes_and_mark_truncation", "--", "--exact"]
+env = {}
+
+[[suites.assertions]]
+id = "diagnostics.escaped-byte-bounds"
+tests = ["messages::tests::diagnostic_bounds_count_escaped_bytes_and_mark_truncation"]
+description = "The common log/job helper bounds both input and escaped bytes at4096, always marks truncation, leaves exact-boundary plain payloads intact and emits no raw ASCII control characters."

@@ -1,0 +1,523 @@
+# Exact executable evidence. A passing suite grants only the named assertions.
+
+[[suites]]
+id = "command-unit"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-command", "--lib"]
+env = {}
+
+[[suites.assertions]]
+id = "parser.byte-grammar-and-quoting"
+tests = ["tests::quotes_comments_sequences_and_arbitrary_bytes", "tests::all_non_nul_bytes_survive_serialization", "tests::argv_preserves_shell_tokenization", "tests::continuation_precedes_quotes_and_comments", "tests::every_octal_byte_decodes_without_overflow"]
+description = "Byte grammar, every non-NUL argument byte, safe serialization, argv trailing-semicolon rules and global line continuation. Every quoted/unquoted octal byte decodes without overflow; NUL still rejects."
+
+[[suites.assertions]]
+id = "parser.source-expansion-and-errors"
+tests = ["tests::environment_and_groups_are_prepared_once", "tests::escapes_and_precise_errors"]
+description = "Prepared variable/brace expansion and source positions for rejected NUL, malformed escapes and incomplete quotes."
+
+[[suites.assertions]]
+id = "parser.tilde-account-boundaries-and-limits"
+tests = ["tests::tilde_uses_supplied_accounts_and_preserves_token_boundaries"]
+description = "Injected account homes preserve token/quote boundaries, HOME precedence and fallback, literal expansion bytes, unknown-user errors and C's 1022-byte username boundary."
+
+[[suites.assertions]]
+id = "command.registry-prefix-flags-and-arity"
+tests = ["registry::tests::names_aliases_unique_prefixes_and_argument_counts"]
+description = "Shared C-derived canonical names, exact aliases/unique prefixes, ambiguity order, flag validation and positional argument counts."
+
+[[suites.assertions]]
+id = "command.server-selector-roles-and-byte-boundaries"
+tests = ["registry::tests::server_selectors_do_not_alias_malformed_bytes_or_restrict_wire_clients", "registry::tests::server_selector_validation_preserves_data_paths_and_effective_flag_values"]
+description = "C source/target/client-role metadata plus the four manually resolved destination flags identify server selectors. Malformed effective selector bytes reject without changing client syntax forwarding; valid U+FFFD, overwritten flags, directories, creation names, buffer names/data and paste separators remain outside this admission rule."
+
+[[suites]]
+id = "format-unit"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-format", "--lib"]
+env = {}
+
+[[suites.assertions]]
+id = "format.pure-operator-subset"
+tests = ["tests::fields_aliases_escaping_and_conditionals", "tests::operators_and_pure_modifiers", "tests::required_width_arithmetic_and_repeat_limits"]
+description = "Fields/aliases/conditionals, basic glob, quoting/path lookup, Unicode widths, arithmetic and repeat/range bounds. Regex/substitution, time, styled width, runtime jobs and contextual loops have separate assertions."
+
+[[suites.assertions]]
+id = "format.short-circuit-and-job-suppression"
+tests = ["tests::preparation_jobs_and_boolean_short_circuit", "tests::recursive_lookup_is_bounded", "tests::unsupported_features_fail_without_execution"]
+description = "Short-circuit booleans, disabled preparation jobs, explicit unsupported runtime job errors and bounded recursive expansion."
+
+[[suites.assertions]]
+id = "format.posix-regex-captures-and-empty-matches"
+tests = ["tests::posix_regex_longest_match_captures_and_empty_matches", "tests::unicode_posix_matching_preserves_embedding_thread_locale"]
+description = "POSIX longest match, capture substitution, anchored/empty matches, invalid patterns and UTF8 glob/regex semantics. Concurrent matching restores each embedding thread's locale. Unix uses platform POSIX functions; Windows uses its explicitly documented Unicode locale. No tmux C code is linked."
+
+[[suites]]
+id = "config-unit"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-config", "--lib"]
+env = {}
+
+[[suites.assertions]]
+id = "config.directive-language"
+tests = ["tests::assignments_prepare_before_commands_execute", "tests::nested_conditions_only_prepare_first_matching_branch", "tests::inline_branches_hidden_variables_and_source_commands", "tests::queued_option_changes_do_not_change_preparation_context", "tests::invalid_structure_is_an_error"]
+description = "Source-order assignments, hidden variables, nested/inline/elif directives, first-active-branch preparation and malformed conditional structure; include execution is runtime-owned."
+
+[[suites]]
+id = "config-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-config", "--test", "c_reference", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_ORACLE = "$reference"}
+
+[[suites.assertions]]
+id = "parser.c-text-and-argv"
+tests = ["text_parser_and_argv_match_c_execution"]
+description = "C executable agreement for quoting, escapes, Unicode, continuations and argv literal-final-semicolon handling."
+
+[[suites.assertions]]
+id = "config.prepare-before-execute"
+tests = ["preparation_matches_c_without_executing_queued_commands", "preparation_suppresses_jobs_and_boolean_evaluation_short_circuits"]
+description = "C executable agreement for assignment/hidden/environment/option preparation timing, disabled conditional jobs and lazy boolean evaluation."
+
+[[suites.assertions]]
+id = "format.c-tested-expressions"
+tests = ["format_observations_match_c"]
+description = "C executable agreement for the listed lookup, path/quote, missing/nested values, conditional, width, arithmetic, repeat and ASCII expressions; not the entire format language."
+
+[[suites.assertions]]
+id = "format.c-regex-substitution-and-compound-order"
+tests = ["regex_and_substitution_observations_match_c"]
+description = "C executable agrees on regex case/anchor/invalid behavior, POSIX longest captures, numbered replacement and empty/global substitutions, plus compound lookup/substitution/width/length ordering."
+
+[[suites.assertions]]
+id = "format.c-timestamp-and-strftime-expansion"
+tests = ["timestamp_and_time_expansion_match_c"]
+description = "C set-option -F agrees on fixed timestamp formatting, custom strftime, pretty/future/invalid/zero behavior, nested lookup distinction and T expansion."
+
+[[suites.assertions]]
+id = "format.c-relative-difference-and-pretty-time-boundaries"
+tests = ["relative_difference_and_pretty_time_boundaries_match_c"]
+description = "Exact C bytes for t/r, t/d, t/p and mixed-flag precedence at future, zero-age, second/minute/hour/day,28-day, month and year boundaries; both observations must occur in one clock second."
+
+[[suites.assertions]]
+id = "difference.format-modifier-count-and-recursion"
+tests = ["format_parser_resource_bounds_are_explicit_reference_differences"]
+description = "C and Rust both accept128 modifiers; C also accepts129 while Rust explicitly rejects it. A self-expanding E option returns empty C output and an explicit native nesting-limit error."
+
+[[suites.assertions]]
+id = "format.c-styled-width-trim-and-escaping"
+tests = ["styled_width_and_trimming_match_c_bytes"]
+description = "Exact style-aware width/left-right trim, raw padding, wide/combining text, escaped hash runs, malformed styles, markers and alias expansion behavior match the C executable."
+
+[[suites.assertions]]
+id = "format.c-fuzzy-colour-argument-quotes-and-contextless-operators"
+tests = ["fuzzy_color_argument_quotes_and_contextless_modifiers_match_c"]
+description = "C m/z and m/p smart-case, term/group scoring, Unicode/styled alignment and invalid-style rollback; c RGB/palette/theme/named colors and foreground/background escapes; q/a with C quote precedence; printable ASCII and contextless A/I behavior."
+
+[[suites.assertions]]
+id = "format.c-modifier-delimiters-escaping-and-precedence"
+tests = ["modifier_delimiters_escaping_precedence_and_failures_match_c"]
+description = "C modifier parsing accepts arbitrary punctuation delimiters and unwrapped arguments, expands/unescapes arguments, preserves nested literals, applies source-independent primary precedence and cumulative quote/color/time flags, and truncates malformed comparisons while keeping malformed arithmetic empty."
+
+[[suites.assertions]]
+id = "difference.parser-high-bytes"
+tests = ["high_byte_preservation_is_an_explicit_reference_difference"]
+description = "Target-ABI outcomes of command-high-byte-preservation: signed-char C rejects source0xff, unsigned-char C (aarch64 GNU/Linux) retains it exactly, and Rust preserves it on both."
+
+[[suites.assertions]]
+id = "difference.parser-malformed-source"
+tests = ["malformed_source_rejection_is_an_explicit_reference_difference"]
+description = "Both tested outcomes of reject-nul-and-unclosed-quotes: C accepts/truncates; Rust errors without executing partial input."
+
+[[suites]]
+id = "runtime-host"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["standalone", "app-owned", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "host"]
+env = {}
+
+[[suites.assertions]]
+id = "runtime.pty-input-after-client-reconnect"
+tests = ["disconnect_keeps_same_process_and_input_still_works"]
+description = "Real native socket clients disconnect/reconnect to the same child PID; literal/newline input reaches its PTY and output returns. Does not prove GUI persistence retention, resize delivery or abrupt owner-death cleanup."
+
+[[suites.assertions]]
+id = "runtime.graceful-owner-drop"
+tests = ["dropping_app_host_stops_the_server"]
+description = "Dropping ServerHandle stops acceptance and removes the owned native endpoint. Abrupt process exit and descendant cleanup have separate lifetime and runtime assertions."
+
+[[suites.assertions]]
+id = "runtime.endpoint-collision-rollback"
+tests = ["refuses_to_replace_existing_endpoint", "second_endpoint_failure_removes_only_owned_bindings"]
+description = "Existing endpoints remain usable on collision; a failing multi-endpoint startup leaves no new binding and preserves the existing owner. Unix tests second-bind rollback; Windows rejects the Unix IPC option before publishing a pipe."
+
+[[suites.assertions]]
+id = "runtime.native-version-rejection"
+tests = ["native_handshake_rejects_mismatched_versions_before_requests"]
+description = "Native handshake rejects a mismatched version before a pipelined request can mutate state."
+
+[[suites.assertions]]
+id = "runtime.argv-group-boundaries"
+tests = ["tokenized_groups_keep_literals_and_error_boundaries"]
+description = "Tokenized command serialization retains literal/trailing semicolons; execution cancellation is checked separately."
+
+[[suites]]
+id = "runtime-transactions"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "app-owned", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "transactions"]
+env = {}
+
+[[suites.assertions]]
+id = "runtime.failed-spawn-rollback"
+tests = ["failed_spawn_does_not_leave_a_session_or_poison_next_process"]
+description = "Failed initial spawn leaves no session; failed new-pane (canonical, alias and unique prefix), split-window and new-window retain the original graph, layout, PID and output without consuming pane IDs. A following real process produces output without stale-event contamination. Respawn preflight and descendant lifetime need separate assertions."
+
+[[suites.assertions]]
+id = "config.nested-include-and-error-order"
+tests = ["nested_source_keeps_preparation_before_execution_and_group_errors_stop_queue"]
+description = "Nested source-file effects precede the following command; an error stops later commands in that group."
+
+[[suites]]
+id = "control-codec"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["system-client", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-protocol", "--all-features", "--test", "control"]
+env = {}
+
+[[suites.assertions]]
+id = "control.output-byte-fragmentation"
+tests = ["all_bytes_round_trip_at_every_fragment_size", "dcs_wrapper_and_crlf_can_split_at_every_byte"]
+description = "All 256 output bytes round-trip at every fragment size, and -CC DCS/CRLF framing splits at every byte."
+
+[[suites.assertions]]
+id = "control.exact-guards-and-fake-output"
+tests = ["guards_are_exact_and_body_is_opaque", "errors_and_empty_results_keep_their_guards"]
+description = "Exact guard identity distinguishes command results from fake protocol records inside their opaque bodies; empty/error frames preserve identity."
+
+[[suites.assertions]]
+id = "control.unframed-server-output"
+tests = ["deferred_output_outside_guards_survives_every_byte_boundary"]
+description = "Deferred raw server diagnostics/job output outside guards remain separate byte-preserving events at every split; they cannot become command output or completion markers. Live C boundaries have their own strict guard fixture."
+
+[[suites.assertions]]
+id = "control.notification-byte-codecs"
+tests = ["extended_output_ignores_future_header_fields", "known_notifications_preserve_names_and_unknown_records"]
+description = "All23 known/legacy/future notification corpus records retain every field and raw name at every byte split; extended-output headers retain future fields. Live server emission/subscription timing have separate assertions."
+
+[[suites.assertions]]
+id = "control.malformed-and-resource-bounds"
+tests = ["malformed_records_fail_without_panicking", "limits_apply_to_records_not_entire_replies", "eof_validates_partial_records_and_unclosed_guards", "deterministic_noise_never_panics_or_exceeds_record_limit"]
+description = "Malformed input poisons decoder state, EOF checks incomplete records/guards, record limits permit long streaming replies and deterministic bounded-noise corpus does not panic."
+
+[[suites]]
+id = "control-client"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["system-client"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-client", "--test", "client"]
+env = {}
+
+[[suites.assertions]]
+id = "control.commands-errors-and-barriers"
+tests = ["submitted_bytes_round_trip_and_barrier_survives_group_failure", "server_global_guards_and_opaque_bodies_do_not_drive_request_ids", "pipelined_markers_are_ordered_and_must_be_the_only_output_line"]
+description = "Byte-preserving command batches and ordered separate barriers reconcile request IDs despite server-global guards, failure/cancellation, marker-shaped multi-line output and an unframed line equal to the completion token."
+
+[[suites.assertions]]
+id = "control.no-retry-on-indeterminate-loss"
+tests = ["invalid_submissions_do_not_enter_the_pending_queue", "eof_and_protocol_failure_make_pending_mutations_indeterminate", "exit_is_forwarded_and_does_not_retry_requests"]
+description = "Invalid/pending-limit submissions do not queue; EOF/protocol failure/exit mark pending mutations indeterminate and never resend them. Real SSH interruption is separate."
+
+[[suites.assertions]]
+id = "control.discovery-graph-validation"
+tests = ["discovery_preserves_window_graph_and_requires_terminal_snapshots", "layout_mutation_invalidates_discovery_and_pause_needs_rehydration", "same_session_duplicate_winlinks_keep_indices_and_request_discovery_when_ambiguous", "closing_one_link_does_not_delete_shared_window_or_panes", "discovery_checks_ranges_references_duplicates_and_limits"]
+description = "Graph discovery validates limits/duplicates/references and linked-window ownership; layout change/pause invalidates snapshots. Complete remote state bootstrap fidelity is separate."
+
+[[suites]]
+id = "ipc-codec"
+profiles = ["unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-unix-ipc", "--test", "transport"]
+env = {}
+
+[[suites.assertions]]
+id = "ipc.codec-schemas-descriptors"
+tests = ["messages_and_descriptors_work_in_both_schemas", "fragmented_message_reassembles"]
+description = "Legacy/modern native-endian frames, byte fragmentation, FD passing, peer UID, descriptor ownership/CLOEXEC and stream EOF."
+
+[[suites.assertions]]
+id = "ipc.codec-invalid-input"
+tests = ["short_header_and_invalid_lengths_fail", "argv_is_byte_preserving_and_validated", "oversize_and_unresolved_fd_send_are_rejected_without_writing"]
+description = "Invalid/truncated frames poison decoding; argv keeps binary data and rejects NUL/length errors; oversized/unresolved FD sends write nothing."
+
+[[suites.assertions]]
+id = "ipc.file-path-policy"
+tests = ["file_paths_require_explicit_client_policy"]
+description = "Stdio-only file policy rejects arbitrary path opens with EACCES; full file transfer/cancellation cases are distinct."
+
+[[suites.assertions]]
+id = "ipc.identify-terminal-feature-bits"
+tests = ["identification_preserves_terminal_features_and_registry_order"]
+description = "Identification sends and preserves terminal-feature bits in legacy/modern schemas; every feature bit/name is checked against the pinned C registry order."
+
+[[suites.assertions]]
+id = "ipc.identify-order-version-and-descriptor-rejection"
+tests = ["identification_rejects_malformed_order_lengths_and_versions", "rejected_identification_closes_previously_accepted_and_rejected_descriptors"]
+description = "Both imsg schemas reject command-before-identify, post-identify metadata, malformed string/number/done fields and version7 with exact VERSION8 replies. Forbidden and repeated stream descriptors close together with previously accepted descriptors on handshake failure."
+
+[[suites]]
+id = "ipc-c-reference"
+profiles = ["unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-unix-ipc", "--test", "reference", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference", TMUXX_C_SCHEMA = "modern", TMUXX_C_VERSION = "8"}
+
+[[suites.assertions]]
+id = "ipc.c-executable-transport-pairings"
+tests = ["rust_command_client_against_c_server", "rust_control_client_against_c_server", "c_command_client_against_rust_transport", "c_control_client_against_rust_transport"]
+description = "C executable versus Rust wire adapter in both command/control directions, stdout/errors/binary buffers, with explicitly selected modern schema version 8. Rust transport fixture is not full engine evidence."
+
+[[suites]]
+id = "cli-c-pairings"
+reference_version = "tmux next-3.9"
+profiles = ["unix-ipc", "command-control", "system-client"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability", "all_four_command_control_pairings", "--", "--ignored", "--exact"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "ipc.four-command-control-pairings"
+tests = ["all_four_command_control_pairings"]
+description = "Actual C/Rust CLI and server combinations in all four command/control/-CC pairings, binary stdin/files/append/missing paths, group error cancellation/recovery, origin context and detach/session persistence, for the chosen C executable."
+
+[[suites]]
+id = "cli-ordinary-tty-rejection"
+profiles = ["unix-ipc", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability", "ordinary_terminal_clients_are_rejected_before_graph_mutation", "--", "--ignored", "--exact"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "ipc.ordinary-tty-rejection-before-mutation"
+tests = ["ordinary_terminal_clients_are_rejected_before_graph_mutation"]
+description = "Unmodified C and Rust ordinary command clients receive the exact native-profile terminal-attachment rejection for default/new/attach/new-A requests. Every session/window/pane/PID remains unchanged after each rejected command."
+
+[[suites]]
+id = "runtime-scheduler"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "standalone", "app-owned"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "scheduler"]
+env = {}
+
+[[suites.assertions]]
+id = "command.wait-channel-fifo-and-disconnect"
+tests = ["wait_channels_and_locks_pause_only_their_client_and_preserve_fifo"]
+description = "Wait/signal and lock/unlock preserve per-client request order, wake the expected clients and remove disconnected waiters; event subscriptions have separate assertions."
+
+[[suites.assertions]]
+id = "command.async-shell-status-and-group-boundaries"
+tests = ["foreground_jobs_keep_owner_responsive_and_status_does_not_cancel_group", "conditional_and_delayed_commands_share_queue_context_and_explicit_errors", "command_only_job_target_formats_survive_preparation"]
+description = "Foreground jobs leave owner responsive, preserve same-client order and separate process status from group errors; shell/format conditions, delay, -C, positional formats and stderr flags execute with explicit unsupported-flag errors."
+
+[[suites.assertions]]
+id = "command.background-branches-after-disconnect"
+tests = ["background_jobs_and_disconnected_waiters_do_not_block_remaining_clients"]
+description = "Started background shell jobs survive client loss; async condition branches execute and disconnected waiters cannot resume cancelled mutations."
+
+[[suites.assertions]]
+id = "runtime.job-descendant-owner-shutdown"
+tests = ["shutdown_reaps_shell_descendants_that_keep_stdout_open"]
+description = "Owner shutdown kills a job's owned descendants and returns even after the shell exits while a descendant keeps stdout open. Unix uses process groups and Windows uses Job Objects with exact process-handle death checks; PTY abrupt owner-death cleanup is separate."
+
+[[suites.assertions]]
+id = "config.relative-include-hidden-job-environment"
+tests = ["relative_source_and_hidden_assignments_affect_jobs_but_do_not_export_secrets"]
+description = "Source paths resolve against client cwd; config values reach jobs while hidden assignments remain format-visible and unexported."
+
+[[suites.assertions]]
+id = "command.event-wait-filter-list-and-wake"
+tests = ["event_wait_filters_listing_forced_wake_and_custom_events_keep_owner_responsive"]
+description = "Native event wait/filter, custom emission, list and forced wake unblock only matching clients while unrelated clients remain responsive."
+
+[[suites.assertions]]
+id = "config.source-flags-globs-aliases-shell-validation"
+tests = ["source_globs_dry_run_formats_aliases_and_shell_validation_are_effective"]
+description = "Client-cwd globs, formatted paths, parse-only assignment suppression, quiet no-match, one-pass aliases and executable default-shell validation."
+
+[[suites.assertions]]
+id = "config.source-registration-dry-run-and-hook-validation"
+tests = ["source_dry_run_validates_registration_without_running_commands_or_assignments"]
+description = "Dry-run validates registered syntax, aliases/prefixes/arity and active branches, reports source lines without mutation, and malformed hook replacements retain the previous hook."
+
+[[suites]]
+id = "scheduler-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "scheduler", "shell_condition_wait_and_exit_status_match_c_reference", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "command.c-shell-wait-condition-observations"
+tests = ["shell_condition_wait_and_exit_status_match_c_reference"]
+description = "Separate C executable agrees on 15 shell/wait/conditional scenarios: bytes and per-line NUL truncation, exit/reset status, stderr, positional/session formats, delayed commands and locked/woken channels."
+
+[[suites]]
+id = "runtime-native-views"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["native-views", "standalone", "app-owned"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "native_views"]
+env = {}
+
+[[suites.assertions]]
+id = "native.elected-clipboard-reply-and-replay-rejection"
+tests = ["one_view_handles_clipboard_and_reply_cannot_be_replayed"]
+description = "Two real native views elect one OSC52 handler; wrong-client/duplicate replies fail and the child receives exactly one successful byte-exact OSC52 response."
+
+[[suites.assertions]]
+id = "native.two-view-smallest-size-pid-stability"
+tests = ["two_view_sizes_are_arbitrated_without_changing_process_identity"]
+description = "Two native views arbitrate smallest window dimensions, grow after disconnect and retain child PID; other policies/independent GUI selections need distinct evidence."
+
+[[suites.assertions]]
+id = "lifetime.native-pane-retention-after-all-views-drop"
+tests = ["retention_acknowledgement_preserves_only_selected_panes_after_all_views_leave"]
+description = "Acknowledged persistent panes retain PID while unretained panes close only after their final native-view lease is released."
+
+[[suites.assertions]]
+id = "native.clipboard-default-denial-opt-in-hook-notification"
+tests = ["clipboard_defaults_block_writes_and_opt_in_fires_buffer_notification_and_hook"]
+description = "Native runtime defaults block OSC52 writes; explicit opt-in produces buffer notification and pane-set-clipboard hook. The elected handler test also excludes a GUI viewing an unrelated session."
+
+[[suites.assertions]]
+id = "native.buffer-clipboard-target-and-name-rejection"
+tests = ["buffer_clipboard_flags_target_exact_native_view_and_keep_binary_data"]
+description = "set/load-buffer -w delivers exact binary contents only to the targeted native view; invalid names and empty input retain the prior buffer and emit no clipboard effect across explicit per-view queue barriers."
+
+[[suites.assertions]]
+id = "native.pane-style-theme-and-reconnect"
+tests = ["native_style_theme_and_active_pane_survive_view_reconnect"]
+description = "Native host theme changes update color-token defaults and client_theme queries; pane activation and GUI reconnection preserve colors, reported theme and the same process PID."
+
+[[suites.assertions]]
+id = "native.retained-agent-status-without-views"
+tests = ["agent_status_is_retained_without_views_and_reconnect_keeps_the_process"]
+description = "A real PTY or bundled ConPTY application publishes agent status while every native view is detached. Reattachment restores retained status and the same running process without replaying its input or host effects."
+
+[[suites.assertions]]
+id = "native.client-cell-dimensions-theme-context"
+tests = ["native_cell_geometry_updates_terminal_queries_pty_and_pairwise_arbitration", "native_style_theme_and_active_pane_survive_view_reconnect"]
+description = "Native view dimensions and cell pixels reach PTY/query size arbitration and remain available as client fields. Unix child ioctl observes cell/pixel dimensions; Windows child GetConsoleScreenBufferInfo observes actual ConPTY cells and CSI14t queries actual terminal pixels. Defaults precede client resize, new windows/sessions start with selected client pixels, and both respawn variants retain negotiated dimensions and CSI16t replies. Native views report client_control_mode=0; host state supplies client_theme without inventing a physical tty."
+
+[[suites]]
+id = "system-client"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["system-client"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-client", "--test", "system"]
+env = {}
+
+[[suites.assertions]]
+id = "system.discovery-capture-live-transition"
+tests = ["bootstrap_discovers_names_and_visible_capture_before_live_bytes", "user_group_error_does_not_poison_next_request_and_disconnect_never_retries"]
+description = "Control bootstrap preserves names, graph and visible capture before live pane bytes; needs_snapshot remains true after both capture and live output because scrollback, inactive screen and parser state are unavailable. Group errors recover and disconnect never retries requests."
+
+[[suites.assertions]]
+id = "system.discovery-retry-budget"
+tests = ["disappearing_pane_during_capture_restarts_discovery_without_losing_user_commands", "repeated_bootstrap_failures_stop_with_the_failed_command_and_server_diagnostic", "continuous_graph_churn_exhausts_retries_until_explicit_bootstrap", "deferred_discovery_resumes_without_replaying_a_user_command", "stale_cross_list_rows_are_discarded_before_current_snapshot_validation"]
+description = "Pane disappearance and known stale cross-list snapshots restart discovery while preserving user commands; current malformed snapshots remain fatal. Failed bootstrap commands retain exact fatal diagnostics; structural churn exhausts the same three-attempt budget and emits typed deferral until explicit read-only bootstrap resumes, preserving active user identity and never replaying the mutation."
+
+[[suites]]
+id = "ssh-c-reference"
+platforms = ["darwin", "linux"]
+reference_version = "tmux next-3.9"
+profiles = ["system-client"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-client", "--test", "ssh_reference", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "control.real-ssh-bootstrap-reconnect-indeterminate-loss"
+tests = ["ssh_stock_tmux_discovery_bytes_reconnect_and_ambiguous_mutation"]
+description = "Isolated loopback SSH to stock C tmux discovers graph/captures, receives real pane bytes through 7-byte framing, reconnects to same PID and marks unobserved applied mutation Indeterminate without replay."
+
+[[suites]]
+id = "config-preparation-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-config", "--test", "c_reference", "preparation_", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_ORACLE = "$reference"}
+
+[[suites.assertions]]
+id = "config.prepare-before-execute"
+tests = ["preparation_matches_c_without_executing_queued_commands", "preparation_suppresses_jobs_and_boolean_evaluation_short_circuits"]
+description = "C preparation ordering and no-job conditional behavior shared with3.7c; version-specific format changes have separate suites."
+
+[[suites]]
+id = "parser-text-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-config", "--test", "c_reference", "text_parser_and_argv_match_c_execution", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_ORACLE = "$reference"}
+
+[[suites.assertions]]
+id = "parser.c-text-and-argv"
+tests = ["text_parser_and_argv_match_c_execution"]
+description = "C executable text/argv parser observations shared with3.7c."
+
+[[suites]]
+id = "regex-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-config", "--test", "c_reference", "regex_and_substitution_observations_match_c", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_ORACLE = "$reference"}
+
+[[suites.assertions]]
+id = "format.c-regex-substitution-and-compound-order"
+tests = ["regex_and_substitution_observations_match_c"]
+description = "Selected POSIX/compound format observations shared with3.7c."
+
+[[suites]]
+id = "commands-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "commands_reference", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "command.c-registry-help-prefix-and-errors"
+tests = ["registry_help_aliases_prefixes_and_argument_errors_match_c"]
+description = "Current C exact list-commands default/help/verbose/custom bytes and source order, aliases/prefixes, selection and empty suppression, and unknown/ambiguous/flag/arity/usage errors. Listed syntax is not an implementation claim for every command."
+
+[[suites]]
+id = "format-context-bounds-unit"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--lib", "formats::tests::context_recursion_and_loop_output_are_bounded"]
+env = {}
+
+[[suites.assertions]]
+id = "format.context-recursion-and-output-bounds"
+tests = ["formats::tests::context_recursion_and_loop_output_are_bounded"]
+description = "Recursive contextual option expansion and excessive loop output return explicit bounded errors without overflowing the Rust test stack."
+
+
+[[suites]]
+id = "command-json-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "commands_reference", "display_json_canonical_bytes_errors_and_flag_precedence_match_c", "--", "--ignored", "--exact"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "command.c-json-canonical-errors-and-display-precedence"
+tests = ["display_json_canonical_bytes_errors_and_flag_precedence_match_c"]
+description = "Restricted JSON preserves escapes, sorts keys, validates signed64 numbers/object arrays and compares malformed-input diagnostics byte-for-byte; -j ignores -a/-I and -F conflicts with positional messages."
+
+[[suites]]
+id = "buffer-name-trust-boundary"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "app-owned", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "buffer_names"]
+env = {}
+
+[[suites.assertions]]
+id = "buffers.name-validation-and-empty-noop"
+tests = ["buffer_creation_cleans_names_once_and_lookup_remains_raw", "invalid_buffer_names_reject_without_mutation_and_diagnostics_are_line_safe", "empty_buffer_input_and_pending_capture_do_not_allocate_or_notify"]
+description = "Shared raw-byte buffer creation validates before mutation, escapes accepted TAB/NL/backslash names once, preserves raw lookup/append behavior without malformed-UTF8/U+FFFD collisions, keeps same-name rename unchanged, rejects invalid UTF8/control names with line-safe diagnostics, and leaves empty payload/capture buffers, notifications, effects and automatic IDs untouched."

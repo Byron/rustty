@@ -1,0 +1,60 @@
+# Native Windows counterparts preserve the original job and lifecycle matrices.
+
+[[suites]]
+id = "windows-remote-format-jobs"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 3
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "windows_format_jobs", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 600
+
+[[suites.assertions]]
+id = "format.c-asynchronous-jobs-stream-cache-and-expansion"
+tests = ["asynchronous_format_jobs_stream_cache_expand_and_restart_like_c", "repeated_format_jobs_share_live_work_and_report_not_ready", "format_jobs_stop_with_the_requesting_client"]
+description = "Persistent C/Rust clients observe immediate empty results, last-complete-line updates, final partial output, cached expansion, changed-command restart, suppressed nested/output jobs, stderr/status policy, one shared live job per command, delayed-output placeholders and real process termination when the requesting client detaches."
+
+[[suites]]
+id = "windows-remote-session-lifecycle"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 21
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "windows_lifecycle", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 600
+
+[[suites.assertions]]
+id = "runtime.c-session-destruction-and-client-fallback"
+tests = ["destroyed_sessions_move_or_detach_attached_clients_by_policy", "self_destruction_wraps_session_order_and_respects_no_detach_fallback", "destroy_unattached_respects_group_keep_policies"]
+description = "Current C/Rust owners agree on detach-on-destroy policies, session-name wraparound, no-detach client overrides, current-client session destruction, session-changed hook fields and destroy-unattached grouped keep policies."
+
+[[suites.assertions]]
+id = "runtime.c-exit-unattached-flush-and-job-drain"
+tests = ["exit_unattached_flushes_channels_locks_and_event_waiters", "exit_unattached_waits_for_background_jobs_before_terminating", "foreground_jobs_keep_live_owners_until_the_command_finishes"]
+description = "exit-empty off overrides exit-unattached; enabling exit releases waiting channels, lock contenders and event waiters. Real foreground jobs retain both owners until completion. Native retained background jobs drain before automatic exit; the separately asserted C NOWAIT behavior terminates them instead."
+
+[[suites.assertions]]
+id = "difference.native-detached-job-drain"
+tests = ["exit_unattached_waits_for_background_jobs_before_terminating", "foreground_jobs_keep_live_owners_until_the_command_finishes"]
+description = "Stable remote pidfds prove C automatic exit terminates its NOWAIT job; native automatic exit preserves the running background job until release and drain. Foreground C/native commands retain live owners and finish with exact drained output. A stale Unix socket inode is never treated as server-liveness evidence."
+
+[[suites.assertions]]
+id = "format.c-activity-sorting-and-timestamp-relations"
+tests = ["activity_sorting_and_timestamp_relations_follow_attach_and_output"]
+description = "S/W/L activity sorting, reverse and sort-flag precedence match C across attachment and real application output; creation/activity/last-attach/start-time fields satisfy the same relations without comparing unrelated clock samples."
+
+[[suites.assertions]]
+id = "runtime.c-alert-hooks-and-silence-timers"
+tests = ["alert_hooks_clear_on_selection_repeat_bells_and_reset_silence"]
+description = "C and Rust owners agree on alert payloads, repeated bells versus suppressed repeated activity, attached-current clearing, action suppression and silence deadline reset/disable with live timers."
+
+[[suites.assertions]]
+id = "runtime.c-shell-event-snapshot-payloads"
+tests = ["shell_marker_hooks_have_c_pane_payloads"]
+description = "OSC133 prompt/start/end in one input chunk preserve C event order, pane/session/winlink fields and each marker's command-line/status/duration snapshot."

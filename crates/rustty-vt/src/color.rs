@@ -3,6 +3,14 @@
 use crate::Terminal;
 use std::fmt::Write;
 
+/// tmux's pane defaults overlay application colors differently for the active pane.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TmuxPaneStyle {
+    pub normal: [Option<[u8; 3]>; 2],
+    pub active: [Option<[u8; 3]>; 2],
+    pub is_active: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Target {
     Palette(u8),
@@ -25,12 +33,51 @@ impl Target {
 impl Terminal {
     /// Actual protocol color, before any renderer fallback is applied.
     pub fn color_current(&self, target: Target) -> Option<[u8; 3]> {
+        if let Some(style) = self.tmux_pane_style
+            && let Some(index) = match target {
+                Target::Foreground => Some(0),
+                Target::Background => Some(1),
+                _ => None,
+            }
+        {
+            let base = self.color_override(target);
+            return (if style.is_active {
+                style.active[index].or(base).or(style.normal[index])
+            } else {
+                style.normal[index].or(base)
+            })
+            .or_else(|| self.color_default(target));
+        }
         match target {
             Target::Palette(index) => Some(self.palette[usize::from(index)]),
             _ => self
                 .color_override(target)
                 .or_else(|| self.color_default(target)),
         }
+    }
+
+    pub fn set_tmux_pane_style(&mut self, style: TmuxPaneStyle) {
+        if self.tmux_pane_style == Some(style) {
+            return;
+        }
+        self.tmux_pane_style = Some(style);
+        self.foreground = self.color_current(Target::Foreground).unwrap_or([255; 3]);
+        self.background = self.color_current(Target::Background).unwrap_or([0; 3]);
+        self.changed();
+    }
+
+    pub fn tmux_color_scheme(&self) -> Option<crate::query::ColorScheme> {
+        self.query_defaults.color_scheme.or_else(|| {
+            self.tmux_control_colors[1]
+                .or_else(|| self.color_current(Target::Background))
+                .map(|rgb| {
+                    if rgb.into_iter().map(u16::from).sum::<u16>() > 382 {
+                        crate::query::ColorScheme::Light
+                    } else {
+                        crate::query::ColorScheme::Dark
+                    }
+                })
+        })
     }
 
     pub fn color_default(&self, target: Target) -> Option<[u8; 3]> {
@@ -289,11 +336,18 @@ fn xterm_request(
 ) -> bool {
     if spec == b"?" {
         if let Some(target) = target {
-            let color = terminal.color_current(target).or_else(|| {
-                (target == Target::Cursor)
-                    .then(|| terminal.color_current(Target::Foreground))
-                    .flatten()
-            });
+            let reported = match target {
+                Target::Foreground => terminal.tmux_control_colors[0],
+                Target::Background => terminal.tmux_control_colors[1],
+                _ => None,
+            };
+            let color = reported
+                .or_else(|| terminal.color_current(target))
+                .or_else(|| {
+                    (target == Target::Cursor && !terminal.tmux_graphics)
+                        .then(|| terminal.color_current(Target::Foreground))
+                        .flatten()
+                });
             if let Some([r, g, b]) = color {
                 match target {
                     Target::Palette(index) => write!(reply, "\x1b]4;{index};").unwrap(),

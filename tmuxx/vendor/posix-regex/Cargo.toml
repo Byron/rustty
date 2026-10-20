@@ -1,0 +1,16 @@
+[package]
+name = "tmuxx-posix-regex"
+version = "0.1.4"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+description = "Vendored POSIX matcher with Unicode scalar and byte-exact Windows format support"
+
+[features]
+default = []
+no_std = []
+bench = []
+
+[dependencies]
+unicode-general-category = "=1.1.0"
+unicode-normalization = "=0.1.25"

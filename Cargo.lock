@@ -3024,7 +3024,6 @@ dependencies = [
 [[package]]
 name = "portable-pty"
 version = "0.9.0"
-source = "git+https://github.com/Byron/tmux?rev=700884116bc7239d032e6c91fb4e37e7c540c335#700884116bc7239d032e6c91fb4e37e7c540c335"
 dependencies = [
  "anyhow",
  "bitflags 1.3.2",
@@ -3318,6 +3317,7 @@ dependencies = [
  "libc",
  "portable-pty",
  "rustty-parser",
+ "rustty-vt",
  "serde",
  "serde_json",
  "tmuxx-client",
@@ -3326,7 +3326,6 @@ dependencies = [
  "tmuxx-protocol",
  "tmuxx-runtime",
  "tmuxx-terminal",
- "tmuxx-vendored-rustty-vt",
 ]
 
 [[package]]
@@ -3397,8 +3396,8 @@ name = "rustty-render"
 version = "0.1.0"
 dependencies = [
  "rustty-font",
+ "rustty-vt",
  "serde_json",
- "tmuxx-vendored-rustty-vt",
 ]
 
 [[package]]
@@ -3930,12 +3929,15 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 [[package]]
 name = "tmuxx-cli"
 version = "0.1.0"
-source = "git+https://github.com/Byron/tmux?rev=700884116bc7239d032e6c91fb4e37e7c540c335#700884116bc7239d032e6c91fb4e37e7c540c335"
 dependencies = [
+ "base64",
  "clap",
  "libc",
+ "portable-pty",
+ "serde",
  "serde_json",
  "tmuxx-command",
+ "tmuxx-core",
  "tmuxx-protocol",
  "tmuxx-runtime",
  "tmuxx-unix-ipc",
@@ -3945,8 +3947,8 @@ dependencies = [
 [[package]]
 name = "tmuxx-client"
 version = "0.1.0"
-source = "git+https://github.com/Byron/tmux?rev=700884116bc7239d032e6c91fb4e37e7c540c335#700884116bc7239d032e6c91fb4e37e7c540c335"
 dependencies = [
+ "libc",
  "tmuxx-command",
  "tmuxx-protocol",
 ]
@@ -3954,13 +3956,12 @@ dependencies = [
 [[package]]
 name = "tmuxx-command"
 version = "0.1.0"
-source = "git+https://github.com/Byron/tmux?rev=700884116bc7239d032e6c91fb4e37e7c540c335#700884116bc7239d032e6c91fb4e37e7c540c335"
 
 [[package]]
 name = "tmuxx-config"
 version = "0.1.0"
-source = "git+https://github.com/Byron/tmux?rev=700884116bc7239d032e6c91fb4e37e7c540c335#700884116bc7239d032e6c91fb4e37e7c540c335"
 dependencies = [
+ "serde_json",
  "tmuxx-command",
  "tmuxx-format",
 ]
@@ -3968,7 +3969,6 @@ dependencies = [
 [[package]]
 name = "tmuxx-core"
 version = "0.1.0"
-source = "git+https://github.com/Byron/tmux?rev=700884116bc7239d032e6c91fb4e37e7c540c335#700884116bc7239d032e6c91fb4e37e7c540c335"
 dependencies = [
  "serde",
  "serde_json",
@@ -3982,7 +3982,6 @@ dependencies = [
 [[package]]
 name = "tmuxx-format"
 version = "0.1.0"
-source = "git+https://github.com/Byron/tmux?rev=700884116bc7239d032e6c91fb4e37e7c540c335#700884116bc7239d032e6c91fb4e37e7c540c335"
 dependencies = [
  "libc",
  "tmuxx-command",
@@ -3993,7 +3992,6 @@ dependencies = [
 [[package]]
 name = "tmuxx-layout"
 version = "0.1.0"
-source = "git+https://github.com/Byron/tmux?rev=700884116bc7239d032e6c91fb4e37e7c540c335#700884116bc7239d032e6c91fb4e37e7c540c335"
 dependencies = [
  "serde",
  "serde_json",
@@ -4002,7 +4000,6 @@ dependencies = [
 [[package]]
 name = "tmuxx-posix-regex"
 version = "0.1.4"
-source = "git+https://github.com/Byron/tmux?rev=700884116bc7239d032e6c91fb4e37e7c540c335#700884116bc7239d032e6c91fb4e37e7c540c335"
 dependencies = [
  "unicode-general-category",
  "unicode-normalization",
@@ -4011,7 +4008,6 @@ dependencies = [
 [[package]]
 name = "tmuxx-protocol"
 version = "0.1.0"
-source = "git+https://github.com/Byron/tmux?rev=700884116bc7239d032e6c91fb4e37e7c540c335#700884116bc7239d032e6c91fb4e37e7c540c335"
 dependencies = [
  "base64",
  "serde",
@@ -4021,7 +4017,6 @@ dependencies = [
 [[package]]
 name = "tmuxx-runtime"
 version = "0.1.0"
-source = "git+https://github.com/Byron/tmux?rev=700884116bc7239d032e6c91fb4e37e7c540c335#700884116bc7239d032e6c91fb4e37e7c540c335"
 dependencies = [
  "libc",
  "portable-pty",
@@ -4040,47 +4035,19 @@ dependencies = [
 [[package]]
 name = "tmuxx-terminal"
 version = "0.1.0"
-source = "git+https://github.com/Byron/tmux?rev=700884116bc7239d032e6c91fb4e37e7c540c335#700884116bc7239d032e6c91fb4e37e7c540c335"
 dependencies = [
+ "base64",
+ "rustty-vt",
  "serde",
- "tmuxx-vendored-rustty-vt",
+ "serde_json",
 ]
 
 [[package]]
 name = "tmuxx-unix-ipc"
 version = "0.1.0"
-source = "git+https://github.com/Byron/tmux?rev=700884116bc7239d032e6c91fb4e37e7c540c335#700884116bc7239d032e6c91fb4e37e7c540c335"
 dependencies = [
  "libc",
  "tmuxx-protocol",
-]
-
-[[package]]
-name = "tmuxx-vendored-rustty-parser"
-version = "0.1.0"
-source = "git+https://github.com/Byron/tmux?rev=700884116bc7239d032e6c91fb4e37e7c540c335#700884116bc7239d032e6c91fb4e37e7c540c335"
-dependencies = [
- "simdutf8",
- "wide",
-]
-
-[[package]]
-name = "tmuxx-vendored-rustty-vt"
-version = "0.1.0"
-source = "git+https://github.com/Byron/tmux?rev=700884116bc7239d032e6c91fb4e37e7c540c335#700884116bc7239d032e6c91fb4e37e7c540c335"
-dependencies = [
- "base64",
- "bytemuck",
- "crc32c",
- "flate2",
- "libc",
- "lz4_flex",
- "png",
- "regex",
- "serde",
- "serde_json",
- "tmuxx-vendored-rustty-parser",
- "wide",
 ]
 
 [[package]]

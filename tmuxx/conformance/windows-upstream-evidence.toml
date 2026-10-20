@@ -1,0 +1,198 @@
+# Original C sources are unchanged; native Windows preserves all vectors.
+# Explicit native counterparts adapt raw-console and slow/failed pipe fixtures.
+# Command output is never rewritten. See WINDOWS.md for every adaptation.
+
+[[suites]]
+id = "windows-upstream-harness-cleanup"
+platforms = ["win32"]
+profiles = ["windows"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions_windows", "harness_cleans_flooding_owners_after_script_exit_and_timeout", "--", "--ignored", "--exact", "--nocapture"]
+env = {}
+timeout = 120
+
+[[suites.assertions]]
+id = "harness.script-exit-timeout-and-detached-owner-cleanup"
+tests = ["harness_cleans_flooding_owners_after_script_exit_and_timeout"]
+description = "Native shell scripts leave real ConPTY cat/tr flood descendants after success, early failure and timeout. Explicit owners enter a separate fixture Job before the first pane command; cleanup kills each product owner and requires its complete Job process list to become empty before fixture-job rescue. All three cases observe live descendant PIDs and prove zero survivors while an unrelated native process remains alive. Production CLI workers also have kill-on-close ownership when their shell script is interrupted."
+
+[[suites]]
+id = "windows-upstream-layout-nesting"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 1
+remote_observers = ["upstream_reference"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions_windows", "upstream_layout_nesting_limit", "--", "--ignored", "--exact", "--nocapture"]
+env = {}
+timeout = 240
+
+[[suites.assertions]]
+id = "upstream.layout-depth-boundary-and-atomic-rejection"
+tests = ["upstream_layout_nesting_limit"]
+description = "Pinned C scripts and native Windows counterparts retain every upstream assertion. Private explicit owners, native paths and documented console/pipe fixtures adapt platform setup; command output is never rewritten. Original contract: Original layout-nesting-limit.sh runs on C and Rust: both legacy split brackets accept1000 nested unary groups;1001/1500 reject without killing the server or changing pane/layout state."
+
+[[suites]]
+id = "windows-upstream-terminal-scripts"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 9
+remote_observers = ["upstream_reference", "upstream_reference", "upstream_reference", "upstream_reference", "upstream_reference", "upstream_reference", "upstream_reference", "upstream_reference", "upstream_reference"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions_windows", "upstream_input", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 1980
+
+[[suites.assertions]]
+id = "upstream.input-cursor-edits-modes-and-regions"
+tests = ["upstream_input_cursor", "upstream_input_edit", "upstream_input_lines_region", "upstream_input_modes", "upstream_input_scroll"]
+description = "Pinned C scripts and native Windows counterparts retain every upstream assertion. Private explicit owners, native paths and documented console/pipe fixtures adapt platform setup; command output is never rewritten. Original contract: Unchanged input-cursor/edit/lines-region/modes/scroll scripts pass against both C and Rust, including upstream's own assertions and normalization."
+
+[[suites.assertions]]
+id = "upstream.input-strings-colors-unicode-and-malformed"
+tests = ["upstream_input_malformed", "upstream_input_sgr", "upstream_input_unicode", "upstream_input_osc"]
+description = "Pinned C scripts and native Windows counterparts retain every upstream assertion. Private explicit owners, native paths and documented console/pipe fixtures adapt platform setup; command output is never rewritten. SGR/Unicode/OSC sources run unchanged. All nine malformed vectors use native empty-pane injection before ConPTY reserialization, including retained titles, invalid UTF8, duplicate OSC8 IDs and raw cells; a separate real ConPTY application receives exactly one negative DECRQSS reply."
+
+[[suites]]
+id = "windows-upstream-format-scripts"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 5
+remote_observers = ["upstream_reference", "upstream_reference", "upstream_reference", "upstream_reference", "upstream_reference"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions_windows", "upstream_format", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 1100
+
+[[suites.assertions]]
+id = "upstream.format-fuzzy-and-modifiers"
+tests = ["upstream_format_fuzzy", "upstream_format_modifiers"]
+description = "Pinned C scripts and native Windows counterparts retain every upstream assertion. Private explicit owners, native paths and documented console/pipe fixtures adapt platform setup; command output is never rewritten. The modifier fixture uses real silent native sleep processes for idle panes to preserve the original equal-initial-title premise; explicit cat commands remain unchanged. Original contract: Unchanged fuzzy/modifier scripts pass C and Rust, including client-loop membership after silent FIFO EOF; this does not certify all contextual operators."
+
+[[suites.assertions]]
+id = "upstream.format-time-range-and-missing-current-window"
+tests = ["upstream_format_no_current_window", "upstream_format_time_range"]
+description = "Pinned C scripts and native Windows counterparts retain every upstream assertion. Private explicit owners, native paths and documented console/pipe fixtures adapt platform setup; command output is never rewritten. Original contract: Original format-no-current-window and format-time-range scripts compare context-free callbacks, replaced/relinked current windows and hooks, timestamp conversion overflow and large-year formatting through both C and Rust executables."
+
+[[suites.assertions]]
+id = "upstream.format-strings-native-copy-mode-scope"
+tests = ["upstream_format_strings_requires_excluded_copy_mode"]
+description = "Pinned C scripts and native Windows counterparts retain every upstream assertion. Private explicit owners, native paths and documented console/pipe fixtures adapt platform setup; command output is never rewritten. Original contract: Original format-strings passes C and fails Rust with exact copy-mode rejection and pane_in_mode assertion. This separately recorded UI-scope difference is not format-operator completeness evidence."
+
+[[suites]]
+id = "windows-upstream-control-exit-scripts"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 6
+remote_observers = ["upstream_reference", "upstream_reference", "upstream_reference", "upstream_reference", "upstream_reference", "upstream_reference"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions_windows", "upstream_control", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 1320
+
+[[suites.assertions]]
+id = "upstream.control-exit-stalled-run-shell-and-wait"
+tests = ["upstream_control_client_exit", "upstream_control_client_exit_stalled", "upstream_control_client_run_shell_exit", "upstream_control_client_wait_exit"]
+description = "Pinned C scripts and native Windows counterparts retain every upstream assertion. Private explicit owners, native paths and documented console/pipe fixtures adapt platform setup; command output is never rewritten. Original C scripts run unchanged. Native run-shell/wait-exit scripts retain their assertions; native anonymous-pipe counterparts retain the full slow/unread-output assertions, detach and five post-detach marker checks, bounded fast drain and exact-owner exit. An infinite real ConPTY producer writes 512 bytes every 20 ms; a bounded real terminal-row check precedes attachment. Exact live client identity and unread pipe output immediately before the action prove the original client remains attached. The original three-second/512KiB drain must reach actual EOF with exactly one bare %exit as its final newline-terminated record, client exit code zero and stdin still held open."
+
+[[suites.assertions]]
+id = "upstream.control-guard-order-and-subscriptions"
+tests = ["upstream_control_notify_guard", "upstream_control_subscriptions"]
+description = "Pinned C scripts and native Windows counterparts retain every upstream assertion. Private explicit owners, native paths and documented console/pipe fixtures adapt platform setup; command output is never rewritten. Original contract: Unchanged C/R scripts verify notifications outside exact command guards despite fake begin/end output, config errors and pause/continue; subscription initial/update/remove/replacement behavior covers all/exact panes/windows and missing targets."
+
+[[suites]]
+id = "windows-upstream-raw-storage-differences"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 1
+remote_observers = ["upstream_reference", "upstream_reference"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions_windows", "upstream_raw_diagnostic_differences_remain_explicit", "--", "--ignored", "--exact", "--nocapture"]
+env = {}
+timeout = 240
+
+[[suites.assertions]]
+id = "upstream.raw-grid-difference-labels"
+tests = ["upstream_raw_diagnostic_differences_remain_explicit"]
+description = "Pinned C scripts and native Windows counterparts retain every upstream assertion. Private explicit owners, native paths and documented console/pipe fixtures adapt platform setup; command output is never rewritten. Original contract: Original input-raw-controls and input-nowrap-collect pass C; Rust fails only the enumerated ACS source-charset and cleared-padding raw diagnostic labels, with no command errors. Original failure transcripts remain on disk."
+
+[[suites]]
+id = "windows-upstream-json-script"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 1
+remote_observers = ["upstream_reference"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions_windows", "upstream_json", "--", "--ignored", "--exact", "--nocapture"]
+env = {}
+timeout = 240
+
+[[suites.assertions]]
+id = "upstream.json-grammar-and-display"
+tests = ["upstream_json"]
+description = "Pinned C scripts and native Windows counterparts retain every upstream assertion. Private explicit owners, native paths and documented console/pipe fixtures adapt platform setup; command output is never rewritten. Original contract: Original json.sh passes C and Rust: sorted keys, retained escapes, signed integer bounds, object-only arrays, exact depth200 boundary, malformed rejection and display -j flag precedence."
+
+[[suites]]
+id = "windows-upstream-buffers-script"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 1
+remote_observers = ["upstream_reference"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions_windows", "upstream_buffers", "--", "--ignored", "--exact", "--nocapture"]
+env = {}
+timeout = 240
+
+[[suites.assertions]]
+id = "upstream.buffers-paste-and-file-transfers"
+tests = ["upstream_buffers"]
+description = "Pinned C scripts and native Windows counterparts retain every upstream assertion. Private explicit owners, native paths and documented console/pipe fixtures adapt platform setup; command output is never rewritten. Original buffers.sh passes C. The complete native counterpart preserves automatic/named ordering, append/rename/delete/limit, formats/filters, translated/raw/separator/delete-after paste in five actual raw-console applications, binary Unicode file roundtrips/append and exact errors. Its supported stdout pipe reads exactly eight bytes before closing during a 100000-byte save, requiring a real failed write and live owner."
+
+[[suites]]
+id = "windows-upstream-set-hook-b-script"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 1
+remote_observers = ["upstream_reference"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions_windows", "upstream_set_hook_b", "--", "--ignored", "--exact", "--nocapture"]
+env = {}
+timeout = 240
+
+[[suites.assertions]]
+id = "upstream.monitored-hooks"
+tests = ["upstream_set_hook_b"]
+description = "Pinned C scripts and native Windows counterparts retain every upstream assertion. Private explicit owners, native paths and documented console/pipe fixtures adapt platform setup; command output is never rewritten. Original contract: Original set-hook-B.sh passes C and Rust: initial suppression, replacement, old/new values, scoped storage, pane targets and global fallback after the monitored session is deleted."
+
+[[suites]]
+id = "windows-upstream-target-scripts"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 3
+remote_observers = ["upstream_reference", "upstream_reference", "upstream_reference"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions_windows", "upstream_targets", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 660
+
+[[suites.assertions]]
+id = "upstream.targets-panes-and-current-context"
+tests = ["upstream_targets", "upstream_targets_panes", "upstream_targets_current"]
+description = "Pinned C scripts and native Windows counterparts retain every upstream assertion. Private explicit owners, native paths and documented console/pipe fixtures adapt platform setup; command output is never rewritten. Original contract: Original targets.sh, targets-panes.sh and targets-current.sh pass C and Rust: target ambiguity, aliases and offsets, composite session/window/pane validation, current and mouse targets, environment fallback and duplicate winlink context."

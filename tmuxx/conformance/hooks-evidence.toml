@@ -1,0 +1,197 @@
+# Exact hook/scheduler contracts. Lifecycle order follows the pinned current C baseline.
+
+[[suites]]
+id = "runtime-hooks"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "app-owned", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "hooks"]
+env = {}
+
+[[suites.assertions]]
+id = "hooks.groups-scopes-and-recursion"
+tests = ["after_hooks_have_scoped_targets_isolated_errors_and_no_recursion"]
+description = "Scoped hook arrays, numeric/key ordering, one-time preparation, command payloads, explicit invocation, nonrecursive automatic hooks and isolated failure groups."
+
+[[suites.assertions]]
+id = "hooks.dead-object-context"
+tests = ["dead_object_hook_payloads_survive_removal_and_target_the_remaining_dead_pane"]
+description = "Session/window names survive graph removal; pane-died targets the retained dead pane and hook commands can remove it."
+
+[[suites.assertions]]
+id = "hooks.detached-creation-target"
+tests = ["creation_after_hooks_target_created_detached_objects_without_selecting_them"]
+description = "Creation afterhooks target detached new panes/windows/session while preserving existing active selection; automatic afterhook payloads contain arguments rather than fabricated object fields."
+
+[[suites.assertions]]
+id = "hooks.control-client-lifecycle"
+tests = ["client_lifecycle_hooks_follow_control_attach_switch_resize_and_detach"]
+description = "Control client creation, session changes, attach, detach and close have ordered target payloads; refresh-client -C does not emit an ordinary tty resize hook."
+
+[[suites.assertions]]
+id = "command.readonly-attach-and-explicit-toggle"
+tests = ["readonly_attach_blocks_commands_and_input_until_switch_toggle"]
+description = "Read-only attach denies commands and raw input; switch-client -r explicitly restores mutation rights; attach -f read-only remains sticky."
+
+[[suites.assertions]]
+id = "control.embedded-source-argv-admission"
+tests = ["embedded_control_rejects_ambiguous_source_before_owner_mutation"]
+description = "The embedded native control API rejects a request carrying both source and argv before any owner mutation; its global option retains the original value."
+
+[[suites]]
+id = "hooks-after-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "hooks", "after_hook", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "hooks.c-after-arrays-and-creation-targets"
+tests = ["after_hook_array_context_order_and_error_contract_matches_c", "creation_after_hooks_and_detached_selection_match_c"]
+description = "Separate C executable matches afterhook spelling, context/flags, array order, errors, and detached creation targets/selection. Verified against pinned C and 3.7c."
+
+[[suites]]
+id = "hooks-navigation-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "hooks", "window_navigation_hooks_use_selected_targets_and_aliases_match_c", "--", "--ignored", "--exact"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "hooks.c-window-navigation-current-target-context"
+tests = ["window_navigation_hooks_use_selected_targets_and_aliases_match_c"]
+description = "Equivalent one-shot C/R clients compare after-select-window hooks for aliases, alert errors, next/previous/last, no-op selection and -T toggles. Selected-target updates and retained original command context match across same-session and cross-session explicit/session-only targets."
+
+[[suites]]
+id = "hooks-metadata-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "hooks", "hook_option_metadata_keys_and_firing_counts_match_c", "--", "--ignored", "--exact"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "hooks.c-option-metadata-keys-and-firing-counts"
+tests = ["hook_option_metadata_keys_and_firing_counts_match_c"]
+description = "Current C default/scoped/user hook listings preserve option array/string metadata, canonical numeric and textual keys, exact duplicate-winlink output targets and registration after user-hook removal. Empty/default, explicit and command hooks retain independent firing counts; indexed removal preserves counts while whole-option removal resets them. Named ordinary options retain set/show-hook behavior and non-monitor -T is ignored."
+
+[[suites]]
+id = "hooks-monitors-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "hooks", "monitor_hook_truth_filters_link_targets_and_option_lifetime_match_c", "--", "--ignored", "--exact"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "hooks.c-monitor-truth-links-and-option-lifetime"
+tests = ["monitor_hook_truth_filters_link_targets_and_option_lifetime_match_c"]
+description = "Real C/R timers suppress initial values, retain false transitions for -T old/new payloads, update exact local command values, remove monitor ownership when its option is unset and preserve the option when -B is removed. All-window monitors emit separate exact duplicate-winlink contexts and matching fire counts/time presence. Option firing counts survive monitor replacement/removal independently of monitor counts."
+
+[[suites]]
+id = "hooks-lifecycle-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "hooks", "lifecycle", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "hooks.c-current-lifecycle-order"
+tests = ["lifecycle_hook_dead_payload_and_order_matches_c", "client_lifecycle_attach_switch_resize_detach_matches_c"]
+description = "Current C process/lifecycle/client hook payloads and order. C3.7c intentionally differs in session-closed versus window-unlinked order and is not covered by this suite."
+
+[[suites]]
+id = "command-blocks-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "scheduler", "command_blocks_keep_parse_time_aliases_and_delayed_formats_like_c", "--", "--ignored", "--exact"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "command.c-block-versus-string-preparation"
+tests = ["command_blocks_keep_parse_time_aliases_and_delayed_formats_like_c"]
+description = "C/R source execution distinguishes parsed braces from strings: delayed run-C blocks expand formats during execution, strings expand on scheduling, async if/else blocks retain parse-time environment/aliases while strings parse later, alias forwarding retains blocks, nested hook command lists print correctly, and invalid unselected blocks reject before same-line mutation."
+
+[[suites]]
+id = "source-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "scheduler", "source_", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "config.c-source-flags-globs-aliases-shell-validation"
+tests = ["source_flags_globs_alias_preparation_and_shell_validation_match_c"]
+description = "C executable agrees on parse-only assignment suppression, path formatting/globbing, quiet no-match, aliases and invalid default-shell behavior."
+
+[[suites.assertions]]
+id = "config.c-source-registration-and-error-framing"
+tests = ["source_dry_run_registration_and_skipped_branches_match_c", "source_line_groups_verbose_errors_and_outer_continuation_match_c", "source_flags_globs_alias_preparation_and_shell_validation_match_c"]
+description = "Exact C source stdout/status for dry-run registration, skipped branches, line groups, verbose canonical commands, partial parse traces, multiple-file/nested errors, outer continuation, globs/aliases/shell validation."
+
+[[suites]]
+id = "events-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "scheduler", "event_wait_filter_nojobs_verbose_listing_and_wake_match_c", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "command.c-current-event-wait-contract"
+tests = ["event_wait_filter_nojobs_verbose_listing_and_wake_match_c"]
+description = "Current C event waits agree on raw payload verbosity, no-job filters without implicit target defaults, listing, forced wake and custom events. Event wait flags are current-baseline-only."
+
+[[suites]]
+id = "client-format-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "hooks", "client_format_loops", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "format.c-attached-clients-and-preserved-target-context"
+tests = ["client_format_loops_follow_attached_clients_and_preserve_target_defaults"]
+description = "Two real C control clients agree with native owner clients on L iteration/reversal, client sessions, preserved outer target session, loop metadata, compound length and detach removal. Activity ordering has a separate timestamp-relation assertion."
+
+[[suites]]
+id = "hook-format-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "hooks", "option_format_loops_reflect_scoped_hook_array_updates", "--", "--ignored", "--exact"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "format.c-live-scoped-hook-arrays"
+tests = ["option_format_loops_reflect_scoped_hook_array_updates"]
+description = "Current C live O hook arrays match global/session/window/pane updates, sparse indexes, canonical command text, deletion, array metadata and declared hook-scope precedence."
+
+[[suites]]
+id = "source-stdin-client-matrix"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "unix-ipc", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "source_stdin", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "config.c-source-stdin-files-flags-and-async-preparation"
+tests = ["source_stdin_all_four_pairings_preserve_files_flags_groups_and_preparation"]
+description = "Thirteen source scenarios cross all four C/R command pairings: stdin interleaved with files, dry-run/verbose/quiet/formatted/target flags, error and command groups, path expansion before preparation, repeated stdin EBADF and empty input. A native endpoint success check verifies CLI stdin admission. Four paused-input runs observe prefix assignment before EOF, mutate environment from another client and require no replay, preserving prepared prefix output and later stdin/suffix context."
+
+[[suites]]
+id = "scheduler-job-flags-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "scheduler", "job_", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "command.c-job-flags-delay-cwd-and-target-context"
+tests = ["job_flags_delay_validation_cwd_and_target_context_match_c"]
+description = "Current C matches run-shell's ignored -s, empty/hex/leading-space delay spellings and malformed delay diagnostics, command-only target context, conditional target context, /bin/sh argument-zero despite changed default-shell, TERM/COLORTERM overrides, requested PWD spelling and missing-directory fallback. No-command delays continue the outer group."
+
+[[suites.assertions]]
+id = "difference.native-job-delay-bound"
+tests = ["native_job_delay_bound_is_an_explicit_c_difference"]
+description = "C and Rust accept background delays0 and86400. C accepts86400.001 and runs the next group item; Rust explicitly rejects above its24-hour bound before running that item. Both exact outcomes are asserted and long-lived timers are reclaimed with the fixture."
+
+[[suites.assertions]]
+id = "command.c-job-socket-stdin-eof-and-signal"
+tests = ["shell_job_stdin_socket_eof_and_signal_match_c"]
+description = "C and Rust shell jobs observe a socket on stdin with EOF after the owner's empty write side closes. SIGTERM produces the exact job diagnostic and status143; the socket ownership differs from an inherited terminal or /dev/null."

@@ -1,0 +1,396 @@
+# Executable evidence for Rustty VT integration and layout contracts.
+# These assertions alone do not establish C tmux terminal parity.
+
+[[suites]]
+id = "terminal-history-head-reference"
+platforms = ["darwin", "linux"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "history_reference", "head_history_counters_match_c_and_survive_snapshots", "--", "--ignored", "--exact"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "terminal.c-history-counters-and-resize"
+tests = ["head_history_counters_match_c_and_survive_snapshots"]
+description = "HEAD C compares primary history size, limit, added/collected/generation counters, cursor and captured rows at every step with limits 0/1/3/20, 10-percent collection, partial scroll regions, live limit updates, enabled/disabled history resize, RIS/ED3 and alternate screen. Native snapshots retain counters and resize scroll position."
+
+[[suites]]
+id = "terminal-history-supported-reference"
+platforms = ["darwin", "linux"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "history_reference", "history_limits_resets_and_regions_match_supported_c", "--", "--ignored", "--exact"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "terminal.c-history-limits-and-resets"
+tests = ["history_limits_resets_and_regions_match_supported_c"]
+description = "The shared HEAD/3.7c history row/cursor/limit contract runs the same exact step matrix without HEAD-only counter formats."
+
+[[suites]]
+id = "terminal-history-native-allocation"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "history_reference", "native_history_allocation_metrics_account_for_page_capacity", "--", "--exact"]
+env = {}
+
+[[suites.assertions]]
+id = "terminal.native-history-allocation-accounting"
+tests = ["native_history_allocation_metrics_account_for_page_capacity"]
+description = "Allocated native row/cell slots bound live rows/cells, byte components sum to the page-owned total, and auxiliary arena count equals page count through writes, collection and snapshot restore. An invalid restored scroll position is rejected."
+
+[[suites]]
+id = "terminal-history-allocation-difference"
+platforms = ["darwin", "linux"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "history_reference", "native_history_allocation_metrics_are_explicit_c_difference", "--", "--ignored", "--exact", "--nocapture"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "terminal.native-history-allocation-difference"
+tests = ["native_history_allocation_metrics_are_explicit_c_difference"]
+description = "Records independent C/native byte totals and six-field allocation diagnostics for an empty screen, ASCII rows, and a styled combining character; checks the C byte sum and proves the documented native allocator difference without normalizing it."
+
+[[suites]]
+id = "terminal"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-terminal", "--lib"]
+env = {}
+
+[[suites.assertions]]
+id = "snapshot-screens"
+tests = ["tests::snapshots_keep_both_screens_history_rendition_and_pending_input"]
+description = "JSON read model preserves primary history, alternate screen, SGR foreground, and unfinished CSI."
+
+[[suites.assertions]]
+id = "query-owner"
+tests = ["tests::query_reply_is_emitted_once_and_snapshot_does_not_reissue_effects"]
+description = "Cursor query emits exactly one PTY reply; snapshot does not issue effects."
+
+[[suites.assertions]]
+id = "capture-history"
+tests = ["tests::capture_ranges_wrap_history_and_resize"]
+description = "Negative capture rows, soft-wrap joining, and text retained on resize."
+
+[[suites.assertions]]
+id = "capture-whitespace"
+tests = ["tests::capture_swaps_reversed_bounds_and_join_keeps_written_spaces"]
+description = "Capture swaps reversed bounds; joined capture keeps explicitly written trailing spaces."
+
+[[suites.assertions]]
+id = "fragmentation"
+tests = ["tests::arbitrary_delivery_keeps_unicode_and_escape_state"]
+description = "All two-chunk splits of combining character, wide character, and SGR stream yield same capture and cursor."
+
+[[suites.assertions]]
+id = "restore-checkpoint"
+tests = ["tests::restore_retains_pending_state_and_graphics_without_replaying_effects"]
+description = "Checkpoint restores title, text, pending CSI, and RGBA graphics without replaying effects; malformed image width fails."
+
+[[suites.assertions]]
+id = "snapshot-legacy-title-strings"
+tests = ["tests::legacy_rename_and_apc_title_resume_across_snapshot_boundaries"]
+description = "Every partial ESC-k/APC title boundary resumes through the opt-in tmux parser profile without replaying completed effects."
+
+[[suites.assertions]]
+id = "restore-graphics-continuation"
+tests = ["tests::restore_resumes_chunked_graphics_uploads"]
+description = "Checkpoint midway through chunked Kitty upload produces same final graphics and reply on continuation."
+
+[[suites.assertions]]
+id = "native-host-state"
+tests = ["tests::host_state_focus_gate_and_subscriptions_are_idempotent"]
+description = "Native focus reports respect server gate even at DEC1004 activation; subscribed visibility/theme reports have exact bytes and repeated state emits nothing."
+
+[[suites]]
+id = "layout"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-layout", "--lib"]
+env = {}
+
+[[suites.assertions]]
+id = "legacy-layout"
+tests = ["tests::legacy_known_checksum_and_nested_roundtrip"]
+description = "Known C-format layout checksum parses and nested legacy layout round-trips."
+
+[[suites.assertions]]
+id = "json-layout"
+tests = ["tests::json_v2_keeps_indexes_ids_and_negative_floating_geometry"]
+description = "JSON-v2 retains distinct pane ID and index plus negative floating geometry."
+
+[[suites.assertions]]
+id = "layout-input-bounds"
+tests = ["tests::malformed_layouts_fail_without_panicking"]
+description = "Malformed/truncated/checksum-invalid layouts fail without panic."
+
+[[suites.assertions]]
+id = "layout-borders"
+tests = ["tests::splitting_resizing_and_removal_preserve_cell_borders"]
+description = "Split, resize and remove preserve one-cell borders and resulting dimensions."
+
+[[suites.assertions]]
+id = "layout-split-sizing"
+tests = ["tests::split_sizes_match_tmux_layout_split_sizes"]
+description = "Even and explicit before/after split sizing follows examples from C layout_split_sizes."
+
+[[suites.assertions]]
+id = "layout-replacement"
+tests = ["tests::replacement_validates_geometry_before_mutating"]
+description = "Layout replacement validates tile geometry and pane count before mutation."
+
+[[suites.assertions]]
+id = "layout-preset-minimums-and-identity"
+tests = ["presets::tests::presets_fit_panes_even_at_minimum_sizes_and_keep_identity"]
+description = "Every preset remains valid at minimum supported dimensions and retains every pane identity."
+
+[[suites]]
+id = "clipboard-policy-unit"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "clipboard"]
+env = {}
+
+[[suites.assertions]]
+id = "terminal.clipboard-policy-buffer-ownership-and-restore"
+tests = ["clipboard_defaults_block_application_access_and_buffer_reads_are_owner_local", "clipboard_writes_keep_user_buffers_and_report_automatic_eviction", "clipboard_request_denial_is_silent_and_both_caches_only_successful_data", "clipboard_compatibility_profile_survives_ris_and_snapshot_restore"]
+description = "OSC52 defaults deny application access; explicit policies govern owner-local buffer reads/writes, automatic-buffer eviction, successful caching, silent denial and policy retention through RIS/restore."
+
+[[suites]]
+id = "clipboard-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "clipboard_reference", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "terminal.c-clipboard-selectors-policy-and-default-buffers"
+tests = ["clipboard_policies_selectors_and_base64_match_c", "default_buffer_commands_skip_named_buffers_like_c"]
+description = "Current C matches 31 OSC52 policy/selector/base64 fixtures and automatic-only defaults for show/save/paste/delete/rename with named-buffer collision behavior."
+
+[[suites]]
+id = "graphics-reset-unit"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "images_reference", "tmux_graphics_profile_and_pending_query_survive_snapshot_and_reset"]
+env = {}
+
+[[suites.assertions]]
+id = "terminal.graphics-query-profile-and-reset"
+tests = ["tmux_graphics_profile_and_pending_query_survive_snapshot_and_reset"]
+description = "Pending graphics query survives snapshot restore, produces one response, creates no image, and RIS preserves tmux compatibility policy."
+
+[[suites]]
+id = "graphics-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "images_reference", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "terminal.c-kitty-query-upload-placement-and-chunking"
+tests = ["kitty_upload_query_chunking_and_placement_match_c"]
+description = "Requires a separately built C oracle with image_support=1; selected Kitty upload/query/chunk/placement/PNG/zlib/failure replies, invalid source crop and unsupported deletion-selector/layer/number errors, silent successful deletion, cursor/title/text agree at chunk sizes1/7/all. A nonimage C reference fails explicitly."
+
+[[suites.assertions]]
+id = "difference.graphics-rustty-image-number-and-layer-extensions"
+tests = ["kitty_image_numbers_and_nonzero_layers_are_explicit_rustty_extensions"]
+description = "Exact explicit difference: current image-enabled C returns ENOTSUP for image-number/nonzero-z uploads; Rust accepts and retains one native image. This does not grant C parity."
+
+[[suites.assertions]]
+id = "terminal.c-per-image-size-limits"
+tests = ["per_image_encoded_accumulated_decoded_and_placement_limits_match_c"]
+description = "Seven boundary fixtures compare C replies for encoded chunks, accumulated decoded bytes, and placement geometry under image-size-limit."
+
+[[suites]]
+id = "graphics-pixels"
+platforms = ["darwin", "linux"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "images_pixels_reference", "--", "--include-ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "terminal.c-image-retained-pixels-and-lifecycle"
+tests = ["kitty_retained_pixels_clipping_alternate_and_respawn_match_c_redraw", "kitty_cross_screen_replacement_matches_c_redraw"]
+description = "C graphical PTY SIXEL redraws compare every opaque retained pixel and clipped position (RGB tolerance3 for SIXEL quantization) through narrowing/growing, named placement movement, alternate-screen switching/replacement, and pane respawn. Each Rust step also restores a checkpoint."
+
+[[suites.assertions]]
+id = "terminal.c-image-anchor-reflow"
+tests = ["kitty_image_anchor_reflow_between_wrapped_text_matches_c_redraw"]
+description = "An image between wrapped text follows C history/reflow through repeated16-to8-to16 column changes; compare actual rendered pixels and restored anchors."
+
+[[suites.assertions]]
+id = "terminal.c-kitty-crops-offsets-and-deletion-pixels"
+tests = ["kitty_source_crops_offsets_and_deletion_match_c_pixels"]
+description = "C redraw pixels compare source rectangles/clipping, cell pixel offsets/clamping and one-axis scaling; named/image/all deletion retains SIXEL, ignores missing IDs and preserves saved-primary placements after alternate-screen deletion. Every step restores identical native pixels."
+
+[[suites.assertions]]
+id = "terminal.snapshot-row-identities-and-settings"
+tests = ["snapshot_keeps_image_row_anchors_after_reflow", "snapshot_keeps_terminal_options_and_rejects_invalid_widths"]
+description = "Stable row IDs and image anchors survive native restore after reflow; terminal policies/Unicode widths survive, and malformed width ranges are rejected."
+
+[[suites]]
+id = "graphics-global-quota"
+platforms = ["darwin", "linux"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "images_quota_reference", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "terminal.c-global-image-lru-and-source-map"
+tests = ["global_image_sources_placements_queries_lru_and_bytes_match_c", "image_map_lifecycle_across_alternate_screen_and_ris_matches_c"]
+description = "Eleven C fixture groups across two pane PTYs compare source/placement counts, byte pressure, p-use LRU, temporary query admission, ancestor protection, failed replacement, unaddressable anonymous sources and lifetime, and the source map shared across alternate screens and RIS."
+
+[[suites]]
+id = "terminal-options-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "terminal_options_reference", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "terminal.c-screen-cursor-palette-and-width-options"
+tests = ["alternate_scroll_cursor_and_palette_effects_match_c", "codepoint_width_and_variation_selector_options_match_c"]
+description = "C pane PTYs compare exact replies, cursor/history/alternate state, and full capture for alternate-screen, scroll-on-clear, all seven cursor styles, cursor/palette defaults and application override resets, Unicode width ranges, invalid ignored overrides, and VS16 force-width policy."
+
+[[suites.assertions]]
+id = "terminal.c-pane-colors-theme-and-style-policy"
+tests = ["pane_styles_and_theme_reports_match_c", "head_unsupported_styles_preserve_inheritance_and_invalid_styles_match_c"]
+description = "Live C pane replies compare active/inactive style precedence over OSC10/11 and theme reports. Unsupported dynamic/attribute/terminal presentation styles preserve pane option maps and continued inheritance for both normal and active styles. Ordinary invalid style values retain C's local inherited-value rollback and exact diagnostic/query bytes."
+
+[[suites.assertions]]
+id = "terminal.c-observable-modes-cursor-progress-and-path"
+tests = ["head_terminal_observable_fields_match_c_and_survive_snapshot"]
+description = "Exact C bytes for 35 terminal fields over 27 fixtures: saved alternate coordinates, cursor cell including wide padding, explicit cursor shape/color/blink, exclusive mouse modes, insert/wrap/private mode flags, tab stops, scroll margins, OSC path/progress validation and retention, color styles and baseline geometry. Native restore preserves query state and accepts subsequent updates."
+
+[[suites.assertions]]
+id = "terminal.c-shell-lifecycle-formats"
+tests = ["head_shell_lifecycle_formats_match_c"]
+description = "Twenty-two C fixtures compare shell command running/status/line, prompt/start/end presence and duration across OSC133 prompt variants, UTF-8/percent decoding, control escaping, malformed lines, replacement commands, exit bounds and RIS."
+
+[[suites]]
+id = "shell-clock-unit"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--lib", "formats_terminal::tests"]
+env = {}
+
+[[suites.assertions]]
+id = "terminal.shell-owner-clock-and-event-order"
+tests = ["formats_terminal::tests::shell_time_fields_follow_owner_clock_and_repeated_commands"]
+description = "Prompt/start/end timestamps and command duration follow the owner clock, survive completed-command idle time, clamp backward time, and clear old completion state on the next command. Each lifecycle input emits one owner event."
+
+[[suites]]
+id = "native-pane-style-unit"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--lib", "styles::tests"]
+env = {}
+
+[[suites.assertions]]
+id = "native.styles-snapshot-and-host-theme"
+tests = ["styles::tests::active_styles_preserve_application_colors_and_reconnect_settings", "styles::tests::forced_theme_maps_native_colors_without_overriding_reported_host_theme"]
+description = "Pane activation changes native color defaults, snapshots retain underlying OSC overrides, unsupported styles do not mutate state, and forced color-token mapping does not override reported host theme."
+
+[[suites]]
+id = "sixel-retained-state"
+platforms = ["darwin", "linux"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "images_pixels_reference", "sixel", "--", "--include-ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "terminal.c-sixel-decode-pixels-and-grid-lifetime"
+tests = ["sixel_decoding_palette_background_and_rejections_match_c_pixels", "sixel_transparent_overlap_erase_resize_scroll_and_lifetime_match_c_pixels", "sixel_snapshot_resumes_every_input_boundary_without_early_placement"]
+description = "Image-enabled C redraw pixels and exact cursor positions match RGB/HLS/undefined palettes, stray input, malformed/oversized raster/repeat rejection, opaque/transparent overlap, text/erase, resize recovery, alternate screens and scrolling. Every partial SIXEL byte boundary restores without early placement, including ESC before ST completion."
+
+[[suites]]
+id = "sixel-global-quota"
+platforms = ["darwin", "linux"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "images_quota_reference", "sixel", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "terminal.c-sixel-direct-source-quota"
+tests = ["sixel_direct_source_quota_overlap_and_text_release_match_c"]
+description = "Two C pane PTYs prove a SIXEL image consumes one source object, opaque overlap releases superseded sources, and text replacement frees its quota slot before subsequent Kitty admission."
+
+[[suites]]
+id = "shell-retained-state"
+platforms = ["darwin", "linux"]
+profiles = ["native-views", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "shell_reference", "--", "--include-ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "terminal.c-osc133-retained-markers-and-output"
+tests = ["osc133_output_ranges_same_line_reflow_and_lost_history_match_c"]
+description = "Fifteen C fixtures compare exact primary/secondary prompt, command, output and status markers over 53 feed/resize observations, plus copy-output and native select-output text. Cases cover same-line markers, wide-character wrap padding, gaps, marker-only rows, unfinished output, newlines, lost history, previous output, EL preservation, ED clearing and RIS."
+
+[[suites.assertions]]
+id = "terminal.osc133-snapshot-boundaries-and-validation"
+tests = ["osc133_owner_effects_and_invalid_snapshot_markers_are_explicit", "osc133_snapshot_resumes_every_byte_boundary"]
+description = "Every partial OSC133 byte boundary survives JSON/native snapshot restore with exact output markers; invalid row IDs, marker flags and oversized columns are rejected. Owner effects retain prompt/command/status semantics and reject malformed command-line decoding."
+
+[[suites]]
+id = "clear-history-command-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "history_reference", "clear_history_clears_primary_history_from_both_screens_like_c", "--", "--ignored", "--exact"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "terminal.c-clear-history-counters-and-screen-ownership"
+tests = ["clear_history_clears_primary_history_from_both_screens_like_c"]
+description = "The real command clears primary history from either active screen without changing visible cells, and updates C history generation/counters through repeated clears."
+
+[[suites]]
+id = "buffer-command-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "clipboard_reference", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "buffers.c-append-empty-rename-and-clipboard-targets"
+tests = ["buffer_append_empty_rename_and_clipboard_flags_match_c"]
+description = "C matches explicit-name-only append, empty no-op, named/automatic selection, unknown clipboard-client tolerance, empty-name rejection and rename flag precedence."
+
+[[suites.assertions]]
+id = "buffers.c-named-capture-and-print-precedence"
+tests = ["named_capture_buffers_preserve_bytes_ownership_and_print_precedence"]
+description = "Real C empty-pane input matches named capture bytes, preserved unrelated user buffer, -p overriding -b without replacement, empty-name errors, and automatic-buffer default selection."
+
+[[suites]]
+id = "buffer-native-clipboard-targets"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "native_views", "buffer_clipboard_flags_target_exact_native_view_and_keep_binary_data", "--", "--exact"]
+env = {}
+
+[[suites.assertions]]
+id = "buffers.native-exact-client-clipboard-and-binary-load"
+tests = ["buffer_clipboard_flags_target_exact_native_view_and_keep_binary_data"]
+description = "set/load -w target precisely one native view, preserve binary data and leave the other view untouched; empty load preserves the buffer."
+
+[[suites]]
+id = "pane-creation-and-history-flags"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "pane_flags_reference", "--", "--include-ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "graph.c-creation-styles-and-contextless-geometry-flags"
+tests = ["creation_styles_and_contextless_geometry_flags_match_c", "native_creation_styles_and_history_trim_survive_snapshots"]
+description = "New/split -s sets both native color styles with C option/format bytes and native snapshot colors. Contextless resize/new/move-pane -M follows C flag precedence, including move source/target validation before the no-op; break-pane ignores x/X/y/Y unless floating -W is requested, even when the ignored values are invalid."
+
+[[suites.assertions]]
+id = "terminal.c-resize-history-pull-and-precedence"
+tests = ["resize_trim_history_and_flag_precedence_match_c", "native_creation_styles_and_history_trim_survive_snapshots"]
+description = "resize-pane -T pulls history into space below the cursor with exact C capture/cursor/history-counter bytes, taking precedence over M/Z/invalid dimension arguments; repeated requests and alternate-screen ownership agree. Allocation-sensitive -N captures use matched input batches and are checked before and after trimming. Native snapshots preserve the new history cut and accept subsequent input."
+
+[[suites.assertions]]
+id = "difference.native-pane-creation-presentation-flags"
+tests = ["creation_presentation_flags_are_explicit_no_mutation_differences"]
+description = "For both new-pane and split-window, C accepts m/S/R exit-message/border styles, noncolor -s styles and invalid color strings stored before rendering. Native returns an explicit unsupported error before any pane/terminal/option mutation; valid static -s colors have separate C/native effect evidence."

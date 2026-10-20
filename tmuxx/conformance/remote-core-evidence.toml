@@ -1,0 +1,351 @@
+# Full existing core matrices run natively; only the pinned C oracle is remote.
+
+[[suites]]
+id = "windows-remote-core-commands"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 2
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "commands_reference", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 600
+
+[[suites.assertions]]
+id = "command.c-registry-help-prefix-and-errors"
+tests = ["registry_help_aliases_prefixes_and_argument_errors_match_c"]
+description = "Current C exact list-commands default/help/verbose/custom bytes and source order, aliases/prefixes, selection and empty suppression, and unknown/ambiguous/flag/arity/usage errors. Listed syntax is not an implementation claim for every command."
+
+[[suites.assertions]]
+id = "command.c-json-canonical-errors-and-display-precedence"
+tests = ["display_json_canonical_bytes_errors_and_flag_precedence_match_c"]
+description = "Restricted JSON preserves escapes, sorts keys, validates signed64 numbers/object arrays and compares malformed-input diagnostics byte-for-byte; -j ignores -a/-I and -F conflicts with positional messages."
+
+[[suites]]
+id = "windows-remote-core-options"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 15
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "options_reference", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 600
+
+[[suites.assertions]]
+id = "options.c-scope-arrays-validation-quoting"
+tests = ["scope_array_and_display_contracts", "scalar_validation_and_quoting_contracts"]
+description = "C executable agrees on scoped/inherited options, array append/delete/index rules, scalar validation, abbreviations, toggles and C argument quoting. Verified pinned C and3.7c."
+
+[[suites.assertions]]
+id = "options.c-current-array-keys-and-output-fields"
+tests = ["head_array_keys_and_output_formats"]
+description = "Current C keyed arrays and show-options output-format metadata; these fields differ from3.7c."
+
+[[suites.assertions]]
+id = "options.c-all-generated-defaults-and-query-metadata"
+tests = ["all_generated_defaults_and_query_metadata_match_head"]
+description = "All generated global/server/window defaults, inherited views, hooks and query metadata match image-enabled current C with deterministic startup environment."
+
+[[suites.assertions]]
+id = "options.c-new-window-size-and-command-defaults"
+tests = ["default_size_drives_new_windows_with_independent_manual_sizes", "window_default_command_precedence_and_start_command_quoting"]
+description = "Current C default-size drives creation independently of existing manual window sizes; window-default-command precedence and C argument quoting determine retained pane start commands."
+
+[[suites.assertions]]
+id = "options.c-format-flags-and-array-values"
+tests = ["format_option_flags_are_numeric_and_arrays_join_in_key_order"]
+description = "Format lookups expose flags as numeric values and join sparse option arrays in key order while retaining local scope shadowing."
+
+[[suites.assertions]]
+id = "options.c-key-name-aliases"
+tests = ["key_option_aliases_and_modifier_names_are_canonical"]
+description = "Key-valued options canonicalize named keys, aliases, control/meta/shift modifiers and hexadecimal spellings as C does."
+
+[[suites.assertions]]
+id = "options.c-native-color-style-queries-and-append"
+tests = ["native_color_style_queries_and_append_match_c"]
+description = "Static pane color styles preserve C scope, append separators, exact query bytes, inheritance and invalid-color diagnostics."
+
+[[suites.assertions]]
+id = "options.c-color-validation-and-format-context"
+tests = ["color_option_validation_and_expansion_match_c"]
+description = "C option writes, diagnostics, unchanged values and cursor_colour match for named/index/RGB/default/terminal colors, empty strings, context-free dynamic formats and malformed syntax. Generated IS_COLOUR flags enforce the same validation for scoped color options."
+
+[[suites.assertions]]
+id = "options.c-declared-scope-and-flag-precedence"
+tests = ["declared_option_scope_and_flag_precedence_match_c"]
+description = "All 16 combinations of g/s/p/w flags preserve C's declared builtin scopes, pane-before-global precedence and user-option scope precedence; exact queries include quiet scalar-index errors and scalar indexed display."
+
+[[suites.assertions]]
+id = "options.c-target-format-and-unset-append-contract"
+tests = ["option_name_value_and_output_formats_use_explicit_target_context", "option_unset_only_append_and_array_key_flag_combinations_match_c", "native_color_style_queries_and_append_match_c"]
+description = "Option names, -F values and show templates preserve explicit duplicate winlink context. u/U/o/q/a combinations cover window and pane-local removal, inherited values, sparse numeric/text keys, leading plus and nested-open-bracket keys; style append handles absent local values and C's failed-string-validation local rollback."
+
+[[suites.assertions]]
+id = "options.c-choice-flag-and-numeric-edges"
+tests = ["option_choice_flag_and_numeric_edge_values_match_c"]
+description = "Five distinct choice tables require exact value names, reject aliases/prefixes, toggle only the first two choices and preserve later choices on omitted values. Empty flag strings toggle, numeric leading whitespace is accepted, trailing bytes reject, and signed overflow retains C's too-small/too-large diagnostics."
+
+[[suites.assertions]]
+id = "difference.option-malformed-array-diagnostic"
+tests = ["malformed_array_key_diagnostics_are_a_deterministic_native_difference"]
+description = "Both implementations reject numeric overflow, empty and malformed closing-bracket keys, preserve stored arrays and honor quiet suppression. Rust deterministically reports invalid option; C's uninitialized ambiguous flag may select invalid or ambiguous option and no other diagnostic is accepted."
+
+[[suites]]
+id = "windows-remote-core-graph"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 18
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "graph_reference", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 600
+
+[[suites.assertions]]
+id = "graph.c-session-groups-and-targets"
+tests = ["grouped_sessions_share_windows_and_keep_selections", "targets_ids_prefix_glob_offsets_and_marked_context"]
+description = "C executable matches grouped-session window sharing with independent selection and target IDs/prefixes/globs/offsets/marked context. These two tests also pass3.7c."
+
+[[suites.assertions]]
+id = "graph.c-current-placement-and-group-reuse"
+tests = ["window_placement_replacement_insertion_and_last", "group_name_reuse_does_not_join_unrelated_group"]
+description = "Current C placement/insertion/replacement/last-window and fixed group-name reuse, including named destination replacement/linking, removed last-history pruning, special indexes and invalid relative index errors. Older3.7c behavior intentionally differs; no normalization hides that divergence."
+
+[[suites.assertions]]
+id = "graph.c-current-layout-metadata-winlinks-and-marks"
+tests = ["head_layout_json_has_exact_order_active_and_history_metadata", "moving_renumbering_and_duplicate_winlinks_preserve_identity", "marked_targets_follow_exact_winlinks_and_invalidate_after_pane_moves"]
+description = "Current C exact JSON layout ordering/active/history fields, duplicate winlink identity and renumbering, and marked targets through links and pane moves."
+
+[[suites.assertions]]
+id = "graph.c-format-identity-order-and-zoom-geometry"
+tests = ["graph_format_fields_keep_winlink_order_indices_and_marks", "pane_graph_flags_edges_and_unzoomed_geometry_match_c"]
+description = "Current C exact graph format fields preserve duplicate winlink order, active/last/marked indices, groups, format types, pane flags/edges and unzoomed sizes, including hidden-pane resize and border-status behavior during zoom."
+
+[[suites.assertions]]
+id = "graph.c-per-link-alert-state"
+tests = ["alert_flags_belong_to_links_and_survive_grouping_and_renumbering"]
+description = "Current C per-link activity/bell flags, raw/escaped window flags, session alert aggregation, all-link clearing, grouped copies and target-only renumbering match exact bytes; disabling monitors preserves recorded flags."
+
+[[suites.assertions]]
+id = "graph.c-renumber-scope-index-wrap-and-selection"
+tests = ["renumbering_scope_groups_unlink_and_index_wrap_match_c"]
+description = "C exact graph identity/index/current/last observations cover unrelated sessions, grouped automatic renumber with independent bases, unlink without renumber, source-only move renumber, old-link group selection, INT_MAX wraparound and insertion errors without mutation."
+
+[[suites.assertions]]
+id = "graph.c-command-name-formats-and-control-escaping"
+tests = ["command_names_expand_formats_and_escape_control_characters"]
+description = "C command creation/rename names accept empty text, colon/dot/hash punctuation, expand supplied formats once and escape newline/tab/backslash controls while preserving ID-based targeting. break-pane keeps its explicit name literal in both split and move paths and disables automatic renaming."
+
+[[suites.assertions]]
+id = "graph.c-kill-all-filters-duplicates-and-global-renumber"
+tests = ["kill_window_all_filters_duplicates_and_global_renumber_match_c"]
+description = "Current C kill-window -a/-f dynamically reevaluates filters after each removal, rejects -f without -a, destroys matching duplicated target windows, renumbers all sessions only after the batch and leaves a lone link untouched."
+
+[[suites.assertions]]
+id = "format.c-observable-fields-without-graph-context"
+tests = ["observable_format_fields_without_graph_context_match_c"]
+description = "Every observable scope field except eight separately tested OS/time/version globals is queried through context-free list-commands. All 184 fields preserve C absence/default rules even while a graph exists, including pane markers, session attachment and window linkage."
+
+[[suites.assertions]]
+id = "format.c-pane-input-state-and-output-generation"
+tests = ["pane_input_and_output_generation_fields_match_c"]
+description = "Empty-pane injection compares exact output generation after nonempty, empty and partial-CSI chunks; repeated select-pane -d and -e expose C input-disable state without adding output generations."
+
+[[suites.assertions]]
+id = "graph.c-kill-session-alerts-groups-and-filters"
+tests = ["kill_session_clear_alerts_groups_and_filters_match_c"]
+description = "Current C kill-session -C clears only the target session's alerts, preserves shared winlinks, and takes precedence over -a. Invalid filter combinations reject; -g removes a whole group, while -af reevaluates graph-dependent filters in session-name order."
+
+[[suites.assertions]]
+id = "graph.c-window-navigation-toggle-alerts-and-precedence"
+tests = ["window_navigation_toggle_alerts_and_flag_precedence_match_c"]
+description = "Current C select-window -T and next/previous alert filtering preserve current/last windows; combined navigation flags follow next/previous/last precedence, sparse indexes wrap, and missing next/previous/last returns exact errors without selection changes."
+
+[[suites.assertions]]
+id = "graph.c-floating-edge-callback-border-scopes"
+tests = ["floating_pane_edge_fields_follow_local_border_status_like_c"]
+description = "Current C top/bottom/left/right edge fields and unzoomed geometry match across all window and pane-local border-status choices, single/none floating borders, and top/bottom edge positions. Tiled panes retain window-scoped status while floating callbacks honor pane-local status and disabled borders."
+
+[[suites]]
+id = "windows-remote-core-environment"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 2
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "environment_reference", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 600
+
+[[suites.assertions]]
+id = "environment.c-scopes-hidden-cleared-format-and-errors"
+tests = ["environment_scopes_hidden_cleared_errors_and_format_values_match_c", "new_session_environment_overrides_are_ordered_and_local"]
+description = "C/R exact set/show observations cover isolated global/session values, hidden/cleared/unset transitions, shell escaping, global/local format target context, diagnostics and ordered repeated new-session overrides; bare -e NAME is ignored as in C."
+
+[[suites]]
+id = "windows-remote-core-panes"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 18
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "panes_reference", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 600
+
+[[suites.assertions]]
+id = "graph.c-pane-rotate-and-swap"
+tests = ["rotate_and_swap_preserve_positions_and_selection"]
+description = "C pane rotation/swap preserves geometry and selection; this contract also passes3.7c."
+
+[[suites.assertions]]
+id = "graph.c-current-pane-join-break-fullsize-layouts"
+tests = ["join_and_break_preserve_pane_identity_and_nested_geometry", "full_window_splits_and_joins_use_proportional_geometry", "preset_layouts_cycles_spread_and_restore", "custom_layout_indexes_active_history_and_excess_cells", "floating_restore_geometry_and_modal_stacking", "legacy_layout_keeps_floats_and_swaps_transfer_cell_geometry", "creation_tiled_and_floating_split_flags", "floating_ownership_and_saved_geometry_follow_moves_and_swaps"]
+description = "Current C pane join/break identity, nested/full-window geometry, preset/cycle/spread/restore and custom layout metadata. Includes float restore/modal stacking, legacy-layout float retention, swap geometry and shared tiled/floating creation flags. Older3.7c join-before list ordering intentionally differs from current C."
+
+[[suites.assertions]]
+id = "graph.c-floating-move-resize-modal-and-overzoom"
+tests = ["floating_panes_preserve_tree_positions_stacking_and_retile", "all_floating_windows_resize_and_presets_keep_independent_geometry", "floating_move_resize_positions_and_z_order", "new_floating_and_modal_panes_share_process_graph_and_selection", "zoomed_creation_and_overlay_geometry_survive_unzoom", "shrinking_windows_clamps_floating_panes_with_their_borders", "over_zoom_stacking_skips_hidden_floats"]
+description = "Exact C geometry, active identity, modal ownership and full/visible layout records cover floating creation, retile and all-floating windows; signed/percentage positioning and z-order; modal operation rejection; over-zoom visibility and restoration; and border-aware clamping through shrink/growth."
+
+[[suites.assertions]]
+id = "graph.c-pane-border-status-outer-rows"
+tests = ["pane_border_status_reserves_only_outer_tiled_rows"]
+description = "Current C pane-border-status reserves outer tiled rows through top/bottom transitions without double-charging split separators or floating panes."
+
+[[suites.assertions]]
+id = "graph.c-pane-selection-title-style-input-and-zoom"
+tests = ["select_pane_last_title_input_styles_and_zoom_flags_match_c"]
+description = "Last-pane fallback, input toggles on the selected last pane, expanded title updates without selecting the target, static color style/query aliases and directional/explicit zoom retention match C including hidden pane geometry."
+
+[[suites]]
+id = "windows-remote-core-formats"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 7
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "formats_reference", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 600
+
+[[suites.assertions]]
+id = "format.c-context-loops-sorting-and-neighbours"
+tests = ["contextual_session_window_pane_loops_and_name_checks_match_c"]
+description = "C session/window/pane nested loops, sorting/reversal, active branches, loop metadata, neighboring windows/options, name existence and compound loop length. Output/context recursion is bounded."
+
+[[suites.assertions]]
+id = "difference.format-context-resource-bounds"
+tests = ["contextual_resource_bounds_are_an_explicit_reference_difference"]
+description = "Exact C/R observations at 16/17 nested window loops and the 17-session 1,114,112-byte loop: Rust retains the documented 16-context/1MiB resource bounds and rejects beyond them."
+
+[[suites.assertions]]
+id = "format.c-option-and-environment-collections"
+tests = ["option_and_environment_scopes_arrays_and_removed_entries_match_c"]
+description = "Current C local O session/window/pane scopes, arrays/index/count/first/last/loop metadata, filtered global user options and V session/global hidden/removed values. Full global default/hook enumeration requires separate assertions."
+
+[[suites.assertions]]
+id = "format.c-all-global-options-and-hook-metadata"
+tests = ["global_option_collections_and_hook_metadata_match_head"]
+description = "Image-enabled current C full O global session/window/server defaults and hooks, including scope-flag precedence and per-entry array/loop metadata."
+
+[[suites.assertions]]
+id = "format.c-pane-z-order-and-sort-flag-precedence"
+tests = ["pane_z_sort_and_flag_precedence_match_c"]
+description = "Current C pane z order and reversed equal-z ties, index/name/z precedence and ignored irrelevant sort flags."
+
+[[suites.assertions]]
+id = "format.c-implicit-graph-and-nested-collection-contexts"
+tests = ["nested_collections_use_resolved_graph_context_types"]
+description = "Current C implicit active window/pane defaults retain the outer format type; nested S/W/P/O/V collections recompute resolved graph types for session/window/pane lists, display and context-free list-commands. Client L nesting is additionally checked by the runtime identity suite."
+
+[[suites.assertions]]
+id = "format.c-visible-pane-content-search"
+tests = ["pane_content_formats_search_visible_rows_and_application_screen"]
+description = "C pane C glob/regex/case-insensitive content search returns the first one-based visible row, ignores history and trailing row whitespace, switches with the application screen and retains compound length behavior through resize/history eviction."
+
+[[suites]]
+id = "windows-remote-core-titles"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 4
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "titles_reference", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 600
+
+[[suites.assertions]]
+id = "terminal.c-title-and-legacy-rename-policy"
+tests = ["title_and_legacy_rename_options_control_real_input", "respawn_retains_the_pane_title"]
+description = "C OSC/APC titles and ESC-k window names agree at byte/7-byte/full chunk boundaries, including allow-set-title/allow-rename inheritance, explicit title bypass, malformed UTF8, CAN/SUB completion, untrusted name cleanup and automatic-name reset. Respawning a pane or window retains its pane title."
+
+[[suites]]
+id = "windows-remote-core-respawn"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 1
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "respawn_reference", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 600
+
+[[suites.assertions]]
+id = "process.c-respawn-cell-pixel-defaults"
+tests = ["respawn_retains_detached_cell_pixel_defaults"]
+description = "C and native detached pane/window cell-size formats retain the default16x32 pixels before and after both respawn commands."
+
+[[suites]]
+id = "windows-remote-core-pane-flags"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 3
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "pane_flags_reference", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 600
+
+[[suites.assertions]]
+id = "graph.c-creation-styles-and-contextless-geometry-flags"
+tests = ["creation_styles_and_contextless_geometry_flags_match_c", "native_creation_styles_and_history_trim_survive_snapshots"]
+description = "New/split -s sets both native color styles with C option/format bytes and native snapshot colors. Contextless resize/new/move-pane -M follows C flag precedence, including move source/target validation before the no-op; break-pane ignores x/X/y/Y unless floating -W is requested, even when the ignored values are invalid."
+
+[[suites.assertions]]
+id = "terminal.c-resize-history-pull-and-precedence"
+tests = ["resize_trim_history_and_flag_precedence_match_c", "native_creation_styles_and_history_trim_survive_snapshots"]
+description = "resize-pane -T pulls history into space below the cursor with exact C capture/cursor/history-counter bytes, taking precedence over M/Z/invalid dimension arguments; repeated requests and alternate-screen ownership agree. Allocation-sensitive -N captures use matched input batches and are checked before and after trimming. Native snapshots preserve the new history cut and accept subsequent input."
+
+[[suites.assertions]]
+id = "difference.native-pane-creation-presentation-flags"
+tests = ["creation_presentation_flags_are_explicit_no_mutation_differences"]
+description = "For both new-pane and split-window, C accepts m/S/R exit-message/border styles, noncolor -s styles and invalid color strings stored before rendering. Native returns an explicit unsupported error before any pane/terminal/option mutation; valid static -s colors have separate C/native effect evidence."
+
+[[suites]]
+id = "windows-remote-core-layout-nesting"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 1
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "layout_nesting_reference", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 600
+
+[[suites.assertions]]
+id = "layout.c-unary-depth-geometry-and-json"
+tests = ["legacy_unary_depth_boundary_matches_c_geometry_and_json"]
+description = "Both1000-deep legacy split types preserve exact C pane geometry and complete JSON output bytes; a unary JSON command retains C rejection instead of confusing emitted wire state with selectable input."

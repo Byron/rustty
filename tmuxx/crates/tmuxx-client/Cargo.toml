@@ -1,0 +1,14 @@
+[package]
+name = "tmuxx-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "ISC"
+description = "Transport-independent tmux command tracking and session reconciliation"
+
+[dependencies]
+tmuxx-protocol = { path = "../tmuxx-protocol" }
+tmuxx-command = { path = "../tmuxx-command" }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+libc.workspace = true

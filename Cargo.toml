@@ -1,6 +1,6 @@
 [workspace]
-members = ["crates/*"]
-exclude = ["vendor/winit"]
+members = ["crates/*", "tmuxx/crates/*"]
+exclude = ["vendor/winit", "tmuxx/vendor/portable-pty", "tmuxx/vendor/posix-regex"]
 resolver = "3"
 
 [workspace.package]
@@ -11,14 +11,14 @@ license = "MIT"
 
 [workspace.dependencies]
 rustty-parser = { path = "crates/rustty-parser" }
-rustty-vt = { package = "tmuxx-vendored-rustty-vt", git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
-tmuxx-cli = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
-tmuxx-terminal = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
-tmuxx-runtime = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
-tmuxx-protocol = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
-tmuxx-layout = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
-tmuxx-client = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
-tmuxx-command = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
+rustty-vt = { path = "crates/rustty-vt" }
+tmuxx-cli = { path = "tmuxx/crates/tmuxx-cli" }
+tmuxx-terminal = { path = "tmuxx/crates/tmuxx-terminal" }
+tmuxx-runtime = { path = "tmuxx/crates/tmuxx-runtime" }
+tmuxx-protocol = { path = "tmuxx/crates/tmuxx-protocol" }
+tmuxx-layout = { path = "tmuxx/crates/tmuxx-layout" }
+tmuxx-client = { path = "tmuxx/crates/tmuxx-client" }
+tmuxx-command = { path = "tmuxx/crates/tmuxx-command" }
 rustty-font = { path = "crates/rustty-font" }
 rustty-render = { path = "crates/rustty-render" }
 rustty-render-wgpu = { path = "crates/rustty-render-wgpu" }
@@ -33,6 +33,9 @@ flate2 = "1.1"
 lz4_flex = "0.13"
 crc32c = "0.6"
 portable-pty = "0.9"
+clap = { version = "4.6", features = ["derive"] }
+libc = "0.2"
+toml = "0.9"
 egui = "0.36.2"
 egui-winit = { version = "0.36.2", default-features = false, features = ["accesskit", "clipboard", "links"] }
 egui-wgpu = { version = "0.36.2", default-features = false, features = ["winit", "macos-window-resize-jitter-fix"] }
@@ -48,7 +51,7 @@ objc2-user-notifications = "0.3.2"
 
 [patch.crates-io]
 winit = { path = "vendor/winit" }
-portable-pty = { git = "https://github.com/Byron/tmux", rev = "700884116bc7239d032e6c91fb4e37e7c540c335" }
+portable-pty = { path = "tmuxx/vendor/portable-pty" }
 
 [profile.release]
 lto = "thin"

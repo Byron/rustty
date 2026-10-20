@@ -1,0 +1,121 @@
+# Native named-pipe/ConPTY counterparts preserve the complete shared matrices.
+# Original local Unix client/server pairings remain required in their Unix suites.
+# C3.7 lacks reported-pane colors and output-time/automatic-pipe-close behavior;
+# its shared status, pipe, resize, flow, streaming and key matrices run separately.
+
+[[suites]]
+id = "windows-process-control-current-reference"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 9
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability_windows", "--", "--ignored", "--test-threads=1", "--nocapture", "--skip", "native_cli_streams_input_before_eof"]
+env = {}
+timeout = 240
+
+[[suites.assertions]]
+id = "control.c-flow-subscriptions-and-wait-exit"
+tests = ["control_subscriptions_flags_sizes_and_flow_match_c"]
+description = "Native Windows named-pipe client/server and pinned real C clients: exact subscription fields/order, flags, dimensions, extended output, no replay after pause/continue, read-only denial and wait-exit blank acknowledgement. C 3.7 in-guard flow records remain command bytes; newer C and Rust defer notifications."
+
+[[suites.assertions]]
+id = "control.c-window-size-policy-and-immediate-creation"
+tests = ["window_creation_policy_aggressive_resize_and_limits_match_c"]
+description = "Native Windows and real C control clients compare creation print dimensions, latest-client selection versus control refresh, flags-only deferred resizing, same-line refresh-C immediacy, ignore-size fallback, sticky per-window size eligibility, aggressive shared-window filtering, manual size retention through client caps, and raw default-size versus 10000-cell geometry limits."
+
+[[suites.assertions]]
+id = "control.c-reported-pane-color-query-and-lifetime"
+tests = ["control_color_reports_query_precedence_and_lifetime_match_c"]
+description = "Native Windows and real C clients report OSC10/11 pane colors; live application replies compare 8/16-bit RGB, CMYK, decimal wrapping, names, invalid input, precedence over active pane styles, fallback theme, retained reports while any control client exists, deactivation after the last disconnect, reactivation and respawn."
+
+[[suites.assertions]]
+id = "control.c-process-exit-and-output-lifetimes"
+tests = ["process_exit_signal_pipe_and_output_format_lifetimes_match_c"]
+description = "Normal exit 137 and abrupt termination retain their exact native representations (C SIGKILL 9 versus Win32 TerminateProcess status 137), retained pane death time, actual PTY output timestamp, live pipe PID, automatic pipe close on process completion, and metadata reset on respawn."
+
+[[suites.assertions]]
+id = "control.c-supported-process-and-pipe-lifetimes"
+tests = ["process_exit_signal_and_pipe_lifetimes_match_supported_c"]
+description = "The shared HEAD/3.7c process contract verifies exit status versus signal, death time, distinct pane/pipe PIDs, explicit pipe close, and respawn reset. HEAD-only output timestamps and changed automatic pipe closure are tested separately."
+
+[[suites.assertions]]
+id = "process.c-empty-respawn-and-pipe"
+tests = ["empty_respawn_and_pipe_lifecycle_match_c"]
+description = "Native Windows named-pipe client/server and pinned real C clients: finite empty-pane stdin/capture, respawn-window identity/environment, pipe -o/-I/-IO, no duplicate output across respawn and complete 256 KiB final output to a slow sink. The sink is byte-exact against an independent control observer, including ConPTY VT sequences; all 262144 emitted glyph bytes and original C literals remain required. C 3.7 empty PID formatting is version-specific. Incremental stdin is certified by the separate live-stream suite."
+
+[[suites.assertions]]
+id = "process.c-live-stdin-and-cancellation"
+tests = ["live_stdin_streams_before_eof_and_cancels_with_c"]
+description = "Native Windows and pinned real C: split/display -I render before EOF, other clients stay responsive, after-hooks and continuation wait for EOF, over-16-MiB input streams without a finite request buffer, and removed panes cancel input. Both current C and C3.7c also exercise new-pane -I."
+
+[[suites.assertions]]
+id = "process.c-stdin-shutdown-and-pane-wait"
+tests = ["input_shutdown_and_pane_wait_follow_c"]
+description = "Native Windows and pinned real C: shutdown cancels idle stdin with ordinary-client status zero; current C additionally checks split -W exit status 7, SIGTERM 143, and empty-pane removal 129 while subsequent commands resume. C3.7c lacks -W."
+
+[[suites.assertions]]
+id = "process.c-key-retention-flags"
+tests = ["retained_key_panes_and_failed_key_policy_match_c"]
+description = "Native Windows and pinned real C: split-window/new-pane -k store key retention, preserve exit status, hide the cursor and ignore command-injected send-keys for closing. Actual native Key closing is checked separately."
+
+[[suites]]
+id = "windows-process-control-3-7c-reference"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux 3.7c"
+remote_config_env = "TMUXX_REMOTE_C_OLDER_CONFIG"
+remote_fixtures = 7
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability_windows", "--", "--ignored", "--test-threads=1", "--nocapture", "--skip", "native_cli_streams_input_before_eof", "--skip", "control_color_reports_query_precedence_and_lifetime_match_c", "--skip", "process_exit_signal_pipe_and_output_format_lifetimes_match_c"]
+env = {}
+timeout = 240
+
+[[suites.assertions]]
+id = "control.c-flow-subscriptions-and-wait-exit"
+tests = ["control_subscriptions_flags_sizes_and_flow_match_c"]
+description = "Native Windows named-pipe client/server and pinned real C clients: exact subscription fields/order, flags, dimensions, extended output, no replay after pause/continue, read-only denial and wait-exit blank acknowledgement. C 3.7 in-guard flow records remain command bytes; newer C and Rust defer notifications."
+
+[[suites.assertions]]
+id = "control.c-window-size-policy-and-immediate-creation"
+tests = ["window_creation_policy_aggressive_resize_and_limits_match_c"]
+description = "Native Windows and real C control clients compare creation print dimensions, latest-client selection versus control refresh, flags-only deferred resizing, same-line refresh-C immediacy, ignore-size fallback, sticky per-window size eligibility, aggressive shared-window filtering, manual size retention through client caps, and raw default-size versus 10000-cell geometry limits."
+
+[[suites.assertions]]
+id = "control.c-supported-process-and-pipe-lifetimes"
+tests = ["process_exit_signal_and_pipe_lifetimes_match_supported_c"]
+description = "The shared HEAD/3.7c process contract verifies exit status versus signal, death time, distinct pane/pipe PIDs, explicit pipe close, and respawn reset. HEAD-only output timestamps and changed automatic pipe closure are tested separately."
+
+[[suites.assertions]]
+id = "process.c-empty-respawn-and-pipe"
+tests = ["empty_respawn_and_pipe_lifecycle_match_c"]
+description = "Native Windows named-pipe client/server and pinned real C clients: finite empty-pane stdin/capture, respawn-window identity/environment, pipe -o/-I/-IO, no duplicate output across respawn and complete 256 KiB final output to a slow sink. The sink is byte-exact against an independent control observer, including ConPTY VT sequences; all 262144 emitted glyph bytes and original C literals remain required. C 3.7 empty PID formatting is version-specific. Incremental stdin is certified by the separate live-stream suite."
+
+[[suites.assertions]]
+id = "process.c-live-stdin-and-cancellation"
+tests = ["live_stdin_streams_before_eof_and_cancels_with_c"]
+description = "Native Windows and pinned real C: split/display -I render before EOF, other clients stay responsive, after-hooks and continuation wait for EOF, over-16-MiB input streams without a finite request buffer, and removed panes cancel input. Both current C and C3.7c also exercise new-pane -I."
+
+[[suites.assertions]]
+id = "process.c-stdin-shutdown-and-pane-wait"
+tests = ["input_shutdown_and_pane_wait_follow_c"]
+description = "Native Windows and pinned real C: shutdown cancels idle stdin with ordinary-client status zero; current C additionally checks split -W exit status 7, SIGTERM 143, and empty-pane removal 129 while subsequent commands resume. C3.7c lacks -W."
+
+[[suites.assertions]]
+id = "process.c-key-retention-flags"
+tests = ["retained_key_panes_and_failed_key_policy_match_c"]
+description = "Native Windows and pinned real C: split-window/new-pane -k store key retention, preserve exit status, hide the cursor and ignore command-injected send-keys for closing. Actual native Key closing is checked separately."
+
+[[suites]]
+id = "windows-process-native-stdin"
+platforms = ["win32"]
+profiles = ["windows"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability_windows", "native_cli_streams_input_before_eof", "--", "--ignored", "--exact", "--test-threads=1"]
+env = {}
+timeout = 60
+
+[[suites.assertions]]
+id = "process.native-stdin-socket"
+tests = ["native_cli_streams_input_before_eof"]
+description = "Actual native Windows pipe transport supplies acknowledged bounded stdin and EOF while a second CLI observes terminal changes before command completion. No C executable is required."

@@ -1,0 +1,225 @@
+[[suites]]
+id = "cli-default-sockets"
+platforms = ["darwin", "linux"]
+profiles = ["unix-ipc", "command-control", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "socket_defaults"]
+env = {}
+
+[[suites.assertions]]
+id = "cli.standard-socket-namespace-and-precedence"
+tests = ["default_and_label_sockets_use_tmux_namespace_with_separate_native_endpoint"]
+description = "Default and -L use tmux-UID paths with distinct .native endpoint; TMUX routing and explicit -L/-S precedence select the correct server."
+
+[[suites.assertions]]
+id = "cli.native-control-wait-exit-flags"
+tests = ["explicit_native_control_wait_exit_observes_client_flags_and_newline"]
+description = "Explicit native control observes changing client flags and remains alive after %exit until the requested newline."
+
+[[suites.assertions]]
+id = "cli.native-control-capability-before-command"
+tests = ["native_control_rejects_old_servers_before_submitting_commands"]
+description = "A legacy native handshake omitting control_commands is rejected before any command bytes are sent; supported native control uses server-authored guards and source preparation."
+
+[[suites.assertions]]
+id = "cli.clap-help-excluded-modes-and-errors"
+tests = ["clap_help_global_errors_and_excluded_modes_leave_no_server"]
+description = "Clap -h/--help and version are usable without a server; invalid global arguments and explicit excluded shell/log modes have diagnostics and cannot start a daemon."
+
+[[suites.assertions]]
+id = "cli.startup-error-cause-and-path-preservation"
+tests = ["startup_failure_reports_cause_and_preserves_existing_path"]
+description = "The spawning CLI reports a bounded child startup error with its OS cause; a conflicting unrelated path remains byte-identical and no command socket is left behind."
+
+[[suites.assertions]]
+id = "cli.concurrent-startup-and-shutdown-lock-handoff"
+tests = ["startup_waits_for_a_closing_owner_lock_and_converges_concurrent_clients"]
+description = "Eight clients wait for a held prior-owner lock, converge on one daemon and each execute exactly one creation; start/start-server preserve owner PID and following commands through both command and native endpoints."
+
+[[suites.assertions]]
+id = "cli.registry-startup-and-invalid-group-rejection"
+tests = ["startup_uses_all_validated_command_metadata_and_never_starts_invalid_groups"]
+description = "Unique-prefix list-commands starts an absent server; a command group containing invalid registered syntax never starts one."
+
+[[suites]]
+id = "cli-socket-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["unix-ipc", "command-control", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "socket_defaults", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "cli.c-default-and-label-discovery"
+tests = ["unmodified_c_and_rust_clients_share_default_and_label_socket_resolution"]
+description = "Unmodified C client discovers default Rust server and Rust client discovers labeled C server using normal TMUX_TMPDIR, TMUX and -L resolution."
+
+[[suites]]
+id = "cli-runtime-defaults-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "standalone", "app-owned"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "runtime_defaults", "startup_shell_", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "runtime.c-startup-shell-editor-key-defaults"
+tests = ["startup_shell_and_editor_defaults_match_c"]
+description = "Separate C and Rust executables agree on supplied/missing/invalid/self SHELL fallback, complete editor text, empty VISUAL precedence and basename-sensitive vi/emacs key defaults. Passes current C and 3.7c."
+
+[[suites]]
+id = "cli-client-env-format-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "runtime_defaults", "client_environment_", "--", "--ignored", "--test-threads=1"]
+env = {TMUXX_C_TMUX = "$reference"}
+
+[[suites.assertions]]
+id = "format.c-client-request-environment"
+tests = ["client_environment_format_uses_request_environment"]
+description = "Separate C/R command clients expose their individual request environments through V/c, preserve empty values and report correct hidden/removal flags across changing clients."
+
+[[suites]]
+id = "cli-config-lifetime-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "standalone", "app-owned", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "config_lifetime", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "config.c-startup-once-killed-clients-and-early-rejection"
+tests = ["configuration_loads_once_after_starter_loss_and_waiters_observe_completion"]
+description = "Real C/R daemons load configuration once while two successive startup clients are killed. A third waits for a held foreground job, then observes late source effects;140 malformed identified connections close before config completes, exceeding the Rust admission limit without leaking slots. Background completion and subsequent requests retain the single-load result."
+
+[[suites]]
+id = "cli-child-environment-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "standalone", "app-owned"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "runtime_defaults", "child_environment_overrides_and_attach_updates_match_c", "--", "--ignored", "--exact"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "environment.c-real-child-overrides-and-control-attach"
+tests = ["child_environment_overrides_and_attach_updates_match_c"]
+description = "Real C/R children from new-window/split/respawn preserve global inheritance and cleared/hidden masks, ordered repeated -e and ignored bare names, explicit TERM, default-shell and unattached caller PATH precedence. Direct env children distinguish absent PATH fallback from hidden/cleared PATH and explicit/caller overrides. Control attach -E skips imports; ordinary attach imports exact/glob values and clears absent names."
+[[suites]]
+id = "implementation-identity"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "native-views", "app-owned", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "runtime_defaults", "implementation_identity_is_explicit_and_pane_overrides_take_precedence", "--", "--ignored", "--exact"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "difference.implementation-identity"
+tests = ["implementation_identity_is_explicit_and_pane_overrides_take_precedence"]
+description = "Explicit implementation difference: C reports its selected executable version and TERM_PROGRAM=tmux; Rust reports its Cargo package version and TERM_PROGRAM=tmuxx. Actual children observe matching TERM_PROGRAM_VERSION; explicit pane -e overrides take precedence in both."
+
+
+[[suites]]
+id = "cli-file-and-arguments-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "unix-ipc", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "buffers.c-formatted-files-validation-and-errors"
+tests = ["buffer_files_expand_in_queue_and_preserve_validation_and_io_errors"]
+description = "C/R command clients on both C/R servers compare queued format expansion, binary file bytes, append, empty load preservation, missing buffer versus file errors, empty buffer-name ordering, and flag errors. Transfers follow engine validation and suspend only that client queue."
+
+[[suites.assertions]]
+id = "cli.c-all-argument-bytes-status-and-terminal-features"
+tests = ["cli_preserves_non_nul_argv_command_diagnostics_status_and_features"]
+description = "Both clients on both servers preserve every non-NUL argument byte with exact output; command grammar diagnostics, shell status7, generated help, compact -2/-T, ordered feature removals and unknown-token stopping match C."
+
+[[suites.assertions]]
+id = "format.c-display-enumeration-and-native-trace"
+tests = ["display_all_formats_enumerates_present_callbacks_and_native_trace_is_bounded"]
+description = "display -a compares every present callback key and all deterministic values; existing identity/time/allocation assertions cover the explicitly separate fields. C and bounded native -v traces produce the same result; native diagnostic text is an explicit implementation difference."
+
+[[suites.assertions]]
+id = "buffers.c-context-samples-filters-and-creation-time"
+tests = ["buffer_formats_samples_filters_and_creation_times_match_c"]
+description = "Exact C bytes for automatic current-buffer name/full/size/sample formats, binary controls, valid/truncated UTF8,200-byte sample limits and filters. Creation timestamps remain through rename and advance on replacement/append in both servers."
+
+[[suites.assertions]]
+id = "buffers.c-paste-sanitizing-separators-brackets-and-deletion"
+tests = ["paste_bytes_sanitizing_separator_brackets_and_deletion_match_c"]
+description = "C/R real raw children compare every byte, valid/malformed UTF8, default safe encoding, -S literal input, -r, explicit/empty/escape separators, bracketed mode, input-disabled suppression and -d buffer deletion."
+
+[[suites.assertions]]
+id = "control.c-buffer-replacement-eviction-and-file-notifications"
+tests = ["control_buffer_notifications_cover_replacement_eviction_capture_load_and_paste"]
+description = "Real C/R control peers receive exact ordered buffer changed/deleted records for automatic eviction, named replacement/append/rename, asynchronous file load, automatic/named capture, paste-delete and explicit deletion. TAB/NL/backslash/Unicode names are cleaned once; same-name rename and empty pending capture/load emit no records or IDs. Every buffer record between per-step command barriers is compared."
+
+[[suites.assertions]]
+id = "buffers.c-name-cleaning-raw-lookup-and-empty-input"
+tests = ["buffer_names_creation_lookup_rename_and_empty_input_match_c"]
+description = "Both C/R clients on both servers compare exact stdout/status/errors and buffer contents for TAB/NL/backslash/Unicode creation, raw lookup and append, same/replacement rename, named capture and empty input no-ops. Subsequent automatic names verify empty captures do not allocate IDs."
+
+[[suites.assertions]]
+id = "difference.buffer-invalid-name-diagnostic"
+tests = ["invalid_buffer_names_are_rejected_with_safe_native_diagnostic_difference"]
+description = "Both C/R clients on both servers reject ASCII controls and malformed UTF8 on set/rename/capture/file completion without changing stored buffers. Malformed raw lookups cannot show/delete/rename/paste/save a valid U+FFFD named buffer. C's exact raw diagnostic bytes and Rust's exact escaped ASCII bytes are asserted separately: native invalid-name diagnostics cannot inject control records. Empty file reads bypass unused invalid names in both."
+
+[[suites.assertions]]
+id = "difference.buffer-load-size-bound"
+tests = ["load_buffer_limit_is_explicit_preserves_buffers_and_recovers_file_streams"]
+description = "Native and both executable clients accept a16MiB file. Both clients on C accept16MiB+1; on Rust oversized file/stdin loads fail explicitly without replacing buffers or running later same-group commands. Excess Unix input drains without allocation until READ_DONE, keeping C/R control connections usable with C WAIT/late-error framing."
+
+[[suites.assertions]]
+id = "access.c-owner-listing-and-same-user-policy"
+tests = ["same_user_acl_lists_owner_and_rejects_changes_without_mutation"]
+description = "Current C/R default owner ACL listings and missing-argument errors match. C admits/removes an extra ACL in an isolated private directory; Rust explicitly rejects all access changes while owner modes, graph, PIDs and listing remain unchanged."
+
+[[suites.assertions]]
+id = "command.c-scheduler-canonical-format-context"
+tests = ["scheduler_command_formats_are_canonical_and_do_not_leak_to_nested_items"]
+description = "Exact C/R canonical command formats in shell/conditional jobs, source commands, string run-C preparation with ignored extra arguments and retained originating command in after-hooks."
+
+[[suites.assertions]]
+id = "control.c-display-notification-and-print-output"
+tests = ["display_message_uses_control_notification_and_print_flag_like_c"]
+description = "Unattached display is silent, attached display carries an opaque guarded %message line, and -p prints exact command output."
+
+[[suites.assertions]]
+id = "control.c-native-and-unix-command-guard-lifecycle"
+tests = ["native_and_unix_control_preserve_c_command_guards_blocks_and_file_callbacks"]
+description = "C CLI/server streams are compared with Rust CLI on both Unix and explicitly negotiated native endpoints. Every normalized guard and output/notification record is retained through source/block/alias preparation, delayed if/run-shell, hook/background flag0, synchronous group cancellation, deferred file callbacks and rejected control '-' transfers. Only guard clock/number gaps are normalized after enforcing monotonic begin numbers and exact begin/end identity."
+
+[[suites.assertions]]
+id = "difference.clap-driver-help-and-version"
+tests = ["clap_driver_help_and_version_are_explicit_implementation_differences"]
+description = "C -h shows compact usage and rejects --help, while clap supplies full -h/--help; -V identifies each independent executable with its actual package/version. Global mode rejections and command-level byte parity have separate proofs."
+
+[[suites.assertions]]
+id = "difference.native-server-diagnostics-and-bounds"
+tests = ["server_diagnostics_expose_native_logs_jobs_limits_and_c_empty_tty_state"]
+description = "C/R show-messages compare empty headless tty/job lists, optional missing-client targets, live shell-job visibility and zero/bounded retention. Native logs separately assert newest-first command/error records and payload truncation; C accepts message-limit16385 while Rust rejects it without changing the prior limit. Native job IDs/kinds deliberately replace C fd/pid diagnostics."
+
+[[suites]]
+id = "cli-control-environment-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "standalone", "app-owned"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "runtime_defaults", "control_transport_path_override_depends_on_attachment_like_c", "--", "--ignored", "--exact"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "environment.c-control-transport-versus-attachment-path"
+tests = ["control_transport_path_override_depends_on_attachment_like_c"]
+description = "Real control clients creating initial detached/attached session children use caller PATH while unattached. Later attached-client new-window/split/respawn children respect pane PATH overrides; transport mode alone never determines this precedence."
+
+[[suites]]
+id = "cli-selector-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "system-client", "unix-ipc", "native-views", "app-owned", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "selectors", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "cli.c-selector-byte-forwarding"
+tests = ["malformed_selectors_preserve_graph_and_client_forwarding_in_all_pairings", "malformed_selectors_have_exact_control_errors_and_leave_attachment_usable"]
+description = "Both executable clients preserve malformed selector bytes when forwarding to unmodified C, including raw lookup diagnostics and CANFAIL success. All four C/R command and control pairings plus native paths preserve valid U+FFFD names, the graph after rejected destructive probes, repeated-flag precedence and prior-command/following-group/unused-branch timing."
+
+[[suites.assertions]]
+id = "difference.native-selector-utf8-rejection"
+tests = ["malformed_selectors_preserve_graph_and_client_forwarding_in_all_pairings", "malformed_selectors_have_exact_control_errors_and_leave_attachment_usable"]
+description = "Rust execution rejects malformed graph/client target and source selector bytes before lossy String conversion can alias real U+FFFD names. Exact C/R diagnostics and CANFAIL outcomes are asserted separately across ordinary/control/native endpoints; source/destination join/move/swap/link/break, client switching/refresh and detach-source leave the fixture graph and attachment usable. Arbitrary argument and buffer data bytes remain intact."
+

@@ -1,0 +1,660 @@
+schema_version = 1
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+
+[platform_execution.darwin]
+status = "active"
+reason = "macOS implementation and executable conformance continue."
+
+[platform_execution.linux]
+status = "active"
+reason = "Linux server execution is authorized. Exact GNU/Linux host evidence and a platform-specific owner watchdog are required; supported Rustty desktop client obligations remain required."
+
+[platform_execution.win32]
+status = "active"
+reason = "Native Windows implementation and qualification are authorized; activation is not evidence of qualification."
+
+# This is the requested scope, not a list derived from implemented commands.
+# Unknown/new upstream commands, options, formats and regressions stay pending
+# until their assertions have been reviewed and mapped; discovery never excludes.
+[discovery]
+regressions = "regress/*.sh"
+commands = "cmd-*.c"
+options = "options-table.c"
+formats = "format.c"
+
+[profiles.command-control]
+description = "Unix CLI, configuration, commands, control replies and observable effects"
+platforms = ["linux", "darwin"]
+
+[profiles.system-client]
+description = "Client of declared unmodified C tmux control versions"
+platforms = ["linux", "darwin"]
+
+[profiles.native-views]
+description = "Shared engine state, native snapshots, view/input and layout reconciliation"
+platforms = ["linux", "darwin"]
+
+[profiles.standalone]
+description = "Daemon-owned processes and output survive GUI/client restart"
+platforms = ["linux", "darwin"]
+
+[profiles.app-owned]
+description = "Embedded host lifetime and local/remote views of the same processes"
+platforms = ["linux", "darwin"]
+
+[profiles.unix-ipc]
+description = "C and Rust command/control clients using declared imsg schema/ABIs"
+platforms = ["linux", "darwin"]
+
+[profiles.windows]
+description = "ConPTY, desktop/SSH named-pipe access and application ownership"
+platforms = ["win32"]
+execution = "active"
+includes = ["command-control", "system-client", "native-views", "standalone", "app-owned"]
+reason = "Require fresh native Windows evidence for the shared command, protocol, terminal, view and lifetime contracts and all four Windows obligations."
+
+[applicability.unix-imsg]
+platforms = ["darwin", "linux"]
+assertions = ["ipc.four-command-control-pairings", "ipc.ordinary-tty-rejection-before-mutation", "ipc.identify-order-version-and-descriptor-rejection", "control.c-3.7c-command-control-pairings"]
+rationale = "These exact assertions exercise local C/Rust AF_UNIX imsg pairings, SCM_RIGHTS descriptor admission or ordinary tty identify rejection. The Windows product has no local C/Unix-imsg ABI; its account-private named-pipe and native stdio assertions remain required separately. Both supported real C SSH control versions and all shared command, protocol and terminal effects remain required. This prevents mixed suite profile labels from importing Unix-only transport obligations and preserves every original macOS proof member."
+
+[[exclusions]]
+id = "ordinary-tty-renderer"
+reason = "Ordinary ANSI terminal presentation is outside the requested product. Shared terminal state/input assertions remain required."
+assertions = ["tty.status-border-redraw", "tty.interactive-attach-presentation", "tty.chooser-presentation"]
+
+[[assertions]]
+id = "graph.create-split-rename"
+profiles = ["command-control", "native-views"]
+scenario = "graph"
+description = "Create a named session, split and create windows; compare IDs, links, pane indices and rename effects."
+sources = ["session.c", "window.c", "cmd-new-session.c", "cmd-split-window.c", "cmd-rename-window.c"]
+
+[[assertions]]
+id = "format.lookup-and-operators"
+profiles = ["command-control"]
+scenario = "format"
+description = "Exact bytes for supplied fields, nested conditions, comparisons, aliases and user-option lookups."
+sources = ["format.c", "regress/format-strings.sh", "regress/format-modifiers.sh"]
+
+[[assertions]]
+id = "terminal.capture-basic"
+profiles = ["command-control", "native-views"]
+scenario = "capture"
+description = "Real PTY application output including SGR produces exact capture-pane output."
+sources = ["input.c", "cmd-capture-pane.c", "regress/input-sgr.sh"]
+
+[[assertions]]
+id = "input.literal-roundtrip"
+profiles = ["command-control", "native-views"]
+scenario = "input"
+description = "send-keys literal input reaches a raw child and returns through the same pane."
+sources = ["cmd-send-keys.c", "input-keys.c"]
+
+# These obligations must gain evidence; none is made optional because a first
+# implementation lacks its commands, flags, modes, parser state, or transport.
+[[requirements]]
+profiles = ["command-control"]
+ids = [
+  "cli.argv-flags-help-errors", "cli.exit-status-and-diagnostics", "cli.byte-preserving-argv",
+  "config.prepare-before-execute", "config.includes-and-errors", "command.grammar-aliases-and-targets",
+  "command.scoped-flags-and-options", "command.hooks-waits-and-jobs", "command.buffers-and-files",
+  "options.scope-inheritance-arrays", "format.complete-requested-operators", "graph.linked-windows-session-groups",
+  "graph.layout-resize-move-zoom-floating", "native-ui.command-effects-or-explicit-difference",
+]
+
+[[requirements]]
+profiles = ["system-client", "command-control"]
+ids = [
+  "control.every-byte-fragmentation", "control.exact-guards-and-fake-output", "control.notifications-and-subscriptions",
+  "control.commands-errors-and-barriers", "control.slow-client-pause-respawn", "control.concurrent-causal-order",
+  "control.supported-version-matrix", "control.ssh-reconnect-no-duplicate-command", "control.discovery-and-capabilities",
+]
+
+[[requirements]]
+profiles = ["native-views"]
+ids = [
+  "terminal.main-alternate-history", "terminal.unicode-reflow-padding", "terminal.saved-cursor-modes-margins-tabs",
+  "terminal.queries-replied-once", "terminal.hyperlinks-shell-integration-images", "terminal.partial-parser-state",
+  "native.atomic-snapshot-and-update-cut", "native.two-views-independent-selection", "native.shared-layout-and-size-arbitration",
+  "native.reconnect-backlog-overflow", "native.rustty-render-search-adapter", "system.bootstrap-fidelity-limits",
+]
+
+[[requirements]]
+profiles = ["standalone", "app-owned"]
+ids = ["runtime.real-pty-input-resize-exit", "runtime.child-descendant-cleanup", "runtime.slow-client-resource-bounds", "runtime.endpoint-identity-and-access", "runtime.upgrade-version-policy"]
+
+[[requirements]]
+profiles = ["standalone"]
+ids = ["lifetime.persist-ack-gui-restart", "lifetime.detach-output-and-queries", "lifetime.partial-pane-retention-and-links"]
+
+[[requirements]]
+profiles = ["app-owned"]
+ids = ["lifetime.owner-process-exit", "lifetime.remote-loss-keeps-local-job", "lifetime.stale-endpoint-new-incarnation"]
+
+[[requirements]]
+profiles = ["unix-ipc"]
+ids = ["ipc.four-command-control-pairings", "ipc.identify-fd-validation-ownership", "ipc.file-results-ack-exit", "ipc.schema-version-rejection", "ipc.unsupported-tty-rejection-without-mutation"]
+
+[[requirements]]
+profiles = ["windows"]
+ids = ["windows.named-pipe-acl-desktop-ssh", "windows.bridge-no-duplicate-server", "windows.conpty-runtime-packaging", "windows.input-resize-descendant-lifetime"]
+
+[[coverage]]
+obligation = "windows.named-pipe-acl-desktop-ssh"
+assertions = ["windows.pipe-fragmentation-identity-and-bounds", "windows.real-unauthorized-and-network-denial", "windows.real-desktop-local-pipe-ssh-shared-graph", "windows.real-rustty-ssh-view-and-helper-lifetime", "windows.live-protocol-fragments-eof-and-incarnations", "windows.real-rustty-command-ssh-view-and-helper-lifetime"]
+rationale = "Require real account-token and local-only pipe checks, actual distinct-account denial, same-account desktop/OpenSSH access across logon sessions, shared live graph/PIDs, and stale/replacement identity behavior. Discovery names alone earn no authentication evidence."
+
+[[coverage]]
+obligation = "windows.bridge-no-duplicate-server"
+assertions = ["windows.live-native-bridge-shared-panes", "windows.live-protocol-fragments-eof-and-incarnations", "windows.real-ssh-bridge-shells-and-disconnect", "windows.real-desktop-local-pipe-ssh-shared-graph", "windows.real-rustty-ssh-view-and-helper-lifetime", "windows.desktop-external-shared-duplicate-links", "windows.desktop-standalone-retained-restart", "windows.rustty-tmux-dispatch-no-implicit-owner", "windows.rustty-driver-retained-process-and-views", "rustty.native-ssh-command-protocol-selection", "rustty.native-ssh-command-config-preservation", "windows.desktop-persistent-owner-and-missing-attachment", "windows.real-rustty-command-ssh-view-and-helper-lifetime", "windows.rustty-concurrent-persistent-bootstrap"]
+rationale = "Local binary stdio and real cmd/PowerShell OpenSSH bridges must select an existing desktop/standalone owner, preserve pane identity and shared/duplicate links, reject missing or replaced instances, and leave jobs alive across bridge/GUI restarts."
+
+[[coverage]]
+obligation = "windows.conpty-runtime-packaging"
+assertions = ["windows.conpty-resource-hashes-and-negative-initialization", "windows.owner-rejects-missing-incompatible-runtime", "windows.shipped-gui-and-owner-resource-negatives", "windows.conpty-synchronized-output-cursor-order", "windows.atomic-spawn-job-ownership"]
+rationale = "Require the shared initializer's exact pinned resource hashes, both real shipped executables and negative resource cases, actual bundled ConPTY redraw/cursor results, and atomic process ownership. Compilation or an in-box runtime cannot satisfy this proof."
+
+[[coverage]]
+obligation = "windows.input-resize-descendant-lifetime"
+assertions = ["windows.native-hwnd-keyboard-mouse-resize", "windows.native-clipboard-paste-and-fixture-cleanup", "windows.real-ime-preedit-commit-and-restoration", "windows.native-osc52-host-effect-and-query-once", "windows.atomic-spawn-job-ownership", "windows.desktop-app-owner-cleanup", "windows.desktop-standalone-retained-restart", "windows.conpty-synchronized-output-cursor-order", "windows.real-rustty-ssh-view-and-helper-lifetime", "windows.rustty-driver-retained-process-and-views", "windows.desktop-persistent-owner-and-missing-attachment", "windows.real-rustty-command-ssh-view-and-helper-lifetime", "windows.rustty-concurrent-persistent-bootstrap"]
+rationale = "Require real native HWND keyboard/mouse/resize and bracketed paste, actual TSF preedit/commit into the original pane, elected native clipboard write/read with exactly-once pane replies and reconnect behavior, bundled ConPTY cursor ordering, atomic spawn-time ownership, both graceful and abrupt app-owner descendant cleanup with an unrelated survivor, and retained standalone GUI restart plus SSH-viewer lifetime. An IME capability probe, backend encoder, compile, or fixture cleanup alone cannot satisfy these complete executable members."
+
+[[assertions]]
+id = "graph.link-move-unlink"
+profiles = ["command-control", "native-views"]
+scenario = "linked-graph"
+description = "Windows retain identity and shared names across links, moves and session removal."
+sources = ["regress/window-ops.sh", "cmd-move-window.c", "cmd-kill-window.c"]
+
+[[assertions]]
+id = "graph.split-and-resize-geometry"
+profiles = ["command-control", "native-views"]
+scenario = "geometry"
+description = "Before/after cell-sized splits and window resize retain pane positions, dimensions and active identity."
+sources = ["regress/pane-ops.sh", "cmd-split-window.c", "cmd-resize-window.c"]
+
+[[assertions]]
+id = "options.reject-invalid-without-mutation"
+profiles = ["command-control"]
+scenario = "options"
+description = "Numeric/choice options reject invalid values without changing the previous value; user-option append works."
+sources = ["regress/options-values.sh", "options.c", "cmd-set-option.c"]
+
+[[assertions]]
+id = "config.assignment-include-order"
+profiles = ["command-control"]
+scenario = "config-order"
+description = "Assignments and conditions prepare early; source-file executes nested commands before the following queue item."
+sources = ["cmd-parse.y", "cfg.c", "cmd-source-file.c"]
+
+[[assertions]]
+id = "terminal.capture-ranges-and-join"
+profiles = ["command-control", "native-views"]
+scenario = "capture-ranges"
+description = "capture-pane bounds and joined-line flags return exact selected output bytes."
+sources = ["cmd-capture-pane.c"]
+
+[[assertions]]
+id = "graph.nested-layout-resize-and-zoom"
+profiles = ["command-control", "native-views"]
+scenario = "nested-geometry"
+description = "Cell geometry for default/before splits, delta distribution, nested custom ratios, last-pane resizing, zoom restoration and neighbor removal."
+sources = ["layout.c", "layout-custom.c", "cmd-resize-pane.c", "regress/pane-ops.sh", "regress/layout-custom.sh"]
+
+[[assertions]]
+id = "environment.scope-hidden-removal-child"
+profiles = ["command-control"]
+scenario = "environment"
+description = "Global/session inheritance, hidden and removed variables, exact shell quoting, format lookup and a real child's environment."
+sources = ["environ.c", "cmd-set-environment.c", "cmd-show-environment.c", "spawn.c"]
+
+[[assertions]]
+id = "options.inferred-scope-and-unset"
+profiles = ["command-control"]
+scenario = "scoped-options"
+description = "Inferred option scopes, local versus inherited queries, and unset restoring parent or builtin defaults."
+sources = ["options.c", "cmd-set-option.c", "cmd-show-options.c"]
+
+# Reviewed 2026-10-19 against the pinned C sources and the named executable tests.
+# Proofs close only these statements; neighboring broad obligations remain open.
+[[coverage]]
+obligation = "scope:native-ui-policy:1"
+assertions = ["native.ui-command-rejection-state-and-queue"]
+rationale = "The test requires exact equality with the source-audited native-ui command inventory, supplies nested mutating actions, and compares every retained graph/PID/screen/buffer/option observation after each explicit rejection. Dispatch rejects these canonical commands before any implementation effect; independent literal input proves the child and queue remain usable."
+
+[[coverage]]
+obligation = "scope:native-ui-policy:2"
+assertions = ["native.ui-command-rejection-state-and-queue", "native.control-popup-rejection-and-reply"]
+rationale = "The exhaustive native command policy covers nested popup/menu/prompt actions, and a separate attached control client exercises popup rejection followed by the next correlated reply with all retained state unchanged. There is no server-owned UI mode lifetime to retain in this explicitly unsupported profile."
+
+[[coverage]]
+obligation = "scope:native-ui-policy:3"
+assertions = ["native.ui-command-rejection-state-and-queue", "terminal.c-osc133-retained-markers-and-output", "terminal.osc133-snapshot-boundaries-and-validation"]
+rationale = "Dependent send-keys -X/-K and presentation-only flags are explicitly rejected with no state/input mutation. The retained terminal backend separately implements native search, output selection and extraction through reflow, history eviction and snapshot restore; rejecting tmux mode entry does not erase that data."
+
+[[coverage]]
+obligation = "native-ui.command-effects-or-explicit-difference"
+assertions = ["native.ui-command-rejection-state-and-queue", "native.control-popup-rejection-and-reply"]
+rationale = "Every command in the declared native UI surface has the same reviewed explicit unsupported policy, verified against a real owner and live child. Attached control popup rejection also leaves the following command reply intact; command metadata remains available independently."
+
+[[coverage]]
+obligation = "scope:child-input:2"
+assertions = ["input.c-key-mode-modifier-and-backspace-bytes", "native.ui-command-rejection-state-and-queue"]
+rationale = "The C byte oracle covers both prefix and prefix2 through send-prefix and send-prefix -2 across application and extended-key modes, including disabled and aliased key settings. send-keys -K is rejected before child input or native key-table mutation. General named/mouse/focus routing remains a separate obligation."
+
+[[coverage]]
+obligation = "scope:options-types:2"
+assertions = ["options.unsupported-settings-preserve-defaults"]
+rationale = "The test derives every available unsupported option from the same generated C metadata as the setter and confirms explicit rejection plus unchanged default collections. The shared unsupported branch returns before storage for all values and unset/append paths, so an inert accepted setting cannot satisfy this policy."
+
+[[coverage]]
+obligation = "scope:presentation-option-policy:1"
+assertions = ["options.unsupported-settings-preserve-defaults"]
+rationale = "All options in the presentation-only list are outside the writable native-effect allowlist. The metadata-driven test covers each of them and verifies rejection without storage; native pane styles and host theme are scoped separately and are not excluded as presentation."
+
+[[coverage]]
+obligation = "scope:presentation-option-policy:2"
+assertions = ["options.unsupported-settings-preserve-defaults", "options.c-all-generated-defaults-and-query-metadata", "options.c-scope-arrays-validation-quoting"]
+rationale = "The complete image-enabled C default/query inventory covers presentation defaults and inherited absence. Unsupported setters retain the shared argument, option-name, scope, array and type/range validation before reporting the native-profile error, verified by the scalar/array C tests and nonmutation test. This closes the presentation policy, not every supported option behavior."
+
+[[coverage]]
+obligation = "scope:format-evaluation:3"
+assertions = ["format.c-styled-width-trim-and-escaping"]
+rationale = "The exact C expression matrix covers style markers and malformed styles, escaped hash runs and aliases, both trim directions, raw padding, combining/wide text and controls. The implementation shares the reviewed style scanner for measured width and trims while preserving C's different raw-padding rule; graph/process/terminal field callbacks stay under their separate observable-state obligation."
+
+[[coverage]]
+obligation = "scope:pane-layout:2"
+assertions = ["graph.c-pane-border-status-outer-rows", "graph.c-format-identity-order-and-zoom-geometry", "runtime.pane-move-pid-and-pty-size"]
+rationale = "C geometry tests cover top/bottom/off border footprints for outer tiled rows and floating panes, plus hidden panes during zoom and actual window resize. The runtime test changes border status around the same live child and checks its OS PTY size against engine dimensions, preserving PID. Native painting therefore does not bypass the command geometry or process resize contract."
+
+[[coverage]]
+obligation = "scope:native-view-effects:2"
+assertions = ["terminal.c-osc133-retained-markers-and-output", "terminal.osc133-snapshot-boundaries-and-validation"]
+rationale = "The current-C retained-marker fixture checks marker positions/flags/status, history eviction and repeated reflow. It restores the same backend used by Rustty, locates output with native search, selects it through Screen::select_output and compares extracted text with C copy-output/copy-selection bytes. Every parser split and malformed marker snapshot is checked separately. Server UI mode entry remains a distinct policy."
+
+[[coverage]]
+obligation = "scope:native-view-effects:3"
+assertions = ["native.styles-snapshot-and-host-theme", "native.pane-style-theme-and-reconnect", "native.reported-color-query-only-snapshot-and-reconnect"]
+rationale = "Core style tests establish active/inactive pane colors and reported-versus-forced theme semantics; native runtime tests change active panes and host color reports, reconnect, and retain color defaults, underlying application overrides and process identity. Both pieces of this statement remain typed native-visible state."
+
+[[coverage]]
+obligation = "scope:format-absent-context:1"
+assertions = ["format.c-absent-ui-tty-and-selected-client-contexts", "native.ui-command-rejection-state-and-queue"]
+rationale = "The C comparison derives every field from the declared absent-context scope and queries no-client, actual control-client, selected-client, graph-list and context-free command-list contexts. Static buffer/client/tree templates are compared byte for byte. The native policy rejects all tmux widget creation before mutation, so these callbacks cannot mask a retained server-owned UI mode."
+
+[[coverage]]
+obligation = "scope:format-absent-context:2"
+assertions = ["format.c-absent-ui-tty-and-selected-client-contexts", "native.client-cell-dimensions-theme-context"]
+rationale = "Control-client dimensions and theme retain the exact C context rules while native views expose actual grid and cell dimensions and supplied host theme. The real-child test compares OS PTY dimensions and emitted terminal query replies across two-client arbitration, and reconnect checks retain the host theme. Native-only values are supplied by the typed view state rather than inventing a physical tty."
+
+[[coverage]]
+obligation = "scope:configuration:1"
+assertions = ["parser.byte-grammar-and-quoting", "parser.source-expansion-and-errors", "parser.c-text-and-argv", "config.directive-language", "config.prepare-before-execute", "config.c-source-registration-and-error-framing", "config.c-source-stdin-files-flags-and-async-preparation", "command.c-block-versus-string-preparation", "config.relative-include-hidden-job-environment", "config.c-tilde-accounts-home-fallback-and-aliases", "difference.parser-high-bytes", "difference.parser-malformed-source", "difference.native-special-file-policy"]
+rationale = "Text/argv grammar and quoting are compared independently; configuration tests exercise bare/hidden assignments, inactive and nested branches, prepare-before-execute, aliases, relative includes and exact line/group diagnostics. Named-account expansion adds source-boundary cases. Explicit high-byte/malformed-source differences require both sides' outcomes rather than changing expected C bytes."
+
+[[coverage]]
+obligation = "scope:configuration:2"
+assertions = ["config.c-startup-once-killed-clients-and-early-rejection", "command.background-branches-after-disconnect", "config.nested-include-and-error-order"]
+rationale = "The executable lifetime test kills the starter and its replacement while startup is blocked, requires the following replacement to wait, and verifies single-load and late-source effects. More than the admission cap of malformed identified clients must close during the blocked configuration, exercising callback lifetime before completion. Separate scheduler tests cover late job completion and disconnected waiters without reviving freed clients."
+
+[[coverage]]
+obligation = "config.includes-and-errors"
+assertions = ["config.nested-include-and-error-order", "config.relative-include-hidden-job-environment", "config.c-source-registration-and-error-framing", "config.c-source-stdin-files-flags-and-async-preparation", "config.c-tilde-accounts-home-fallback-and-aliases", "difference.native-special-file-policy"]
+rationale = "Nested relative source files execute in source order with preserved source/target context; registration, dry-run, skipped branches, glob flags, verbose line errors and outer-group continuation have exact C comparisons. Named-user/home fallback and alias paths are included."
+
+[[coverage]]
+obligation = "scope:child-input:1"
+assertions = ["input.c-key-mode-modifier-and-backspace-bytes", "input.c-native-pointer-focus-and-paste-bytes", "rustty.native-input-focus-host-effects-and-process-replacement", "options.environment-and-behavior-effects", "input.literal-roundtrip"]
+rationale = "The byte oracle crosses named/control/extended keys and modifiers with application modes, while54 exact C observations cover mouse tracking/encoding, focus and bracketed paste. Actual Rustty Session tests deliver keys/paste/text to synchronized live children using each child's modes, keep mouse/reply input local, aggregate focus across views and gate it with the server option. Literal PTY roundtrip and synchronized option tests connect the command/native entry points to the same reviewed encoder."
+
+[[coverage]]
+obligation = "lifetime.persist-ack-gui-restart"
+assertions = ["lifetime.killed-client-retention-links-detached-query", "lifetime.native-pane-retention-after-all-views-drop"]
+rationale = "The production native bridge receives successful retain acknowledgements before SIGKILL. The owner remains alive with no GUI clients; a new bridge process observes the same retained child PID and output. The separate two-view test checks retention acknowledgement and ephemeral-pane cleanup after all views leave."
+
+[[coverage]]
+obligation = "lifetime.detach-output-and-queries"
+assertions = ["lifetime.killed-client-retention-links-detached-query"]
+rationale = "With every native client process gone, a retained raw child emits detached text and CSI6n, records the exact one reply and polls for duplicates. A newly launched native bridge recovers the text and original PID. The owner is the sole application-query writer through this entire no-view interval."
+
+[[coverage]]
+obligation = "lifetime.partial-pane-retention-and-links"
+assertions = ["lifetime.killed-client-retention-links-detached-query", "lifetime.native-pane-retention-after-all-views-drop"]
+rationale = "The killed-client fixture retains one acknowledged pane in a window shared by two sessions, removes an ephemeral sibling, preserves both exact winlinks and the original PID, and restores that pane through the linked session. The multi-view test checks that cleanup waits for the last view."
+
+[[coverage]]
+obligation = "lifetime.stale-endpoint-new-incarnation"
+assertions = ["lifetime.reused-endpoint-new-incarnation", "rustty.new-incarnation-invalidates-stale-views", "runtime.native-endpoint-identity-and-version"]
+rationale = "A real killed owner is restarted at the same endpoint with reused pane ID and a new instance. Actual Rustty rejects stale view identity even when pane/PID values are reused and sequence decreases, resets host-event routing and isolates previous selection/output. Endpoint inode/version tests separately prevent stale path cleanup or incompatible negotiation from affecting the replacement owner."
+
+[[coverage]]
+obligation = "native.two-views-independent-selection"
+assertions = ["rustty.shared-native-backend-and-independent-views", "rustty.restored-native-search-and-shell-selection", "rustty.native-session-window-and-pane-mapping"]
+rationale = "Actual Rustty attaches multiple Session views to one shared pane through embedded and socket connections. Output and row/image identity stay shared while selection/search remain local; workspace tests extend this to shared windows and duplicate winlinks with distinct native views and exact command targets."
+
+[[coverage]]
+obligation = "native.rustty-render-search-adapter"
+assertions = ["rustty.shared-native-backend-and-independent-views", "rustty.restored-native-search-and-shell-selection", "rustty.native-session-window-and-pane-mapping", "rustty.floating-composition-and-hit-testing", "rustty.modal-key-and-outside-click-owner-routing", "rustty.sixel-owner-creation-order", "rustty.hidden-native-metal-frame", "rustty.retained-agent-state-and-native-view-replay"]
+rationale = "The fingerprinted workspace executes the actual Session restore/search/selection path, workspace mapping, renderer placement ordering and desktop hit/modal routing. A freshly built hidden desktop emits a verified native Metal frame with tiled/floating panes. These assertions verify integration of the retained backend; they do not replace the separate terminal-data/image parity obligations."
+
+[[coverage]]
+obligation = "scope:format-observable-state:1"
+assertions = ["format.c-observable-fields-without-graph-context", "format.c-pane-input-state-and-output-generation", "graph.c-session-groups-and-targets", "graph.c-current-layout-metadata-winlinks-and-marks", "graph.c-format-identity-order-and-zoom-geometry", "graph.c-floating-edge-callback-border-scopes", "graph.c-per-link-alert-state", "graph.c-pane-rotate-and-swap", "graph.c-current-pane-join-break-fullsize-layouts", "format.c-implicit-graph-and-nested-collection-contexts", "format.c-authenticated-client-identity-and-lists", "format.c-absent-ui-tty-and-selected-client-contexts", "format.c-control-tty-counters", "format.c-activity-sorting-and-timestamp-relations", "runtime.c-foreground-command-path-and-automatic-name", "control.c-process-exit-and-output-lifetimes", "terminal.c-history-counters-and-resize", "terminal.native-history-allocation-accounting", "terminal.native-history-allocation-difference", "terminal.c-observable-modes-cursor-progress-and-path", "terminal.c-shell-lifecycle-formats", "terminal.shell-owner-clock-and-event-order", "terminal.c-title-and-legacy-rename-policy", "input.c-key-mode-modifier-and-backspace-bytes", "options.c-new-window-size-and-command-defaults", "native.client-cell-dimensions-theme-context", "difference.implementation-identity"]
+rationale = "Reviewed all 192 named callbacks against their C handlers and Rust dispatch, not by implementation presence. The source-derived no-graph test covers 184 context-dependent/global defaults; the eight OS/time/version globals have identity, clock or explicit implementation-identity proofs. Positive contexts separately exercise graph IDs/order/marks/groups/layouts/alerts, client identification/attachments, live PID/TTY/cwd/exit/pipe state, terminal modes/colors/history/shell data and pane input/output counters. TTY-only control counters/offsets are proven zero or absent; native view/cell/theme fields use real supplied host state. Native history allocation values and implementation identity retain named tested differences. These field-value proofs do not close every command or format-language operator."
+
+[[coverage]]
+obligation = "scope:format-observable-state:2"
+assertions = ["format.c-authenticated-client-identity-and-lists", "format.c-activity-sorting-and-timestamp-relations", "runtime.c-foreground-command-path-and-automatic-name", "control.c-process-exit-and-output-lifetimes", "terminal.shell-owner-clock-and-event-order", "difference.implementation-identity", "control.exact-guards-and-fake-output", "control.commands-errors-and-barriers"]
+rationale = "Server/client identities are compared with authenticated supplied identities, real process/socket/TTY paths and distinct live pipe PIDs. Creation/activity/death/output times use ordering or bounded wall-clock relations; shell timing additionally uses a controlled owner clock. No entire record is normalized. Remote command results, including invalid UTF8 and protocol-looking lines, remain opaque byte vectors through the control codec and client correlation; the system client does not evaluate server callbacks locally."
+
+# Proposed exact all-of coverage, reviewed by rustty_integration. Manifest edits belong to parity.
+[[coverage]]
+obligation = "terminal.main-alternate-history"
+assertions = ["terminal.c-history-counters-and-resize", "terminal.c-history-limits-and-resets", "capture-reference-alternate", "snapshot-screens", "terminal.c-clear-history-counters-and-screen-ownership"]
+rationale = "C compares both screen selections, primary history limits/collection/counters and resize/reset/clear ownership; native snapshots preserve active/saved screens and primary history. Allocator metrics retain their separately recorded difference."
+
+[[coverage]]
+obligation = "terminal.unicode-reflow-padding"
+assertions = ["terminal.c-unicode-combining-cells-and-snapshots", "capture.c-reflow-allocation-bytes", "terminal.c-screen-cursor-palette-and-width-options", "capture.c-retained-tabs-edits-and-normal-reflow", "capture.native-safe-tab-reflow-difference", "upstream.input-strings-colors-unicode-and-malformed", "terminal.native-raw-grid-storage-differences"]
+rationale = "C observes combining/ZWJ/RI/tone cell widths, wide-edge repair, codepoint overrides, normal tab reflow and repeated capture resizing. Exact independent native outcomes explicitly retain oversized/fractured-tab row-bound and raw packed-cell representation differences."
+
+[[coverage]]
+obligation = "terminal.saved-cursor-modes-margins-tabs"
+assertions = ["terminal.c-observable-modes-cursor-progress-and-path", "terminal.c-screen-cursor-palette-and-width-options", "upstream.input-cursor-edits-modes-and-regions", "capture.c-retained-tabs-edits-and-normal-reflow", "capture.snapshot-tabs-malformed-utf8-and-query-boundaries", "input.c-reset-screen-parser-palette-and-snapshot", "capture-restore-color-origin"]
+rationale = "Exact C fields and unchanged input regressions observe saved alternate cursor, modes, margins and tabs; native restore and host reset retain/reset those states and saved rendition with bounded pending-input metadata."
+
+[[coverage]]
+obligation = "terminal.queries-replied-once"
+assertions = ["query-owner", "lifetime.killed-client-retention-links-detached-query", "native.elected-clipboard-reply-and-replay-rejection", "rustty.native-input-focus-host-effects-and-process-replacement", "terminal.graphics-query-profile-and-reset"]
+rationale = "The owner emits one terminal reply, snapshots emit none, actual client death retains the same querying PTY, clipboard election rejects wrong-client/replayed replies, and actual Rustty views suppress duplicate application replies. Graphics query continuation also replies once after restore."
+
+[[coverage]]
+obligation = "terminal.partial-parser-state"
+assertions = ["fragmentation", "restore-checkpoint", "snapshot-legacy-title-strings", "restore-graphics-continuation", "capture.snapshot-tabs-malformed-utf8-and-query-boundaries", "terminal.osc133-snapshot-boundaries-and-validation", "terminal.c-sixel-decode-pixels-and-grid-lifetime", "capture-reference-pending", "input.c-reset-screen-parser-palette-and-snapshot"]
+rationale = "Every-byte/two-chunk fixtures cover UTF8, CSI, OSC/OSC8/OSC133, legacy/APC title, DECRQSS, Kitty upload/query and SIXEL continuation across JSON/native restore, including malformed sequences and capture-only reset bytes. Snapshot restore cannot replay already completed effects."
+
+[[coverage]]
+obligation = "native.atomic-snapshot-and-update-cut"
+assertions = ["protocol.snapshot-atomicity-offsets-and-truncation", "native.atomic-live-snapshot-update-cut", "runtime.native-snapshot-stream-and-recoverable-cap", "runtime.snapshot-large-message-and-image-restore", "native.retained-agent-status-without-views", "rustty.retained-agent-state-and-native-view-replay"]
+rationale = "Native records install only at a validated end. Real socket updates produced while an image snapshot is partially read follow its old cut once; rejected/oversized/truncated snapshots preserve the live owner and permit bounded retry."
+
+[[coverage]]
+obligation = "native.shared-layout-and-size-arbitration"
+assertions = ["native.two-view-smallest-size-pid-stability", "native.client-cell-dimensions-theme-context", "control.c-window-size-policy-and-immediate-creation", "clients.c-automatic-window-sizing-and-caps", "rustty.native-session-window-and-pane-mapping"]
+rationale = "Independent native views share the same process/window graph; cell and pixel dimensions reach real PTY/query arbitration, C window-size and linked-client cap policies select dimensions, and Rustty maps shared/duplicate links and floating/modal layouts without conflating local views."
+
+[[coverage]]
+obligation = "native.reconnect-backlog-overflow"
+assertions = ["native.blocked-view-overflow-and-reconnect", "native.backlog-byte-cap", "runtime.native-snapshot-stream-and-recoverable-cap", "rustty.native-mutation-timeout-no-replay"]
+rationale = "Real blocked native sockets exceed the record cap without losing any healthy-view bytes, the independent byte cap disconnects only the slow client, and reconnect/oversized-snapshot recovery retain the same live PTY PID."
+
+[[coverage]]
+obligation = "system.bootstrap-fidelity-limits"
+assertions = ["system.discovery-capture-live-transition", "system.discovery-retry-budget", "control.discovery-graph-validation", "control.real-ssh-bootstrap-reconnect-indeterminate-loss", "rustty.stock-c-ssh-native-views-and-reconnect"]
+rationale = "The API exposes visible capture separately and keeps needs_snapshot true after capture/live output; it cannot certify missing history/inactive-screen/parser state or an atomic C capture cut. Bounded churn retries, real stock-C SSH discovery, reconnect capture and subsequent native views exercise that explicitly limited contract."
+
+[[coverage]]
+obligation = "runtime.real-pty-input-resize-exit"
+assertions = ["runtime.pty-input-after-client-reconnect", "native.client-cell-dimensions-theme-context", "control.c-process-exit-and-output-lifetimes", "process.c-stdin-shutdown-and-pane-wait", "rustty.native-input-focus-host-effects-and-process-replacement"]
+rationale = "Real PTY children receive input after reconnect, ioctl/query geometry changes, retain exact status versus signal and output lifetime, and produce correct native exit/respawn state without stale selection."
+
+[[coverage]]
+obligation = "runtime.slow-client-resource-bounds"
+assertions = ["runtime.socket-client-admission-and-close", "control.ordered-loss-aware-flow", "native.blocked-view-overflow-and-reconnect", "native.backlog-byte-cap", "runtime.snapshot-large-message-and-image-restore", "protocol.snapshot-atomicity-offsets-and-truncation", "process.pipe-byte-budget", "process.stdin-ownership-and-eof"]
+rationale = "Independent tested limits cover socket workers before identification, control byte/age backlog, native record/byte backlog, immutable streamed snapshots, pipe sinks and acknowledged stdin chunks. Slow consumers cannot retain the owner or suppress healthy clients; cap rejection stays explicit and recoverable where specified."
+
+[[coverage]]
+obligation = "runtime.endpoint-identity-and-access"
+assertions = ["runtime.native-endpoint-identity-and-version", "runtime.owner-private-sockets-and-lock-paths", "format.c-authenticated-client-identity-and-lists"]
+rationale = "Real native/IPC sockets are current-user mode0600, endpoint lifetime/inode locks prevent replacement and unsafe cleanup, lock symlinks reject, and authenticated format identity uses OS peer credentials rather than forged client environment. The listener separately enforces same effective UID; this mapping does not assert an executed privileged cross-UID fixture."
+
+[[coverage]]
+obligation = "runtime.upgrade-version-policy"
+assertions = ["runtime.native-endpoint-identity-and-version", "lifetime.reused-endpoint-new-incarnation", "rustty.new-incarnation-invalidates-stale-views"]
+rationale = "A live endpoint cannot be replaced, incompatible native hello versions fail before queued mutation, and restarting at a reused endpoint gives a new incarnation that closes stale GUI views and resets sequence/event identity. No live PTY-owner migration across executable upgrades is promised."
+
+[[coverage]]
+obligation = "runtime.child-descendant-cleanup"
+assertions = ["runtime.graceful-owner-drop", "runtime.job-descendant-owner-shutdown", "runtime.pty-session-descendant-cleanup", "runtime.c-pty-ownership-boundary", "lifetime.abrupt-owner-pty-hangup"]
+platform_assertions = { darwin = ["lifetime.macos-acknowledged-pty-owner-death"], linux = ["lifetime.linux-acknowledged-pty-owner-death"], win32 = ["lifetime.windows-job-owner-death"] }
+rationale = "Graceful shutdown reclaims jobs and all acknowledged PTY-session groups after leader exit; the selected platform owner SIGKILL watchdog handles ignored-SIGHUP foreground/background groups; Linux and macOS must execute their own exact watchdog assertion; Windows must execute its exact Job Object owner-death assertion. Exact C/native fixtures retain the independently daemonized setsid ownership boundary. The macOS spawn/registration gap remains outside its acknowledged-process contract; the Linux broker owns children before exec and has separate failed-registration/lost-reply evidence."
+
+[[coverage]]
+obligation = "lifetime.owner-process-exit"
+assertions = ["runtime.graceful-owner-drop", "runtime.job-descendant-owner-shutdown", "runtime.pty-session-descendant-cleanup", "runtime.c-pty-ownership-boundary", "lifetime.abrupt-owner-pty-hangup"]
+platform_assertions = { darwin = ["lifetime.macos-acknowledged-pty-owner-death"], linux = ["lifetime.linux-acknowledged-pty-owner-death"], win32 = ["lifetime.windows-job-owner-death"] }
+rationale = "Actual owner drop and SIGKILL remove acceptance and terminate acknowledged ordinary PTY/session jobs, including ignored-SIGHUP descendants after leader exit; a separately owned server remains alive. Deliberate setsid escape remains an explicit boundary. The macOS unacknowledged spawn/registration window remains unclaimed; Linux broker ownership begins before exec."
+
+[[coverage]]
+obligation = "lifetime.remote-loss-keeps-local-job"
+assertions = ["rustty.native-input-focus-host-effects-and-process-replacement", "native.blocked-view-overflow-and-reconnect", "runtime.pty-input-after-client-reconnect", "native.retained-agent-status-without-views", "rustty.retained-agent-state-and-native-view-replay"]
+rationale = "Actual Rustty embedded/local and Unix-connected remote Session views share a PTY; dropping the remote connection emits the final focus transition while the same local child accepts another key and emits END. Separately, blocked-view transport loss and socket reconnect keep healthy views and the same process. SSH is a byte transport over this owner-loss path, not a second process owner."
+
+# Further exact all-of proposals; image/native-view additions have targeted verification in progress.
+[[coverage]]
+obligation = "scope:terminal-state:1"
+assertions = ["upstream.input-cursor-edits-modes-and-regions", "upstream.input-strings-colors-unicode-and-malformed", "terminal.c-history-counters-and-resize", "terminal.c-history-limits-and-resets", "terminal.c-observable-modes-cursor-progress-and-path", "terminal.c-screen-cursor-palette-and-width-options", "terminal.c-unicode-combining-cells-and-snapshots", "capture.c-reflow-allocation-bytes", "capture.c-retained-tabs-edits-and-normal-reflow", "capture.native-safe-tab-reflow-difference", "capture-reference-rendition", "capture-reference-alternate", "capture-reference-pending", "terminal.c-raw-grid-shared-cell-fields", "terminal.native-raw-grid-storage-differences", "capture.snapshot-tabs-malformed-utf8-and-query-boundaries", "snapshot-screens", "input.c-reset-screen-parser-palette-and-snapshot", "capture.snapshot-metadata-bounds"]
+rationale = "Unchanged upstream escape/mode/edit/scroll/OSC/SGR/Unicode/malformed scripts and exact C field/capture fixtures cover application state, both screens/history, cursor/modes/margins/tabs and Unicode reflow. JSON/native continuation checks retain incomplete state and reject invalid metadata. Raw slot representation, allocator metrics and oversized/fractured-tab reflow remain explicit independent native differences rather than normalized comparisons."
+
+[[coverage]]
+obligation = "scope:terminal-state:2"
+assertions = ["query-owner", "lifetime.killed-client-retention-links-detached-query", "terminal.c-title-and-legacy-rename-policy", "snapshot-legacy-title-strings", "terminal.c-observable-modes-cursor-progress-and-path", "terminal.c-shell-lifecycle-formats", "terminal.shell-owner-clock-and-event-order", "terminal.c-osc133-retained-markers-and-output", "terminal.osc133-snapshot-boundaries-and-validation", "terminal.c-screen-cursor-palette-and-width-options", "terminal.c-pane-colors-theme-and-style-policy", "native.reported-color-query-only-snapshot-and-reconnect", "terminal.c-clipboard-selectors-policy-and-default-buffers", "terminal.clipboard-policy-buffer-ownership-and-restore", "native.elected-clipboard-reply-and-replay-rejection", "rustty.native-input-focus-host-effects-and-process-replacement"]
+rationale = "The detached real owner services output/query exactly once, while C terminal/title/path/progress/shell/palette fixtures and checkpoints observe the owner-retained data independently of GUI presentation. Clipboard access is an explicit owner-local policy with one elected host handler and rejected replay; actual Rustty views cannot duplicate terminal replies."
+
+[[coverage]]
+obligation = "scope:terminal-images:1"
+assertions = ["terminal.c-kitty-query-upload-placement-and-chunking", "terminal.c-kitty-crops-offsets-and-deletion-pixels", "terminal.c-image-retained-pixels-and-lifecycle", "terminal.c-image-anchor-reflow", "terminal.c-sixel-decode-pixels-and-grid-lifetime", "terminal.c-sixel-direct-source-quota", "terminal.c-global-image-lru-and-source-map", "terminal.c-per-image-size-limits", "restore-graphics-continuation", "terminal.graphics-query-profile-and-reset", "terminal.snapshot-row-identities-and-settings", "runtime.snapshot-large-message-and-image-restore", "difference.graphics-rustty-image-number-and-layer-extensions", "rustty.sixel-owner-creation-order"]
+rationale = "C replies and rendered pixels cover SIXEL/Kitty decoding, upload/query IDs and chunks, crops/offsets/scaling, deletion/grid clearing, alternate/main ownership, history/reflow/resize and global/per-image quotas. Partial uploads and complete pixels/placements survive bounded native checkpoints and large streamed snapshots. Nonzero layers and image numbers are the separately tested Rustty extensions; unsupported tmux deletion selectors reject explicitly."
+
+[[coverage]]
+obligation = "scope:terminal-images:2"
+assertions = ["terminal.c-image-retained-pixels-and-lifecycle", "terminal.c-image-anchor-reflow", "terminal.c-kitty-crops-offsets-and-deletion-pixels", "terminal.c-sixel-decode-pixels-and-grid-lifetime", "terminal.snapshot-row-identities-and-settings", "runtime.snapshot-large-message-and-image-restore", "rustty.shared-native-backend-and-independent-views", "rustty.sixel-owner-creation-order", "rustty.hidden-native-metal-frame"]
+rationale = "The C oracle is observed through actual graphical-terminal redraw, then every retained opaque pixel/position and lifecycle step is compared to live/restored native state, with explicit SIXEL quantization tolerance. Actual Rustty Session restores retain stable image row anchors and its renderer preserves owner stacking; a hidden Metal frame verifies native panes reach real rendering."
+
+[[coverage]]
+obligation = "terminal.hyperlinks-shell-integration-images"
+assertions = ["capture.c-hyperlink-list-numbering-and-mode-fallback", "capture.c-clear-history-and-shared-hyperlink-reset", "capture.snapshot-tabs-malformed-utf8-and-query-boundaries", "terminal.c-osc133-retained-markers-and-output", "terminal.osc133-snapshot-boundaries-and-validation", "terminal.c-shell-lifecycle-formats", "terminal.shell-owner-clock-and-event-order", "rustty.restored-native-search-and-shell-selection", "terminal.c-kitty-query-upload-placement-and-chunking", "terminal.c-kitty-crops-offsets-and-deletion-pixels", "terminal.c-image-retained-pixels-and-lifecycle", "terminal.c-image-anchor-reflow", "terminal.c-sixel-decode-pixels-and-grid-lifetime", "terminal.c-sixel-direct-source-quota", "terminal.c-global-image-lru-and-source-map", "terminal.c-per-image-size-limits", "restore-graphics-continuation", "runtime.snapshot-large-message-and-image-restore", "difference.graphics-rustty-image-number-and-layer-extensions"]
+rationale = "Exact C hyperlink identity/reset/capture and OSC133 command/output lifecycle fixtures retain markers through history/reflow/restore and drive actual Rustty output search/selection. Image protocol, rendered-pixel, quota, crop/delete and checkpoint assertions cover the separate retained graphics contract with explicit image-number/layer extensions."
+
+[[coverage]]
+obligation = "scope:native-view-effects:1"
+assertions = ["rustty.native-view-wide-cells-viewports-sync-and-cursor", "rustty.shared-native-backend-and-independent-views", "native.blocked-view-overflow-and-reconnect", "native.backlog-byte-cap", "native.atomic-live-snapshot-update-cut", "rustty.desktop-synchronized-output-boundaries", "rustty.desktop-stationary-cursor-and-view-damage", "rustty.desktop-pane-cache-viewports-and-blink", "rustty.renderer-viewport-snapshot-selection"]
+rationale = "Actual native Session snapshots/updates preserve whole wide cells, independent history viewports and stationary cursor visibility through restore. The actual desktop render cache tracks these changes, delays synchronized batches until end/timeout and paints viewport selection identically. Separate real-socket record/byte overflow and atomic-cut tests prove blocked-view recovery without dropping healthy-client output."
+
+[[coverage]]
+obligation = "scope:process-lifecycle:1"
+assertions = ["runtime.failed-spawn-rollback", "process.empty-and-window-respawn", "process.c-empty-respawn-and-pipe", "control.c-process-exit-and-output-lifetimes", "process.c-live-stdin-and-cancellation", "process.c-stdin-shutdown-and-pane-wait", "command.background-branches-after-disconnect", "runtime.job-descendant-owner-shutdown", "runtime.pty-session-descendant-cleanup", "runtime.c-pty-ownership-boundary"]
+platform_assertions = { darwin = ["lifetime.macos-acknowledged-pty-owner-death"], linux = ["lifetime.linux-acknowledged-pty-owner-death"], win32 = ["lifetime.windows-job-owner-death"] }
+rationale = "Real C/Rust process fixtures cover failed/empty spawn, respawn identity and environment, status versus signals, final output draining, stdin cancellation and pane-wait completion; disconnected callbacks cannot revive cancelled work. Graceful and abrupt acknowledged-process cleanup uses the separately tested PTY-session boundary, preserving independent setsid sessions."
+
+[[coverage]]
+obligation = "scope:process-lifecycle:2"
+assertions = ["process.empty-and-window-respawn", "process.c-empty-respawn-and-pipe", "control.c-process-exit-and-output-lifetimes", "runtime.c-session-destruction-and-client-fallback", "rustty.native-input-focus-host-effects-and-process-replacement"]
+rationale = "Window respawn keeps the first pane identity, removes siblings and restores full geometry; actual process/pipe/output observations reset or release stale ownership. C session destruction routes remaining clients according to policy, and actual native Session views replace process state without retaining stale selection."
+
+[[coverage]]
+obligation = "scope:terminal-state:3"
+assertions = ["capture-reference-rendition", "capture-reference-alternate", "capture-reference-pending", "capture-reference-allocations", "capture-reference-backgrounds", "capture.c-hyperlink-list-numbering-and-mode-fallback", "capture.c-line-flags-and-history-timestamps", "capture.c-reflow-allocation-bytes", "capture.c-retained-tabs-edits-and-normal-reflow", "capture.native-safe-tab-reflow-difference", "capture.c-clear-history-and-shared-hyperlink-reset", "terminal.c-raw-grid-shared-cell-fields", "terminal.native-raw-grid-storage-differences", "buffers.c-named-capture-and-print-precedence"]
+rationale = "Exact C capture bytes cover active/saved/missing screens, history/range/order/join, SGR/color origins, escaped/pending bytes, trailing allocation, line flags/timestamps, hyperlinks/raw fields and flag precedence. The actual command also stores named buffers and gives print precedence; explicit packed-cell and oversized/fractured-tab differences are compared independently. No tty renderer is needed for any of these command contracts."
+
+[[coverage]]
+obligation = "scope:environment:1"
+assertions = ["environment.c-scopes-hidden-cleared-format-and-errors", "environment.c-real-child-overrides-and-control-attach", "environment.c-control-transport-versus-attachment-path", "runtime.c-startup-shell-editor-key-defaults", "options.c-new-window-size-and-command-defaults", "options.environment-and-behavior-effects", "config.relative-include-hidden-job-environment", "config.c-source-flags-globs-aliases-shell-validation", "difference.implementation-identity", "command.c-job-flags-delay-cwd-and-target-context"]
+rationale = "Exact C set/show and actual child fixtures cover global/session values, hidden/cleared/removed states, shell escaping and errors, attach update-environment globs/-E, ordered pane/session overrides and command/shell defaults. PATH tests distinguish absent fallback, hidden/cleared suppression and caller precedence using real initial control and attached clients. Shell/editor startup and invalid default-shell paths are separate executable proofs. TERM_PROGRAM and version remain the named implementation-identity difference."
+
+[[coverage]]
+obligation = "scope:options-types:1"
+assertions = ["options.c-all-generated-defaults-and-query-metadata", "options.c-scope-arrays-validation-quoting", "options.c-current-array-keys-and-output-fields", "options.c-declared-scope-and-flag-precedence", "options.c-target-format-and-unset-append-contract", "options.c-choice-flag-and-numeric-edges", "options.c-key-name-aliases", "options.c-native-color-style-queries-and-append", "options.c-color-validation-and-format-context", "options.c-new-window-size-and-command-defaults", "options.c-format-flags-and-array-values", "difference.option-malformed-array-diagnostic"]
+rationale = "Reviewed generated declared types/ranges against C and every shared validation/storage branch. Exact C tests exercise all scope flag combinations, scalar and array/key inheritance, append/u/U/o/q interactions, target-formatted names/values/output, numeric overflow/whitespace, exact choices and toggle rules, keys, colors, style rollback and string patterns. Whole generated default/query metadata remains independently compared. C's uninitialized malformed-key diagnostic is the sole named deterministic-diagnostic difference here; option effects remain under their respective engine/runtime obligations."
+
+[[coverage]]
+obligation = "options.scope-inheritance-arrays"
+assertions = ["options.c-scope-arrays-validation-quoting", "options.c-current-array-keys-and-output-fields", "options.c-declared-scope-and-flag-precedence", "options.c-target-format-and-unset-append-contract", "options.c-all-generated-defaults-and-query-metadata", "options.c-format-flags-and-array-values", "difference.option-malformed-array-diagnostic"]
+rationale = "All g/s/p/w combinations preserve declared builtin and extensible user scopes; window/pane reset and local shadowing follow C. Numeric and textual array keys, key order, appends, local/global unset/default restoration and inherited show metadata have exact C observations, including quiet/error precedence and the explicit malformed-key diagnostic boundary."
+
+[[coverage]]
+obligation = "control.every-byte-fragmentation"
+assertions = ["control.output-byte-fragmentation", "control.exact-guards-and-fake-output", "control.notification-byte-codecs", "control.malformed-and-resource-bounds", "control.unframed-server-output"]
+rationale = "Every byte boundary of pane-output escapes, exact begin/end/error guards and all fields of 23 notification forms is exercised independently. Fake protocol-looking application bytes remain output; malformed escape/guard/record cases enforce the tested resource limits. This closes fragmentation, not every server notification route or concurrent causal order."
+
+[[coverage]]
+obligation = "ipc.identify-fd-validation-ownership"
+assertions = ["ipc.codec-schemas-descriptors", "ipc.codec-invalid-input", "ipc.identify-terminal-feature-bits", "ipc.identify-order-version-and-descriptor-rejection"]
+rationale = "Both declared imsg schemas validate byte layouts and descriptor ownership, feature bits and ordered identification. Real identified peers exercise wrong field lengths, forbidden/repeated descriptors and rejection cleanup; malformed handshakes cannot leak descriptors into a command."
+
+[[coverage]]
+obligation = "ipc.schema-version-rejection"
+assertions = ["ipc.codec-invalid-input", "ipc.identify-order-version-and-descriptor-rejection"]
+rationale = "Both declared schemas reject unsupported protocol versions with the exact VERSION8 response to version7 before command dispatch. Codec boundary cases independently reject impossible sizes/types rather than guessing another schema."
+
+[[coverage]]
+obligation = "ipc.unsupported-tty-rejection-without-mutation"
+assertions = ["ipc.ordinary-tty-rejection-before-mutation"]
+rationale = "Real C and Rust ordinary clients attempt default startup, new-session, attach and new-session -A. Every path is rejected before graph/PID mutation, while control clients continue to use the same server."
+
+[[coverage]]
+obligation = "scope:sessions-windows-targets:1"
+assertions = ["upstream.targets-panes-and-current-context", "graph.c-session-groups-and-targets", "graph.c-current-placement-and-group-reuse", "graph.c-current-layout-metadata-winlinks-and-marks", "graph.c-renumber-scope-index-wrap-and-selection", "graph.c-command-name-formats-and-control-escaping", "graph.c-window-navigation-toggle-alerts-and-precedence", "command.server-selector-roles-and-byte-boundaries", "cli.c-selector-byte-forwarding", "difference.native-selector-utf8-rejection"]
+rationale = "Reviewed the shared target resolver against cmd-find.c, including strict composite session/window/pane validation, exact/prefix/glob ambiguity, IDs, offsets, whole current/mouse/marked targets and inside-pane fallback. Three unchanged upstream scripts require the full target and attached-current contracts. Separate C fixtures cover duplicate winlinks, insertion/INT_MAX renumber boundaries, group-name reuse, marks through moves and current/last navigation; they assert errors and retained state as well as successful IDs. C-derived selector-role validation rejects malformed native lookup bytes before they can alias U+FFFD names; exact executable command/control/native fixtures retain C client forwarding and command execution timing."
+
+[[coverage]]
+obligation = "graph.linked-windows-session-groups"
+assertions = ["graph.link-move-unlink", "graph.c-session-groups-and-targets", "graph.c-current-placement-and-group-reuse", "graph.c-current-layout-metadata-winlinks-and-marks", "graph.c-renumber-scope-index-wrap-and-selection", "graph.c-kill-all-filters-duplicates-and-global-renumber", "graph.c-kill-session-alerts-groups-and-filters", "runtime.c-session-destruction-and-client-fallback", "rustty.native-session-window-and-pane-mapping"]
+rationale = "The graph/C fixtures compare window identity shared across multiple and duplicate links, independent session selections, group creation/reuse/removal, link/move/unlink/kill/renumber and selection fallback. Runtime C tests cover attached-client destruction policies, while actual Rustty creates distinct native views for the same shared window and exact duplicate-link targets. Control notification byte order remains separately required."
+
+[[coverage]]
+obligation = "scope:pane-layout:1"
+assertions = ["graph.nested-layout-resize-and-zoom", "graph.c-pane-rotate-and-swap", "graph.c-current-pane-join-break-fullsize-layouts", "graph.c-floating-move-resize-modal-and-overzoom", "graph.c-pane-selection-title-style-input-and-zoom", "graph.c-creation-styles-and-contextless-geometry-flags", "terminal.c-resize-history-pull-and-precedence", "difference.native-pane-creation-presentation-flags", "layout-input-bounds", "layout-replacement", "layout-preset-minimums-and-identity", "upstream.layout-depth-boundary-and-atomic-rejection", "layout.c-unary-depth-geometry-and-json", "layout.deep-wire-roundtrip-and-resize", "runtime.pane-move-pid-and-pty-size"]
+rationale = "Reviewed split/break/join/move/swap/rotate/resize/select dispatch and target/flag precedence with exact C geometry and selection checks, including proportional/full-window splits, custom/preset/restore layouts, modal rejection, floating ownership/stacking and hidden over-zoom panes. The unchanged nesting script and exact unary-tree fixtures cover C's1000/1001/1500 legacy depth boundary, JSON command admission and atomic rejection. Real child PID/PTY and native reconnect tests connect the geometry to live panes; unsupported creation presentation flags have explicit C-accepts/Rust-rejects nonmutation evidence."
+
+[[coverage]]
+obligation = "graph.layout-resize-move-zoom-floating"
+assertions = ["graph.nested-layout-resize-and-zoom", "graph.c-pane-rotate-and-swap", "graph.c-current-pane-join-break-fullsize-layouts", "graph.c-floating-move-resize-modal-and-overzoom", "graph.c-pane-selection-title-style-input-and-zoom", "graph.c-pane-border-status-outer-rows", "graph.c-format-identity-order-and-zoom-geometry", "layout-replacement", "upstream.layout-depth-boundary-and-atomic-rejection", "layout.c-unary-depth-geometry-and-json", "runtime.pane-move-pid-and-pty-size", "rustty.floating-composition-and-hit-testing"]
+rationale = "Exact C tiled/floating/full/visible layout bytes and pane coordinates cover movement, resize, swap, selection, custom replacement and zoom restoration. Depth/error fixtures preserve the original layout after rejection; border geometry and actual PTY sizing remain required despite native painting. The Rustty integration consumes the same floating geometry and ordering for native composition and hit testing."
+
+[[coverage]]
+obligation = "cli.argv-flags-help-errors"
+assertions = ["cli.c-all-argument-bytes-status-and-terminal-features", "cli.standard-socket-namespace-and-precedence", "cli.registry-startup-and-invalid-group-rejection", "cli.clap-help-excluded-modes-and-errors", "difference.clap-driver-help-and-version", "cli.startup-error-cause-and-path-preservation", "ipc.ordinary-tty-rejection-before-mutation", "cli.concurrent-startup-and-shutdown-lock-handoff", "cli.native-control-capability-before-command"]
+rationale = "All non-NUL argument bytes cross both clients and servers, with canonical registry validation, exit status7 and ordered terminal feature bits. Executable fixtures exercise namespace/explicit endpoint precedence, startup/no-start policy and error causes. Global clap help/version/diagnostics and excluded tty/shell modes have independently asserted implementation differences; unsupported ordinary attachment rejects before daemon mutation."
+
+[[coverage]]
+obligation = "cli.exit-status-and-diagnostics"
+assertions = ["cli.c-all-argument-bytes-status-and-terminal-features", "parser.c-text-and-argv", "command.c-json-canonical-errors-and-display-precedence", "cli.clap-help-excluded-modes-and-errors", "cli.startup-error-cause-and-path-preservation", "cli.concurrent-startup-and-shutdown-lock-handoff", "cli.native-control-capability-before-command", "cli.c-selector-byte-forwarding", "difference.native-selector-utf8-rejection"]
+rationale = "Exact C command stdout/stderr/status, parser/argv validation and structured error output remain separate from the documented clap driver diagnostics. Startup fixtures preserve the original cause and arbitrary socket path bytes, while excluded modes fail before creating a server. Malformed selectors retain exact raw C errors and CANFAIL outcomes; native UTF-8 rejection has separate exact status and diagnostic assertions."
+
+[[coverage]]
+obligation = "cli.byte-preserving-argv"
+assertions = ["cli.c-all-argument-bytes-status-and-terminal-features", "parser.byte-grammar-and-quoting", "parser.c-text-and-argv", "ipc.four-command-control-pairings", "cli.c-selector-byte-forwarding"]
+rationale = "Every non-NUL argument byte is compared across both executable clients and both servers. Independent parser/serialization tests and command/control pairings retain quoting, literal separators, empty arguments and command boundaries without treating a quoted argv value as command text. Malformed selectors remain raw when either executable client connects to C; native selector rejection does not alter arbitrary argument or buffer bytes."
+
+[[coverage]]
+obligation = "scope:buffers-files:1"
+assertions = ["upstream.buffers-paste-and-file-transfers", "buffers.c-formatted-files-validation-and-errors", "buffers.c-context-samples-filters-and-creation-time", "buffers.c-paste-sanitizing-separators-brackets-and-deletion", "buffers.c-append-empty-rename-and-clipboard-targets", "buffers.c-named-capture-and-print-precedence", "buffers.c-name-cleaning-raw-lookup-and-empty-input", "buffers.name-validation-and-empty-noop", "difference.buffer-invalid-name-diagnostic", "control.c-buffer-replacement-eviction-and-file-notifications", "native.buffer-clipboard-target-and-name-rejection", "terminal.c-clipboard-selectors-policy-and-default-buffers", "terminal.clipboard-policy-buffer-ownership-and-restore", "process.c-empty-respawn-and-pipe", "process.pipe-byte-budget", "control.c-supported-process-and-pipe-lifetimes", "difference.buffer-load-size-bound", "difference.native-special-file-policy", "control.c-process-exit-and-output-lifetimes"]
+rationale = "The unchanged buffers script and four-pair fixtures cover named/automatic ordering, binary bytes, raw and cleaned names, append/rename/eviction/filtering, file/stdout and validation failures, empty-input nonmutation, safe/raw/bracketed/separator paste and delete flags. Exact notification streams and native clipboard targets connect successful and rejected writes to observable effects. Separate real process tests require pipe input/output/toggle/closure, respawn identity, complete slow-sink final output and bounded sink failure without losing terminal bytes. Invalid-name diagnostics have explicit C raw-byte versus Rust escaped-byte evidence."
+
+[[coverage]]
+obligation = "command.buffers-and-files"
+assertions = ["upstream.buffers-paste-and-file-transfers", "buffers.c-formatted-files-validation-and-errors", "buffers.c-context-samples-filters-and-creation-time", "buffers.c-paste-sanitizing-separators-brackets-and-deletion", "buffers.c-name-cleaning-raw-lookup-and-empty-input", "buffers.name-validation-and-empty-noop", "difference.buffer-invalid-name-diagnostic", "control.c-buffer-replacement-eviction-and-file-notifications", "native.buffer-clipboard-target-and-name-rejection", "difference.buffer-load-size-bound", "difference.native-special-file-policy", "control.c-process-exit-and-output-lifetimes", "buffers.c-append-empty-rename-and-clipboard-targets", "buffers.c-named-capture-and-print-precedence", "terminal.c-clipboard-selectors-policy-and-default-buffers", "terminal.clipboard-policy-buffer-ownership-and-restore", "process.c-empty-respawn-and-pipe", "process.pipe-byte-budget"]
+rationale = "Reviewed all shared buffer command and file-transfer paths against C. The unchanged regression and targeted C/R client/server fixtures require byte-exact content and errors, target/format/flag precedence, ordered notifications, filtering/sample metadata, resource ownership and no side effects from empty or invalid input. Native clipboard delivery is independently checked for the exact selected view."
+
+[[coverage]]
+obligation = "scope:format-evaluation:1"
+assertions = ["format.lookup-and-operators", "format.pure-operator-subset", "format.short-circuit-and-job-suppression", "format.posix-regex-captures-and-empty-matches", "format.c-tested-expressions", "format.c-regex-substitution-and-compound-order", "format.c-timestamp-and-strftime-expansion", "format.c-relative-difference-and-pretty-time-boundaries", "format.c-styled-width-trim-and-escaping", "format.c-fuzzy-colour-argument-quotes-and-contextless-operators", "format.c-modifier-delimiters-escaping-and-precedence", "format.c-context-loops-sorting-and-neighbours", "format.c-option-and-environment-collections", "format.c-all-global-options-and-hook-metadata", "format.c-pane-z-order-and-sort-flag-precedence", "format.c-implicit-graph-and-nested-collection-contexts", "format.c-visible-pane-content-search", "format.c-attached-clients-and-preserved-target-context", "format.c-live-scoped-hook-arrays", "format.c-activity-sorting-and-timestamp-relations", "format.context-recursion-and-output-bounds", "difference.format-context-resource-bounds", "difference.format-modifier-count-and-recursion", "upstream.format-fuzzy-and-modifiers", "upstream.format-time-range-and-missing-current-window"]
+rationale = "Reviewed every upstream format modifier arm and priority, including contextual loops, name/content lookup, arithmetic, Unicode-aware glob/regex, styled width, substitution, time and malformed input. Exact C matrices and unchanged scripts require the observable bytes; recursion/output/modifier-count limits are separately asserted implementation differences. Native absent-UI callbacks remain under their explicit context policy."
+
+[[coverage]]
+obligation = "scope:format-evaluation:2"
+assertions = ["config.prepare-before-execute", "format.short-circuit-and-job-suppression", "format.c-asynchronous-jobs-stream-cache-and-expansion", "format.job-effect-ownership-cache-bound-and-stale-results"]
+rationale = "Configuration conditions suppress jobs while preserving preparation order and short-circuit rules. Runtime C fixtures exercise asynchronous output/cache/restart/completion and detached contexts; effect ownership tests bound the cache and discard stale results without reviving a lost client."
+
+[[coverage]]
+obligation = "format.complete-requested-operators"
+assertions = ["format.lookup-and-operators", "format.pure-operator-subset", "format.short-circuit-and-job-suppression", "format.posix-regex-captures-and-empty-matches", "format.c-tested-expressions", "format.c-regex-substitution-and-compound-order", "format.c-timestamp-and-strftime-expansion", "format.c-relative-difference-and-pretty-time-boundaries", "format.c-styled-width-trim-and-escaping", "format.c-fuzzy-colour-argument-quotes-and-contextless-operators", "format.c-modifier-delimiters-escaping-and-precedence", "format.c-context-loops-sorting-and-neighbours", "format.c-option-and-environment-collections", "format.c-all-global-options-and-hook-metadata", "format.c-pane-z-order-and-sort-flag-precedence", "format.c-implicit-graph-and-nested-collection-contexts", "format.c-visible-pane-content-search", "format.c-attached-clients-and-preserved-target-context", "format.c-live-scoped-hook-arrays", "format.c-activity-sorting-and-timestamp-relations", "format.context-recursion-and-output-bounds", "difference.format-context-resource-bounds", "difference.format-modifier-count-and-recursion", "upstream.format-fuzzy-and-modifiers", "upstream.format-time-range-and-missing-current-window", "config.prepare-before-execute", "format.c-asynchronous-jobs-stream-cache-and-expansion", "format.job-effect-ownership-cache-bound-and-stale-results"]
+rationale = "The reviewed complete modifier dispatch is covered by the exact pure/contextual C expressions, unchanged regressions and runtime job tests together. This requires each operator family and asynchronous ownership behavior, including the named finite limits, rather than interpreting an unsupported-operator error as a successful implementation."
+
+[[coverage]]
+obligation = "control.notifications-and-subscriptions"
+assertions = ["control.notification-byte-codecs", "clients.c-session-notification-routing", "clients.c-window-and-config-notification-routing", "clients.c-grouped-notification-order-and-multiplicity", "clients.c-pane-movement-and-zoom-notification-order", "control.c-buffer-replacement-eviction-and-file-notifications", "control.c-display-notification-and-print-output", "control.subscription-records", "control.c-flow-subscriptions-and-wait-exit", "upstream.control-guard-order-and-subscriptions", "difference.control-independent-session-close-order", "native.ui-command-rejection-state-and-queue"]
+rationale = "Reviewed every native-reachable control emitter and recipient route. Full non-output streams preserve session/window/group/pane/buffer payloads, multiplicity and order through explicit barriers, including legacy/new layouts and subscription changes. Stock-C mode records remain byte-decodable; native tmux UI modes reject before mutation. The sole independent session-close traversal difference has exact unsorted outcomes and fixed causal boundaries."
+
+[[coverage]]
+obligation = "control.slow-client-pause-respawn"
+assertions = ["control.ordered-loss-aware-flow", "control.c-flow-subscriptions-and-wait-exit", "control.detach-drains-and-bounds-queued-delivery", "control.silent-fifo-eof-and-descriptor-flags", "upstream.control-exit-stalled-run-shell-and-wait", "control.c-process-exit-and-output-lifetimes", "control.no-retry-on-indeterminate-loss", "runtime.c-exit-unattached-flush-and-job-drain"]
+rationale = "Four-way C/R flow tests and unchanged stalled-client scripts exercise pause/continue, suppressed output, wait-exit and delayed jobs. Bounded delivery/FIFO tests require cleanup and restored descriptor flags; process fixtures require correct death/pipe/respawn metadata without replaying lost bytes or commands."
+
+[[coverage]]
+obligation = "control.concurrent-causal-order"
+assertions = ["control.exact-guards-and-fake-output", "control.unframed-server-output", "control.commands-errors-and-barriers", "control.separate-wire-guards-and-native-completion", "control.c-direct-prepared-blocks-and-environment", "control.c-native-and-unix-command-guard-lifecycle", "command.c-scheduler-canonical-format-context", "control.notification-byte-codecs", "clients.c-session-notification-routing", "clients.c-window-and-config-notification-routing", "clients.c-grouped-notification-order-and-multiplicity", "clients.c-pane-movement-and-zoom-notification-order", "control.c-buffer-replacement-eviction-and-file-notifications", "control.c-display-notification-and-print-output", "control.subscription-records", "control.c-flow-subscriptions-and-wait-exit", "upstream.control-guard-order-and-subscriptions", "difference.control-independent-session-close-order", "native.ui-command-rejection-state-and-queue", "control.ordered-loss-aware-flow", "control.detach-drains-and-bounds-queued-delivery", "control.silent-fifo-eof-and-descriptor-flags", "upstream.control-exit-stalled-run-shell-and-wait", "control.c-process-exit-and-output-lifetimes", "control.no-retry-on-indeterminate-loss", "runtime.c-exit-unattached-flush-and-job-drain"]
+rationale = "Complete guarded and non-output traces are compared at each barrier across multiple attached clients and graph mutations. Inserted source/if/hook/background commands retain their own flags and guard identity, while deferred callback output remains unframed. Queue/backpressure, process completion and detach-drain tests preserve these boundaries under asynchronous delivery; independent close ordering is explicitly constrained by its named difference."
+
+[[coverage]]
+obligation = "control.supported-version-matrix"
+assertions = ["ipc.four-command-control-pairings", "control.real-ssh-bootstrap-reconnect-indeterminate-loss", "control.c-3.7c-command-control-pairings", "control.c-3.7c-ssh-discovery-reconnect", "rustty.stock-c-ssh-native-views-and-reconnect", "rustty.stock-c-3.7c-ssh-native-views-and-reconnect"]
+rationale = "The collector independently fingerprints and pins current next-3.9 and older3.7c executables, and the gate rechecks exact named test logs and each per-suite reference identity. Both versions must pass command/control pairings, real SSH discovery/reconnect and actual Rustty SSH native-view tests; a missing, duplicated, stale or wrong-version reference cannot certify this all-of obligation."
+
+[[coverage]]
+obligation = "control.ssh-reconnect-no-duplicate-command"
+assertions = ["control.no-retry-on-indeterminate-loss", "control.commands-errors-and-barriers", "control.real-ssh-bootstrap-reconnect-indeterminate-loss", "control.c-3.7c-ssh-discovery-reconnect", "rustty.stock-c-ssh-native-views-and-reconnect", "rustty.stock-c-3.7c-ssh-native-views-and-reconnect"]
+rationale = "The command client marks interrupted mutations indeterminate and never resubmits them. Separate real SSH tests against both supported C versions interrupt a non-idempotent command and reconnect through fresh discovery; actual Rustty exercises continued native input/output and retained remote panes after reconnect."
+
+[[coverage]]
+obligation = "control.discovery-and-capabilities"
+assertions = ["control.discovery-graph-validation", "system.discovery-capture-live-transition", "system.discovery-retry-budget", "control.real-ssh-bootstrap-reconnect-indeterminate-loss", "control.c-3.7c-ssh-discovery-reconnect", "rustty.stock-c-ssh-native-views-and-reconnect", "rustty.stock-c-3.7c-ssh-native-views-and-reconnect"]
+rationale = "Discovery validates graph identities, duplicate winlinks, references and bounds, captures visible terminal state before live delivery, and retries only discovery under churn with a finite budget. Both supported stock-C versions and actual Rustty prove capability-dependent layout discovery and reconnect; complete hidden remote terminal state remains under the explicit bootstrap-fidelity boundary."
+
+[[coverage]]
+obligation = "scope:control-mode:1"
+assertions = ["control.exact-guards-and-fake-output", "control.unframed-server-output", "control.commands-errors-and-barriers", "control.separate-wire-guards-and-native-completion", "control.c-direct-prepared-blocks-and-environment", "control.c-native-and-unix-command-guard-lifecycle", "command.c-scheduler-canonical-format-context", "control.notification-byte-codecs", "clients.c-session-notification-routing", "clients.c-window-and-config-notification-routing", "clients.c-grouped-notification-order-and-multiplicity", "clients.c-pane-movement-and-zoom-notification-order", "control.c-buffer-replacement-eviction-and-file-notifications", "control.c-display-notification-and-print-output", "control.subscription-records", "control.c-flow-subscriptions-and-wait-exit", "upstream.control-guard-order-and-subscriptions", "difference.control-independent-session-close-order", "native.ui-command-rejection-state-and-queue", "control.ordered-loss-aware-flow", "control.detach-drains-and-bounds-queued-delivery", "control.silent-fifo-eof-and-descriptor-flags", "upstream.control-exit-stalled-run-shell-and-wait", "control.c-process-exit-and-output-lifetimes", "control.no-retry-on-indeterminate-loss", "runtime.c-exit-unattached-flush-and-job-drain", "control.flags-size-and-precedence", "control.c-window-size-policy-and-immediate-creation", "clients.c-automatic-window-sizing-and-caps", "ipc.identify-order-version-and-descriptor-rejection", "cli.native-control-capability-before-command"]
+rationale = "Exact C command, callback and notification streams connect the parser to both Unix and negotiated native clients. Independent sizing/flag and identification tests cover valid and rejected control inputs, while slow delivery, EOF, exit and late job completion retain bounded owner lifetime and per-command reply semantics."
+
+[[coverage]]
+obligation = "scope:control-mode:2"
+assertions = ["control.exact-guards-and-fake-output", "control.unframed-server-output", "control.commands-errors-and-barriers", "control.separate-wire-guards-and-native-completion", "control.c-direct-prepared-blocks-and-environment", "control.c-native-and-unix-command-guard-lifecycle", "command.c-scheduler-canonical-format-context", "control.notification-byte-codecs", "clients.c-session-notification-routing", "clients.c-window-and-config-notification-routing", "clients.c-grouped-notification-order-and-multiplicity", "clients.c-pane-movement-and-zoom-notification-order", "control.c-buffer-replacement-eviction-and-file-notifications", "control.c-display-notification-and-print-output", "control.subscription-records", "control.c-flow-subscriptions-and-wait-exit", "upstream.control-guard-order-and-subscriptions", "difference.control-independent-session-close-order", "native.ui-command-rejection-state-and-queue", "ipc.four-command-control-pairings", "control.real-ssh-bootstrap-reconnect-indeterminate-loss", "control.c-3.7c-command-control-pairings", "control.c-3.7c-ssh-discovery-reconnect", "rustty.stock-c-ssh-native-views-and-reconnect", "rustty.stock-c-3.7c-ssh-native-views-and-reconnect", "control.output-byte-fragmentation", "control.malformed-and-resource-bounds"]
+rationale = "Byte-level codecs and complete live traces preserve record fields and causal order, including unframed deferred output and the independently asserted session-close traversal exception. Versioned real command/SSH/Rustty receipts require both declared C baselines, so new fields cannot gain compatibility through one current-reference transcript alone."
+
+[[coverage]]
+obligation = "scope:hooks-jobs-waits:1"
+assertions = ["command.async-shell-status-and-group-boundaries", "command.background-branches-after-disconnect", "command.wait-channel-fifo-and-disconnect", "command.event-wait-filter-list-and-wake", "command.c-shell-wait-condition-observations", "command.c-current-event-wait-contract", "command.c-job-flags-delay-cwd-and-target-context", "command.c-job-socket-stdin-eof-and-signal", "difference.native-job-delay-bound", "command.c-block-versus-string-preparation", "command.c-scheduler-canonical-format-context", "config.c-source-stdin-files-flags-and-async-preparation", "config.relative-include-hidden-job-environment", "runtime.job-descendant-owner-shutdown", "runtime.c-alert-hooks-and-silence-timers", "runtime.c-shell-event-snapshot-payloads", "hooks.groups-scopes-and-recursion", "hooks.dead-object-context", "hooks.detached-creation-target", "hooks.control-client-lifecycle", "hooks.c-after-arrays-and-creation-targets", "hooks.c-window-navigation-current-target-context", "hooks.c-option-metadata-keys-and-firing-counts", "hooks.c-monitor-truth-links-and-option-lifetime", "hooks.c-current-lifecycle-order", "upstream.monitored-hooks", "native.clipboard-default-denial-opt-in-hook-notification", "control.exact-guards-and-fake-output", "control.unframed-server-output", "control.commands-errors-and-barriers", "control.separate-wire-guards-and-native-completion", "control.c-direct-prepared-blocks-and-environment", "control.c-native-and-unix-command-guard-lifecycle"]
+rationale = "Reviewed shell/conditional scheduling, environment/cwd, command/stdin/stdout/signal behavior, parsed block versus string timing, waits and all native-reachable hook events. Exact C fixtures and strict control guards connect queue insertion to callbacks; disconnected clients cannot be revived and shutdown reaps job descendants. The finite job-delay range is explicit tested policy."
+
+[[coverage]]
+obligation = "scope:hooks-jobs-waits:2"
+assertions = ["hooks.groups-scopes-and-recursion", "hooks.dead-object-context", "hooks.detached-creation-target", "hooks.control-client-lifecycle", "hooks.c-after-arrays-and-creation-targets", "hooks.c-window-navigation-current-target-context", "hooks.c-option-metadata-keys-and-firing-counts", "hooks.c-monitor-truth-links-and-option-lifetime", "hooks.c-current-lifecycle-order", "upstream.monitored-hooks", "native.clipboard-default-denial-opt-in-hook-notification", "command.wait-channel-fifo-and-disconnect", "command.c-current-event-wait-contract", "command.c-block-versus-string-preparation", "control.c-direct-prepared-blocks-and-environment", "control.c-native-and-unix-command-guard-lifecycle"]
+rationale = "Hook option storage uses the reviewed shared scope/array/key machinery, with exact C listing, firing counters, indexed removal, replacement and delayed source context tests. Wait/lock/event cancellation removes ownership without changing other clients FIFO order; inserted hooks retain independent control guards and flags."
+
+[[coverage]]
+obligation = "command.hooks-waits-and-jobs"
+assertions = ["command.async-shell-status-and-group-boundaries", "command.background-branches-after-disconnect", "command.wait-channel-fifo-and-disconnect", "command.event-wait-filter-list-and-wake", "command.c-shell-wait-condition-observations", "command.c-current-event-wait-contract", "command.c-job-flags-delay-cwd-and-target-context", "command.c-job-socket-stdin-eof-and-signal", "difference.native-job-delay-bound", "command.c-block-versus-string-preparation", "command.c-scheduler-canonical-format-context", "config.c-source-stdin-files-flags-and-async-preparation", "config.relative-include-hidden-job-environment", "runtime.job-descendant-owner-shutdown", "runtime.c-alert-hooks-and-silence-timers", "runtime.c-shell-event-snapshot-payloads", "hooks.groups-scopes-and-recursion", "hooks.dead-object-context", "hooks.detached-creation-target", "hooks.control-client-lifecycle", "hooks.c-after-arrays-and-creation-targets", "hooks.c-window-navigation-current-target-context", "hooks.c-option-metadata-keys-and-firing-counts", "hooks.c-monitor-truth-links-and-option-lifetime", "hooks.c-current-lifecycle-order", "upstream.monitored-hooks", "native.clipboard-default-denial-opt-in-hook-notification", "control.exact-guards-and-fake-output", "control.unframed-server-output", "control.commands-errors-and-barriers", "control.separate-wire-guards-and-native-completion", "control.c-direct-prepared-blocks-and-environment", "control.c-native-and-unix-command-guard-lifecycle"]
+rationale = "This requires the reviewed scheduling, command preparation, wait cancellation, monitor/lifecycle hook and guarded callback contracts together. Observable environment, byte output, signal status, graph/input events and post-disconnect lifetime are each exercised independently; no closure is inferred from merely accepting the command names."
+
+[[coverage]]
+obligation = "scope:access-cli:1"
+assertions = ["runtime.native-endpoint-identity-and-version", "runtime.owner-private-sockets-and-lock-paths", "format.c-authenticated-client-identity-and-lists", "ipc.identify-order-version-and-descriptor-rejection", "runtime.socket-client-admission-and-close", "cli.standard-socket-namespace-and-precedence", "cli.startup-error-cause-and-path-preservation", "cli.concurrent-startup-and-shutdown-lock-handoff", "cli.native-control-capability-before-command", "command.readonly-attach-and-explicit-toggle", "access.c-owner-listing-and-same-user-policy", "clients.c-detach-selection-and-ipc-acknowledgement", "control.detach-drains-and-bounds-queued-delivery", "control.c-flow-subscriptions-and-wait-exit", "difference.native-server-diagnostics-and-bounds", "diagnostics.escaped-byte-bounds", "command.server-selector-roles-and-byte-boundaries", "cli.c-selector-byte-forwarding", "difference.native-selector-utf8-rejection"]
+rationale = "Endpoint mode/identity/lock and malformed-identification tests preserve owner-private access and safe cleanup. Real startup contention tests retain permanent causes and recover handoffs; read-only and ACL fixtures require explicit rejection without mutation. Attached-client detach/exit and bounded delivery tests prevent stale callbacks from retaining clients, while native diagnostics expose tested escaped-byte and record limits. C-derived selector-role validation rejects malformed native lookup bytes before they can alias U+FFFD names; exact executable command/control/native fixtures retain C client forwarding and command execution timing."
+
+[[coverage]]
+obligation = "scope:access-cli:2"
+assertions = ["command.c-registry-help-prefix-and-errors", "command.registry-prefix-flags-and-arity", "command.c-json-canonical-errors-and-display-precedence", "upstream.json-grammar-and-display", "cli.c-all-argument-bytes-status-and-terminal-features", "cli.registry-startup-and-invalid-group-rejection", "native.ui-command-rejection-state-and-queue", "options.unsupported-settings-preserve-defaults", "difference.native-server-diagnostics-and-bounds", "diagnostics.escaped-byte-bounds", "command.server-selector-roles-and-byte-boundaries", "cli.c-selector-byte-forwarding", "difference.native-selector-utf8-rejection"]
+rationale = "The full generated C command metadata, aliases, usage and registry-order listing are compared exactly, independently of the explicit native execution allowlist. Raw argv/JSON and validation fixtures require byte-preserving diagnostics and structured output. show-messages truthfully reports the native bounded logs/jobs with a named implementation-content difference; unsupported UI/options reject without side effects. C-derived selector-role validation rejects malformed native lookup bytes before they can alias U+FFFD names; exact executable command/control/native fixtures retain C client forwarding and command execution timing."
+
+[[coverage]]
+obligation = "scope:sessions-windows-targets:2"
+assertions = ["upstream.targets-panes-and-current-context", "graph.c-session-groups-and-targets", "graph.c-current-placement-and-group-reuse", "graph.c-current-layout-metadata-winlinks-and-marks", "graph.c-renumber-scope-index-wrap-and-selection", "graph.c-command-name-formats-and-control-escaping", "graph.c-window-navigation-toggle-alerts-and-precedence", "graph.link-move-unlink", "graph.c-kill-all-filters-duplicates-and-global-renumber", "graph.c-kill-session-alerts-groups-and-filters", "runtime.c-session-destruction-and-client-fallback", "rustty.native-session-window-and-pane-mapping", "clients.c-targets-navigation-cwd-and-zoom", "clients.c-detach-selection-and-ipc-acknowledgement", "clients.c-session-notification-routing", "clients.c-window-and-config-notification-routing", "clients.c-grouped-notification-order-and-multiplicity", "control.c-window-size-policy-and-immediate-creation", "clients.c-automatic-window-sizing-and-caps", "environment.c-real-child-overrides-and-control-attach", "environment.c-control-transport-versus-attachment-path", "upstream.format-time-range-and-missing-current-window", "command.server-selector-roles-and-byte-boundaries", "cli.c-selector-byte-forwarding", "difference.native-selector-utf8-rejection"]
+rationale = "Reviewed session/window dispatch and target/flag precedence with creation/replacement/link/group/move/kill/renumber/filter and current/last selection observations. Named destinations and invalid offsets are part of the placement fixture, whose retained history flags must match C. Actual attached-client tests cover attach/switch/detach, cwd/environment, size policies and targeted notification routing; failures must preserve the tested graph and processes. C-derived selector-role validation rejects malformed native lookup bytes before they can alias U+FFFD names; exact executable command/control/native fixtures retain C client forwarding and command execution timing."
+
+[[coverage]]
+obligation = "command.grammar-aliases-and-targets"
+assertions = ["parser.byte-grammar-and-quoting", "parser.source-expansion-and-errors", "parser.c-text-and-argv", "command.registry-prefix-flags-and-arity", "command.c-registry-help-prefix-and-errors", "command.c-block-versus-string-preparation", "control.c-direct-prepared-blocks-and-environment", "config.c-source-registration-and-error-framing", "config.c-source-stdin-files-flags-and-async-preparation", "difference.parser-high-bytes", "difference.parser-malformed-source", "upstream.targets-panes-and-current-context", "graph.c-session-groups-and-targets", "graph.c-current-placement-and-group-reuse", "graph.c-current-layout-metadata-winlinks-and-marks", "graph.c-renumber-scope-index-wrap-and-selection", "graph.c-command-name-formats-and-control-escaping", "graph.c-window-navigation-toggle-alerts-and-precedence", "command.server-selector-roles-and-byte-boundaries", "cli.c-selector-byte-forwarding", "difference.native-selector-utf8-rejection"]
+rationale = "Byte-oriented text/argv parsing, registry aliases/prefixes/arity, recursive block preparation and source registration are compared independently with C. Parsed blocks retain their timing through direct control transport, and unchanged target scripts cover IDs/names/globs/offsets/current contexts. The declared high-byte and malformed-source differences have independent exact outcomes. C-derived selector-role validation rejects malformed native lookup bytes before they can alias U+FFFD names; exact executable command/control/native fixtures retain C client forwarding and command execution timing."
+
+[[coverage]]
+obligation = "command.scoped-flags-and-options"
+assertions = ["command.c-registry-help-prefix-and-errors", "command.registry-prefix-flags-and-arity", "command.c-json-canonical-errors-and-display-precedence", "upstream.json-grammar-and-display", "cli.c-all-argument-bytes-status-and-terminal-features", "cli.registry-startup-and-invalid-group-rejection", "native.ui-command-rejection-state-and-queue", "options.unsupported-settings-preserve-defaults", "difference.native-server-diagnostics-and-bounds", "diagnostics.escaped-byte-bounds", "upstream.targets-panes-and-current-context", "graph.c-session-groups-and-targets", "graph.c-current-placement-and-group-reuse", "graph.c-current-layout-metadata-winlinks-and-marks", "graph.c-renumber-scope-index-wrap-and-selection", "graph.c-command-name-formats-and-control-escaping", "graph.c-window-navigation-toggle-alerts-and-precedence", "graph.link-move-unlink", "graph.c-kill-all-filters-duplicates-and-global-renumber", "graph.c-kill-session-alerts-groups-and-filters", "runtime.c-session-destruction-and-client-fallback", "rustty.native-session-window-and-pane-mapping", "clients.c-targets-navigation-cwd-and-zoom", "clients.c-detach-selection-and-ipc-acknowledgement", "clients.c-session-notification-routing", "clients.c-window-and-config-notification-routing", "clients.c-grouped-notification-order-and-multiplicity", "control.c-window-size-policy-and-immediate-creation", "clients.c-automatic-window-sizing-and-caps", "environment.c-real-child-overrides-and-control-attach", "environment.c-control-transport-versus-attachment-path", "upstream.format-time-range-and-missing-current-window", "command.async-shell-status-and-group-boundaries", "command.background-branches-after-disconnect", "command.wait-channel-fifo-and-disconnect", "command.event-wait-filter-list-and-wake", "command.c-shell-wait-condition-observations", "command.c-current-event-wait-contract", "command.c-job-flags-delay-cwd-and-target-context", "command.c-job-socket-stdin-eof-and-signal", "difference.native-job-delay-bound", "command.c-block-versus-string-preparation", "command.c-scheduler-canonical-format-context", "config.c-source-stdin-files-flags-and-async-preparation", "config.relative-include-hidden-job-environment", "runtime.job-descendant-owner-shutdown", "runtime.c-alert-hooks-and-silence-timers", "runtime.c-shell-event-snapshot-payloads", "hooks.groups-scopes-and-recursion", "hooks.dead-object-context", "hooks.detached-creation-target", "hooks.control-client-lifecycle", "hooks.c-after-arrays-and-creation-targets", "hooks.c-window-navigation-current-target-context", "hooks.c-option-metadata-keys-and-firing-counts", "hooks.c-monitor-truth-links-and-option-lifetime", "hooks.c-current-lifecycle-order", "upstream.monitored-hooks", "native.clipboard-default-denial-opt-in-hook-notification", "options.c-all-generated-defaults-and-query-metadata", "options.c-scope-arrays-validation-quoting", "options.c-current-array-keys-and-output-fields", "options.c-declared-scope-and-flag-precedence", "options.c-target-format-and-unset-append-contract", "options.c-choice-flag-and-numeric-edges", "options.c-key-name-aliases", "options.c-native-color-style-queries-and-append", "options.c-color-validation-and-format-context", "options.c-new-window-size-and-command-defaults", "options.c-format-flags-and-array-values", "difference.option-malformed-array-diagnostic", "graph.nested-layout-resize-and-zoom", "graph.c-pane-rotate-and-swap", "graph.c-current-pane-join-break-fullsize-layouts", "graph.c-floating-move-resize-modal-and-overzoom", "graph.c-pane-selection-title-style-input-and-zoom", "graph.c-creation-styles-and-contextless-geometry-flags", "terminal.c-resize-history-pull-and-precedence", "difference.native-pane-creation-presentation-flags", "layout-input-bounds", "layout-replacement", "layout-preset-minimums-and-identity", "upstream.layout-depth-boundary-and-atomic-rejection", "layout.c-unary-depth-geometry-and-json", "layout.deep-wire-roundtrip-and-resize", "runtime.pane-move-pid-and-pty-size", "upstream.buffers-paste-and-file-transfers", "buffers.c-formatted-files-validation-and-errors", "buffers.c-context-samples-filters-and-creation-time", "buffers.c-paste-sanitizing-separators-brackets-and-deletion", "buffers.c-append-empty-rename-and-clipboard-targets", "buffers.c-named-capture-and-print-precedence", "buffers.c-name-cleaning-raw-lookup-and-empty-input", "buffers.name-validation-and-empty-noop", "difference.buffer-invalid-name-diagnostic", "control.c-buffer-replacement-eviction-and-file-notifications", "native.buffer-clipboard-target-and-name-rejection", "terminal.c-clipboard-selectors-policy-and-default-buffers", "terminal.clipboard-policy-buffer-ownership-and-restore", "process.c-empty-respawn-and-pipe", "process.pipe-byte-budget", "control.c-supported-process-and-pipe-lifetimes", "difference.buffer-load-size-bound", "difference.native-special-file-policy", "control.c-process-exit-and-output-lifetimes", "process.empty-and-window-respawn", "process.c-live-stdin-and-cancellation", "process.c-stdin-shutdown-and-pane-wait", "process.c-key-retention-flags", "process.c-respawn-cell-pixel-defaults", "control.flags-size-and-precedence", "control.c-flow-subscriptions-and-wait-exit", "command.server-selector-roles-and-byte-boundaries", "cli.c-selector-byte-forwarding", "difference.native-selector-utf8-rejection"]
+rationale = "This aggregate requires the separately reviewed registry, target/graph, option type/scope, pane/process, buffer/file, scheduler/hook and client-control flag contracts. Each subfamily has exact C behavior and failure/nonmutation evidence; declared native UI, special-file, diagnostic and resource policies remain explicit differences. A metadata inventory alone cannot satisfy any of these behavior proofs. C-derived selector-role validation rejects malformed native lookup bytes before they can alias U+FFFD names; exact executable command/control/native fixtures retain C client forwarding and command execution timing."
+
+[[coverage]]
+obligation = "ipc.file-results-ack-exit"
+assertions = ["ipc.codec-schemas-descriptors", "ipc.file-path-policy", "ipc.four-command-control-pairings", "buffers.c-formatted-files-validation-and-errors", "difference.buffer-load-size-bound", "difference.native-special-file-policy", "config.c-source-stdin-files-flags-and-async-preparation", "process.stdin-ownership-and-eof", "process.c-live-stdin-and-cancellation", "process.c-stdin-shutdown-and-pane-wait", "clients.c-detach-selection-and-ipc-acknowledgement", "control.c-native-and-unix-command-guard-lifecycle"]
+rationale = "Real C/R executable peers complete binary file requests and write acknowledgements before command exit, including repeated-stdin EBADF, source continuation and oversize drain recovery. Streaming stdin ownership/cancel/EOF and actual EXITING/EXITED detach tests require descriptor and callback cleanup; control file callbacks retain their C WAIT/late-output boundaries. Client filesystem policy and native special-file restrictions are independently asserted."
+

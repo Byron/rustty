@@ -1,0 +1,98 @@
+# Exact assertions for C control subscriptions, flow and IPC flags.
+[[suites]]
+id = "control-unit"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "native-views", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--lib", "control::tests"]
+env = {}
+
+[[suites.assertions]]
+id = "control.flags-size-and-precedence"
+tests = ["control::tests::flags_and_sizes_follow_c_numeric_prefix_and_precedence"]
+description = "C flag application, sticky read-only, numeric-prefix dimensions, global/per-window size overrides and A/B/C precedence."
+
+[[suites.assertions]]
+id = "control.separate-wire-guards-and-native-completion"
+tests = ["control::tests::control_guards_keep_zero_request_id_completion_separate"]
+description = "One native control batch with request ID0 produces two per-command guarded results and exactly one independent empty completion Reply, so no public request ID is reserved for background work."
+
+[[suites.assertions]]
+id = "control.ordered-loss-aware-flow"
+tests = ["control::tests::pause_follows_reply_and_resume_does_not_replay_suppressed_output", "control::tests::redundant_on_and_continue_preserve_queued_output", "control::tests::queued_age_pauses_even_while_delivery_channel_is_full", "control::tests::byte_overflow_and_default_age_disconnect_explicitly"]
+description = "Deferred pause/continue, discarded output stays discarded, redundant actions preserve backlog, bounded bytes and explicit stale/overflow disconnection."
+
+[[suites.assertions]]
+id = "control.subscription-records"
+tests = ["control::tests::subscriptions_report_initial_changes_and_each_link_index"]
+description = "Initial/changed/removed subscriptions and every index of a shared window, with C session-before-pane ordering."
+
+[[suites]]
+id = "control-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "system-client", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability", "control_subscriptions_flags_sizes_and_flow_match_c", "--", "--ignored", "--exact", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "control.c-flow-subscriptions-and-wait-exit"
+tests = ["control_subscriptions_flags_sizes_and_flow_match_c"]
+description = "Four C/Rust client/server pairings: exact subscription fields/order, flags, dimensions, extended output, no replay after pause/continue, read-only denial and wait-exit blank acknowledgement. C 3.7 in-guard flow records remain command bytes; newer C and Rust defer notifications."
+[[suites]]
+id = "window-size-policy-reference"
+platforms = ["darwin", "linux"]
+profiles = ["app-owned", "standalone", "unix-ipc", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability", "window_creation_policy_aggressive_resize_and_limits_match_c", "--", "--ignored", "--exact", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "control.c-window-size-policy-and-immediate-creation"
+tests = ["window_creation_policy_aggressive_resize_and_limits_match_c"]
+description = "Live C clients compare creation print dimensions, latest-client selection versus control refresh, flags-only deferred resizing, same-line refresh-C immediacy, ignore-size fallback, sticky per-window size eligibility, aggressive shared-window filtering, manual size retention through client caps, and raw default-size versus 10000-cell geometry limits."
+
+[[suites]]
+id = "control-color-reports-reference"
+platforms = ["darwin", "linux"]
+profiles = ["app-owned", "standalone", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability", "control_color_reports_query_precedence_and_lifetime_match_c", "--", "--ignored", "--exact", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "control.c-reported-pane-color-query-and-lifetime"
+tests = ["control_color_reports_query_precedence_and_lifetime_match_c"]
+description = "Real C clients report OSC10/11 pane colors; live application replies compare 8/16-bit RGB, CMYK, decimal wrapping, names, invalid input, precedence over active pane styles, fallback theme, retained reports while any control client exists, deactivation after the last disconnect, reactivation and respawn."
+
+[[suites]]
+id = "native-color-report-restore"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["app-owned", "standalone", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "native_views", "native_reported_colors_are_query_only_and_survive_reconnect"]
+env = {}
+
+[[suites.assertions]]
+id = "native.reported-color-query-only-snapshot-and-reconnect"
+tests = ["native_reported_colors_are_query_only_and_survive_reconnect"]
+description = "Native reports override color/theme queries without repainting configured pane foreground/background; snapshot restore and RIS retain active reports, and native reconnect preserves reports and the PTY PID."
+
+[[suites]]
+id = "process-formats-head-reference"
+platforms = ["darwin", "linux"]
+profiles = ["app-owned", "standalone", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability", "process_exit_signal_pipe_and_output_format_lifetimes_match_c", "--", "--ignored", "--exact", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "control.c-process-exit-and-output-lifetimes"
+tests = ["process_exit_signal_pipe_and_output_format_lifetimes_match_c"]
+description = "Real C clients compare exit 137 versus SIGKILL 9, raw status/signal, retained pane death time, actual PTY output timestamp, live pipe PID, automatic pipe close on process completion, and metadata reset on respawn."
+
+[[suites]]
+id = "process-formats-supported-reference"
+platforms = ["darwin", "linux"]
+profiles = ["app-owned", "standalone", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability", "process_exit_signal_and_pipe_lifetimes_match_supported_c", "--", "--ignored", "--exact", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "control.c-supported-process-and-pipe-lifetimes"
+tests = ["process_exit_signal_and_pipe_lifetimes_match_supported_c"]
+description = "The shared HEAD/3.7c process contract verifies exit status versus signal, death time, distinct pane/pipe PIDs, explicit pipe close, and respawn reset. HEAD-only output timestamps and changed automatic pipe closure are tested separately."

@@ -1,0 +1,92 @@
+# Complete shared CLI file/argv/control contracts on native Windows.
+[[suites]]
+id = "windows-remote-interoperability-files"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 16
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability_windows_files", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 900
+
+[[suites.assertions]]
+id = "buffers.c-formatted-files-validation-and-errors"
+tests = ["buffer_files_expand_in_queue_and_preserve_validation_and_io_errors"]
+description = "Native CLI and real C preserve the complete formatted binary-file/append/empty-load/validation/error-order matrix. Both missing-file and missing-parent errors use C ENOENT text with the exact path and leave missing paths absent."
+
+[[suites.assertions]]
+id = "cli.c-all-argument-bytes-status-and-terminal-features"
+tests = ["cli_preserves_non_nul_argv_command_diagnostics_status_and_features"]
+description = "Every non-NUL byte is preserved by the native byte protocol and genuine C; actual Windows UTF-16 CLI arguments preserve Unicode, whitespace and metacharacters and reject unpaired surrogates. Exact command diagnostics/status and all three original ordered -2/-T/removal/unknown-token vectors match C."
+
+[[suites.assertions]]
+id = "format.c-display-enumeration-and-native-trace"
+tests = ["display_all_formats_enumerates_present_callbacks_and_native_trace_is_bounded"]
+description = "All present callback keys and stable values match C after real deterministic child output. Each host-specific identity, path, process spelling and output-generation callback equals its direct value; dedicated identity/process suites verify those sources. Bounded native traces retain exact result bytes."
+
+[[suites.assertions]]
+id = "buffers.c-context-samples-filters-and-creation-time"
+tests = ["buffer_formats_samples_filters_and_creation_times_match_c"]
+description = "Exact C bytes for automatic current-buffer name/full/size/sample formats, binary controls, valid/truncated UTF8, 200-byte sample limits and filters. Creation timestamps remain through rename and advance on replacement/append in both servers."
+
+[[suites.assertions]]
+id = "buffers.c-paste-sanitizing-separators-brackets-and-deletion"
+tests = ["paste_bytes_sanitizing_separator_brackets_and_deletion_match_c"]
+description = "All ten original cases and all 256 bytes, valid/malformed UTF8, sanitizing/literal/separator modes, bracket policy, input-disabled suppression and deletion compare real C raw-child bytes with the Windows engine write effect. The same ten flag/mode cases also execute against real ConPTY raw-console children with Unicode, newline and tab input, byte-exact and without output normalization."
+
+[[suites.assertions]]
+id = "control.c-buffer-replacement-eviction-and-file-notifications"
+tests = ["control_buffer_notifications_cover_replacement_eviction_capture_load_and_paste"]
+description = "Real C/R control peers receive exact ordered buffer changed/deleted records for automatic eviction, named replacement/append/rename, asynchronous file load, automatic/named capture, paste-delete and explicit deletion. TAB/NL/backslash/Unicode names are cleaned once; same-name rename and empty pending capture/load emit no records or IDs. Every buffer record between per-step command barriers is compared."
+
+[[suites.assertions]]
+id = "buffers.c-name-cleaning-raw-lookup-and-empty-input"
+tests = ["buffer_names_creation_lookup_rename_and_empty_input_match_c"]
+description = "Native Windows and real C command clients compare exact stdout/status/errors and buffer contents for TAB/NL/backslash/Unicode creation, raw lookup and append, same/replacement rename, named capture and empty input no-ops. Subsequent automatic names verify empty captures do not allocate IDs."
+
+[[suites.assertions]]
+id = "difference.buffer-invalid-name-diagnostic"
+tests = ["invalid_buffer_names_are_rejected_with_safe_native_diagnostic_difference"]
+description = "Native Windows and real C clients reject ASCII controls and malformed UTF8 on set/rename/capture/file completion without changing stored buffers. Malformed raw lookups cannot show/delete/rename/paste/save a valid U+FFFD named buffer. C's exact raw diagnostic bytes and Rust's exact escaped ASCII bytes are asserted separately: native invalid-name diagnostics cannot inject control records. Empty file reads bypass unused invalid names in both."
+
+[[suites.assertions]]
+id = "difference.buffer-load-size-bound"
+tests = ["load_buffer_limit_is_explicit_preserves_buffers_and_recovers_file_streams"]
+description = "Native local API and CLI accept 16 MiB files; real C accepts 16 MiB + 1 while native file/stdin paths reject it without replacing buffers or executing later same-group commands. Oversized streamed stdin drains to EOF. Native control preserves WAIT/late-error framing and subsequent-command recovery."
+
+[[suites.assertions]]
+id = "access.c-owner-listing-and-same-user-policy"
+tests = ["same_user_acl_lists_owner_and_rejects_changes_without_mutation"]
+description = "Native owner listing equals the actual Windows account name from GetUserNameW; C lists its Unix account. All original eight access-change flag vectors reject without changing graph/PIDs/listing or authenticated endpoint access; C adds/removes nobody in the private fixture. Missing-argument diagnostics match."
+
+[[suites.assertions]]
+id = "command.c-scheduler-canonical-format-context"
+tests = ["scheduler_command_formats_are_canonical_and_do_not_leak_to_nested_items"]
+description = "Exact C/R canonical command formats in shell/conditional jobs, source commands, string run-C preparation with ignored extra arguments and retained originating command in after-hooks."
+
+[[suites.assertions]]
+id = "control.c-display-notification-and-print-output"
+tests = ["display_message_uses_control_notification_and_print_flag_like_c"]
+description = "Unattached display is silent, attached display carries an opaque guarded %message line, and -p prints exact command output."
+
+[[suites.assertions]]
+id = "control.c-native-and-unix-command-guard-lifecycle"
+tests = ["native_and_unix_control_preserve_c_command_guards_blocks_and_file_callbacks"]
+description = "Windows CLI native-control records match genuine C through every original block/alias/source/async-job/hook/background/group/file/error vector and empty-line exit. Only known private fixture paths are substituted in expected records; monotonic guard numbers and exact opening/closing identity remain enforced."
+
+[[suites.assertions]]
+id = "difference.clap-driver-help-and-version"
+tests = ["clap_driver_help_and_version_are_explicit_implementation_differences"]
+description = "C -h shows compact usage and rejects --help, while clap supplies full -h/--help; -V identifies each independent executable with its actual package/version. Global mode rejections and command-level byte parity have separate proofs."
+
+[[suites.assertions]]
+id = "difference.native-server-diagnostics-and-bounds"
+tests = ["server_diagnostics_expose_native_logs_jobs_limits_and_c_empty_tty_state"]
+description = "C/R show-messages compare empty headless tty/job lists, optional missing-client targets, live shell-job visibility and zero/bounded retention. Native logs separately assert newest-first command/error records and payload truncation; C accepts message-limit 16385 while Rust rejects it without changing the prior limit. Native job IDs/kinds deliberately replace C fd/pid diagnostics."
+
+[[suites.assertions]]
+id = "windows.command-control-files-and-origin"
+tests = ["command_control_files_and_origin_context_match_c_over_native_pipes"]
+description = "Native Windows and real C retain command partial-output/error cancellation, binary stdin/file/save/append/control-recovery bytes and caller cwd/DISPLAY in a live original process. Unix imsg cross-pairing remains a separate Unix-only transport contract."

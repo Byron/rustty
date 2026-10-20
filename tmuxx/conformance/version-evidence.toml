@@ -1,0 +1,43 @@
+# The primary suites pin current C; these run the same contracts with3.7c.
+[[suites]]
+id = "cli-c-3.7c-pairings"
+reference = "older"
+reference_version = "tmux 3.7c"
+profiles = ["system-client", "command-control", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability", "all_four_command_control_pairings", "--", "--ignored", "--exact"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "control.c-3.7c-command-control-pairings"
+tests = ["all_four_command_control_pairings"]
+description = "The explicitly selected and fingerprinted C3.7c binary passes all C/R client/server command, control and extended-control pairings, binary file/stdin/append/error cases and persistent detach behavior."
+
+[[suites]]
+id = "ssh-c-3.7c-reference"
+platforms = ["darwin", "linux"]
+reference = "older"
+reference_version = "tmux 3.7c"
+profiles = ["system-client", "command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-client", "--test", "ssh_reference", "ssh_stock_tmux_discovery_bytes_reconnect_and_ambiguous_mutation", "--", "--ignored", "--exact"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "control.c-3.7c-ssh-discovery-reconnect"
+tests = ["ssh_stock_tmux_discovery_bytes_reconnect_and_ambiguous_mutation"]
+description = "A real isolated SSH server executes fingerprinted C3.7c; the Rust client discovers graph/capture, receives fragmented live bytes, reconnects to the same PID and marks an ambiguous applied mutation without replay."
+
+[[suites]]
+id = "rustty-system-ssh-3.7c"
+kind = "rustty-system-ssh"
+platforms = ["darwin", "linux"]
+reference = "older"
+reference_version = "tmux 3.7c"
+profiles = ["system-client", "native-views"]
+args = []
+timeout = 600
+env = {}
+
+[[suites.assertions]]
+id = "rustty.stock-c-3.7c-ssh-native-views-and-reconnect"
+tests = ["tmuxx::system::tests::stock_ssh_views_share_live_panes_and_survive_connection_restart"]
+description = "Actual fingerprinted Rustty passes native graph/view/input/reconnect, temporary buffer ownership and deferred server-text tests through SSH to explicitly selected C3.7c, with capability-dependent feature boundaries."

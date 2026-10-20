@@ -1,0 +1,118 @@
+# Named lifecycle contracts, not certification of every process or shell behavior.
+[[suites]]
+id = "process-core"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--lib", "process::tests"]
+env = {}
+
+[[suites.assertions]]
+id = "process.empty-and-window-respawn"
+tests = ["process::tests::empty_panes_skip_process_creation_and_window_respawn_keeps_first_identity"]
+description = "Empty panes do not spawn; empty argument conflicts fail; window respawn preserves first pane identity, kills siblings and restores full geometry."
+
+[[suites.assertions]]
+id = "process.pipe-and-respawn-effects"
+tests = ["process::tests::pipe_toggle_and_respawn_environment_have_explicit_effects"]
+description = "Bidirectional pipe flags, -o toggling and per-respawn environment/argv changes produce explicit runtime effects."
+
+[[suites.assertions]]
+id = "process.respawn-preserves-cell-pixels"
+tests = ["process::tests::respawn_preserves_default_and_negotiated_cell_pixels"]
+description = "New/split panes inherit the window's current cell pixels; pane and window respawn preserve default16x32 and negotiated9x18 values through fresh terminal state, cell-size query replies and snapshot restoration."
+
+[[suites.assertions]]
+id = "process.native-key-retention"
+tests = ["process::tests::key_retention_waits_for_a_real_key_and_failed_key_retains_only_failure"]
+description = "key and failed-key retain the required statuses; only native Key press/repeat closes retained panes, while release, text, paste and mouse do not. Cursor hiding preserves pending parser input."
+
+[[suites]]
+id = "process-runtime"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "app-owned", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--lib", "process::tests"]
+env = {}
+
+[[suites.assertions]]
+id = "process.pipe-byte-budget"
+tests = ["process::tests::pipe_overflow_closes_pipe_without_losing_or_duplicating_terminal_output"]
+description = "Pipe byte overflow closes the sink explicitly while terminal data is delivered once; normal close lets a child drain before reaping."
+
+[[suites.assertions]]
+id = "process.stdin-ownership-and-eof"
+tests = ["process::tests::stdin_chunks_enforce_ownership_and_resume_only_after_eof"]
+description = "Only the owning connection and original request may feed at most 65536 bytes per chunk; EOF is single-use, and disconnect cancels the blocked command group."
+
+[[suites]]
+id = "process-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "unix-ipc", "app-owned", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability", "empty_respawn_and_pipe_lifecycle_match_c", "--", "--ignored", "--exact", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "process.c-empty-respawn-and-pipe"
+tests = ["empty_respawn_and_pipe_lifecycle_match_c"]
+description = "Four C/Rust client/server pairings: finite empty-pane stdin/capture, respawn-window identity/environment, pipe -o/-I/-IO, no duplicate output across respawn and complete 256 KiB final output to a slow sink. C 3.7 empty PID formatting is version-specific. Incremental stdin is certified by the separate live-stream suite."
+
+
+[[suites]]
+id = "process-live-stdin-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "unix-ipc", "app-owned", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability", "live_stdin_streams_before_eof_and_cancels_with_c", "--", "--ignored", "--exact", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "process.c-live-stdin-and-cancellation"
+tests = ["live_stdin_streams_before_eof_and_cancels_with_c"]
+description = "Four C/Rust pairings: split/display -I render before EOF, other clients stay responsive, after-hooks and continuation wait for EOF, over-16-MiB input streams without a finite request buffer, and removed panes cancel input. Both current C and C3.7c also exercise new-pane -I."
+
+[[suites]]
+id = "process-wait-and-shutdown-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "unix-ipc", "app-owned", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability", "input_shutdown_and_pane_wait_follow_c", "--", "--ignored", "--exact", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "process.c-stdin-shutdown-and-pane-wait"
+tests = ["input_shutdown_and_pane_wait_follow_c"]
+description = "Four C/Rust pairings: shutdown cancels idle stdin with ordinary-client status zero; current C additionally checks split -W exit status 7, SIGTERM 143, and empty-pane removal 129 while subsequent commands resume. C3.7c lacks -W."
+
+[[suites]]
+id = "process-native-stdin"
+platforms = ["darwin", "linux"]
+profiles = ["app-owned", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability", "native_cli_streams_input_before_eof", "--", "--ignored", "--exact", "--test-threads=1"]
+env = {}
+
+[[suites.assertions]]
+id = "process.native-stdin-socket"
+tests = ["native_cli_streams_input_before_eof"]
+description = "Native JSON transport supplies acknowledged bounded stdin chunks and EOF while a second client observes terminal changes before command completion."
+
+
+[[suites]]
+id = "process-key-retention-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "unix-ipc", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "interoperability", "retained_key_panes_and_failed_key_policy_match_c", "--", "--ignored", "--exact", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "process.c-key-retention-flags"
+tests = ["retained_key_panes_and_failed_key_policy_match_c"]
+description = "Four C/Rust pairings: split-window/new-pane -k store key retention, preserve exit status, hide the cursor and ignore command-injected send-keys for closing. Actual native Key closing is checked separately."
+
+[[suites]]
+id = "process-respawn-cell-pixels-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "respawn_reference", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "process.c-respawn-cell-pixel-defaults"
+tests = ["respawn_retains_detached_cell_pixel_defaults"]
+description = "C and native detached pane/window cell-size formats retain the default16x32 pixels before and after both respawn commands."

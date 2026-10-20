@@ -1,0 +1,77 @@
+# Complete original parser/format matrices, with explicit native Unicode glob evidence.
+[[suites]]
+id = "windows-remote-c-config-full"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 14
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-config", "--test", "c_reference", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "parser.c-text-and-argv"
+tests = ["text_parser_and_argv_match_c_execution"]
+description = "C executable agreement for quoting, escapes, Unicode, continuations and argv literal-final-semicolon handling."
+
+[[suites.assertions]]
+id = "config.prepare-before-execute"
+tests = ["preparation_matches_c_without_executing_queued_commands", "preparation_suppresses_jobs_and_boolean_evaluation_short_circuits"]
+description = "C executable agreement for assignment/hidden/environment/option preparation timing, disabled conditional jobs and lazy boolean evaluation."
+
+[[suites.assertions]]
+id = "format.c-tested-expressions"
+tests = ["format_observations_match_c"]
+description = "C executable agreement for the listed lookup, path/quote, missing/nested values, conditional, width, arithmetic, repeat and ASCII expressions; not the entire format language."
+
+[[suites.assertions]]
+id = "format.c-regex-substitution-and-compound-order"
+tests = ["regex_and_substitution_observations_match_c"]
+description = "C executable agrees on regex case/anchor/invalid behavior, POSIX longest captures, numbered replacement and empty/global substitutions, plus compound lookup/substitution/width/length ordering."
+
+[[suites.assertions]]
+id = "format.c-timestamp-and-strftime-expansion"
+tests = ["timestamp_and_time_expansion_match_c"]
+description = "C set-option -F agrees on fixed timestamp formatting, custom strftime, pretty/future/invalid/zero behavior, nested lookup distinction and T expansion."
+
+[[suites.assertions]]
+id = "format.c-relative-difference-and-pretty-time-boundaries"
+tests = ["relative_difference_and_pretty_time_boundaries_match_c"]
+description = "Exact C bytes for t/r, t/d, t/p and mixed-flag precedence at future, zero-age, second/minute/hour/day,28-day, month and year boundaries; both observations must occur in one clock second."
+
+[[suites.assertions]]
+id = "difference.format-modifier-count-and-recursion"
+tests = ["format_parser_resource_bounds_are_explicit_reference_differences"]
+description = "C and Rust both accept128 modifiers; C also accepts129 while Rust explicitly rejects it. A self-expanding E option returns empty C output and an explicit native nesting-limit error."
+
+[[suites.assertions]]
+id = "format.c-styled-width-trim-and-escaping"
+tests = ["styled_width_and_trimming_match_c_bytes"]
+description = "Exact style-aware width/left-right trim, raw padding, wide/combining text, escaped hash runs, malformed styles, markers and alias expansion behavior match the C executable."
+
+[[suites.assertions]]
+id = "format.c-fuzzy-colour-argument-quotes-and-contextless-operators"
+tests = ["fuzzy_color_argument_quotes_and_contextless_modifiers_match_c"]
+description = "C m/z and m/p smart-case, term/group scoring, Unicode/styled alignment and invalid-style rollback; c RGB/palette/theme/named colors and foreground/background escapes; q/a with C quote precedence; printable ASCII and contextless A/I behavior."
+
+[[suites.assertions]]
+id = "format.c-modifier-delimiters-escaping-and-precedence"
+tests = ["modifier_delimiters_escaping_precedence_and_failures_match_c"]
+description = "C modifier parsing accepts arbitrary punctuation delimiters and unwrapped arguments, expands/unescapes arguments, preserves nested literals, applies source-independent primary precedence and cumulative quote/color/time flags, and truncates malformed comparisons while keeping malformed arithmetic empty."
+
+[[suites.assertions]]
+id = "difference.parser-high-bytes"
+tests = ["high_byte_preservation_is_an_explicit_reference_difference"]
+description = "Both tested outcomes of command-high-byte-preservation: C rejects the source high byte; Rust preserves it."
+
+[[suites.assertions]]
+id = "difference.parser-malformed-source"
+tests = ["malformed_source_rejection_is_an_explicit_reference_difference"]
+description = "Both tested outcomes of reject-nul-and-unclosed-quotes: C accepts/truncates; Rust errors without executing partial input."
+
+[[suites.assertions]]
+id = "difference.windows-unicode-glob-scalars"
+tests = ["native_globs_preserve_scalar_boundaries_against_glibc_byte_fallback"]
+description = "Eight real C/native glob cases retain exact scalar results and the documented glibc byte fallback, including ASCII controls; no output normalization or matrix exclusion."

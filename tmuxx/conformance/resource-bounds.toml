@@ -1,0 +1,84 @@
+schema_version = 1
+
+[[bounds]]
+id = "format-modifiers"
+profiles = ["command-control"]
+maximum = 128
+unit = "modifiers per format expression"
+rejection = "too many format modifiers"
+difference = "bounded-format-modifiers-and-expansion-errors"
+test = "format_parser_resource_bounds_are_explicit_reference_differences"
+
+[[bounds]]
+id = "server-diagnostic-messages"
+profiles = ["command-control", "app-owned", "standalone", "unix-ipc"]
+maximum = 16384
+unit = "retained diagnostic records;4096-byte escaped payload plus explicit truncation marker per record"
+rejection = "message-limit exceeds native limit: 16384; prior setting remains unchanged"
+difference = "native-server-diagnostics"
+test = "server_diagnostics_expose_native_logs_jobs_limits_and_c_empty_tty_state"
+
+[[bounds]]
+id = "native-snapshot-json"
+profiles = ["app-owned", "standalone", "native-views"]
+maximum = 8589934592
+unit = "serialized JSON bytes per atomic snapshot;256KiB decoded bytes per stream chunk"
+rejection = "SnapshotAborted: snapshot exceeds byte limit; prior graph and live owner remain intact"
+difference = "bounded-native-snapshot"
+test = "native_socket_streams_snapshots_and_cap_rejection_keeps_the_process"
+
+# These bounds are observable policy and are covered by rejection tests.
+[[bounds]]
+id = "format-context-depth"
+profiles = ["command-control"]
+maximum = 16
+unit = "nested contextual evaluations"
+rejection = "format context nesting limit exceeded"
+difference = "bounded-contextual-format-expansion"
+test = "contextual_resource_bounds_are_an_explicit_reference_difference"
+
+[[bounds]]
+id = "format-context-output"
+profiles = ["command-control"]
+maximum = 1048576
+unit = "bytes per format expansion or contextual loop"
+rejection = "format output exceeds limit or format loop output exceeds limit"
+difference = "bounded-contextual-format-expansion"
+test = "contextual_resource_bounds_are_an_explicit_reference_difference"
+
+
+[[bounds]]
+id = "socket-clients"
+profiles = ["app-owned", "standalone", "unix-ipc"]
+maximum = 128
+unit = "simultaneous socket connections including identification"
+rejection = "connection closed before identification when all slots are occupied"
+difference = "bounded-socket-clients"
+test = "socket_clients_are_bounded_and_shutdown_closes_idle_peers"
+
+[[bounds]]
+id = "streamed-stdin-chunk"
+profiles = ["app-owned", "standalone", "unix-ipc"]
+maximum = 65536
+unit = "bytes per acknowledged stdin chunk; total stream has no finite request limit"
+rejection = "stdin chunk exceeds limit"
+difference = "bounded-native-stdin-chunk"
+test = "process::tests::stdin_chunks_enforce_ownership_and_resume_only_after_eof"
+
+[[bounds]]
+id = "buffer-load-input"
+profiles = ["command-control", "app-owned", "standalone", "unix-ipc"]
+maximum = 16777216
+unit = "bytes per finite buffer load; over-limit Unix input drains without allocation for at most10 seconds"
+rejection = "file input exceeds limit: path for Unix clients; buffer exceeds input size limit for native file loads; existing buffer remains unchanged"
+difference = "buffer-load-size-bound"
+test = "load_buffer_limit_is_explicit_preserves_buffers_and_recovers_file_streams"
+
+[[bounds]]
+id = "shell-job-delay"
+profiles = ["command-control", "app-owned", "standalone"]
+maximum = 86400
+unit = "finite nonnegative seconds before a shell or command-only job"
+rejection = "delay outside 0..86400 seconds; no job or following same-group command executes"
+difference = "native-job-delay-bound"
+test = "native_job_delay_bound_is_an_explicit_c_difference"

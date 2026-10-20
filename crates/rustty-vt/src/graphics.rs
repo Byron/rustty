@@ -1,6 +1,7 @@
 //! Kitty graphics storage. Pixel buffers are shared with render snapshots.
 use crate::{Effect, GridPoint, Screen, Terminal};
 use base64::Engine;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     io::Read,
@@ -11,6 +12,8 @@ mod images;
 pub use images::Images;
 mod pixels;
 mod placements;
+pub mod quota;
+mod sixel;
 pub use placements::Placements;
 #[cfg(all(unix, not(target_os = "android")))]
 mod shm;
@@ -20,13 +23,22 @@ const MAX_DATA: usize = 400 * 1024 * 1024;
 const MAX_DIMENSION: u32 = 10000;
 const PARENT_CHAIN_LIMIT: usize = 8;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Image {
     pub id: u32,
+    /// tmux sources without an application mapping live only through placements.
+    #[serde(default)]
+    pub tmux_unmapped: bool,
+    /// SIXEL sources are placed directly, without Kitty's extra quota object.
+    #[serde(default)]
+    pub tmux_sixel_cell: Option<[u32; 2]>,
+    #[serde(default)]
+    pub tmux_order: Option<u64>,
     pub number: u32,
     pub width: u32,
     pub height: u32,
     /// Unassociated RGBA8, independent of the renderer's target color space.
+    #[serde(with = "pixels::serde_rgba")]
     pub pixels: Arc<Vec<u8>>,
     pub generation: u64,
     identity: u64,
@@ -39,8 +51,9 @@ pub struct Image {
     pub frame_shown_at_ms: Option<u64>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AnimationFrame {
+    #[serde(with = "pixels::serde_rgba")]
     pub pixels: Arc<Vec<u8>>,
     pub gap_ms: u32,
 }
@@ -86,7 +99,7 @@ impl Image {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Placement {
     pub image_id: u32,
     pub placement_id: PlacementId,
@@ -107,7 +120,7 @@ pub struct Placement {
 }
 
 /// Automatic and application-supplied placement IDs occupy separate namespaces.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum PlacementId {
     Internal(u32),
     External(u32),
@@ -233,7 +246,7 @@ impl Placement {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct Loading {
     command: Command,
     data: Vec<u8>,
@@ -243,6 +256,10 @@ struct Loading {
 
 #[derive(Clone, Debug)]
 pub struct Graphics {
+    quota: Option<quota::Quota>,
+    quota_owner: u64,
+    quota_images: BTreeMap<u32, (u64, u64)>,
+    quota_placements: BTreeMap<(u32, PlacementId), u64>,
     pub images: Images,
     pub placements: Placements,
     pub generation: u64,
@@ -255,6 +272,10 @@ pub struct Graphics {
 impl Default for Graphics {
     fn default() -> Self {
         Self {
+            quota: None,
+            quota_owner: 0,
+            quota_images: BTreeMap::new(),
+            quota_placements: BTreeMap::new(),
             images: Images::default(),
             placements: Placements::default(),
             generation: 0,
@@ -263,6 +284,270 @@ impl Default for Graphics {
             next_image: 2147483647,
             next_placement: 0,
         }
+    }
+}
+
+/// Display state and pending upload continuation for a passive terminal mirror.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ViewSnapshot {
+    pub images: Vec<Image>,
+    pub placements: Vec<Placement>,
+    pub generation: u64,
+    limit: usize,
+    loading: Option<Loading>,
+    next_image: u32,
+    next_placement: u32,
+}
+
+impl Graphics {
+    fn attach_quota(&mut self, quota: quota::Quota, shared: Option<&Graphics>) {
+        if self.quota.as_ref().is_some_and(|old| old.same(&quota)) {
+            return;
+        }
+        self.release_quota();
+        self.quota_owner = shared.map_or_else(|| quota.owner(), |graphics| graphics.quota_owner);
+        self.quota = Some(quota.clone());
+        if let Some(shared) = shared {
+            self.images = shared.images.clone();
+            self.quota_images = shared.quota_images.clone();
+        } else {
+            let mut images = self
+                .images
+                .values()
+                .map(|image| (image.generation, image.id, image.identity, image.bytes()))
+                .collect::<Vec<_>>();
+            images.sort_unstable();
+            for (_, id, identity, bytes) in images {
+                if let Ok(token) = quota.reserve(self.quota_owner, None, bytes) {
+                    self.quota_images.insert(id, (token, identity));
+                } else {
+                    self.images.remove(&id);
+                    self.placements.remove_image(id);
+                }
+            }
+        }
+        let placements = self
+            .placements
+            .iter()
+            .map(|p| (p.image_id, p.placement_id))
+            .collect::<Vec<_>>();
+        for key in placements {
+            if self
+                .images
+                .get(&key.0)
+                .is_some_and(|image| image.tmux_sixel_cell.is_some())
+            {
+                continue;
+            }
+            if let Some(&(parent, _)) = self.quota_images.get(&key.0)
+                && let Ok(token) = quota.reserve(self.quota_owner, Some(parent), 0)
+            {
+                self.quota_placements.insert(key, token);
+            } else {
+                self.placements.remove(key);
+            }
+        }
+        self.prune_quota();
+    }
+    fn copy_sources(&mut self, source: &Self) {
+        let before = (self.images.len(), self.placements.len());
+        self.placements.retain(|placement| {
+            self.images
+                .get(&placement.image_id)
+                .map(|image| image.identity)
+                == source
+                    .images
+                    .get(&placement.image_id)
+                    .map(|image| image.identity)
+        });
+        self.images = source.images.clone();
+        self.quota_images = source.quota_images.clone();
+        self.loading = source.loading.clone();
+        self.next_image = source.next_image;
+        self.sync_quota();
+        if before != (self.images.len(), self.placements.len()) {
+            self.generation = self.generation.wrapping_add(1);
+        }
+    }
+    pub(crate) fn without_placements(&self) -> Self {
+        let mut sources = self.clone();
+        sources.placements = Placements::default();
+        sources.quota_placements.clear();
+        sources
+    }
+    pub(crate) fn release_placement_quota(&mut self) {
+        if let Some(quota) = &self.quota {
+            for token in self.quota_placements.values() {
+                quota.release(*token);
+            }
+        }
+        self.quota_placements.clear();
+    }
+    pub(crate) fn release_quota(&mut self) {
+        if let Some(quota) = &self.quota {
+            quota.release_owner(self.quota_owner);
+        }
+        self.quota_images.clear();
+        self.quota_placements.clear();
+        self.quota = None;
+    }
+    fn sync_quota(&mut self) {
+        let Some(quota) = &self.quota else {
+            return;
+        };
+        let before = (self.quota_images.len(), self.quota_placements.len());
+        self.quota_images.retain(|id, &mut (token, identity)| {
+            if self
+                .images
+                .get(id)
+                .is_some_and(|image| image.identity == identity)
+            {
+                true
+            } else {
+                quota.release(token);
+                false
+            }
+        });
+        self.quota_placements.retain(|key, token| {
+            if self.placements.get(*key).is_some() {
+                true
+            } else {
+                quota.release(*token);
+                false
+            }
+        });
+        self.prune_quota();
+        if before != (self.quota_images.len(), self.quota_placements.len()) {
+            self.generation = self.generation.wrapping_add(1);
+        }
+    }
+    fn prune_quota(&mut self) {
+        let Some(quota) = &self.quota else {
+            return;
+        };
+        let before = (self.images.len(), self.placements.len());
+        self.quota_images.retain(|id, (token, _)| {
+            if quota.contains(*token) {
+                true
+            } else {
+                self.images.remove(id);
+                self.placements.remove_image(*id);
+                false
+            }
+        });
+        self.quota_placements.retain(|key, token| {
+            if quota.contains(*token) {
+                true
+            } else {
+                self.placements.remove(*key);
+                false
+            }
+        });
+        self.reap_orphans();
+        if before != (self.images.len(), self.placements.len()) {
+            self.generation = self.generation.wrapping_add(1);
+        }
+    }
+    pub fn view_snapshot(&self) -> ViewSnapshot {
+        let mut images: Vec<_> = self.images.values().cloned().collect();
+        images.sort_by_key(|image| image.id);
+        let mut placements = self.placements.to_vec();
+        placements.sort_by_key(|placement| (placement.image_id, placement.placement_id));
+        ViewSnapshot {
+            images,
+            placements,
+            generation: self.generation,
+            limit: self.limit,
+            loading: self.loading.clone(),
+            next_image: self.next_image,
+            next_placement: self.next_placement,
+        }
+    }
+
+    /// Validate all decoded dimensions and references before replacing live state.
+    pub fn from_view_snapshot(snapshot: ViewSnapshot) -> Result<Self, &'static str> {
+        Self::from_view_snapshot_with_limit(snapshot, MAX_DATA)
+    }
+    pub fn from_view_snapshot_with_limit(
+        snapshot: ViewSnapshot,
+        max_bytes: usize,
+    ) -> Result<Self, &'static str> {
+        let mut result = Self::default();
+        let mut used = 0usize;
+        for image in snapshot.images {
+            let length = usize::try_from(image.width)
+                .ok()
+                .and_then(|w| w.checked_mul(image.height as usize))
+                .and_then(|n| n.checked_mul(4))
+                .ok_or("image dimensions overflow")?;
+            if image.width == 0
+                || image.height == 0
+                || image.width > MAX_DIMENSION
+                || image.height > MAX_DIMENSION
+                || image.pixels.len() != length
+                || image.tmux_sixel_cell.is_some_and(|cell| {
+                    cell.into_iter()
+                        .any(|size| size == 0 || size > MAX_DIMENSION)
+                })
+                || image
+                    .frames
+                    .iter()
+                    .any(|frame| frame.pixels.len() != length)
+                || image.current_frame > image.frames.len()
+            {
+                return Err("invalid graphics image");
+            }
+            used = used
+                .checked_add(
+                    length
+                        .checked_mul(image.frames.len() + 1)
+                        .ok_or("image allocation overflow")?,
+                )
+                .ok_or("image allocation overflow")?;
+            if used > max_bytes || result.images.contains_key(&image.id) {
+                return Err("excessive or duplicate graphics image");
+            }
+            result.images.insert(image.id, image);
+        }
+        for placement in snapshot.placements {
+            if !result.images.contains_key(&placement.image_id)
+                || result
+                    .placements
+                    .get((placement.image_id, placement.placement_id))
+                    .is_some()
+                || placement.col > u16::MAX as usize
+                || placement.rows > MAX_DIMENSION
+                || placement.columns > MAX_DIMENSION
+            {
+                return Err("invalid graphics placement");
+            }
+            result.placements.insert(placement);
+        }
+        for placement in result.placements.iter() {
+            let mut parent = placement.parent;
+            let mut visited = HashSet::from([(placement.image_id, placement.placement_id)]);
+            while let Some(key) = parent {
+                if !visited.insert(key) || visited.len() > PARENT_CHAIN_LIMIT + 1 {
+                    return Err("invalid graphics parent chain");
+                }
+                parent = result
+                    .placements
+                    .get(key)
+                    .ok_or("missing graphics parent")?
+                    .parent;
+            }
+        }
+        if snapshot.loading.as_ref().is_some_and(|loading| {
+            loading.data.len() > MAX_DATA || loading.command.values.len() > 52
+        }) {
+            return Err("excessive pending graphics upload");
+        }
+        result.generation = snapshot.generation;
+        result.limit = snapshot.limit.min(max_bytes);
+        result.loading = snapshot.loading;
+        result.next_image = snapshot.next_image;
+        result.next_placement = snapshot.next_placement;
+        Ok(result)
     }
 }
 
@@ -348,6 +633,10 @@ impl Graphics {
         }
         Self {
             images: self.images.clone(),
+            quota: self.quota.clone(),
+            quota_owner: self.quota_owner,
+            quota_images: self.quota_images.clone(),
+            quota_placements: self.quota_placements.clone(),
             placements,
             generation: self.generation,
             limit: self.limit,
@@ -402,12 +691,54 @@ impl Graphics {
     }
     fn resolve_id(&mut self, id: u32, number: u32) -> Option<u32> {
         if id != 0 {
-            self.images.contains_key(&id).then_some(id)
+            self.images
+                .get(&id)
+                .filter(|image| !image.tmux_unmapped)
+                .map(|_| id)
         } else if number != 0 {
             self.images.resolve_number(number)
         } else {
             None
         }
+    }
+    fn allocate_tmux_id(&mut self) -> u32 {
+        let mut id = if self.next_image == 0 {
+            u32::MAX
+        } else {
+            self.next_image
+        };
+        while id == 0 || self.images.contains_key(&id) {
+            id = id.wrapping_sub(1);
+        }
+        self.next_image = id.wrapping_sub(1);
+        id
+    }
+    fn rekey_image(&mut self, old: u32, new: u32) {
+        let Some(mut image) = self.images.remove(&old) else {
+            return;
+        };
+        image.id = new;
+        self.images.insert(new, image);
+        if let Some(token) = self.quota_images.remove(&old) {
+            self.quota_images.insert(new, token);
+        }
+        self.placements.retain_mut(|placement| {
+            if placement.image_id == old {
+                placement.image_id = new;
+            }
+            if let Some(parent) = &mut placement.parent
+                && parent.0 == old
+            {
+                parent.0 = new;
+            }
+            true
+        });
+        let tokens = std::mem::take(&mut self.quota_placements);
+        self.quota_placements = tokens
+            .into_iter()
+            .map(|((id, placement), token)| ((if id == old { new } else { id }, placement), token))
+            .collect();
+        self.generation = self.generation.wrapping_add(1);
     }
     fn allocate_id(&mut self, implicit: bool) -> u32 {
         // Numbered uploads choose the lowest free client ID. Anonymous uploads
@@ -495,9 +826,13 @@ impl Graphics {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct Command {
     values: BTreeMap<u8, i64>,
+    #[serde(default)]
+    tmux: bool,
+    #[serde(default)]
+    image_limit: Option<usize>,
 }
 
 impl Command {
@@ -526,6 +861,13 @@ impl Command {
         }
         Some((command, bytes.get(split + 1..).unwrap_or(b"")))
     }
+    fn limit(&self) -> usize {
+        if self.tmux {
+            self.image_limit.unwrap_or(64 * 1024 * 1024).min(MAX_DATA)
+        } else {
+            MAX_DATA
+        }
+    }
     fn n(&self, key: u8) -> u32 {
         self.values.get(&key).copied().unwrap_or(0) as u32
     }
@@ -539,12 +881,14 @@ impl Command {
         self.n(b'q')
     }
     fn reply(&self, id: u32, frame: usize, message: &str, effects: &mut Vec<Effect>) {
-        if self.quiet() >= 2 || self.quiet() == 1 && message == "OK" || id == 0 && self.n(b'I') == 0
+        if self.quiet() >= 2
+            || self.quiet() == 1 && message == "OK"
+            || (id == 0 && self.n(b'I') == 0 && !(self.tmux && self.action() == b'q'))
         {
             return;
         }
         let mut values = Vec::new();
-        if id != 0 {
+        if id != 0 || (self.tmux && self.action() == b'q') {
             values.push(format!("i={id}"));
         }
         if self.n(b'I') != 0 {
@@ -556,6 +900,11 @@ impl Command {
         if frame != 0 {
             values.push(format!("r={frame}"));
         }
+        let message = if self.tmux {
+            message.split(':').next().unwrap_or(message)
+        } else {
+            message
+        };
         effects.push(Effect::Write(
             format!("\x1b_G{};{message}\x1b\\", values.join(",")).into_bytes(),
         ));
@@ -563,6 +912,112 @@ impl Command {
 }
 
 impl Terminal {
+    pub fn set_tmux_image_quota(&mut self, quota: quota::Quota) {
+        self.primary.graphics.attach_quota(quota.clone(), None);
+        if let Some(alt) = &mut self.alternate {
+            alt.graphics
+                .attach_quota(quota.clone(), Some(&self.primary.graphics));
+        }
+        self.tmux_image_quota = Some(quota);
+        self.prune_tmux_images();
+    }
+    /// Rebind an engine clone to a fork containing the same owner and token IDs.
+    pub fn rebind_tmux_image_quota(&mut self, quota: quota::Quota) {
+        if self.primary.graphics.quota.is_some() {
+            self.primary.graphics.quota = Some(quota.clone());
+        }
+        if let Some(alt) = &mut self.alternate
+            && alt.graphics.quota.is_some()
+        {
+            alt.graphics.quota = Some(quota.clone());
+        }
+        self.tmux_image_quota = Some(quota);
+    }
+    pub fn tmux_image_owners(&self) -> impl Iterator<Item = u64> + '_ {
+        std::iter::once(&self.primary)
+            .chain(self.alternate.iter())
+            .filter_map(|screen| {
+                screen
+                    .graphics
+                    .quota
+                    .as_ref()
+                    .map(|_| screen.graphics.quota_owner)
+            })
+    }
+    pub fn uses_tmux_image_quota(&self, quota: &quota::Quota) -> bool {
+        self.tmux_image_quota
+            .as_ref()
+            .is_some_and(|current| current.same(quota))
+    }
+    pub fn prune_tmux_images(&mut self) {
+        let before = (
+            self.primary.graphics.generation,
+            self.alternate.as_ref().map(|alt| alt.graphics.generation),
+        );
+        if let Some(quota) = self.tmux_image_quota.clone() {
+            self.primary.graphics.attach_quota(quota.clone(), None);
+            if let Some(alt) = &mut self.alternate {
+                alt.graphics
+                    .attach_quota(quota, Some(&self.primary.graphics));
+            }
+        }
+        if let Some(quota) = &self.tmux_image_quota {
+            for (&id, image) in &*self.primary.graphics.images {
+                if image.tmux_unmapped
+                    && image.tmux_sixel_cell.is_none()
+                    && let Some(&(token, _)) = self.primary.graphics.quota_images.get(&id)
+                {
+                    quota.unmap(token);
+                }
+            }
+        }
+        self.primary.graphics.sync_quota();
+        if let Some(alt) = &mut self.alternate {
+            alt.graphics.sync_quota();
+        }
+        if self.tmux_graphics {
+            let placed = self
+                .primary
+                .graphics
+                .placements
+                .iter()
+                .chain(
+                    self.alternate
+                        .iter()
+                        .flat_map(|alt| alt.graphics.placements.iter()),
+                )
+                .map(|placement| placement.image_id)
+                .collect::<HashSet<_>>();
+            for graphics in std::iter::once(&mut self.primary.graphics)
+                .chain(self.alternate.iter_mut().map(|alt| &mut alt.graphics))
+            {
+                graphics
+                    .images
+                    .retain(|id, image| !image.tmux_unmapped || placed.contains(id));
+                graphics.sync_quota();
+            }
+        }
+        if before
+            != (
+                self.primary.graphics.generation,
+                self.alternate.as_ref().map(|alt| alt.graphics.generation),
+            )
+        {
+            self.generation = self.generation.wrapping_add(1);
+        }
+    }
+    pub(crate) fn synchronize_tmux_sources(&mut self) {
+        if !self.tmux_graphics {
+            return;
+        }
+        if let Some(alt) = &mut self.alternate {
+            if self.alternate_active {
+                self.primary.graphics.copy_sources(&alt.graphics);
+            } else {
+                alt.graphics.copy_sources(&self.primary.graphics);
+            }
+        }
+    }
     pub fn graphics(&self) -> &Graphics {
         &self.screen().graphics
     }
@@ -583,12 +1038,24 @@ impl Terminal {
         next
     }
     pub(crate) fn graphics_command(&mut self, bytes: &[u8], effects: &mut Vec<Effect>) {
+        let generation = self.screen().graphics.generation;
+        self.prune_tmux_images();
+        self.graphics_command_inner(bytes, effects);
+        self.synchronize_tmux_sources();
+        self.prune_tmux_images();
+        if self.screen().graphics.generation != generation {
+            self.generation = self.generation.wrapping_add(1);
+        }
+    }
+    fn graphics_command_inner(&mut self, bytes: &[u8], effects: &mut Vec<Effect>) {
         if self.graphics().limit == 0 {
             return;
         }
         let Some((mut command, payload)) = Command::parse(bytes) else {
             return;
         };
+        command.tmux = self.tmux_graphics;
+        command.image_limit = Some(self.tmux_image_limit);
         let mut id = command.n(b'i');
         if id != 0 && command.n(b'I') != 0 {
             command.reply(
@@ -606,7 +1073,36 @@ impl Terminal {
         ) {
             return;
         }
+        if self.tmux_graphics
+            && matches!(action, b't' | b'T')
+            && self
+                .graphics()
+                .images
+                .get(&id)
+                .is_some_and(|image| image.tmux_unmapped)
+        {
+            let replacement = self.screen_mut().graphics.allocate_tmux_id();
+            self.primary.graphics.rekey_image(id, replacement);
+            if let Some(alt) = &mut self.alternate {
+                alt.graphics.rekey_image(id, replacement);
+            }
+        }
         if action == b'd' {
+            if self.tmux_graphics
+                && (command.n(b'I') != 0
+                    || command.signed(b'z') != 0
+                    || !matches!(
+                        command
+                            .values
+                            .get(&b'd')
+                            .copied()
+                            .unwrap_or(i64::from(b'a')) as u8,
+                        b'a' | b'A' | b'i' | b'I'
+                    ))
+            {
+                command.reply(id, 0, "ENOTSUP", effects);
+                return;
+            }
             self.graphics_delete(&command);
             return;
         }
@@ -643,9 +1139,14 @@ impl Terminal {
         }
         // A new transmission replaces an explicit image immediately, including
         // its placements and orphaned descendants, even if decoding fails.
-        if matches!(action, b't' | b'T') && id != 0 && self.graphics().loading.is_none() {
+        if !self.tmux_graphics
+            && matches!(action, b't' | b'T')
+            && id != 0
+            && self.graphics().loading.is_none()
+        {
             self.graphics_delete(&Command {
                 values: [(b'd', i64::from(b'I')), (b'i', i64::from(id))].into(),
+                ..Command::default()
             });
         }
         let engine = base64::engine::general_purpose::GeneralPurpose::new(
@@ -653,7 +1154,40 @@ impl Terminal {
             base64::engine::general_purpose::GeneralPurposeConfig::new()
                 .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent),
         );
+        if self.tmux_graphics && payload.len() > command.limit() {
+            let quiet = command.values.get(&b'q').copied();
+            if let Some(loading) = self.screen_mut().graphics.loading.take() {
+                command = loading.command;
+                id = loading.image_id;
+                if let Some(quiet) = quiet {
+                    command.values.insert(b'q', quiet);
+                }
+            }
+            command.reply(id, 0, "EINVAL", effects);
+            return;
+        }
+        let filtered;
+        let payload = if self.tmux_graphics {
+            filtered = payload
+                .iter()
+                .copied()
+                .filter(|b| !b.is_ascii_whitespace())
+                .collect::<Vec<_>>();
+            filtered.as_slice()
+        } else {
+            payload
+        };
         let Ok(mut data) = engine.decode(payload) else {
+            let quiet = command.values.get(&b'q').copied();
+            if self.tmux_graphics
+                && let Some(loading) = self.screen_mut().graphics.loading.take()
+            {
+                command = loading.command;
+                id = loading.image_id;
+                if let Some(quiet) = quiet {
+                    command.values.insert(b'q', quiet);
+                }
+            }
             command.reply(id, 0, "EINVAL: invalid data", effects);
             return;
         };
@@ -671,11 +1205,26 @@ impl Terminal {
             command.values.remove(&b'm');
         }
         let mut image_generation = None;
-        if action != b'q'
+        if (action != b'q' || self.tmux_graphics)
             && let Some(mut loading) = self.screen_mut().graphics.loading.take()
         {
-            if loading.data.len().saturating_add(data.len()) > MAX_DATA {
-                command.reply(id, 0, "ENOMEM: out of memory", effects);
+            if loading.data.len().saturating_add(data.len()) > command.limit() {
+                let quiet = command.values.get(&b'q').copied();
+                command = loading.command;
+                id = loading.image_id;
+                if let Some(quiet) = quiet {
+                    command.values.insert(b'q', quiet);
+                }
+                command.reply(
+                    id,
+                    0,
+                    if self.tmux_graphics {
+                        "EINVAL"
+                    } else {
+                        "ENOMEM: out of memory"
+                    },
+                    effects,
+                );
                 return;
             }
             loading.data.append(&mut data);
@@ -683,6 +1232,7 @@ impl Terminal {
             let more = command.n(b'm');
             let quiet = command.quiet();
             command = loading.command;
+            command.image_limit = Some(self.tmux_image_limit);
             command.values.insert(b'm', i64::from(more));
             if quiet > 0 {
                 command.values.insert(b'q', i64::from(quiet));
@@ -714,7 +1264,11 @@ impl Terminal {
                 image_generation = Some(self.graphics().images[&id].identity);
                 command.values.insert(b'i', i64::from(id));
             } else if action != b'q' && id == 0 {
-                id = self.screen_mut().graphics.allocate_id(command.n(b'I') == 0);
+                id = if self.tmux_graphics && command.n(b'I') == 0 {
+                    self.screen_mut().graphics.allocate_tmux_id()
+                } else {
+                    self.screen_mut().graphics.allocate_id(command.n(b'I') == 0)
+                };
             }
             if medium == b's' {
                 #[cfg(all(unix, not(target_os = "android")))]
@@ -730,7 +1284,7 @@ impl Terminal {
                 }
             }
         }
-        if action != b'q' && command.n(b'm') != 0 {
+        if (action != b'q' || self.tmux_graphics) && command.n(b'm') != 0 {
             self.screen_mut().graphics.loading = Some(Loading {
                 command,
                 data,
@@ -747,7 +1301,16 @@ impl Terminal {
             }
         };
         if command.action() == b'q' {
-            command.reply(id, 0, "OK", effects);
+            let storage = &mut self.screen_mut().graphics;
+            let result = if let Some(quota) = &storage.quota {
+                quota
+                    .reserve(storage.quota_owner, None, pixels.len())
+                    .map(|token| quota.release(token))
+            } else {
+                Ok(())
+            };
+            storage.prune_quota();
+            command.reply(id, 0, result.err().unwrap_or("OK"), effects);
             return;
         }
         if command.action() == b'f' {
@@ -761,11 +1324,32 @@ impl Terminal {
         }
         let implicit = command.n(b'i') == 0 && command.n(b'I') == 0;
         let storage = &mut self.screen_mut().graphics;
-        let old_size = storage.images.get(&id).map_or(0, Image::bytes);
-        if let Err(error) = storage.reserve(pixels.len().saturating_sub(old_size), id) {
-            command.reply(command.n(b'i'), 0, error, effects);
+        let token = if let Some(quota) = &storage.quota {
+            let result = quota.reserve(storage.quota_owner, None, pixels.len());
+            storage.prune_quota();
+            match result {
+                Ok(token) => Some(token),
+                Err(error) => {
+                    command.reply(command.n(b'i'), 0, error, effects);
+                    return;
+                }
+            }
+        } else {
+            let old_size = storage.images.get(&id).map_or(0, Image::bytes);
+            if let Err(error) = storage.reserve(pixels.len().saturating_sub(old_size), id) {
+                command.reply(command.n(b'i'), 0, error, effects);
+                return;
+            }
+            None
+        };
+        if implicit && command.tmux && command.action() == b't' {
+            if let Some(token) = token {
+                storage.quota.as_ref().unwrap().release(token);
+            }
             return;
         }
+        // C retains the previous mapping until both new objects have been admitted.
+        let previous = token.map(|_| storage.clone());
         storage.generation = storage.generation.wrapping_add(1);
         storage.placements.remove_image(id);
         storage.reap_orphans();
@@ -773,6 +1357,9 @@ impl Terminal {
             id,
             Image {
                 id,
+                tmux_unmapped: implicit && command.tmux,
+                tmux_sixel_cell: None,
+                tmux_order: command.tmux.then_some(token.unwrap_or(storage.generation)),
                 number: command.n(b'I'),
                 width,
                 height,
@@ -788,11 +1375,40 @@ impl Terminal {
                 frame_shown_at_ms: None,
             },
         );
+        if let Some(token) = token {
+            storage.quota_images.insert(id, (token, storage.generation));
+        }
         let result = if command.action() == b'T' {
             self.graphics_place(id, &command)
         } else {
             Ok(())
         };
+        if let Some(mut previous) = previous {
+            let storage = &mut self.screen_mut().graphics;
+            let quota = storage.quota.as_ref().unwrap().clone();
+            if result.is_err() {
+                quota.release(token.unwrap());
+                previous.prune_quota();
+                previous.generation = storage.generation.wrapping_add(1);
+                *storage = previous;
+            } else {
+                if let Some(&(old, _)) = previous.quota_images.get(&id) {
+                    quota.release(old);
+                }
+                for (key, old) in previous.quota_placements {
+                    if key.0 == id {
+                        quota.release(old);
+                    }
+                }
+            }
+        }
+        if implicit
+            && command.tmux
+            && result.is_ok()
+            && let Some(token) = token
+        {
+            self.screen().graphics.quota.as_ref().unwrap().unmap(token);
+        }
         if !implicit {
             command.reply(id, 0, result.err().unwrap_or("OK"), effects);
         }
@@ -806,10 +1422,18 @@ impl Terminal {
         if !self.graphics().images.contains_key(&id) {
             return Err("ENOENT: image not found");
         }
-        let cell = [
+        let mut cell = [
             self.width_px / u32::from(self.cols),
             self.height_px / u32::from(self.rows),
         ];
+        if self.tmux_graphics {
+            if cell[0] == 0 {
+                cell[0] = 8;
+            }
+            if cell[1] == 0 {
+                cell[1] = 16;
+            }
+        }
         let mut offset = [cmd.n(b'X'), cmd.n(b'Y')];
         for axis in 0..2 {
             if cell[axis] > 0 {
@@ -843,7 +1467,19 @@ impl Terminal {
             parent,
             parent_offset: [cmd.signed(b'H'), cmd.signed(b'V')],
         };
+        if self.tmux_graphics
+            && placement.source_rect(&self.graphics().images[&id])[2..].contains(&0)
+        {
+            return Err("EINVAL");
+        }
         let [columns, rows] = placement.grid_size(&self.graphics().images[&id], cell);
+        if self.tmux_graphics
+            && (columns > u16::MAX.into()
+                || rows > u16::MAX.into()
+                || u64::from(columns) * u64::from(rows) > cmd.limit() as u64)
+        {
+            return Err("EINVAL");
+        }
         let graphics = &mut self.screen_mut().graphics;
         let placement_id = if cmd.n(b'p') != 0 {
             PlacementId::External(cmd.n(b'p'))
@@ -853,6 +1489,20 @@ impl Terminal {
             PlacementId::Internal(n)
         };
         placement.placement_id = placement_id;
+        if let Some(quota) = graphics.quota.clone() {
+            let parent = graphics
+                .quota_images
+                .get(&id)
+                .map(|&(token, _)| token)
+                .ok_or("ENOENT")?;
+            let result = quota.reserve(graphics.quota_owner, Some(parent), 0);
+            graphics.prune_quota();
+            let token = result?;
+            if let Some(old) = graphics.quota_placements.insert((id, placement_id), token) {
+                quota.release(old);
+            }
+            quota.touch(token);
+        }
         graphics.placements.insert(placement);
         graphics.generation = graphics.generation.wrapping_add(1);
         if cmd.n(b'C') != 1 && cmd.n(b'U') == 0 && parent.is_none() {
@@ -1076,6 +1726,26 @@ impl Terminal {
     fn graphics_delete(&mut self, cmd: &Command) {
         let what = cmd.values.get(&b'd').copied().unwrap_or(i64::from(b'a')) as u8;
         let kind = what.to_ascii_lowercase();
+        let tmux = self.tmux_graphics;
+        let saved_images = if tmux {
+            let inactive = if self.alternate_active {
+                Some(&self.primary)
+            } else {
+                self.alternate.as_ref()
+            };
+            inactive
+                .into_iter()
+                .flat_map(|screen| {
+                    screen
+                        .graphics
+                        .placements
+                        .iter()
+                        .map(|placement| placement.image_id)
+                })
+                .collect::<HashSet<_>>()
+        } else {
+            HashSet::new()
+        };
         let image_id = self
             .screen_mut()
             .graphics
@@ -1087,10 +1757,18 @@ impl Terminal {
             Vec::new()
         };
         let cursor = self.screen().cursor.clone();
-        let cell = [
+        let mut cell = [
             self.width_px / u32::from(self.cols),
             self.height_px / u32::from(self.rows),
         ];
+        if self.tmux_graphics {
+            if cell[0] == 0 {
+                cell[0] = 8;
+            }
+            if cell[1] == 0 {
+                cell[1] = 16;
+            }
+        }
         let visible = if what.eq_ignore_ascii_case(&b'a') {
             self.screen().visible_placements(cell)
         } else {
@@ -1144,6 +1822,13 @@ impl Terminal {
                 graphics.placements.remove_image(image_id);
             } else {
                 graphics.placements.retain(|p| {
+                    if tmux
+                        && images
+                            .get(&p.image_id)
+                            .is_some_and(|image| image.tmux_sixel_cell.is_some())
+                    {
+                        return true;
+                    }
                     // ID-based deletions don't need image geometry or screen row searches.
                     let size = || {
                         images
@@ -1195,12 +1880,15 @@ impl Terminal {
             }
             removed.extend(graphics.reap_orphans());
             if what.is_ascii_uppercase() {
-                if matches!(what, b'I' | b'N') && cmd.n(b'p') == 0 {
+                if matches!(what, b'I' | b'N')
+                    && cmd.n(b'p') == 0
+                    && !saved_images.contains(&image_id)
+                {
                     graphics.images.remove(&image_id);
                     removed.remove(&image_id);
                 }
                 for id in removed {
-                    if !graphics.placements.has_image(id) {
+                    if !graphics.placements.has_image(id) && !saved_images.contains(&id) {
                         graphics.images.remove(&id);
                     }
                 }
@@ -1212,13 +1900,17 @@ impl Terminal {
 }
 
 fn decode_image(cmd: &Command, mut data: Vec<u8>) -> Result<(u32, u32, Vec<u8>), &'static str> {
+    let limit = cmd.limit();
+    if data.len() > limit {
+        return Err("EINVAL: invalid data");
+    }
     if cmd.n(b'o') == u32::from(b'z') {
         let mut decoded = Vec::new();
         flate2::read::ZlibDecoder::new(data.as_slice())
-            .take(MAX_DATA as u64 + 1)
+            .take(limit as u64 + 1)
             .read_to_end(&mut decoded)
             .map_err(|_| "EINVAL: decompression failed")?;
-        if decoded.len() > MAX_DATA {
+        if decoded.len() > limit {
             return Err("EINVAL: decompression failed");
         }
         data = decoded;
@@ -1233,7 +1925,7 @@ fn decode_image(cmd: &Command, mut data: Vec<u8>) -> Result<(u32, u32, Vec<u8>),
     let mut height = cmd.n(b'v');
     if format == 100 {
         let mut decoder = png::Decoder::new(std::io::Cursor::new(data.as_slice()));
-        decoder.set_limits(png::Limits { bytes: MAX_DATA });
+        decoder.set_limits(png::Limits { bytes: limit });
         decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
         let mut reader = decoder.read_info().map_err(|_| "EINVAL: invalid data")?;
         width = reader.info().width;
@@ -1241,12 +1933,12 @@ fn decode_image(cmd: &Command, mut data: Vec<u8>) -> Result<(u32, u32, Vec<u8>),
         // The native PNG callback bounds the expanded RGBA output before the
         // terminal checks dimensions. Keep that bound for grayscale input too.
         let pixel_count = u64::from(width) * u64::from(height);
-        if pixel_count > MAX_DATA as u64 / 4 {
+        if pixel_count > limit as u64 / 4 {
             return Err("EINVAL: invalid data");
         }
         let len = reader
             .output_buffer_size()
-            .filter(|&n| n <= MAX_DATA)
+            .filter(|&n| n <= limit)
             .ok_or("EINVAL: invalid data")?;
         let mut bytes = vec![0; len];
         let (color, depth) = reader.output_color_type();
@@ -1306,6 +1998,9 @@ fn decode_image(cmd: &Command, mut data: Vec<u8>) -> Result<(u32, u32, Vec<u8>),
         };
     } else {
         check_dimensions(width, height)?;
+        if u64::from(width) * u64::from(height) > limit as u64 / 4 {
+            return Err("EINVAL: invalid data");
+        }
         let bpp = match format {
             24 => 3,
             32 => 4,
@@ -1419,7 +2114,7 @@ impl Screen {
             .collect()
     }
 
-    pub(crate) fn clear_visible_images(&mut self, cell: [u32; 2]) {
+    pub(crate) fn clear_visible_images(&mut self, cell: [u32; 2], retain_sources: bool) {
         let before = (self.graphics.placements.len(), self.graphics.images.len());
         let visible = self.visible_placements(cell);
         self.graphics
@@ -1432,7 +2127,9 @@ impl Screen {
             .iter()
             .map(|p| p.image_id)
             .collect();
-        self.graphics.images.retain(|id, _| retained.contains(id));
+        if !retain_sources {
+            self.graphics.images.retain(|id, _| retained.contains(id));
+        }
         if before != (self.graphics.placements.len(), self.graphics.images.len()) {
             self.graphics.generation = self.graphics.generation.wrapping_add(1);
         }

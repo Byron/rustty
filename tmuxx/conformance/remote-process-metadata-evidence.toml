@@ -1,0 +1,22 @@
+# Real native metadata and exact C foreground observations, with explicit OS policy.
+[[suites]]
+id = "windows-remote-process-names"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 1
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "windows_process_names", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 180
+
+[[suites.assertions]]
+id = "runtime.c-foreground-command-path-and-automatic-name"
+tests = ["foreground_path_and_automatic_names_follow_real_processes"]
+description = "Real native root cwd/image and real C foreground cwd/image drive automatic names, explicit renames disable automation, window-renamed hooks retain exact payloads and pane_start_path survives chdir. The existing Windows retained-root/absent-POSIX-tty policy is asserted separately with a live foreground descendant and exact per-host paths."
+
+[[suites.assertions]]
+id = "difference.windows-retained-root-process-metadata"
+tests = ["foreground_path_and_automatic_names_follow_real_processes"]
+description = "C observes a same-PID exec to sleep and its actual /dev tty; Windows preserves the original Python root image while a held cmd.exe descendant owns input, exposes no fabricated POSIX tty path, tracks native Unicode cwd and kills the held descendant on owner shutdown."

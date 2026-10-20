@@ -500,13 +500,12 @@ ordinary windows retain their local layout commands. Windows embedded owners,
 persistent owners, local named-pipe attachments, and native SSH bridges use the
 same tmuxx runtime as the standalone driver.
 
-The tmuxx crates are pinned together to GitHub revision
-`700884116bc7239d032e6c91fb4e37e7c540c335`; no sibling checkout is needed to build.
-The engine and all Rustty renderers share its `tmuxx-vendored-rustty-vt` package so
-native checkpoint/replay uses the same implementation. Update these dependencies
-together when changing the terminal implementation. The workspace also patches
-`portable-pty` to the same revision so Rustty and tmuxx share the required native
-PTY backend; its Unix behavior is unchanged. On Windows Rustty calls the shared
+The [tmuxx crates](../../tmuxx/README.md) live in this repository and use the same
+local `rustty-parser` and `rustty-vt` crates as Rustty's renderers and sessions.
+Native checkpoint/replay and the server can now evolve in the same workspace.
+The workspace also patches `portable-pty` to the local tmuxx copy so Rustty and
+tmuxx share the required native PTY backend; its Unix behavior is unchanged.
+On Windows Rustty calls the shared
 runtime's explicit ConPTY initializer before creating any panes. It verifies the
 bundled DLL and OpenConsole executable against the pinned package and retains
 them for the process lifetime. Ordinary and embedded panes use the same runtime.

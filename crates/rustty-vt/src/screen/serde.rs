@@ -2,6 +2,38 @@
 use super::*;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
 
+// Flattened serde fields buffer JSON object keys as strings instead of using
+// serde_json's integer-key adapter. Preserve the existing wire object shape.
+pub(super) fn deserialize_row_map<'de, D, V>(
+    deserializer: D,
+) -> Result<std::collections::BTreeMap<u64, V>, D::Error>
+where
+    D: Deserializer<'de>,
+    V: Deserialize<'de>,
+{
+    struct Rows<V>(std::marker::PhantomData<V>);
+    impl<'de, V: Deserialize<'de>> ::serde::de::Visitor<'de> for Rows<V> {
+        type Value = std::collections::BTreeMap<u64, V>;
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("an object keyed by canonical row IDs")
+        }
+        fn visit_map<M: ::serde::de::MapAccess<'de>>(
+            self,
+            mut map: M,
+        ) -> Result<Self::Value, M::Error> {
+            let mut rows = std::collections::BTreeMap::new();
+            while let Some((key, value)) = map.next_entry::<String, V>()? {
+                let id = key.parse::<u64>().map_err(M::Error::custom)?;
+                if id.to_string() != key || rows.insert(id, value).is_some() {
+                    return Err(M::Error::custom("invalid or duplicate row ID"));
+                }
+            }
+            Ok(rows)
+        }
+    }
+    deserializer.deserialize_map(Rows(std::marker::PhantomData))
+}
+
 #[derive(Serialize)]
 struct ScreenRef<'a> {
     #[serde(flatten, with = "Screen")]

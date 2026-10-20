@@ -1,0 +1,11 @@
+[[suites]]
+id = "native-stdin-files"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "app-owned", "standalone", "windows"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--lib", "scheduler::file_stdin_tests"]
+env = {}
+
+[[suites.assertions]]
+id = "native.stdin-file-stream-bounds-and-continuation"
+tests = ["scheduler::file_stdin_tests::source_stdin_runs_prefix_once_and_resumes_only_on_owned_eof", "scheduler::file_stdin_tests::buffer_stdin_preserves_every_byte_and_repeated_reads_keep_callback_order", "scheduler::file_stdin_tests::stdin_overflow_drains_bounded_bytes_and_disconnect_discards_uncommitted_source"]
+description = "Negotiated stdin files retain exactly-once command prefixes, reject wrong-client/request chunks and duplicate EOF, preserve every buffer byte, continue after repeated-stdin EBADF, drain bounded overflow before rejecting the command group, and discard incomplete source on disconnect."

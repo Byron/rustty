@@ -1,0 +1,112 @@
+# Native Windows executable/pipe/ConPTY observations retain a separately pinned
+# real C oracle. Platform paths and native transport diagnostics are explicit.
+[[suites]]
+id = "windows-cli-discovery-c-reference"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 1
+remote_observers = ["upstream_reference"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "socket_defaults_windows", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 120
+
+[[suites.assertions]]
+id = "cli.c-default-and-label-discovery"
+tests = ["native_pipe_and_real_c_socket_selection_preserve_independent_instances"]
+description = "Actual Windows owners expose distinct named-pipe endpoints and incarnations selected through caller TMUXX_ENDPOINT, literal Unicode/metacharacter -L labels and explicit native endpoints. Fixed stdio bridges select only through protocol and agree with direct pipes on live pane PIDs. A genuine pinned C observer separately proves actual default namespace, inherited TMUX, -L and -S precedence across four independent C owners without an injected common -S override. Original local Unix C/R cross-pairing remains required on Unix."
+
+[[suites]]
+id = "windows-cli-config-lifetime-c-reference"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 1
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "config_lifetime_windows", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 180
+
+[[suites.assertions]]
+id = "config.c-startup-once-killed-clients-and-early-rejection"
+tests = ["configuration_loads_once_after_starter_loss_and_waiters_observe_completion"]
+description = "Real C autostart and native Windows explicit standalone ownership retain one configuration load while initiating/replacement command clients are killed. Each host rejects 140 malformed identified connections during a foreground startup barrier, exceeding native admission capacity without retaining slots. The final waiter remains blocked until GO, then observes exact late source/graph/runs-once output. Native pane handles prove cleanup after the owner exits; C daemon descendants are reclaimed by the leased subreaper."
+
+[[suites]]
+id = "windows-cli-runtime-defaults-c-reference"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 15
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "runtime_defaults_windows", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 240
+
+[[suites.assertions]]
+id = "runtime.c-startup-shell-editor-key-defaults"
+tests = ["startup_shell_and_editor_defaults_match_c"]
+description = "All nine original startup cases execute with real C and explicit native Windows owners: missing/empty/relative/missing/self SHELL fallback, valid shell, complete editor strings, empty VISUAL precedence, basename-sensitive lower-case vi detection. The C login shell and Windows OS cmd.exe path are separately asserted; exact editor/key results agree."
+
+[[suites.assertions]]
+id = "format.c-client-request-environment"
+tests = ["client_environment_format_uses_request_environment"]
+description = "Actual separate native CLI and C processes expose changing request environments through V/c, preserving empty values and exact hidden/removed flags."
+
+[[suites.assertions]]
+id = "environment.c-real-child-overrides-and-control-attach"
+tests = ["child_environment_overrides_and_attach_updates_match_c"]
+description = "The complete child/attach matrix runs real ConPTY and C children: inheritance, removed/hidden masks, repeated -e, ignored bare names, explicit TERM, forced default-shell, caller/pane PATH precedence, absent/hidden/removed PATH, attach -E and exact/glob imports. Each OS shell and fallback PATH is asserted exactly before comparing common observations; Windows fallback resolves trusted native OS directories."
+
+[[suites.assertions]]
+id = "difference.implementation-identity"
+tests = ["implementation_identity_is_explicit_and_pane_overrides_take_precedence"]
+description = "Native Windows and actual C children report their respective exact executable/package version and TERM_PROGRAM identity. Explicit pane environment overrides win in both."
+
+[[suites.assertions]]
+id = "environment.c-control-transport-versus-attachment-path"
+tests = ["control_transport_path_override_depends_on_attachment_like_c"]
+description = "The complete control attachment matrix runs real native CLI/ConPTY and C clients: initial detached/attached creation uses caller PATH, while later attached new-window/split/respawn honors pane PATH overrides. Transport mode alone never changes precedence."
+
+[[suites]]
+id = "windows-cli-source-stdin-c-reference"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 1
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "source_stdin_windows", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 180
+
+[[suites.assertions]]
+id = "config.c-source-stdin-files-flags-and-async-preparation"
+tests = ["source_stdin_preserves_complete_files_flags_groups_and_preparation_matrix"]
+description = "All thirteen source/stdin/file/flag/error/group/repeated-input cases run with the real C CLI and native Windows CLI/pipe owner. Only the five known canonical source filename prefixes are projected explicitly; command, line, error and state bytes remain exact. Held-input clients on each platform prepare the prefix once before EOF, allow another client to change the environment, then preserve source/suffix context without replay. Unix IPC pairings remain separately required on their platforms."
+
+[[suites]]
+id = "windows-cli-selectors-c-reference"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 2
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "selectors_windows", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 180
+
+[[suites.assertions]]
+id = "cli.c-selector-byte-forwarding"
+tests = ["malformed_selectors_preserve_graph_and_binary_bridge_bytes", "malformed_selectors_have_exact_control_errors_and_leave_attachment_usable"]
+description = "The complete selector registry matrix compares actual C command/control behavior with the native Windows binary stdio bridge and native CLI control. Malformed byte selectors, valid U+FFFD names, CANFAIL, repeated-flag precedence, destructive graph probes, arbitrary literal/file bytes, prior/following commands and inactive branches remain exact. Windows argv never aliases unrepresentable bytes through replacement characters."
+
+[[suites.assertions]]
+id = "difference.native-selector-utf8-rejection"
+tests = ["malformed_selectors_preserve_graph_and_binary_bridge_bytes", "malformed_selectors_have_exact_control_errors_and_leave_attachment_usable"]
+description = "Every original target/source/client selector rejection has exact separate C and native diagnostics. Binary bridge requests and octal-escaped native control retain raw input identity while rejected operations preserve graph names and keep the attachment usable."
