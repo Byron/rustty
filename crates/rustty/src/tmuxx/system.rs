@@ -40,20 +40,40 @@ impl Drop for SystemConnection {
 impl Connection {
     /// Connect to an existing stock tmux server through the user's SSH setup.
     pub fn system_ssh(host: &str, wake: Arc<dyn Fn() + Send + Sync>) -> io::Result<Self> {
+        Self::system_ssh_with_env(host, &BTreeMap::new(), wake)
+    }
+    /// Apply application environment overrides to every session's SSH process.
+    pub fn system_ssh_with_env(
+        host: &str,
+        environment: &BTreeMap<String, String>,
+        wake: Arc<dyn Fn() + Send + Sync>,
+    ) -> io::Result<Self> {
         if host.is_empty() {
             return Err(err("SSH host is empty"));
         }
         let (mut connection, requests) = Self::base(wake, true);
         let (events, receive) = mpsc::sync_channel(256);
-        let primary = Actor::start(host, None, 0, events.clone())?;
+        let primary = Actor::start(host, environment, None, 0, events.clone())?;
         let shared = connection.shared.clone();
         let manager_shared = shared.clone();
         let host = host.to_owned();
-        connection.source = Source::SystemSsh(host.clone());
+        let environment = environment.clone();
+        connection.source = Source::SystemSsh {
+            host: host.clone(),
+            environment: environment.clone(),
+        };
         let manager = thread::Builder::new()
             .name("rustty-system-tmux".into())
             .spawn(move || {
-                manage(host, manager_shared, requests, events, receive, primary);
+                manage(
+                    host,
+                    environment,
+                    manager_shared,
+                    requests,
+                    events,
+                    receive,
+                    primary,
+                );
             })?;
         connection.system = Some(SystemConnection {
             shared,
@@ -82,6 +102,7 @@ struct Actor {
 impl Actor {
     fn start(
         host: &str,
+        environment: &BTreeMap<String, String>,
         session: Option<u64>,
         id: u64,
         events: mpsc::SyncSender<TransportEvent>,
@@ -100,8 +121,7 @@ impl Actor {
             || "exec tmux -C attach-session -f new-layouts".to_owned(),
             |id| format!("exec tmux -C attach-session -f new-layouts -t '${id}'"),
         );
-        let mut child = Command::new("ssh")
-            .args(["-T", "-o", "BatchMode=yes", "--", host])
+        let mut child = ssh::command(host, environment)
             .arg(remote)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -255,6 +275,7 @@ impl Drop for Actor {
 
 fn manage(
     host: String,
+    environment: BTreeMap<String, String>,
     shared: Arc<Shared>,
     requests: mpsc::Receiver<Request>,
     events: mpsc::SyncSender<TransportEvent>,
@@ -445,7 +466,13 @@ fn manage(
             if actors.values().any(|actor| actor.session == Some(session)) {
                 continue;
             }
-            match Actor::start(&host, Some(session), next_actor, events.clone()) {
+            match Actor::start(
+                &host,
+                &environment,
+                Some(session),
+                next_actor,
+                events.clone(),
+            ) {
                 Ok(actor) => {
                     actors.insert(next_actor, actor);
                     next_actor += 1;
@@ -758,6 +785,7 @@ fn live(shared: &Shared, pane_id: u64, data: &[u8]) -> io::Result<()> {
 mod tests {
     use super::*;
     use crate::session::Session;
+    use std::process::Command;
     use std::time::Instant;
     fn ready(connection: &Connection) -> Graph {
         let deadline = Instant::now() + Duration::from_secs(10);
