@@ -716,6 +716,8 @@ pub struct Screen {
     pub(crate) tmux_capture_rows: std::collections::BTreeMap<u64, (usize, usize)>,
     #[serde(default)]
     pub(crate) tmux_capture_known: bool,
+    #[serde(skip)]
+    pub(crate) tmux_capture_enabled: bool,
     #[serde(default, deserialize_with = "serde_impl::deserialize_row_map")]
     pub(crate) tmux_row_times: std::collections::BTreeMap<u64, u64>,
     #[serde(default, deserialize_with = "serde_impl::deserialize_row_map")]
@@ -772,6 +774,10 @@ impl Screen {
     }
 
     fn tmux_capture_write(&mut self, y: usize, end: usize) {
+        if !self.tmux_capture_enabled {
+            self.tmux_capture_known = false;
+            return;
+        }
         if end == 0 {
             return;
         }
@@ -798,7 +804,10 @@ impl Screen {
         end: usize,
         background: Color,
     ) {
-        if self.cursor.style.tmux_ansi & 2 == 0 || background != self.cursor.style.background {
+        if !self.tmux_capture_enabled
+            || self.cursor.style.tmux_ansi & 2 == 0
+            || background != self.cursor.style.background
+        {
             return;
         }
         let row = self.physical_row(absolute);
@@ -832,6 +841,7 @@ impl Screen {
             height: rows,
             tmux_capture_rows: Default::default(),
             tmux_capture_known: true,
+            tmux_capture_enabled: false,
             tmux_row_times: Default::default(),
             tmux_row_flags: Default::default(),
             tmux_current_time: 0,
@@ -952,6 +962,7 @@ impl Screen {
             tmux_history: self.tmux_history,
             tmux_capture_rows: self.tmux_capture_rows.clone(),
             tmux_capture_known: self.tmux_capture_known,
+            tmux_capture_enabled: self.tmux_capture_enabled,
             tmux_row_times: self.tmux_row_times.clone(),
             tmux_row_flags: self.tmux_row_flags.clone(),
             tmux_current_time: self.tmux_current_time,
@@ -1021,23 +1032,29 @@ impl Screen {
         let id = self.row(y).id;
         self.graphics.overwrite_sixel(id, start, end);
         let columns = self.columns;
-        let entry = self.tmux_capture_rows.entry(id).or_default();
-        if start == 0 && end >= columns && !protected {
+        let complete = start == 0 && end >= columns && !protected;
+        if complete {
             self.tmux_row_times.remove(&id);
             self.tmux_row_flags.remove(&id);
             if let Some(markers) = &mut self.tmux_shell {
                 markers.remove(&id);
             }
-            *entry = (
-                0,
-                if background == Color::Default {
-                    0
-                } else {
-                    columns
-                },
-            );
-        } else if background != Color::Default {
-            entry.1 = tmux_expand(entry.1, end.min(columns), columns);
+        }
+        self.tmux_capture_known &= self.tmux_capture_enabled;
+        if self.tmux_capture_enabled {
+            let entry = self.tmux_capture_rows.entry(id).or_default();
+            if complete {
+                *entry = (
+                    0,
+                    if background == Color::Default {
+                        0
+                    } else {
+                        columns
+                    },
+                );
+            } else if background != Color::Default {
+                entry.1 = tmux_expand(entry.1, end.min(columns), columns);
+            }
         }
         let (index, row) = self.locate(self.history_len() + y);
         self.pages.pages[index].erase(row, start, end, background, protected);
@@ -1051,7 +1068,8 @@ impl Screen {
             markers.remove(&old_id);
         }
         self.tmux_capture_rows.remove(&self.row(y).id);
-        if background != Color::Default {
+        self.tmux_capture_known &= self.tmux_capture_enabled;
+        if self.tmux_capture_enabled && background != Color::Default {
             self.tmux_capture_rows.insert(id, (0, self.columns));
         }
         let (index, row) = self.locate(self.history_len() + y);
@@ -1068,9 +1086,11 @@ impl Screen {
     ) {
         let moved_end = if right { range.end } else { range.end - count };
         self.tmux_capture_write(y, moved_end);
-        let id = self.row(y).id;
-        let entry = self.tmux_capture_rows.entry(id).or_default();
-        entry.1 = tmux_expand(entry.1, range.end, self.columns);
+        if self.tmux_capture_enabled {
+            let id = self.row(y).id;
+            let entry = self.tmux_capture_rows.entry(id).or_default();
+            entry.1 = tmux_expand(entry.1, range.end, self.columns);
+        }
         let (index, row) = self.locate(self.history_len() + y);
         self.pages.pages[index].shift_cells(row, range.clone(), count, right, background);
         let blank = if right {
@@ -1962,9 +1982,10 @@ impl Screen {
         background: Color,
         copy_limit: usize,
     ) {
+        self.tmux_capture_known &= self.tmux_capture_enabled;
         if background == Color::Default {
             self.tmux_capture_rows.remove(&blank);
-        } else {
+        } else if self.tmux_capture_enabled {
             self.tmux_capture_rows.insert(blank, (0, self.columns));
         }
         if history && self.history_enabled() {
@@ -2001,7 +2022,8 @@ impl Screen {
     }
 
     fn grow_row(&mut self, id: u64, background: Color, active_rows: usize) {
-        if background != Color::Default {
+        self.tmux_capture_known &= self.tmux_capture_enabled;
+        if self.tmux_capture_enabled && background != Color::Default {
             self.tmux_capture_rows.insert(id, (0, self.columns));
         }
         if self.viewport_offset > 0 {

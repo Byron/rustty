@@ -2,6 +2,10 @@ use super::*;
 
 impl Screen {
     pub(super) fn tmux_note_rendition(&mut self, y: usize, unicode: bool) {
+        if !self.tmux_capture_enabled {
+            self.tmux_capture_known = false;
+            return;
+        }
         let style = self.cursor.style;
         let hyperlink = self.cursor.hyperlink.is_some();
         let extended = unicode
@@ -53,5 +57,69 @@ impl Screen {
             }
         }
         flags
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Screen, Terminal, snapshot};
+
+    #[test]
+    fn tmux_capture_survives_screen_switches_reset_and_checkpoint_restore() {
+        let mut terminal = Terminal::new(8, 2, 0);
+        terminal.set_tmux_strings(true);
+        for transition in [b"".as_slice(), b"\x1b[?1049h", b"\x1b[?1049l", b"\x1bc"] {
+            terminal.feed(transition);
+            terminal.feed("\r\x1b[2Ké\rx ".as_bytes());
+            let primary: Screen =
+                serde_json::from_value(serde_json::to_value(terminal.primary_screen()).unwrap())
+                    .unwrap();
+            let alternate: Option<Screen> = terminal.alternate_screen().map(|screen| {
+                serde_json::from_value(serde_json::to_value(screen).unwrap()).unwrap()
+            });
+            terminal = snapshot::decode_exact(
+                snapshot::encode_to_vec(&terminal).unwrap().as_slice(),
+                snapshot::DecodeOptions {
+                    tmux_strings: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            terminal
+                .restore_tmux_capture_metadata(&primary, alternate.as_ref())
+                .unwrap();
+            terminal.feed(b"z");
+            let screen = terminal.screen();
+            let row = screen.row(0);
+            assert_eq!(screen.row_text(row), "x z");
+            assert_eq!(screen.tmux_capture_bounds(row.id), Some((3, 4)));
+            assert_eq!(screen.tmux_line_flags(row), 2);
+        }
+    }
+
+    #[test]
+    fn enabling_tmux_capture_does_not_invent_untracked_bounds() {
+        let mut terminal = Terminal::new(8, 2, 0);
+        terminal.feed(b"first");
+        terminal = snapshot::decode_exact(
+            snapshot::encode_to_vec(&terminal).unwrap().as_slice(),
+            snapshot::DecodeOptions::default(),
+        )
+        .unwrap();
+        terminal.feed(b" ");
+        terminal.set_tmux_strings(true);
+        terminal.feed(b"x");
+        let screen = terminal.screen();
+        assert_eq!(screen.tmux_capture_bounds(screen.row(0).id), None);
+        terminal.reset();
+        terminal.feed(b"x");
+        let screen = terminal.screen();
+        assert_eq!(screen.tmux_capture_bounds(screen.row(0).id), Some((1, 2)));
+        terminal.set_tmux_strings(false);
+        terminal.feed(b" ");
+        terminal.set_tmux_strings(true);
+        terminal.feed(b"y");
+        let screen = terminal.screen();
+        assert_eq!(screen.tmux_capture_bounds(screen.row(0).id), None);
     }
 }
