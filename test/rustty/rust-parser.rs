@@ -93,6 +93,11 @@ fn observe(event: Event<'_>) -> Value {
         Event::DcsUnhook => "dcs_unhook",
         Event::ApcStart => "apc_start",
         Event::ApcEnd => "apc_end",
+        Event::TmuxStringStart(byte) => {
+            value["byte"] = json!(byte);
+            "tmux_string_start"
+        }
+        Event::TmuxStringEnd => "tmux_string_end",
         Event::Osc {
             data,
             terminated_by_bell,
@@ -105,4 +110,28 @@ fn observe(event: Event<'_>) -> Value {
     };
     value["kind"] = json!(kind);
     value
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tmux_string_observations_preserve_kind_and_boundaries() {
+        for kind in [b'k', b'_', b'^', b'X'] {
+            let mut parser = Parser::new();
+            parser.set_tmux_strings(true);
+            let mut events = Vec::new();
+            parser.advance(&[0x1b, kind, b'x', 0x1b], |event| {
+                events.push(observe(event));
+            });
+            assert_eq!(events.len(), 3);
+            assert_eq!(events[0]["kind"], "tmux_string_start");
+            assert_eq!(events[0]["byte"], kind);
+            assert_eq!(events[1]["kind"], "apc_put");
+            assert_eq!(events[1]["byte"], b'x');
+            assert_eq!(events[2]["kind"], "tmux_string_end");
+            assert!(events[2]["byte"].is_null());
+        }
+    }
 }

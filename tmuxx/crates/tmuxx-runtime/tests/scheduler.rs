@@ -539,7 +539,7 @@ fn command_only_job_target_formats_survive_preparation() {
                 "run",
                 "-Ct",
                 "main:0.0",
-                "display -p '#{session_name}:#{pane_id}:#{command}'"
+                "display -lp '#{session_name}:#{pane_id}:#{command}'"
             ]
         )
         .output,
