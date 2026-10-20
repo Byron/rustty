@@ -302,6 +302,8 @@ pub struct Config {
     /// Own one Stream Deck dashboard while a supported USB device is present.
     pub stream_deck: bool,
     pub stream_deck_serial: Option<String>,
+    /// Configuration file loaded when Rustty starts a native tmuxx server.
+    pub tmuxx_config_file: Option<PathBuf>,
     /// Remote shell command used for native tmuxx connections over SSH.
     pub tmuxx_ssh_command: String,
     /// Overrides keyed by the exact SSH target or alias supplied when connecting.
@@ -403,6 +405,7 @@ impl Default for Config {
             window_save_state: WindowSaveState::Default,
             stream_deck: false,
             stream_deck_serial: None,
+            tmuxx_config_file: None,
             tmuxx_ssh_command: "rustty tmux --native-stdio".into(),
             tmuxx_ssh_command_hosts: BTreeMap::new(),
             tmuxx_connections: BTreeMap::new(),
@@ -568,6 +571,12 @@ impl Config {
             "window-save-state" => set!(window_save_state, WindowSaveState::parse(value)?),
             "stream-deck" => set!(stream_deck, parse_bool(value)?),
             "stream-deck-serial" => set!(stream_deck_serial, Some(value.to_owned())),
+            "tmuxx-config-file" => set!(tmuxx_config_file, {
+                if value.contains('\0') {
+                    return Err("tmuxx configuration path must contain no NUL");
+                }
+                Some(expand_path(value, entry.base(), home))
+            }),
             "tmuxx-ssh-command" => set!(tmuxx_ssh_command, {
                 if value.trim().is_empty() || value.contains('\0') {
                     return Err("SSH command must be nonempty and contain no NUL");

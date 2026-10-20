@@ -449,9 +449,23 @@ on Unix. Windows uses an account-scoped named pipe for the `default` instance.
 Temporary menu windows use unique endpoints, shown in their connection submenu.
 For a known embedded endpoint, start with
 `TMUXX_ENDPOINT=/path/to/private/socket.native rustty --tmuxx=embedded`.
-Only one owner can bind a given endpoint. `rustty tmux -f /path/to/tmux.conf ...`
-loads server configuration, while Rustty-specific settings belong in the normal
-application settings file, including Ghostty Local when it is the active fallback.
+Only one owner can bind a given endpoint. To configure servers started by Rustty,
+add this to the active application settings file (including Ghostty Local when
+it is the active fallback):
+
+```ini
+tmuxx-config-file = ~/tmuxx.conf
+```
+
+Temporary and newly started persistent servers load this file before creating
+their first session. Relative paths use the directory of the declaring settings
+file (the working directory for command-line overrides); `~/` uses your home
+directory. An empty value resets the setting. Missing or unreadable files prevent
+startup. Configuration command errors are recorded in the server's `show-messages`
+log. Connecting to an existing local or remote server keeps its settings;
+reloading Rustty settings affects only future servers. Use `source-file` on a
+running server to reload its tmuxx configuration. Headless servers can load the
+same file with `rustty tmux -f /path/to/tmuxx.conf ...` or `tmuxx.exe -D -f PATH`.
 
 To use a remote native daemon, install the Rustty executable on that host and
 create the session once:

@@ -1,6 +1,6 @@
 //! Window attachments own views; only temporary attachments own the engine.
 use super::*;
-use rustty::tmuxx::Connection;
+use rustty::tmuxx::{Connection, ServerOptions};
 use rustty_app::tmuxx_copy::{CopiedWindow, WindowCopy};
 use rustty_app::tmuxx_workspace::Mapping;
 use std::collections::BTreeSet;
@@ -37,6 +37,43 @@ pub(super) fn connection_timeout(source: &Source) -> Duration {
         Source::Ssh(_) | Source::SystemSsh(_) => Duration::from_secs(120),
         Source::Embedded(_) | Source::Local(_) => Duration::from_secs(10),
     }
+}
+
+pub(super) fn server_options(config: &config::Config, endpoint: &Path) -> Result<ServerOptions> {
+    let mut options = ServerOptions::new(endpoint);
+    if let Some(path) = &config.tmuxx_config_file {
+        let check = || -> std::io::Result<()> {
+            if !std::fs::metadata(path)?.is_file() {
+                return Err(std::io::Error::other("not a regular file"));
+            }
+            std::fs::File::open(path)?;
+            Ok(())
+        };
+        check().map_err(|error| {
+            format!(
+                "Could not read tmuxx configuration {}: {error}",
+                path.display()
+            )
+        })?;
+        options.config.push(path.clone());
+    }
+    Ok(options)
+}
+
+fn persistent_server_command(
+    config: &config::Config,
+    endpoint: &Path,
+) -> Result<std::process::Command> {
+    let options = server_options(config, endpoint)?;
+    let executable = std::env::current_exe()?;
+    #[cfg(windows)]
+    let executable = executable.with_file_name("tmuxx.exe");
+    let prefix: &[&str] = if cfg!(windows) { &[] } else { &["tmux"] };
+    let mut command = tmuxx_cli::native_daemon_command(&executable, &options.endpoint, prefix);
+    for path in &options.config {
+        command.arg("-f").arg(path);
+    }
+    Ok(command)
 }
 
 struct PendingSession {
@@ -738,8 +775,11 @@ impl App {
                 }
                 None => Vec::new(),
             };
-            let connection =
-                Connection::embedded_with_command(&endpoint, self.tmuxx_wake(), initial)?;
+            let connection = Connection::embedded_with_options(
+                server_options(self.config(), &endpoint)?,
+                self.tmuxx_wake(),
+                initial,
+            )?;
             self.tmuxx.push(Attachment::new(
                 Source::Embedded(endpoint),
                 Some(connection),
@@ -777,12 +817,7 @@ impl App {
             {
                 let connection = Connection::native(&endpoint, self.tmuxx_wake()).ok();
                 if connection.is_none() {
-                    let executable = std::env::current_exe()?;
-                    #[cfg(windows)]
-                    let executable = executable.with_file_name("tmuxx.exe");
-                    let prefix: &[&str] = if cfg!(windows) { &[] } else { &["tmux"] };
-                    let mut child =
-                        tmuxx_cli::native_daemon_command(&executable, &endpoint, prefix).spawn()?;
+                    let mut child = persistent_server_command(self.config(), &endpoint)?.spawn()?;
                     std::thread::spawn(move || {
                         let _ = child.wait();
                     });
@@ -1361,6 +1396,47 @@ impl App {
 mod tests {
     use super::*;
     use rustty::tmuxx::{Graph, ServerSession};
+
+    #[test]
+    fn server_configuration_is_checked_and_passed_as_a_separate_daemon_argument() {
+        let directory =
+            std::env::temp_dir().join(format!("rustty-server-config-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("server settings.conf");
+        std::fs::write(&path, "").unwrap();
+        let mut config = config::Config::default();
+        config.tmuxx_config_file = Some(path.clone());
+        let endpoint = directory.join("server.native");
+        let options = server_options(&config, &endpoint).unwrap();
+        assert_eq!(options.config, std::slice::from_ref(&path));
+        let command = persistent_server_command(&config, &endpoint).unwrap();
+        let args: Vec<_> = command.get_args().collect();
+        assert_eq!(
+            &args[args.len() - 2..],
+            [std::ffi::OsStr::new("-f"), path.as_os_str()]
+        );
+
+        config.tmuxx_config_file = None;
+        assert!(
+            server_options(&config, &endpoint)
+                .unwrap()
+                .config
+                .is_empty()
+        );
+        assert!(
+            !persistent_server_command(&config, &endpoint)
+                .unwrap()
+                .get_args()
+                .any(|arg| arg == "-f")
+        );
+        for invalid in [directory.clone(), directory.join("missing.conf")] {
+            config.tmuxx_config_file = Some(invalid.clone());
+            let error = server_options(&config, &endpoint).unwrap_err().to_string();
+            assert!(error.contains(&invalid.display().to_string()), "{error}");
+            assert!(!endpoint.exists());
+        }
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 
     #[cfg(windows)]
     #[test]

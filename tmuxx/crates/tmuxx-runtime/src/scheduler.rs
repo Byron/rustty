@@ -921,6 +921,9 @@ impl Host {
                         }
                     }
                     Ok(Step::SourceResult(output, failed)) => {
+                        if self.scheduler.internal.contains_key(&id) {
+                            self.log_message(b"error", &output);
+                        }
                         if client.control {
                             let state = self.control.clients.entry(id).or_default();
                             for line in output
@@ -3142,6 +3145,44 @@ mod file_stdin_tests {
 #[cfg(test)]
 mod source_admission_tests {
     use super::*;
+
+    #[test]
+    fn startup_parse_errors_remain_in_messages_after_configuration_finishes() {
+        let path = std::env::temp_dir().join(format!(
+            "tmuxx-bad-config-{}-{}.conf",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, "set -g default-shell \"unterminated\n").unwrap();
+        let (tx, _) = mpsc::sync_channel(1);
+        let mut host = Host::new(
+            tx,
+            &Options::new("unused-startup-diagnostics"),
+            BTreeMap::new(),
+        );
+        host.start_configuration(std::slice::from_ref(&path));
+        for _ in 0..1024 {
+            if !host.scheduled_work() {
+                break;
+            }
+        }
+        std::fs::remove_file(&path).unwrap();
+        assert!(host.scheduler.startup.is_none());
+        let output = host
+            .show_messages(&Command::new(vec![b"show-messages".to_vec()]))
+            .unwrap()
+            .output;
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("error:"), "{output}");
+        assert!(
+            output.contains(path.file_name().unwrap().to_str().unwrap()),
+            "{output}"
+        );
+        assert!(output.contains(":1: unterminated quote"), "{output}");
+    }
 
     #[test]
     fn prepared_environment_rejects_malformed_values_atomically_and_keeps_ordering() {
