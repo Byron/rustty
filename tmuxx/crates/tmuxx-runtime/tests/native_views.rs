@@ -88,7 +88,7 @@ fn command(
 }
 
 #[test]
-fn native_late_host_states_after_kill_are_idempotent() {
+fn native_late_gui_events_after_kill_are_idempotent() {
     let host = host();
     let admin = host.connect().unwrap();
     let view = host
@@ -132,6 +132,21 @@ fn native_late_host_states_after_kill_are_idempotent() {
     for _ in 0..2 {
         assert_eq!(
             command(&view, &["tmuxx-release-pane", "-t", "%0"], None, false).error,
+            None
+        );
+    }
+    for input in [
+        tmuxx_terminal::Input::Text(b"late key".to_vec()),
+        tmuxx_terminal::Input::Reply(b"late report".to_vec()),
+    ] {
+        assert_eq!(
+            command(
+                &view,
+                &["tmuxx-input", "-t", "%0"],
+                Some(serde_json::to_vec(&input).unwrap()),
+                false,
+            )
+            .error,
             None
         );
     }
@@ -188,11 +203,14 @@ fn native_absent_host_state_still_validates_requests_and_command_targets() {
         vec!["kill-pane", "-t", "%0"],
         vec!["tmuxx-claim-pane", "-t", "%0"],
         vec!["tmuxx-retain-pane", "-t", "%0", "on"],
-        vec!["tmuxx-input", "-t", "%0"],
     ] {
-        let input = (argv[0] == "tmuxx-input")
-            .then(|| serde_json::to_vec(&tmuxx_terminal::Input::Text(b"x".to_vec())).unwrap());
-        assert!(command(&view, &argv, input, false).error.is_some());
+        assert!(command(&view, &argv, None, false).error.is_some());
+    }
+    for (input, expected) in [(None, "missing native input"), (Some(b"{".to_vec()), "EOF")] {
+        let error = command(&view, &["tmuxx-input", "-t", "%0"], input, false)
+            .error
+            .unwrap();
+        assert!(error.contains(expected), "{error}");
     }
     host.shutdown().unwrap();
 }
