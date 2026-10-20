@@ -3049,11 +3049,11 @@ impl Terminal {
         }
         let data = data.get(split + 1..).unwrap_or_default();
         match number {
-            0 | 2 if self.tmux_strings => {
-                if data.len().saturating_add(split + 1) >= 1024 * 1024 {
-                    return;
-                }
+            0 | 2 if self.tmux_strings && data.len().saturating_add(split + 1) >= 1024 * 1024 => {
+                return;
             }
+            // tmux titles bypass the ordinary terminal capture limit.
+            0 | 2 if self.tmux_strings => {}
             // These fixed captures append a NUL before dispatch.
             0 | 2 | 7 | 8 | 22 | 777 | 1337 if !has_separator || data.len() >= 2048 => return,
             9 | 133 if !has_separator || data.len() > 2048 => return,

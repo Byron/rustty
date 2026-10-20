@@ -132,10 +132,7 @@ impl SystemClient {
                 .windows
                 .get(&window)
                 .is_some_and(|w| w.panes.contains(&pane))
-            || !state
-                .panes
-                .get(&pane)
-                .is_some_and(|p| p.window_id == window)
+            || state.panes.get(&pane).is_none_or(|p| p.window_id != window)
         {
             return Err(Error::UnknownObject);
         }

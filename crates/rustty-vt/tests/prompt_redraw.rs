@@ -102,7 +102,7 @@ fn all_redraw_reaches_prompt_history_and_rows_below_the_cursor() {
     let mut terminal = Terminal::new(16, 3, 20);
     terminal.feed(b"\x1b]133;A\x07first\r\nsecond\r\nthird\r\nfourth\r\nfifth");
     terminal.resize(20, 3);
-    assert!(!terminal.screen().history().next().is_none());
+    assert!(terminal.screen().history().next().is_some());
     assert!(
         terminal
             .screen()
