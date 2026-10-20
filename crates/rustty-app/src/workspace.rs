@@ -434,6 +434,11 @@ pub struct PaneRect {
     pub y: i32,
     pub cols: u32,
     pub rows: u32,
+    /// Server status rows inside the layout slot, outside the terminal content.
+    #[serde(default)]
+    pub reserved_top: u32,
+    #[serde(default)]
+    pub reserved_bottom: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -532,7 +537,7 @@ impl Tab {
             )
             .collect()
     }
-    pub fn layout(&self, rect: Rect, peek: bool) -> Vec<(Id, Rect)> {
+    pub fn layout(&self, rect: Rect, peek: bool, cell_height: f32) -> Vec<(Id, Rect)> {
         if !peek
             && let Some(view) = &self.server_view
             && let Some([cols, rows]) = self.server_size
@@ -541,10 +546,29 @@ impl Tab {
                 rect.width / cols.max(1) as f32,
                 rect.height / rows.max(1) as f32,
             ];
+            let tiles = self.visible_tree(false).layout(rect);
             return view
                 .iter()
-                .map(|pane| {
-                    (
+                .filter_map(|pane| {
+                    let overlay = self
+                        .overlays
+                        .iter()
+                        .any(|overlay| overlay.pane == pane.pane);
+                    let tile = tiles
+                        .iter()
+                        .find(|(id, _)| *id == pane.pane)
+                        .map(|(_, rect)| *rect)
+                        .or_else(|| (overlay && self.zoom == Some(pane.pane)).then_some(rect));
+                    if let Some(mut tile) = tile {
+                        let top = (pane.reserved_top as f32 * cell_height)
+                            .clamp(0.0, tile.height.max(0.0));
+                        let bottom = (pane.reserved_bottom as f32 * cell_height)
+                            .clamp(0.0, (tile.height - top).max(0.0));
+                        tile.y += top;
+                        tile.height = (tile.height - top - bottom).max(0.0);
+                        return Some((pane.pane, tile));
+                    }
+                    overlay.then_some((
                         pane.pane,
                         Rect {
                             x: rect.x + pane.x as f32 * cell[0],
@@ -552,7 +576,7 @@ impl Tab {
                             width: pane.cols as f32 * cell[0],
                             height: pane.rows as f32 * cell[1],
                         },
-                    )
+                    ))
                 })
                 .collect();
         }
@@ -1261,6 +1285,7 @@ impl Workspace {
                                 && pane.rows > 0
                                 && pane.cols <= 10_000
                                 && pane.rows <= 10_000
+                                && pane.reserved_top.saturating_add(pane.reserved_bottom) <= 10_000
                         });
                 }
                 valid &= (tab.overlays.is_empty() && tab.server_view.is_none())

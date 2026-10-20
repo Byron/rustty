@@ -326,7 +326,7 @@ pub fn breadcrumb(tab: &Tab, labels: &HashMap<Id, String>) -> Vec<Row> {
 }
 
 fn tab_rows(tab: &Tab, labels: &HashMap<Id, String>, depth: usize, active: bool) -> Vec<Row> {
-    let layout = tab.layout(Rect::UNIT, true);
+    let layout = tab.layout(Rect::UNIT, true, 0.0);
     let mut rows = Vec::new();
     let mut seen = HashSet::new();
     for &(pane, rect) in &layout {
