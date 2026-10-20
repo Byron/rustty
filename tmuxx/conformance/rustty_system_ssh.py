@@ -36,8 +36,13 @@ def process_identity(pid):
         if libproc.proc_pidpath(pid, buffer, len(buffer)) <= 0:
             raise OSError(ctypes.get_errno(), 'proc_pidpath')
         executable = Path(os.fsdecode(buffer.value)).resolve(strict=True)
-        started = subprocess.check_output(['ps', '-p', str(pid), '-o', 'lstart='],
-                                         text=True, timeout=3).strip()
+        try:
+            started = subprocess.check_output(['ps', '-p', str(pid), '-o', 'lstart='],
+                                             text=True, stderr=subprocess.PIPE, timeout=3).strip()
+        except subprocess.CalledProcessError as error:
+            if error.returncode == 1 and not error.output and not error.stderr:
+                raise ProcessLookupError('reference server exited') from error
+            raise
         if not started:
             raise RuntimeError('reference server exited')
     else:
@@ -101,6 +106,18 @@ def stop_reference(expected):
     finally:
         if descriptor is not None:
             os.close(descriptor)
+
+
+def stop_fixture(owner, daemon):
+    try:
+        stop_reference(owner)
+    finally:
+        daemon.terminate()
+        try:
+            daemon.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            daemon.kill()
+            daemon.wait()
 
 
 @contextmanager
@@ -258,13 +275,7 @@ def run():
                     args.output.write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps({'reference': report['version'], 'status': report['status'], 'assertions': len(report['assertions'])}))
             finally:
-                stop_reference(owner)
-                daemon.terminate()
-                try:
-                    daemon.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    daemon.kill()
-                    daemon.wait()
+                stop_fixture(owner, daemon)
 
 
 if __name__ == '__main__':
