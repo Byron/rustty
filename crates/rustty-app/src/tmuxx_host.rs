@@ -4,19 +4,7 @@ use rustty::tmuxx::Connection;
 use rustty_app::tmuxx_workspace::Mapping;
 use std::collections::BTreeSet;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) enum Source {
-    Embedded(PathBuf),
-    Local(PathBuf),
-    Ssh(String),
-    SystemSsh(String),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct Target {
-    pub source: Source,
-    pub instance: String,
-}
+pub(super) use rustty_app::tmuxx_menu::{Command as MenuCommand, Source, Target};
 
 struct PendingSession {
     name: String,
@@ -266,16 +254,117 @@ impl Attachment {
     }
 }
 
-#[derive(Clone)]
-pub(super) enum MenuCommand {
-    Open(Target, u64),
-    Kill(Target, u64),
-    Execute(Target, Vec<String>),
-    Disconnect(Target),
-    Shutdown(Target),
-}
-
 impl App {
+    pub(super) fn sync_tmuxx_menu(&mut self) {
+        use rustty_app::tmuxx_menu::Entry;
+        let entries = self
+            .tmuxx
+            .iter()
+            .map(|entry| {
+                let mut children = Vec::new();
+                if let Some(status) = &entry.status {
+                    children.push(Entry::label(status));
+                }
+                if let Source::Embedded(endpoint) = &entry.source {
+                    children.push(Entry::label(format!(
+                        "Native endpoint: {}",
+                        endpoint.display()
+                    )));
+                }
+                let target = entry.target();
+                let live = entry.connection.as_ref().is_some_and(|connection| {
+                    !connection.is_closed()
+                        && !target.instance.is_empty()
+                        && connection.instance() == target.instance
+                });
+                for session in entry
+                    .connection
+                    .as_ref()
+                    .map(Connection::sessions)
+                    .unwrap_or_default()
+                {
+                    let label = if entry.selected.contains(&session.id) {
+                        "Focus Window"
+                    } else {
+                        "Open Window"
+                    };
+                    let session_entries = if live {
+                        let mut items = vec![Entry::command(
+                            label,
+                            MenuCommand::Open(target.clone(), session.id),
+                        )];
+                        items.extend(
+                            session
+                                .windows
+                                .into_iter()
+                                .map(|name| Entry::label(format!("Tab: {name}"))),
+                        );
+                        items.push(Entry::command(
+                            "Terminate Session…",
+                            MenuCommand::Kill(target.clone(), session.id),
+                        ));
+                        items
+                    } else {
+                        vec![Entry::label("Disconnected")]
+                    };
+                    children.push(Entry::submenu(session.name, session_entries));
+                }
+                if !entry.temporary() {
+                    children.push(Entry::command(
+                        "Disconnect",
+                        MenuCommand::Disconnect(target.clone()),
+                    ));
+                }
+                if live {
+                    children.push(Entry::command(
+                        "Stop Server…",
+                        MenuCommand::Shutdown(target),
+                    ));
+                }
+                Entry::submenu(entry.label().trim_start_matches("tmuxx · "), children)
+            })
+            .collect();
+        if let Some(platform) = &mut self.platform
+            && let Err(error) = platform.set_tmuxx_menu(entries)
+        {
+            self.errors.push(error);
+        }
+    }
+
+    pub(super) fn native_tmuxx_command(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        command: MenuCommand,
+    ) {
+        if !command.requires_confirmation() {
+            self.tmuxx_menu_command(command);
+            return;
+        }
+        if self.windows.is_empty() {
+            self.add_window(false);
+            self.reconcile(event_loop);
+        }
+        let native = self
+            .windows
+            .iter()
+            .find(|(_, host)| Some(host.id) == self.active)
+            .or_else(|| self.windows.iter().next())
+            .map(|(native, _)| *native);
+        if let Some(native) = native
+            && let Some(mut host) = self.windows.remove(&native)
+        {
+            host.confirm = Some(Confirmation::TmuxxTerminate(command));
+            let quick = self
+                .workspace
+                .windows
+                .iter()
+                .any(|window| window.id == host.id && window.quick);
+            self.reveal_host(&mut host, quick);
+            self.active = Some(host.id);
+            self.windows.insert(native, host);
+        }
+    }
+
     pub(super) fn tmuxx_window(&self, window: Id) -> Option<&Attachment> {
         self.tmuxx
             .iter()
@@ -401,13 +490,11 @@ impl App {
         }
         let connection = match &source {
             Source::SystemSsh(host) => Connection::system_ssh(host, self.tmuxx_wake())?,
-            Source::Ssh(host) => {
-                Connection::ssh_command(
-                    host,
-                    self.config().tmuxx_ssh_command_for(host),
-                    self.tmuxx_wake(),
-                )?
-            }
+            Source::Ssh(host) => Connection::ssh_command(
+                host,
+                self.config().tmuxx_ssh_command_for(host),
+                self.tmuxx_wake(),
+            )?,
             #[cfg(unix)]
             Source::Local(path) => Connection::unix(path, self.tmuxx_wake())?,
             _ => return Err("TODO(Windows): implement native tmuxx local transport".into()),

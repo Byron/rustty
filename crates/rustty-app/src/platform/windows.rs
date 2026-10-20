@@ -48,6 +48,7 @@ pub const TOAST_ACTIVATOR_CLSID: &str = "{9CB270BB-CC8F-4C71-ACF2-4D632A9A7E26}"
 #[derive(Clone, Debug)]
 pub enum PlatformEvent {
     Action(Action),
+    Tmuxx(crate::tmuxx_menu::Command),
     GlobalHotkey(KeyBinding),
     NotificationClicked(u64),
 }
@@ -112,6 +113,10 @@ impl Platform {
 
     pub fn set_stream_deck_connected(&mut self, connected: bool) -> Result<(), String> {
         self.menu.set_stream_deck_connected(connected)
+    }
+
+    pub fn set_tmuxx_menu(&mut self, entries: Vec<crate::tmuxx_menu::Entry>) -> Result<(), String> {
+        self.menu.set_tmuxx_menu(entries)
     }
 
     pub fn update_config(&mut self, config: &Config) -> Result<(), String> {

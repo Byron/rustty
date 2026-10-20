@@ -68,6 +68,7 @@ use winit::{
 #[derive(Clone, Debug)]
 pub enum PlatformEvent {
     Action(Action),
+    Tmuxx(crate::tmuxx_menu::Command),
     NotificationClicked(u64),
     ScreensAwake(bool),
     GlobalHotkey { id: u32, key_code: u16 },
@@ -81,6 +82,7 @@ pub struct Platform {
     mtm: MainThreadMarker,
     menu: Menu,
     menu_actions: Vec<(MenuItem, Action)>,
+    tmuxx_menu: crate::tmuxx_menu::native::NativeMenu,
     stream_deck_menu: Submenu,
     stream_deck_connected: bool,
     callback: EventSink,
@@ -234,12 +236,14 @@ impl Platform {
         // SAFETY: AppKit receives a valid, non-nil image on the main thread.
         unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&icon)) };
         let mut menu_actions = Vec::new();
-        let (menu, stream_deck_menu) = make_menu(&mut menu_actions)?;
+        let tmuxx_menu = crate::tmuxx_menu::native::NativeMenu::new();
+        let (menu, stream_deck_menu) = make_menu(&mut menu_actions, &tmuxx_menu.menu)?;
         let actions: Vec<_> = menu_actions
             .iter()
             .map(|(_, action)| action.clone())
             .collect();
         let sink = callback.clone();
+        let tmuxx_routes = tmuxx_menu.routes.clone();
         // Muda installs one process-wide handler. The app owns one Platform for its lifetime.
         MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
             if let Some(index) = event
@@ -250,6 +254,12 @@ impl Platform {
                 && let Some(action) = actions.get(index)
             {
                 sink(PlatformEvent::Action(action.clone()));
+            } else if let Some(command) = tmuxx_routes
+                .lock()
+                .ok()
+                .and_then(|routes| routes.get(&event.id.0))
+            {
+                sink(PlatformEvent::Tmuxx(command));
             }
         }));
         menu.init_for_nsapp();
@@ -295,6 +305,7 @@ impl Platform {
             mtm,
             menu,
             menu_actions,
+            tmuxx_menu,
             stream_deck_menu,
             stream_deck_connected: false,
             callback,
@@ -323,6 +334,10 @@ impl Platform {
         .map_err(|e| e.to_string())?;
         self.stream_deck_connected = connected;
         Ok(())
+    }
+
+    pub fn set_tmuxx_menu(&mut self, entries: Vec<crate::tmuxx_menu::Entry>) -> Result<(), String> {
+        self.tmuxx_menu.update(entries)
     }
 
     pub fn update_config(&mut self, config: &Config) -> Result<(), String> {
@@ -1512,7 +1527,10 @@ impl NotificationDelegate {
     }
 }
 
-fn make_menu(actions: &mut Vec<(MenuItem, Action)>) -> Result<(Menu, Submenu), String> {
+fn make_menu(
+    actions: &mut Vec<(MenuItem, Action)>,
+    tmuxx: &Submenu,
+) -> Result<(Menu, Submenu), String> {
     let menu = Menu::new();
     let app = Submenu::new("Rustty", true);
     app.append_items(&[
@@ -1613,7 +1631,10 @@ fn make_menu(actions: &mut Vec<(MenuItem, Action)>) -> Result<(Menu, Submenu), S
         .append(&PredefinedMenuItem::bring_all_to_front(None))
         .map_err(|e| e.to_string())?;
     window.set_as_windows_menu_for_nsapp();
-    menu.append_items(&[&app, &file, &edit, &view, &window])
+    for (label, action) in crate::tmuxx_menu::actions() {
+        append_action(tmuxx, actions, label, action)?;
+    }
+    menu.append_items(&[&app, &file, &edit, &view, tmuxx, &window])
         .map_err(|e| e.to_string())?;
     Ok((menu, stream_deck))
 }
