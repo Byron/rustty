@@ -266,6 +266,7 @@ impl Smoke {
             // A developer can keep using an unlocked Mac during this check.
             // Measure a full quiet interval, rather than calling input redraws idle.
             self.idle_frames = frames;
+            self.events.clear();
             self.next = Instant::now() + Duration::from_millis(1500);
         }
     }
@@ -748,6 +749,9 @@ impl Smoke {
                         self.events
                     )
                     .into());
+                }
+                if self.events.get("about-to-wait").copied().unwrap_or(0) > 400 {
+                    return Err(format!("idle event loop kept waking: {:?}", self.events).into());
                 }
                 let refresh_hz = host
                     .window
