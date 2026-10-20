@@ -160,6 +160,12 @@ Own settings can be stored in `~/.config/rustty/rustty.txt` or
 `~/Library/Application Support/com.rustty.app/rustty.txt`. Legacy `config` and
 `config.rustty` files remain supported; an empty own file
 intentionally disables Ghostty fallback. No Ghostty file is modified.
+Rustty-specific settings, including `tmuxx-*`, can live directly in the active
+Ghostty configuration file. An include such as
+`config-file = /path/to/shared-settings` is optional; no redirect or separate
+Rustty file is required. Put the settings in the file
+reported by `--config-info`: creating an own Rustty file switches to that family
+instead of combining it with Ghostty fallback settings.
 Configuration diagnostics appear in the app. The native menu provides reload and
 open-configuration actions. Settings opens the selected configuration file,
 including Ghostty's file while using fallback, so opening it does not create an
@@ -374,7 +380,7 @@ For a known embedded endpoint, start with
 `TMUXX_ENDPOINT=/path/to/private/socket.native rustty --tmuxx=embedded`.
 Only one owner can bind a given endpoint. `rustty tmux -f /path/to/tmux.conf ...`
 loads server configuration, while Rustty-specific settings belong in the normal
-Rustty settings file.
+application settings file, including Ghostty Local when it is the active fallback.
 
 To use a remote native daemon, install the Rustty executable on that host and
 create the session once:
@@ -391,20 +397,32 @@ start one. A standalone remote tmuxx installation can use
 include its endpoint, for example
 `tmuxx-ssh-command = rustty tmux --native-endpoint /private/path/temporary.native --native-stdio`.
 
-Override the helper for individual SSH targets with repeatable settings:
+Add named connections to the tmuxx menu and override their remote helpers in the
+same active configuration file:
 
 ```ini
-tmuxx-ssh-command-host = linux = /home/byron/.cargo/bin/tmuxx -L rustty --native-stdio
+tmuxx-connection = Azure Linux = ssh:20.240.208.217
+tmuxx-ssh-command-host = 20.240.208.217 = /home/byron/.cargo/bin/tmuxx -L rustty --native-stdio
+tmuxx-connection = Stock tmux = system-ssh:legacy-linux
+tmuxx-connection = Windows = ssh:windows
 tmuxx-ssh-command-host = windows = rustty.exe tmux --native-stdio
 ```
 
-The target matches exactly what follows `ssh:` in `--tmuxx=ssh:linux` or the
-Connect dialog, including any `user@` prefix. Unmatched targets use the global
+Connection labels such as `Azure Linux` appear in the menu and identify attached
+windows. Reload configuration to update saved entries; selecting one connects
+or offers its existing sessions. SSH connections do not reconnect automatically.
+Later entries replace the same display name; an empty `tmuxx-connection =` clears
+all saved entries. Targets can use SSH
+aliases from `~/.ssh/config`: replacing the IP with `azure-linux` also requires
+using `azure-linux` as the helper override key. A helper key matches exactly what
+follows `ssh:` in a named connection, `--tmuxx=ssh:linux`, or the Connect dialog,
+including any `user@` prefix. Unmatched targets use the global
 `tmuxx-ssh-command`. Later entries replace an earlier entry for the same target;
 an empty `tmuxx-ssh-command-host =` clears all overrides. A launch-time override
 uses the same syntax, for example
 `rustty --tmuxx=ssh:linux '--tmuxx-ssh-command-host=linux=/home/byron/.cargo/bin/tmuxx -L rustty --native-stdio'`.
-The Linux example connects to the existing daemon named `rustty`. The Windows
+The Azure example connects to the existing daemon named `rustty`; the stock tmux
+entry requires an existing ordinary tmux session and no tmuxx helper. The Windows
 entry shows how to select that executable; Windows native hosting and transport
 remain unimplemented.
 

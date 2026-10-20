@@ -306,6 +306,8 @@ pub struct Config {
     pub tmuxx_ssh_command: String,
     /// Overrides keyed by the exact SSH target or alias supplied when connecting.
     pub tmuxx_ssh_command_hosts: BTreeMap<String, String>,
+    /// Named remote targets offered by the native tmuxx menu.
+    pub tmuxx_connections: BTreeMap<String, String>,
     pub title_report: bool,
     pub macos_option_as_alt: OptionAsAlt,
     pub copy_on_select: CopyOnSelect,
@@ -403,6 +405,7 @@ impl Default for Config {
             stream_deck_serial: None,
             tmuxx_ssh_command: "rustty tmux --native-stdio".into(),
             tmuxx_ssh_command_hosts: BTreeMap::new(),
+            tmuxx_connections: BTreeMap::new(),
             title_report: false,
             macos_option_as_alt: OptionAsAlt::False,
             copy_on_select: CopyOnSelect::None,
@@ -591,6 +594,34 @@ impl Config {
                     }
                     self.tmuxx_ssh_command_hosts
                         .insert(host.to_owned(), command.to_owned());
+                }
+            }
+            "tmuxx-connection" => {
+                if value.is_empty() {
+                    self.tmuxx_connections.clear();
+                } else {
+                    let (name, target) = value
+                        .split_once('=')
+                        .ok_or("tmuxx connection requires name=ssh:host or name=system-ssh:host")?;
+                    let name = name.trim();
+                    let target = target.trim();
+                    if name.is_empty() || name.chars().any(char::is_control) {
+                        return Err(
+                            "tmuxx connection name must be nonempty and contain no control characters",
+                        );
+                    }
+                    let host = target
+                        .strip_prefix("ssh:")
+                        .or_else(|| target.strip_prefix("system-ssh:"))
+                        .ok_or("tmuxx connection target must be ssh:host or system-ssh:host")?;
+                    if host.is_empty() || host.chars().any(|c| c.is_whitespace() || c.is_control())
+                    {
+                        return Err(
+                            "SSH host must be nonempty and contain no whitespace or control characters",
+                        );
+                    }
+                    self.tmuxx_connections
+                        .insert(name.to_owned(), target.to_owned());
                 }
             }
             "title-report" => set!(title_report, parse_bool(value)?),

@@ -161,6 +161,62 @@ fn invalid_native_ssh_host_commands_preserve_previous_entries() {
 }
 
 #[test]
+fn named_tmuxx_connections_replace_clear_and_keep_ssh_aliases() {
+    let home = TestHome::new();
+    assert!(home.loader.load().config.tmuxx_connections.is_empty());
+    home.own(
+        "tmuxx-connection = Azure Linux = ssh:old-host\n\
+         tmuxx-connection = Build server = system-ssh:byron@build\n\
+         tmuxx-connection = Azure Linux = ssh:20.240.208.217\n",
+    );
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(loaded.config.tmuxx_connections.len(), 2);
+    assert_eq!(
+        loaded.config.tmuxx_connections["Azure Linux"],
+        "ssh:20.240.208.217"
+    );
+    assert_eq!(
+        loaded.config.tmuxx_connections["Build server"],
+        "system-ssh:byron@build"
+    );
+    let loaded = home
+        .loader
+        .load_with_args(&args(&["--tmuxx-connection=Azure Linux=ssh:azure"]));
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(loaded.config.tmuxx_connections["Azure Linux"], "ssh:azure");
+    assert_eq!(loaded.config.tmuxx_connections.len(), 2);
+    let loaded = home.loader.load_with_args(&args(&["--tmuxx-connection="]));
+    assert!(loaded.config.tmuxx_connections.is_empty());
+}
+
+#[test]
+fn invalid_named_tmuxx_connections_preserve_previous_entries() {
+    let home = TestHome::new();
+    for invalid in [
+        "missing-target",
+        "=ssh:host",
+        "Azure Linux=",
+        "Azure Linux=ssh:",
+        "Azure Linux=system-ssh:",
+        "Azure Linux=local",
+        "Azure Linux=ssh:two hosts",
+        "Azure Linux=ssh:host\0",
+        "Azure Linux=ssh:host\u{7f}",
+        "bad\tname=ssh:host",
+    ] {
+        home.own(&format!(
+            "tmuxx-connection=Azure Linux=ssh:azure\n\
+             tmuxx-connection={invalid}\n"
+        ));
+        let loaded = home.loader.load();
+        assert_eq!(loaded.diagnostics.len(), 1, "{invalid:?}");
+        assert_eq!(loaded.config.tmuxx_connections.len(), 1);
+        assert_eq!(loaded.config.tmuxx_connections["Azure Linux"], "ssh:azure");
+    }
+}
+
+#[test]
 fn windows_roaming_config_root_is_explicit_and_does_not_read_terminal_settings() {
     let mut home = TestHome::new();
     let roaming = home.root.join("roaming");
@@ -528,6 +584,44 @@ fn ghostty_loads_xdg_before_local_and_does_not_combine_stable_settings() {
     assert_eq!(loaded.sources.len(), 4);
     assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
     assert!(!loaded.own_config_path.exists());
+}
+
+#[test]
+fn ghostty_local_fallback_accepts_rustty_tmuxx_settings_directly() {
+    let home = TestHome::new();
+    let command = "/home/byron/.cargo/bin/tmuxx -L rustty --native-stdio";
+    let path = home.local(&format!(
+        "tmuxx-connection=Azure Linux=ssh:20.240.208.217\n\
+         tmuxx-ssh-command=global-helper --native-stdio\n\
+         tmuxx-ssh-command-host=20.240.208.217={command}\n"
+    ));
+    let loaded = home.loader.load();
+    assert_eq!(loaded.family, ConfigFamily::GhosttyLocal);
+    assert_eq!(loaded.edit_config_path, path);
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(
+        loaded.config.tmuxx_connections["Azure Linux"],
+        "ssh:20.240.208.217"
+    );
+    assert_eq!(
+        loaded.config.tmuxx_ssh_command_for("20.240.208.217"),
+        command
+    );
+    assert_eq!(
+        loaded.config.tmuxx_ssh_command_for("other"),
+        "global-helper --native-stdio"
+    );
+    assert!(!loaded.own_config_path.exists());
+
+    home.own("");
+    let loaded = home.loader.load();
+    assert_eq!(loaded.family, ConfigFamily::Rustty);
+    assert!(loaded.config.tmuxx_connections.is_empty());
+    assert!(loaded.config.tmuxx_ssh_command_hosts.is_empty());
+    assert_eq!(
+        loaded.config.tmuxx_ssh_command,
+        Config::default().tmuxx_ssh_command
+    );
 }
 
 #[test]

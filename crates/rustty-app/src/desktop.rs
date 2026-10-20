@@ -1869,7 +1869,13 @@ impl App {
             &self
                 .tmuxx
                 .iter()
-                .flat_map(|entry| entry.mapping.sessions.keys().map(|id| (*id, entry.label())))
+                .flat_map(|entry| {
+                    entry
+                        .mapping
+                        .sessions
+                        .keys()
+                        .map(|id| (*id, entry.label(&self.config().tmuxx_connections)))
+                })
                 .collect(),
         )
     }
@@ -2480,7 +2486,10 @@ impl App {
             })
             .unwrap_or_else(|| "Rustty".into());
         let title = self.tmuxx_window(host.id).map_or(title.clone(), |entry| {
-            format!("{title} — {}", entry.label())
+            format!(
+                "{title} — {}",
+                entry.label(&self.config().tmuxx_connections)
+            )
         });
         let zoom = self.tab(host.id).and_then(zoom_label);
         let title = if let Some(zoom) = zoom {
@@ -3375,7 +3384,17 @@ impl App {
             }
         }
         self.update_fonts(host.as_deref_mut());
+        if let Some(host) = host.as_deref() {
+            self.sync_window_title(host);
+        }
         self.configure_windows(host);
+        for host in self.windows.values() {
+            self.sync_window_title(host);
+        }
+        self.sync_tmuxx_menu();
+        if let Some(outliner) = &self.outliner {
+            outliner.repaint();
+        }
     }
     fn configure_windows(&mut self, host: Option<&mut Host>) {
         for window in host.into_iter().chain(self.windows.values_mut()) {
@@ -4073,7 +4092,9 @@ impl App {
                 (id, label)
             })
             .collect();
-        let tmuxx_tag = self.tmuxx_window(host.id).map(|entry| entry.label());
+        let tmuxx_tag = self
+            .tmuxx_window(host.id)
+            .map(|entry| entry.label(&self.config().tmuxx_connections));
         let breadcrumb = if state.tabs.len() > 1 {
             outliner::breadcrumb(active, &pane_labels)
         } else {
