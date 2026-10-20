@@ -110,14 +110,15 @@ impl Host {
             .and_then(|target| std::str::from_utf8(target).ok())
             .and_then(|target| target.parse::<Id>().ok())
             .ok_or("host state requires -t %PANE")?;
-        if !self.engine.panes.contains_key(&pane) {
-            return Err("pane not found".into());
-        }
         let input = input.ok_or("missing host state")?;
         if input.len() > 512 {
             return Err("host state exceeds 512 bytes".into());
         }
         let state: State = serde_json::from_slice(&input).map_err(|error| error.to_string())?;
+        // View metadata can arrive after kill-pane but before its removal snapshot.
+        if !self.engine.panes.contains_key(&pane) {
+            return Ok(Outcome::default());
+        }
         if state.focused && state.visible {
             self.client_became_latest(client, self.engine.panes[&pane].window);
         }
