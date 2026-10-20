@@ -18,6 +18,9 @@ Rustty also embeds the CLI as `rustty tmux`. Its default is a native daemon;
 standalone `tmuxx`, or explicit `-L`/`-S`, exposes the compatible tmux command
 socket and its companion `.native` endpoint. Existing socket names, configuration
 and commands are retained by the import. No running server is migrated or restarted.
+Rustty's macOS and Windows bundles include `tmuxx` or `tmuxx.exe` beside the GUI
+executable. Use the console `tmuxx.exe` for Windows commands and SSH access; it
+shares the bundle's ConPTY resources with Rustty.
 
 An unmodified supported tmux client can send commands and use control mode with
 tmuxx. Ordinary interactive tmux TTY attachment is unsupported: Rustty supplies
