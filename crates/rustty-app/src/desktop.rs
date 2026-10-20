@@ -723,7 +723,8 @@ pub fn run() -> Result<()> {
     let mut args = std::env::args().skip(1).collect::<Vec<_>>();
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!(
-            "Rustty — native Rust terminal\n\nUsage: rustty [--config-file=PATH] [--key=value] [-e COMMAND ...]\n       rustty --tmuxx=embedded|persistent|unix:PATH|ssh:HOST|system-ssh:HOST\n       rustty tmux [tmuxx options and commands]\n       rustty --config-info\n\nRustty settings override Ghostty settings. See crates/rustty-app/README.md."
+            "Rustty — native Rust terminal\n\nUsage: rustty [--config-file=PATH] [--key=value] [-e COMMAND ...]\n       rustty --tmuxx=embedded|persistent|{}|ssh:HOST|system-ssh:HOST\n       rustty tmux [tmuxx options and commands]\n       rustty --config-info\n\nRustty settings override Ghostty settings. See crates/rustty-app/README.md.",
+            tmuxx_host::LOCAL_TARGET_HINT
         );
         return Ok(());
     }
@@ -781,11 +782,14 @@ pub fn run() -> Result<()> {
         return Ok(());
     }
     #[cfg(target_os = "windows")]
-    rustty_app::platform::initialize_terminal_runtime(
-        resources.as_deref().ok_or(
+    {
+        let conpty_resources = std::env::var_os("TMUXX_CONPTY_RESOURCES")
+            .map(PathBuf::from)
+            .or_else(|| resources.clone());
+        rustty_app::platform::initialize_terminal_runtime(conpty_resources.as_deref().ok_or(
             "Rustty resources are missing; build or copy the complete application folder.",
-        )?,
-    )?;
+        )?)?;
+    }
     let smoke = smoke::Smoke::from_env(&mut loaded)?;
     let mut state_path = app_paths::data_dir()?.join("workspace.json");
     let mut errors = loaded
@@ -818,12 +822,13 @@ pub fn run() -> Result<()> {
             let _ = wake_proxy.send_event(Event::Tmuxx);
         });
         let (source, connection) = if mode == "embedded" {
-            let endpoint = std::env::var_os("TMUXX_ENDPOINT")
-                .map(PathBuf::from)
-                .unwrap_or(
-                    tmuxx_cli::default_native_endpoint()?
-                        .with_file_name(format!("rustty-{}-startup.native", std::process::id())),
-                );
+            let endpoint = match std::env::var_os("TMUXX_ENDPOINT") {
+                Some(endpoint) => PathBuf::from(endpoint),
+                None => tmuxx_host::temporary_endpoint(&format!(
+                    "rustty-{}-startup",
+                    std::process::id()
+                ))?,
+            };
             let initial = if tmuxx_smoke.is_some() {
                 vec![b"/bin/sh".to_vec()]
             } else {
@@ -859,18 +864,9 @@ pub fn run() -> Result<()> {
                 )?,
             )
         } else {
-            #[cfg(unix)]
-            {
-                let endpoint = std::path::absolute(mode.strip_prefix("unix:").ok_or(
-                    "expected --tmuxx=embedded, persistent, unix:PATH, ssh:HOST or system-ssh:HOST",
-                )?)?;
-                let connection = rustty::tmuxx::Connection::unix(&endpoint, wake)?;
-                (tmuxx_host::Source::Local(endpoint), connection)
-            }
-            #[cfg(not(unix))]
-            {
-                return Err("expected --tmuxx=embedded or ssh:HOST".into());
-            }
+            let endpoint = tmuxx_host::local_endpoint(mode)?;
+            let connection = rustty::tmuxx::Connection::native(&endpoint, wake)?;
+            (tmuxx_host::Source::Local(endpoint), connection)
         };
         let deadline = Instant::now() + tmuxx_host::connection_timeout(&source);
         while connection.graph().is_none() {
@@ -1052,7 +1048,7 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
-fn resource_dir() -> Option<PathBuf> {
+pub(super) fn resource_dir() -> Option<PathBuf> {
     let executable = std::env::current_exe().ok()?;
     #[cfg(target_os = "windows")]
     {
@@ -4963,7 +4959,7 @@ impl App {
                     .collapsible(false).resizable(false)
                     .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                     .show(ctx, |ui| {
-                        ui.label("unix:/path/socket.native · ssh:HOST · system-ssh:HOST");
+                        ui.label(format!("{} · ssh:HOST · system-ssh:HOST", tmuxx_host::LOCAL_TARGET_HINT));
                         ui.text_edit_singleline(&mut target);
                         ui.label("SSH uses your SSH configuration; it never reconnects automatically.");
                         ui.horizontal(|ui| {
