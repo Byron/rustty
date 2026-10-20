@@ -741,23 +741,6 @@ impl Connection {
         )?;
         let shared = connection.shared.clone();
         thread::Builder::new()
-            .name("rustty-tmuxx-write".into())
-            .spawn(move || {
-                while !shared.closed.load(Ordering::Acquire) {
-                    match requests.recv_timeout(Duration::from_millis(50)) {
-                        Ok(request) => {
-                            if let Err(error) = write_record(&mut writer, &request) {
-                                fail(&shared, error);
-                                return;
-                            }
-                        }
-                        Err(mpsc::RecvTimeoutError::Timeout) => {}
-                        Err(mpsc::RecvTimeoutError::Disconnected) => return,
-                    }
-                }
-            })?;
-        let shared = connection.shared.clone();
-        thread::Builder::new()
             .name("rustty-tmuxx-read".into())
             .spawn(move || {
                 let result = (|| -> io::Result<()> {
@@ -769,6 +752,24 @@ impl Connection {
                     if hello.version != tmuxx_protocol::native::VERSION {
                         return Err(err("unsupported tmuxx native version"));
                     }
+                    // No queued command may reach a peer before negotiation succeeds.
+                    let shared_writer = shared.clone();
+                    thread::Builder::new()
+                        .name("rustty-tmuxx-write".into())
+                        .spawn(move || {
+                            while !shared_writer.closed.load(Ordering::Acquire) {
+                                match requests.recv_timeout(Duration::from_millis(50)) {
+                                    Ok(request) => {
+                                        if let Err(error) = write_record(&mut writer, &request) {
+                                            fail(&shared_writer, error);
+                                            return;
+                                        }
+                                    }
+                                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                                }
+                            }
+                        })?;
                     let mut snapshots = SnapshotAssembler::default();
                     while !shared.closed.load(Ordering::Acquire) {
                         let Some(bytes) = record(&mut reader)? else {
@@ -1486,6 +1487,89 @@ mod tests {
     use super::*;
     use crate::session::Session;
     use std::time::Instant;
+
+    #[test]
+    fn native_handshake_holds_requests_until_accepted_and_preserves_buffered_messages() {
+        let (stream, peer) = std::os::unix::net::UnixStream::pair().unwrap();
+        let connection =
+            Connection::stream(stream.try_clone().unwrap(), stream, Arc::new(|| {})).unwrap();
+        let request_id = connection.command(["new-session", "-d"]).unwrap();
+        let mut peer = BufReader::new(peer);
+        let hello: Hello = serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+        assert_eq!(hello.version, tmuxx_protocol::native::VERSION);
+        peer.get_ref()
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .unwrap();
+        assert!(matches!(
+            record(&mut peer).unwrap_err().kind(),
+            io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+        ));
+        peer.get_ref()
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+
+        let mut response = Vec::new();
+        write_record(&mut response, &Hello::default()).unwrap();
+        write_record(
+            &mut response,
+            &ServerMessage::Reply(tmuxx_protocol::native::Response {
+                request_id,
+                status: None,
+                output: Vec::new(),
+                error: Some("buffered reply".into()),
+            }),
+        )
+        .unwrap();
+        peer.get_mut().write_all(&response).unwrap();
+        let subscription: Request =
+            serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+        assert!(subscription.argv.is_empty() && subscription.subscribe);
+        let request: Request =
+            serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+        assert_eq!(request.request_id, request_id);
+        assert_eq!(request.argv, [b"new-session".to_vec(), b"-d".to_vec()]);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let errors = connection.errors();
+            if !errors.is_empty() {
+                assert_eq!(errors, ["buffered reply"]);
+                break;
+            }
+            assert!(Instant::now() < deadline, "buffered reply was lost");
+            thread::sleep(Duration::from_millis(5));
+        }
+        drop(connection);
+        peer.get_ref().shutdown(std::net::Shutdown::Both).unwrap();
+    }
+
+    #[test]
+    fn native_handshake_rejection_never_submits_queued_requests() {
+        for greeting in [
+            b"{\"version\":4294967295}\n".as_slice(),
+            b"invalid\n",
+            b"{\"version\":1}",
+            b"",
+        ] {
+            let (stream, peer) = std::os::unix::net::UnixStream::pair().unwrap();
+            let connection =
+                Connection::stream(stream.try_clone().unwrap(), stream, Arc::new(|| {})).unwrap();
+            connection.command(["new-session", "-d"]).unwrap();
+            peer.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut peer = BufReader::new(peer);
+            let _: Hello = serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+            peer.get_mut().write_all(greeting).unwrap();
+            peer.get_ref().shutdown(std::net::Shutdown::Write).unwrap();
+            let mut requests = Vec::new();
+            peer.read_to_end(&mut requests).unwrap();
+            assert!(requests.is_empty(), "requests escaped rejected handshake");
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !connection.is_closed() {
+                assert!(Instant::now() < deadline, "rejected handshake stayed open");
+                thread::sleep(Duration::from_millis(5));
+            }
+            assert!(!connection.errors().is_empty());
+        }
+    }
 
     #[test]
     fn session_menu_metadata_keeps_tab_order_and_duplicate_links() {
