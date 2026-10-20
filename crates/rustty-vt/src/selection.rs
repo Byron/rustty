@@ -265,6 +265,9 @@ impl Screen {
     /// Returns none on prompt/input cells or when no prompt bounds the output.
     /// Like the other queries, this leaves the active selection unchanged.
     pub fn select_output(&self, point: GridPoint) -> Option<Selection> {
+        if self.tmux_shell.is_some() {
+            return self.tmux_select_output(point);
+        }
         let grid = Grid(self);
         let clicked = grid.position(point)?;
         if grid.cell(clicked).semantic() != SemanticContent::Output {

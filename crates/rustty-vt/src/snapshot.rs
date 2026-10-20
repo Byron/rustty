@@ -212,7 +212,8 @@ fn encode_terminal(t: &Terminal) -> io::Result<Vec<u8>> {
             1 => Some([255; 3]),
             _ => None,
         };
-        if overridden.or(default).or(fallback) != current {
+        if !(i < 2 && t.tmux_pane_style.is_some()) && overridden.or(default).or(fallback) != current
+        {
             overridden = current;
         }
         for value in [default, overridden] {
@@ -480,7 +481,8 @@ fn encode_page(rows: &[Row<'_>], page: &Page) -> io::Result<Vec<u8>> {
 /// as specified by version 1. Completed records may be written before an error.
 pub fn encode(terminal: &Terminal, destination: &mut impl Write) -> io::Result<()> {
     let continuation = terminal.parser.continuation().map_err(invalid)?;
-    rustty_parser::Parser::validate_continuation(&continuation).map_err(invalid)?;
+    rustty_parser::Parser::validate_continuation_with_tmux(&continuation, terminal.tmux_strings)
+        .map_err(invalid)?;
     destination.write_all(MAGIC)?;
     record(destination, 1, &encode_terminal(terminal)?)?;
     let screens = [Some(&terminal.primary), terminal.alternate.as_ref()];
@@ -544,6 +546,8 @@ pub fn encode_to_vec(terminal: &Terminal) -> io::Result<Vec<u8>> {
 /// Allocation policies are checked before trusting wire lengths or dimensions.
 #[derive(Clone, Copy, Debug)]
 pub struct DecodeOptions {
+    /// Restore tmux legacy rename/APC strings in the pending input tail.
+    pub tmux_strings: bool,
     pub max_record_bytes: usize,
     /// Bounds incoming replay bytes; the restored parser keeps its normal limit.
     pub max_continuation_bytes: usize,
@@ -552,6 +556,7 @@ pub struct DecodeOptions {
 impl Default for DecodeOptions {
     fn default() -> Self {
         Self {
+            tmux_strings: false,
             max_record_bytes: 8 * 1024 * 1024,
             max_continuation_bytes: 8 * 1024 * 1024,
             max_cells: 1024 * 1024,
@@ -685,6 +690,8 @@ fn decode_style(reader: &mut Slice<'_>) -> io::Result<Style> {
             5 => Underline::Dashed,
             _ => Underline::None,
         },
+        tmux_ansi: 0,
+        tmux_tab: 0,
     })
 }
 fn decode_link(reader: &mut Slice<'_>, allow_none: bool) -> io::Result<Option<Link>> {
@@ -944,7 +951,12 @@ impl<R: Read> Decoder<R> {
         }
         terminal.alternate_active = active == 1 && screen_count == 2;
         let continuation = self.record(7)?;
-        rustty_parser::Parser::validate_continuation(&continuation).map_err(invalid)?;
+        rustty_parser::Parser::validate_continuation_with_tmux(
+            &continuation,
+            self.options.tmux_strings,
+        )
+        .map_err(invalid)?;
+        terminal.set_tmux_strings(self.options.tmux_strings);
         self.marker(5)?;
         if !terminal.feed(&continuation).is_empty() {
             return Err(invalid("snapshot continuation emitted an effect"));

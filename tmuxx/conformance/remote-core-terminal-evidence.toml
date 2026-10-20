@@ -1,0 +1,115 @@
+# Complete core terminal matrices execute the Rust engine natively on Windows.
+# Only C commands and private C pane applications run on the pinned reference host.
+
+[[suites]]
+id = "windows-remote-c-core-history"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 10
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "history_reference", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "terminal.c-history-counters-and-resize"
+tests = ["head_history_counters_match_c_and_survive_snapshots"]
+description = "HEAD C compares primary history size, limit, added/collected/generation counters, cursor and captured rows at every step with limits 0/1/3/20, 10-percent collection, partial scroll regions, live limit updates, enabled/disabled history resize, RIS/ED3 and alternate screen. Native snapshots retain counters and resize scroll position."
+
+[[suites.assertions]]
+id = "terminal.c-history-limits-and-resets"
+tests = ["history_limits_resets_and_regions_match_supported_c"]
+description = "The shared HEAD/3.7c history row/cursor/limit contract runs the same exact step matrix without HEAD-only counter formats."
+
+[[suites.assertions]]
+id = "terminal.native-history-allocation-difference"
+tests = ["native_history_allocation_metrics_are_explicit_c_difference"]
+description = "Records independent C/native byte totals and six-field allocation diagnostics for an empty screen, ASCII rows, and a styled combining character; checks the C byte sum and proves the documented native allocator difference without normalizing it."
+
+[[suites.assertions]]
+id = "terminal.c-clear-history-counters-and-screen-ownership"
+tests = ["clear_history_clears_primary_history_from_both_screens_like_c"]
+description = "The real command clears primary history from either active screen without changing visible cells, and updates C history generation/counters through repeated clears."
+
+[[suites]]
+id = "windows-remote-c-core-keys"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 2
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "input_reference", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "input.c-key-mode-modifier-and-backspace-bytes"
+tests = ["key_bytes_match_c_across_modes_modifiers_and_backspace_options"]
+description = "Named/prefix/native key bytes match C under application cursor/keypad modes, extended-key modes, modifiers and backspace option variants. Ordinary -F/-Fl remains literal; -R resets key modes before subsequent named-key input."
+
+[[suites.assertions]]
+id = "input.c-reset-screen-parser-palette-and-snapshot"
+tests = ["send_keys_reset_clears_parser_screen_modes_and_palette_but_keeps_title"]
+description = "C -R clears current screen, input parser and modes on main/alternate screens, resets foreground/background palette overrides and retains title/cursor colour/style. C's prior capture -P bytes remain until later input; snapshot restore preserves those bytes without replaying them."
+
+[[suites]]
+id = "windows-remote-c-core-clipboard"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 34
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "clipboard_reference", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "terminal.c-clipboard-selectors-policy-and-default-buffers"
+tests = ["clipboard_policies_selectors_and_base64_match_c", "default_buffer_commands_skip_named_buffers_like_c"]
+description = "Current C matches 31 OSC52 policy/selector/base64 fixtures and automatic-only defaults for show/save/paste/delete/rename with named-buffer collision behavior."
+
+[[suites.assertions]]
+id = "buffers.c-append-empty-rename-and-clipboard-targets"
+tests = ["buffer_append_empty_rename_and_clipboard_flags_match_c"]
+description = "C matches explicit-name-only append, empty no-op, named/automatic selection, unknown clipboard-client tolerance, empty-name rejection and rename flag precedence."
+
+[[suites.assertions]]
+id = "buffers.c-named-capture-and-print-precedence"
+tests = ["named_capture_buffers_preserve_bytes_ownership_and_print_precedence"]
+description = "Real C empty-pane input matches named capture bytes, preserved unrelated user buffer, -p overriding -b without replacement, empty-name errors, and automatic-buffer default selection."
+
+[[suites]]
+id = "windows-remote-c-core-options"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 81
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "terminal_options_reference", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "terminal.c-screen-cursor-palette-and-width-options"
+tests = ["alternate_scroll_cursor_and_palette_effects_match_c", "codepoint_width_and_variation_selector_options_match_c"]
+description = "C pane PTYs compare exact replies, cursor/history/alternate state, and full capture for alternate-screen, scroll-on-clear, all seven cursor styles, cursor/palette defaults and application override resets, Unicode width ranges, invalid ignored overrides, and VS16 force-width policy."
+
+[[suites.assertions]]
+id = "terminal.c-pane-colors-theme-and-style-policy"
+tests = ["pane_styles_and_theme_reports_match_c", "head_unsupported_styles_preserve_inheritance_and_invalid_styles_match_c"]
+description = "Live C pane replies compare active/inactive style precedence over OSC10/11 and theme reports. Unsupported dynamic/attribute/terminal presentation styles preserve pane option maps and continued inheritance for both normal and active styles. Ordinary invalid style values retain C's local inherited-value rollback and exact diagnostic/query bytes."
+
+[[suites.assertions]]
+id = "terminal.c-observable-modes-cursor-progress-and-path"
+tests = ["head_terminal_observable_fields_match_c_and_survive_snapshot"]
+description = "Exact C bytes for 35 terminal fields over 27 fixtures: saved alternate coordinates, cursor cell including wide padding, explicit cursor shape/color/blink, exclusive mouse modes, insert/wrap/private mode flags, tab stops, scroll margins, OSC path/progress validation and retention, color styles and baseline geometry. Native restore preserves query state and accepts subsequent updates."
+
+[[suites.assertions]]
+id = "terminal.c-shell-lifecycle-formats"
+tests = ["head_shell_lifecycle_formats_match_c"]
+description = "Twenty-two C fixtures compare shell command running/status/line, prompt/start/end presence and duration across OSC133 prompt variants, UTF-8/percent decoding, control escaping, malformed lines, replacement commands, exit bounds and RIS."

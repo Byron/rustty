@@ -3,8 +3,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+mod capture;
+mod capture_reflow;
+#[path = "screen/history.rs"]
+mod history;
 #[path = "screen/resize.rs"]
 mod resize;
+mod tabs;
+pub use history::TmuxHistory;
 #[path = "screen/serde.rs"]
 mod serde_impl;
 #[cfg(test)]
@@ -158,6 +164,14 @@ pub struct Style {
     pub strikethrough: bool,
     pub overline: bool,
     pub underline: Underline,
+    /// Original ANSI foreground/background spelling for tmux capture output.
+    /// Visual rendering and the Ghostty snapshot format do not use these bits.
+    #[serde(default)]
+    pub tmux_ansi: u8,
+    /// Retained HT spelling: positive head width, -1 padding, zero ordinary.
+    /// Native cells remain visually expanded and GHOSTSNP omits this metadata.
+    #[serde(default)]
+    pub tmux_tab: i8,
 }
 
 impl Style {
@@ -319,6 +333,40 @@ pub struct RowView<'a> {
 }
 
 pub type Row<'a> = RowView<'a>;
+
+fn tmux_expand(current: usize, requested: usize, width: usize) -> usize {
+    if requested <= current {
+        current
+    } else if requested < width / 4 {
+        width / 4
+    } else if requested < width / 2 {
+        width / 2
+    } else {
+        requested.max(width)
+    }
+}
+
+mod tmux_capture_map {
+    use serde::{Deserialize, Deserializer, Serializer, de::Error};
+    use std::collections::BTreeMap;
+    pub fn serialize<S: Serializer>(
+        rows: &BTreeMap<u64, (usize, usize)>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(rows)
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<BTreeMap<u64, (usize, usize)>, D::Error> {
+        let mut rows = BTreeMap::new();
+        for (id, (used, size)) in Vec::<(u64, (usize, usize))>::deserialize(deserializer)? {
+            if used > size || rows.insert(id, (used, size)).is_some() {
+                return Err(D::Error::custom("invalid tmux capture row metadata"));
+            }
+        }
+        Ok(rows)
+    }
+}
 
 pub struct Rows<'a> {
     pages: &'a PageList,
@@ -660,6 +708,20 @@ pub(crate) struct SavedCursor {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(remote = "Self")]
 pub struct Screen {
+    #[serde(default)]
+    pub tmux_history: Option<TmuxHistory>,
+    #[serde(default, with = "crate::tmux_shell::serde_markers")]
+    pub(crate) tmux_shell: Option<std::collections::BTreeMap<u64, crate::tmux_shell::Markers>>,
+    #[serde(default, with = "tmux_capture_map")]
+    pub(crate) tmux_capture_rows: std::collections::BTreeMap<u64, (usize, usize)>,
+    #[serde(default)]
+    pub(crate) tmux_capture_known: bool,
+    #[serde(default, deserialize_with = "serde_impl::deserialize_row_map")]
+    pub(crate) tmux_row_times: std::collections::BTreeMap<u64, u64>,
+    #[serde(default, deserialize_with = "serde_impl::deserialize_row_map")]
+    pub(crate) tmux_row_flags: std::collections::BTreeMap<u64, u16>,
+    #[serde(skip)]
+    pub(crate) tmux_current_time: u64,
     #[serde(skip)]
     pub(crate) metadata: crate::snapshot::ScreenMetadata,
     #[serde(skip)]
@@ -699,6 +761,61 @@ pub struct Screen {
 }
 
 impl Screen {
+    /// tmux's allocated and written lengths are distinct from visible content.
+    pub fn tmux_capture_bounds(&self, row: u64) -> Option<(usize, usize)> {
+        self.tmux_capture_known.then(|| {
+            self.tmux_capture_rows
+                .get(&row)
+                .copied()
+                .unwrap_or_default()
+        })
+    }
+
+    fn tmux_capture_write(&mut self, y: usize, end: usize) {
+        if end == 0 {
+            return;
+        }
+        if self.tmux_capture_rows.len()
+            > self.pages.total_rows().saturating_mul(2).saturating_add(32)
+        {
+            let alive = self
+                .all_rows()
+                .map(|row| row.id)
+                .collect::<std::collections::BTreeSet<_>>();
+            self.tmux_capture_rows.retain(|id, _| alive.contains(id));
+        }
+        let end = end.min(self.columns);
+        let id = self.row(y).id;
+        let entry = self.tmux_capture_rows.entry(id).or_default();
+        entry.0 = entry.0.max(end);
+        entry.1 = tmux_expand(entry.1, end, self.columns);
+    }
+
+    fn tmux_capture_background(
+        &mut self,
+        absolute: usize,
+        start: usize,
+        end: usize,
+        background: Color,
+    ) {
+        if self.cursor.style.tmux_ansi & 2 == 0 || background != self.cursor.style.background {
+            return;
+        }
+        let row = self.physical_row(absolute);
+        let columns = (start..end.min(row.cells.len()))
+            .filter(|&col| {
+                row.cells[col].codepoint().is_none()
+                    && row.cells[col].width() == 1
+                    && row.style(col).background == background
+            })
+            .collect::<Vec<_>>();
+        for col in columns {
+            let mut style = self.physical_row(absolute).style(col);
+            style.tmux_ansi |= 2;
+            self.set_absolute_cell_style(absolute, col, style);
+        }
+    }
+
     pub(crate) fn new(cols: usize, rows: usize, limits: ScrollbackLimits) -> Self {
         let mut pages = PageList::new(cols as u16, rows);
         let mut id = 0;
@@ -713,6 +830,13 @@ impl Screen {
             graphics: crate::graphics::Graphics::default(),
             columns: cols,
             height: rows,
+            tmux_capture_rows: Default::default(),
+            tmux_capture_known: true,
+            tmux_row_times: Default::default(),
+            tmux_row_flags: Default::default(),
+            tmux_current_time: 0,
+            tmux_shell: None,
+            tmux_history: None,
             cursor: Cursor::default(),
             selection: None,
             viewport_offset: 0,
@@ -825,6 +949,13 @@ impl Screen {
             Some(selection)
         });
         let mut result = Self {
+            tmux_history: self.tmux_history,
+            tmux_capture_rows: self.tmux_capture_rows.clone(),
+            tmux_capture_known: self.tmux_capture_known,
+            tmux_row_times: self.tmux_row_times.clone(),
+            tmux_row_flags: self.tmux_row_flags.clone(),
+            tmux_current_time: self.tmux_current_time,
+            tmux_shell: self.tmux_shell.clone(),
             metadata: self.metadata.clone(),
             graphics: self.graphics.snapshot(self),
             columns: self.columns,
@@ -887,12 +1018,45 @@ impl Screen {
         background: Color,
         protected: bool,
     ) {
+        let id = self.row(y).id;
+        self.graphics.overwrite_sixel(id, start, end);
+        let columns = self.columns;
+        let entry = self.tmux_capture_rows.entry(id).or_default();
+        if start == 0 && end >= columns && !protected {
+            self.tmux_row_times.remove(&id);
+            self.tmux_row_flags.remove(&id);
+            if let Some(markers) = &mut self.tmux_shell {
+                markers.remove(&id);
+            }
+            *entry = (
+                0,
+                if background == Color::Default {
+                    0
+                } else {
+                    columns
+                },
+            );
+        } else if background != Color::Default {
+            entry.1 = tmux_expand(entry.1, end.min(columns), columns);
+        }
         let (index, row) = self.locate(self.history_len() + y);
         self.pages.pages[index].erase(row, start, end, background, protected);
+        self.tmux_capture_background(self.history_len() + y, start, end, background);
     }
     pub(crate) fn reset_row(&mut self, y: usize, id: u64, background: Color) {
+        let old_id = self.row(y).id;
+        self.tmux_row_times.remove(&old_id);
+        self.tmux_row_flags.remove(&old_id);
+        if let Some(markers) = &mut self.tmux_shell {
+            markers.remove(&old_id);
+        }
+        self.tmux_capture_rows.remove(&self.row(y).id);
+        if background != Color::Default {
+            self.tmux_capture_rows.insert(id, (0, self.columns));
+        }
         let (index, row) = self.locate(self.history_len() + y);
         self.pages.pages[index].reset_row(row, id, background);
+        self.tmux_capture_background(self.history_len() + y, 0, self.columns, background);
     }
     pub(crate) fn shift_cells(
         &mut self,
@@ -902,8 +1066,19 @@ impl Screen {
         right: bool,
         background: Color,
     ) {
+        let moved_end = if right { range.end } else { range.end - count };
+        self.tmux_capture_write(y, moved_end);
+        let id = self.row(y).id;
+        let entry = self.tmux_capture_rows.entry(id).or_default();
+        entry.1 = tmux_expand(entry.1, range.end, self.columns);
         let (index, row) = self.locate(self.history_len() + y);
-        self.pages.pages[index].shift_cells(row, range, count, right, background);
+        self.pages.pages[index].shift_cells(row, range.clone(), count, right, background);
+        let blank = if right {
+            range.start..range.start + count
+        } else {
+            range.end - count..range.end
+        };
+        self.tmux_capture_background(self.history_len() + y, blank.start, blank.end, background);
     }
 
     pub(crate) fn clear_grapheme(&mut self, y: usize, col: usize) {
@@ -944,8 +1119,135 @@ impl Screen {
         }
     }
 
+    /// Restore row identities omitted by GHOSTSNP before installing anchored graphics.
+    pub(crate) fn restore_view_row_identity(
+        &mut self,
+        source: &Screen,
+    ) -> Result<(), &'static str> {
+        if self.all_rows().len() != source.all_rows().len() {
+            return Err("view row count mismatch");
+        }
+        let mut identities = HashMap::new();
+        for (current, source) in self.all_rows().zip(source.all_rows()) {
+            if current.cells.len() != source.cells.len() {
+                return Err("view row width mismatch");
+            }
+            identities.insert(current.id, source.id);
+        }
+        for page in &mut self.pages.pages {
+            for id in &mut page.row_ids[..usize::from(page.rows)] {
+                *id = identities[id];
+            }
+        }
+        self.remap_grid_rows(&identities);
+        self.next_row = source.next_row;
+        Ok(())
+    }
+
     pub fn set_cell_style(&mut self, y: usize, col: usize, style: Style) {
         let absolute = self.history_len() + y;
+        self.set_absolute_cell_style(absolute, col, style);
+    }
+
+    pub(crate) fn restore_tmux_capture_metadata(
+        &mut self,
+        source: &Screen,
+    ) -> Result<(), &'static str> {
+        self.restore_tmux_shell(source)?;
+        if source
+            .tmux_history
+            .is_some_and(|history| history.scrolled > source.history_len())
+        {
+            return Err("history scroll position exceeds retained rows");
+        }
+        self.tmux_history = source.tmux_history;
+        self.tmux_capture_rows = source.tmux_capture_rows.clone();
+        self.tmux_capture_known = source.tmux_capture_known;
+        let row_ids = source
+            .all_rows()
+            .map(|row| row.id)
+            .collect::<std::collections::BTreeSet<_>>();
+        let widths = source
+            .all_rows()
+            .map(|row| (row.id, row.cells.len()))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        if source.tmux_capture_rows.len() > widths.len()
+            || source
+                .tmux_capture_rows
+                .iter()
+                .any(|(id, &(used, allocated))| {
+                    widths.get(id).is_none_or(|&width| used > width)
+                        || used > allocated
+                        || allocated > usize::from(u16::MAX)
+                })
+        {
+            return Err("invalid capture allocation bounds");
+        }
+        if source.tmux_row_times.len() > row_ids.len()
+            || source.tmux_row_times.keys().any(|id| !row_ids.contains(id))
+        {
+            return Err("invalid capture line timestamps");
+        }
+        self.tmux_row_times = source.tmux_row_times.clone();
+        if source.tmux_row_flags.len() > row_ids.len()
+            || source
+                .tmux_row_flags
+                .iter()
+                .any(|(id, flags)| !row_ids.contains(id) || flags & !0x102 != 0)
+        {
+            return Err("invalid capture line flags");
+        }
+        self.tmux_row_flags = source.tmux_row_flags.clone();
+        if self.all_rows().len() != source.all_rows().len() {
+            return Err("capture metadata row count mismatch");
+        }
+        let mut changes = Vec::new();
+        if source.cursor.style.tmux_tab != 0
+            || source
+                .saved_cursor
+                .as_ref()
+                .is_some_and(|saved| saved.cursor.style.tmux_tab != 0)
+        {
+            return Err("invalid cursor tab metadata");
+        }
+        for (absolute, (current, source)) in self.all_rows().zip(source.all_rows()).enumerate() {
+            if current.cells.len() != source.cells.len() {
+                return Err("capture metadata row width mismatch");
+            }
+            for col in 0..current.cells.len() {
+                if source.style(col).tmux_tab != 0
+                    && (source.cells[col].width() != 1
+                        || source.cells[col].has_grapheme()
+                        || !matches!(source.cells[col].codepoint(), None | Some(' ')))
+                {
+                    return Err("invalid tab cell metadata");
+                }
+                let source = source.style(col);
+                let mut current = current.style(col);
+                current.tmux_ansi = source.tmux_ansi;
+                current.tmux_tab = source.tmux_tab;
+                if current != source
+                    || source.tmux_ansi > 3
+                    || !(-1..=32).contains(&source.tmux_tab)
+                {
+                    return Err("capture metadata style mismatch");
+                }
+                if source.tmux_ansi != 0 || source.tmux_tab != 0 {
+                    changes.push((absolute, col, current));
+                }
+            }
+        }
+        for (absolute, col, style) in changes {
+            self.set_absolute_cell_style(absolute, col, style);
+        }
+        self.cursor.style.tmux_ansi = source.cursor.style.tmux_ansi;
+        if let (Some(cursor), Some(source)) = (&mut self.saved_cursor, &source.saved_cursor) {
+            cursor.cursor.style.tmux_ansi = source.cursor.style.tmux_ansi;
+        }
+        Ok(())
+    }
+
+    fn set_absolute_cell_style(&mut self, absolute: usize, col: usize, style: Style) {
         let mut location = self.locate(absolute);
         let page = &self.pages.pages[location.0];
         let cell = page.cells[page.slot(location.1, col)];
@@ -1184,6 +1486,7 @@ impl Screen {
         col: usize,
         codepoints: [char; N],
     ) -> Result<(), SetFull> {
+        self.tmux_note_rendition(self.cursor.row, true);
         let mut location = self.cursor_location();
         let page = &mut self.pages.pages[location.0];
         let slot = page.slot(location.1, col);
@@ -1271,6 +1574,7 @@ impl Screen {
     }
 
     pub(crate) fn fill_alignment_row(&mut self, y: usize) {
+        self.tmux_capture_write(y, self.columns);
         let id = self.cursor_style.map_or(0, |(_, id)| id);
         let (index, row) = self.locate(self.history_len() + y);
         let page = &mut self.pages.pages[index];
@@ -1290,6 +1594,23 @@ impl Screen {
         spacer_head: bool,
         location: (usize, usize),
     ) {
+        debug_assert_eq!(location, self.cursor_location());
+        let location = if self.clear_written_tabs(
+            self.cursor.row,
+            self.cursor.col,
+            self.cursor.col + usize::from(width),
+        ) {
+            self.cursor_location()
+        } else {
+            location
+        };
+        self.graphics.overwrite_sixel(
+            self.row(self.cursor.row).id,
+            self.cursor.col,
+            self.cursor.col + usize::from(width),
+        );
+        self.tmux_capture_write(self.cursor.row, self.cursor.col + usize::from(width));
+        self.tmux_note_rendition(self.cursor.row, codepoint.is_some_and(|cp| !cp.is_ascii()));
         debug_assert_eq!(location, self.cursor_location());
         let (index, row) = if self.cursor_resources_match(location.0) {
             location
@@ -1360,6 +1681,12 @@ impl Screen {
                 self.set_cell_cursor_hyperlink(col + 1);
             }
         }
+        self.tmux_capture_background(
+            self.history_len() + y,
+            clear_start,
+            clear_end,
+            self.cursor.style.background,
+        );
     }
 
     pub(crate) fn write_cursor_ascii(&mut self, bytes: &[u8]) -> usize {
@@ -1371,7 +1698,11 @@ impl Screen {
         let offset = page.slot(row, self.cursor.col);
         let len = bytes.len().min(usize::from(page.columns) - self.cursor.col);
         let old = page.cells[offset];
-        if old.width() != 1 || old.has_grapheme() || old.has_hyperlink() {
+        if old.width() != 1
+            || old.has_grapheme()
+            || old.has_hyperlink()
+            || page.style(offset).tmux_tab != 0
+        {
             return 0;
         }
         let count = printing::destination_narrow(
@@ -1392,6 +1723,15 @@ impl Screen {
         }
         if count != 0 {
             page.mark_cell(row, template);
+        }
+        if count != 0 {
+            self.graphics.overwrite_sixel(
+                self.row(self.cursor.row).id,
+                self.cursor.col,
+                self.cursor.col + count,
+            );
+            self.tmux_capture_write(self.cursor.row, self.cursor.col + count);
+            self.tmux_note_rendition(self.cursor.row, false);
         }
         count
     }
@@ -1455,7 +1795,7 @@ impl Screen {
         }
         let cells = &page.cells[offset..offset + len * usize::from(width)];
         let old = cells[0];
-        if old.has_grapheme() || old.has_hyperlink() {
+        if old.has_grapheme() || old.has_hyperlink() || page.style(offset).tmux_tab != 0 {
             return 0;
         }
         let count = if old.width() == 1 {
@@ -1501,6 +1841,16 @@ impl Screen {
             printing::store_wide(cells, &codepoints[..count], head, tail);
         }
         page.mark_cell(row, head);
+        self.graphics.overwrite_sixel(
+            self.row(self.cursor.row).id,
+            self.cursor.col,
+            self.cursor.col + slots,
+        );
+        self.tmux_capture_write(self.cursor.row, self.cursor.col + slots);
+        self.tmux_note_rendition(
+            self.cursor.row,
+            codepoints[..count].iter().any(|cp| !cp.is_ascii()),
+        );
         *state = next_state;
         let col = self.cursor.col + slots;
         self.cursor.col = col.min(right);
@@ -1612,8 +1962,21 @@ impl Screen {
         background: Color,
         copy_limit: usize,
     ) {
-        if history && self.limits.bytes != Some(0) && self.memory_limit != Some(0) {
+        if background == Color::Default {
+            self.tmux_capture_rows.remove(&blank);
+        } else {
+            self.tmux_capture_rows.insert(blank, (0, self.columns));
+        }
+        if history && self.history_enabled() {
+            self.tmux_collect_history(false);
+            if self.tmux_history.is_some() && top != 0 {
+                let start = self.history_len();
+                let copy = RowCopy::from_view(self.physical_row(start + top));
+                self.rotate_rows(start, start + top, false, blank, background, copy_limit);
+                self.install_row(start, copy, copy_limit);
+            }
             self.grow_row(blank, background, self.height);
+            self.tmux_history_added();
             if bottom + 1 < self.height {
                 let start = self.history_len() + bottom;
                 self.rotate_rows(
@@ -1633,26 +1996,41 @@ impl Screen {
             self.discard_row(erased);
         }
         self.sync_cursor_resources();
+        let row = if up { bottom } else { top };
+        self.tmux_capture_background(self.history_len() + row, 0, self.columns, background);
     }
 
     fn grow_row(&mut self, id: u64, background: Color, active_rows: usize) {
+        if background != Color::Default {
+            self.tmux_capture_rows.insert(id, (0, self.columns));
+        }
         if self.viewport_offset > 0 {
             self.viewport_offset += 1;
         }
         let removed = self.pages.grow(
             self.columns as u16,
             active_rows,
-            self.limits,
+            if self.tmux_history.is_some() {
+                ScrollbackLimits {
+                    lines: None,
+                    ..self.limits
+                }
+            } else {
+                self.limits
+            },
             self.memory_limit,
             id,
             background,
         );
         self.discard_ids(removed);
+        self.tmux_capture_background(self.pages.total_rows() - 1, 0, self.columns, background);
     }
 
     pub(crate) fn retain_history(&mut self) {
+        self.tmux_collect_history(false);
         let id = self.next_row_id();
         self.grow_row(id, Color::Default, self.height);
+        self.tmux_history_added();
     }
 
     pub(crate) fn copy_row_cells(
@@ -1671,6 +2049,7 @@ impl Screen {
         if start >= end {
             return;
         }
+        self.tmux_capture_write(destination, end);
         if si == di {
             let page = &mut self.pages.pages[si];
             let src = page.slot(sr, start);
@@ -1699,6 +2078,7 @@ impl Screen {
             let (index, row) = self.locate(destination_absolute);
             self.pages.pages[index].repair_wide(row, background);
         }
+        self.tmux_capture_background(source_absolute, start, end, background);
     }
 
     pub(crate) fn change_grapheme_width(
@@ -1872,7 +2252,11 @@ impl Screen {
         }
     }
     pub(crate) fn effective_limits(&self) -> ScrollbackLimits {
-        PageList::effective_limits(self.columns as u16, self.height, self.limits)
+        let mut limits = PageList::effective_limits(self.columns as u16, self.height, self.limits);
+        if self.tmux_history.is_some() {
+            limits.lines = None;
+        }
+        limits
     }
     pub(crate) fn enforce_limits(&mut self) {
         let removed = self
@@ -1889,6 +2273,10 @@ impl Screen {
         }
     }
     pub(crate) fn clear_history(&mut self) {
+        if let Some(history) = &mut self.tmux_history {
+            history.generation = history.generation.wrapping_add(1);
+            history.scrolled = 0;
+        }
         let count = self.history_len();
         let ids = self.history().map(|row| row.id).collect();
         self.pages.remove_prefix(count);
@@ -2053,6 +2441,9 @@ impl Screen {
     }
 
     pub fn selection_text(&self) -> Option<String> {
+        if self.tmux_shell.is_some() {
+            return self.tmux_selection_text(self.selection?);
+        }
         let bytes = self.format_selection(self.selection?, crate::formatter::Options::default())?;
         Some(String::from_utf8(bytes).expect("plain cell formatting is valid UTF-8"))
     }
@@ -2368,6 +2759,12 @@ impl Screen {
     }
 
     pub(crate) fn discard_row(&mut self, id: u64) {
+        if let Some(markers) = &mut self.tmux_shell {
+            markers.remove(&id);
+        }
+        self.tmux_capture_rows.remove(&id);
+        self.tmux_row_times.remove(&id);
+        self.tmux_row_flags.remove(&id);
         self.graphics.discard_row(id);
         if self.viewport_pin.is_some_and(|point| point.row == id) {
             let point = self

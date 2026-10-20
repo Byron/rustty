@@ -1,0 +1,167 @@
+# These run the Rust implementations on Windows. Only the explicitly pinned C
+# oracle runs on a POSIX SSH host; this does not qualify native pane processes.
+[[suites]]
+id = "windows-stock-c-ssh-client"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows", "system-client", "command-control"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 1
+raw_system_ssh = true
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-client", "--test", "ssh_reference", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 180
+
+[[suites.assertions]]
+id = "control.real-ssh-bootstrap-reconnect-indeterminate-loss"
+tests = ["ssh_stock_tmux_discovery_bytes_reconnect_and_ambiguous_mutation"]
+description = "The complete original SystemClient matrix runs natively over actual Windows SSH with a fixed restricted command. It discovers pinned C graph/captures, receives seven-byte fragmented live output, terminates SSH and reconnects to the same live PID, and reports an applied unobserved mutation as Indeterminate without replay. The oracle owns only the private C fixture; raw control bytes do not pass through its framed transport."
+
+[[suites]]
+id = "windows-stock-c-3-7c-ssh-client"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows", "system-client", "command-control"]
+reference_version = "tmux 3.7c"
+remote_config_env = "TMUXX_REMOTE_C_OLDER_CONFIG"
+remote_fixtures = 1
+raw_system_ssh = true
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-client", "--test", "ssh_reference", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 180
+
+[[suites.assertions]]
+id = "control.c-3.7c-ssh-discovery-reconnect"
+tests = ["ssh_stock_tmux_discovery_bytes_reconnect_and_ambiguous_mutation"]
+description = "The complete original SystemClient matrix runs natively over actual Windows SSH to pinned C 3.7c with private fixture ownership, exact raw-SSH configuration/key/executable identity, complete cleanup, same-PID reconnect, and ambiguous mutation accounting without replay."
+
+[[suites]]
+id = "windows-remote-c-fixture-lifecycle"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 2
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "remote_oracle", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 180
+
+[[suites.assertions]]
+id = "conformance.remote-c-persistent-fixture-cleanup"
+tests = ["persistent_controls_held_stdin_environment_and_pidfd_cleanup"]
+description = "The actual native test validates the leased C oracle's held source-file stdin, concurrent command progress, byte-exact startup/request environments, persistent controls, shared fixture lifetime, PID-fd observation and complete descendant cleanup. This validates the C-reference infrastructure, not Windows pane ownership."
+
+[[suites.assertions]]
+id = "conformance.remote-c-implicit-startup-cleanup"
+tests = ["implicit_configuration_starter_loss_releases_rejected_clients_and_waiters"]
+description = "The original C implicit-start configuration barrier executes once after loss of its actual launching command client and a queued client. All 140 original malformed native-endian IPC handshakes release their slots; the surviving client sees final configuration and exact graph, then the subreaper reaps the daemon and every descendant."
+
+[[suites]]
+id = "windows-stock-c-ssh-native-views"
+kind = "windows-system-c-views"
+harness = "windows-external-json"
+platforms = ["win32"]
+profiles = ["windows", "system-client", "native-views"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 2
+args = []
+env = {}
+timeout = 600
+
+[[suites.assertions]]
+id = "rustty.stock-c-ssh-native-views-and-reconnect"
+tests = ["tmuxx::system::tests::stock_ssh_views_share_live_panes_and_survive_connection_restart", "windows_system_c_views::visible_shared_graph", "windows_system_c_views::gui_restart_preserves_remote_panes"]
+description = "Native Windows executes the complete original stock SSH connection matrix, then the actual packaged Rustty GUI renders externally changed C sessions/windows/splits and duplicate/shared winlinks. A GUI restart preserves exact live C pane PIDs. Two pinned leased C fixtures require complete cleanup; both restricted SSH credential sets and the actual native executables are identified."
+
+[[suites]]
+id = "windows-remote-c-formats"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 3
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-config", "--test", "remote_c_reference", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 240
+
+[[suites.assertions]]
+id = "format.c-styled-width-trim-and-escaping"
+tests = ["styled_width_and_trimming_match_c_bytes"]
+description = "The complete existing style/width/trim expression matrix executes natively on Windows against the pinned C oracle. Every remote fixture has matching identity and complete descendant cleanup; this proves no Windows process or desktop obligation."
+
+[[suites.assertions]]
+id = "parser.c-text-and-argv"
+tests = ["text_parser_and_argv_match_c_execution"]
+description = "The complete existing byte parser/argv matrix executes natively on Windows against a pinned remote C oracle with exact source bytes, private fixture identity and complete descendant cleanup."
+
+[[suites.assertions]]
+id = "format.c-regex-substitution-and-compound-order"
+tests = ["regex_and_substitution_observations_match_c"]
+description = "The complete existing Unicode regex/capture/substitution/compound-order matrix executes natively on Windows against a pinned remote C oracle. No broader format assertion is inferred from this matrix."
+
+[[suites]]
+id = "windows-remote-c-unicode"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 12
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "unicode_reference", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 240
+
+[[suites.assertions]]
+id = "terminal.c-unicode-combining-cells-and-snapshots"
+tests = ["unicode_cells_cursor_and_snapshot_match_c"]
+description = "The existing twelve Unicode cell/cursor/snapshot cases run the Rust terminal natively on Windows at one/three/full byte boundaries and compare exact C captures over binary SSH. Twelve distinct pinned C fixture identities and complete cleanup are required. This is terminal/reference evidence, not a native ConPTY or rendering pass."
+
+[[suites]]
+id = "windows-remote-c-3-7c-formats"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux 3.7c"
+remote_config_env = "TMUXX_REMOTE_C_OLDER_CONFIG"
+remote_fixtures = 3
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-config", "--test", "remote_c_reference", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 240
+
+[[suites.assertions]]
+id = "format.c-styled-width-trim-and-escaping"
+tests = ["styled_width_and_trimming_match_c_bytes"]
+description = "The complete existing style/width/trim expression matrix executes natively on Windows against the pinned C oracle. Every remote fixture has matching identity and complete descendant cleanup; this proves no Windows process or desktop obligation."
+
+[[suites.assertions]]
+id = "parser.c-text-and-argv"
+tests = ["text_parser_and_argv_match_c_execution"]
+description = "The complete existing byte parser/argv matrix executes natively on Windows against a pinned remote C oracle with exact source bytes, private fixture identity and complete descendant cleanup."
+
+[[suites.assertions]]
+id = "format.c-regex-substitution-and-compound-order"
+tests = ["regex_and_substitution_observations_match_c"]
+description = "The complete existing Unicode regex/capture/substitution/compound-order matrix executes natively on Windows against a pinned remote C oracle. No broader format assertion is inferred from this matrix."
+
+
+[[suites]]
+id = "windows-stock-c-3-7c-ssh-native-views"
+kind = "windows-system-c-views"
+harness = "windows-external-json"
+platforms = ["win32"]
+profiles = ["windows", "system-client", "native-views"]
+reference_version = "tmux 3.7c"
+remote_config_env = "TMUXX_REMOTE_C_OLDER_CONFIG"
+remote_fixtures = 2
+args = []
+env = {}
+timeout = 600
+
+[[suites.assertions]]
+id = "rustty.stock-c-3.7c-ssh-native-views-and-reconnect"
+tests = ["tmuxx::system::tests::stock_ssh_views_share_live_panes_and_survive_connection_restart", "windows_system_c_views::visible_shared_graph", "windows_system_c_views::gui_restart_preserves_remote_panes"]
+description = "Native Windows executes the complete original stock SSH connection matrix, then the actual packaged Rustty GUI renders externally changed C sessions/windows/splits and duplicate/shared winlinks. A GUI restart preserves exact live C pane PIDs. Two pinned leased C fixtures require complete cleanup; both restricted SSH credential sets and the actual native executables are identified."

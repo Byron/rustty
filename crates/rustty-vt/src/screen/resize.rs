@@ -195,7 +195,16 @@ impl Screen {
         }
     }
 
-    pub(crate) fn resize(&mut self, cols: usize, rows: usize, reflow: bool) {
+    pub(crate) fn resize(&mut self, cols: usize, rows: usize, reflow: bool, tmux: bool) {
+        if cols != self.columns {
+            if reflow && let Some(history) = &mut self.tmux_history {
+                history.generation = history.generation.wrapping_add(1);
+            }
+            if !tmux {
+                self.tmux_capture_known = false;
+                self.tmux_capture_rows.clear();
+            }
+        }
         self.tracked.prune();
         let viewport_top = (self.viewport_offset > 0).then(|| self.viewport_top());
         if self.viewport_offset > 0 && self.viewport_offset < self.history_len() {
@@ -228,13 +237,21 @@ impl Screen {
                 col: saved.cursor.col,
             })
         });
-        let height_first = reflow && cols <= old_cols;
+        let height_first = reflow && (tmux || cols <= old_cols);
         if height_first {
-            self.resize_height(old_cols, old_rows, rows, old_cursor, saved_point);
+            self.resize_height(old_cols, old_rows, rows, old_cursor, saved_point, tmux);
         }
         self.columns = cols;
         let mut mapped_cursor = old_cursor;
         if cols != old_cols && reflow {
+            if tmux {
+                self.expand_unreflowable_tabs(cols);
+            }
+            let capture =
+                (tmux && self.tmux_capture_known).then(|| self.reflow_capture_metadata(cols));
+            if capture.is_none() {
+                self.tmux_capture_rows.clear();
+            }
             let height = if height_first { rows } else { old_rows };
             let active_start = self.pages.total_rows().saturating_sub(height);
             let old_wrapped = self
@@ -242,6 +259,11 @@ impl Screen {
                 .take((cursor_index + 1).saturating_sub(active_start))
                 .filter(|row| row.wrap_continuation)
                 .count();
+            let shell_rows = self.all_rows().map(|r| r.id).collect::<Vec<_>>();
+            let row_times = std::mem::take(&mut self.tmux_row_times);
+            let row_flags = std::mem::take(&mut self.tmux_row_flags);
+            let mut shell_points = self.tmux_shell_points();
+            shell_points.sort_unstable();
             let mut source_pages = std::mem::take(&mut self.pages);
             let first_capacity = source_pages
                 .pages
@@ -274,11 +296,19 @@ impl Screen {
                     let old = source_page.row(source_row);
                     let unmanaged = !source_page.headers[source_row].has(RowHeader::MANAGED);
                     wanted.clear();
-                    let mut used = if old.wrapped {
+                    let mut used = if tmux && self.tmux_capture_known {
+                        self.tmux_capture_rows
+                            .get(&old.id)
+                            .map_or(0, |bounds| bounds.0)
+                    } else if old.wrapped {
                         old.cells.len()
                     } else {
                         old.used()
                     };
+                    // C retains blank tail rows, so new wraps push old rows into history.
+                    if tmux {
+                        used = used.max(1);
+                    }
                     let mut keep_pin = |point: &mut GridPoint| {
                         if point.row == old.id {
                             if point.col >= used {
@@ -302,7 +332,9 @@ impl Screen {
                         keep_pin(point);
                     }
                     if old.id == old_cursor.row {
-                        used = used.max(old_cursor.col + 1);
+                        if !tmux {
+                            used = used.max(old_cursor.col + 1);
+                        }
                         wanted.push(old_cursor.col);
                     }
                     if old.semantic != SemanticContent::Output {
@@ -318,6 +350,16 @@ impl Screen {
                             .take_while(|p| p.0 == old.id)
                             .map(|p| p.1),
                     );
+                    let shell_start = shell_points.partition_point(|p| p.0 < old.id);
+                    wanted.extend(
+                        shell_points[shell_start..]
+                            .iter()
+                            .take_while(|p| p.0 == old.id)
+                            .map(|p| p.1),
+                    );
+                    if tmux {
+                        wanted.push(0);
+                    }
                     wanted.sort_unstable();
                     wanted.dedup();
                     let mut next_point = 0;
@@ -362,10 +404,15 @@ impl Screen {
                             );
                             continue;
                         }
-                        let width = usize::from(cell.width()).min(cols);
+                        let tab = old.style(old_col).tmux_tab.max(0) as usize;
+                        let width = if tab != 0 {
+                            tab
+                        } else {
+                            usize::from(cell.width()).min(cols)
+                        };
                         let mut spacer = None;
                         if x + width > cols {
-                            if width == 2 && x < cols {
+                            if tab == 0 && width == 2 && x < cols {
                                 let (index, row) = self.pages.locate_from_end(0);
                                 let page = &mut self.pages.pages[index];
                                 let slot = page.slot(row, x);
@@ -389,6 +436,24 @@ impl Screen {
                                 &mut spare,
                                 &mut exposed_rows,
                             );
+                        }
+                        if tab != 0 {
+                            for offset in 0..tab {
+                                record(
+                                    old_col + offset,
+                                    GridPoint {
+                                        row: line.id,
+                                        col: x + offset,
+                                    },
+                                );
+                                let copy = old.copy_cell(old_col + offset);
+                                let _ = self.install_cell(output.len(), x + offset, copy, true);
+                            }
+                            if tab > 1 {
+                                cells.nth(tab - 2);
+                            }
+                            x += tab;
+                            continue;
                         }
                         if bulk_copy && !cell.has_hyperlink() {
                             let start = old.offset + old_col;
@@ -456,16 +521,23 @@ impl Screen {
                         });
                         x += width;
                     }
-                    for old_col in wanted
-                        .iter()
-                        .copied()
-                        .filter(|&col| col >= used && col < old.cells.len())
-                    {
+                    for old_col in wanted.iter().copied().filter(|&col| {
+                        col >= used
+                            && (col < old.cells.len()
+                                || shell_points.binary_search(&(old.id, col)).is_ok()
+                                || tmux && graphics_points.binary_search(&(old.id, col)).is_ok())
+                    }) {
+                        let image_anchor = shell_points.binary_search(&(old.id, old_col)).is_ok()
+                            || tmux && graphics_points.binary_search(&(old.id, old_col)).is_ok();
                         map.insert(
                             (old.id, old_col),
                             GridPoint {
                                 row: line.id,
-                                col: (x + old_col - used).min(cols - 1),
+                                col: if image_anchor {
+                                    x + old_col - used
+                                } else {
+                                    (x + old_col - used).min(cols - 1)
+                                },
                             },
                         );
                     }
@@ -511,6 +583,22 @@ impl Screen {
                 })
             });
             self.graphics.reflow(&map);
+            self.reflow_tmux_shell(&map, &shell_rows);
+            self.tmux_row_times = row_times
+                .into_iter()
+                .filter_map(|(row, time)| {
+                    map.get(&(row, 0))
+                        .filter(|p| p.col == 0)
+                        .map(|p| (p.row, time))
+                })
+                .collect();
+            self.tmux_row_flags = row_flags
+                .into_iter()
+                .filter_map(|(row, flags)| map.get(&(row, 0)).map(|p| (p.row, flags)))
+                .fold(Default::default(), |mut flags, (row, value)| {
+                    *flags.entry(row).or_default() |= value;
+                    flags
+                });
             output.truncate(written_rows);
             if self.pages.total_rows() > output.len() {
                 self.pages.truncate(output.len());
@@ -519,11 +607,15 @@ impl Screen {
                 let id = self.next_row_id();
                 self.grow_row(id, Color::Default, height);
             }
+            if let Some(capture) = capture {
+                self.install_reflow_capture_metadata(capture);
+            }
             let start = self.pages.total_rows() - height;
-            if let Some(cursor_index) = self
-                .rows()
-                .position(|row| row.id == mapped_cursor.row)
-                .map(|i| start + i)
+            if !tmux
+                && let Some(cursor_index) = self
+                    .rows()
+                    .position(|row| row.id == mapped_cursor.row)
+                    .map(|i| start + i)
             {
                 let wrapped = self
                     .rows()
@@ -548,12 +640,16 @@ impl Screen {
             }
         }
         if !height_first {
-            self.resize_height(cols, old_rows, rows, mapped_cursor, saved_point);
+            self.resize_height(cols, old_rows, rows, mapped_cursor, saved_point, tmux);
         }
         self.height = rows;
         while self.pages.total_rows() < rows {
             let id = self.next_row_id();
             self.grow_row(id, Color::Default, rows);
+        }
+        let history_len = self.history_len();
+        if let Some(history) = &mut self.tmux_history {
+            history.scrolled = history.scrolled.min(history_len);
         }
         let start = self.history_len();
         let cursor_index = self
@@ -636,7 +732,12 @@ impl Screen {
         rows: usize,
         cursor: GridPoint,
         saved: Option<GridPoint>,
+        tmux: bool,
     ) {
+        if tmux {
+            self.resize_tmux_height(cols, old_rows, rows, cursor);
+            return;
+        }
         let mut trim = old_rows.saturating_sub(rows);
         while trim > 0
             && self.pages.total_rows() > rows
@@ -669,7 +770,71 @@ impl Screen {
         }
     }
 
+    fn resize_tmux_height(&mut self, cols: usize, old_rows: usize, rows: usize, cursor: GridPoint) {
+        let history = self.history_len();
+        let enabled = self.history_enabled();
+        if rows < old_rows {
+            let cursor = self
+                .all_rows()
+                .position(|row| row.id == cursor.row)
+                .unwrap_or(history)
+                .saturating_sub(history);
+            let bottom = (old_rows - 1).saturating_sub(cursor).min(old_rows - rows);
+            let ids = self
+                .all_rows()
+                .skip(self.pages.total_rows() - bottom)
+                .map(|row| row.id)
+                .collect();
+            self.pages.truncate(self.pages.total_rows() - bottom);
+            self.discard_ids(ids);
+            let remaining = old_rows - rows - bottom;
+            if enabled {
+                if let Some(history) = &mut self.tmux_history {
+                    history.scrolled += remaining;
+                }
+            } else {
+                for _ in 0..remaining {
+                    let removed = self.physical_row(history).id;
+                    let blank = self.next_row_id();
+                    self.rotate_rows(
+                        history,
+                        self.pages.total_rows() - 1,
+                        true,
+                        blank,
+                        Color::Default,
+                        usize::MAX,
+                    );
+                    self.pages.truncate(self.pages.total_rows() - 1);
+                    self.discard_row(removed);
+                }
+            }
+        }
+        self.height = rows;
+        self.columns = cols;
+        if rows > old_rows {
+            let available = if enabled {
+                self.tmux_history
+                    .map_or(history, |h| h.scrolled)
+                    .min(history)
+                    .min(rows - old_rows)
+            } else {
+                0
+            };
+            if let Some(history) = &mut self.tmux_history {
+                history.scrolled -= available;
+            }
+            for _ in 0..rows - old_rows - available {
+                let id = self.next_row_id();
+                self.grow_row(id, Color::Default, rows);
+            }
+        }
+    }
+
     fn resize_columns(&mut self, columns: usize) {
+        // Non-reflow resizes discard cells past the new physical row width.
+        for (used, _) in self.tmux_capture_rows.values_mut() {
+            *used = (*used).min(columns);
+        }
         let mut old = std::mem::take(&mut self.pages);
         let mut spare = None;
         while let Some(mut page) = old.pages.pop_front() {

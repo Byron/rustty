@@ -1,0 +1,16 @@
+[package]
+name = "tmuxx-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "ISC"
+description = "Byte-preserving tmux control protocol and native tmuxx messages"
+
+[features]
+default = []
+native = ["dep:serde", "dep:serde_json", "dep:base64"]
+
+[dependencies]
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+base64 = { version = "0.22", optional = true }

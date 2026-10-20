@@ -1,0 +1,419 @@
+schema_version = 1
+
+[[differences]]
+id = "native-detached-job-drain"
+profiles = ["command-control", "app-owned", "standalone", "windows"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["server.c", "job.c", "cmd-run-shell.c", "tmuxx/crates/tmuxx-runtime/src/lib.rs", "tmuxx/crates/tmuxx-runtime/src/scheduler.rs"]
+reproducer = "Start a blocked run-shell -b job, enable exit-unattached and exit-empty, disconnect the last client, then release the job. Also execute a blocking foreground run-shell command."
+c_result = "Background jobs carry JOB_NOWAIT: automatic server exit sends SIGTERM to the job process. Foreground commands retain a live server until completion. The C socket inode can remain after the server exits."
+rust_result = "Automatic native owner exit waits for retained background jobs to finish, preserving their command effects; foreground commands also finish before exit. Explicit owner shutdown or owner death still terminates all owned jobs and descendants."
+reason = "Native standalone ownership already promises retained running jobs. Preserving that behavior avoids discarding background command effects during automatic exit. This is a positive tested difference, not an exclusion."
+wire_invariants = "Command ordering, foreground completion and wait-channel flushing remain covered. The corrected Unix fixture checks live socket connections; Windows evidence independently observes the C process through a retained pidfd and the native owner through its pipe."
+test = "cargo +1.95.0 test --manifest-path Cargo.toml -p tmuxx-runtime --test windows_lifecycle -- --include-ignored --test-threads=1"
+review_when = "When the native retained-job policy or C JOB_NOWAIT exit behavior changes. The historical macOS socket-existence assertion did not establish C liveness."
+
+[[differences]]
+id = "windows-unicode-glob-scalar-boundaries"
+profiles = ["windows"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["format.c", "tmuxx/crates/tmuxx-format/src/windows_glob.rs", "tmuxx/crates/tmuxx-config/tests/c_reference.rs"]
+reproducer = "Evaluate m:?,é, m:??,é, m:?,界, m:???,界 and ASCII controls with the pinned glibc C oracle and native Windows matcher."
+c_result = "The glibc UTF-8 fnmatch implementation accepts both one scalar and its two/three UTF-8 byte count: ? and ?? match é; ? and ??? match 界. Exact native-versus-C observations and libc identity are retained."
+rust_result = "Native Windows glob ? consumes exactly one Unicode scalar. ?? rejects é and ??? rejects 界; ASCII controls and one-scalar matches remain equal."
+reason = "Keep the already-declared deterministic Windows Unicode glob contract instead of adding libc's byte fallback to scalar matching. This is implemented behavior with exact independent results, not an exclusion for missing matching support."
+wire_invariants = "Remote C protocol results remain byte-exact and unmodified. The complete original format matrix still executes; only the explicitly identified multi-wildcard Unicode case asserts separate native and C outcomes. A dedicated eight-case executable witness remains required."
+test = "cargo +1.95.0 test --manifest-path Cargo.toml --locked --offline -p tmuxx-config --test c_reference -- --ignored --test-threads=1"
+review_when = "Every supported libc/Unicode or glob change; retire or revise when the pinned C oracle no longer exhibits the independently asserted fallback."
+
+[[differences]]
+id = "windows-job-shell-input-and-termination"
+profiles = ["windows"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["job.c", "tmuxx/crates/tmuxx-runtime/src/scheduler.rs", "tmuxx/crates/tmuxx-runtime/tests/scheduler/windows.rs"]
+reproducer = "Change default-shell, run a child that observes its actual parent executable and TERM/COLORTERM, inspect stdin type/read EOF, and abruptly terminate the child before a following command and successful job."
+c_result = "The pinned Linux C reference executes /bin/sh with argv0 sh, exposes a socket on stdin with EOF, and reports SIGTERM as status143 with the exact terminated-by-signal diagnostic."
+rust_result = "Native Windows jobs execute the verified system cmd.exe independently of the pane shell. Stdin is FILE_TYPE_PIPE with EOF. Abrupt child termination reports the actual Windows status -1 and returned-status diagnostic."
+reason = "Expose actual Windows process and handle behavior rather than inventing POSIX sockets, signals or shell argv0. Native and C results are independently asserted while retaining all shared job command vectors."
+wire_invariants = "Command/control framing, environment overrides, target context, foreground queue continuation and subsequent status reset remain covered. Both EOF paths close the owner write side; neither leaves a console or inherited writer."
+test = "cargo +1.95.0 test --manifest-path Cargo.toml --locked --offline -p tmuxx-runtime --test scheduler -- --ignored --test-threads=1"
+review_when = "Every Windows job launcher, inherited-handle or termination-status change, and every supported C shell execution change."
+
+[[differences]]
+id = "windows-account-pipes-and-explicit-ownership"
+profiles = ["windows"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["server.c", "client.c", "tmuxx/crates/tmuxx-runtime/src/windows.rs", "tmuxx/crates/tmuxx-cli/src/windows.rs"]
+reproducer = "Attach through a local named pipe or fixed --native-stdio bridge; select a missing instance, compete for a live name, or submit a mutation with an old incarnation."
+c_result = "The Unix reference uses owner-private Unix sockets and UID identity; native Windows named pipes, SID access and ConPTY ownership have no C executable counterpart. C command clients retain their Unix startup policy."
+rust_result = "Windows pipe ACLs and verified peer account SIDs permit desktop/SSH logons of the same account. Direct network pipes and other accounts are denied. Clients only attach; explicit -D startup creates owners. Missing, ambiguous, incompatible and replaced owners produce errors before command submission."
+reason = "Use the Windows security and process model while preserving native command/control records and supported remote C protocol behavior. Discovery is not authentication."
+wire_invariants = "No C tmux code is linked. C protocol clients keep byte-preserving remote records. Native selection uses additive Hello fields; it is never interpolated into shell commands. Failed attachment creates neither an owner nor a pane."
+test = "cargo +1.95.0 test --manifest-path Cargo.toml -p tmuxx-cli --test windows -- --test-threads=1; python tmuxx/conformance/windows_ssh.py --help"
+review_when = "Every endpoint authentication, bridge startup, discovery or native Hello version change. Required executable cross-logon and unauthorized-account evidence remains in the Windows profile."
+
+[[differences]]
+id = "windows-retained-root-process-metadata"
+profiles = ["windows"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["osdep-darwin.c", "names.c", "tmuxx/crates/tmuxx-runtime/src/names.rs"]
+reproducer = "Create a pane in a Unicode path, change its root process working directory, start a foreground child and query pane_current_command/pane_current_path."
+c_result = "The Unix reference uses its OS foreground-process-group inspection to discover command/path metadata."
+rust_result = "Windows retains the original process handle and reads its image/current directory. It does not recycle an exited PID into unrelated-process metadata and does not pretend the foreground child is the root. Unicode decoding failure yields absent metadata rather than an aliased name/path."
+reason = "ConPTY exposes no foreground POSIX process-group query. The root process is a stable, real Windows identity with explicit limits."
+wire_invariants = "Pane IDs and pane_pid remain the actual original process identity; terminal output, process ownership and remote C values are unchanged by this metadata policy."
+test = "cargo +1.95.0 test --manifest-path Cargo.toml -p tmuxx-runtime --lib names::windows_tests::root_handle_metadata_tracks_native_cd_and_never_reuses_an_exited_pid -- --exact"
+review_when = "When a documented Windows API provides foreground-process identity or the supported process-parameter ABI changes."
+
+[[differences]]
+id = "windows-unicode-pattern-locale-and-budgets"
+profiles = ["windows"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["format.c", "tmuxx/crates/tmuxx-format/src/windows_regex.rs", "tmuxx/crates/tmuxx-format/src/windows_glob.rs", "tmuxx/vendor/posix-regex/WINDOWS.md"]
+reproducer = "Match Unicode classes, ranges and equivalence classes; substitute captures and empty matches; exceed declared pattern/input/output/work budgets through direct and pane-content formats."
+c_result = "Unix C uses its platform regex/fnmatch and active locale collation, with C tmux's byte-based substitution progression. Native Windows has no UCRT POSIX regex/fnmatch equivalent."
+rust_result = "Windows uses the documented deterministic Unicode locale, scalar ranges and canonical-base equivalence classes. Captures preserve original bytes, including malformed UTF-8 and byte advancement after suppressed empty matches. Complexity/input/work/output limits return explicit expansion errors through the core dispatcher."
+reason = "Provide actual native matching semantics without mutating the host GUI locale, silently aliasing names or reporting budget exhaustion as no match."
+wire_invariants = "Only native Windows evaluation uses this locale; Unix libc behavior and remote C protocol data are preserved. Native algorithm expectations are not evidence of complete C-reference parity and do not exclude shared format obligations."
+test = "cargo +1.95.0 test --manifest-path Cargo.toml --locked --offline -p tmuxx-format -p tmuxx-core --lib; cargo +1.95.0 test --manifest-path tmuxx/vendor/posix-regex/Cargo.toml --locked --offline"
+review_when = "Every supported Rust/Unicode or C regex/fnmatch update; review locale outcomes and explicit budgets against the supported references."
+
+[[differences]]
+id = "native-selector-utf8-rejection"
+profiles = ["command-control", "native-views", "app-owned", "standalone"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["cmd-find.c", "cmd-queue.c", "tmuxx/conformance/generate_command_metadata.py", "tmuxx/crates/tmuxx-command/src/registry.rs", "tmuxx/crates/tmuxx-runtime/src/scheduler.rs", "tmuxx/crates/tmuxx-core/src/lib.rs"]
+reproducer = 'Create session replace<U+FFFD> with window window<U+FFFD>, then use literal 0xff in session/window/client -t, source -s or client -c selectors. Exercise ordinary argv and control octal \377 spelling, including kill-session, link/move/swap/join/break, display-message, switch/refresh-client and detach-client.'
+c_result = "C compares selector bytes without Unicode replacement. Missing graph/client lookups report raw-byte diagnostics; CANFAIL display/detach selectors may succeed with absent/fallback context or no effect. Neither client rewrites these bytes when connected to C."
+rust_result = "The native server rejects malformed effective selectors at command execution with command NAME: -FLAG target is not valid UTF-8. Ordinary native-endpoint CLI errors additionally retain the existing tmuxx: prefix. The graph and attachment survive, valid U+FFFD names still resolve, earlier commands execute, following commands in a failed group cancel, and unused branches do not reject."
+reason = "The Rust graph and client names are UTF-8 strings. Reject malformed lookup bytes before lossy conversion can select or destroy a different object named with U+FFFD."
+wire_invariants = "This rule applies only to server-executed selector roles derived from C metadata plus four explicit manually resolved destinations. Generic client validation and C forwarding remain byte-preserving. Effective last repeated flags retain C precedence; arbitrary argv, directory/path bytes, creation names, buffers/data and separators keep their existing independent rules. C/R status, output and control errors are asserted independently, without normalizing the difference."
+test = "cargo test -p tmuxx-cli --test selectors -- --ignored --test-threads=1"
+review_when = "Every upstream command registration/selector-role or target-resolution change. Retire the admission difference if native graph/client names acquire byte-exact storage and lookup."
+
+[[differences]]
+id = "control-independent-session-close-order"
+profiles = ["command-control", "native-views"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["session.c", "control-notify.c", "tmuxx/crates/tmuxx-core/src/lib.rs"]
+reproducer = "Create sessions b,a,c with one window each, add four detached windows to c, attach a control client to a, then submit kill-session -t c ; rename-window -t a:one survivor through one external command client."
+c_result = "The non-output stream is sessions-changed, unlinked-window-close @3, @4, @5, @6, @2, then window-renamed @1 survivor. session_destroy repeatedly removes the root of the C winlink red-black tree."
+rust_result = "The non-output stream is sessions-changed, unlinked-window-close @2, @3, @4, @5, @6, then window-renamed @1 survivor. Independent closes use increasing winlink order. All close payloads and the final session/window/pane graph agree."
+reason = "Keep deterministic graph traversal without reproducing the historical shape of C's internal red-black tree."
+wire_invariants = "Only independent closes within one destroyed session may differ in order. They cannot cross that session's sessions-changed record, subsequent command notifications or lifecycle dependency events. Exact C/R sequences are asserted separately, without sorting or normalizing the stream. Other notification routes retain exact-order tests."
+test = "cargo test -p tmuxx-runtime --test client_commands independent_session_window_closes_keep_explicit_order_and_causal_boundaries -- --ignored"
+review_when = "Every upstream session destruction, winlink traversal or event-ordering change; retire if C adopts deterministic winlink order."
+
+[[differences]]
+id = "native-raw-grid-storage"
+profiles = ["command-control", "native-views"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["cmd-capture-pane.c", "grid.c", "input.c", "tmuxx/crates/tmuxx-terminal/src/capture_raw.rs"]
+reproducer = "In a 20x6 pane print READY, an ACS q, a horizontal tab followed by X, and a truecolor Z followed by erase-line; inspect capture-pane -pR."
+c_result = "ACS cell: data=(1,1,q), attr=CHARSET[80]. Tab cell: data=(8,8,        ), flags=TAB[80]. Partially cleared extended slot: flags=NONE[0]. An untouched row reports 0/0 allocated cells."
+rust_result = "ACS cell contains the actual glyph: data=(1,3,─), attr=NONE[0]. A tab's expanded empty slot reports data=(1,1, ), flags=CLEARED[40]. The erased slot also reports CLEARED[40]. The untouched native row reports 0/20 because all twenty slots exist."
+reason = "Expose actual native page slots and decoded cell contents instead of duplicating C's packed-cell allocation, source character-set bytes and compressed physical tab layout solely for debug output. Ordinary capture retains HT spelling as bounded semantic metadata."
+wire_invariants = "G/L/C record grammar, global dimensions/history, real text/style/color/link/padding fields, OSC133 markers and raw-option precedence remain available. Shared cell fields have exact C assertions; these independent storage examples are compared separately without normalization. Plain capture and rendering have their own parity contracts."
+test = "cargo test -p tmuxx-terminal --test raw_capture_reference -- --ignored --test-threads=1"
+review_when = "Every upstream capture/grid encoding or native page representation change; this exception never permits changing ordinary visible content or terminal behavior."
+
+[[differences]]
+id = "native-tab-reflow-bounds"
+profiles = ["command-control", "native-views"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["grid.c", "crates/rustty-vt/src/screen/tabs.rs", "crates/rustty-vt/src/screen/resize.rs"]
+reproducer = "A 20x3 pane prints READY CRLF HT X CRLF, then resizes to8,6,20 columns. Separately erase two padding cells inside that tab before resizing20→10→20."
+c_result = "At6 columns the tab head and seven padding slots split into different rows; X survives in a physical cell beyond the declared width and disappears from ordinary capture until widened. A fractured tab retains its original declared width, causing an extra wrap on narrowing."
+rust_result = "Tabs wider than the destination or fractured by edits expand into ordinary visible spaces before reflow. Every physical row remains within the pane width, X remains in capture, and widening/snapshot restoration preserve all text. Intact tabs at ordinary widths retain exact C capture spelling and allocation behavior."
+reason = "Keep native row bounds valid and avoid retaining hidden out-of-bounds cells solely to reproduce the C tab representation."
+wire_invariants = "Capture framing and terminal commands remain unchanged; independent exact C/native outcomes are asserted. This is a deliberate terminal-state difference, not transcript normalization."
+test = "cargo test -p tmuxx-terminal --test capture_reference native_reflow_expands_oversized_and_fractured_tabs_without_hidden_cells -- --ignored"
+review_when = "Each upstream grid reflow update; retire if C expands oversized/fractured tabs without hidden cells."
+
+[[differences]]
+id = "native-history-allocation-metrics"
+profiles = ["command-control", "native-views"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["format.c", "grid.c", "crates/rustty-vt/src/screen.rs", "tmuxx/crates/tmuxx-core/src/lib.rs"]
+reproducer = "Query history_bytes and history_all_bytes in an empty 40x5 pane, after two ASCII lines, and after a red combining character."
+c_result = "Image-enabled macOS C reports 240|5,240,0,0,0,0; 340|5,240,20,100,0,0; 413|5,240,30,150,1,23. Counts reflect C grid-line, packed-cell and extended-cell allocation."
+rust_result = "The same fixtures report native page capacities: 393456|1168,18688,46720,373760,1,1008; unchanged after ASCII; then 393799|1168,18688,46720,373760,1,1351. Six fields describe allocated row slots/bytes, packed-cell slots/bytes, and auxiliary page arenas/bytes. The three byte fields sum to history_bytes."
+reason = "Report actual Rust-owned page memory rather than fabricate C allocator sizes. Includes primary visible rows and history; excludes Screen maps and image allocations. Capacities vary by platform and backend, and tests check the accounting rather than hardcode allocator sizes."
+wire_invariants = "Numeric format output and six-field grammar remain compatible. History content, limit, batch trimming and scroll counters retain separate C-equivalence tests."
+test = "cargo test -p tmuxx-core --test history_reference native_history_allocation_metrics_are_explicit_c_difference -- --ignored"
+review_when = "Every terminal allocator change or upstream history metric change."
+
+[[differences]]
+id = "native-pane-style-syntax"
+profiles = ["command-control", "native-views"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["style.c", "tty.c", "tmuxx/crates/tmuxx-core/src/styles.rs", "tmuxx/crates/tmuxx-core/src/options.rs"]
+reproducer = "Set pane window-style or window-active-style to dim=50%, bold, bg=terminal, or a dynamic style conditional."
+c_result = "C accepts and stores all four presentation styles."
+rust_result = "Each returns an explicit unsupported error without changing pane state, option maps or continued inheritance. Static fg/bg/default and theme color tokens have native effects; active/inactive OSC-color precedence and reply bytes match C."
+reason = "Native panes currently implement color defaults; accepting presentation syntax without a matching native effect would silently mislead callers."
+wire_invariants = "Ordinary command error framing and C option scope/query syntax remain unchanged."
+test = "cargo test -p tmuxx-core --test terminal_options_reference head_unsupported_styles_preserve_inheritance_and_invalid_styles_match_c -- --ignored"
+review_when = "Add native renderer effects before enabling additional pane style syntax."
+
+[[differences]]
+id = "bounded-native-snapshot"
+profiles = ["app-owned", "standalone", "native-views"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["image.c", "tmuxx/crates/tmuxx-protocol/src/native/snapshot.rs", "tmuxx/crates/tmuxx-runtime/src/lib.rs", "tmuxx/NATIVE-SNAPSHOTS.md"]
+reproducer = "Request a native snapshot with a configured sixteen-byte total cap, then repeat under the ordinary budget; separately restore a four-byte image under a three-byte receiving image cap."
+c_result = "C has no native snapshot API. Its retained image/source behavior is checked separately by the image quota and pixel differential suites."
+rust_result = "The snapshot abort and image restore error are explicit, retain the prior receiving state and live owner PID/images, and permit a larger-budget retry. Default stream cap8GiB supports default1GiB global image data across both screen views."
+reason = "Bound untrusted snapshot disk/allocation growth and avoid installing partial graphs; stream large valid snapshots instead of treating them as slow output."
+wire_invariants = "Existing Unix IPC/control framing is unchanged. Additive version1 hello negotiation enables native snapshot chunks; old numeric image arrays still decode."
+test = "cargo test -p tmuxx-runtime --test host native_socket_streams_snapshots_and_cap_rejection_keeps_the_process"
+review_when = "Each native schema, image quota or terminal checkpoint change; review aggregate graph/image accounting before lifting the limit."
+
+[[differences]]
+id = "command-high-byte-preservation"
+profiles = ["command-control"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["cmd-parse.y", "tmuxx/crates/tmuxx-command/src/lib.rs"]
+reproducer = 'Source bytes: set-option -g @raw \xff\n (literal 0xff, not the four ASCII escape characters).'
+c_result = "On the historical signed-char macOS ABI, next-3.9 and3.7c reject/truncate this source byte. On the tested unsigned-char aarch64 GNU/Linux ABI, both references accept and preserve0xff; the lexer promotes plain char to int."
+rust_result = "Command parser preserves 0xff as one argument byte. NUL remains an error."
+reason = "Avoid signed-byte/EOF confusion and keep byte-preserving argument boundaries."
+wire_invariants = "No extra command, separator or protocol record is introduced."
+test = "cargo test -p tmuxx-config --test c_reference high_byte_preservation_is_an_explicit_reference_difference -- --ignored"
+review_when = "Every C baseline update; retire the C-side difference if upstream preserves the byte."
+
+[[differences]]
+id = "reject-nul-and-unclosed-quotes"
+profiles = ["command-control"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["cmd-parse.y", "tmuxx/crates/tmuxx-command/src/lib.rs"]
+reproducer = "NUL in an argument or an unterminated single/double quote."
+c_result = "The inspected next-3.9 parser accepts an unclosed quote at EOF as finished, and a source argument a<NUL>b becomes a."
+rust_result = "Return a source-positioned parse error without executing a partial command queue."
+reason = "Avoid argument truncation and ambiguous incomplete input."
+wire_invariants = "Existing command error framing is retained; no new wire messages."
+test = "cargo test -p tmuxx-config --test c_reference malformed_source_rejection_is_an_explicit_reference_difference -- --ignored"
+review_when = "Every C baseline update; retire the C-side difference when upstream rejects these inputs."
+
+[[differences]]
+id = "bounded-contextual-format-expansion"
+profiles = ["command-control"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["format.c", "tmuxx/crates/tmuxx-core/src/formats.rs", "tmuxx/conformance/resource-bounds.toml"]
+reproducer = "One window, 17 nested #{W:...} loops containing leaf; separately 17 sessions and #{S:#{R:abcdefgh,8192}}."
+c_result = "Current C prints leaf for both 16 and 17 nested loops and 1,114,112 bytes plus newline for the session loop."
+rust_result = "16 nested loops print leaf; 17 return format context nesting limit exceeded. The session loop returns format loop output exceeds limit at the 1 MiB bound."
+reason = "Bound native call-stack and allocation growth; recursive contextual evaluation can otherwise overflow the Rust debug stack."
+wire_invariants = "The ordinary command error channel is retained, without partial format output or new wire records."
+test = "cargo test -p tmuxx-core --test formats_reference contextual_resource_bounds_are_an_explicit_reference_difference -- --ignored"
+review_when = "Replace recursion with an explicit bounded evaluation stack before lifting the 16-level limit; review resource bounds on each baseline update."
+
+
+[[differences]]
+id = "owned-pty-session-cleanup"
+profiles = ["app-owned", "standalone"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["server-fn.c", "window.c", "tmuxx/crates/tmuxx-runtime/src/process.rs", "tmuxx/crates/tmuxx-runtime/src/lib.rs", "tmuxx/crates/tmuxx-runtime/src/linux_watchdog.rs"]
+reproducer = "PTY leader forks a child that changes process group, ignores SIGHUP, retains the slave and outlives its leader; then shut down the owner. Repeat with the child calling setsid instead."
+c_result = "Current C and C3.7c leave both background-group and setsid descendants alive after owner shutdown."
+rust_result = "Shutdown terminates every group still belonging to the owned PTY OS session on macOS/Linux, while an independent host remains alive. Linux also uses a spawn broker, retained leader identity and pidfds for abrupt owner death, including exited leaders and orphaned descendants. A deliberately detached setsid descendant survives there, matching both C references. Native Windows Job Objects terminate both CREATE_NEW_PROCESS_GROUP and DETACHED_PROCESS descendants after their leader exits, while a separately owned process remains alive."
+reason = "An app-owned host must reclaim its ordinary PTY jobs and I/O workers even when the leader exits first. Unix uses its tested OS-session boundary; Windows uses stronger explicit Job containment and independently verifies both native console-attachment categories against the C observations."
+wire_invariants = "No protocol framing changes; pipe output still drains before ordinary process removal."
+test = "cargo test -p tmuxx-runtime --test host pty_descendant_cleanup_difference_matches_c -- --ignored"
+review_when = "Every C baseline or PTY backend change; stronger containment of newly daemonized sessions requires an explicit OS-specific ownership mechanism."
+
+[[differences]]
+id = "bounded-socket-clients"
+profiles = ["app-owned", "standalone", "unix-ipc"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["server-client.c", "tmuxx/crates/tmuxx-runtime/src/lib.rs"]
+reproducer = "Hold 128 simultaneous clients, including clients that have not completed identification, then connect one more."
+c_result = "C admission is governed by its event loop and operating-system descriptor limits; it has no Rust thread-admission policy."
+rust_result = "The extra connection closes before identification; releasing one existing connection allows a new client. Owner shutdown closes idle clients."
+reason = "Bound worker threads and descriptor ownership before accepting untrusted handshake input."
+wire_invariants = "Admitted peers use the unchanged identification and command/control protocols."
+test = "cargo test -p tmuxx-runtime --test host socket_clients_are_bounded_and_shutdown_closes_idle_peers"
+review_when = "Review admission with an asynchronous transport implementation or supported host-scale change."
+
+[[differences]]
+id = "bounded-native-stdin-chunk"
+profiles = ["app-owned", "standalone"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["file.c", "tmuxx/crates/tmuxx-runtime/src/process.rs", "tmuxx/crates/tmuxx-protocol/src/native.rs"]
+reproducer = "Send one native stdin chunk containing 65537 bytes."
+c_result = "C has no native JSON chunk API; its READ imsg chunks obey MAX_IMSGSIZE."
+rust_result = "Reject the oversized native chunk; 65536-byte acknowledged chunks can stream beyond the finite-request limit."
+reason = "Keep incremental native input bounded while retaining explicit EOF and backpressure."
+wire_invariants = "The Unix imsg adapter sends ordinary C-sized READ chunks."
+test = "cargo test -p tmuxx-runtime --lib process::tests::stdin_chunks_enforce_ownership_and_resume_only_after_eof"
+review_when = "Review native protocol version and stream admission changes."
+
+[[differences]]
+id = "rustty-kitty-image-numbers-and-layers"
+profiles = ["native-views", "command-control"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["image.c", "tmuxx/crates/tmuxx-terminal/tests/images_reference.rs"]
+reproducer = "Kitty a=t,I=7,f=32,s=1,v=1 or a=t,i=7,f=32,s=1,v=1,z=1 with base64 /wAA/w==."
+c_result = "Image-enabled current C emits ENOTSUP and keeps cursor at (5,2)."
+rust_result = "Rust emits OK and retains one native image."
+reason = "Preserve Rustty native image-number and layering capabilities for embedded applications."
+wire_invariants = "Existing Kitty graphics reply framing is retained; no tmux control record is added."
+test = "cargo test -p tmuxx-terminal --test images_reference kitty_image_numbers_and_nonzero_layers_are_explicit_rustty_extensions -- --ignored"
+review_when = "Each C image subsystem baseline update and Rustty graphics update."
+
+[[differences]]
+id = "option-malformed-array-diagnostic"
+profiles = ["command-control"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["options.c", "cmd-set-option.c", "cmd-show-options.c", "tmuxx/crates/tmuxx-core/src/options.rs"]
+reproducer = "set/show update-environment[4294967296], update-environment[], or update-environment[a]b] after storing KEEP."
+c_result = "Rejects without changing the array; options_match returns before initializing the caller's ambiguous flag, so diagnostics may say invalid option or ambiguous option. Quiet mode suppresses either."
+rust_result = "Rejects with deterministic invalid option diagnostics, preserves the stored array and honors quiet suppression."
+reason = "Rust does not reproduce C's uninitialized diagnostic selector."
+wire_invariants = "Same ordinary command error status and framing; no mutation or alternate records."
+test = "cargo test -p tmuxx-core --test options_reference malformed_array_key_diagnostics_are_a_deterministic_native_difference -- --ignored"
+review_when = "Each options parser baseline update; remove the difference once C initializes ambiguous on parse failure."
+
+[[differences]]
+id = "native-format-trace"
+profiles = ["command-control"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["format.c", "cmd-display-message.c", "tmuxx/crates/tmuxx-core/src/lib.rs"]
+reproducer = "display-message -pv '#{session_name}' in session test; separately trace a5000-byte literal."
+c_result = "C emits its internal expansion steps followed by test."
+rust_result = "Rust emits labeled input/result diagnostic lines followed by test; each diagnostic payload is quoted and capped at4096 bytes, with an explicit truncation marker. The actual result remains complete."
+reason = "Expose truthful bounded Rust evaluation diagnostics without emulating C's internal algorithm or letting diagnostic repetition grow without bound."
+wire_invariants = "The final format value and ordinary command/control framing remain unchanged. Trace text is implementation-specific."
+test = "cargo test -p tmuxx-cli --test interoperability display_all_formats_enumerates_present_callbacks_and_native_trace_is_bounded -- --ignored"
+review_when = "Each format evaluator or upstream verbose diagnostic change."
+
+[[differences]]
+id = "native-pane-creation-presentation"
+profiles = ["command-control", "native-views"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["cmd-split-window.c", "tmuxx/crates/tmuxx-core/src/floating.rs"]
+reproducer = "Run new-pane or split-window with -m 'process ended', -S fg=red, -R fg=blue, -s bold, -s bg=terminal, -s fg=invalid, or -s bg=#zzzzzz."
+c_result = "C creates the requested pane and accepts its exit-message/border or additional presentation style; creation stores invalid color strings without immediate parsing."
+rust_result = "Return an explicit unsupported error before creating a pane or changing retained state. Static foreground/background -s styles set both window-style and window-active-style with real native color effects."
+reason = "Exit-message and border painting belong to the native host; accepting a style without a renderer effect would mislead callers. The native color subset validates before mutation. Key retention remains available through -k."
+wire_invariants = "Ordinary command error framing remains unchanged; rejected flags cannot start a child, consume terminal input or mutate the graph."
+test = "cargo test -p tmuxx-core --test pane_flags_reference creation_presentation_flags_are_explicit_no_mutation_differences -- --ignored"
+review_when = "Enable each presentation flag only after adding its native host effect; review on every pane creation or style baseline update."
+
+[[differences]]
+id = "clap-driver-help-and-excluded-modes"
+profiles = ["command-control", "standalone", "unix-ipc"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["tmux.c", "tmuxx/crates/tmuxx-cli/src/main.rs", "tmuxx/crates/tmuxx-cli/src/lib.rs"]
+reproducer = "Run -h, --help, -V, a missing -S argument, or excluded -l/-c/-v modes."
+c_result = "C -h succeeds with compact getopt usage; --help is rejected. -V identifies tmux and its selected build. C implements login/shell replacement and diagnostic log files."
+rust_result = "Clap -h/--help succeeds and -V identifies the tmuxx Cargo version. Invalid global arguments have clap diagnostics; -l/-c shell replacement and -v log files explicitly reject before starting a daemon."
+reason = "Expose a useful clap driver with its own implementation identity; shell replacement, tty login and C log-file reproduction have no native pane effect. Command argument parsing, command diagnostics and exit status remain independently compared."
+wire_invariants = "Supported startup flags and generated command usage use the C registry. This difference changes only top-level executable help/diagnostics and explicit excluded modes, not the command or control protocol."
+test = "cargo test -p tmuxx-cli --test interoperability clap_driver_help_and_version_are_explicit_implementation_differences -- --ignored; cargo test -p tmuxx-cli --test socket_defaults clap_help_global_errors_and_excluded_modes_leave_no_server"
+review_when = "Each upstream startup flag change; enable an excluded mode only with a native requirement and an executable behavior test."
+
+[[differences]]
+id = "same-user-only-server-access"
+profiles = ["command-control", "standalone", "app-owned", "unix-ipc"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["cmd-server-access.c", "server-acl.c", "tmuxx/crates/tmuxx-core/src/lib.rs", "tmuxx/crates/tmuxx-runtime/src/lib.rs"]
+reproducer = "List the initial server ACL, then attempt server-access add/remove/read/write/group changes for another account."
+c_result = "C lists the non-root owner and supports adding/removing another user's ACL entry."
+rust_result = "The initial owner listing and missing-argument diagnostic match C. Every access-changing invocation explicitly errors; both socket permissions remain0600, peer UID validation remains mandatory, and graph/PIDs/listing remain unchanged."
+reason = "The scoped host is owner-private; admitting another OS user requires an explicit future access model."
+wire_invariants = "Ordinary command error framing and owner read-only client flags remain compatible. No access request silently succeeds or widens endpoint permissions."
+test = "cargo test -p tmuxx-cli --test interoperability same_user_acl_lists_owner_and_rejects_changes_without_mutation -- --ignored"
+review_when = "Before introducing cross-UID sharing; Windows owner-private SID access is specified separately."
+
+[[differences]]
+id = "native-server-diagnostics"
+profiles = ["command-control", "standalone", "app-owned", "unix-ipc"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["cmd-show-messages.c", "server.c", "job.c", "tmuxx/crates/tmuxx-runtime/src/messages.rs"]
+reproducer = "Run show-messages with no jobs, with a running shell job, after commands/errors, and after changing message-limit to0,2 or16385."
+c_result = "C reports implementation-specific message text/timestamps and fd/pid job summaries; headless -T and empty -J are empty. It accepts message-limit16385."
+rust_result = "Native diagnostics report escaped command and immediate-command-error records with Unix-second timestamps and live job IDs/kinds. -T is empty, optional missing client targets succeed, and message-limit controls newest-first retention. Both logs and job descriptions cap escaped payloads at4096 bytes with an explicit truncation marker; message-limit above16384 errors without changing the limit. Deferred completion errors remain on their ordinary response channel."
+reason = "Useful native diagnostics describe the Rust owner and bound retained memory instead of fabricating C's process/event-loop internals."
+wire_invariants = "show-messages keeps ordinary command output framing, existing flags, success/error channels and headless tty behavior. Diagnostic contents are implementation-specific, not pane data."
+test = "cargo test -p tmuxx-cli --test interoperability server_diagnostics_expose_native_logs_jobs_limits_and_c_empty_tty_state -- --ignored"
+review_when = "Each diagnostic or job ownership change; revisit limits if native support requires a larger retained log."
+
+[[differences]]
+id = "bounded-format-modifiers-and-expansion-errors"
+profiles = ["command-control"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["format.c", "tmuxx/crates/tmuxx-format/src/lib.rs"]
+reproducer = "Expand a field under128 then129 n modifiers; separately set @recursive to #{E:@recursive} and expand it."
+c_result = "C accepts both modifier counts, and returns empty output when its recursive-expansion limit is exhausted."
+rust_result = "Rust accepts128 modifiers, explicitly rejects129 with too many format modifiers, and reports format nesting limit exceeded for recursive expansion."
+reason = "Bound modifier allocations and make recursive-expansion failure visible instead of returning a successful empty result."
+wire_invariants = "Failures use the ordinary command error channel without partial format output or new control records."
+test = "cargo test -p tmuxx-config --test c_reference format_parser_resource_bounds_are_explicit_reference_differences -- --ignored"
+review_when = "Every modifier grammar or recursive-expansion baseline update."
+
+[[differences]]
+id = "buffer-invalid-name-diagnostic"
+profiles = ["command-control", "app-owned", "standalone", "unix-ipc"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["paste.c", "tmux.c", "utf8.c", "tmuxx/crates/tmuxx-core/src/buffers.rs", "tmuxx/crates/tmuxx-core/src/lib.rs"]
+reproducer = "Create or rename a buffer with CR/ESC/DEL or malformed UTF8 in its name, capture/load nonempty data with that name, or use raw0xff to show/delete/rename/paste/save while a valid U+FFFD named buffer exists."
+c_result = "Rejects the operation and prints the original invalid name bytes in the diagnostic. Empty capture/load data bypasses validation of an unused name."
+rust_result = "Rejects without buffer mutation or clipboard effects; invalid creation names and malformed-UTF8 lookup bytes use escaped ASCII diagnostics. Empty data remains a no-op before name validation and automatic-ID allocation."
+reason = "Preserve byte identity and avoid injecting raw control records or replacing malformed UTF8 with a different valid buffer name merely to represent diagnostics as a Rust String."
+wire_invariants = "Supported valid UTF8 names preserve C cleaning, raw lookup and notification ordering. Invalid-name errors retain existing command/control framing and never store a lossy or partially validated name. C raw and Rust escaped diagnostic bytes are asserted separately without transcript normalization."
+test = "cargo test -p tmuxx-cli --test interoperability invalid_buffer_names_are_rejected_with_safe_native_diagnostic_difference -- --ignored --exact"
+review_when = "Every upstream paste-name validation or error-channel change; reconsider only with byte-preserving diagnostics that retain safe control framing."
+
+[[differences]]
+id = "buffer-load-size-bound"
+profiles = ["command-control", "app-owned", "standalone", "unix-ipc"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["cmd-load-buffer.c", "file.c", "tmuxx/crates/tmuxx-runtime/src/lib.rs", "tmuxx/crates/tmuxx-runtime/src/unix_ipc.rs", "tmuxx/crates/tmuxx-runtime/src/scheduler.rs"]
+reproducer = "Load a16MiB file, then load16MiB+1 from a file or stdin into an existing named buffer; submit a following command and reuse a control connection."
+c_result = "Accepts both sizes and replaces the buffer."
+rust_result = "Accepts16MiB; larger loads return an explicit transport/native input-size error without replacing the buffer or running later same-group commands. Excess Unix input is discarded through READ_DONE, preserving the connection and asynchronous command framing; the drain has a10-second deadline."
+reason = "Bound one finite buffer upload while retaining ordinary C file protocol and recovery. READ_CANCEL cannot safely replace draining because C treats a cancellation racing EOF as an unknown stream and exits."
+wire_invariants = "At and below the bound, binary bytes and notifications retain their C semantics. Rejection keeps C WAIT-success guards followed by a late unframed error, rather than inventing a new file message or corrupting the next stream. Existing buffers and the owner remain usable."
+test = "cargo test -p tmuxx-cli --test interoperability load_buffer_limit_is_explicit_preserves_buffers_and_recovers_file_streams -- --ignored --exact"
+review_when = "Review whenever finite-file transfer limits or C file cancellation semantics change; use streaming bounded storage before raising the cap."
+
+[[differences]]
+id = "native-job-delay-bound"
+profiles = ["command-control", "app-owned", "standalone"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["cmd-run-shell.c", "tmuxx/crates/tmuxx-runtime/src/scheduler.rs"]
+reproducer = "Run run-shell -b -d86400.001 true ; set -g @after-delay yes."
+c_result = "C accepts the timer and sets @after-delay to yes. Delays0 and86400 are also accepted."
+rust_result = "The delay errors with delay outside 0..86400 seconds and the following same-group command is skipped. Delays0 and86400 are accepted; nonfinite and negative delay values are rejected as outside the same finite range."
+reason = "Retain a finite nonnegative 24-hour host timer policy, with explicit rejection before creating a queued job. Normal C strtod spellings and invalid-string diagnostics remain compatible."
+wire_invariants = "Ordinary command error framing is unchanged; no job or command side effect occurs on rejection."
+test = "cargo test -p tmuxx-runtime --test scheduler native_job_delay_bound_is_an_explicit_c_difference -- --ignored"
+review_when = "Each upstream delay parsing change or native scheduling-policy change."
+
+[[differences]]
+id = "native-special-file-policy"
+profiles = ["command-control", "app-owned", "standalone", "native-views"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["file.c", "cmd-source-file.c", "tmuxx/crates/tmuxx-runtime/src/files.rs", "tmuxx/crates/tmuxx-runtime/src/scheduler.rs"]
+reproducer = "Use a Unix FIFO/link/device or Windows named pipe, pipe symlink or console device as a native load-buffer/save-buffer/source-file path."
+c_result = "C file transport may open special files and wait for peers or device I/O through its event loop."
+rust_result = "Owner-side file operations explicitly reject special files other than Unix /dev/null or Windows NUL. Regular files and their symlinks keep bounded binary read/write behavior; null-device reads are empty and writes succeed. Windows checks device aliases and follows bounded final-component links before opening targets; source enumeration preserves literal device spelling and never opens a pipe symlink. Unix compatibility load/save clients retain their separate file transport; source-file paths use the owner policy for every client."
+reason = "A FIFO or blocking device must not stop the native owner loop. Nonblocking open and validation before and after open preserve the file-type boundary without an asynchronous filesystem redesign."
+wire_invariants = "The existing error and control framing is retained; rejection cannot replace buffers, start another process or change the live pane PID. The owner remains responsive after each rejected operation."
+test = "cargo test -p tmuxx-runtime --test native_files special_native_files_reject_without_blocking_owner_or_changing_buffers -- --exact"
+review_when = "Enable another native file type only with an explicit asynchronous I/O lifetime and cancellation contract."
+
+
+[[differences]]
+id = "windows-process-status-and-conpty-raw-output"
+profiles = ["windows"]
+reference_revision = "22f34d3fa984e03719b0a1b2ac4677aaf61cd53d"
+sources = ["cmd-pipe-pane.c", "window.c", "tmuxx/crates/tmuxx-runtime/src/process.rs", "tmuxx/crates/tmuxx-cli/tests/interoperability_windows.rs", "tmuxx/conformance/interop_process.py"]
+reproducer = "Compare normal exit 137 and abrupt termination, respawn an output-piped pane, then drain a complete 256 KiB console burst into a slow sink while independently observing control output."
+c_result = "POSIX exit 137 has status 137 and no signal; SIGKILL has signal 9 and no exit status. Raw PTY respawn output is READY and the burst is 262144 literal Z bytes."
+rust_result = "Both Win32 normal exit 137 and TerminateProcess(137) have status 137 and no POSIX signal. ConPTY emits its real startup VT negotiation and console-output encoding; the pipe must match every byte independently received by the control viewer, retain exactly one READY marker and all 262144 emitted Z glyphs."
+reason = "Win32 process status is not a POSIX wait status. ConPTY is a VT-producing console host rather than a transparent Unix PTY; its emitted bytes must not be stripped, fabricated or confused with the application write calls."
+wire_invariants = "Actual pane/pipe identities, timestamps, metadata reset, before-EOF rendering, cancellation and original command continuations remain checked. No signal is inferred from a Windows numeric exit code and neither pipe nor control output is normalized."
+test = "cargo +1.95.0 test --manifest-path Cargo.toml -p tmuxx-cli --test interoperability_windows -- --ignored --test-threads=1"
+review_when = "Any ConPTY package, process-exit mapping, output forwarding or CLI input transport change."

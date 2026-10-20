@@ -1,0 +1,177 @@
+# Original scripts are run in place with TEST_TMUX, SHELL=/bin/sh, isolated
+# sockets and a timeout. No script/command/output rewrite is applied.
+[[suites]]
+id = "upstream-harness-cleanup"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "unix-ipc", "standalone", "app-owned"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions", "harness_cleans_flooding_owners_after_script_exit_and_timeout", "--", "--ignored", "--exact"]
+env = {}
+
+[[suites.assertions]]
+id = "harness.script-exit-timeout-and-detached-owner-cleanup"
+tests = ["harness_cleans_flooding_owners_after_script_exit_and_timeout"]
+description = "Synthetic scripts leave a real Rust pane flooding after success, early failure and timeout/unwind. The harness reserves the unreaped script identity; Linux additionally cleans its private session's nested process groups and reparented SIGHUP-ignoring descendants through pidfds. Owner/pane/cat/tr and nested helpers must exit while an independent daemon remains queryable. A detached unresponsive socket owner verifies bounded/reaped shutdown clients and kernel-peer/start-identity kill fallback; native socket entries are excluded."
+
+[[suites]]
+id = "upstream-layout-nesting"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions", "upstream_layout_nesting_limit", "--", "--ignored", "--exact"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "upstream.layout-depth-boundary-and-atomic-rejection"
+tests = ["upstream_layout_nesting_limit"]
+description = "Original layout-nesting-limit.sh runs on C and Rust: both legacy split brackets accept1000 nested unary groups;1001/1500 reject without killing the server or changing pane/layout state."
+
+[[suites]]
+id = "layout-depth-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "native-views", "system-client"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-core", "--test", "layout_nesting_reference", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "layout.c-unary-depth-geometry-and-json"
+tests = ["legacy_unary_depth_boundary_matches_c_geometry_and_json"]
+description = "Both1000-deep legacy split types preserve exact C pane geometry and complete JSON output bytes; a unary JSON command retains C rejection instead of confusing emitted wire state with selectable input."
+
+[[suites]]
+id = "layout-depth-decoder"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["native-views", "system-client"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-layout", "--lib", "tests::legacy_nesting_limit_preserves_unary_groups_without_recursive_parsing", "--", "--exact"]
+env = {}
+
+[[suites.assertions]]
+id = "layout.deep-wire-roundtrip-and-resize"
+tests = ["tests::legacy_nesting_limit_preserves_unary_groups_without_recursive_parsing"]
+description = "Iterative legacy/JSON parsing retains1000 unary levels, IDs and geometry, rejects legacy1001/1500, roundtrips emitted JSON and supports ordinary resize on a standard test thread stack."
+
+[[suites]]
+id = "upstream-terminal-scripts"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions", "upstream_input", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "upstream.input-cursor-edits-modes-and-regions"
+tests = ["upstream_input_cursor", "upstream_input_edit", "upstream_input_lines_region", "upstream_input_modes", "upstream_input_scroll"]
+description = "Unchanged input-cursor/edit/lines-region/modes/scroll scripts pass against both C and Rust, including upstream's own assertions and normalization."
+
+[[suites.assertions]]
+id = "upstream.input-strings-colors-unicode-and-malformed"
+tests = ["upstream_input_malformed", "upstream_input_sgr", "upstream_input_unicode", "upstream_input_osc"]
+description = "Unchanged malformed/SGR/Unicode/OSC scripts pass against both C and Rust, including retained title, invalid UTF8, OSC8 duplicate IDs, negative DECRQSS and byte/cursor/raw-cell checks."
+
+[[suites]]
+id = "upstream-format-scripts"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions", "upstream_format", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "upstream.format-fuzzy-and-modifiers"
+tests = ["upstream_format_fuzzy", "upstream_format_modifiers"]
+description = "Unchanged fuzzy/modifier scripts pass C and Rust, including client-loop membership after silent FIFO EOF; this does not certify all contextual operators."
+
+[[suites.assertions]]
+id = "upstream.format-time-range-and-missing-current-window"
+tests = ["upstream_format_no_current_window", "upstream_format_time_range"]
+description = "Original format-no-current-window and format-time-range scripts compare context-free callbacks, replaced/relinked current windows and hooks, timestamp conversion overflow and large-year formatting through both C and Rust executables."
+
+[[suites.assertions]]
+id = "upstream.format-strings-native-copy-mode-scope"
+tests = ["upstream_format_strings_requires_excluded_copy_mode"]
+description = "Original format-strings passes C and fails Rust with exact copy-mode rejection and pane_in_mode assertion. This separately recorded UI-scope difference is not format-operator completeness evidence."
+
+[[suites]]
+id = "upstream-control-exit-scripts"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions", "upstream_control", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "upstream.control-exit-stalled-run-shell-and-wait"
+tests = ["upstream_control_client_exit", "upstream_control_client_exit_stalled", "upstream_control_client_run_shell_exit", "upstream_control_client_wait_exit"]
+description = "Unchanged upstream control exit/stalled/run-shell/wait-exit scripts execute against both C and Rust, including their full slow/unread-FIFO assertions and ordinary command probes."
+
+[[suites.assertions]]
+id = "upstream.control-guard-order-and-subscriptions"
+tests = ["upstream_control_notify_guard", "upstream_control_subscriptions"]
+description = "Unchanged C/R scripts verify notifications outside exact command guards despite fake begin/end output, config errors and pause/continue; subscription initial/update/remove/replacement behavior covers all/exact panes/windows and missing targets."
+
+[[suites]]
+id = "upstream-raw-storage-differences"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions", "upstream_raw_diagnostic_differences_remain_explicit", "--", "--ignored", "--exact"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "upstream.raw-grid-difference-labels"
+tests = ["upstream_raw_diagnostic_differences_remain_explicit"]
+description = "Original input-raw-controls and input-nowrap-collect pass C; Rust fails only the enumerated ACS source-charset and cleared-padding raw diagnostic labels, with no command errors. Original failure transcripts remain on disk."
+
+[[suites]]
+id = "cli-combined-global-options"
+platforms = ["darwin", "linux", "win32"]
+profiles = ["command-control", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--lib", "arguments_tests::combined_global_options_leave_command_flags_and_shell_arguments_intact", "--", "--exact"]
+env = {}
+
+[[suites.assertions]]
+id = "cli.combined-global-options-preserve-command-argv"
+tests = ["arguments_tests::combined_global_options_leave_command_flags_and_shell_arguments_intact"]
+description = "Combined/split -L and -f and -CC parse as global flags while command flags, shell argv and command separators retain literal boundaries."
+
+[[suites]]
+id = "upstream-json-script"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions", "upstream_json", "--", "--ignored", "--exact"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "upstream.json-grammar-and-display"
+tests = ["upstream_json"]
+description = "Original json.sh passes C and Rust: sorted keys, retained escapes, signed integer bounds, object-only arrays, exact depth200 boundary, malformed rejection and display -j flag precedence."
+
+[[suites]]
+id = "upstream-buffers-script"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions", "upstream_buffers", "--", "--ignored", "--exact"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "upstream.buffers-paste-and-file-transfers"
+tests = ["upstream_buffers"]
+description = "Original buffers.sh passes C and Rust: automatic/named ordering, append/rename/delete/limit, formats/filters, translated/raw/separator/delete-after paste, binary file roundtrips/append and exact error diagnostics."
+
+[[suites]]
+id = "upstream-set-hook-b-script"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions", "upstream_set_hook_b", "--", "--ignored", "--exact"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "upstream.monitored-hooks"
+tests = ["upstream_set_hook_b"]
+description = "Original set-hook-B.sh passes C and Rust: initial suppression, replacement, old/new values, scoped storage, pane targets and global fallback after the monitored session is deleted."
+
+[[suites]]
+id = "upstream-target-scripts"
+platforms = ["darwin", "linux"]
+profiles = ["command-control"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "upstream_regressions", "upstream_targets", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "upstream.targets-panes-and-current-context"
+tests = ["upstream_targets", "upstream_targets_panes", "upstream_targets_current"]
+description = "Original targets.sh, targets-panes.sh and targets-current.sh pass C and Rust: target ambiguity, aliases and offsets, composite session/window/pane validation, current and mouse targets, environment fallback and duplicate winlink context."

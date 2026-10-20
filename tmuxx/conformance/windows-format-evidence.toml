@@ -1,0 +1,60 @@
+# Native format semantics are measured separately from C-reference parity.
+# These named tests do not close the complete requested-format obligation alone.
+[[suites]]
+id = "windows-format"
+platforms = ["win32"]
+profiles = ["windows"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-format", "--lib"]
+env = {}
+timeout = 60
+
+[[suites.assertions]]
+id = "windows.format-native-time-and-c-numbers"
+tests = ["locale::tests::c_numeric_grammar_and_rounding_preserve_locale_and_reject_trailing_data", "locale::tests::native_formatting_restores_the_embedding_thread_handler_and_locale", "time::tests::native_timestamp_templates_and_invalid_input_execute"]
+description = "Private UCRT locales execute numeric and time format behavior, preserve the embedding thread locale and invalid-parameter handler, and reject invalid timestamp templates without aborting the owner."
+
+[[suites.assertions]]
+id = "windows.format-unicode-posix-substitution-and-globs"
+tests = ["tests::posix_regex_longest_match_captures_and_empty_matches", "tests::windows_globs_use_unicode_posix_classes_ranges_and_literal_escapes", "tests::windows_regex_substitution_preserves_captures_unicode_and_byte_progression"]
+description = "Windows executes longest-match substitution, captures/backreferences, Unicode classes/ranges/collating/equivalent forms, globs and exact malformed-byte identity. Empty substitution advances by the same byte rule as C tmux. Windows collation is explicitly defined in the vendored matcher contract; this is not a C-reference comparison."
+
+[[suites.assertions]]
+id = "windows.format-pattern-and-output-resource-errors"
+tests = ["tests::windows_pattern_and_output_limits_propagate_as_errors"]
+description = "Pattern complexity, input, output and shared global-substitution work limits fail explicitly rather than returning a false match or unchanged replacement."
+
+[[suites]]
+id = "windows-posix-regex"
+platforms = ["win32"]
+profiles = ["windows"]
+args = ["+1.95.0", "test", "--locked", "--offline", "--manifest-path", "vendor/posix-regex/Cargo.toml", "--test", "posix"]
+env = {}
+timeout = 60
+
+[[suites.assertions]]
+id = "windows.posix-earliest-longest-and-byte-exact-captures"
+tests = ["earliest_start_wins_before_longest_match_and_earlier_groups_win_ties", "unicode_scalar_matching_projects_captures_back_to_exact_bytes", "empty_optional_and_nested_captures_preserve_posix_preferences"]
+description = "The pure Rust engine chooses earliest then longest whole matches, prioritizes earlier subexpressions, handles repeated/optional/empty captures and Unicode backreferences, and returns original byte offsets without replacement-character aliasing."
+
+[[suites.assertions]]
+id = "windows.posix-grammar-locale-and-bounded-malformed-input"
+tests = ["windows_unicode_locale_classes_ranges_and_equivalence_are_executable", "malformed_patterns_and_bounded_work_never_become_a_successful_negative_match", "short_malformed_and_nullable_patterns_terminate_without_panics"]
+description = "Explicit Windows locale expectations, syntax/depth/work errors, empty alternatives and 6,561 short malformed/nullable pattern candidates execute with bounded work and no panic."
+
+[[suites]]
+id = "windows-core-formats"
+platforms = ["win32"]
+profiles = ["windows"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--lib", "formats::tests::"]
+env = {}
+timeout = 60
+
+[[suites.assertions]]
+id = "windows.format-pane-content-visible-and-alternate-screens"
+tests = ["formats::tests::pane_content_formats_search_visible_unicode_rows_and_alternate_screen"]
+description = "The real core format dispatcher returns one-based matching row numbers, applies Unicode regex/glob flags, and searches the active primary or alternate screen."
+
+[[suites.assertions]]
+id = "windows.format-core-resource-error-propagation"
+tests = ["formats::tests::pane_content_regex_resource_errors_are_not_reported_as_no_match", "formats::tests::context_recursion_and_loop_output_are_bounded"]
+description = "Pane-content regex complexity/work errors reach the core caller, while existing recursive-format and output limits remain enforced."

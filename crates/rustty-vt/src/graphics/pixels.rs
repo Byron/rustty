@@ -95,3 +95,33 @@ mod tests {
         assert!(owners.iter().all(|owner| Arc::ptr_eq(owner, &owners[0])));
     }
 }
+pub(super) mod serde_rgba {
+    use base64::Engine;
+    use serde::{Deserialize, Deserializer, Serializer};
+    use std::sync::Arc;
+
+    pub fn serialize<S: Serializer>(
+        pixels: &Arc<Vec<u8>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer
+            .serialize_str(&base64::engine::general_purpose::STANDARD.encode(pixels.as_slice()))
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Arc<Vec<u8>>, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Bytes {
+            Encoded(String),
+            Legacy(Vec<u8>),
+        }
+        match Bytes::deserialize(deserializer)? {
+            Bytes::Encoded(encoded) => base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .map(Arc::new)
+                .map_err(serde::de::Error::custom),
+            Bytes::Legacy(bytes) => Ok(Arc::new(bytes)),
+        }
+    }
+}

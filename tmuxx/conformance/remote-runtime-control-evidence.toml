@@ -1,0 +1,223 @@
+# Complete runtime matrices execute native Windows Rust owners and pinned remote C references.
+
+[[suites]]
+id = "windows-remote-c-pty-ownership"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 2
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "host", "pty_descendant_cleanup_difference_matches_c", "--", "--ignored", "--exact", "--nocapture"]
+env = {}
+timeout = 120
+
+[[suites.assertions]]
+id = "runtime.c-pty-ownership-boundary"
+tests = ["pty_descendant_cleanup_difference_matches_c"]
+description = "Real C setpgid and setsid descendants ignore SIGHUP and survive leader/server exit. Native CREATE_NEW_PROCESS_GROUP and DETACHED_PROCESS descendants independently verify console attachment and survive leader exit, then both die with their owning Job. Process handles and remote pidfds avoid PID reuse; a separately owned process remains alive and every reference descendant is reaped by its private lease."
+
+[[suites]]
+id = "windows-control-pipe-eof"
+platforms = ["win32"]
+profiles = ["windows"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "windows_eof", "--", "--test-threads=1"]
+env = {}
+
+[[suites.assertions]]
+id = "control.silent-fifo-eof-and-descriptor-flags"
+tests = ["silent_pipe_eof_and_cancel_close_control_input_without_changing_shared_handle_state"]
+description = "A real native -C client remains attached while its stdin pipe writer is silent. Writer EOF and explicit detach with the writer still open both release the client within five seconds; the duplicated pipe retains its original blocking mode and handle flags. Exactly one exit follows queued immediate output/completed guards; a waited late job cannot revive output or kill the owner. Every case retains the live pane PID. The original Unix suite separately checks FIFO poll and shared fcntl flags."
+
+[[suites]]
+id = "windows-remote-c-runtime-identity"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 1
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "identity", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 120
+
+[[suites.assertions]]
+id = "format.c-authenticated-client-identity-and-lists"
+tests = ["authenticated_client_identity_and_graph_lists_match_c"]
+description = "Real native pipe client processes and retained C control clients independently verify OS PID/account identity despite forged USER, TERM and original clipboard/RGB features. The complete original grouped-session paths, attachment and previous-session, client ordering/filter and socket/server PID matrices compare exact known identity tokens and private fixture paths. Windows client_uid is the authenticated SID; C retains the actual POSIX UID."
+
+[[suites.assertions]]
+id = "format.c-absent-ui-tty-and-selected-client-contexts"
+tests = ["authenticated_client_identity_and_graph_lists_match_c"]
+description = "Every original absent-context scope field is queried without attachment and through real native/C clients. Static widget templates, control tty dimensions, explicit and best-client selection, all graph list contexts and context-free list-commands compare without removing fields."
+
+[[suites.assertions]]
+id = "format.c-control-tty-counters"
+tests = ["authenticated_client_identity_and_graph_lists_match_c"]
+description = "Both control clients receive real pane output and command replies while tty rendering counters remain zero. The absent-context matrix also preserves absent counters and control window_bigger semantics."
+
+[[suites]]
+id = "windows-remote-c-runtime-hooks"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 9
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "hooks", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "hooks.c-after-arrays-and-creation-targets"
+tests = ["after_hook_array_context_order_and_error_contract_matches_c", "creation_after_hooks_and_detached_selection_match_c"]
+description = "Separate C executable matches afterhook spelling, context/flags, array order, errors, and detached creation targets/selection. Verified against pinned C and 3.7c."
+
+[[suites.assertions]]
+id = "hooks.c-window-navigation-current-target-context"
+tests = ["window_navigation_hooks_use_selected_targets_and_aliases_match_c"]
+description = "Equivalent one-shot C/R clients compare after-select-window hooks for aliases, alert errors, next/previous/last, no-op selection and -T toggles. Selected-target updates and retained original command context match across same-session and cross-session explicit/session-only targets."
+
+[[suites.assertions]]
+id = "hooks.c-option-metadata-keys-and-firing-counts"
+tests = ["hook_option_metadata_keys_and_firing_counts_match_c"]
+description = "Current C default/scoped/user hook listings preserve option array/string metadata, canonical numeric and textual keys, exact duplicate-winlink output targets and registration after user-hook removal. Empty/default, explicit and command hooks retain independent firing counts; indexed removal preserves counts while whole-option removal resets them. Named ordinary options retain set/show-hook behavior and non-monitor -T is ignored."
+
+[[suites.assertions]]
+id = "hooks.c-monitor-truth-links-and-option-lifetime"
+tests = ["monitor_hook_truth_filters_link_targets_and_option_lifetime_match_c"]
+description = "Real C/R timers suppress initial values, retain false transitions for -T old/new payloads, update exact local command values, remove monitor ownership when its option is unset and preserve the option when -B is removed. All-window monitors emit separate exact duplicate-winlink contexts and matching fire counts/time presence. Option firing counts survive monitor replacement/removal independently of monitor counts."
+
+[[suites.assertions]]
+id = "hooks.c-current-lifecycle-order"
+tests = ["lifecycle_hook_dead_payload_and_order_matches_c", "client_lifecycle_attach_switch_resize_detach_matches_c"]
+description = "Current C process/lifecycle/client hook payloads and order. C3.7c intentionally differs in session-closed versus window-unlinked order and is not covered by this suite."
+
+[[suites.assertions]]
+id = "format.c-attached-clients-and-preserved-target-context"
+tests = ["client_format_loops_follow_attached_clients_and_preserve_target_defaults"]
+description = "Two real C control clients agree with native owner clients on L iteration/reversal, client sessions, preserved outer target session, loop metadata, compound length and detach removal. Activity ordering has a separate timestamp-relation assertion."
+
+[[suites.assertions]]
+id = "format.c-live-scoped-hook-arrays"
+tests = ["option_format_loops_reflect_scoped_hook_array_updates"]
+description = "Current C live O hook arrays match global/session/window/pane updates, sparse indexes, canonical command text, deletion, array metadata and declared hook-scope precedence."
+
+[[suites]]
+id = "windows-remote-c-client-commands"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 16
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "client_commands", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "clients.c-targets-navigation-cwd-and-zoom"
+tests = ["attach_switch_targets_navigation_and_zoom_match_c"]
+description = "Real C/R control clients compare named/colon client targets, next/previous/last sessions, sort modes, readonly toggles, format-expanded attach cwd, window/pane selection and zoom retention. External command clients target other attached clients with matching errors."
+
+[[suites.assertions]]
+id = "clients.c-detach-selection-and-ipc-acknowledgement"
+tests = ["detach_targets_all_session_and_attach_displacement_match_c_ipc"]
+description = "All eight original detach/attach displacement cases preserve client/session selection: native clients receive exact Detached session and hangup payloads, real C -C processes emit bare %exit and exit0, and peers remain usable. The original Unix target separately inspects DETACH/DETACHKILL and EXITING/EXITED imsg envelopes."
+
+[[suites.assertions]]
+id = "clients.c-session-notification-routing"
+tests = ["client_session_notifications_are_targeted_like_c"]
+description = "Full non-output event streams after self-switch, targeted other-client switch, attach and detach match C through reply barriers. The changed client alone receives session-changed; peers receive client-session-changed and the final client-detached record."
+
+[[suites.assertions]]
+id = "clients.c-window-and-config-notification-routing"
+tests = ["window_and_config_notifications_follow_each_client_session_like_c"]
+description = "Full non-output streams for two C/R clients compare create/link/rename/unlink/close, active pane creation/removal and split/zoom records, recipient flags and unzoom-before-destruction. A batched create-through-kill transaction preserves each event's original graph and legacy/new-layouts payload. Source config-error targets only its origin after the reply; an application-originated legacy OSC rename preserves linked/unlinked recipient routing."
+
+[[suites.assertions]]
+id = "clients.c-grouped-notification-order-and-multiplicity"
+tests = ["grouped_sessions_preserve_complete_notification_order_like_c"]
+description = "Three grouped sessions and duplicate winlinks compare every non-output C/R notification in order through group creation, transient initial windows, rebuilding, selection, unlink, swap, kill, final-link group destruction, move from a final-link session and rename."
+
+[[suites.assertions]]
+id = "clients.c-pane-movement-and-zoom-notification-order"
+tests = ["pane_moves_and_zoom_preserve_complete_notification_order_like_c"]
+description = "Two subscribed clients compare every non-output record through active splits, rotate/swap, hidden-pane and retained-zoom selection, kill, cross/same-window join/move and last-pane break with rename. A shared window makes legacy and new-layouts records independently observable, including emission-time active indices and unzoom-before-removal."
+
+[[suites.assertions]]
+id = "control.c-direct-prepared-blocks-and-environment"
+tests = ["direct_control_preserves_prepared_blocks_environment_and_aliases_like_c"]
+description = "Strict complete event streams compare each command guard, output boundary, flags and notification through explicit barriers. Cases cover direct brace/environment/alias preparation, delayed if/run-shell, background -C delivery, hook flags0, source groups and preparation errors, synchronous source cancellation, deferred raw job output and buffer events. Guard timestamps and server-global number gaps vary, but monotonic begin numbers and exact matching close identity are checked before comparison. Native batch completion remains separate."
+
+[[suites.assertions]]
+id = "difference.control-independent-session-close-order"
+tests = ["independent_session_window_closes_keep_explicit_order_and_causal_boundaries"]
+description = "C's exact five-window RB-root removal sequence and Rust's exact deterministic winlink sequence are asserted independently. Both contain the same close records after sessions-changed and before a following rename in the same external queue; final session/window/pane graphs agree. No event sorting or cross-boundary normalization is applied."
+
+[[suites.assertions]]
+id = "clients.c-automatic-window-sizing-and-caps"
+tests = ["automatic_resize_uses_linked_clients_and_window_caps_like_c"]
+description = "resize-window -a/-A and combined flags choose smallest/largest linked-client dimensions, respect per-window caps and ignore-size, and set manual sizing with matching pane dimensions."
+
+[[suites]]
+id = "windows-remote-c-scheduler"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 11
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "scheduler", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "format.c-windows-time-literal-directives"
+tests = ["time_literals_and_incomplete_directives_match_c"]
+description = "Real C and native display-message agree on literal pane IDs, unknown and incomplete strftime sequences, Unicode surrounding text, ordinary calendar fields and escaped percent. A native command-only job separately proves that prepared pane IDs survive the later display/time expansion."
+
+[[suites.assertions]]
+id = "command.c-shell-wait-condition-observations"
+tests = ["shell_condition_wait_and_exit_status_match_c_reference"]
+description = "Separate C executable agrees on 15 shell/wait/conditional scenarios: bytes and per-line NUL truncation, exit/reset status, stderr, positional/session formats, delayed commands and locked/woken channels."
+
+[[suites.assertions]]
+id = "command.c-block-versus-string-preparation"
+tests = ["command_blocks_keep_parse_time_aliases_and_delayed_formats_like_c"]
+description = "C/R source execution distinguishes parsed braces from strings: delayed run-C blocks expand formats during execution, strings expand on scheduling, async if/else blocks retain parse-time environment/aliases while strings parse later, alias forwarding retains blocks, nested hook command lists print correctly, and invalid unselected blocks reject before same-line mutation."
+
+[[suites.assertions]]
+id = "config.c-source-flags-globs-aliases-shell-validation"
+tests = ["source_flags_globs_alias_preparation_and_shell_validation_match_c"]
+description = "C executable agrees on parse-only assignment suppression, path formatting/globbing, quiet no-match, aliases and invalid default-shell behavior."
+
+[[suites.assertions]]
+id = "config.c-source-registration-and-error-framing"
+tests = ["source_dry_run_registration_and_skipped_branches_match_c", "source_line_groups_verbose_errors_and_outer_continuation_match_c", "source_flags_globs_alias_preparation_and_shell_validation_match_c"]
+description = "Exact C source stdout/status for dry-run registration, skipped branches, line groups, verbose canonical commands, partial parse traces, multiple-file/nested errors, outer continuation, globs/aliases/shell validation."
+
+[[suites.assertions]]
+id = "command.c-current-event-wait-contract"
+tests = ["event_wait_filter_nojobs_verbose_listing_and_wake_match_c"]
+description = "Current C event waits agree on raw payload verbosity, no-job filters without implicit target defaults, listing, forced wake and custom events. Event wait flags are current-baseline-only."
+
+[[suites.assertions]]
+id = "command.c-job-flags-delay-cwd-and-target-context"
+tests = ["job_flags_delay_validation_cwd_and_target_context_match_c"]
+description = "The original delay/flag/context matrix uses real Windows cmd.exe jobs after changing the pane shell to PowerShell and real C /bin/sh jobs after changing the pane shell to an installed alternate shell. Exact outputs, TERM/COLORTERM overrides, parent shell identity, requested PWD spelling, missing-directory fallback, target context and invalid-delay diagnostics are preserved."
+
+[[suites.assertions]]
+id = "difference.native-job-delay-bound"
+tests = ["native_job_delay_bound_is_an_explicit_c_difference"]
+description = "C and Rust accept background delays0 and86400. C accepts86400.001 and runs the next group item; Rust explicitly rejects above its24-hour bound before running that item. Both exact outcomes are asserted and long-lived timers are reclaimed with the fixture."
+
+[[suites.assertions]]
+id = "command.c-job-socket-stdin-eof-and-signal"
+tests = ["shell_job_stdin_socket_eof_and_signal_match_c"]
+description = "Native Windows jobs independently prove inherited stdin is FILE_TYPE_PIPE with immediate EOF, abrupt child termination yields exact status -1 and diagnostic, and the outer group continues before a successful job resets status. Real C proves socket stdin EOF, SIGTERM143 and its exact diagnostic. The platform mechanisms differ explicitly; neither becomes a console, NUL or an open inherited writer."
+
+[[suites.assertions]]
+id = "config.c-tilde-accounts-home-fallback-and-aliases"
+tests = ["named_user_tilde_and_empty_home_fallback_match_c"]
+description = "All original source vectors cover actual Windows named account/profile and actual C root/login homes, configured/empty/missing HOME, quoted/concatenated words, preparation assignments and aliases. Per-host full expected strings are asserted independently. Unknown and excessive usernames preserve exact diagnostics/status after only private fixture path mapping."

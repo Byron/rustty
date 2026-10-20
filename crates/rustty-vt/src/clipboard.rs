@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 pub(crate) mod kitty;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Location {
     Standard,
     Selection,
@@ -30,7 +30,7 @@ impl Location {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Terminator {
     Bell,
     St,
@@ -47,7 +47,7 @@ impl Terminator {
 
 /// A binary-safe clipboard representation. An empty representation list clears
 /// the clipboard; a representation with empty data retains its MIME type.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Content {
     pub mime: Vec<u8>,
     /// Shared by MIME aliases so a bounded transfer cannot multiply its data.
@@ -61,7 +61,7 @@ pub fn is_text_mime(mime: &[u8]) -> bool {
     )
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Write {
     pub location: Location,
     pub contents: Vec<Content>,
@@ -72,7 +72,7 @@ pub struct Write {
     pub(crate) terminator: Terminator,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Read {
     pub location: Location,
     pub terminator: Terminator,
@@ -81,23 +81,26 @@ pub struct Read {
     pub name: Vec<u8>,
     pub granted: bool,
     pub can_remember: bool,
+    /// tmux preserves an empty or numeric OSC 52 buffer selector in local replies.
+    #[serde(default)]
+    pub tmux_selector: Option<u8>,
     pub(crate) protocol: Protocol,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum Protocol {
     Osc52,
     Kitty { id: Vec<u8>, password: Vec<u8> },
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReadSuccess {
     pub contents: Vec<Content>,
     pub available: Vec<Vec<u8>>,
     pub remember: bool,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ReadResult {
     Success(ReadSuccess),
     #[default]
@@ -107,7 +110,7 @@ pub enum ReadResult {
     IoError,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum WriteResult {
     Success {
         remember: bool,
@@ -121,6 +124,31 @@ pub enum WriteResult {
 }
 
 impl Write {
+    pub fn is_osc52(&self) -> bool {
+        matches!(self.protocol, Protocol::Osc52)
+    }
+
+    pub(crate) fn decode_tmux_osc52(location: Location, encoded: &[u8]) -> Option<Self> {
+        if encoded.is_empty() {
+            return None;
+        }
+        let encoded = encoded
+            .iter()
+            .copied()
+            .filter(|b| !b.is_ascii_whitespace())
+            .collect::<Vec<_>>();
+        let data = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .ok()?;
+        Some(Self::osc52(
+            location,
+            vec![Content {
+                mime: b"text/plain".to_vec(),
+                data: data.into(),
+            }],
+        ))
+    }
+
     /// OSC 52 and iTerm2 Copy share the same base64 decoding and host request.
     pub(crate) fn decode_osc52(location: Location, encoded: &[u8]) -> Option<Self> {
         let engine = base64::engine::general_purpose::GeneralPurpose::new(
@@ -176,6 +204,10 @@ impl Write {
 }
 
 impl Read {
+    pub fn is_osc52(&self) -> bool {
+        matches!(self.protocol, Protocol::Osc52)
+    }
+
     pub fn osc52(location: Location, terminator: Terminator) -> Self {
         Self {
             location,
@@ -185,6 +217,7 @@ impl Read {
             name: Vec::new(),
             granted: false,
             can_remember: false,
+            tmux_selector: None,
             protocol: Protocol::Osc52,
         }
     }
@@ -206,7 +239,13 @@ impl Read {
             return kitty::read_reply(&self, id, result);
         }
         let mut reply = b"\x1b]52;".to_vec();
-        reply.push(self.location.selector());
+        if let Some(selector) = self.tmux_selector {
+            if selector != 0 {
+                reply.push(selector);
+            }
+        } else {
+            reply.push(self.location.selector());
+        }
         reply.push(b';');
         if let ReadResult::Success(success) = result
             && let Some(content) = success.contents.iter().find(|c| is_text_mime(&c.mime))

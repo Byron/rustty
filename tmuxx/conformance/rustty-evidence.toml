@@ -1,0 +1,283 @@
+# These suites execute the actual integrated sibling checkout. Its pinned base,
+# integration result hashes, and all crate sources enter the evidence identity.
+[[suites]]
+id = "rustty-system-discovery-recovery"
+platforms = ["darwin", "linux", "win32"]
+kind = "rustty-cargo"
+profiles = ["native-views", "system-client"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "rustty", "--features", "sessions", "--lib", "tmuxx::system::tests::discovery_recovery_coalesces_structural_churn_once_with_a_fixed_deadline", "--", "--exact"]
+timeout = 600
+env = {}
+
+[[suites.assertions]]
+id = "rustty.system-discovery-coalescing-and-deadline"
+tests = ["tmuxx::system::tests::discovery_recovery_coalesces_structural_churn_once_with_a_fixed_deadline"]
+description = "Rustty coalesces structural discovery deferral on the same SSH actor until 150ms of structural quiet, permits one explicit read-only bootstrap recovery, and retains a fixed five-second deadline that continued events cannot extend. Actual external graph-burst reconciliation is exercised by the Windows system-C GUI suite."
+
+[[suites]]
+id = "rustty-native-adapter"
+platforms = ["darwin", "linux", "win32"]
+kind = "rustty-cargo"
+profiles = ["native-views", "app-owned", "standalone"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "rustty", "--features", "sessions", "--lib", "tmuxx::tests::", "--", "--test-threads=1"]
+timeout = 600
+env = {}
+
+[[suites.assertions]]
+id = "rustty.shared-native-backend-and-independent-views"
+tests = ["tmuxx::tests::embedded_and_socket_views_share_panes_but_keep_selection_local", "tmuxx::tests::native_snapshot_preserves_row_ids_and_image_anchors_after_resize", "tmuxx::tests::streamed_snapshot_restores_large_image_atomically_and_abort_keeps_live_view", "tmuxx::tests::native_snapshot_restores_capture_lengths_after_non_reflow_shrink", "tmuxx::tests::native_snapshot_restores_stale_capture_rows_after_reflow", "tmuxx::tests::native_snapshot_rejects_invalid_capture_metadata_after_compatibility"]
+description = "Actual Rustty embeds and restores the shared terminal backend through embedded/socket views, preserving independent selection, stable rows and image anchors, atomic large image snapshots and bounded abort recovery. Legacy owners with resized capture lengths or stale unknown capture rows reconnect through narrow metadata normalization; malformed tuples, invalid integer values, duplicate IDs, invalid allocations and known-cache orphan rows remain rejected."
+
+[[suites.assertions]]
+id = "rustty.restored-native-search-and-shell-selection"
+tests = ["tmuxx::tests::restored_native_views_search_and_select_shell_output_independently"]
+description = "Actual Rustty Session views restore wrapped/history OSC133 state; TerminalSearch finds retained output, native output selection returns exact command output and newline bytes, and a second view retains independent search/selection."
+
+[[suites.assertions]]
+id = "rustty.native-input-focus-host-effects-and-process-replacement"
+tests = ["tmuxx::tests::native_typed_keys_and_paste_follow_each_pane_modes_without_broadcasting_mouse", "tmuxx::tests::native_focus_is_aggregated_across_views_and_connections_and_gated_by_server_option", "tmuxx::tests::native_host_actions_are_assigned_once_and_clipboard_replies_use_event_ids", "tmuxx::tests::native_exit_and_respawn_replace_process_state_and_selection"]
+description = "Actual Session APIs route typed keys/paste/mouse, aggregate focus, assign clipboard and host actions once, and replace exited/respawned process state without stale selection."
+
+[[suites.assertions]]
+id = "rustty.new-incarnation-invalidates-stale-views"
+tests = ["tmuxx::tests::new_server_incarnation_closes_stale_views_and_resets_event_identity"]
+description = "A new server identity with reused pane/PID and lower sequence closes old views, isolates their selection/output, and resets host-event identity for fresh views."
+
+[[suites.assertions]]
+id = "rustty.native-view-wide-cells-viewports-sync-and-cursor"
+tests = ["tmuxx::tests::native_views_preserve_wide_cells_viewports_sync_modes_and_stationary_cursor_changes"]
+description = "Actual native Session snapshots preserve whole wide cells and independent history viewports through live updates and owner snapshots; stationary cursor hide/show changes advance the visible state, DEC2026 survives snapshot replacement, and overwriting a wide spacer repairs both cells."
+
+[[suites.assertions]]
+id = "rustty.native-detach-closes-views"
+tests = ["tmuxx::tests::native_detach_closes_views_without_signalling_the_gui_parent"]
+description = "Both native detach variants close every attached view and mark the transport closed without reporting a GUI error or signalling the GUI parent."
+
+[[suites.assertions]]
+id = "rustty.retained-agent-state-and-native-view-replay"
+tests = ["tmuxx::tests::retained_agent_snapshot_seeds_views_once_without_replaying_host_effects", "tmuxx::tests::retained_agent_observes_fragmented_output_without_views_and_respawn_resets_generation", "tmuxx::tests::invalid_retained_agent_snapshot_keeps_the_published_view_and_report", "tmuxx::tests::slow_native_view_retains_latest_agent_report_when_effect_queue_is_full", "tmuxx::tests::retained_agent_native_reattachment_keeps_the_process_and_exit_clears_the_report"]
+description = "Actual Rustty restores retained agent reports once, continues observing fragmented output without views, retains the latest report through full effect queues, rejects invalid snapshots atomically, resets generations on respawn, and reconnects to the same real process without replaying host effects."
+
+[[suites.assertions]]
+id = "rustty.native-ssh-command-protocol-selection"
+tests = ["tmuxx::tests::native_ssh_command_keeps_trusted_shell_text_separate_from_protocol_selection"]
+description = "An explicit trusted SSH shell command remains one remote exec argument while instance selection stays in the binary native protocol; cloning the connection for resizing and reconnect preserves the command."
+
+[[suites.assertions]]
+id = "rustty.native-mutation-timeout-no-replay"
+tests = ["tmuxx::tests::timed_out_native_mutation_completes_once_and_keeps_reply_routing_separate"]
+description = "A real owner executes a queued mutation exactly once after its acknowledgement times out. Releasing the stalled command preserves FIFO observation, separates unrelated asynchronous errors from routed replies, and lets a later mutation continue without replaying the ambiguous request."
+
+[[suites]]
+id = "rustty-native-ssh-command-config"
+platforms = ["darwin", "linux", "win32"]
+kind = "rustty-cargo"
+profiles = ["native-views", "system-client"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "rustty", "--features", "sessions", "--lib", "config::tests::tmuxx_ssh_command_preserves_explicit_shell_text_and_empty_resets_default", "--", "--exact"]
+timeout = 600
+env = {}
+
+[[suites.assertions]]
+id = "rustty.native-ssh-command-config-preservation"
+tests = ["config::tests::tmuxx_ssh_command_preserves_explicit_shell_text_and_empty_resets_default"]
+description = "The actual Rustty config parser preserves explicit trusted SSH shell text exactly, and an empty override restores the fixed default bridge command."
+
+[[suites]]
+id = "rustty-native-workspace"
+platforms = ["darwin", "linux", "win32"]
+kind = "rustty-cargo"
+profiles = ["native-views", "system-client"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "rustty-app", "--lib", "tmuxx_workspace::tests::", "--", "--test-threads=1"]
+timeout = 600
+env = {}
+
+[[suites.assertions]]
+id = "rustty.native-session-window-and-pane-mapping"
+tests = ["tmuxx_workspace::tests::linked_windows_get_independent_views_and_commands_use_server_ids", "tmuxx_workspace::tests::duplicate_window_links_in_one_session_have_distinct_views_and_targets", "tmuxx_workspace::tests::floating_panes_keep_signed_geometry_front_order_modal_focus_and_independent_views", "tmuxx_workspace::tests::zoomed_server_view_keeps_overlay_geometry_and_hidden_membership", "tmuxx_workspace::tests::server_content_rect_reserves_border_status_without_dropping_full_layout", "tmuxx_workspace::tests::malformed_graph_does_not_replace_live_workspace"]
+description = "Actual Rustty workspace maps session/window/pane identity, duplicate/shared winlinks, independent native views, signed floating geometry and stacking, modal focus, zoom and border reservations; invalid graphs preserve the live workspace."
+
+[[suites]]
+id = "rustty-system-ssh"
+kind = "rustty-system-ssh"
+platforms = ["darwin", "linux"]
+profiles = ["system-client", "native-views"]
+args = []
+timeout = 600
+env = {}
+
+[[suites.assertions]]
+id = "rustty.stock-c-ssh-native-views-and-reconnect"
+tests = ["tmuxx::system::tests::stock_ssh_views_share_live_panes_and_survive_connection_restart"]
+description = "An isolated real SSH server executes the selected stock C binary. Actual Rustty tests graph/duplicate-winlink discovery, independent selection, live I/O, pane add/remove, reconnect visible capture, synchronized input versus local mouse/replies, owned temporary buffer cleanup, C clipboard policy and capability-dependent floating/modal discovery. Deferred unframed server text reaches the application without an invented request ID."
+
+[[suites]]
+id = "cli-process-lifetimes"
+platforms = ["darwin", "linux"]
+profiles = ["app-owned", "standalone", "native-views", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "lifetime", "--", "--test-threads=1"]
+env = {}
+
+[[suites.assertions]]
+id = "lifetime.abrupt-owner-pty-hangup"
+tests = ["abrupt_owner_death_closes_pty_and_foreground_descendants_without_harming_other_owner"]
+description = "SIGKILL of the real owner process closes its PTY and foreground leader/descendant; a separately owned server keeps its original live PID. Strong ignored-SIGHUP/session cleanup has separate watchdog evidence."
+
+[[suites.assertions]]
+id = "lifetime.killed-client-retention-links-detached-query"
+tests = ["killed_client_relaunch_retains_selected_linked_pane_and_detached_queries_run_once"]
+description = "SIGKILL of a real native-stdio client removes its ephemeral pane, retains the acknowledged pane and shared winlinks, services application output and exactly one terminal query without clients, then a new process reconnects with the same retained PID/output."
+
+[[suites.assertions]]
+id = "lifetime.reused-endpoint-new-incarnation"
+tests = ["reused_endpoint_and_pane_id_have_a_new_server_incarnation"]
+description = "Killing and restarting the owner at the same native endpoint reuses pane0 with a new process and a new server incarnation identity."
+
+[[suites]]
+id = "rustty-desktop-hit-testing"
+platforms = ["darwin", "win32"]
+kind = "rustty-cargo"
+profiles = ["native-views"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "rustty-app", "--bin", "rustty", "floating_composition_clips_without_moving_origin_and_hit_testing_uses_stack_order", "--", "--test-threads=1"]
+timeout = 600
+env = {}
+
+[[suites.assertions]]
+id = "rustty.floating-composition-and-hit-testing"
+tests = ["desktop::tests::floating_composition_clips_without_moving_origin_and_hit_testing_uses_stack_order"]
+description = "Actual Rustty desktop clips floating panes without moving their origin and hit-tests in stack order."
+
+[[suites]]
+id = "rustty-desktop-modal-policy"
+platforms = ["darwin", "win32"]
+kind = "rustty-cargo"
+profiles = ["native-views"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "rustty-app", "--bin", "rustty", "modal_key_and_outside_click_policies_reach_the_owner", "--", "--test-threads=1"]
+timeout = 600
+env = {}
+
+[[suites.assertions]]
+id = "rustty.modal-key-and-outside-click-owner-routing"
+tests = ["desktop::tests::modal_key_and_outside_click_policies_reach_the_owner"]
+description = "Actual Rustty desktop forwards modal keys/outside clicks through the pane owner policy."
+
+[[suites]]
+id = "rustty-sixel-renderer"
+platforms = ["darwin", "win32"]
+kind = "rustty-cargo"
+profiles = ["native-views"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "rustty-render", "--lib", "tmux_sixel_overlap_renders_in_owner_creation_order", "--", "--test-threads=1"]
+timeout = 600
+env = {}
+
+[[suites.assertions]]
+id = "rustty.sixel-owner-creation-order"
+tests = ["prepare::graphics::tests::tmux_sixel_overlap_renders_in_owner_creation_order"]
+description = "Actual native renderer draws overlapping retained SIXEL placements in owner creation order."
+
+[[suites]]
+id = "rustty-hidden-native-frame"
+platforms = ["darwin"]
+kind = "rustty-desktop-smoke"
+profiles = ["native-views"]
+args = []
+timeout = 660
+env = {}
+
+[[suites.assertions]]
+id = "rustty.hidden-native-metal-frame"
+tests = ["desktop::hidden_native_frame"]
+description = "A freshly built actual Rustty desktop renders two native panes including a clipped floating pane to a verified PNG, with a hidden/unfocused window, valid draw order and no reported errors."
+
+[[suites]]
+id = "native-input-c-reference"
+platforms = ["darwin", "linux"]
+profiles = ["command-control", "native-views"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "native_input_reference", "--", "--ignored", "--test-threads=1"]
+env = { TMUXX_C_TMUX = "$reference" }
+
+[[suites.assertions]]
+id = "input.c-native-pointer-focus-and-paste-bytes"
+tests = ["native_pointer_focus_and_paste_bytes_match_c_application_modes"]
+description = "54 exact C child observations: disabled/normal/drag/all tracking, legacy/UTF8/SGR mouse formats, press/drag/release/move/wheel/control-alt events, DEC1004 focus, and bracketed/unbracketed paste with explicit equivalent LF policy. Restored shared VT produces the same bytes; native subscription gating and synchronized routing have separate actual Session tests."
+
+[[suites]]
+id = "rustty-desktop-output-pacing"
+platforms = ["darwin", "win32"]
+kind = "rustty-cargo"
+profiles = ["native-views"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "rustty-app", "--bin", "rustty", "synchronized_output_releases_on_end_and_restarts_the_bounded_timeout", "--", "--test-threads=1"]
+timeout = 600
+env = {}
+
+[[suites.assertions]]
+id = "rustty.desktop-synchronized-output-boundaries"
+tests = ["desktop::tests::synchronized_output_releases_on_end_and_restarts_the_bounded_timeout"]
+description = "The actual desktop holds DEC2026 batches until end or a bounded timeout; repeated enables restart the deadline, resize releases it and RIS followed by a new batch gets a fresh generation."
+
+[[suites]]
+id = "rustty-desktop-output-damage"
+platforms = ["darwin", "win32"]
+kind = "rustty-cargo"
+profiles = ["native-views"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "rustty-app", "--bin", "rustty", "output_metadata_distinguishes_titles_and_pointer_shapes_from_terminal_changes", "--", "--test-threads=1"]
+timeout = 600
+env = {}
+
+[[suites.assertions]]
+id = "rustty.desktop-stationary-cursor-and-view-damage"
+tests = ["desktop::tests::output_metadata_distinguishes_titles_and_pointer_shapes_from_terminal_changes"]
+description = "The actual desktop render key detects stationary cursor visibility/style, palette, reverse video, synchronized batch completion, selection and viewport changes; title/pointer metadata alone does not invalidate terminal drawing."
+
+[[suites]]
+id = "rustty-desktop-pane-cache"
+platforms = ["darwin", "win32"]
+kind = "rustty-cargo"
+profiles = ["native-views"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "rustty-app", "--bin", "rustty", "prepared_panes_", "--", "--test-threads=1"]
+timeout = 600
+env = {}
+
+[[suites.assertions]]
+id = "rustty.desktop-pane-cache-viewports-and-blink"
+tests = ["desktop::tests::prepared_panes_follow_terminal_view_and_atlas_changes", "desktop::tests::prepared_panes_ignore_blink_phase_only_for_steady_content"]
+description = "Actual prepared desktop panes invalidate for scrolling, selection, search, preedit, geometry, terminal output, atlas reset and graphics frame changes. Cursor/text blink phases retain correct visible versus steady behavior."
+
+[[suites]]
+id = "rustty-render-viewport-selection"
+platforms = ["darwin", "win32"]
+kind = "rustty-cargo"
+profiles = ["native-views"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "rustty-render", "--lib", "viewport_snapshots_preserve_selection_paint_while_scrolling", "--", "--test-threads=1"]
+timeout = 600
+env = {}
+
+[[suites.assertions]]
+id = "rustty.renderer-viewport-snapshot-selection"
+tests = ["prepare::tests::viewport_snapshots_preserve_selection_paint_while_scrolling"]
+description = "The actual native renderer paints identical rectangular/linear/reversed selections from owner screens and viewport snapshots at every tested scroll offset."
+
+[[suites]]
+id = "cli-macos-owner-watchdog"
+platforms = ["darwin"]
+profiles = ["app-owned", "standalone", "native-views", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "lifetime", "killed_owner_watchdog_cleans_hup_ignoring_session_jobs_and_preserves_independent_sessions", "--", "--exact", "--test-threads=1"]
+env = {}
+
+[[suites.assertions]]
+id = "lifetime.macos-acknowledged-pty-owner-death"
+platforms = ["darwin"]
+tests = ["killed_owner_watchdog_cleans_hup_ignoring_session_jobs_and_preserves_independent_sessions"]
+description = "The macos watchdog kills acknowledged same-session foreground/background jobs ignoring SIGHUP after owner SIGKILL, with live and exited session leaders. Deliberate setsid escape and independent owners survive; the helper retains no listener. Unacknowledged spawn/registration crash remains outside this assertion."
+
+[[suites]]
+id = "cli-linux-owner-watchdog"
+platforms = ["linux"]
+profiles = ["app-owned", "standalone", "native-views", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "lifetime", "killed_owner_watchdog_cleans_hup_ignoring_session_jobs_and_preserves_independent_sessions", "--", "--exact", "--test-threads=1"]
+env = {}
+
+[[suites.assertions]]
+id = "lifetime.linux-acknowledged-pty-owner-death"
+platforms = ["linux"]
+tests = ["killed_owner_watchdog_cleans_hup_ignoring_session_jobs_and_preserves_independent_sessions"]
+description = "The Linux spawn broker owns children before exec and kills same-session foreground/background jobs ignoring SIGHUP after owner SIGKILL, with live and exited session leaders. Deliberate setsid escape and independent owners survive; the helper retains no listener."

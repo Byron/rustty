@@ -1,0 +1,65 @@
+# Linux kernel/ABI contracts need their own executable evidence. They are not
+# required of macOS, whose Unix IPC obligations retain their existing proofs.
+[[suites]]
+id = "unix-ipc-linux-abi"
+platforms = ["linux"]
+profiles = ["unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-unix-ipc", "--test", "linux_abi", "--", "--test-threads=1"]
+env = {}
+
+[[suites.assertions]]
+id = "ipc.linux-ancillary-queues-eof-and-cloexec"
+platforms = ["linux"]
+tests = ["queued_rights_follow_marked_frames_and_close_on_eof", "excess_and_truncated_rights_close_every_descriptor"]
+description = "Linux SCM_RIGHTS queues preserve marked-frame ordering and CLOEXEC; excess/truncated ancillary records and EOF close every received descriptor."
+
+[[suites.assertions]]
+id = "ipc.linux-partial-writes-and-nosignal"
+platforms = ["linux"]
+tests = ["small_socket_buffers_preserve_frames_and_one_descriptor", "broken_peer_send_does_not_raise_sigpipe"]
+description = "Linux small socket buffers force partial writes while preserving bytes and a single transferred descriptor; a broken peer is an error without SIGPIPE."
+
+[[suites]]
+id = "native-linux-ssh"
+platforms = ["linux"]
+profiles = ["native-views", "app-owned", "standalone", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "native_ssh", "--", "--ignored", "--test-threads=1"]
+env = {}
+
+[[suites.assertions]]
+id = "native.linux-ssh-bytes-reconnect-and-ambiguous-mutations"
+platforms = ["linux"]
+tests = ["native_ssh_preserves_bytes_reconnects_and_never_replays_ambiguous_mutations"]
+description = "Real isolated OpenSSH without a remote PTY forwards native bytes to the identified existing Linux owner; reconnect preserves its PID and never replays ambiguous mutations."
+
+[[suites.assertions]]
+id = "native.linux-ssh-missing-owner-does-not-spawn"
+platforms = ["linux"]
+tests = ["native_ssh_missing_owner_fails_without_creating_endpoint"]
+description = "The dedicated SSH native bridge fails when the owner is absent without creating an endpoint or replacement daemon."
+
+[[suites]]
+id = "runtime-linux-owner-registration"
+platforms = ["linux"]
+profiles = ["app-owned", "standalone"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--lib", "watchdog::tests::linux_", "--", "--test-threads=1"]
+env = {}
+
+[[suites.assertions]]
+id = "lifetime.linux-spawn-registration-and-lost-reply"
+platforms = ["linux"]
+tests = ["watchdog::tests::linux_watchdog_rejects_stale_identities_and_failed_registrations", "watchdog::tests::linux_broker_exec_failure_and_descriptor_rejection_leave_no_children", "watchdog::tests::linux_broker_lost_spawn_reply_cleans_nested_orphans_before_exit", "watchdog::tests::linux_embedded_host_process_kill_cleans_owned_panes", "watchdog::tests::linux_broker_malformed_spawn_header_cleans_registered_children", "watchdog::tests::linux_owner_pidfd_cleans_panes_despite_inherited_socket", "watchdog::tests::linux_broker_preserves_pty_output_bytes"]
+description = "The real Linux broker rejects stale identities and malformed descriptor/spawn requests, cleans failed exec and lost spawn replies, reaps nested orphan descendants, preserves raw PTY output bytes, and cleans panes when a separate embedding process is killed even if an independent fork holds an inherited control descriptor. Ownership exists before exec; an exited session leader remains pinned until cleanup."
+
+[[suites]]
+id = "runtime-linux-other-user"
+platforms = ["linux"]
+profiles = ["app-owned", "standalone", "unix-ipc"]
+args = ["test", "--locked", "--offline", "-p", "tmuxx-runtime", "--test", "endpoint_access", "linux_native_and_ipc_reject_other_uid_with_and_without_mode_barrier", "--", "--ignored", "--exact", "--test-threads=1"]
+env = {}
+
+[[suites.assertions]]
+id = "runtime.linux-peer-uid-rejection"
+platforms = ["linux"]
+tests = ["linux_native_and_ipc_reject_other_uid_with_and_without_mode_barrier"]
+description = "A real nobody client is rejected by private socket permissions and, independently, by Linux SO_PEERCRED when fixture-only permissions are widened. Both native and tmux-compatible endpoints remain usable by their owner afterward."

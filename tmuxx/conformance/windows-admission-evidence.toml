@@ -1,0 +1,30 @@
+[[suites]]
+id = "windows-native-admission"
+platforms = ["win32"]
+profiles = ["windows"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-core", "--lib", "admission::tests::"]
+env = {}
+timeout = 60
+
+[[suites.assertions]]
+id = "windows.native-text-and-path-admission"
+tests = ["admission::tests::malformed_working_directories_reject_before_graph_or_session_mutation", "admission::tests::malformed_option_and_environment_bytes_never_alias_literal_replacement_character", "admission::tests::osc_path_formats_keep_raw_bytes_until_native_path_admission", "admission::tests::pipe_and_buffer_format_names_never_alias_malformed_bytes"]
+description = "Raw and expanded malformed native cwd/environment/option bytes cannot alias a valid literal-U+FFFD value. Path commands reject before graph mutation; OSC7 path formats retain raw bytes until path admission. Byte protocol and C-client serialization remain separate."
+
+[[suites.assertions]]
+id = "windows.native-glob-errors-preserve-state"
+tests = ["admission::tests::glob_resource_errors_preserve_environment_graph_and_client_state"]
+description = "Target and update-environment glob resource errors are explicit. All matches are prepared before creating a session, changing cwd/client flags or replacing environment entries, so failed matching has no partial command effects."
+
+[[suites]]
+id = "windows-source-admission"
+platforms = ["win32"]
+profiles = ["windows"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-runtime", "--lib", "scheduler::source_admission_tests::"]
+env = {}
+timeout = 60
+
+[[suites.assertions]]
+id = "windows.source-environment-atomic-utf8-admission"
+tests = ["scheduler::source_admission_tests::prepared_environment_rejects_malformed_values_atomically_and_keeps_ordering"]
+description = "Malformed prepared environment values reject before committing visible, hidden or removed state. ASCII assignment names never alias Unicode replacement-character names. Valid preparation ordering and parse-only behavior remain exercised."

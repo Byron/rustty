@@ -1,0 +1,12 @@
+[package]
+name = "tmuxx-config"
+version.workspace = true
+edition.workspace = true
+license = "ISC"
+
+[dependencies]
+tmuxx-command = { path = "../tmuxx-command" }
+tmuxx-format = { path = "../tmuxx-format" }
+
+[dev-dependencies]
+serde_json.workspace = true

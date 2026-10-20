@@ -1,7 +1,8 @@
 //! Input encoders consume terminal modes and leave platform event handling to hosts.
 use crate::Terminal;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Modifiers {
     pub shift: bool,
     pub control: bool,
@@ -34,7 +35,7 @@ impl Modifiers {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Key {
     /// A host key without a terminal-specific identity; text and layout data still apply.
     Unidentified,
@@ -91,7 +92,7 @@ pub enum Key {
     SuperRight,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KeyAction {
     #[default]
     Press,
@@ -99,7 +100,7 @@ pub enum KeyAction {
     Release,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyEvent {
     pub key: Key,
     pub text: Option<String>,
@@ -113,7 +114,7 @@ pub struct KeyEvent {
     pub composing: bool,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyEncodeOptions {
     /// Whether the held macOS Option key acts as terminal Alt. The host resolves
     /// left/right configuration using native modifier-side information.
