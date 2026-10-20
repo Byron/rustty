@@ -853,7 +853,7 @@ pub fn run() -> Result<()> {
                 tmuxx_host::Source::Ssh(host.into()),
                 rustty::tmuxx::Connection::ssh_command(
                     host,
-                    &loaded.config.tmuxx_ssh_command,
+                    loaded.config.tmuxx_ssh_command_for(host),
                     wake,
                 )?,
             )
