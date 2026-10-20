@@ -294,9 +294,14 @@ impl Terminal {
         &self.parser
     }
 
+    /// Enable tmux string parsing and retained capture metadata.
     pub fn set_tmux_strings(&mut self, enabled: bool) {
         self.tmux_strings = enabled;
         self.parser.set_tmux_strings(enabled);
+        self.primary.tmux_capture_enabled = enabled;
+        if let Some(alternate) = &mut self.alternate {
+            alternate.tmux_capture_enabled = enabled;
+        }
     }
 
     pub fn restore_tmux_pending_input(&mut self, bytes: Option<&[u8]>) -> Result<(), String> {
@@ -854,7 +859,7 @@ impl Terminal {
         self.query_defaults = query_defaults;
         self.title_report = title_report;
         self.allow_set_title = allow_set_title;
-        self.tmux_strings = tmux_strings;
+        self.set_tmux_strings(tmux_strings);
         self.shell_command_events = shell_command_events;
         self.tmux_clipboard = tmux_clipboard;
         self.tmux_graphics = tmux_graphics;
@@ -2570,6 +2575,7 @@ impl Terminal {
             let mut alternate =
                 Screen::new(self.cols.into(), self.rows.into(), ScrollbackLimits::NONE);
             alternate.memory_limit = self.primary.memory_limit;
+            alternate.tmux_capture_enabled = self.tmux_strings;
             self.alternate = Some(alternate);
         }
         self.synchronize_tmux_sources();
