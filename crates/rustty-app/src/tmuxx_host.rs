@@ -6,6 +6,13 @@ use std::collections::BTreeSet;
 
 pub(super) use rustty_app::tmuxx_menu::{Command as MenuCommand, Source, Target};
 
+pub(super) fn connection_timeout(source: &Source) -> Duration {
+    match source {
+        Source::Ssh(_) | Source::SystemSsh(_) => Duration::from_secs(120),
+        Source::Embedded(_) | Source::Local(_) => Duration::from_secs(10),
+    }
+}
+
 struct PendingSession {
     name: String,
     submitted: bool,
@@ -34,7 +41,7 @@ impl Attachment {
         let reconnect_enabled = matches!(source, Source::Local(_));
         let connection_deadline = connection
             .is_some()
-            .then(|| Instant::now() + Duration::from_secs(10));
+            .then(|| Instant::now() + connection_timeout(&source));
         Self {
             source,
             connection,
@@ -623,10 +630,13 @@ impl App {
             return Err("Close a tmuxx connection before opening another".into());
         }
         let connection = match &source {
-            Source::SystemSsh(host) => Connection::system_ssh(host, self.tmuxx_wake())?,
-            Source::Ssh(host) => Connection::ssh_command(
+            Source::SystemSsh(host) => {
+                Connection::system_ssh_with_env(host, &self.config().env, self.tmuxx_wake())?
+            }
+            Source::Ssh(host) => Connection::ssh_command_with_env(
                 host,
                 self.config().tmuxx_ssh_command_for(host),
+                &self.config().env,
                 self.tmuxx_wake(),
             )?,
             #[cfg(unix)]
@@ -638,7 +648,7 @@ impl App {
             entry.restore = entry.saved_attachments(&self.workspace);
             entry.open_all |= entry.instance.is_empty() && entry.restore.is_empty();
             entry.connection = Some(connection);
-            entry.connection_deadline = Some(Instant::now() + Duration::from_secs(10));
+            entry.connection_deadline = Some(Instant::now() + connection_timeout(&source));
             entry.reconnect_enabled = matches!(source, Source::Local(_));
             entry.retry_at = None;
             entry.replacing = true;
@@ -1198,6 +1208,19 @@ mod tests {
             entries[2].command,
             Some(MenuCommand::Connect("system-ssh:host".into()))
         );
+    }
+
+    #[test]
+    fn ssh_connections_allow_time_for_authentication_prompts() {
+        for source in [Source::Ssh("host".into()), Source::SystemSsh("host".into())] {
+            assert_eq!(connection_timeout(&source), Duration::from_secs(120));
+        }
+        for source in [
+            Source::Embedded("local".into()),
+            Source::Local("local".into()),
+        ] {
+            assert_eq!(connection_timeout(&source), Duration::from_secs(10));
+        }
     }
 
     fn saved(instance: &str, session: u64) -> workspace::SavedAttachment {
