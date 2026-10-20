@@ -12,6 +12,16 @@ mod windows_registration;
 
 fn main() {
     #[cfg(target_os = "windows")]
+    if std::env::var_os("TMUXX_CONPTY_RESOURCES").is_none()
+        && let Some(resources) = desktop::resource_dir()
+    {
+        // The embedded runtime and detached `rustty tmux` owner must use the
+        // same bundle as ordinary panes, including Cargo's development layout.
+        // Set the inherited path before starting any application threads.
+        unsafe { std::env::set_var("TMUXX_CONPTY_RESOURCES", resources) };
+    }
+
+    #[cfg(target_os = "windows")]
     attach_parent_console();
 
     if std::env::args_os().nth(1).is_some_and(|arg| arg == "tmux") {

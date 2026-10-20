@@ -17,6 +17,8 @@ pub use tmuxx_layout::{Axis, Kind, Layout};
 use tmuxx_protocol::native::{Hello, Request, ServerMessage, SnapshotAssembler};
 #[cfg(windows)]
 pub use tmuxx_runtime::initialize_conpty;
+#[cfg(windows)]
+pub use tmuxx_runtime::windows::endpoint as windows_endpoint;
 
 mod ssh;
 mod system;
@@ -126,6 +128,8 @@ enum Source {
     None,
     #[cfg(unix)]
     Unix(PathBuf),
+    #[cfg(windows)]
+    Windows(PathBuf),
     Ssh {
         host: String,
         command: String,
@@ -147,6 +151,8 @@ pub struct Connection {
     child: Option<Child>,
     #[cfg(unix)]
     socket: Option<std::os::unix::net::UnixStream>,
+    #[cfg(windows)]
+    socket: Option<tmuxx_runtime::windows::PipeStream>,
 }
 
 #[derive(Clone)]
@@ -429,7 +435,7 @@ impl Connection {
                 shared,
                 owner: None,
                 child: None,
-                #[cfg(unix)]
+                #[cfg(any(unix, windows))]
                 socket: None,
             },
             receiver,
@@ -469,6 +475,10 @@ impl Connection {
         #[cfg(unix)]
         {
             connection.source = Source::Unix(endpoint.to_owned());
+        }
+        #[cfg(windows)]
+        {
+            connection.source = Source::Windows(endpoint.to_owned());
         }
         let mut argv = vec![
             b"new-session".to_vec(),
@@ -520,9 +530,22 @@ impl Connection {
             })?;
         Ok(connection)
     }
+    /// Attach an existing local owner without starting an owner or a pane.
+    #[cfg(any(unix, windows))]
+    pub fn native(endpoint: &Path, wake: Arc<dyn Fn() + Send + Sync>) -> io::Result<Self> {
+        #[cfg(unix)]
+        let source = Source::Unix(endpoint.to_owned());
+        #[cfg(windows)]
+        let source = Source::Windows(endpoint.to_owned());
+        Self::connect_source(source, wake, true, true)
+    }
     #[cfg(unix)]
     pub fn unix(endpoint: &Path, wake: Arc<dyn Fn() + Send + Sync>) -> io::Result<Self> {
-        Self::connect_source(Source::Unix(endpoint.to_owned()), wake, true, true)
+        Self::native(endpoint, wake)
+    }
+    #[cfg(windows)]
+    pub fn windows(instance: &str, wake: Arc<dyn Fn() + Send + Sync>) -> io::Result<Self> {
+        Self::native(&windows_endpoint(instance)?, wake)
     }
     pub fn ssh(host: &str, wake: Arc<dyn Fn() + Send + Sync>) -> io::Result<Self> {
         Self::ssh_command(host, "tmuxx --native-stdio", wake)
@@ -569,6 +592,19 @@ impl Connection {
             #[cfg(unix)]
             Source::Unix(endpoint) => {
                 let stream = std::os::unix::net::UnixStream::connect(endpoint)?;
+                let mut connection = Self::stream_inner(
+                    stream.try_clone()?,
+                    stream.try_clone()?,
+                    wake,
+                    host_effects,
+                    subscribe,
+                )?;
+                connection.socket = Some(stream);
+                connection
+            }
+            #[cfg(windows)]
+            Source::Windows(endpoint) => {
+                let stream = tmuxx_runtime::windows::connect(endpoint)?;
                 let mut connection = Self::stream_inner(
                     stream.try_clone()?,
                     stream.try_clone()?,
@@ -898,7 +934,7 @@ impl Drop for Connection {
         if let Some(system) = &mut self.system {
             system.close();
         }
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         if let Some(socket) = &self.socket {
             let _ = socket.shutdown(std::net::Shutdown::Both);
         }
@@ -1307,6 +1343,141 @@ fn view_effect(effect: &Effect) -> bool {
 fn feed_view(terminal: &mut Terminal, data: &[u8], events: &mpsc::SyncSender<SessionEvent>) {
     for effect in terminal.feed(data).into_iter().filter(view_effect) {
         let _ = events.try_send(SessionEvent::Effect(effect));
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+    use crate::session::Session;
+    use std::time::Instant;
+
+    fn instance() -> String {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        format!(
+            "rustty-native-test-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        )
+    }
+
+    fn wait(connection: &Connection, predicate: impl Fn(&Graph) -> bool) -> Graph {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let errors = connection.errors();
+            assert!(errors.is_empty(), "{errors:?}");
+            if let Some(graph) = connection.graph()
+                && predicate(&graph)
+            {
+                return graph;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "native Windows view did not converge"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn absent_pipe_attachment_does_not_start_an_owner() {
+        let name = instance();
+        let endpoint = windows_endpoint(&name).unwrap();
+        assert!(Connection::native(&endpoint, Arc::new(|| {})).is_err());
+        assert!(Connection::windows(&name, Arc::new(|| {})).is_err());
+        assert!(tmuxx_runtime::windows::connect(&endpoint).is_err());
+    }
+
+    #[test]
+    #[ignore = "requires TMUXX_CONPTY_RESOURCES from a verified bundle; run with --ignored"]
+    fn embedded_and_pipe_views_share_input_sizes_and_reconnect_without_replacing_the_pane() {
+        // Supply TMUXX_CONPTY_RESOURCES from a verified Rustty/tmuxx bundle.
+        let name = instance();
+        let endpoint = windows_endpoint(&name).unwrap();
+        let shell = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into());
+        let owner = Connection::embedded_with_command(
+            &endpoint,
+            Arc::new(|| {}),
+            [shell.as_str(), "/D", "/Q", "/K", "echo RUSTTY_NATIVE_READY"]
+                .map(|arg| arg.as_bytes().to_vec())
+                .to_vec(),
+        )
+        .unwrap();
+        let graph = wait(&owner, |graph| graph.panes.len() == 1);
+        let pane = graph.panes[0].id;
+        let pid = graph.panes[0].pid.expect("pane process ID");
+        let session = graph.sessions[0].id;
+        let embedded_view = Session::attach_tmuxx(&owner, pane, Arc::new(|| {})).unwrap();
+        let remote = Connection::windows(&name, Arc::new(|| {})).unwrap();
+        let graph = wait(&remote, |graph| graph.panes.len() == 1);
+        assert_eq!(graph.panes[0].pid, Some(pid));
+        assert!(!owner.persistence_survives_app());
+        assert!(remote.persistence_survives_app());
+        let pipe_view = Session::attach_tmuxx(&remote, pane, Arc::new(|| {})).unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !pipe_view
+            .terminal()
+            .unwrap()
+            .plain_text()
+            .contains("RUSTTY_NATIVE_READY")
+        {
+            assert!(Instant::now() < deadline, "shell did not become ready");
+            thread::sleep(Duration::from_millis(5));
+        }
+        pipe_view.write(b"set /a 137*241\r").unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !embedded_view
+            .terminal()
+            .unwrap()
+            .plain_text()
+            .contains("33017")
+        {
+            assert!(remote.errors().is_empty());
+            assert!(
+                Instant::now() < deadline,
+                "pipe input did not reach the shared shell"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        owner
+            .command(["set-option", "-w", "window-size", "smallest"])
+            .unwrap();
+        owner.view_size(session, 100, 40, 8, 16).unwrap();
+        wait(&owner, |graph| {
+            graph.windows[0].cols == 100 && graph.windows[0].rows == 40
+        });
+        remote.view_size(session, 60, 20, 8, 16).unwrap();
+        wait(&owner, |graph| {
+            graph.windows[0].cols == 60 && graph.windows[0].rows == 20
+        });
+        remote.release_view(session).unwrap();
+        wait(&owner, |graph| {
+            graph.windows[0].cols == 100 && graph.windows[0].rows == 40
+        });
+
+        // The reader holds Shared while blocked on the pipe. Dropping the
+        // connection must cancel that read as well as its request writer.
+        let workers = Arc::downgrade(&remote.shared);
+        drop(pipe_view);
+        drop(remote);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while workers.upgrade().is_some() {
+            assert!(
+                Instant::now() < deadline,
+                "pipe workers survived connection shutdown"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        let reconnected = Connection::native(&endpoint, Arc::new(|| {})).unwrap();
+        let graph = wait(&reconnected, |graph| graph.panes.len() == 1);
+        assert_eq!(graph.panes[0].pid, Some(pid));
+        assert_eq!(graph.panes[0].id, pane);
+        drop(reconnected);
+        drop(embedded_view);
+        drop(owner);
+        assert!(tmuxx_runtime::windows::connect(&endpoint).is_err());
     }
 }
 
