@@ -2427,7 +2427,7 @@ mod tests {
             for tab in [tab.clone(), changed.clone(), flat.clone()] {
                 let focuses: Vec<_> = [2, 9, 7, 3, 2]
                     .into_iter()
-                    .filter(|pane| tab.root.contains(*pane))
+                    .filter(|pane| tab.contains(*pane))
                     .collect();
                 let mut workspace = Workspace::default();
                 workspace.windows.push(WindowState {

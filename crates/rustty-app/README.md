@@ -304,3 +304,95 @@ unchanged cursor events, actual pointer movement and egui repaint requests.
 Set `RUSTTY_SMOKE_HOVER=1` in a foreground run to require a stationary pointer over a shell pane
 during the idle interval. Move the pointer into a test pane before the 45-second
 timeout; leaving the pane or moving the pointer restarts the interval.
+
+### tmuxx workspaces
+
+Build this checkout beside `github.com/tmux/tmux`; the session feature uses the
+Rust crates in that checkout. Its `rustty-vt` workspace dependency also points to
+tmuxx's vendored VT crate, so native snapshots and subsequent pane output use the
+same terminal implementation as their owner. Ordinary local sessions leave the
+tmux compatibility profile disabled. These are opt-in workspace connections:
+
+| Launch argument | Pane owner |
+| --- | --- |
+| `--tmuxx=embedded` | This Rustty process; shutdown ends its PTYs |
+| `--tmuxx=unix:/path/to/default.native` | An existing standalone tmuxx daemon |
+| `--tmuxx=ssh:host` | The remote `tmuxx --native-stdio` endpoint over SSH |
+| `--tmuxx=system-ssh:host` | An existing remote C `tmux -C` server |
+
+Embedded mode binds `TMUXX_ENDPOINT`, or the same per-user default native socket
+as the tmuxx CLI. Thus `ssh host tmuxx --native-stdio` can reach an engine owned by
+remote Rustty. Only one owner may bind an endpoint. Use the Unix connection mode
+to attach to an already running local owner. The remote executable must be on
+SSH's command path. Native Windows hosting/bridging remains pending; this slice
+has been executed on macOS.
+
+The server owns sessions, windows, panes, PTYs, and application replies. Sessions
+appear as native windows; linked windows get independent pane views, selections,
+and scroll positions. New tabs, splits, pane close, split resizing, zoom and tab
+selection send server commands. Each native window registers a separate size
+client for server size arbitration. Native key, IME and paste events reach the
+owner before encoding, so synchronized panes use their own terminal modes. Mouse
+reports and terminal protocol replies stay with their destination pane.
+A GUI view never replays snapshot clipboard actions or terminal replies.
+Native one-shot host actions go to the server-elected GUI client and one view;
+clipboard results return the server event ID through the normal Rustty policy UI.
+Native focus/visibility and color scheme state aggregate across linked views and
+connections; `set-option -s focus-events on` enables application focus reports.
+A pane exit updates its view, and respawn retains its identity while clearing old
+selection and scroll state. Initial attachment also respects a dead pane's status.
+
+The command palette's **Toggle Keep Pane After Disconnect** changes retention for
+a pane owned by an external native tmuxx daemon. Quitting Rustty detaches views;
+explicit pane/tab/window close commands delete the corresponding server objects.
+A pane in embedded mode cannot survive this process ending. Create restart-safe
+panes through the standalone connection from the outset; moving live PTY ownership
+from the app to a daemon is not implemented. The normal saved local workspace is
+separate from the server workspace.
+
+Stock tmux uses one SSH control stream per session (at most 64), with one canonical
+stream per linked pane to prevent duplicate output. Bootstrap captures visible
+text/rendition and exposed cursor/modes, then streams live output. Stock tmux does
+not export an atomic full terminal/history/graphics checkpoint or replay cursor;
+reconnection is explicitly best effort and clears selections. Targeted mouse and
+protocol reports use random temporary buffers and `paste-buffer -drS`, tested on
+C head and 3.7c, so `synchronize-panes` cannot broadcast them. NUL-containing raw
+reports return an error. A dropped SSH connection can leave a temporary buffer;
+ambiguous input is never replayed. C remains the sole application-query responder.
+The stock GUI backend does not route focus, bell, desktop notification or clipboard
+actions through Rustty; native tmuxx provides the elected host-action path.
+Native tmuxx uses validated terminal/parser/graphics checkpoints. Socket and SSH
+connections negotiate bounded snapshot chunks, assembled privately and applied
+atomically only after the complete snapshot arrives. An aborted or incomplete
+transfer preserves the live view. The receiver caps serialized snapshots at
+8 GiB and restored graphics at 1 GiB; embedded connections deliver snapshots
+directly. Restored row identities keep graphics anchored through text reflow.
+
+Local layout undo/redo, moving tabs and loading a local layout are unavailable for
+server-owned workspaces. Windows execution remains further integration work.
+The tmuxx conformance matrix, rather than this UI, defines C command compatibility.
+
+Targeted verification:
+
+```sh
+cargo +1.95.0 test --offline -p rustty --features sessions --lib tmuxx::tests::
+cargo +1.95.0 test --offline -p rustty-app --lib tmuxx_workspace::tests::
+cargo +1.95.0 check --offline -p rustty-app
+```
+
+The stock SSH test is run by `tmux/rust/conformance/rustty_system_ssh.py`, which
+provisions disposable loopback sshd keys, sessions, and sockets. For a hidden
+macOS/Metal smoke capture with two disposable panes:
+
+```sh
+RUSTTY_TMUXX_SMOKE_DIR=/tmp/tmuxx-smoke TMUXX_ENDPOINT=/tmp/tmuxx-smoke.native \
+  target/debug/rustty --tmuxx=embedded --config-default-files=false --stream-deck=false
+```
+
+It writes `window.png` and `result.json` and exits without activating a window.
+
+Floating server panes use signed cell positions and C stacking order (`z=0` is front), including windows with no tiled panes. They are clipped at the native content bounds. Zoom uses the server’s visible layout, so a floating pane can remain above the underlying zoomed pane. Pane content rectangles reserve server border-status rows while retaining the full layout for membership and commands. Native modal panes direct input to their owner: `-K` bypasses pane shortcuts, `-C` closes on a click outside the pane, and `-D` passes Escape/Ctrl-C to the server for dismissal. Active Rustty dialogs keep their input handling. Stock C connections support current JSON-v2 and tmux 3.7c legacy floating layouts. C’s `pane_modal_flag` exposes modal presence, but its format API has no fields for `-K`, `-C`, or `-D`; those stock-SSH policies are not inferred.
+
+New embedded owners explicitly set `set-clipboard on` and `get-clipboard request`; Rustty’s existing clipboard Ask/Deny/Allow policy still controls OS access. Existing Unix/SSH owners keep their configured policies. C owns application query replies through stock SSH, including OSC52 buffer reads; mirrors do not answer or issue host clipboard actions.
+
+Set `RUSTTY_TMUXX_SMOKE_FLOATING=1` with the native smoke command to render a partially clipped floating pane.

@@ -15,3 +15,5 @@ pub mod search;
 #[cfg(target_os = "windows")]
 pub mod software_surface;
 pub mod workspace;
+
+pub mod tmuxx_workspace;

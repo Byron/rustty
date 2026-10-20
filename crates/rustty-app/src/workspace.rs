@@ -50,6 +50,7 @@ pub struct Tree {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Node {
+    Empty,
     Pane(Id),
     Split {
         axis: Axis,
@@ -60,6 +61,12 @@ pub enum Node {
 }
 
 impl Tree {
+    pub fn empty(id: Id) -> Self {
+        Self {
+            id,
+            kind: Node::Empty,
+        }
+    }
     pub fn leaf(id: Id) -> Self {
         Self {
             id,
@@ -87,12 +94,13 @@ impl Tree {
             return Some(self);
         }
         match &self.kind {
-            Node::Pane(_) => None,
+            Node::Empty | Node::Pane(_) => None,
             Node::Split { first, second, .. } => first.node(id).or_else(|| second.node(id)),
         }
     }
     pub fn contains(&self, pane: Id) -> bool {
         match &self.kind {
+            Node::Empty => false,
             Node::Pane(id) => *id == pane,
             Node::Split { first, second, .. } => first.contains(pane) || second.contains(pane),
         }
@@ -121,7 +129,7 @@ impl Tree {
                 };
                 true
             }
-            Node::Pane(_) => false,
+            Node::Empty | Node::Pane(_) => false,
             Node::Split { first, second, .. } => {
                 first.split(pane, new_pane, split_id, direction)
                     || second.split(pane, new_pane, split_id, direction)
@@ -130,6 +138,7 @@ impl Tree {
     }
     pub fn remove(self, pane: Id) -> Option<Self> {
         match self.kind {
+            Node::Empty => None,
             Node::Pane(id) => (id != pane).then_some(Self::leaf(id)),
             Node::Split {
                 axis,
@@ -160,6 +169,7 @@ impl Tree {
             out.push((self.id, rect));
         }
         match &self.kind {
+            Node::Empty => {}
             Node::Pane(pane) => out.push((*pane, rect)),
             Node::Split {
                 axis,
@@ -201,6 +211,7 @@ impl Tree {
     fn spatial(&self) -> Vec<(Id, Rect)> {
         fn dimensions(tree: &Tree) -> [f32; 2] {
             match &tree.kind {
+                Node::Empty => [0.0, 0.0],
                 Node::Pane(_) => [1.0, 1.0],
                 Node::Split {
                     axis,
@@ -400,6 +411,32 @@ pub struct Peek {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Overlay {
+    pub pane: Id,
+    pub x: i32,
+    pub y: i32,
+    pub cols: u32,
+    pub rows: u32,
+    pub z: u32,
+    pub modal: bool,
+    #[serde(default)]
+    pub capture_keys: bool,
+    #[serde(default)]
+    pub close_click: bool,
+    #[serde(default)]
+    pub close_cancel: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PaneRect {
+    pub pane: Id,
+    pub x: i32,
+    pub y: i32,
+    pub cols: u32,
+    pub rows: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Tab {
     pub id: Id,
     pub title: Option<String>,
@@ -410,6 +447,12 @@ pub struct Tab {
     pub quadrant_zoom: Option<Id>,
     pub remembered: BTreeMap<Id, Id>,
     pub panes: BTreeMap<Id, SavedPane>,
+    #[serde(default)]
+    pub overlays: Vec<Overlay>,
+    #[serde(default)]
+    pub server_size: Option<[u32; 2]>,
+    #[serde(default)]
+    pub server_view: Option<Vec<PaneRect>>,
 }
 
 impl Tab {
@@ -423,6 +466,9 @@ impl Tab {
             zoom: None,
             quadrant_zoom: None,
             remembered: BTreeMap::new(),
+            overlays: Vec::new(),
+            server_size: None,
+            server_view: None,
             panes: [(
                 pane,
                 SavedPane {
@@ -442,17 +488,122 @@ impl Tab {
                 .unwrap_or(&self.root)
         }
     }
+    pub fn contains(&self, pane: Id) -> bool {
+        self.root.contains(pane) || self.overlays.iter().any(|overlay| overlay.pane == pane)
+    }
+    pub fn pane_ids(&self) -> Vec<Id> {
+        self.root
+            .panes()
+            .into_iter()
+            .chain(self.overlays.iter().map(|overlay| overlay.pane))
+            .collect()
+    }
+    pub fn modal_overlay(&self) -> Option<&Overlay> {
+        self.overlays
+            .iter()
+            .filter(|overlay| overlay.modal)
+            .min_by_key(|overlay| overlay.z)
+    }
+    pub fn modal_pane(&self) -> Option<Id> {
+        self.overlays
+            .iter()
+            .filter(|overlay| overlay.modal)
+            .min_by_key(|overlay| overlay.z)
+            .map(|overlay| overlay.pane)
+    }
+    pub fn visible_panes(&self, peek: bool) -> Vec<Id> {
+        if !peek && let Some(view) = &self.server_view {
+            return view.iter().map(|rect| rect.pane).collect();
+        }
+        if !peek
+            && let Some(id) = self.zoom
+            && self.overlays.iter().any(|overlay| overlay.pane == id)
+        {
+            return vec![id];
+        }
+        self.visible_tree(peek)
+            .panes()
+            .into_iter()
+            .chain(
+                self.overlays
+                    .iter()
+                    .filter(|_| peek || self.zoom.is_none())
+                    .map(|overlay| overlay.pane),
+            )
+            .collect()
+    }
+    pub fn layout(&self, rect: Rect, peek: bool) -> Vec<(Id, Rect)> {
+        if !peek
+            && let Some(view) = &self.server_view
+            && let Some([cols, rows]) = self.server_size
+        {
+            let cell = [
+                rect.width / cols.max(1) as f32,
+                rect.height / rows.max(1) as f32,
+            ];
+            return view
+                .iter()
+                .map(|pane| {
+                    (
+                        pane.pane,
+                        Rect {
+                            x: rect.x + pane.x as f32 * cell[0],
+                            y: rect.y + pane.y as f32 * cell[1],
+                            width: pane.cols as f32 * cell[0],
+                            height: pane.rows as f32 * cell[1],
+                        },
+                    )
+                })
+                .collect();
+        }
+        if !peek
+            && let Some(id) = self.zoom
+            && self.overlays.iter().any(|overlay| overlay.pane == id)
+        {
+            return vec![(id, rect)];
+        }
+        let mut layout = self.visible_tree(peek).layout(rect);
+        if (peek || self.zoom.is_none())
+            && let Some([cols, rows]) = self.server_size
+        {
+            let cell = [
+                rect.width / cols.max(1) as f32,
+                rect.height / rows.max(1) as f32,
+            ];
+            let mut overlays = self.overlays.iter().collect::<Vec<_>>();
+            overlays.sort_by_key(|overlay| std::cmp::Reverse(overlay.z));
+            layout.extend(overlays.into_iter().map(|overlay| {
+                (
+                    overlay.pane,
+                    Rect {
+                        x: rect.x + overlay.x as f32 * cell[0],
+                        y: rect.y + overlay.y as f32 * cell[1],
+                        width: overlay.cols as f32 * cell[0],
+                        height: overlay.rows as f32 * cell[1],
+                    },
+                )
+            }));
+        }
+        layout
+    }
     pub fn focus(&mut self, pane: Id) {
-        if !self.root.contains(pane) {
+        if !self.contains(pane)
+            || self.modal_pane().is_some_and(|modal| modal != pane)
+            || self
+                .server_view
+                .as_ref()
+                .is_some_and(|view| !view.iter().any(|rect| rect.pane == pane))
+        {
             return;
         }
         if let Some(quadrant) = self.root.quadrant(self.focused) {
             self.remembered.insert(quadrant, self.focused);
         }
         self.focused = pane;
-        if self
-            .zoom
-            .is_some_and(|id| self.root.node(id).is_none_or(|node| !node.contains(pane)))
+        if self.server_view.is_none()
+            && self
+                .zoom
+                .is_some_and(|id| self.root.node(id).is_none_or(|node| !node.contains(pane)))
         {
             self.quadrant_zoom = self.quadrant_zoom.and_then(|_| self.root.quadrant(pane));
             self.zoom = self.quadrant_zoom;
@@ -790,7 +941,7 @@ impl Workspace {
                 state
                     .tabs
                     .iter()
-                    .position(|tab| tab.panes.contains_key(&pane) && tab.root.contains(pane))
+                    .position(|tab| tab.panes.contains_key(&pane) && tab.contains(pane))
                     .map(|tab| (window, tab))
             })?;
         let source = self.windows.iter_mut().find(|window| window.id == from)?;
@@ -876,6 +1027,7 @@ impl Workspace {
             for tab in &window.tabs {
                 old_ids.push(tab.id);
                 tab.root.visit(&mut |node| old_ids.push(node.id));
+                old_ids.extend(tab.overlays.iter().map(|overlay| overlay.pane));
             }
             for old in old_ids {
                 let id = next_id;
@@ -888,6 +1040,7 @@ impl Workspace {
         fn remap_tree(tree: &mut Tree, remap: &BTreeMap<Id, Id>) {
             tree.id = remap[&tree.id];
             match &mut tree.kind {
+                Node::Empty => {}
                 Node::Pane(pane) => *pane = remap[pane],
                 Node::Split { first, second, .. } => {
                     remap_tree(first, remap);
@@ -914,6 +1067,12 @@ impl Workspace {
                     .map(|(id, pane)| (remap[&id], pane))
                     .collect();
                 remap_tree(&mut tab.root, &remap);
+                for overlay in &mut tab.overlays {
+                    overlay.pane = remap[&overlay.pane];
+                }
+                for pane in tab.server_view.iter_mut().flatten() {
+                    pane.pane = remap[&pane.pane];
+                }
             }
         }
         let windows = layout.windows.iter().map(|window| window.id).collect();
@@ -1015,7 +1174,7 @@ impl Workspace {
         }
         result
     }
-    fn validate(&self) -> io::Result<()> {
+    pub(crate) fn validate(&self) -> io::Result<()> {
         if self.version != 1 || self.next_id == 0 || self.windows.len() > 64 {
             return Err(invalid("unsupported or invalid workspace state"));
         }
@@ -1035,7 +1194,7 @@ impl Workspace {
             }
             maximum = maximum.max(window.id);
             for tab in &window.tabs {
-                if !ids.insert(tab.id) || !tab.root.contains(tab.focused) {
+                if !ids.insert(tab.id) || !tab.contains(tab.focused) {
                     return Err(invalid("invalid saved tab"));
                 }
                 maximum = maximum.max(tab.id);
@@ -1050,13 +1209,39 @@ impl Workspace {
                         valid &= ratio.is_finite() && (0.01..=0.99).contains(&ratio);
                     }
                 });
-                let panes = tab.root.panes();
+                for overlay in &tab.overlays {
+                    maximum = maximum.max(overlay.pane);
+                    valid &= ids.insert(overlay.pane)
+                        && overlay.cols > 0
+                        && overlay.rows > 0
+                        && overlay.cols <= 10_000
+                        && overlay.rows <= 10_000;
+                }
+                if let Some(view) = &tab.server_view {
+                    let mut visible = HashSet::new();
+                    valid &= !view.is_empty()
+                        && view.iter().all(|pane| {
+                            tab.contains(pane.pane)
+                                && visible.insert(pane.pane)
+                                && pane.cols > 0
+                                && pane.rows > 0
+                                && pane.cols <= 10_000
+                                && pane.rows <= 10_000
+                        });
+                }
+                valid &= (tab.overlays.is_empty() && tab.server_view.is_none())
+                    || tab
+                        .server_size
+                        .is_some_and(|size| size.iter().all(|size| *size > 0 && *size <= 10_000));
+                let panes = tab.pane_ids();
                 count += panes.len();
                 if !valid
                     || count > 4096
                     || panes.len() != tab.panes.len()
                     || panes.iter().any(|id| !tab.panes.contains_key(id))
-                    || tab.zoom.is_some_and(|id| tab.root.node(id).is_none())
+                    || tab
+                        .zoom
+                        .is_some_and(|id| tab.root.node(id).is_none() && !tab.contains(id))
                     || tab
                         .quadrant_zoom
                         .is_some_and(|id| tab.root.node(id).is_none())
