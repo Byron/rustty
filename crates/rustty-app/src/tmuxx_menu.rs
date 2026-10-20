@@ -159,7 +159,7 @@ pub(crate) mod native {
         #[cfg(not(target_os = "windows"))]
         let label = &entry.label;
         if !entry.children.is_empty() {
-            let menu = Submenu::new(&label, true);
+            let menu = Submenu::new(label, true);
             for child in &entry.children {
                 menu.append(item(child, routes)?.as_ref())
                     .map_err(|e| e.to_string())?;
@@ -168,12 +168,12 @@ pub(crate) mod native {
         } else if let Some(command) = &entry.command {
             Ok(Box::new(MenuItem::with_id(
                 routes.insert(command.clone()),
-                &label,
+                label,
                 true,
                 None,
             )))
         } else {
-            Ok(Box::new(MenuItem::new(&label, false, None)))
+            Ok(Box::new(MenuItem::new(label, false, None)))
         }
     }
 

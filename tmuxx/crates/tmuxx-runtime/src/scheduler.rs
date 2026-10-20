@@ -2454,7 +2454,7 @@ pub(super) fn spawn_job(
                 let execution = (|| -> io::Result<()> {
                     #[cfg(unix)]
                     let (mut reader, mut child) = {
-                        let (mut reader, writer) = std::os::unix::net::UnixStream::pair()?;
+                        let (reader, writer) = std::os::unix::net::UnixStream::pair()?;
                         reader.set_nonblocking(true)?;
                         let mut process = ProcessCommand::new(&shell);
                         process
@@ -2477,7 +2477,7 @@ pub(super) fn spawn_job(
                             })
                             .stdout(Stdio::from(OwnedFd::from(writer)))
                             .process_group(0);
-                        let mut child = process.spawn().or_else(|_| {
+                        let child = process.spawn().or_else(|_| {
                             let home = std::env::var_os("HOME")
                                 .filter(|home| !home.is_empty())
                                 .or_else(|| {

@@ -765,10 +765,10 @@ impl Smoke {
             5 => {
                 let (closed, started) = self.closed.unwrap();
                 if app.tab(host.id).unwrap().panes.contains_key(&closed)
-                    || !app
+                    || app
                         .panes
                         .get(&closed)
-                        .is_some_and(|pane| pane.started == started)
+                        .is_none_or(|pane| pane.started != started)
                 {
                     return Err("closed terminal was not retained for undo".into());
                 }
@@ -780,10 +780,10 @@ impl Smoke {
             6 => {
                 let (closed, started) = self.closed.unwrap();
                 if !app.tab(host.id).unwrap().panes.contains_key(&closed)
-                    || !app
+                    || app
                         .panes
                         .get(&closed)
-                        .is_some_and(|pane| pane.started == started)
+                        .is_none_or(|pane| pane.started != started)
                     || !text(app, closed).contains("Rustty native smoke")
                 {
                     return Err("undo did not restore the same terminal process".into());
@@ -3058,10 +3058,10 @@ fn check_link_hover(app: &mut App, host: &mut Host, focused: Id, hovered: Id) ->
     }
     host.mouse.y += cell.y;
     app.update_hover_link(host);
-    if !host
+    if host
         .hovered_link
         .as_ref()
-        .is_some_and(|link| link.uri == "https://example.org")
+        .is_none_or(|link| link.uri != "https://example.org")
     {
         return Err("Command-hover did not recognize a plain URL".into());
     }

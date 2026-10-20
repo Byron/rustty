@@ -518,7 +518,7 @@ fn minimum_byte_budget_retains_small_linked_history_after_reflow() {
     assert_eq!(linked.screen().history_len(), 1);
     linked.feed(b"\r\nd\r\ne");
     linked.resize(4, 2);
-    assert!(!linked.screen().history().next().is_none());
+    assert!(linked.screen().history().next().is_some());
     assert_eq!(linked.screen().storage_bytes(), limit);
     invariant(&linked);
 }

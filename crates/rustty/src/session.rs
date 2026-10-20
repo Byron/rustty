@@ -1628,7 +1628,7 @@ mod tests {
         let before_reload = {
             let mut terminal = session.terminal().unwrap();
             terminal.feed(&output);
-            assert!(!terminal.screen().history().next().is_none());
+            assert!(terminal.screen().history().next().is_some());
             assert!(terminal.screen().history_bytes() <= 2 * 1024 * 1024);
             terminal.screen().history_bytes()
         };
@@ -1636,12 +1636,12 @@ mod tests {
         config.scrollback_limit_bytes = Some(512 * 1024);
         session.apply_config(&config).unwrap();
         let mut terminal = session.terminal().unwrap();
-        assert!(!terminal.screen().history().next().is_none());
+        assert!(terminal.screen().history().next().is_some());
         assert!(terminal.screen().history_bytes() < before_reload);
         assert!(terminal.screen().history_bytes() <= 512 * 1024);
         terminal.feed(b"\x1bc");
         terminal.feed(&output);
-        assert!(!terminal.screen().history().next().is_none());
+        assert!(terminal.screen().history().next().is_some());
         assert!(terminal.screen().history_bytes() <= 512 * 1024);
     }
 

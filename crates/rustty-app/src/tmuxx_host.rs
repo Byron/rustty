@@ -106,9 +106,9 @@ impl Attachment {
             .min()
     }
     fn expire_connection(&mut self, now: Instant) -> bool {
-        if !self
+        if self
             .connection_deadline
-            .is_some_and(|deadline| deadline <= now)
+            .is_none_or(|deadline| deadline > now)
         {
             return false;
         }
@@ -823,10 +823,8 @@ impl App {
             self.panes.remove(&view);
             self.failed_panes.remove(&view);
         }
-        if connection_error {
-            if self.windows.is_empty() && self.workspace.windows.is_empty() {
-                self.add_window(false);
-            }
+        if connection_error && self.windows.is_empty() && self.workspace.windows.is_empty() {
+            self.add_window(false);
         }
         self.reconcile(event_loop);
         if connection_error {
@@ -872,7 +870,7 @@ impl App {
             if entry.expire_requests(now) {
                 let _ = self.proxy.send_event(Event::Tmuxx);
             }
-            if !entry.retry_at.is_some_and(|at| at <= now) {
+            if entry.retry_at.is_none_or(|at| at > now) {
                 continue;
             }
             entry.retry_at = None;

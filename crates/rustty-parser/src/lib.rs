@@ -730,14 +730,12 @@ impl Parser {
                     self.osc.clear();
                     self.osc_overflow = false;
                 }
-                State::DcsPassthrough => {
-                    if self.finalize_params() {
-                        handler(Event::DcsHook {
-                            intermediates: &self.intermediates[..self.intermediate_count],
-                            params: &self.params[..self.param_count],
-                            final_byte: byte,
-                        });
-                    }
+                State::DcsPassthrough if self.finalize_params() => {
+                    handler(Event::DcsHook {
+                        intermediates: &self.intermediates[..self.intermediate_count],
+                        params: &self.params[..self.param_count],
+                        final_byte: byte,
+                    });
                 }
                 State::SosPmApcString if self.tmux_strings => handler(Event::TmuxStringStart(byte)),
                 State::SosPmApcString => handler(Event::ApcStart),
