@@ -9,6 +9,15 @@ mod workload;
 #[path = "smoke/windows_capture.rs"]
 mod windows_capture;
 
+fn queued_input(pane: &Pane) -> Result<Vec<Vec<u8>>> {
+    let terminal = pane.session.terminal()?;
+    Ok(pane
+        .input
+        .iter()
+        .map(|input| input.encode(&terminal))
+        .collect())
+}
+
 fn fixture_directory() -> PathBuf {
     if cfg!(target_os = "windows") {
         std::env::temp_dir()
@@ -1831,7 +1840,7 @@ fn check_focus_hint_clicks(
             std::mem::take(&mut pane.selection_gesture),
         ));
         // Capture reports instead of sending the simulated clicks to a shell.
-        pane.input.push_back(Vec::new());
+        pane.input.push_back(SessionInput::Text(Vec::new()));
     }
     let motion = |position: Pos2| WindowEvent::CursorMoved {
         device_id: DeviceId::dummy(),
@@ -2033,7 +2042,7 @@ fn check_find(
             std::mem::take(&mut pane.input),
             std::mem::take(&mut pane.input_bytes),
         ));
-        pane.input.push_back(Vec::new());
+        pane.input.push_back(SessionInput::Text(Vec::new()));
     }
     let result = (|| -> Result<()> {
         set_focus(host, true);
@@ -2302,7 +2311,7 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
             std::mem::take(&mut pane.selection_gesture),
         ));
         // Hold encoded reports in the existing queue instead of sending them to a shell.
-        pane.input.push_back(Vec::new());
+        pane.input.push_back(SessionInput::Text(Vec::new()));
     }
     let result = (|| -> Result<()> {
         host.mouse = host.rects[&hovered].center();
@@ -2416,7 +2425,7 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
                     != if reporting { 0 } else { offset as usize }
                     || pane.input.len() != if reporting { 1 + reports } else { 1 }
                     || reporting
-                        && pane.input.iter().skip(1).any(|bytes| {
+                        && queued_input(pane)?.iter().skip(1).any(|bytes| {
                             !bytes.starts_with(
                                 format!("\x1b[<{};", code + if shift { 4 } else { 0 }).as_bytes(),
                             )
@@ -2486,7 +2495,7 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
                 .repeat(rows.unsigned_abs());
                 let emitted = enabled && rows != 0;
                 if pane.input.len() != if emitted { 2 } else { 1 }
-                    || emitted && pane.input.back() != Some(&expected)
+                    || emitted && queued_input(pane)?.last() != Some(&expected)
                 {
                     return Err("alternate scroll ignored mode 1007 or cursor-key mode".into());
                 }
@@ -2564,7 +2573,7 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
                 return Err("file drop affected the focused pane".into());
             }
             let pane = app.panes.get_mut(&hovered).unwrap();
-            if pane.input.len() != 2 || pane.input.back().unwrap() != &expected {
+            if pane.input.len() != 2 || queued_input(pane)?.last() != Some(&expected) {
                 return Err(
                     "file drop did not use the target pane's paste mode and quoted path".into(),
                 );
@@ -2836,7 +2845,8 @@ fn check_selection_scroll(app: &mut App, host: &mut Host, focused: Id, target: I
         app.scroll(host, MouseScrollDelta::LineDelta(0.0, -1.0));
         if selected.is_none()
             || app.panes[&target].session.terminal()?.screen().selection != selected
-            || app.panes[&target].input.back().map(Vec::as_slice) != Some(b"\x1b[B\x1b[B\x1b[B")
+            || queued_input(&app.panes[&target])?.last().map(Vec::as_slice)
+                != Some(b"\x1b[B\x1b[B\x1b[B")
         {
             return Err("alternate scrolling cleared a held selection or lost cursor keys".into());
         }
@@ -3777,13 +3787,15 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         .get_mut(&sibling)
         .unwrap()
         .input
-        .push_back(Vec::new());
+        .push_back(SessionInput::Text(Vec::new()));
     app.window_event(
         event_loop,
         key,
         WindowEvent::Ime(Ime::Commit("search result typing".into())),
     );
-    if app.panes[&sibling].input.back().map(Vec::as_slice)
+    if queued_input(&app.panes[&sibling])?
+        .last()
+        .map(Vec::as_slice)
         != Some(b"search result typing".as_slice())
         || app.outliner.as_ref().unwrap().search.query != "rty"
     {
@@ -3963,7 +3975,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     let pane = app.panes.get_mut(&other_pane).unwrap();
     pane.session.terminal()?.feed(b"\x1b[?1000h\x1b[?1006h");
     // Observe reports without sending test input to the child process.
-    pane.input.push_back(Vec::new());
+    pane.input.push_back(SessionInput::Text(Vec::new()));
     app.window_event(
         event_loop,
         other_key,
@@ -3983,7 +3995,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
             },
         );
     }
-    let reports = &app.panes[&other_pane].input;
+    let reports = queued_input(&app.panes[&other_pane])?;
     if reports.len() != 3
         || !reports[1].starts_with(b"\x1b[<0;")
         || !reports[1].ends_with(b"M")
@@ -3997,7 +4009,10 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         other_key,
         WindowEvent::Ime(Ime::Commit("outliner typing".into())),
     );
-    if app.panes[&other_pane].input.back().map(Vec::as_slice) != Some(b"outliner typing".as_slice())
+    if queued_input(&app.panes[&other_pane])?
+        .last()
+        .map(Vec::as_slice)
+        != Some(b"outliner typing".as_slice())
     {
         return Err("Outliner blocked terminal text input".into());
     }

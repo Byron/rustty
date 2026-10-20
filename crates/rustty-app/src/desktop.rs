@@ -15,7 +15,7 @@ use egui::{Color32, Pos2, Sense, Vec2, ViewportId};
 use rustty::{
     app_paths,
     config::{self, Action, Config, Direction, LoadedConfig},
-    session::{Session, SessionEvent, SessionOptions},
+    session::{Input as SessionInput, Session, SessionEvent, SessionOptions},
     vt,
 };
 use rustty_app::{
@@ -61,6 +61,7 @@ const MIN_WINDOW_SIZE: LogicalSize<f64> = LogicalSize::new(240.0, 120.0);
 #[derive(Debug)]
 enum Event {
     DeckWake,
+    Tmuxx,
     Output(Id),
     Platform(PlatformEvent),
     Repaint(egui::RequestRepaintInfo, Instant),
@@ -89,7 +90,7 @@ struct Pane {
     session: Session,
     host_state: (bool, bool, vt::query::ColorScheme),
     wake_pending: Arc<AtomicBool>,
-    input: VecDeque<Vec<u8>>,
+    input: VecDeque<SessionInput>,
     input_bytes: usize,
     title: String,
     title_override: Option<String>,
@@ -130,18 +131,21 @@ impl Pane {
     }
 
     fn write(&mut self, bytes: Vec<u8>) -> std::io::Result<()> {
+        self.send_input(SessionInput::Text(bytes))
+    }
+    fn send_input(&mut self, input: SessionInput) -> std::io::Result<()> {
         QueuedInput {
             session: &self.session,
             queue: &mut self.input,
             bytes: &mut self.input_bytes,
         }
-        .enqueue(bytes)
+        .enqueue(input)
     }
     fn flush(&mut self) -> std::io::Result<()> {
         while let Some(bytes) = self.input.front() {
-            match self.session.write(bytes) {
+            match self.session.write_input(bytes) {
                 Ok(()) => {
-                    self.input_bytes -= self.input.pop_front().unwrap().len();
+                    self.input_bytes -= self.input.pop_front().unwrap().queue_bytes();
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(error) => {
@@ -182,34 +186,35 @@ impl SynchronizedOutput {
 /// A successful write means the complete packet is accepted by the pane's ordered queue.
 struct QueuedInput<'a> {
     session: &'a Session,
-    queue: &'a mut VecDeque<Vec<u8>>,
+    queue: &'a mut VecDeque<SessionInput>,
     bytes: &'a mut usize,
 }
 impl QueuedInput<'_> {
-    fn enqueue(&mut self, bytes: Vec<u8>) -> std::io::Result<()> {
-        if bytes.is_empty() {
+    fn enqueue(&mut self, input: SessionInput) -> std::io::Result<()> {
+        let size = input.queue_bytes();
+        if size == 0 {
             return Ok(());
         }
         if self.queue.is_empty() {
-            match self.session.write(&bytes) {
+            match self.session.write_input(&input) {
                 Ok(()) => return Ok(()),
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(error) => return Err(error),
             }
         }
-        if self.bytes.saturating_add(bytes.len()) > INPUT_BUDGET {
+        if self.bytes.saturating_add(size) > INPUT_BUDGET {
             return Err(std::io::Error::other(
                 "Input queue is full. Wait for the command to read its input.",
             ));
         }
-        *self.bytes += bytes.len();
-        self.queue.push_back(bytes);
+        *self.bytes += size;
+        self.queue.push_back(input);
         Ok(())
     }
 }
 impl std::io::Write for QueuedInput<'_> {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.enqueue(bytes.to_vec())?;
+        self.enqueue(SessionInput::Reply(bytes.to_vec()))?;
         Ok(bytes.len())
     }
     fn flush(&mut self) -> std::io::Result<()> {
@@ -381,6 +386,7 @@ impl PreparedPane {
 struct ComposedPane {
     frame: Arc<Frame>,
     rect: [f32; 4],
+    clip: [f32; 4],
     dim: Option<rustty_render::Color>,
 }
 
@@ -394,7 +400,10 @@ impl ComposedFrame {
         self.frame.size == size
             && self.panes.len() == panes.len()
             && self.panes.iter().zip(panes).all(|(old, new)| {
-                Arc::ptr_eq(&old.frame, &new.frame) && old.rect == new.rect && old.dim == new.dim
+                Arc::ptr_eq(&old.frame, &new.frame)
+                    && old.rect == new.rect
+                    && old.clip == new.clip
+                    && old.dim == new.dim
             })
     }
 
@@ -404,11 +413,11 @@ impl ComposedFrame {
     ) -> std::result::Result<Self, rustty_render::ComposeError> {
         let mut frame = Frame::empty(size);
         for pane in &panes {
-            frame.append_clipped(&pane.frame, [pane.rect[0], pane.rect[1]], pane.rect)?;
+            frame.append_clipped(&pane.frame, [pane.rect[0], pane.rect[1]], pane.clip)?;
             if let Some(color) = pane.dim {
                 frame
                     .quads
-                    .push(rustty_render::Quad::solid(pane.rect, color));
+                    .push(rustty_render::Quad::solid(pane.clip, color));
             }
         }
         Ok(Self {
@@ -426,6 +435,9 @@ struct Host {
     accesskit_active: bool,
     fonts: rustty_render::Renderer,
     rects: BTreeMap<Id, egui::Rect>,
+    pane_order: Vec<Id>,
+    modal_pane: Option<Id>,
+    overlay_panes: std::collections::BTreeSet<Id>,
     prepared: BTreeMap<Id, PreparedPane>,
     composed: Option<ComposedFrame>,
     pane_prepares: u64,
@@ -476,10 +488,23 @@ impl Host {
         self.pane_at(self.mouse)
     }
     fn pane_at(&self, position: Pos2) -> Option<Id> {
-        self.rects
+        let content = egui::Rect::from_min_size(
+            Pos2::new(self.content.x, self.content.y),
+            Vec2::new(self.content.width, self.content.height),
+        );
+        topmost_pane(
+            &self.pane_order,
+            &self.rects,
+            content,
+            position,
+            self.modal_pane,
+        )
+    }
+    fn ordered_rects(&self) -> Vec<(Id, egui::Rect)> {
+        self.pane_order
             .iter()
-            .find(|(_, rect)| rect.contains(position))
-            .map(|(&id, _)| id)
+            .filter_map(|id| Some((*id, *self.rects.get(id)?)))
+            .collect()
     }
     fn ui_input(&self) -> bool {
         self.search_focus.is_some() || self.modal_input()
@@ -497,6 +522,22 @@ impl Host {
             self.window.request_redraw();
         }
     }
+}
+
+fn topmost_pane(
+    order: &[Id],
+    rects: &BTreeMap<Id, egui::Rect>,
+    content: egui::Rect,
+    position: Pos2,
+    modal: Option<Id>,
+) -> Option<Id> {
+    if !content.contains(position) {
+        return None;
+    }
+    order.iter().rev().copied().find(|id| {
+        modal.is_none_or(|modal| modal == *id)
+            && rects.get(id).is_some_and(|rect| rect.contains(position))
+    })
 }
 
 struct DirectoryBadge {
@@ -635,6 +676,10 @@ struct ThemePreview {
 
 struct App {
     deck: deck_host::Connection,
+    tmuxx: Option<rustty::tmuxx::Connection>,
+    tmuxx_mapping: rustty_app::tmuxx_workspace::Mapping,
+    tmuxx_instance: String,
+    tmuxx_smoke: Option<PathBuf>,
     loaded: LoadedConfig,
     config_loader: config::ConfigLoader,
     config_args: Vec<String>,
@@ -671,15 +716,21 @@ pub fn run() -> Result<()> {
     let mut args = std::env::args().skip(1).collect::<Vec<_>>();
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!(
-            "Rustty — native Rust terminal\n\nUsage: rustty [--config-file=PATH] [--key=value] [-e COMMAND ...]\n       rustty --config-info\n\nRustty settings override Ghostty settings. See crates/rustty-app/README.md."
+            "Rustty — native Rust terminal\n\nUsage: rustty [--config-file=PATH] [--key=value] [-e COMMAND ...]\n       rustty --tmuxx=embedded|unix:PATH|ssh:HOST|system-ssh:HOST\n       rustty --config-info\n\nRustty settings override Ghostty settings. See crates/rustty-app/README.md."
         );
         return Ok(());
     }
+    let tmuxx_mode = args
+        .iter()
+        .find_map(|arg| arg.strip_prefix("--tmuxx=").map(str::to_owned));
+    args.retain(|arg| !arg.starts_with("--tmuxx="));
     let show_config = args.iter().any(|arg| arg == "--config-info");
     args.retain(|arg| arg != "--config-info");
     // Keep this policy available while Smoke::step temporarily owns the fixture.
-    let background_smoke = std::env::var_os("RUSTTY_SMOKE_DIR").is_some()
-        && std::env::var_os("RUSTTY_SMOKE_OFFSCREEN").is_some();
+    let tmuxx_smoke = std::env::var_os("RUSTTY_TMUXX_SMOKE_DIR").map(PathBuf::from);
+    let background_smoke = tmuxx_smoke.is_some()
+        || (std::env::var_os("RUSTTY_SMOKE_DIR").is_some()
+            && std::env::var_os("RUSTTY_SMOKE_OFFSCREEN").is_some());
     let mut builder = EventLoop::<Event>::with_user_event();
     #[cfg(target_os = "macos")]
     if background_smoke {
@@ -738,7 +789,7 @@ pub fn run() -> Result<()> {
     if let Some(smoke) = &smoke {
         state_path = smoke.directory.join("workspace.json");
     }
-    let workspace = if smoke.is_some() {
+    let mut workspace = if smoke.is_some() {
         Workspace::default()
     } else if loaded.config.window_save_state != config::WindowSaveState::Never {
         match Workspace::load(&state_path) {
@@ -752,6 +803,127 @@ pub fn run() -> Result<()> {
         Workspace::default()
     };
     let proxy = event_loop.create_proxy();
+    let mut tmuxx_mapping = rustty_app::tmuxx_workspace::Mapping::default();
+    let tmuxx = if let Some(mode) = tmuxx_mode {
+        let wake_proxy = proxy.clone();
+        let wake = Arc::new(move || {
+            let _ = wake_proxy.send_event(Event::Tmuxx);
+        });
+        let connection = if mode == "embedded" {
+            let endpoint = if let Some(path) = std::env::var_os("TMUXX_ENDPOINT") {
+                PathBuf::from(path)
+            } else {
+                #[cfg(target_os = "macos")]
+                let user = unsafe { libc::geteuid() }.to_string();
+                #[cfg(target_os = "windows")]
+                let user = std::env::var("USERNAME").unwrap_or_default();
+                let directory = std::env::temp_dir().join(format!("tmuxx-{user}"));
+                std::fs::create_dir_all(&directory)?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
+                }
+                directory.join("default.native")
+            };
+            let initial = if tmuxx_smoke.is_some() {
+                vec![b"/bin/sh".to_vec()]
+            } else {
+                match loaded
+                    .config
+                    .initial_command
+                    .as_ref()
+                    .or(loaded.config.command.as_ref())
+                {
+                    Some(config::Command::Shell(command)) => vec![command.as_bytes().to_vec()],
+                    Some(config::Command::Direct(argv)) => {
+                        argv.iter().map(|arg| arg.as_bytes().to_vec()).collect()
+                    }
+                    None => Vec::new(),
+                }
+            };
+            rustty::tmuxx::Connection::embedded_with_command(&endpoint, wake, initial)?
+        } else if let Some(host) = mode.strip_prefix("system-ssh:") {
+            rustty::tmuxx::Connection::system_ssh(host, wake)?
+        } else if let Some(host) = mode.strip_prefix("ssh:") {
+            rustty::tmuxx::Connection::ssh(host, wake)?
+        } else {
+            #[cfg(unix)]
+            {
+                rustty::tmuxx::Connection::unix(
+                    Path::new(
+                        mode.strip_prefix("unix:")
+                            .ok_or("expected --tmuxx=embedded, unix:PATH or ssh:HOST")?,
+                    ),
+                    wake,
+                )?
+            }
+            #[cfg(not(unix))]
+            {
+                return Err("expected --tmuxx=embedded or ssh:HOST".into());
+            }
+        };
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while connection.graph().is_none() {
+            if Instant::now() > deadline {
+                return Err("timed out waiting for tmuxx snapshot".into());
+            }
+            let errors = connection.errors();
+            if !errors.is_empty() {
+                return Err(errors.join("; ").into());
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        if let Some(directory) = &tmuxx_smoke {
+            std::fs::create_dir_all(directory)?;
+            connection.command([
+                "split-window",
+                "-h",
+                "/bin/sh",
+                "-c",
+                r"printf '\033[2J\033[HNative tmuxx pane B\n'; sleep 30",
+            ])?;
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while connection.graph().is_none_or(|graph| graph.panes.len() < 2) {
+                if Instant::now() > deadline {
+                    return Err("tmuxx smoke split did not appear".into());
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            if std::env::var_os("RUSTTY_TMUXX_SMOKE_FLOATING").is_some() {
+                connection.command([
+                    "break-pane",
+                    "-W",
+                    "-s",
+                    "%1",
+                    "-x",
+                    "42",
+                    "-y",
+                    "10",
+                    "-X",
+                    "-2",
+                    "-Y",
+                    "4",
+                ])?;
+                while connection.graph().is_none_or(|graph| {
+                    !graph
+                        .windows
+                        .iter()
+                        .any(|window| window.layout.contains("\"z\""))
+                }) {
+                    if Instant::now() > deadline {
+                        return Err("tmuxx smoke floating pane did not appear".into());
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
+        }
+        workspace = Workspace::default();
+        tmuxx_mapping.apply(&mut workspace, &connection.graph().unwrap())?;
+        Some(connection)
+    } else {
+        None
+    };
     let context = egui::Context::default();
     context.set_theme(ui_theme(&loaded.config));
     configure_ui_fonts(&context);
@@ -801,9 +973,14 @@ pub fn run() -> Result<()> {
     let close_at = std::env::var("RUSTTY_SMOKE_SECONDS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
-        .map(|s| now + Duration::from_secs(s));
+        .map(|s| now + Duration::from_secs(s))
+        .or_else(|| tmuxx_smoke.as_ref().map(|_| now + Duration::from_secs(5)));
     let mut app = App {
         deck: deck_host::Connection::default(),
+        tmuxx_smoke: tmuxx_smoke.clone(),
+        tmuxx_instance: tmuxx.as_ref().map_or_else(String::new, |c| c.instance()),
+        tmuxx,
+        tmuxx_mapping,
         loaded,
         config_loader,
         config_args: args,
@@ -843,6 +1020,11 @@ pub fn run() -> Result<()> {
     }
     if let Some(error) = app.smoke_error {
         return Err(error.into());
+    }
+    if let Some(directory) = tmuxx_smoke
+        && !directory.join("result.json").is_file()
+    {
+        return Err("tmuxx native smoke did not capture a frame".into());
     }
     if app.smoke.is_some() {
         return Err("native smoke exited before completing its checks".into());
@@ -1024,6 +1206,9 @@ impl App {
             .get_or_insert_with(|| Instant::now() + Duration::from_millis(500));
     }
     fn remember(&mut self) {
+        if self.tmuxx.is_some() {
+            return;
+        }
         if !self.config().undo_timeout.is_zero() {
             self.history.push((
                 Instant::now() + self.config().undo_timeout,
@@ -1115,25 +1300,41 @@ impl App {
                     .is_some_and(|tab| tab.focused == id)
         });
         let host_state = (visible, focused, color_scheme(self.config_loader.dark_mode));
-        let session = match Session::spawn(
-            self.config(),
-            SessionOptions {
-                working_directory: Some(directory.clone()),
-                command,
-                resources: self.resources.clone(),
-                color_scheme: Some(host_state.2),
-                visible: host_state.0,
-                focused: host_state.1,
-                ..Default::default()
-            },
-            wake,
-        ) {
+        let created = if let Some(connection) = &self.tmuxx {
+            Session::attach_tmuxx(
+                connection,
+                *self
+                    .tmuxx_mapping
+                    .panes
+                    .get(&id)
+                    .ok_or("missing tmuxx pane mapping")?,
+                wake,
+            )
+        } else {
+            Session::spawn(
+                self.config(),
+                SessionOptions {
+                    working_directory: Some(directory.clone()),
+                    command,
+                    resources: self.resources.clone(),
+                    color_scheme: Some(host_state.2),
+                    visible: host_state.0,
+                    focused: host_state.1,
+                    ..Default::default()
+                },
+                wake,
+            )
+        };
+        let session = match created {
             Ok(session) => session,
             Err(error) => {
                 self.failed_panes.insert(id, error.to_string());
                 return Err(error.into());
             }
         };
+        if self.tmuxx.is_some() {
+            session.set_host_state(host_state.0, host_state.1, host_state.2)?;
+        }
         if let Some(diagnostic) = session.shell().diagnostic()
             && !self.errors.iter().any(|error| error == diagnostic)
         {
@@ -1253,6 +1454,9 @@ impl App {
             accesskit_active: false,
             fonts,
             rects: BTreeMap::new(),
+            pane_order: Vec::new(),
+            modal_pane: None,
+            overlay_panes: std::collections::BTreeSet::new(),
             prepared: BTreeMap::new(),
             composed: None,
             pane_prepares: 0,
@@ -1354,6 +1558,9 @@ impl App {
 
     fn save(&mut self) {
         self.save_at = None;
+        if self.tmuxx.is_some() {
+            return;
+        }
         if self.config().window_save_state != config::WindowSaveState::Never
             && let Err(error) = self.workspace.save(&self.state_path)
         {
@@ -1363,6 +1570,13 @@ impl App {
     fn write(&mut self, pane: Id, bytes: Vec<u8>) {
         if let Some(pane) = self.panes.get_mut(&pane)
             && let Err(error) = pane.write(bytes)
+        {
+            self.errors.push(error.to_string());
+        }
+    }
+    fn send_input(&mut self, pane: Id, input: SessionInput) {
+        if let Some(pane) = self.panes.get_mut(&pane)
+            && let Err(error) = pane.send_input(input)
         {
             self.errors.push(error.to_string());
         }
@@ -1403,13 +1617,11 @@ impl App {
             host.repaint();
             return;
         }
-        // Encode the captured data with the destination's current paste mode.
-        let bytes = terminal.encode_paste(&paste.data);
         terminal.screen_mut().viewport_offset = 0;
         terminal.screen_mut().selection = None;
         drop(terminal);
         self.terminal_input(host, paste.pane);
-        self.write(paste.pane, bytes);
+        self.send_input(paste.pane, SessionInput::Paste(paste.data));
         host.repaint();
     }
     fn open_url(&mut self, host: &mut Host, uri: String, cwd: PathBuf, approved: bool) {
@@ -1496,6 +1708,15 @@ impl App {
         Ok(emitted)
     }
     fn focus_pane(&mut self, window: Id, pane: Id) {
+        if let Some(connection) = &self.tmuxx
+            && let Some(pid) = self.tmuxx_mapping.panes.get(&pane)
+            && self.focused(window) != Some(pane)
+            && let Err(error) =
+                connection.command(["select-pane".into(), "-t".into(), format!("%{pid}")])
+        {
+            self.errors.push(error.to_string());
+        }
+
         if let Some(previous) = self.focused(window).filter(|&id| id != pane)
             && let Some(state) = self.panes.get_mut(&previous)
         {
@@ -1913,7 +2134,7 @@ impl App {
             .windows
             .iter()
             .flat_map(|window| &window.tabs)
-            .flat_map(|tab| tab.root.panes())
+            .flat_map(|tab| tab.pane_ids())
             .filter(|id| {
                 self.panes.get(id).is_some_and(|pane| {
                     pane.agent.is_registered() || pane.deck_progress.state().is_some()
@@ -2339,9 +2560,7 @@ impl App {
                 if let ReadResult::Success(success) = &mut result {
                     success.remember = remember && read.can_remember;
                 }
-                session
-                    .terminal()
-                    .map(|mut terminal| Some(terminal.reply_clipboard_read(read, result)))
+                session.reply_clipboard_read(read, result)
             }
             vt::Effect::ClipboardWrite(write) => {
                 let mut result = if allow {
@@ -2354,9 +2573,7 @@ impl App {
                 if let WriteResult::Success { remember: grant } = &mut result {
                     *grant = remember && write.can_remember;
                 }
-                session
-                    .terminal()
-                    .map(|mut terminal| terminal.reply_clipboard_write(write, result))
+                session.reply_clipboard_write(write, result)
             }
             _ => return,
         };
@@ -2436,7 +2653,7 @@ impl App {
                 Action::CloseSurface if !exits_app => focused.into_iter().collect::<Vec<_>>(),
                 Action::CloseTab if !exits_app => self
                     .tab(host.id)
-                    .map(|tab| tab.root.panes())
+                    .map(|tab| tab.pane_ids())
                     .unwrap_or_default(),
                 Action::CloseWindow if !exits_app => self
                     .index(host.id)
@@ -2444,7 +2661,7 @@ impl App {
                         self.workspace.windows[i]
                             .tabs
                             .iter()
-                            .flat_map(|t| t.root.panes())
+                            .flat_map(|t| t.pane_ids())
                             .collect()
                     })
                     .unwrap_or_default(),
@@ -2473,6 +2690,19 @@ impl App {
                 host.repaint();
                 return true;
             }
+        }
+        if let Some(connection) = &self.tmuxx
+            && let Some(command) = self.tmuxx_mapping.action(&self.workspace, host.id, &action)
+        {
+            match command {
+                Ok(argv) => {
+                    if let Err(error) = connection.command(argv) {
+                        self.errors.push(error.to_string());
+                    }
+                }
+                Err(error) => self.errors.push(error),
+            }
+            return true;
         }
         if exits_app {
             // Closing the last window quits the app. Save its intact layout,
@@ -2746,6 +2976,22 @@ impl App {
             }
             Action::ToggleOutliner => {
                 self.toggle_outliner(event_loop);
+            }
+            Action::TogglePanePersistence => {
+                if let Some(connection) = &self.tmuxx
+                    && connection.persistence_survives_app()
+                    && let Some(view) = focused
+                    && let Some(pid) = self.tmuxx_mapping.panes.get(&view)
+                    && let Some(graph) = connection.graph()
+                    && let Some(pane) = graph.panes.iter().find(|p| p.id == *pid)
+                    && let Some(session) = self.panes.get(&view).map(|p| &p.session)
+                {
+                    if let Err(error) = session.set_persistent(!pane.persistent) {
+                        self.errors.push(error.to_string());
+                    }
+                } else {
+                    self.errors.push("To keep a pane across app restarts, create it in a standalone tmuxx connection.".into());
+                }
             }
             Action::TogglePin => {
                 if let Some(pane) = focused {
@@ -3424,6 +3670,15 @@ impl App {
                 return true;
             }
         }
+        if let Some(connection) = &self.tmuxx
+            && self.windows.is_empty()
+            && matches!(action, Action::NewWindow | Action::NewTab)
+        {
+            if let Err(error) = connection.command(["new-session", "-d"]) {
+                self.errors.push(error.to_string());
+            }
+            return true;
+        }
         if action == Action::ToggleOutliner {
             self.toggle_outliner(event_loop);
             return true;
@@ -3495,16 +3750,29 @@ impl App {
     ) -> bool {
         let ui_input = host.ui_input();
         let search_input = host.search_focus.is_some() && !host.modal_input();
-        if input::key_is_consumed(
-            &mut host.consumed_keys,
-            key.physical_key,
-            key.state,
-            ui_input && !search_input,
-        ) && !(search_input && key.repeat)
+        let owner_key = !ui_input
+            && self
+                .tab(host.id)
+                .and_then(|tab| tab.modal_overlay())
+                .is_some_and(|modal| {
+                    modal_captures_key(modal, &key.logical_key, host.modifiers.state())
+                });
+        if owner_key {
+            host.sequence.clear();
+            host.sequence_len = 0;
+        }
+        if !owner_key
+            && input::key_is_consumed(
+                &mut host.consumed_keys,
+                key.physical_key,
+                key.state,
+                ui_input && !search_input,
+            )
+            && !(search_input && key.repeat)
         {
             return !ui_input;
         }
-        if key.state == ElementState::Pressed && !host.composing {
+        if key.state == ElementState::Pressed && !host.composing && !owner_key {
             let candidates = if host.sequence_len == 0 {
                 (0..self.config().keybinds.len()).collect::<Vec<_>>()
             } else {
@@ -3560,12 +3828,14 @@ impl App {
             }
         }
         let ui_input = host.ui_input();
-        if input::key_is_consumed(
-            &mut host.consumed_keys,
-            key.physical_key,
-            key.state,
-            ui_input,
-        ) {
+        if !owner_key
+            && input::key_is_consumed(
+                &mut host.consumed_keys,
+                key.physical_key,
+                key.state,
+                ui_input,
+            )
+        {
             return !ui_input;
         }
         let Some(id) = self.focused(host.id) else {
@@ -3586,18 +3856,48 @@ impl App {
                 ),
             };
             let event = input::terminal_key(key, host.modifiers, host.composing, options)?;
-            Some(input::encode_terminal_key(&mut terminal, &event, options))
+            let bytes = input::encode_terminal_key(&mut terminal, &event, options);
+            Some((bytes, SessionInput::Key { event, options }))
         });
-        if let Some(bytes) = bytes {
+        if let Some((bytes, input)) = bytes {
             if key.state == ElementState::Pressed && !bytes.is_empty() {
                 self.terminal_input(host, id);
             }
-            self.write(id, bytes);
+            self.send_input(id, input);
         }
         host.repaint();
         // Discard the native translation now, before a later event can open Find.
         true
     }
+}
+
+fn modal_captures_key(
+    modal: &workspace::Overlay,
+    key: &winit::keyboard::Key,
+    modifiers: winit::keyboard::ModifiersState,
+) -> bool {
+    use winit::keyboard::{Key, ModifiersState, NamedKey};
+    modal.capture_keys
+        || (modal.close_cancel
+            && ((key == &Key::Named(NamedKey::Escape) && modifiers.is_empty())
+                || (modifiers == ModifiersState::CONTROL
+                    && matches!(key, Key::Character(text) if text == "c"))))
+}
+
+fn modal_outside_click(
+    rect: Option<&egui::Rect>,
+    content: Rect,
+    mouse: Pos2,
+    action: vt::MouseAction,
+    button: Option<vt::MouseButton>,
+) -> bool {
+    action == vt::MouseAction::Press
+        && matches!(
+            button,
+            Some(vt::MouseButton::Left | vt::MouseButton::Middle | vt::MouseButton::Right)
+        )
+        && content.contains([mouse.x, mouse.y])
+        && rect.is_some_and(|rect| !rect.contains(mouse))
 }
 
 fn reveal(screen: &mut vt::Screen, point: vt::GridPoint) {
@@ -3668,7 +3968,7 @@ impl App {
             .tabs
             .iter()
             .filter(|tab| state.tabs.len() > 1 && tab.id == active.id)
-            .flat_map(|tab| tab.root.panes())
+            .flat_map(|tab| tab.pane_ids())
             .map(|id| {
                 let label = self
                     .panes
@@ -3924,9 +4224,10 @@ impl App {
                         width: content.width(),
                         height: content.height(),
                     };
-                    let layout = active
-                        .visible_tree(host.peek.is_some())
-                        .layout(host.content);
+                    let layout = active.layout(host.content, host.peek.is_some());
+                    host.pane_order = layout.iter().map(|(id, _)| *id).collect();
+                    host.modal_pane = active.modal_pane();
+                    host.overlay_panes = active.overlays.iter().map(|overlay| overlay.pane).collect();
                     let [r, g, b] = config.background.to_array();
                     let gutter = Color32::from_rgba_unmultiplied(
                         r,
@@ -3957,13 +4258,25 @@ impl App {
                     host.prepared.retain(|id, _| host.rects.contains_key(id));
                     let mut composed = None;
                     let mut accessible = Vec::new();
+                    if let Some(connection) = &self.tmuxx
+                        && let Some(session) = self.tmuxx_mapping.sessions.get(&host.id)
+                    {
+                        let metrics = host.fonts.metrics();
+                        let (cols, rows) = self.tab(host.id).map(|tab| rustty_app::tmuxx_workspace::grid_size(
+                            &tab.root, host.content,
+                            [metrics.cell_width as f32 / scale, metrics.cell_height as f32 / scale],
+                            [config.window_padding_x.start + config.window_padding_x.end,
+                             config.window_padding_y.start + config.window_padding_y.end + header_height],
+                        )).unwrap_or((80, 24));
+                        if let Err(error) = connection.view_size(*session, cols, rows, metrics.cell_width.min(u16::MAX.into()) as u16, metrics.cell_height.min(u16::MAX.into()) as u16) { render_error = Some(error.to_string()); }
+                    }
                     let mut terminal_ime_rect = None;
                     // An atlas eviction can happen halfway through a multi-pane frame.
                     // Rebuild against its new generation before handing a frame to WGPU.
                     for attempt in 0..2 {
                         let mut composition = Vec::with_capacity(host.rects.len());
                         accessible.clear();
-                        for (&id, &rect) in &host.rects {
+                        for (id, rect) in host.ordered_rects() {
                             let Some(pane) = self.panes.get_mut(&id) else {
                                 continue;
                             };
@@ -4151,6 +4464,10 @@ impl App {
                                     physical.x,
                                     physical.y,
                                 ],
+                                clip: {
+                                    let clip = rect.intersect(content);
+                                    [clip.left() * scale, clip.top() * scale, clip.width().max(0.0) * scale, clip.height().max(0.0) * scale]
+                                },
                                 dim: (id != focused && config.unfocused_split_opacity < 1.0).then(
                                     || {
                                         let color = config
@@ -4161,7 +4478,7 @@ impl App {
                                     },
                                 ),
                             });
-                            accessible.push((id, rect));
+                            accessible.push((id, rect.intersect(content)));
                             if id == focused && !pane.exited {
                                 terminal_ime_rect = Some(prepared.ime_rect);
                             }
@@ -4236,7 +4553,7 @@ impl App {
                                 egui::StrokeKind::Inside,
                             );
                         }
-                        if active.root.panes().len() > 1 {
+                        if active.pane_ids().len() > 1 {
                             let selected = host
                                 .peek
                                 .map(|peek| peek.target == id)
@@ -4266,7 +4583,7 @@ impl App {
                             pane.activity.reset_progress_animation();
                         }
                     }
-                    for (&id, &rect) in &host.rects {
+                    for (id, rect) in host.ordered_rects() {
                         if let Some(error) = self.failed_panes.get(&id) {
                             ui.scope_builder(
                                 egui::UiBuilder::new().max_rect(rect.shrink(20.0)),
@@ -4332,7 +4649,7 @@ impl App {
                         }
                     }
                     let mut quadrants = BTreeMap::<Id, egui::Rect>::new();
-                    for (&pane, &rect) in &host.rects {
+                    for (pane, rect) in host.ordered_rects() {
                         if let Some(quadrant) = active.root.quadrant(pane) {
                             quadrants
                                 .entry(quadrant)
@@ -4387,7 +4704,7 @@ impl App {
                             .paint(ui);
                         }
                     }
-                    for (&id, &bounds) in &host.rects {
+                    for (id, bounds) in host.ordered_rects() {
                         let Some(pane) = self.panes.get(&id) else {
                             continue;
                         };
@@ -4453,7 +4770,7 @@ impl App {
                         }
                     });
                 }
-                for (&id, &bounds) in &host.rects {
+                for (id, bounds) in host.ordered_rects() {
                     let Some(pane) = self.panes.get_mut(&id) else {
                         continue;
                     };
@@ -4728,6 +5045,26 @@ impl App {
             )?;
             host.capture = false;
         }
+        if let Some(directory) = &self.tmuxx_smoke
+            && self.started.elapsed() > Duration::from_secs(1)
+            && !directory.join("result.json").exists()
+            && host.prepared.len() >= 2
+        {
+            let state = self.painter.render_state().ok_or("GPU unavailable")?;
+            smoke::capture(
+                &state,
+                &primitives,
+                &output.textures_delta,
+                [size.width, size.height],
+                output.pixels_per_point,
+                &directory.join("window.png"),
+            )?;
+            let result = serde_json::json!({ "panes": host.prepared.len(), "windows": self.workspace.windows.len(), "instance": self.tmuxx_instance, "errors": self.errors, "hidden": !host.window.is_visible().unwrap_or(false), "focused": host.window.has_focus(), "floating_panes": host.overlay_panes.len(), "draw_order": host.pane_order });
+            std::fs::write(
+                directory.join("result.json"),
+                serde_json::to_vec_pretty(&result)?,
+            )?;
+        }
         if offscreen.is_some() || self.background_smoke && !self.painter.is_software() {
             let state = self.painter.render_state().ok_or("GPU unavailable")?;
             smoke::submit_offscreen(
@@ -4752,6 +5089,14 @@ impl App {
         host.frames += 1;
         host.last_frame_started = Some(now);
         host.deadline = animation_deadline;
+        if self
+            .tmuxx_smoke
+            .as_ref()
+            .is_some_and(|directory| !directory.join("result.json").exists())
+        {
+            let deadline = now + Duration::from_millis(100);
+            host.deadline = Some(host.deadline.map_or(deadline, |old| old.min(deadline)));
+        }
         if let Some(deadline) = host.focus_hint.deadline(now) {
             host.deadline = Some(host.deadline.map_or(deadline, |old| old.min(deadline)));
         }
@@ -5103,6 +5448,13 @@ impl App {
             return None;
         }
         let divider = host.divider_drag.or_else(|| {
+            if host.modal_pane.is_some()
+                || host
+                    .hovered_pane()
+                    .is_some_and(|id| host.overlay_panes.contains(&id))
+            {
+                return None;
+            }
             self.tab(host.id)?.visible_tree(false).divider_at(
                 host.content,
                 [host.mouse.x, host.mouse.y],
@@ -5209,7 +5561,25 @@ impl App {
                     Axis::Horizontal => (host.mouse.x - bounds.x) / bounds.width,
                     Axis::Vertical => (host.mouse.y - bounds.y) / bounds.height,
                 };
-                if let Some(tab) = self.tab_mut(host.id) {
+                if let Some(connection) = &self.tmuxx {
+                    if let Some((pane, axis, total)) = self.tmuxx_mapping.dividers.get(&id) {
+                        let amount =
+                            (ratio.clamp(0.01, 0.99) * *total as f32).round().max(1.0) as u32;
+                        if let Err(error) = connection.command([
+                            "resize-pane".into(),
+                            "-t".into(),
+                            format!("%{pane}"),
+                            if *axis == Axis::Horizontal {
+                                "-x".into()
+                            } else {
+                                "-y".into()
+                            },
+                            amount.to_string(),
+                        ]) {
+                            self.errors.push(error.to_string());
+                        }
+                    }
+                } else if let Some(tab) = self.tab_mut(host.id) {
                     tab.root.set_ratio(id, ratio);
                 }
                 self.changed();
@@ -5220,7 +5590,34 @@ impl App {
         if host.ui_areas.contains(host.mouse) {
             return;
         }
-        if !host.modal_input() && host.peek.is_none() {
+        if !host.modal_input()
+            && let Some(modal) = self.tab(host.id).and_then(|tab| tab.modal_overlay())
+            && modal.close_click
+            && modal_outside_click(
+                host.rects.get(&modal.pane),
+                host.content,
+                host.mouse,
+                action,
+                button,
+            )
+            && let Some(pane) = self.tmuxx_mapping.panes.get(&modal.pane)
+            && let Some(connection) = &self.tmuxx
+        {
+            if let Err(error) =
+                connection.command(["kill-pane".into(), "-t".into(), format!("%{pane}")])
+            {
+                self.errors.push(error.to_string());
+            }
+            host.mouse_button = None;
+            return;
+        }
+        if !host.modal_input()
+            && host.peek.is_none()
+            && host.modal_pane.is_none()
+            && !host
+                .hovered_pane()
+                .is_some_and(|id| host.overlay_panes.contains(&id))
+        {
             let divider = self.tab(host.id).and_then(|tab| {
                 tab.visible_tree(false)
                     .divider_at(host.content, [host.mouse.x, host.mouse.y], 3.0)
@@ -5323,7 +5720,7 @@ impl App {
                 },
             );
             drop(terminal);
-            self.write(id, bytes);
+            self.send_input(id, SessionInput::Mouse(bytes));
             // Mouse reporting does not change the local screen; PTY output will repaint it.
             if action != vt::MouseAction::Move || !self.errors.is_empty() {
                 host.repaint();
@@ -5429,7 +5826,7 @@ impl ApplicationHandler<Event> for App {
                 Err(error) => self.errors.push(error),
             }
         }
-        if self.workspace.windows.iter().all(|w| w.quick) {
+        if self.tmuxx.is_none() && self.workspace.windows.iter().all(|w| w.quick) {
             self.add_window(false);
         }
         self.reconcile(event_loop);
@@ -5442,6 +5839,46 @@ impl ApplicationHandler<Event> for App {
     }
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
         match event {
+            Event::Tmuxx => {
+                let mut lifecycle = Vec::new();
+                if let Some(connection) = &self.tmuxx {
+                    self.errors.extend(connection.errors());
+                    let instance = connection.instance();
+                    if self.tmuxx_instance != instance {
+                        self.tmuxx_instance = instance;
+                        self.tmuxx_mapping = Default::default();
+                        self.workspace.windows.clear();
+                    }
+                    if let Some(graph) = connection.graph() {
+                        if let Err(error) = self.tmuxx_mapping.apply(&mut self.workspace, &graph) {
+                            self.errors.push(error);
+                        }
+                        lifecycle = graph.panes.iter().map(|p| (p.id, p.status)).collect();
+                    }
+                }
+                self.reconcile(event_loop);
+                for (view, remote) in &self.tmuxx_mapping.panes {
+                    if let Some(pane) = self.panes.get_mut(view)
+                        && let Some((_, status)) = lifecycle.iter().find(|(id, _)| id == remote)
+                    {
+                        if let Some(status) = status {
+                            pane.exited = true;
+                            pane.running = None;
+                            pane.agent.clear();
+                            pane.deck_progress.clear();
+                            pane.exit_message =
+                                Some(format!("Exited {status} — press any key to close"));
+                        } else if pane.exited {
+                            pane.exited = false;
+                            pane.exit_message = None;
+                            pane.started = Instant::now();
+                        }
+                    }
+                }
+                for host in self.windows.values() {
+                    host.repaint();
+                }
+            }
             Event::DeckWake => {}
             Event::Output(id) => {
                 if let Some(smoke) = &mut self.smoke {
@@ -5939,15 +6376,18 @@ impl ApplicationHandler<Event> for App {
                         host.preedit.clear();
                         host.preedit_selection = None;
                         if let Some(pane) = self.focused(host.id)
-                            && let Some(bytes) = self.panes.get(&pane).and_then(|pane| {
-                                let terminal = pane.session.terminal().ok()?;
-                                Some(input::terminal_text(&terminal, text))
-                            })
+                            && !text.is_empty()
                         {
-                            if !bytes.is_empty() {
-                                self.terminal_input(&mut host, pane);
-                            }
-                            self.write(pane, bytes);
+                            self.terminal_input(&mut host, pane);
+                            let mut event = vt::KeyEvent::new(vt::Key::Unidentified);
+                            event.text = Some(text);
+                            self.send_input(
+                                pane,
+                                SessionInput::Key {
+                                    event,
+                                    options: Default::default(),
+                                },
+                            );
                         }
                     }
                     Ime::Disabled => {
@@ -6243,7 +6683,7 @@ fn closes_last_window(workspace: &Workspace, window_id: Id, action: &Action) -> 
     let closes_window = match action {
         Action::CloseWindow => true,
         Action::CloseTab => window.tabs.len() == 1,
-        Action::CloseSurface => window.tabs.len() == 1 && window.tabs[0].root.panes().len() == 1,
+        Action::CloseSurface => window.tabs.len() == 1 && window.tabs[0].pane_ids().len() == 1,
         _ => false,
     };
     closes_window
@@ -6529,7 +6969,7 @@ fn window_visible_panes(
     window
         .tabs
         .get(window.active_tab)
-        .map_or_else(Vec::new, |tab| tab.visible_tree(peek).panes())
+        .map_or_else(Vec::new, |tab| tab.visible_panes(peek))
 }
 
 fn initial_visible_panes(window: &WindowState, native: Option<(bool, bool, bool)>) -> Vec<Id> {
@@ -6925,6 +7365,146 @@ mod tests {
     }
 
     #[test]
+    fn floating_composition_clips_without_moving_origin_and_hit_testing_uses_stack_order() {
+        let content = egui::Rect::from_min_size(Pos2::new(0.0, 10.0), Vec2::new(100.0, 100.0));
+        let rects = BTreeMap::from([
+            (90, content),
+            (
+                2,
+                egui::Rect::from_min_size(Pos2::new(-5.0, 5.0), Vec2::new(30.0, 30.0)),
+            ),
+            (
+                1,
+                egui::Rect::from_min_size(Pos2::new(5.0, 15.0), Vec2::new(30.0, 30.0)),
+            ),
+        ]);
+        let order = [90, 1, 2];
+        assert_eq!(
+            topmost_pane(&order, &rects, content, Pos2::new(10.0, 20.0), None),
+            Some(2)
+        );
+        assert_eq!(
+            topmost_pane(&order, &rects, content, Pos2::new(30.0, 20.0), None),
+            Some(1)
+        );
+        assert_eq!(
+            topmost_pane(&order, &rects, content, Pos2::new(-1.0, 20.0), None),
+            None
+        );
+        assert_eq!(
+            topmost_pane(&order, &rects, content, Pos2::new(70.0, 50.0), Some(2)),
+            None
+        );
+        let mut frame = Frame::empty([30, 30]);
+        frame.quads.push(rustty_render::Quad::solid(
+            [0.0, 0.0, 30.0, 30.0],
+            rustty_render::Color::rgb([255; 3]),
+        ));
+        let composed = ComposedFrame::new(
+            [100, 110],
+            vec![ComposedPane {
+                frame: Arc::new(frame),
+                rect: [-5.0, 5.0, 30.0, 30.0],
+                clip: [0.0, 10.0, 25.0, 25.0],
+                dim: None,
+            }],
+        )
+        .unwrap();
+        assert_eq!(composed.frame.quads[0].rect, [0.0, 10.0, 25.0, 25.0]);
+    }
+
+    #[test]
+    fn modal_key_and_outside_click_policies_reach_the_owner() {
+        use winit::keyboard::{Key, ModifiersState as Mods, NamedKey};
+        let mut modal = workspace::Overlay {
+            pane: 7,
+            x: 2,
+            y: 2,
+            cols: 4,
+            rows: 4,
+            z: 0,
+            modal: true,
+            capture_keys: false,
+            close_click: true,
+            close_cancel: true,
+        };
+        assert!(modal_captures_key(
+            &modal,
+            &Key::Named(NamedKey::Escape),
+            Mods::empty()
+        ));
+        assert!(modal_captures_key(
+            &modal,
+            &Key::Character("c".into()),
+            Mods::CONTROL
+        ));
+        assert!(!modal_captures_key(
+            &modal,
+            &Key::Named(NamedKey::Escape),
+            Mods::ALT
+        ));
+        assert!(!modal_captures_key(
+            &modal,
+            &Key::Character("c".into()),
+            Mods::CONTROL | Mods::SHIFT
+        ));
+        assert!(!modal_captures_key(
+            &modal,
+            &Key::Character("x".into()),
+            Mods::CONTROL
+        ));
+        modal.capture_keys = true;
+        assert!(modal_captures_key(
+            &modal,
+            &Key::Character("x".into()),
+            Mods::CONTROL
+        ));
+        let content = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 100.0,
+        };
+        let rect = egui::Rect::from_min_size(Pos2::new(20.0, 20.0), Vec2::new(40.0, 40.0));
+        let outside = Pos2::new(70.0, 70.0);
+        assert!(modal_outside_click(
+            Some(&rect),
+            content,
+            outside,
+            vt::MouseAction::Press,
+            Some(vt::MouseButton::Left)
+        ));
+        assert!(!modal_outside_click(
+            Some(&rect),
+            content,
+            Pos2::new(30.0, 30.0),
+            vt::MouseAction::Press,
+            Some(vt::MouseButton::Left)
+        ));
+        assert!(!modal_outside_click(
+            Some(&rect),
+            content,
+            outside,
+            vt::MouseAction::Release,
+            Some(vt::MouseButton::Left)
+        ));
+        assert!(!modal_outside_click(
+            Some(&rect),
+            content,
+            outside,
+            vt::MouseAction::Press,
+            Some(vt::MouseButton::WheelUp)
+        ));
+        assert!(!modal_outside_click(
+            Some(&rect),
+            content,
+            Pos2::new(110.0, 110.0),
+            vt::MouseAction::Press,
+            Some(vt::MouseButton::Left)
+        ));
+    }
+
+    #[test]
     fn retained_window_frames_follow_panes_geometry_and_split_dimming() {
         let mut frame = Frame::empty([20, 20]);
         frame.quads.push(rustty_render::Quad::solid(
@@ -6935,6 +7515,7 @@ mod tests {
         let pane = || ComposedPane {
             frame: Arc::clone(&frame),
             rect: [10.0, 15.0, 20.0, 20.0],
+            clip: [10.0, 15.0, 20.0, 20.0],
             dim: None,
         };
         let retained = ComposedFrame::new([60, 60], vec![pane()]).unwrap();

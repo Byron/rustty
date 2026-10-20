@@ -319,7 +319,7 @@ pub fn breadcrumb(tab: &Tab, labels: &HashMap<Id, String>) -> Vec<Row> {
 }
 
 fn tab_rows(tab: &Tab, labels: &HashMap<Id, String>, depth: usize, active: bool) -> Vec<Row> {
-    let layout = tab.root.layout(Rect::UNIT);
+    let layout = tab.layout(Rect::UNIT, true);
     let mut rows = Vec::new();
     let mut seen = HashSet::new();
     for &(pane, rect) in &layout {
@@ -435,10 +435,15 @@ pub fn target_window(workspace: &Workspace, target: Target) -> Option<Id> {
     workspace.windows.iter().find_map(|window| {
         match target {
             Target::Window(id) => window.id == id,
-            Target::Tab(tab) | Target::Quad { tab, .. } | Target::Pane { tab, .. } => window
-                .tabs
-                .iter()
-                .any(|candidate| candidate.id == tab && target_node(candidate, target).is_some()),
+            Target::Tab(tab) | Target::Quad { tab, .. } | Target::Pane { tab, .. } => {
+                window.tabs.iter().any(|candidate| {
+                    candidate.id == tab
+                        && match target {
+                            Target::Pane { pane, .. } => candidate.contains(pane),
+                            _ => target_node(candidate, target).is_some(),
+                        }
+                })
+            }
         }
         .then_some(window.id)
     })
@@ -470,6 +475,23 @@ fn select_in_window(window: &mut WindowState, target: Target, active: bool) -> O
         }
     };
     let tab = window.tabs.get_mut(index)?;
+    if let Target::Pane { pane, .. } = target
+        && tab.overlays.iter().any(|overlay| overlay.pane == pane)
+    {
+        if active && window.active_tab == index && tab.focused == pane {
+            return None;
+        }
+        window.active_tab = index;
+        tab.focus(pane);
+        return Some(tab.focused);
+    }
+    if matches!(target, Target::Window(_) | Target::Tab(_)) && tab.root.panes().is_empty() {
+        if active && window.active_tab == index {
+            return None;
+        }
+        window.active_tab = index;
+        return Some(tab.focused);
+    }
     let node = target_node(tab, target)?;
     if active && window.active_tab == index && node.contains(tab.focused) {
         return None;

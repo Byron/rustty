@@ -378,6 +378,10 @@ fn actions() -> Vec<(&'static str, Action)> {
         ("Toggle Quick Terminal", Action::ToggleQuickTerminal),
         ("Toggle Outliner", Action::ToggleOutliner),
         ("Toggle Pin", Action::TogglePin),
+        (
+            "Toggle Keep Pane After Disconnect",
+            Action::TogglePanePersistence,
+        ),
         ("Undo Layout Change", Action::Undo),
         ("Redo Layout Change", Action::Redo),
     ];

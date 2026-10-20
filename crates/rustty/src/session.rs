@@ -16,6 +16,39 @@ pub use shell::{ShellInfo, ShellKind, default_shell, resolve_shell};
 
 const MAX_PENDING_INPUT: usize = 16 * 1024 * 1024;
 
+/// Preserve terminal input kind across queues and native multiplexer connections.
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(tag = "kind", content = "data")]
+pub enum Input {
+    Key {
+        event: rustty_vt::KeyEvent,
+        options: rustty_vt::KeyEncodeOptions,
+    },
+    Text(Vec<u8>),
+    Paste(Vec<u8>),
+    Mouse(Vec<u8>),
+    Reply(Vec<u8>),
+}
+impl Input {
+    pub fn queue_bytes(&self) -> usize {
+        match self {
+            Self::Key { event, .. } => {
+                std::mem::size_of::<Self>() + event.text.as_ref().map_or(0, String::len)
+            }
+            Self::Text(data) | Self::Paste(data) | Self::Mouse(data) | Self::Reply(data) => {
+                data.len()
+            }
+        }
+    }
+    pub fn encode(&self, terminal: &Terminal) -> Vec<u8> {
+        match self {
+            Self::Key { event, options } => terminal.encode_key_with_options(event, *options),
+            Self::Paste(data) => terminal.encode_paste(data),
+            Self::Text(data) | Self::Mouse(data) | Self::Reply(data) => data.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SessionOptions {
     pub cols: u16,
@@ -83,15 +116,16 @@ pub struct Snapshot {
 
 pub struct Session {
     shell: ShellInfo,
+    attached: Option<crate::tmuxx::PaneInput>,
     terminal: Arc<Mutex<Terminal>>,
     input: mpsc::Sender<IoCommand>,
     events: mpsc::Receiver<SessionEvent>,
     pending_input: Arc<PendingInput>,
     exited: Arc<AtomicBool>,
     #[cfg(target_os = "macos")]
-    close_child: std::os::unix::net::UnixStream,
+    close_child: Option<std::os::unix::net::UnixStream>,
     #[cfg(not(target_os = "macos"))]
-    close_child: mpsc::Sender<()>,
+    close_child: Option<mpsc::Sender<()>>,
 }
 
 fn error(error: impl std::fmt::Display) -> io::Error {
@@ -308,13 +342,33 @@ impl Session {
             })??;
 
         Ok(Self {
+            attached: None,
             shell,
             terminal,
             input,
             events,
             pending_input,
             exited,
-            close_child,
+            close_child: Some(close_child),
+        })
+    }
+
+    pub fn attach_tmuxx(
+        connection: &crate::tmuxx::Connection,
+        pane: u64,
+        wake: Arc<dyn Fn() + Send + Sync>,
+    ) -> io::Result<Self> {
+        let attached = connection.attach(pane, wake)?;
+        let (input, _) = mpsc::channel();
+        Ok(Self {
+            shell: ShellInfo::new(vec!["tmuxx".into()], "attached server pane".into()),
+            attached: Some(attached.input),
+            terminal: attached.terminal,
+            input,
+            events: attached.events,
+            pending_input: Arc::new(PendingInput::default()),
+            exited: attached.exited,
+            close_child: None,
         })
     }
 
@@ -329,6 +383,9 @@ impl Session {
     }
 
     pub fn reset_terminal(&self) -> io::Result<()> {
+        if self.attached.is_some() {
+            return Err(error("reset belongs to the tmuxx pane owner"));
+        }
         let mut terminal = self.terminal()?;
         terminal.reset_from_host();
         self.input
@@ -336,8 +393,29 @@ impl Session {
             .map_err(error)
     }
 
+    pub fn write_input(&self, input: &Input) -> io::Result<()> {
+        if let Some(attached) = &self.attached
+            && attached.is_native()
+        {
+            return attached.write_input(input);
+        }
+        if let Some(attached) = &self.attached
+            && let Input::Mouse(data) | Input::Reply(data) = input
+        {
+            return attached.write_direct(data);
+        }
+        if let Input::Text(data) | Input::Mouse(data) | Input::Reply(data) = input {
+            return self.write(data);
+        }
+        let bytes = input.encode(&*self.terminal()?);
+        self.write(&bytes)
+    }
+
     /// Queues the entire input or returns an error without sending any prefix.
     pub fn write(&self, bytes: &[u8]) -> io::Result<()> {
+        if let Some(attached) = &self.attached {
+            return attached.write(bytes);
+        }
         if self.exited.load(Ordering::Acquire) {
             return Err(io::ErrorKind::BrokenPipe.into());
         }
@@ -351,6 +429,13 @@ impl Session {
     }
 
     pub fn resize(&self, cols: u16, rows: u16, width_px: u16, height_px: u16) -> io::Result<()> {
+        if self.attached.is_some() {
+            let mut terminal = self.terminal()?;
+            let width = u32::from(terminal.cols) * (u32::from(width_px) / u32::from(cols.max(1)));
+            let height = u32::from(terminal.rows) * (u32::from(height_px) / u32::from(rows.max(1)));
+            terminal.set_pixel_size(width, height);
+            return Ok(());
+        }
         let cols = cols.max(1);
         let rows = rows.max(1);
         let size = query::Size {
@@ -402,6 +487,13 @@ impl Session {
         focused: bool,
         scheme: query::ColorScheme,
     ) -> io::Result<()> {
+        if let Some(attached) = &self.attached {
+            return attached.set_host_state(
+                visible && focused,
+                visible,
+                scheme == query::ColorScheme::Dark,
+            );
+        }
         let mut terminal = self.terminal()?;
         let mut reply = Vec::new();
         if terminal.query_defaults.color_scheme != Some(scheme) {
@@ -431,6 +523,44 @@ impl Session {
         Ok(())
     }
 
+    pub fn set_persistent(&self, persistent: bool) -> io::Result<()> {
+        self.attached
+            .as_ref()
+            .ok_or_else(|| error("this pane has no tmuxx owner"))?
+            .set_persistent(persistent)
+    }
+
+    pub fn reply_clipboard_read(
+        &self,
+        read: rustty_vt::clipboard::Read,
+        result: rustty_vt::clipboard::ReadResult,
+    ) -> io::Result<Option<Vec<u8>>> {
+        if let Some(attached) = &self.attached {
+            attached.host_reply(
+                Effect::ClipboardRead(read),
+                crate::tmuxx::HostResponse::Read(result),
+            )?;
+            Ok(None)
+        } else {
+            Ok(Some(self.terminal()?.reply_clipboard_read(read, result)))
+        }
+    }
+    pub fn reply_clipboard_write(
+        &self,
+        write: rustty_vt::clipboard::Write,
+        result: rustty_vt::clipboard::WriteResult,
+    ) -> io::Result<Option<Vec<u8>>> {
+        if let Some(attached) = &self.attached {
+            attached.host_reply(
+                Effect::ClipboardWrite(write),
+                crate::tmuxx::HostResponse::Write(result),
+            )?;
+            Ok(None)
+        } else {
+            Ok(self.terminal()?.reply_clipboard_write(write, result))
+        }
+    }
+
     pub fn snapshot(&self) -> io::Result<Snapshot> {
         let terminal = self.terminal()?;
         Ok(Snapshot {
@@ -456,12 +586,21 @@ impl Session {
     /// Request asynchronous termination. The host can close all sessions, then
     /// give their `has_exited` flags a bounded drain period before process exit.
     pub fn close(&self) {
+        if let Some(attached) = &self.attached {
+            attached.release();
+            self.exited.store(true, Ordering::Release);
+            return;
+        }
         self.pending_input.close();
         let _ = self.input.send(IoCommand::Close);
         #[cfg(target_os = "macos")]
-        let _ = self.close_child.shutdown(std::net::Shutdown::Write);
+        if let Some(close) = &self.close_child {
+            let _ = close.shutdown(std::net::Shutdown::Write);
+        }
         #[cfg(not(target_os = "macos"))]
-        let _ = self.close_child.send(());
+        if let Some(close) = &self.close_child {
+            let _ = close.send(());
+        }
     }
     pub fn apply_config(&self, config: &Config) -> io::Result<()> {
         let mut terminal = self.terminal()?;

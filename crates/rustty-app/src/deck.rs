@@ -364,7 +364,7 @@ impl Dashboard {
             .windows
             .iter()
             .flat_map(|w| &w.tabs)
-            .flat_map(|t| t.root.panes())
+            .flat_map(|t| t.pane_ids())
             .collect();
         if self.gesture.is_some_and(|source| {
             source.target.is_none_or(|target| {

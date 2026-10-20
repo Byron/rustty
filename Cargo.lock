@@ -3238,11 +3238,19 @@ dependencies = [
 name = "rustty"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.3.4",
  "libc",
  "portable-pty",
  "rustty-parser",
- "rustty-vt",
+ "serde",
  "serde_json",
+ "tmuxx-client",
+ "tmuxx-command",
+ "tmuxx-layout",
+ "tmuxx-protocol",
+ "tmuxx-runtime",
+ "tmuxx-terminal",
+ "tmuxx-vendored-rustty-vt",
 ]
 
 [[package]]
@@ -3311,8 +3319,8 @@ name = "rustty-render"
 version = "0.1.0"
 dependencies = [
  "rustty-font",
- "rustty-vt",
  "serde_json",
+ "tmuxx-vendored-rustty-vt",
 ]
 
 [[package]]
@@ -3827,6 +3835,123 @@ checksum = "be4d6b5f19ff7664e8c98d03e2139cb510db9b0a60b55f8e8709b689d939b6bc"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "tmuxx-client"
+version = "0.1.0"
+dependencies = [
+ "tmuxx-command",
+ "tmuxx-protocol",
+]
+
+[[package]]
+name = "tmuxx-command"
+version = "0.1.0"
+
+[[package]]
+name = "tmuxx-config"
+version = "0.1.0"
+dependencies = [
+ "tmuxx-command",
+ "tmuxx-format",
+]
+
+[[package]]
+name = "tmuxx-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tmuxx-command",
+ "tmuxx-config",
+ "tmuxx-format",
+ "tmuxx-layout",
+ "tmuxx-terminal",
+]
+
+[[package]]
+name = "tmuxx-format"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tmuxx-command",
+ "unicode-width",
+]
+
+[[package]]
+name = "tmuxx-layout"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "tmuxx-protocol"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "tmuxx-runtime"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "portable-pty",
+ "serde",
+ "serde_json",
+ "tmuxx-command",
+ "tmuxx-config",
+ "tmuxx-core",
+ "tmuxx-format",
+ "tmuxx-protocol",
+ "tmuxx-terminal",
+ "tmuxx-unix-ipc",
+]
+
+[[package]]
+name = "tmuxx-terminal"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tmuxx-vendored-rustty-vt",
+]
+
+[[package]]
+name = "tmuxx-unix-ipc"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "tmuxx-vendored-rustty-parser"
+version = "0.1.0"
+dependencies = [
+ "simdutf8",
+ "wide",
+]
+
+[[package]]
+name = "tmuxx-vendored-rustty-vt"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "bytemuck",
+ "crc32c",
+ "flate2",
+ "libc",
+ "lz4_flex",
+ "png",
+ "regex",
+ "serde",
+ "serde_json",
+ "tmuxx-vendored-rustty-parser",
+ "wide",
 ]
 
 [[package]]
