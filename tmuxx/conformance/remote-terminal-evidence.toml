@@ -1,0 +1,246 @@
+# Complete original terminal matrices run the Rust implementation natively on Windows.
+# Only C observations and hashed POSIX reference helpers execute on the remote oracle.
+
+[[suites]]
+id = "windows-remote-c-capture"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 46
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "capture_reference", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "capture-reference-rendition"
+tests = ["capture_sgr_color_origins_spaces_escaping_and_ranges_match_c"]
+description = "Exact C capture bytes for ANSI and palette spelling, RGB and underline colors, trailing spaces, escaped output, history and reversed bounds."
+
+[[suites.assertions]]
+id = "capture-reference-alternate"
+tests = ["capture_alternate_history_and_missing_screen_match_c"]
+description = "Exact C active and saved-screen captures including retained history, missing alternate error and quiet output."
+
+[[suites.assertions]]
+id = "capture-reference-pending"
+tests = ["capture_pending_input_raw_and_octal_match_c"]
+description = "Exact C unfinished CSI/OSC bytes including already-executed control, high byte and backslash octal escaping."
+
+[[suites.assertions]]
+id = "capture-reference-allocations"
+tests = ["capture_allocations_after_erase_insert_delete_and_scroll_match_c"]
+description = "Exact C allocated and used row lengths after partial/full erase, insertion, deletion, scrolling and snapshot restoration."
+
+[[suites.assertions]]
+id = "capture-reference-backgrounds"
+tests = ["capture_background_erase_and_scroll_colors_match_c"]
+description = "Exact C erase-background color spelling through scrolling and styled blank cells."
+
+[[suites.assertions]]
+id = "capture.c-hyperlink-list-numbering-and-mode-fallback"
+tests = ["capture_hyperlink_lists_numbers_and_flag_precedence_match_c"]
+description = "Exact C hyperlink URI lists retain implicit/explicit identity, deduplication, history/range/line numbering and H precedence over pending captures. An absent tmux mode uses the base screen. Snapshots preserve the results."
+
+[[suites.assertions]]
+id = "capture.c-line-flags-and-history-timestamps"
+tests = ["capture_line_flags_follow_shell_wrap_hyperlink_and_extended_lifetimes", "capture_line_timestamps_follow_history_entry_and_reflow"]
+description = "C line numbering/flags match for shell markers, wrapping, overwritten links and extended cells across width changes. History-entry timestamps obey bounded C wall-time relations and an exact Rust owner clock, survive reflow/restore and remain zero for unscrolled visible rows."
+
+[[suites.assertions]]
+id = "capture.c-reflow-allocation-bytes"
+tests = ["capture_reflow_allocations_preserve_spaces_colors_and_snapshot_bytes"]
+description = "Exact C N/eN/NT/NJ/L bytes through repeated 20/8/32/6/20-column resizes retain spare-space allocation, used trailing blanks, wide-cell repair, original color spelling and snapshot continuation."
+
+[[suites.assertions]]
+id = "capture.c-clear-history-and-shared-hyperlink-reset"
+tests = ["clear_history_hyperlinks_keep_text_and_remove_saved_screen_links_like_c"]
+description = "clear-history retains visible text; -H removes active and saved-screen links. Open hyperlink state crosses alternate-screen switches like C, and restored captures keep the same bytes."
+
+[[suites.assertions]]
+id = "capture.c-retained-tabs-edits-and-normal-reflow"
+tests = ["retained_tabs_capture_overwrite_erase_shift_and_snapshot_match_c", "retained_tabs_reflow_at_normal_widths_matches_c"]
+description = "Exact C p/N/eNT/eNJ/L capture bytes retain HT spelling, styled/link cells, printable/wide overwrite, partial erase/insertion/deletion fragments, repeated20/8/32/10/20-column reflow and native snapshots. CSI forward-tab remains ignored like C."
+
+[[suites.assertions]]
+id = "capture.native-safe-tab-reflow-difference"
+tests = ["native_reflow_expands_oversized_and_fractured_tabs_without_hidden_cells"]
+description = "Independent C/native outcomes for an8-column tab narrowed to6 and a tab fractured by partial erase: native expands to bounded visible cells, preserves X throughout resize/restore, and records C's hidden-cell/extra-wrap behavior without normalization."
+
+[[suites]]
+id = "windows-remote-c-raw-capture"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 2
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "raw_capture_reference", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "terminal.c-raw-grid-shared-cell-fields"
+tests = ["raw_grid_common_cells_styles_links_markers_and_snapshot_match_c"]
+description = "Raw-grid C record grammar preserves overlapping text/SGR/RGB/256-color/underline/hyperlink/wide/combining/shell-marker fields, flag precedence and snapshots. Allocator and cell encoding differences have a separate assertion."
+
+[[suites.assertions]]
+id = "terminal.native-raw-grid-storage-differences"
+tests = ["raw_grid_native_slot_charset_tab_and_clear_differences_are_explicit"]
+description = "Independent exact C/R examples expose actual native full row slots, Unicode ACS glyphs, expanded tabs and native blank-cell diagnostics; these representations are deliberate differences, not literal raw-grid parity."
+
+[[suites]]
+id = "windows-remote-c-graphics-replies"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 3
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "images_reference", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "terminal.c-kitty-query-upload-placement-and-chunking"
+tests = ["kitty_upload_query_chunking_and_placement_match_c"]
+description = "Requires a separately built C oracle with image_support=1; selected Kitty upload/query/chunk/placement/PNG/zlib/failure replies, invalid source crop and unsupported deletion-selector/layer/number errors, silent successful deletion, cursor/title/text agree at chunk sizes1/7/all. A nonimage C reference fails explicitly."
+
+[[suites.assertions]]
+id = "difference.graphics-rustty-image-number-and-layer-extensions"
+tests = ["kitty_image_numbers_and_nonzero_layers_are_explicit_rustty_extensions"]
+description = "Exact explicit difference: current image-enabled C returns ENOTSUP for image-number/nonzero-z uploads; Rust accepts and retains one native image. This does not grant C parity."
+
+[[suites.assertions]]
+id = "terminal.c-per-image-size-limits"
+tests = ["per_image_encoded_accumulated_decoded_and_placement_limits_match_c"]
+description = "Seven boundary fixtures compare C replies for encoded chunks, accumulated decoded bytes, and placement geometry under image-size-limit."
+
+[[suites]]
+id = "windows-remote-c-graphics-pixels"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 7
+remote_observers = ["image_pixels", "image_pixels", "image_pixels", "image_pixels", "image_pixels", "image_pixels", "image_pixels"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "images_pixels_reference", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "terminal.c-image-retained-pixels-and-lifecycle"
+tests = ["kitty_retained_pixels_clipping_alternate_and_respawn_match_c_redraw", "kitty_cross_screen_replacement_matches_c_redraw"]
+description = "C graphical PTY SIXEL redraws compare every opaque retained pixel and clipped position (RGB tolerance3 for SIXEL quantization) through narrowing/growing, named placement movement, alternate-screen switching/replacement, and pane respawn. Each Rust step also restores a checkpoint."
+
+[[suites.assertions]]
+id = "terminal.c-image-anchor-reflow"
+tests = ["kitty_image_anchor_reflow_between_wrapped_text_matches_c_redraw"]
+description = "An image between wrapped text follows C history/reflow through repeated16-to8-to16 column changes; compare actual rendered pixels and restored anchors."
+
+[[suites.assertions]]
+id = "terminal.c-kitty-crops-offsets-and-deletion-pixels"
+tests = ["kitty_source_crops_offsets_and_deletion_match_c_pixels"]
+description = "C redraw pixels compare source rectangles/clipping, cell pixel offsets/clamping and one-axis scaling; named/image/all deletion retains SIXEL, ignores missing IDs and preserves saved-primary placements after alternate-screen deletion. Every step restores identical native pixels."
+
+[[suites.assertions]]
+id = "terminal.snapshot-row-identities-and-settings"
+tests = ["snapshot_keeps_image_row_anchors_after_reflow", "snapshot_keeps_terminal_options_and_rejects_invalid_widths"]
+description = "Stable row IDs and image anchors survive native restore after reflow; terminal policies/Unicode widths survive, and malformed width ranges are rejected."
+
+[[suites]]
+id = "windows-remote-c-graphics-quota"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 14
+remote_observers = ["image_quota", "image_quota", "image_quota", "image_quota", "image_quota", "image_quota", "image_quota", "image_quota", "image_quota", "image_quota", "image_quota", "image_quota", "image_quota", "image_quota"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "images_quota_reference", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "terminal.c-global-image-lru-and-source-map"
+tests = ["global_image_sources_placements_queries_lru_and_bytes_match_c", "image_map_lifecycle_across_alternate_screen_and_ris_matches_c"]
+description = "Eleven C fixture groups across two pane PTYs compare source/placement counts, byte pressure, p-use LRU, temporary query admission, ancestor protection, failed replacement, unaddressable anonymous sources and lifetime, and the source map shared across alternate screens and RIS."
+
+[[suites]]
+id = "windows-remote-c-sixel-pixels"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 3
+remote_observers = ["image_pixels", "image_pixels", "image_pixels"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "images_pixels_reference", "sixel", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "terminal.c-sixel-decode-pixels-and-grid-lifetime"
+tests = ["sixel_decoding_palette_background_and_rejections_match_c_pixels", "sixel_transparent_overlap_erase_resize_scroll_and_lifetime_match_c_pixels", "sixel_snapshot_resumes_every_input_boundary_without_early_placement"]
+description = "Image-enabled C redraw pixels and exact cursor positions match RGB/HLS/undefined palettes, stray input, malformed/oversized raster/repeat rejection, opaque/transparent overlap, text/erase, resize recovery, alternate screens and scrolling. Every partial SIXEL byte boundary restores without early placement, including ESC before ST completion."
+
+[[suites]]
+id = "windows-remote-c-sixel-quota"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 3
+remote_observers = ["image_quota", "image_quota", "image_quota"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "images_quota_reference", "sixel", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "terminal.c-sixel-direct-source-quota"
+tests = ["sixel_direct_source_quota_overlap_and_text_release_match_c"]
+description = "Two C pane PTYs prove a SIXEL image consumes one source object, opaque overlap releases superseded sources, and text replacement frees its quota slot before subsequent Kitty admission."
+
+[[suites]]
+id = "windows-remote-c-shell-markers"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 1
+remote_observers = ["shell_output"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "shell_reference", "--", "--include-ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "terminal.c-osc133-retained-markers-and-output"
+tests = ["osc133_output_ranges_same_line_reflow_and_lost_history_match_c"]
+description = "Fifteen C fixtures compare exact primary/secondary prompt, command, output and status markers over 53 feed/resize observations, plus copy-output and native select-output text. Cases cover same-line markers, wide-character wrap padding, gaps, marker-only rows, unfinished output, newlines, lost history, previous output, EL preservation, ED clearing and RIS."
+
+[[suites.assertions]]
+id = "terminal.osc133-snapshot-boundaries-and-validation"
+tests = ["osc133_owner_effects_and_invalid_snapshot_markers_are_explicit", "osc133_snapshot_resumes_every_byte_boundary"]
+description = "Every partial OSC133 byte boundary survives JSON/native snapshot restore with exact output markers; invalid row IDs, marker flags and oversized columns are rejected. Owner effects retain prompt/command/status semantics and reject malformed command-line decoding."
+
+[[suites]]
+id = "windows-remote-c-native-input"
+kind = "remote-c-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 1
+remote_observers = ["native_input"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-terminal", "--test", "native_input_reference", "--", "--ignored", "--test-threads=1", "--nocapture"]
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "input.c-native-pointer-focus-and-paste-bytes"
+tests = ["native_pointer_focus_and_paste_bytes_match_c_application_modes"]
+description = "54 exact C child observations: disabled/normal/drag/all tracking, legacy/UTF8/SGR mouse formats, press/drag/release/move/wheel/control-alt events, DEC1004 focus, and bracketed/unbracketed paste with explicit equivalent LF policy. Restored shared VT produces the same bytes; native subscription gating and synchronized routing have separate actual Session tests."

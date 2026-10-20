@@ -1,0 +1,330 @@
+# Native application dispatch and owner startup are separate exact obligations.
+[[suites]]
+id = "windows-rustty-concurrent-launcher"
+kind = "rustty-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "rustty-app", "--lib", "tmuxx_launcher::tests::concurrent_empty_owner_bootstrap_and_reuse_keep_one_session_and_process", "--", "--exact"]
+timeout = 180
+env = {}
+
+[[suites.assertions]]
+id = "windows.rustty-concurrent-persistent-bootstrap"
+tests = ["tmuxx_launcher::tests::concurrent_empty_owner_bootstrap_and_reuse_keep_one_session_and_process"]
+description = "Concurrent native persistent startup against an empty owner creates exactly one session, pane and process. Subsequent connect_or_start reuses that owner, and bounded shutdown proves the original process exits. Descendant ownership has separate required suites."
+
+[[suites]]
+id = "windows-rustty-tmux-driver"
+kind = "rustty-cargo"
+platforms = ["win32"]
+profiles = ["windows"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "rustty-app", "--test", "tmuxx_driver", "--", "--test-threads=1"]
+timeout = 180
+env = {}
+
+[[suites.assertions]]
+id = "windows.rustty-tmux-dispatch-no-implicit-owner"
+tests = ["windows_gui_tmux_dispatch_reports_version_and_missing_bridge_never_starts_owner"]
+description = "The actual Windows Rustty executable dispatches its tmux driver, reports the engine version, and rejects a missing bridge instance without starting an owner or replacement application."
+
+[[suites.assertions]]
+id = "windows.rustty-driver-retained-process-and-views"
+tests = ["windows_gui_tmux_driver_owns_one_retained_process_across_local_and_stdio_views"]
+description = "The Windows Rustty driver owns one actual retained ConPTY process shared by local and binary stdio views. Exact process and output identity, retention and driver shutdown are checked under bounded fixture Job ownership; native desktop rendering remains a separate required assertion."
+
+# This custom Rustty harness is not libtest. Its exact completion record follows
+# eight actual bundled-ConPTY redraws; ignored/non-Windows invocations earn none.
+# It is one terminal assertion, not proof of packaging or desktop qualification.
+[[suites]]
+id = "windows-conpty-synchronized-output"
+kind = "rustty-cargo"
+harness = "rustty-windows-conpty"
+platforms = ["win32"]
+profiles = ["windows"]
+args = ["test", "--locked", "--offline", "-p", "rustty-app", "--test", "windows_conpty", "--", "--ignored"]
+env = {}
+timeout = 120
+
+[[suites.assertions]]
+id = "windows.conpty-synchronized-output-cursor-order"
+tests = ["windows_conpty::synchronized_redraws"]
+description = "The actual Rustty custom harness verifies eight bundled-ConPTY synchronized redraws and restored cursor state at every byte boundary. Requires the debug Rustty resource bundle. This does not prove native view rendering, runtime negative cases, or ownership."
+
+[[suites]]
+id = "windows-runtime"
+platforms = ["win32"]
+profiles = ["windows"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-runtime", "--lib", "--", "--test-threads=1"]
+env = {}
+timeout = 120
+
+[[suites.assertions]]
+id = "windows.pipe-fragmentation-identity-and-bounds"
+tests = ["windows::tests::names_preserve_unicode_and_metacharacters_without_aliases", "windows::tests::pipe_fragments_are_binary_exact_and_tokens_match", "windows::tests::absent_instance_does_not_launch_an_owner", "windows::tests::cancelling_idle_reads_and_slow_writes_is_bounded", "windows::tests::busy_admission_waits_for_the_same_listener_and_times_out_without_startup", "windows::tests::rapid_concurrent_admissions_preserve_each_binary_stream"]
+description = "Real local named pipes preserve binary fragments, verify matching account tokens, reject absent owners and cancel idle reads/slow writes. Busy admission waits only before handshake, has a finite deadline and preserves 32 concurrent binary streams without starting another owner. Instance names encode Unicode and shell metacharacters injectively. Separate cross-logon and unauthorized-token evidence is still required."
+
+[[suites.assertions]]
+id = "windows.atomic-spawn-job-ownership"
+tests = ["windows_job::tests::invalid_executable_returns_error_and_restores_thread_error_mode", "windows_job::tests::abrupt_owner_exit_cleans_process_created_before_registration", "windows_job::tests::cancellation_kills_descendants_and_preserves_unrelated_process", "windows_job::tests::shell_forms_preserve_unicode_metacharacters_binary_output_and_environment", "windows_job::tests::owned_stdio_preserves_binary_streams_and_cleans_during_spawn", "windows_job::conpty_tests::first_child_phase_and_descendants_are_owned_before_runtime_registration", "windows_job::conpty_tests::failed_spawn_reclaims_conpty_host_and_allows_fresh_spawn"]
+description = "Actual CreateProcessW job-list assignment owns descendants during startup and kills only owned processes. The pinned production ConPTY path checks its innermost kill-on-close job in the pane program's first test phase, creates foreground/background descendants without runtime registration, and proves their held handles and OpenConsole exit on owner-only death before outer cleanup. Actual invalid-PE CreateProcess failures preserve handle/process counts, reclaim their ConPTY host and allow a fresh spawn. cmd.exe/PowerShell shell jobs and binary-stdio helpers preserve Unicode/metacharacters, native environment names, all byte values and separate diagnostics."
+
+[[suites.assertions]]
+id = "windows.native-defaults-and-process-metadata"
+tests = ["defaults::windows_tests::account_profile_shell_and_editor_defaults_use_native_identity", "names::windows_tests::root_handle_metadata_tracks_native_cd_and_never_reuses_an_exited_pid", "scheduler::windows_job_directory_tests::scheduled_shell_falls_back_to_home_then_volume_root_with_matching_pwd"]
+description = "Windows account/profile/shell/editor defaults and retained-process metadata use native identity and exact Unicode paths. The documented root-process policy avoids pretending ConPTY exposes a POSIX foreground group."
+
+[[suites.assertions]]
+id = "windows.conpty-resource-hashes-and-negative-initialization"
+tests = ["windows_conpty::tests::conpty_sha256_uses_native_sha256", "windows_conpty::tests::incompatible_conpty_resources_fail_before_system_initialization", "windows_conpty::tests::missing_conpty_resources_fail_before_system_initialization"]
+description = "The shared initializer validates pinned resource identity, including same-length corruption, before API selection and rejects missing/incompatible resources. Separate shipped-executable and real ConPTY evidence is required."
+
+[[suites.assertions]]
+id = "windows.shared-terminal-snapshot-control-contracts"
+tests = ["snapshots::image_changes_refresh_native_graphs_including_other_pane_evictions", "snapshots::image_snapshots_stream_atomically_and_rejection_preserves_the_live_owner", "snapshots::native_byte_backlog_disconnects_before_record_capacity", "snapshots::one_large_snapshot_does_not_consume_the_slow_output_budget", "control::tests::pause_follows_reply_and_resume_does_not_replay_suppressed_output", "control::tests::subscriptions_report_initial_changes_and_each_link_index", "process::tests::stdin_chunks_enforce_ownership_and_resume_only_after_eof", "reports::tests::reports_follow_c_osc_framing_and_x11_channel_conversion", "view_state::tests::multiple_views_aggregate_focus_and_prefer_focused_theme"]
+description = "Shared control, snapshot/image, incremental stdin, terminal report and view-focus contracts execute natively on Windows. These backend tests do not substitute for desktop view evidence."
+
+[[suites]]
+id = "windows-cli"
+platforms = ["win32"]
+profiles = ["windows"]
+args = ["+1.95.0", "test", "--locked", "--offline", "-p", "tmuxx-cli", "--test", "windows", "--", "--test-threads=1"]
+env = {}
+timeout = 120
+
+[[suites.assertions]]
+id = "windows.live-native-bridge-shared-panes"
+tests = ["native_cli_and_fixed_stdio_bridge_share_live_panes", "native_control_and_binary_stdin_preserve_framing_and_shared_owner"]
+description = "Native CLI and fixed stdio bridge attach to the same live ConPTY pane/PID and duplicate window links. Bridge termination leaves owner/descendants running and Unicode input reaches the original application."
+
+[[suites.assertions]]
+id = "windows.live-protocol-fragments-eof-and-incarnations"
+tests = ["malformed_version_and_partial_eof_never_mutate_or_replace_owner", "replacement_incarnation_rejects_stale_mutations_and_discovery_is_live", "snapshot_stream_reconnect_preserves_shared_graph_and_live_processes"]
+description = "Real owner connections reject malformed/version/partial requests, drain ordered input EOF, refuse duplicate owners and stale-incarnation pipelined mutations, remove stale discovery, and reconnect byte-fragmented snapshots without replacing live panes or replaying mutations."
+
+[[suites.assertions]]
+id = "windows.standalone-owner-descendant-cleanup"
+tests = ["graceful_and_abrupt_owner_exit_reclaim_descendants_only"]
+description = "Graceful and abrupt standalone owner exits terminate foreground/background pane descendants while an unrelated process remains alive. App-owner and spawn-race checks are separate proof members."
+
+[[suites.assertions]]
+id = "windows.owner-rejects-missing-incompatible-runtime"
+tests = ["missing_and_modified_packaged_resources_fail_before_owner_start"]
+description = "The executable refuses explicit owner startup before creating an endpoint when bundled ConPTY resources are absent or incompatible."
+
+# Requires a real interactive Windows desktop, the two shipped bundles and a
+# prepared same-account OpenSSH logon. Missing access never counts as a skip-pass.
+[[suites]]
+id = "windows-desktop"
+kind = "windows-native-views"
+harness = "windows-external-json"
+platforms = ["win32"]
+profiles = ["windows"]
+args = []
+env = {}
+timeout = 180
+
+[[suites.assertions]]
+id = "windows.desktop-external-shared-duplicate-links"
+tests = ["windows_native_views::external_shared_duplicate_links"]
+description = "Actual native HWNDs render and reconcile external session/tab/split changes and shared/duplicate winlinks while keeping original live pane PIDs. Fresh screenshots and native view mappings are retained."
+
+[[suites.assertions]]
+id = "windows.desktop-app-owner-cleanup"
+tests = ["windows_native_views::graceful_app_owner_cleanup", "windows_native_views::abrupt_app_owner_descendant_cleanup", "windows_native_views::graceful_app_owner_descendant_cleanup"]
+description = "Graceful and abrupt exits of the actual packaged app owner reclaim recorded foreground/background descendants while an unrelated process survives; the fixture reports zero owned processes remaining. Atomic spawn-time assignment is a separate required check."
+
+[[suites.assertions]]
+id = "windows.desktop-standalone-retained-restart"
+tests = ["windows_native_views::standalone_retained_gui_restart", "windows_native_views::standalone_retained_abrupt_gui_restart"]
+description = "The packaged GUI attaches to an explicit standalone owner and restarts after both graceful exit and abrupt GUI death with the same retained pane processes, graph identity and output."
+
+[[suites.assertions]]
+id = "windows.desktop-persistent-owner-and-missing-attachment"
+tests = ["windows_native_views::persistent_gui_starts_shared_owner_and_retains_restart", "windows_native_views::missing_attachment_never_starts_owner"]
+description = "Actual --tmuxx=persistent desktop views start one shared daemon owner and reconnect after GUI restart to the same retained processes. Explicit attachment to a missing instance fails without starting any owner, GUI replacement or pane."
+
+[[suites.assertions]]
+id = "windows.shipped-gui-and-owner-resource-negatives"
+tests = ["windows_native_views::packaged_missing_incompatible_resources"]
+description = "Both shipped executables reject missing and same-length corrupt ConPTY resources, while their intact pinned bundles execute native panes."
+
+[[suites]]
+id = "windows-desktop-ssh"
+kind = "windows-ssh"
+harness = "windows-external-json"
+platforms = ["win32"]
+profiles = ["windows"]
+args = []
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "windows.real-unauthorized-and-network-denial"
+tests = ["windows_ssh::unauthorized_account_is_denied", "windows_ssh::direct_network_pipe_is_denied"]
+description = "A real distinct Windows account fails raw pipe access, and the authorized SSH account fails direct network named-pipe access. The unauthorized helper is bound to a fresh endpoint/incarnation/nonce and its exact source identity."
+
+[[suites.assertions]]
+id = "windows.real-desktop-local-pipe-ssh-shared-graph"
+tests = ["windows_ssh::desktop_cross_logon_shared_live_graph", "windows_ssh::desktop_reconciles_and_owned_processes_cleanup"]
+description = "Desktop and real no-PTY OpenSSH logons share the same account SID but different logon/session identities. Concurrent native GUI, local pipe and SSH clients see the same live pane PIDs/output and shared graph; actual HWND views reconcile and all fixture processes are reclaimed."
+
+[[suites.assertions]]
+id = "windows.real-rustty-ssh-view-and-helper-lifetime"
+tests = ["windows_ssh::second_rustty_native_viewer_reconciles_without_replacement", "windows_ssh::abrupt_ssh_viewer_reclaims_helpers_and_preserves_owner"]
+description = "A second actual Windows Rustty runs its native SSH adapter and per-window size clients through real OpenSSH into the existing desktop owner. Its native HWNDs render shared/duplicate links and new sessions/splits with the original pane PIDs. Graceful and abrupt viewer exit reclaim local SSH helpers and remote bridges while the desktop owner and jobs remain alive; abrupt cleanup is checked before fixture Job Objects close."
+
+[[suites.assertions]]
+id = "windows.real-rustty-command-ssh-view-and-helper-lifetime"
+tests = ["windows_ssh::trusted_rustty_command_preserves_shared_native_views", "windows_ssh::trusted_rustty_command_abrupt_cleanup_preserves_owner"]
+description = "A real native GUI sends its trusted --tmuxx-ssh-command through OpenSSH to a hash-verified Rustty tmux driver at a Unicode/metacharacter path, with instance selection carried separately in Hello. The restricted dispatcher validates the actual SSH command and denies altered commands; shared native views, resize and graceful/abrupt helper cleanup preserve the desktop owner and original live pane processes."
+
+[[suites.assertions]]
+id = "windows.real-ssh-bridge-shells-and-disconnect"
+tests = ["windows_ssh::disconnect_reconnect_preserves_owner_jobs", "windows_ssh::fixed_shell_forms_fragmentation_and_version_rejection"]
+description = "Real OpenSSH cmd.exe/PowerShell fixed bridge startup preserves protocol selection with Unicode/metacharacters; fragmentation and version errors do not create an owner, and termination/reconnection keeps the desktop owner and original jobs alive."
+
+[[suites]]
+id = "windows-desktop-input"
+kind = "windows-native-input"
+harness = "windows-external-json"
+platforms = ["win32"]
+profiles = ["windows"]
+args = []
+env = {}
+timeout = 120
+
+[[suites.assertions]]
+id = "windows.native-hwnd-keyboard-mouse-resize"
+tests = ["windows_native_input::keyboard_unicode", "windows_native_input::mouse_target_only", "windows_native_input::resize_live_panes"]
+description = "Real native HWND messages traverse Winit into existing tmuxx pane views: Unicode keyboard input, target-only SGR mouse and window resize update the original running panes. This is not evidence of installed-IME composition."
+
+[[suites.assertions]]
+id = "windows.native-clipboard-paste-and-fixture-cleanup"
+tests = ["windows_native_input::clipboard_paste_restore"]
+description = "With an initially empty clipboard, a private known test value follows the native paste route to the correct pane with bracketed-paste framing; cleanup verifies ownership and preserves newer user contents. No preexisting clipboard data is overwritten by the fixture."
+
+[[suites]]
+id = "windows-desktop-clipboard"
+kind = "windows-native-clipboard"
+harness = "windows-external-json"
+platforms = ["win32"]
+profiles = ["windows"]
+args = []
+env = {}
+timeout = 120
+
+[[suites.assertions]]
+id = "windows.native-osc52-host-effect-and-query-once"
+tests = ["windows_native_clipboard::osc52_write_elects_one_native_gui", "windows_native_clipboard::native_read_replies_once_to_original_pane", "windows_native_clipboard::reconnect_never_replays_host_effect_or_reply"]
+description = "An actual ConPTY application emits OSC52 into two real Windows Rustty GUI viewers with duplicate links. The focused/elected GUI performs one native clipboard write and read, the original live pane receives exactly one byte-exact reply, and GUI reconnect replays neither effect nor reply. Opt-in atomic clipboard guards require an initially empty clipboard, foreground owning HWND and expected sequence; exact known-value cleanup preserves any newer data, including same-HWND changes."
+
+[[suites]]
+id = "windows-desktop-ime"
+kind = "windows-native-ime"
+harness = "windows-external-json"
+platforms = ["win32"]
+profiles = ["windows"]
+args = ["--enable-existing-japanese-profile", "--qualify-safety"]
+env = {}
+timeout = 120
+
+[[suites.assertions]]
+id = "windows.real-ime-preedit-commit-and-restoration"
+tests = ["windows_native_ime::japanese_preedit_commit_original_pane", "windows_native_ime::profile_restored_and_owned_processes_clean"]
+description = "Real SendInput keyboard events drive the existing Japanese TSF engine in the owned foreground Rustty HWND. Nonempty Winit preedit stays local; the non-ASCII commit reaches the original live pane exactly once. A private profile journal and independent bounded watchdog restore the prior enabled state and registry after success, failure or interruption; all pane, GUI and watchdog processes must be gone. Requires explicit temporary-profile opt-in; no language installation or clipboard access."
+
+[[suites.assertions]]
+id = "windows.ime-fixture-restoration-safety"
+tests = ["windows_native_ime::test_missing_breakaway_aborts_before_any_profile_change", "windows_native_ime::test_unchanged_profile_restore_does_not_write_enable_value", "windows_native_ime::test_watchdog_ack_requires_live_escaped_process_and_exact_identity", "windows_native_ime::test_watchdog_restores_after_abrupt_fixture_exit"]
+description = "The explicitly prepared desktop executes all four safety regressions, including abrupt fixture death and escaped watchdog restoration. Ordinary CI runs only the mocked safety checks; skipped desktop tests never certify the Windows profile."
+
+[[suites]]
+id = "windows-hidden-native-frame"
+kind = "windows-native-frame"
+harness = "windows-external-json"
+platforms = ["win32"]
+profiles = ["native-views", "windows"]
+args = []
+env = {}
+timeout = 90
+
+[[suites.assertions]]
+id = "rustty.hidden-native-metal-frame"
+tests = ["desktop::hidden_native_frame"]
+description = "The legacy native-frame obligation uses Metal on macOS and the selected software renderer on Windows. A real packaged Windows Rustty creates a hidden, unfocused HWND, renders two native panes including a signed-origin clipped floating pane to a verified PNG in correct stacking order, and reports no graph or rendering errors; actual renderer and OS metadata are recorded."
+
+[[suites]]
+id = "windows-cli-process-lifetimes"
+kind = "windows-lifetime"
+harness = "windows-external-json"
+platforms = ["win32"]
+profiles = ["app-owned", "standalone", "native-views", "windows"]
+args = []
+env = {}
+timeout = 120
+
+[[suites.assertions]]
+id = "lifetime.abrupt-owner-pty-hangup"
+tests = ["abrupt_owner_death_closes_pty_and_foreground_descendants_without_harming_other_owner"]
+description = "TerminateProcess of the actual standalone owner closes its ConPTY and Job Object, terminating the foreground leader and descendant while a separate owner retains its original live pane PID and command connection. Exact process handles establish death before fixture cleanup."
+
+[[suites.assertions]]
+id = "lifetime.windows-job-owner-death"
+platforms = ["win32"]
+tests = ["killed_owner_watchdog_cleans_hup_ignoring_session_jobs_and_preserves_independent_sessions"]
+description = "The Windows owner-death obligation uses kill-on-close Job Objects. With the Windows owner suspended to prevent reaper interference, abrupt death terminates owned foreground/background process groups ignoring console control signals, with the pane leader either alive or already exited. An unrelated process and independently owned pane remain alive, and the killed endpoint rejects commands."
+
+[[suites.assertions]]
+id = "lifetime.killed-client-retention-links-detached-query"
+tests = ["killed_client_relaunch_retains_selected_linked_pane_and_detached_queries_run_once"]
+description = "TerminateProcess of a production native-stdio client removes the unretained pane and preserves acknowledged retained pane identity and exact shared links. With no native clients alive a real ConPTY application emits output and receives exactly one byte-exact terminal query reply, then a new production bridge reconnects to the same PID, output and snapshot graph."
+
+[[suites.assertions]]
+id = "lifetime.reused-endpoint-new-incarnation"
+tests = ["reused_endpoint_and_pane_id_have_a_new_server_incarnation"]
+description = "Killing and replacing a real packaged Windows owner at the same discovered named-pipe instance reuses pane0 with a different live process and a fresh server incarnation."
+
+[[suites]]
+id = "windows-cli-state"
+kind = "windows-cli-state"
+harness = "windows-external-json"
+platforms = ["win32"]
+profiles = ["command-control", "standalone", "windows"]
+args = []
+env = {}
+timeout = 120
+
+[[suites.assertions]]
+id = "cli.standard-socket-namespace-and-precedence"
+tests = ["default_and_label_sockets_use_tmux_namespace_with_separate_native_endpoint"]
+description = "Windows uses SID-qualified named pipes and a caller-private TMUXX_ENDPOINT default. Explicit -L or native endpoint selects the correct independently owned server; inherited Unix TMUX does not alias selection, incompatible selectors and Unix -S reject explicitly. The private fixture never takes over the desktop account's global default instance."
+
+[[suites.assertions]]
+id = "cli.native-control-wait-exit-flags"
+tests = ["explicit_native_control_wait_exit_observes_client_flags_and_newline"]
+description = "Actual Windows native command/control observes changing client flags, remains alive after percent-exit until the requested newline, then exits without harming the owner or live pane."
+
+[[suites.assertions]]
+id = "cli.native-control-capability-before-command"
+tests = ["native_control_rejects_old_servers_before_submitting_commands"]
+description = "A private same-account, local-only named-pipe peer advertises the legacy handshake without control_commands. The actual CLI rejects it with no stdout and closes without submitting any command bytes."
+
+[[suites.assertions]]
+id = "cli.clap-help-excluded-modes-and-errors"
+tests = ["clap_help_global_errors_and_excluded_modes_leave_no_server"]
+description = "Windows CLI help/version operate without an owner; invalid global arguments and excluded shell/log modes return stderr diagnostics and publish no private named-pipe endpoint."
+
+[[suites.assertions]]
+id = "cli.startup-error-cause-and-path-preservation"
+tests = ["startup_failure_reports_cause_and_preserves_existing_path"]
+description = "Explicit Windows owner startup rejects a regular file as a native endpoint with a concrete endpoint diagnostic, preserves its exact binary contents and leaves no published pipe."
+
+[[suites.assertions]]
+id = "cli.concurrent-startup-and-shutdown-lock-handoff"
+tests = ["startup_waits_for_a_closing_owner_lock_and_converges_concurrent_clients"]
+description = "After the old Windows owner closes, eight explicit owner starts contend for the same named-pipe kernel identity and elect exactly one replacement with a new incarnation. Eight concurrent clients each create one distinct pane; start/start-server command groups preserve the elected PID. Windows owner creation is explicit, as required by its product contract."
+
+[[suites.assertions]]
+id = "cli.registry-startup-and-invalid-group-rejection"
+tests = ["startup_uses_all_validated_command_metadata_and_never_starts_invalid_groups"]
+description = "A missing Windows owner produces an error and no implicit startup. After separate explicit startup, unique-prefix list-commands exposes registered metadata and a group containing invalid syntax creates no session."

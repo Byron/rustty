@@ -1,0 +1,15 @@
+[package]
+name = "tmuxx-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "ISC"
+
+[dependencies]
+tmuxx-command = { path = "../tmuxx-command" }
+tmuxx-format = { path = "../tmuxx-format" }
+tmuxx-config = { path = "../tmuxx-config" }
+tmuxx-layout = { path = "../tmuxx-layout" }
+tmuxx-terminal = { path = "../tmuxx-terminal" }
+serde.workspace = true
+serde_json.workspace = true

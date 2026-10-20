@@ -93,6 +93,11 @@ impl Default for Modes {
 }
 
 impl Modes {
+    /// Enumerate the supported ANSI/DEC keys without exposing storage layout.
+    pub fn iter(&self) -> impl Iterator<Item = (bool, u16)> + '_ {
+        keys()
+    }
+
     /// Native formatter order is ANSI first, then DEC, ascending by number.
     pub(crate) fn changed(&self) -> impl Iterator<Item = ((bool, u16), bool)> + '_ {
         keys().enumerate().filter_map(|(i, key)| {

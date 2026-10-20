@@ -1,0 +1,15 @@
+[package]
+name = "tmuxx-format"
+version.workspace = true
+edition.workspace = true
+license = "ISC"
+
+[dependencies]
+unicode-width = "0.2.2"
+tmuxx-command = { path = "../tmuxx-command" }
+
+[target.'cfg(any(unix, windows))'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+tmuxx-posix-regex = { path = "../../vendor/posix-regex" }

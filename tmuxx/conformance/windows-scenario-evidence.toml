@@ -1,0 +1,86 @@
+# Exact Windows/C counterparts; original Unix smoke scenarios remain required
+# on their platforms. No native observation bytes are normalized.
+[[suites]]
+id = "windows-command-scenarios"
+kind = "remote-c-scenarios"
+harness = "windows-external-json"
+platforms = ["win32"]
+profiles = ["windows"]
+reference_version = "tmux next-3.9"
+remote_config_env = "TMUXX_REMOTE_C_CONFIG"
+remote_fixtures = 12
+args = []
+env = {}
+timeout = 300
+
+[[suites.assertions]]
+id = "graph.create-split-rename"
+scenario_counterpart = "graph"
+tests = ["windows_scenarios::graph"]
+description = "The original create/split/window-rename command matrix compares exact IDs, links and indices from genuine C panes and real native ConPTY panes."
+
+[[suites.assertions]]
+id = "format.lookup-and-operators"
+scenario_counterpart = "format"
+tests = ["windows_scenarios::format"]
+description = "The original supplied-field, nested condition, comparison, alias and user-option expressions compare exact bytes from pinned C and native Windows owners."
+
+[[suites.assertions]]
+id = "terminal.capture-basic"
+scenario_counterpart = "capture"
+tests = ["windows_scenarios::capture"]
+description = "Real native ConPTY output and SGR produce exactly the original C PTY capture; child fixture implementation differs by OS, observations do not."
+
+[[suites.assertions]]
+id = "input.literal-roundtrip"
+scenario_counterpart = "input"
+tests = ["windows_scenarios::input"]
+description = "The same literal send-keys bytes reach a real native raw-console echo child and match the original C raw-PTY capture."
+
+[[suites.assertions]]
+id = "graph.link-move-unlink"
+scenario_counterpart = "linked-graph"
+tests = ["windows_scenarios::linked_graph"]
+description = "The complete existing link/rename/move/unlink matrix compares shared identities and surviving sessions against C using native panes."
+
+[[suites.assertions]]
+id = "graph.split-and-resize-geometry"
+scenario_counterpart = "geometry"
+tests = ["windows_scenarios::geometry"]
+description = "The complete existing before/default split and window-resize matrix compares exact native pane positions, dimensions and active identity against C."
+
+[[suites.assertions]]
+id = "options.reject-invalid-without-mutation"
+scenario_counterpart = "options"
+tests = ["windows_scenarios::options"]
+description = "The original numeric/choice invalid-option matrix retains exact before/after values and status, plus user-option append, on real native and C owners."
+
+[[suites.assertions]]
+id = "config.assignment-include-order"
+scenario_counterpart = "config-order"
+tests = ["windows_scenarios::config_order"]
+description = "The original prepare-time assignment/condition and nested include/queue matrix executes through each owner's own private source files and compares exact values."
+
+[[suites.assertions]]
+id = "terminal.capture-ranges-and-join"
+scenario_counterpart = "capture-ranges"
+tests = ["windows_scenarios::capture_ranges"]
+description = "The original bounds and joined-line capture commands compare actual native ConPTY and C PTY application output bytes."
+
+[[suites.assertions]]
+id = "graph.nested-layout-resize-and-zoom"
+scenario_counterpart = "nested-geometry"
+tests = ["windows_scenarios::nested_geometry"]
+description = "The complete original default/before split, custom-ratio, last-pane resize, zoom/unzoom and neighbor-removal matrix compares exact native and C geometry."
+
+[[suites.assertions]]
+id = "environment.scope-hidden-removal-child"
+scenario_counterpart = "environment"
+tests = ["windows_scenarios::environment"]
+description = "Global/session inheritance, hidden/removal state, shell quoting and the original real-child environment observation compare byte-exactly against C on native Windows."
+
+[[suites.assertions]]
+id = "options.inferred-scope-and-unset"
+scenario_counterpart = "scoped-options"
+tests = ["windows_scenarios::scoped_options"]
+description = "The original inferred option scopes, local/inherited queries and unset/reset-default matrix compares exact native owner behavior against pinned C."

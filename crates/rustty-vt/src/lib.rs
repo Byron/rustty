@@ -28,8 +28,11 @@ pub mod selection_gesture;
 pub mod snapshot;
 mod terminal;
 mod terminfo;
+pub mod tmux_shell;
+pub mod tmux_state;
 pub mod unicode;
 
+pub use color::TmuxPaneStyle;
 pub use color::parse as parse_color;
 pub use input::{
     Key, KeyAction, KeyEncodeOptions, KeyEvent, Modifiers, MouseAction, MouseButton,

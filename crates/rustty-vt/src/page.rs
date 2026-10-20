@@ -362,6 +362,19 @@ impl Page {
         self.cells[slot] = Cell::blank(background);
     }
 
+    pub fn clear_links(&mut self) {
+        for (slot, id) in self.link_map.drain() {
+            self.cells[slot as usize].set_hyperlink(false);
+            self.links.release_cell(id);
+        }
+        self.link_overrides.clear();
+        self.override_bytes = 0;
+        for header in &mut self.headers[..usize::from(self.rows)] {
+            header.set(RowHeader::DIRTY, true);
+        }
+        self.refresh_charge();
+    }
+
     pub fn reset_row(&mut self, row: usize, id: u64, background: Color) {
         let start = self.slot(row, 0);
         let released_payload = self.headers[row].has(RowHeader::GRAPHEME | RowHeader::HYPERLINK);

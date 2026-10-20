@@ -1,0 +1,10 @@
+[package]
+name = "tmuxx-layout"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "ISC"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["raw_value"] }
