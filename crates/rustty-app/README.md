@@ -32,11 +32,13 @@ Omit `-Release` for a debug build. The first build downloads Microsoft's pinned
 ConPTY runtime and verifies its SHA-256. `-Offline` uses cached Cargo dependencies
 and the runtime package under `target/conpty`.
 The script builds for `x86_64-pc-windows-msvc` with a static C runtime; the portable
-folder needs no Visual C++ redistributable. It contains the executable, ConPTY,
+folder needs no Visual C++ redistributable. It contains `rustty.exe`, `tmuxx.exe`, ConPTY,
 themes, shell integration, and license notices. Move the complete folder,
 including `resources`, together. `-SkipBuild`
 restages an existing script build. Cargo builds also work directly:
-`cargo run -p rustty-app --bin rustty`. Build the portable folder first for resource
+`cargo build -p rustty-app --bin rustty -p tmuxx-cli --bin tmuxx`, followed by
+`cargo run -p rustty-app --bin rustty`. Persistent sessions need `tmuxx.exe` beside
+`rustty.exe`. Build the portable folder first for resource
 discovery during development. Zig, WSL, and an external shader compiler are not needed.
 
 The bundled ConPTY preserves the order of application-controlled synchronized
@@ -151,6 +153,9 @@ Build a native app from the repository root:
 nu crates/rustty-app/build.nu --release
 open target/release/Rustty.app
 ```
+
+The bundle includes the `tmuxx` command in `Rustty.app/Contents/MacOS`, beside
+`rustty`, with its license notice under `Contents/Resources/licenses`.
 
 For development, use `cargo run -p rustty-app --bin rustty`. Build the debug bundle
 first (`nu crates/rustty-app/build.nu`) to make themes, terminfo and shell integration
@@ -362,7 +367,7 @@ rustty --tmuxx=system-ssh:my-host
 ```
 
 `unix:PATH` selects a local Unix socket; `pipe:INSTANCE` selects a local Windows
-owner. There is one executable. Its CLI mode manages the same servers:
+owner. On Unix, Rustty's embedded CLI manages its default native owner:
 
 ```sh
 rustty tmux new-session -d -s work
@@ -371,16 +376,26 @@ rustty tmux kill-session -t work
 rustty tmux kill-server
 ```
 
-On Windows, create an owner with **New persistent window** or
-`rustty.exe --tmuxx=persistent` before using those CLI commands. A headless owner
-can instead run as `rustty.exe tmux -D` in a separate process; use another terminal
-to run `rustty.exe tmux new-session -d -s work`. Command clients and SSH bridges
+On Windows, `tmuxx.exe list-sessions` and other commands use the same default
+named-pipe owner as the GUI. Create one with **New persistent window** or
+`rustty.exe --tmuxx=persistent` before using those commands. A headless owner
+can instead run as `tmuxx.exe -D` in a separate process; use another terminal
+to run `tmuxx.exe new-session -d -s work`. Command clients and SSH bridges
 attach to existing Windows owners; they do not start one implicitly. Unix command
 clients retain their automatic daemon startup.
 
-Rustty's CLI mode exposes only the native endpoint by default. No tmux command
-socket is needed for native SSH access. The standalone tmuxx CLI retains its
-stock command/control socket behavior; ordinary interactive `tmux attach` is not
+`tmuxx.exe` is a Windows console executable, so shells wait for it and retain its
+exit status and redirected stdin/stdout/stderr. Use it for Windows command-line
+and SSH access; the GUI starts persistent owners with this same sidecar and no
+console window. Both executables share the bundle's `resources/conpty` runtime.
+
+The embedded `rustty tmux` entry remains available. It exposes only the native
+endpoint by default. No tmux command socket is needed for native SSH access.
+On Unix, the bundled standalone CLI can reach a GUI owner with
+`tmuxx --native-endpoint ENDPOINT list-sessions`, using the endpoint shown in
+Rustty's tmuxx submenu. Plain `tmuxx` retains stock command/control socket
+discovery, including inherited `TMUX`; the GUI's native-only owner has no such
+command socket. Ordinary interactive `tmux attach` is not
 an implemented tmuxx client mode. The GUI still supports a real stock tmux server
 through its SSH control-mode adapter.
 
@@ -417,7 +432,7 @@ tmuxx-connection = Azure Linux = ssh:20.240.208.217
 tmuxx-ssh-command-host = 20.240.208.217 = /home/byron/.cargo/bin/tmuxx -L rustty --native-stdio
 tmuxx-connection = Stock tmux = system-ssh:legacy-linux
 tmuxx-connection = Windows = ssh:windows
-tmuxx-ssh-command-host = windows = "C:/Apps/Rustty/rustty.exe" tmux --native-stdio
+tmuxx-ssh-command-host = windows = "C:/Apps/Rustty/tmuxx.exe" --native-stdio
 ```
 
 Connection labels such as `Azure Linux` appear in the menu and identify attached
@@ -442,12 +457,12 @@ on the Windows host.
 
 The Windows SSH bridge connects to the running owner's local named pipe under
 the same Windows account; SSH authentication and transport remain OpenSSH's
-responsibility. With one owner, `rustty.exe tmux --native-stdio` discovers it.
+responsibility. With one owner, `tmuxx.exe --native-stdio` discovers it.
 If multiple temporary or persistent owners are running, select the exact native
 endpoint shown in Rustty's tmuxx submenu:
 
 ```ini
-tmuxx-ssh-command-host = windows = "C:/Apps/Rustty/rustty.exe" tmux --native-endpoint "\\.\pipe\tmuxx-SID-ENCODED_INSTANCE" --native-stdio
+tmuxx-ssh-command-host = windows = "C:/Apps/Rustty/tmuxx.exe" --native-endpoint "\\.\pipe\tmuxx-SID-ENCODED_INSTANCE" --native-stdio
 ```
 
 Replace the example pipe with the displayed endpoint. The bridge carries binary
@@ -524,18 +539,20 @@ cargo +1.95.0 test --locked --offline -p rustty-app --bin rustty tmuxx_host::tes
 cargo +1.95.0 test --locked --offline -p rustty-app --test tmux_cli
 ```
 
-Windows native lifecycle tests require the bundled ConPTY resources. Set
-`TMUXX_CONPTY_RESOURCES` to the absolute `target/release/Rustty/resources` directory
-(or the equivalent debug bundle), then run:
+Windows native lifecycle tests require the bundled ConPTY resources. The CLI
+tests also check `tmuxx.exe` beside the selected `rustty.exe`. Build the bundle,
+then run (use the equivalent debug paths for a debug bundle):
 
 ```powershell
+$env:RUSTTY_TEST_EXE = (Resolve-Path target/release/Rustty/rustty.exe).Path
+$env:TMUXX_CONPTY_RESOURCES = (Resolve-Path target/release/Rustty/resources).Path
 cargo +1.95.0 test --locked --offline --target x86_64-pc-windows-msvc -p rustty --features sessions --lib tmuxx::windows_tests:: -- --include-ignored --test-threads=1
 cargo +1.95.0 test --locked --offline --target x86_64-pc-windows-msvc -p rustty-app --bin rustty tmuxx_host::tests:: -- --include-ignored --test-threads=1
 cargo +1.95.0 test --locked --offline --target x86_64-pc-windows-msvc -p rustty-app --test tmux_cli_windows -- --ignored --test-threads=1
 ```
 
-Set `RUSTTY_TEST_EXE` to a packaged `rustty.exe` to run the CLI/bridge test against
-that bundle instead of Cargo's executable.
+Without `RUSTTY_TEST_EXE`, the CLI tests select Cargo's executable; build both
+`rustty-app --bin rustty` and `tmuxx-cli --bin tmuxx` for that target first.
 
 For a hidden macOS smoke capture with disposable panes:
 
