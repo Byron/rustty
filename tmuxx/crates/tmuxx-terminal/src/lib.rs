@@ -107,7 +107,7 @@ impl Default for TerminalSettings {
 /// Host effects are deliberately absent: reconnect must not repeat notifications
 /// or clipboard actions. Graphics retain display state and pending upload bytes.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Snapshot {
+pub struct Snapshot<S = Screen> {
     #[serde(default)]
     pub agent_status: AgentStatus,
     pub version: u32,
@@ -119,8 +119,8 @@ pub struct Snapshot {
     pub extended_keys: Option<(u8, u8)>,
     #[serde(default)]
     pub settings: TerminalSettings,
-    pub primary: Screen,
-    pub alternate: Option<Screen>,
+    pub primary: S,
+    pub alternate: Option<S>,
     pub modes: Vec<Mode>,
     pub margins: [usize; 4],
     pub tabstops: Vec<bool>,
@@ -657,6 +657,14 @@ impl Terminal {
     }
 
     pub fn snapshot(&self) -> Snapshot {
+        self.snapshot_with(Clone::clone)
+    }
+
+    pub fn compact_snapshot(&self) -> Snapshot<impl Serialize + '_> {
+        self.snapshot_with(|screen| screen.compact())
+    }
+
+    fn snapshot_with<'a, S>(&'a self, screen: impl Fn(&'a Screen) -> S) -> Snapshot<S> {
         let terminal = &self.inner;
         let continuation = terminal.parser().continuation();
         let capture_pending = terminal.parser().pending_input();
@@ -681,8 +689,8 @@ impl Terminal {
                 widths: terminal.tmux_widths.clone(),
                 vs16_wide: terminal.tmux_vs16_wide,
             },
-            primary: terminal.primary_screen().clone(),
-            alternate: terminal.alternate_screen().cloned(),
+            primary: screen(terminal.primary_screen()),
+            alternate: terminal.alternate_screen().map(screen),
             modes: terminal
                 .modes
                 .iter()
@@ -724,6 +732,36 @@ impl Terminal {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn compact_snapshot_preserves_terminal_state_and_continuation() {
+        let mut terminal = Terminal::new(80, 4, 100);
+        for input in [
+            b"\x1b[31mone\ttwo\r\n\r\n\r\n\r\n\x1b[0m".as_slice(),
+            b"\x1b[?1049halternate\x1b[?1049l",
+            b"\x1b_Ga=T,i=7,f=32,s=1,v=1;/////w==\x1b\\",
+            b"\x1b]133;A\x07prompt\x1b]133;B\x07\x1b[3",
+        ] {
+            terminal.feed(input);
+            let legacy = terminal.snapshot().restore().unwrap();
+            let compact: Snapshot =
+                serde_json::from_slice(&serde_json::to_vec(&terminal.compact_snapshot()).unwrap())
+                    .unwrap();
+            let mut compact = compact.restore().unwrap();
+            assert_eq!(
+                serde_json::to_value(legacy.snapshot()).unwrap(),
+                serde_json::to_value(compact.snapshot()).unwrap()
+            );
+            assert!(compact.feed(b"").is_empty());
+        }
+        let snapshot: Snapshot =
+            serde_json::from_value(serde_json::to_value(terminal.compact_snapshot()).unwrap())
+                .unwrap();
+        let mut restored = snapshot.restore().unwrap();
+        restored.feed(b"2mcontinued");
+        terminal.feed(b"2mcontinued");
+        assert_eq!(restored.capture(), terminal.capture());
+    }
+
     #[test]
     fn agent_status_survives_fragmented_snapshots_without_replaying_host_actions() {
         use rustty_vt::agent::Event;
