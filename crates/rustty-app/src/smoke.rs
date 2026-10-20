@@ -1118,8 +1118,11 @@ fn check_themes(
         if !host.messages_open {
             return Err("accepted theme did not open the messages popup".into());
         }
+        if host.ui_input() {
+            return Err("messages popup took terminal input".into());
+        }
         colors(app, [0x44, 0x55, 0x66], [0xdd, 0xee, 0xff])?;
-        key(host, egui::Key::Escape);
+        app.errors.clear();
         app.draw(event_loop, host)?;
         app.action(event_loop, host, Action::Themes, false);
         app.draw(event_loop, host)?;

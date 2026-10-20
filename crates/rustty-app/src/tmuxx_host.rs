@@ -627,8 +627,20 @@ impl App {
                 .windows
                 .iter()
                 .any(|window| window.id == id && window.quick);
-            self.reveal_host(&mut host, quick);
-            self.active = Some(id);
+            if let Some(platform) = &self.platform {
+                match platform.preview_window(&host.window, quick, self.config()) {
+                    Ok(()) => {
+                        host.visible = true;
+                        host.occluded = false;
+                        host.quick_used |= quick;
+                        if quick {
+                            self.remember_quick_frame(&host);
+                        }
+                        host.repaint();
+                    }
+                    Err(error) => self.errors.push(error),
+                }
+            }
             self.windows.insert(native, host);
         }
     }

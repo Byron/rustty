@@ -484,6 +484,7 @@ struct Host {
     popup_open: bool,
     ui_areas: input::UiAreas,
     messages_open: bool,
+    messages_focused: bool,
     layout_picker: Option<LayoutPicker>,
     palette: CommandPalette,
     confirm: Option<Confirmation>,
@@ -520,12 +521,13 @@ impl Host {
             .collect()
     }
     fn ui_input(&self) -> bool {
-        self.search_focus.is_some() || self.modal_input()
+        self.search_focus.is_some()
+            || self.modal_input()
+            || self.messages_open && self.messages_focused
     }
     fn modal_input(&self) -> bool {
         self.palette.open
             || self.popup_open
-            || self.messages_open
             || self.layout_picker.is_some()
             || self.confirm.is_some()
             || self.tmuxx_connect.is_some()
@@ -1520,6 +1522,7 @@ impl App {
             popup_open: false,
             ui_areas: input::UiAreas::default(),
             messages_open: false,
+            messages_focused: false,
             layout_picker: None,
             palette: CommandPalette::default(),
             confirm: None,
@@ -3862,7 +3865,8 @@ impl App {
         key: &winit::event::KeyEvent,
     ) -> bool {
         let ui_input = host.ui_input();
-        let search_input = host.search_focus.is_some() && !host.modal_input();
+        let search_input =
+            host.search_focus.is_some() && !host.modal_input() && !host.messages_focused;
         let owner_key = !ui_input
             && self
                 .tab(host.id)
@@ -4168,7 +4172,13 @@ impl App {
         } else {
             context.disable_accesskit();
         }
+        // Escape clears egui focus before drawing; retain this window's keyboard owner.
+        let messages_keyboard_input = host.messages_open
+            && host.messages_focused
+            && !(host.search_focus.is_some() && host.focus_text_input)
+            && !host.modal_input();
         let mut output = context.run_ui(raw, |root_ui| {
+            host.messages_focused = messages_input(&context) || messages_keyboard_input;
             // The shared context must be inside this window's viewport before clearing focus.
             if std::mem::take(&mut host.unfocus_text_input) {
                 root_ui.memory_mut(egui::Memory::stop_text_input);
@@ -4909,7 +4919,11 @@ impl App {
                     let mut focus =
                         !modal_input && host.search_focus == Some(id) && host.focus_text_input;
                     let requested = focus;
-                    let response = search.show(ui, id, bounds, id == focused, &mut focus, &config);
+                    let response = search.show(
+                        ui, id, bounds,
+                        id == focused && !messages_keyboard_input && !messages_input(ctx),
+                        &mut focus, &config,
+                    );
                     if requested && !focus {
                         host.focus_text_input = false;
                     }
@@ -5134,8 +5148,9 @@ impl App {
             if let Some(picker) = &mut host.layout_picker {
                 layout_command = show_layout_picker(ctx, picker).or(layout_command.take());
             }
-            let _ = show_messages(ctx, &mut self.errors);
+            let _ = show_messages(ctx, &mut self.errors, messages_keyboard_input);
             host.messages_open = !self.errors.is_empty();
+            host.messages_focused = host.messages_open && messages_input(ctx);
         });
         host.ui_areas.capture(&context);
         if presentation_changed {
@@ -5616,6 +5631,7 @@ impl App {
             return Some(CursorIcon::Text);
         }
         if host.modal_input()
+            || host.ui_areas.contains(host.mouse)
             || host.peek.is_some()
             || host
                 .search_rects
@@ -7050,12 +7066,26 @@ fn show_layout_picker(ctx: &egui::Context, picker: &mut LayoutPicker) -> Option<
     command
 }
 
-fn show_messages(ctx: &egui::Context, errors: &mut Vec<String>) -> Option<egui::Response> {
+fn messages_input(ctx: &egui::Context) -> bool {
+    ctx.memory(egui::Memory::focused)
+        .and_then(|id| ctx.read_response(id))
+        .is_some_and(|response| {
+            response.layer_id
+                == egui::LayerId::new(egui::Order::Middle, egui::Id::new("Rustty messages"))
+        })
+}
+
+fn show_messages(
+    ctx: &egui::Context,
+    errors: &mut Vec<String>,
+    keyboard_input: bool,
+) -> Option<egui::Response> {
     if errors.is_empty() {
         return None;
     }
     let mut open = true;
     let dismiss = egui::Window::new("Rustty messages")
+        .id(egui::Id::new("Rustty messages"))
         .open(&mut open)
         .collapsible(false)
         .default_size([600.0, 240.0])
@@ -7064,7 +7094,14 @@ fn show_messages(ctx: &egui::Context, errors: &mut Vec<String>) -> Option<egui::
                 .max_height(300.0)
                 .show(ui, |ui| {
                     for error in errors.iter() {
-                        ui.add(egui::Label::new(error).selectable(true));
+                        let label = ui.add(
+                            egui::Label::new(error)
+                                .selectable(true)
+                                .sense(Sense::click_and_drag()),
+                        );
+                        if (label.clicked() || label.drag_started()) && !label.has_focus() {
+                            label.request_focus();
+                        }
                     }
                 });
             ui.button("Dismiss")
@@ -7072,7 +7109,7 @@ fn show_messages(ctx: &egui::Context, errors: &mut Vec<String>) -> Option<egui::
         .and_then(|window| window.inner);
     if !open
         || dismiss.as_ref().is_some_and(egui::Response::clicked)
-        || ctx.input(|input| input.key_pressed(egui::Key::Escape))
+        || keyboard_input && ctx.input(|input| input.key_pressed(egui::Key::Escape))
     {
         errors.clear();
         // The current frame still contains the window's shapes.
@@ -8398,13 +8435,13 @@ mod tests {
     }
 
     #[test]
-    fn messages_close_by_click_or_escape_without_terminal_focus() {
+    fn messages_take_keyboard_input_only_after_explicit_focus() {
         fn frame(
             context: &egui::Context,
             errors: &mut Vec<String>,
             events: Vec<egui::Event>,
-        ) -> Option<egui::Rect> {
-            let ui_input = !errors.is_empty();
+        ) -> (Option<egui::Response>, egui::PlatformOutput) {
+            let ui_input = !errors.is_empty() && messages_input(context);
             let mut raw = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     Pos2::ZERO,
@@ -8425,57 +8462,142 @@ mod tests {
                     );
                     input::terminal_input(&terminal, None, ui_input);
                 });
-                dismiss = show_messages(context, errors).map(|button| button.rect);
+                dismiss = show_messages(context, errors, ui_input);
             });
             output.textures_delta.clear();
-            dismiss
+            (dismiss, output.platform_output)
         }
 
-        for dismissal in ["click", "escape", "control-bracket"] {
+        fn key(key: egui::Key, modifiers: egui::Modifiers) -> egui::Event {
+            egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers,
+            }
+        }
+
+        fn click(context: &egui::Context, errors: &mut Vec<String>, point: Pos2) {
+            for pressed in [true, false] {
+                frame(
+                    context,
+                    errors,
+                    vec![
+                        egui::Event::PointerMoved(point),
+                        egui::Event::PointerButton {
+                            pos: point,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                );
+            }
+        }
+
+        for dismissal in ["click", "escape", "control-bracket", "enter"] {
             let context = egui::Context::default();
-            let mut errors = vec!["The text editor could not open settings".to_owned()];
+            context.enable_accesskit();
+            let mut errors = vec![];
             frame(&context, &mut errors, vec![]);
-            let button = frame(&context, &mut errors, vec![]).unwrap();
-            if dismissal == "click" {
-                let point = button.center();
-                for pressed in [true, false] {
+            for event in [
+                key(egui::Key::A, egui::Modifiers::NONE),
+                key(egui::Key::Escape, egui::Modifiers::NONE),
+                key(egui::Key::OpenBracket, egui::Modifiers::CTRL),
+            ] {
+                errors.push("sending on a closed channel".to_owned());
+                frame(&context, &mut errors, vec![event]);
+                assert!(!messages_input(&context));
+                assert!(context.memory(|memory| memory.has_focus(egui::Id::new("terminal"))));
+            }
+            assert_eq!(errors.len(), 3, "terminal keys must not dismiss messages");
+            errors.truncate(1);
+            let (dismiss, output) = frame(&context, &mut errors, vec![]);
+            let label = output
+                .accesskit_update
+                .unwrap()
+                .nodes
+                .into_iter()
+                .find_map(|(_, node)| {
+                    (node.role() == egui::accesskit::Role::Label
+                        && node.value() == Some(errors[0].as_str()))
+                    .then(|| node.bounds())
+                    .flatten()
+                })
+                .expect("accessible message label");
+            let label = Pos2::new(
+                ((label.x0 + label.x1) / 2.0) as f32,
+                ((label.y0 + label.y1) / 2.0) as f32,
+            );
+            click(&context, &mut errors, label);
+            assert!(
+                messages_input(&context),
+                "message click must allow copying: {:?}",
+                context
+                    .memory(egui::Memory::focused)
+                    .and_then(|id| context.read_response(id))
+                    .map(|r| (r.id, r.layer_id))
+            );
+            frame(
+                &context,
+                &mut errors,
+                vec![key(egui::Key::A, egui::Modifiers::COMMAND)],
+            );
+            let (_, output) = frame(&context, &mut errors, vec![egui::Event::Copy]);
+            assert!(
+                output
+                    .commands
+                    .contains(&egui::OutputCommand::CopyText(errors[0].clone()))
+            );
+
+            click(&context, &mut errors, Pos2::new(750.0, 550.0));
+            frame(
+                &context,
+                &mut errors,
+                vec![key(egui::Key::A, egui::Modifiers::NONE)],
+            );
+            assert!(!messages_input(&context));
+            assert!(context.memory(|memory| memory.has_focus(egui::Id::new("terminal"))));
+            assert_eq!(errors.len(), 1);
+            click(&context, &mut errors, label);
+            assert!(messages_input(&context));
+
+            let dismiss = dismiss.unwrap();
+            match dismissal {
+                "click" => click(&context, &mut errors, dismiss.rect.center()),
+                "escape" => {
                     frame(
                         &context,
                         &mut errors,
-                        vec![
-                            egui::Event::PointerMoved(point),
-                            egui::Event::PointerButton {
-                                pos: point,
-                                button: egui::PointerButton::Primary,
-                                pressed,
-                                modifiers: egui::Modifiers::default(),
-                            },
-                        ],
+                        vec![key(egui::Key::Escape, egui::Modifiers::NONE)],
                     );
                 }
-            } else {
-                frame(
-                    &context,
-                    &mut errors,
-                    vec![egui::Event::Key {
-                        key: if dismissal == "escape" {
-                            egui::Key::Escape
-                        } else {
-                            egui::Key::OpenBracket
-                        },
-                        physical_key: None,
-                        pressed: true,
-                        repeat: false,
-                        modifiers: if dismissal == "escape" {
-                            egui::Modifiers::NONE
-                        } else {
-                            egui::Modifiers::CTRL
-                        },
-                    }],
-                );
+                "control-bracket" => {
+                    frame(
+                        &context,
+                        &mut errors,
+                        vec![key(egui::Key::OpenBracket, egui::Modifiers::CTRL)],
+                    );
+                }
+                "enter" => {
+                    frame(
+                        &context,
+                        &mut errors,
+                        vec![key(egui::Key::Tab, egui::Modifiers::NONE)],
+                    );
+                    assert!(context.memory(|memory| memory.has_focus(dismiss.id)));
+                    frame(
+                        &context,
+                        &mut errors,
+                        vec![key(egui::Key::Enter, egui::Modifiers::NONE)],
+                    );
+                }
+                _ => unreachable!(),
             }
             assert!(errors.is_empty(), "dismiss by {dismissal}");
-            assert!(frame(&context, &mut errors, vec![]).is_none());
+            assert!(frame(&context, &mut errors, vec![]).0.is_none());
+            assert!(context.memory(|memory| memory.has_focus(egui::Id::new("terminal"))));
         }
     }
 
