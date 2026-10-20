@@ -35,6 +35,22 @@ pub(super) fn apply(engine: &mut Engine) {
         .or_else(login_shell)
         .unwrap_or_else(system_shell);
     engine.options.insert("default-shell".into(), shell);
+    #[cfg(windows)]
+    match super::windows_shell::resolve() {
+        Ok(shell) => {
+            engine
+                .options
+                .insert("default-shell".into(), shell.argv[0].clone());
+            if shell.argv.len() > 1 {
+                engine.default_shell_argv =
+                    shell.argv.into_iter().map(String::into_bytes).collect();
+            }
+        }
+        Err(error) => eprintln!(
+            "tmuxx: Could not inherit the Windows Terminal default shell: {error}; using {}",
+            engine.options["default-shell"]
+        ),
+    }
     if let Some(editor) = engine
         .environment
         .get("VISUAL")
