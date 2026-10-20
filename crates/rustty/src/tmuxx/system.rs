@@ -891,7 +891,7 @@ fn publish_graph(shared: &Shared, state: &State) {
                 modal_close_cancel: false,
                 persistent: true,
                 status: None,
-                terminal: serde_json::Value::Null,
+                terminal: serde_json::Value::Null.into(),
             })
             .collect(),
     };
