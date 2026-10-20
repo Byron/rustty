@@ -75,11 +75,15 @@ impl Entry {
     }
 }
 
-pub fn actions() -> [(&'static str, rustty::config::Action); 4] {
+pub fn actions() -> [(&'static str, rustty::config::Action); 5] {
     use rustty::config::Action;
     [
         ("New Temporary Window", Action::NewTemporaryTmuxxWindow),
         ("New Persistent Window", Action::NewPersistentTmuxxWindow),
+        (
+            "Copy Window to Persistent Session",
+            Action::CopyWindowToTmuxx,
+        ),
         ("Connect to Server…", Action::ConnectTmuxx),
         ("New Floating Panel", Action::NewFloatingPane),
     ]

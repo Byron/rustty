@@ -16,5 +16,6 @@ pub mod search;
 pub mod software_surface;
 pub mod workspace;
 
+pub mod tmuxx_copy;
 pub mod tmuxx_menu;
 pub mod tmuxx_workspace;

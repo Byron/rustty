@@ -360,6 +360,19 @@ multiplexer. Ordinary Rustty windows can remain open alongside any of these:
 | New persistent window | Local daemon started with the same executable, `rustty tmux`; survives Rustty exiting |
 | Connect | Existing native tmuxx endpoint or stock tmux over SSH |
 
+**Copy Window to Persistent Session** copies all tabs in the current Rustty
+window into a new local persistent tmuxx session and opens it in a new Rustty
+window. The command palette calls this **Copy Window to Persistent tmuxx Session**;
+the keybinding action is `copy_window_to_tmuxx` (no default shortcut). The copy
+preserves tab order and names, panel working directories, split layouts, the
+active tab and panel, and whole-panel zoom. Split sizes are rounded to terminal
+cells; tab colors and custom panel titles are retained in the new Rustty window.
+Panels start fresh shells using the destination server's defaults; running
+programs and scrollback are not copied. The original window stays unchanged.
+Copying supports local tiled windows with existing working directories. Remote
+windows and floating panels are rejected before creating a session; quadrant
+zoom is not carried over.
+
 Connected windows show a **tmuxx** tag at the top right and in the outliner.
 Hover over the tag for the connection source. Ordinary windows have no tag.
 
