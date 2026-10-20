@@ -304,6 +304,8 @@ pub struct Config {
     pub stream_deck_serial: Option<String>,
     /// Remote shell command used for native tmuxx connections over SSH.
     pub tmuxx_ssh_command: String,
+    /// Overrides keyed by the exact SSH target or alias supplied when connecting.
+    pub tmuxx_ssh_command_hosts: BTreeMap<String, String>,
     pub title_report: bool,
     pub macos_option_as_alt: OptionAsAlt,
     pub copy_on_select: CopyOnSelect,
@@ -400,6 +402,7 @@ impl Default for Config {
             stream_deck: false,
             stream_deck_serial: None,
             tmuxx_ssh_command: "rustty tmux --native-stdio".into(),
+            tmuxx_ssh_command_hosts: BTreeMap::new(),
             title_report: false,
             macos_option_as_alt: OptionAsAlt::False,
             copy_on_select: CopyOnSelect::None,
@@ -448,6 +451,13 @@ impl Config {
     /// Pass arguments after argv[0]. `-e` consumes the remaining command argv.
     pub fn load_with_args(args: &[String]) -> io::Result<LoadedConfig> {
         Ok(ConfigLoader::from_env()?.load_with_args(args))
+    }
+
+    pub fn tmuxx_ssh_command_for(&self, host: &str) -> &str {
+        self.tmuxx_ssh_command_hosts
+            .get(host)
+            .map(String::as_str)
+            .unwrap_or(&self.tmuxx_ssh_command)
     }
 
     /// Find a single-key root binding. Sequence-aware hosts can inspect
@@ -561,6 +571,28 @@ impl Config {
                 }
                 value.to_owned()
             }),
+            "tmuxx-ssh-command-host" => {
+                if value.is_empty() {
+                    self.tmuxx_ssh_command_hosts.clear();
+                } else {
+                    let (host, command) = value
+                        .split_once('=')
+                        .ok_or("SSH host command requires host=command")?;
+                    let host = host.trim();
+                    let command = command.trim();
+                    if host.is_empty()
+                        || host.contains('\0')
+                        || host.chars().any(char::is_whitespace)
+                    {
+                        return Err("SSH host must be nonempty and contain no whitespace or NUL");
+                    }
+                    if command.is_empty() || command.contains('\0') {
+                        return Err("SSH command must be nonempty and contain no NUL");
+                    }
+                    self.tmuxx_ssh_command_hosts
+                        .insert(host.to_owned(), command.to_owned());
+                }
+            }
             "title-report" => set!(title_report, parse_bool(value)?),
             "macos-option-as-alt" => set!(macos_option_as_alt, OptionAsAlt::parse(value)?),
             "copy-on-select" => set!(copy_on_select, CopyOnSelect::parse(value)?),

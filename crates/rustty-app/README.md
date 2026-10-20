@@ -387,6 +387,24 @@ start one. A standalone remote tmuxx installation can use
 `tmuxx-ssh-command = tmuxx --native-stdio`. To reach a remote embedded engine,
 include its endpoint, for example
 `tmuxx-ssh-command = rustty tmux --native-endpoint /private/path/temporary.native --native-stdio`.
+
+Override the helper for individual SSH targets with repeatable settings:
+
+```ini
+tmuxx-ssh-command-host = linux = /home/byron/.cargo/bin/tmuxx -L rustty --native-stdio
+tmuxx-ssh-command-host = windows = rustty.exe tmux --native-stdio
+```
+
+The target matches exactly what follows `ssh:` in `--tmuxx=ssh:linux` or the
+Connect dialog, including any `user@` prefix. Unmatched targets use the global
+`tmuxx-ssh-command`. Later entries replace an earlier entry for the same target;
+an empty `tmuxx-ssh-command-host =` clears all overrides. A launch-time override
+uses the same syntax, for example
+`rustty --tmuxx=ssh:linux '--tmuxx-ssh-command-host=linux=/home/byron/.cargo/bin/tmuxx -L rustty --native-stdio'`.
+The Linux example connects to the existing daemon named `rustty`. The Windows
+entry shows how to select that executable; Windows native hosting and transport
+remain unimplemented.
+
 This is a remote shell command from trusted configuration: quote paths containing
 spaces for the remote shell. Hosts, ports, identities, and jump hosts use normal
 SSH aliases/configuration. SSH uses noninteractive authentication; establish keys

@@ -94,6 +94,73 @@ fn native_ssh_command_preserves_shell_quoting_and_resets_to_rustty_helper() {
 }
 
 #[test]
+fn native_ssh_host_commands_select_exact_targets_and_preserve_fallback() {
+    let home = TestHome::new();
+    let linux = "/home/byron/.cargo/bin/tmuxx -L rustty --native-stdio";
+    let windows = "rustty.exe tmux --native-stdio";
+    let quoted = "TMUXX_ENDPOINT=/tmp/other.native '/opt/Rustty App/rustty' tmux --native-stdio";
+    home.own(&format!(
+        "tmuxx-ssh-command-host=linux=old-helper\n\
+         tmuxx-ssh-command-host=windows={windows}\n\
+         tmuxx-ssh-command-host=linux = {linux}\n\
+         tmuxx-ssh-command-host=user@linux={quoted}\n\
+         tmuxx-ssh-command=global-helper\n"
+    ));
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(loaded.config.tmuxx_ssh_command_for("linux"), linux);
+    assert_eq!(loaded.config.tmuxx_ssh_command_for("windows"), windows);
+    assert_eq!(loaded.config.tmuxx_ssh_command_for("user@linux"), quoted);
+    for host in ["other", "Linux", "other@linux"] {
+        assert_eq!(loaded.config.tmuxx_ssh_command_for(host), "global-helper");
+    }
+    let loaded = home.loader.load_with_args(&args(&[
+        "--tmuxx-ssh-command=cli-fallback",
+        "--tmuxx-ssh-command-host=linux=cli-helper --native-stdio",
+    ]));
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(
+        loaded.config.tmuxx_ssh_command_for("linux"),
+        "cli-helper --native-stdio"
+    );
+    assert_eq!(loaded.config.tmuxx_ssh_command_for("windows"), windows);
+    assert_eq!(loaded.config.tmuxx_ssh_command_for("other"), "cli-fallback");
+    let loaded = home
+        .loader
+        .load_with_args(&args(&["--tmuxx-ssh-command-host="]));
+    assert!(loaded.config.tmuxx_ssh_command_hosts.is_empty());
+    assert_eq!(
+        loaded.config.tmuxx_ssh_command_for("linux"),
+        "global-helper"
+    );
+}
+
+#[test]
+fn invalid_native_ssh_host_commands_preserve_previous_entries() {
+    let home = TestHome::new();
+    for invalid in [
+        "missing-command",
+        "=helper",
+        "linux=",
+        "two hosts=helper",
+        "host\0=helper",
+        "linux=bad\0command",
+    ] {
+        home.own(&format!(
+            "tmuxx-ssh-command-host=linux=working-helper\n\
+             tmuxx-ssh-command-host={invalid}\n"
+        ));
+        let loaded = home.loader.load();
+        assert_eq!(loaded.diagnostics.len(), 1);
+        assert_eq!(loaded.config.tmuxx_ssh_command_hosts.len(), 1);
+        assert_eq!(
+            loaded.config.tmuxx_ssh_command_for("linux"),
+            "working-helper"
+        );
+    }
+}
+
+#[test]
 fn windows_roaming_config_root_is_explicit_and_does_not_read_terminal_settings() {
     let mut home = TestHome::new();
     let roaming = home.root.join("roaming");
