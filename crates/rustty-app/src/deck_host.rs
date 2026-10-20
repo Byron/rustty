@@ -221,17 +221,16 @@ impl App {
             .windows
             .iter()
             .flat_map(|w| &w.tabs)
-            .flat_map(|tab| {
-                tab.pane_ids()
-                    .into_iter()
-                    .filter_map(|id| {
-                        let pane = self.panes.get(&id)?;
-                        let label = task_label(&pane.title, &pane.cwd);
-                        pane.agent
-                            .view(id, &label, &pane.activity)
-                            .map(|view| (id, view))
-                    })
-                    .collect::<Vec<_>>()
+            .flat_map(|tab| tab.pane_ids())
+            .filter_map(|id| {
+                let pane = self
+                    .panes
+                    .get(&id)
+                    .filter(|pane| pane.agent.is_registered())?;
+                let label = task_label(&pane.title, &pane.cwd);
+                pane.agent
+                    .view(id, &label, &pane.activity)
+                    .map(|view| (id, view))
             })
             .collect();
         let progress = self
