@@ -198,6 +198,7 @@ pub enum Action {
     NewWindow,
     NewTemporaryTmuxxWindow,
     NewPersistentTmuxxWindow,
+    CopyWindowToTmuxx,
     ConnectTmuxx,
     NewTab,
     CloseSurface,
@@ -342,6 +343,7 @@ impl Action {
             "toggle_pin" => Self::TogglePin,
             "new_temporary_tmuxx_window" => Self::NewTemporaryTmuxxWindow,
             "new_persistent_tmuxx_window" => Self::NewPersistentTmuxxWindow,
+            "copy_window_to_tmuxx" => Self::CopyWindowToTmuxx,
             "connect_tmuxx" => Self::ConnectTmuxx,
             "themes" => Self::Themes,
             "reset" => Self::Reset,
@@ -762,5 +764,12 @@ mod platform_defaults_tests {
         let binding = KeyBinding::parse("super+c=copy_to_clipboard").unwrap();
         assert!(binding.trigger[0].modifiers.super_key);
         assert!(!binding.trigger[0].modifiers.control);
+    }
+
+    #[test]
+    fn copy_window_to_tmuxx_is_bindable_without_arguments() {
+        let binding = KeyBinding::parse("super+shift+m=copy_window_to_tmuxx").unwrap();
+        assert_eq!(binding.actions, vec![Action::CopyWindowToTmuxx]);
+        assert!(Action::parse("copy_window_to_tmuxx:session").is_err());
     }
 }

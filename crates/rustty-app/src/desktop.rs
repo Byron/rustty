@@ -64,6 +64,11 @@ const MIN_WINDOW_SIZE: LogicalSize<f64> = LogicalSize::new(240.0, 120.0);
 enum Event {
     DeckWake,
     Tmuxx,
+    TmuxxCopied(
+        tmuxx_host::Target,
+        String,
+        std::result::Result<rustty_app::tmuxx_copy::CopiedWindow, String>,
+    ),
     Output(Id),
     Platform(PlatformEvent),
     Repaint(egui::RequestRepaintInfo, Instant),
@@ -3061,6 +3066,12 @@ impl App {
                     self.errors.push(error.to_string());
                 }
             }
+            Action::CopyWindowToTmuxx => {
+                if let Err(error) = self.copy_window_to_tmuxx(host) {
+                    self.errors.push(error.to_string());
+                    host.messages_open = true;
+                }
+            }
             Action::ConnectTmuxx => {
                 host.tmuxx_connect = Some("ssh:".into());
             }
@@ -6016,6 +6027,10 @@ impl ApplicationHandler<Event> for App {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
         match event {
             Event::Tmuxx => self.refresh_tmuxx(event_loop),
+            Event::TmuxxCopied(target, name, result) => {
+                self.finish_tmuxx_copy(target, name, result);
+                self.refresh_tmuxx(event_loop);
+            }
             Event::DeckWake => {}
             Event::Output(id) => {
                 if let Some(smoke) = &mut self.smoke {
