@@ -601,7 +601,6 @@ impl App {
         }
     }
     pub(super) fn retry_tmuxx(&mut self, now: Instant) {
-        let wake = self.tmuxx_wake();
         for entry in &mut self.tmuxx {
             if entry.expire_connection(now) {
                 if let Some(status) = &entry.status {
@@ -625,8 +624,16 @@ impl App {
             if entry.connection.as_ref().is_some_and(|c| !c.is_closed()) {
                 continue;
             }
+            // Cloning a macOS event-loop proxy wakes it; only do so for an actual retry.
             #[cfg(unix)]
-            match Connection::unix(endpoint, wake.clone()) {
+            let wake = {
+                let proxy = self.proxy.clone();
+                Arc::new(move || {
+                    let _ = proxy.send_event(Event::Tmuxx);
+                })
+            };
+            #[cfg(unix)]
+            match Connection::unix(endpoint, wake) {
                 Ok(connection) => {
                     entry.restore = entry.saved_attachments(&self.workspace);
                     entry.connection = Some(connection);
@@ -642,7 +649,7 @@ impl App {
             }
             #[cfg(not(unix))]
             {
-                let _ = (endpoint, &wake);
+                let _ = endpoint;
                 entry.status = Some("TODO(Windows): local tmuxx transport".into());
             }
         }

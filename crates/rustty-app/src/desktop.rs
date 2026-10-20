@@ -6606,6 +6606,9 @@ impl ApplicationHandler<Event> for App {
         self.reconcile(event_loop);
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if let Some(smoke) = &mut self.smoke {
+            smoke.record("about-to-wait");
+        }
         let now = Instant::now();
         self.retry_tmuxx(now);
         if self.workspace.windows.is_empty() && !self.errors.is_empty() && !self.tmuxx.is_empty() {
