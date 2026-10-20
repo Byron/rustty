@@ -42,6 +42,10 @@ interop without requiring extensions in stock tmux. Terminal snapshots have
 their own version and validation. Compatibility with arbitrary future or older
 snapshot formats is not implied by sharing a native protocol version.
 
+Peers advertising `compact_snapshots` receive lossless runs of identical screen
+cells, avoiding repeated blank-cell styles in large multi-pane snapshots. Older
+clients continue to receive expanded cells; no history or terminal state is omitted.
+
 Rustty validates the native greeting before sending queued commands. Window-size
 connections also verify the primary connection's server incarnation, so a daemon
 replacement cannot resize unrelated sessions that reuse the same numeric IDs.

@@ -199,6 +199,7 @@ pub struct ClientContext {
     pub format_type: Option<u8>,
     pub format_client: Option<bool>,
     pub native_view: bool,
+    pub compact_snapshots: bool,
     pub no_hooks: bool,
     pub no_format_jobs: bool,
     pub client_flags: String,
@@ -233,6 +234,7 @@ impl Default for ClientContext {
             format_type: None,
             format_client: None,
             native_view: false,
+            compact_snapshots: false,
             no_hooks: false,
             no_format_jobs: false,
             client_flags: String::new(),
@@ -2833,10 +2835,14 @@ impl Engine {
     }
 
     pub fn snapshot(&self) -> serde_json::Value {
+        self.snapshot_with_compact_cells(false)
+    }
+
+    pub fn snapshot_with_compact_cells(&self, compact: bool) -> serde_json::Value {
         serde_json::json!({
             "sessions": self.sessions.values().map(|s| serde_json::json!({"id":s.id,"name":s.name,"active":s.active,"windows":s.windows})).collect::<Vec<_>>(),
             "windows": self.windows.values().map(|w| serde_json::json!({"id":w.id,"name":w.name,"active":w.active,"cols":w.cols,"rows":w.rows,"zoomed":w.zoomed,"zoomed_pane":w.zoom_target(),"visible_layout":self.formatted_layout(w.id,true,&ClientContext::default()),"panes":w.panes,"layout":if w.layout.panes().iter().any(|p| p.z.is_some()) { self.formatted_layout(w.id,false,&ClientContext::default()) } else { self.layout(w.id) }})).collect::<Vec<_>>(),
-            "panes":self.panes.values().map(|p| serde_json::json!({"id":p.id,"window":p.window,"x":p.x,"y":p.y,"cols":p.cols,"rows":p.rows,"pid":p.pid,"status":p.status,"persistent":p.persistent,"modal":self.windows[&p.window].modal == Some(p.id),"modal_capture_keys":p.modal_capture_keys,"modal_close_click":p.modal_close_click,"modal_close_cancel":p.modal_close_cancel,"terminal":p.terminal.snapshot()})).collect::<Vec<_>>()
+            "panes":self.panes.values().map(|p| serde_json::json!({"id":p.id,"window":p.window,"x":p.x,"y":p.y,"cols":p.cols,"rows":p.rows,"pid":p.pid,"status":p.status,"persistent":p.persistent,"modal":self.windows[&p.window].modal == Some(p.id),"modal_capture_keys":p.modal_capture_keys,"modal_close_click":p.modal_close_click,"modal_close_cancel":p.modal_close_cancel,"terminal":if compact { serde_json::to_value(p.terminal.compact_snapshot()).unwrap() } else { serde_json::to_value(p.terminal.snapshot()).unwrap() }})).collect::<Vec<_>>()
         })
     }
 }

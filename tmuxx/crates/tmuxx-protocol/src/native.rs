@@ -30,6 +30,9 @@ pub struct Hello {
     /// Opt into bounded, atomic snapshot streams instead of one large record.
     #[serde(default)]
     pub snapshot_stream: bool,
+    /// Accept lossless cell runs in terminal screens. Omission keeps expanded cells.
+    #[serde(default)]
+    pub compact_snapshots: bool,
     /// Tagged control requests preserve source blocks and per-command guards.
     #[serde(default)]
     pub control_commands: bool,
@@ -53,6 +56,7 @@ impl Default for Hello {
             environment: Default::default(),
             host_effects: false,
             snapshot_stream: true,
+            compact_snapshots: true,
             control_commands: true,
             stdin_file_stream: false,
             client_features: None,
@@ -210,6 +214,15 @@ mod tests {
         assert!(!request.subscribe);
         assert!(!request.control);
         assert_eq!(request.argv, [vec![255]]);
+    }
+
+    #[test]
+    fn compact_snapshots_require_peer_opt_in() {
+        let legacy: Hello = serde_json::from_str(r#"{"version":1}"#).unwrap();
+        assert!(!legacy.compact_snapshots);
+        let current: Hello =
+            serde_json::from_slice(&serde_json::to_vec(&Hello::default()).unwrap()).unwrap();
+        assert!(current.compact_snapshots);
     }
 
     #[test]

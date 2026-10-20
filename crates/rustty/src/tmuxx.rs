@@ -520,6 +520,7 @@ impl Connection {
         let owner = tmuxx_runtime::start(options)?;
         let client = owner.connect_with_context(tmuxx_runtime::ClientContext {
             host_effects: true,
+            compact_snapshots: true,
             ..Default::default()
         })?;
         // Only this newly created owner adopts Rustty's clipboard policy UI.
@@ -1254,7 +1255,16 @@ fn restore(value: &serde_json::Value) -> io::Result<(Terminal, tmuxx_terminal::A
             .filter_map(|row| {
                 Some((
                     row.get("id")?.as_u64()?,
-                    row.get("cells")?.as_array()?.len(),
+                    if let Some(cells) = row.get("cells")?.as_array() {
+                        cells.len()
+                    } else {
+                        row.get("cells")?.get("runs")?.as_array()?.iter().try_fold(
+                            0usize,
+                            |width, run| {
+                                width.checked_add(usize::try_from(run.get(0)?.as_u64()?).ok()?)
+                            },
+                        )?
+                    },
                 ))
             })
             .collect::<BTreeMap<_, _>>();
@@ -2642,34 +2652,39 @@ mod tests {
 
     #[test]
     fn native_snapshot_restores_capture_lengths_after_non_reflow_shrink() {
-        for (input, alternate) in [
-            (b"\x1b[?7l01234567890123456789".as_slice(), false),
-            (b"\x1b[?1049h01234567890123456789".as_slice(), true),
-        ] {
-            let mut terminal = tmuxx_terminal::Terminal::new(20, 3, 20);
-            terminal.feed(input);
-            terminal.resize(10, 3);
-            if alternate {
-                terminal.feed(b"\x1b[?1049l");
+        for compact in [false, true] {
+            for (input, alternate) in [
+                (b"\x1b[?7l01234567890123456789".as_slice(), false),
+                (b"\x1b[?1049h01234567890123456789".as_slice(), true),
+            ] {
+                let mut terminal = tmuxx_terminal::Terminal::new(20, 3, 20);
+                terminal.feed(input);
+                terminal.resize(10, 3);
+                if alternate {
+                    terminal.feed(b"\x1b[?1049l");
+                }
+                let mut value = if compact {
+                    serde_json::to_value(terminal.compact_snapshot()).unwrap()
+                } else {
+                    serde_json::to_value(terminal.snapshot()).unwrap()
+                };
+                let name = if alternate { "alternate" } else { "primary" };
+                let row = value[name]["rows"][0]["id"].as_u64().unwrap();
+                value[name]["tmux_capture_rows"] = serde_json::json!([[row, [20, 20]]]);
+                let (mut restored, _) = restore(&value).unwrap();
+                let screen = if alternate {
+                    restored.alternate_screen().unwrap()
+                } else {
+                    restored.primary_screen()
+                };
+                assert_eq!(screen.row_text(screen.row(0)), "0123456789");
+                assert_eq!(screen.tmux_capture_bounds(row), Some((10, 20)));
+                assert!(!restored.is_alternate_screen());
+                restored.feed(b"\x1b[?7h");
+                restored.resize(5, 3);
             }
-            let mut value = serde_json::to_value(terminal.snapshot()).unwrap();
-            let name = if alternate { "alternate" } else { "primary" };
-            let row = value[name]["rows"][0]["id"].as_u64().unwrap();
-            value[name]["tmux_capture_rows"] = serde_json::json!([[row, [20, 20]]]);
-            let (mut restored, _) = restore(&value).unwrap();
-            let screen = if alternate {
-                restored.alternate_screen().unwrap()
-            } else {
-                restored.primary_screen()
-            };
-            assert_eq!(screen.row_text(screen.row(0)), "0123456789");
-            assert_eq!(screen.tmux_capture_bounds(row), Some((10, 20)));
-            assert!(!restored.is_alternate_screen());
-            restored.feed(b"\x1b[?7h");
-            restored.resize(5, 3);
         }
     }
-
     #[test]
     fn native_snapshot_restores_stale_capture_rows_after_reflow() {
         let mut terminal = tmuxx_terminal::Terminal::new(20, 5, 20);
@@ -3431,6 +3446,7 @@ mod tests {
         ));
         let local = Connection::embedded(&endpoint, Arc::new(|| {})).unwrap();
         let graph = wait(&local, |g| !g.panes.is_empty());
+        assert!(graph.panes[0].terminal["primary"]["rows"][0]["cells"].is_object());
         let pid = graph.panes[0].id;
         let first = Session::attach_tmuxx(&local, pid, Arc::new(|| {})).unwrap();
         let second = Session::attach_tmuxx(&local, pid, Arc::new(|| {})).unwrap();
