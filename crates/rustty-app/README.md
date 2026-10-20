@@ -472,10 +472,21 @@ local transport remain TODOs for a Windows agent; `rustty.exe tmux` dispatch is 
 place, but does not claim a working Windows daemon.
 
 The tmuxx crates are pinned together to GitHub revision
-`74a61967e8c13883efc462a160044952b0063cd5`; no sibling checkout is needed to build.
+`700884116bc7239d032e6c91fb4e37e7c540c335`; no sibling checkout is needed to build.
 The engine and all Rustty renderers share its `tmuxx-vendored-rustty-vt` package so
 native checkpoint/replay uses the same implementation. Update these dependencies
-together when changing the terminal implementation.
+together when changing the terminal implementation. The workspace also patches
+`portable-pty` to the same revision so Rustty and tmuxx share the required native
+PTY backend; its Unix behavior is unchanged. On Windows the existing ConPTY
+loader must be adapted to this fork's explicit initialization API before any PTY
+can be created, including ordinary Rustty panels. That adaptation and verification
+of the bundled runtime remain TODOs for the Windows agent; this update is
+validated on macOS only.
+
+GUI connections remain compatible with older native tmuxx daemons. The updated
+`rustty tmux` CLI requires terminal-feature negotiation, so CLI commands against an
+older daemon may require upgrading and restarting that daemon first. Restarting
+a daemon ends its running programs; a GUI reconnect does not require a restart.
 
 Targeted verification:
 

@@ -2,6 +2,7 @@
 //! Visible capture is best effort; the native transport has stronger snapshots.
 use super::*;
 use std::sync::atomic::AtomicUsize;
+use std::time::Instant;
 use tmuxx_client::State;
 use tmuxx_client::system::{SystemClient, SystemEvent};
 
@@ -98,6 +99,34 @@ struct Actor {
     sizes: Option<(u16, u16)>,
     direct_buffers: BTreeMap<u64, Vec<u8>>,
     cleanup_requests: std::collections::BTreeSet<u64>,
+    recovery: Option<DiscoveryRecovery>,
+}
+
+struct DiscoveryRecovery {
+    quiet_since: Instant,
+    deadline: Instant,
+    resumed: bool,
+}
+impl DiscoveryRecovery {
+    fn new(now: Instant) -> Self {
+        Self {
+            quiet_since: now,
+            deadline: now + Duration::from_secs(5),
+            resumed: false,
+        }
+    }
+    fn poll(&mut self, now: Instant) -> io::Result<bool> {
+        if now >= self.deadline {
+            return Err(err(
+                "stock tmux graph did not settle within the discovery recovery deadline",
+            ));
+        }
+        if !self.resumed && now.duration_since(self.quiet_since) >= Duration::from_millis(150) {
+            self.resumed = true;
+            return Ok(true);
+        }
+        Ok(false)
+    }
 }
 impl Actor {
     fn start(
@@ -197,6 +226,7 @@ impl Actor {
             sizes: None,
             direct_buffers: BTreeMap::new(),
             cleanup_requests: Default::default(),
+            recovery: None,
         };
         actor.flush()?;
         Ok(actor)
@@ -246,6 +276,17 @@ impl Actor {
         ];
         let id = self.client.queue(commands).map_err(err)?;
         self.direct_buffers.insert(id, name);
+        Ok(())
+    }
+    fn recover_discovery(&mut self, now: Instant) -> io::Result<()> {
+        if !self.client.discovery_pending() {
+            self.recovery = None;
+        } else if let Some(recovery) = &mut self.recovery
+            && recovery.poll(now)?
+        {
+            // Resume only discovery; user commands keep their original queue and identities.
+            self.client.bootstrap().map_err(err)?;
+        }
         Ok(())
     }
     fn flush(&mut self) -> io::Result<()> {
@@ -310,7 +351,13 @@ fn manage(
                     let Some(actor) = actors.get_mut(&id) else {
                         continue;
                     };
+                    let revision = actor.client.state().revision();
                     let updates = actor.client.feed(&bytes);
+                    if actor.client.state().revision() != revision
+                        && let Some(recovery) = &mut actor.recovery
+                    {
+                        recovery.quiet_since = Instant::now();
+                    }
                     actor.session = actor.client.state().attached_session.or(actor.session);
                     let session = actor.session;
                     for update in updates {
@@ -380,6 +427,20 @@ fn manage(
                                 fail(&shared, error);
                                 shared.closed.store(true, Ordering::Release);
                             }
+                            SystemEvent::DiscoveryDeferred => {
+                                if actor
+                                    .recovery
+                                    .as_ref()
+                                    .is_some_and(|recovery| recovery.resumed)
+                                {
+                                    fail(
+                                        &shared,
+                                        "stock tmux discovery remained stale after bounded quiet-period recovery",
+                                    );
+                                } else if actor.recovery.is_none() {
+                                    actor.recovery = Some(DiscoveryRecovery::new(Instant::now()));
+                                }
+                            }
                             _ => {}
                         }
                     }
@@ -445,6 +506,7 @@ fn manage(
                 topology = next_topology;
                 for (id, actor) in &mut actors {
                     if *id != primary
+                        && actor.recovery.is_none()
                         && let Err(error) = actor.client.bootstrap()
                     {
                         report(&shared, error);
@@ -505,6 +567,9 @@ fn manage(
         for request in requests.try_iter().take(256) {
             if request.argv.is_empty() {
                 for actor in actors.values_mut() {
+                    if actor.recovery.is_some() {
+                        continue;
+                    }
                     if let Err(error) = actor.client.bootstrap() {
                         report(&shared, error);
                     }
@@ -591,7 +656,10 @@ fn manage(
             }
         }
         for actor in actors.values_mut() {
-            if let Err(error) = actor.flush() {
+            if let Err(error) = actor
+                .recover_discovery(Instant::now())
+                .and_then(|()| actor.flush())
+            {
                 fail(&shared, error);
                 shared.closed.store(true, Ordering::Release);
                 break;
@@ -787,6 +855,19 @@ mod tests {
     use crate::session::Session;
     use std::process::Command;
     use std::time::Instant;
+    #[test]
+    fn discovery_recovery_waits_for_quiet_once_without_extending_its_deadline() {
+        let start = Instant::now();
+        let mut recovery = DiscoveryRecovery::new(start);
+        assert!(!recovery.poll(start + Duration::from_millis(149)).unwrap());
+        recovery.quiet_since = start + Duration::from_millis(140);
+        assert!(!recovery.poll(start + Duration::from_millis(289)).unwrap());
+        assert!(recovery.poll(start + Duration::from_millis(290)).unwrap());
+        assert!(!recovery.poll(start + Duration::from_millis(500)).unwrap());
+        recovery.quiet_since = start + Duration::from_millis(4999);
+        assert!(recovery.poll(start + Duration::from_secs(5)).is_err());
+    }
+
     fn ready(connection: &Connection) -> Graph {
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
