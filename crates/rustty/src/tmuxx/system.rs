@@ -716,6 +716,7 @@ fn capture(shared: &Shared, pane_id: u64, data: Vec<u8>, cols: u32, rows: u32) -
     let mut model = shared.model.lock().map_err(err)?;
     let pane = model.panes.entry(pane_id).or_insert_with(|| PaneState {
         host_state: None,
+        agent_status: tmuxx_terminal::AgentStatus::default(),
         terminal: terminal.clone(),
         views: Vec::new(),
         owners: Arc::new(AtomicUsize::new(0)),

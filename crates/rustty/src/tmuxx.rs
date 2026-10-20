@@ -89,6 +89,7 @@ struct PaneState {
     host_state: Option<(bool, bool, bool)>,
     owners: Arc<AtomicUsize>,
     terminal: Terminal,
+    agent_status: tmuxx_terminal::AgentStatus,
     views: Vec<View>,
 }
 struct View {
@@ -116,7 +117,10 @@ enum Source {
     None,
     #[cfg(unix)]
     Unix(PathBuf),
-    Ssh(String),
+    Ssh {
+        host: String,
+        command: String,
+    },
     SystemSsh(String),
 }
 type SizeViews = BTreeMap<u64, (Connection, (u16, u16, u16, u16))>;
@@ -363,7 +367,9 @@ fn err(error: impl std::fmt::Display) -> io::Error {
     io::Error::other(error.to_string())
 }
 fn send(shared: &Shared, argv: Vec<Vec<u8>>) -> io::Result<u64> {
-    if shared.closed.load(Ordering::Acquire) { return Err(err("tmuxx connection is closed")); }
+    if shared.closed.load(Ordering::Acquire) {
+        return Err(err("tmuxx connection is closed"));
+    }
     let request_id = shared.next.fetch_add(1, Ordering::Relaxed);
     shared
         .requests
@@ -431,12 +437,28 @@ impl Connection {
                 control: false,
             })?;
         }
-        let (mut connection, requests) = Self::base(wake, true);
+        let mut connection = Self::local(client, wake, true)?;
         connection.owner = Some(owner);
         #[cfg(unix)]
         {
             connection.source = Source::Unix(endpoint.to_owned());
         }
+        let mut argv = vec![
+            b"new-session".to_vec(),
+            b"-d".to_vec(),
+            b"-s".to_vec(),
+            b"rustty".to_vec(),
+        ];
+        argv.extend(initial);
+        connection.command_bytes(argv)?;
+        Ok(connection)
+    }
+    fn local(
+        client: tmuxx_runtime::LocalClient,
+        wake: Arc<dyn Fn() + Send + Sync>,
+        subscribe: bool,
+    ) -> io::Result<Self> {
+        let (connection, requests) = Self::base(wake, subscribe);
         let shared = connection.shared.clone();
         thread::Builder::new()
             .name("rustty-tmuxx-local".into())
@@ -455,7 +477,9 @@ impl Connection {
                                     fail(&shared, error);
                                     return;
                                 }
-                                if shared.closed.load(Ordering::Acquire) { return; }
+                                if shared.closed.load(Ordering::Acquire) {
+                                    return;
+                                }
                             }
                             Err(mpsc::TryRecvError::Empty) => break,
                             Err(mpsc::TryRecvError::Disconnected) => {
@@ -467,14 +491,6 @@ impl Connection {
                     thread::sleep(Duration::from_millis(2));
                 }
             })?;
-        let mut argv = vec![
-            b"new-session".to_vec(),
-            b"-d".to_vec(),
-            b"-s".to_vec(),
-            b"rustty".to_vec(),
-        ];
-        argv.extend(initial);
-        connection.command_bytes(argv)?;
         Ok(connection)
     }
     #[cfg(unix)]
@@ -482,7 +498,29 @@ impl Connection {
         Self::connect_source(Source::Unix(endpoint.to_owned()), wake, true, true)
     }
     pub fn ssh(host: &str, wake: Arc<dyn Fn() + Send + Sync>) -> io::Result<Self> {
-        Self::connect_source(Source::Ssh(host.to_owned()), wake, true, true)
+        Self::ssh_command(host, "tmuxx --native-stdio", wake)
+    }
+    /// Run a configured native helper through the remote user's shell.
+    pub fn ssh_command(
+        host: &str,
+        remote_command: &str,
+        wake: Arc<dyn Fn() + Send + Sync>,
+    ) -> io::Result<Self> {
+        if host.trim().is_empty() || host.contains('\0') {
+            return Err(err("SSH host must be nonempty and contain no NUL"));
+        }
+        if remote_command.trim().is_empty() || remote_command.contains('\0') {
+            return Err(err("SSH command must be nonempty and contain no NUL"));
+        }
+        Self::connect_source(
+            Source::Ssh {
+                host: host.to_owned(),
+                command: remote_command.to_owned(),
+            },
+            wake,
+            true,
+            true,
+        )
     }
     fn connect_source(
         source: Source,
@@ -504,12 +542,21 @@ impl Connection {
                 connection.socket = Some(stream);
                 connection
             }
-            Source::Ssh(host) => {
+            Source::Ssh { host, command } => {
                 let mut child = Command::new("ssh")
-                    .args(["-T", "--", host, "tmuxx", "--native-stdio"])
+                    .args([
+                        "-T",
+                        "-o",
+                        "BatchMode=yes",
+                        "-o",
+                        "LogLevel=ERROR",
+                        "--",
+                        host,
+                    ])
+                    .arg(command)
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
-                    .stderr(Stdio::inherit())
+                    .stderr(Stdio::piped())
                     .spawn()?;
                 match Self::stream_inner(
                     child.stdout.take().unwrap(),
@@ -519,6 +566,17 @@ impl Connection {
                     subscribe,
                 ) {
                     Ok(mut connection) => {
+                        let stderr = child.stderr.take().unwrap();
+                        let shared = connection.shared.clone();
+                        let host = host.clone();
+                        if let Err(error) = thread::Builder::new()
+                            .name("rustty-tmuxx-ssh-errors".into())
+                            .spawn(move || read_ssh_errors(stderr, &shared, &host))
+                        {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            return Err(error);
+                        }
                         connection.child = Some(child);
                         connection
                     }
@@ -550,8 +608,15 @@ impl Connection {
         }
         let mut views = self.size_views.lock().map_err(err)?;
         if let std::collections::btree_map::Entry::Vacant(entry) = views.entry(session) {
-            let connection =
-                Self::connect_source(self.source.clone(), self.shared.wake.clone(), false, false)?;
+            let connection = if let Some(owner) = &self.owner {
+                Self::local(
+                    owner.connect_with_context(tmuxx_runtime::ClientContext::default())?,
+                    self.shared.wake.clone(),
+                    false,
+                )?
+            } else {
+                Self::connect_source(self.source.clone(), self.shared.wake.clone(), false, false)?
+            };
             connection.command(["attach-session".into(), "-t".into(), format!("${session}")])?;
             entry.insert((connection, (0, 0, 0, 0)));
         }
@@ -573,6 +638,11 @@ impl Connection {
         if !errors.is_empty() {
             return Err(err(errors.join("; ")));
         }
+        Ok(())
+    }
+    /// Stop contributing this window's size after its session view is detached.
+    pub fn release_view(&self, session: u64) -> io::Result<()> {
+        self.size_views.lock().map_err(err)?.remove(&session);
         Ok(())
     }
     /// Attach a negotiated native byte transport. The caller owns its shutdown.
@@ -651,6 +721,9 @@ impl Connection {
         }
         Ok(connection)
     }
+    pub fn is_closed(&self) -> bool {
+        self.shared.closed.load(Ordering::Acquire)
+    }
     pub fn command<I, S>(&self, argv: I) -> io::Result<u64>
     where
         I: IntoIterator<Item = S>,
@@ -715,6 +788,12 @@ impl Connection {
         let terminal = Arc::new(Mutex::new(pane_state.terminal.clone()));
         let exited = Arc::new(AtomicBool::new(was_exited));
         let (events_tx, events) = mpsc::sync_channel(256);
+        if !was_exited && let Some(snapshot) = &pane_state.agent_status.snapshot {
+            let _ = events_tx.try_send(SessionEvent::Effect(Effect::AgentStatus(
+                rustty_vt::agent::Event::Begin(snapshot.clone()),
+            )));
+            wake();
+        }
         let focused = Arc::new(AtomicBool::new(false));
         let visible = Arc::new(AtomicBool::new(false));
         let dark = Arc::new(AtomicBool::new(true));
@@ -775,14 +854,60 @@ fn write_record(writer: &mut impl Write, value: &impl serde::Serialize) -> io::R
 fn record(reader: &mut impl BufRead) -> io::Result<Option<Vec<u8>>> {
     tmuxx_runtime::read_record(reader, RECORD_LIMIT)
 }
+fn read_ssh_errors(mut reader: impl Read, shared: &Shared, host: &str) {
+    let mut bytes = Vec::new();
+    let _ = reader.by_ref().take(8192).read_to_end(&mut bytes);
+    let diagnostic = String::from_utf8_lossy(&bytes);
+    if !diagnostic.trim().is_empty() {
+        // Keep diagnostics even if stdout already reported a missing hello or EOF.
+        if let Ok(mut model) = shared.model.lock() {
+            model
+                .errors
+                .push(format!("SSH to {host}: {}", diagnostic.trim()));
+        }
+        (shared.wake)();
+    }
+    let _ = io::copy(&mut reader, &mut io::sink());
+}
+
+#[cfg(test)]
+mod ssh_tests {
+    use super::*;
+
+    #[test]
+    fn failed_handshake_keeps_bounded_ssh_diagnostic_and_drains_stderr() {
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        fail(&connection.shared, "missing tmuxx hello");
+        let bytes = vec![b'e'; 16384];
+        let mut stderr = io::Cursor::new(bytes);
+        read_ssh_errors(&mut stderr, &connection.shared, "example");
+        assert_eq!(stderr.position(), 16384);
+        let errors = connection.errors();
+        assert_eq!(errors[0], "missing tmuxx hello");
+        assert_eq!(errors[1], format!("SSH to example: {}", "e".repeat(8192)));
+    }
+
+    #[test]
+    fn invalid_ssh_host_and_command_are_rejected_before_starting_transport() {
+        for (host, command) in [
+            ("", "helper"),
+            ("host\0", "helper"),
+            ("host", "  "),
+            ("host", "bad\0command"),
+        ] {
+            assert!(Connection::ssh_command(host, command, Arc::new(|| {})).is_err());
+        }
+    }
+}
+
 fn fail(shared: &Shared, error: impl std::fmt::Display) {
+    if shared.closed.swap(true, Ordering::AcqRel) {
+        return;
+    }
     if let Ok(mut model) = shared.model.lock() {
         model.errors.push(error.to_string());
         for pane in model.panes.values() {
             for view in &pane.views {
-                if let Some(exited) = view.exited.upgrade() {
-                    exited.store(true, Ordering::Release);
-                }
                 let _ = view.events.try_send(SessionEvent::Error(error.to_string()));
                 (view.wake)();
             }
@@ -790,9 +915,11 @@ fn fail(shared: &Shared, error: impl std::fmt::Display) {
     }
     (shared.wake)();
 }
-fn restore(value: &serde_json::Value) -> io::Result<Terminal> {
+fn restore(value: &serde_json::Value) -> io::Result<(Terminal, tmuxx_terminal::AgentStatus)> {
     let snapshot: tmuxx_terminal::Snapshot = serde_json::from_value(value.clone()).map_err(err)?;
-    snapshot.restore().map(tmuxx_terminal::Terminal::into_backend)
+    let terminal = snapshot.restore()?;
+    let agent_status = terminal.agent_status().clone();
+    Ok((terminal.into_backend(), agent_status))
 }
 fn close_views(pane: &PaneState) {
     for view in &pane.views {
@@ -824,7 +951,11 @@ fn replace_view(view: &mut Terminal, source: &Terminal) {
 fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
     let mut model = shared.model.lock().map_err(err)?;
     match message {
-        ServerMessage::File { .. } => return Err(err("unexpected Unix IPC file operation on native transport")),
+        ServerMessage::File { .. } => {
+            return Err(err(
+                "unexpected Unix IPC file operation on native transport",
+            ));
+        }
         ServerMessage::Snapshot {
             instance_id,
             sequence,
@@ -846,7 +977,7 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
                 model.panes.clear();
                 model.last_host_event = None;
             }
-            for (id, terminal) in restored {
+            for (id, (terminal, agent_status)) in restored {
                 let remote = graph.panes.iter().find(|p| p.id == id).unwrap();
                 let replaced = model
                     .graph
@@ -857,8 +988,15 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
                     host_state: None,
                     owners: Arc::new(AtomicUsize::new(0)),
                     terminal: terminal.clone(),
+                    agent_status: tmuxx_terminal::AgentStatus::default(),
                     views: Vec::new(),
                 });
+                let agent_event = if replaced && agent_status.snapshot.is_some() {
+                    agent_status.event_since(&tmuxx_terminal::AgentStatus::default())
+                } else {
+                    agent_status.event_since(&pane.agent_status)
+                };
+                pane.agent_status = agent_status;
                 pane.terminal = terminal;
                 pane.views.retain(|view| {
                     let Some(terminal) = view.terminal.upgrade() else {
@@ -873,6 +1011,11 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
                             terminal.screen_mut().viewport_offset = 0;
                         }
                         replace_view(&mut terminal, &pane.terminal);
+                    }
+                    if let Some(event) = &agent_event {
+                        let _ = view
+                            .events
+                            .try_send(SessionEvent::Effect(Effect::AgentStatus(event.clone())));
                     }
                     (view.wake)();
                     true
@@ -902,13 +1045,25 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
             if let Some(pane) = model.panes.get_mut(&pane_id) {
                 // Application replies belong to the owner. Host actions require
                 // the native elected-recipient protocol, never replay effects.
-                let _ = pane.terminal.feed(&data);
+                let mut effects = Vec::new();
+                for effect in pane.terminal.feed(&data) {
+                    let ended = pane.agent_status.observe(&effect);
+                    if view_effect(&effect) {
+                        effects.push(effect);
+                    }
+                    if let Some(event) = ended {
+                        effects.push(Effect::AgentStatus(event));
+                    }
+                }
                 pane.views.retain(|view| {
                     let Some(terminal) = view.terminal.upgrade() else {
                         return false;
                     };
                     if let Ok(mut terminal) = terminal.lock() {
-                        feed_view(&mut terminal, &data, &view.events);
+                        let _ = terminal.feed(&data);
+                    }
+                    for effect in &effects {
+                        let _ = view.events.try_send(SessionEvent::Effect(effect.clone()));
                     }
                     (view.wake)();
                     true
@@ -980,7 +1135,9 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
         }
         ServerMessage::Detached { .. } => {
             shared.closed.store(true, Ordering::Release);
-            for pane in model.panes.values() { close_views(pane); }
+            for pane in model.panes.values() {
+                close_views(pane);
+            }
             (shared.wake)();
         }
         ServerMessage::Exit { reason } => {
@@ -1029,18 +1186,19 @@ fn host_reply(shared: &Shared, event_id: u64, response: HostResponse) -> io::Res
         .map_err(err)
 }
 
+fn view_effect(effect: &Effect) -> bool {
+    !matches!(
+        effect,
+        Effect::Write(_)
+            | Effect::Bell
+            | Effect::Notification { .. }
+            | Effect::ClipboardRead(_)
+            | Effect::ClipboardWrite(_)
+    )
+}
 fn feed_view(terminal: &mut Terminal, data: &[u8], events: &mpsc::SyncSender<SessionEvent>) {
-    for effect in terminal.feed(data) {
-        if !matches!(
-            effect,
-            Effect::Write(_)
-                | Effect::Bell
-                | Effect::Notification { .. }
-                | Effect::ClipboardRead(_)
-                | Effect::ClipboardWrite(_)
-        ) {
-            let _ = events.try_send(SessionEvent::Effect(effect));
-        }
+    for effect in terminal.feed(data).into_iter().filter(view_effect) {
+        let _ = events.try_send(SessionEvent::Effect(effect));
     }
 }
 
@@ -1062,6 +1220,140 @@ mod tests {
             thread::sleep(Duration::from_millis(5));
         }
     }
+    #[test]
+    fn native_agent_status_attach_live_and_resync_do_not_replay_host_actions() {
+        use rustty_vt::agent::{Event, State};
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        let mut owner = tmuxx_terminal::Terminal::new(20, 4, 20);
+        let begin =
+            Event::from_json(br#"{"op":"begin","state":"working","thread_id":"thread"}"#).unwrap();
+        owner.feed(b"\x1b]133;C\x07");
+        owner.feed(&begin.frame().unwrap());
+        owner.feed(b"\x07\x1b]52;c;Y2xpcGJvYXJk\x07");
+        let snapshot = |owner: &tmuxx_terminal::Terminal, sequence| ServerMessage::Snapshot {
+            instance_id: "agent-owner".into(),
+            sequence,
+            state: serde_json::json!({
+                "sessions": [{"id":1,"name":"agent","active":0,"windows":{"0":2}}],
+                "windows": [{"id":2,"name":"shell","active":7,"cols":20,"rows":4,"panes":[7],"layout":Layout::pane(7,20,4).to_legacy().unwrap()}],
+                "panes": [{"id":7,"window":2,"cols":20,"rows":4,"pid":123,"status":null,"terminal":owner.snapshot()}],
+            }),
+        };
+        apply(&connection.shared, snapshot(&owner, 1)).unwrap();
+        let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        for view in [&first, &second] {
+            assert!(matches!(
+                view.events().next(),
+                Some(SessionEvent::Effect(Effect::AgentStatus(Event::Begin(_))))
+            ));
+            assert_eq!(view.events().count(), 0);
+            assert!(view.terminal().unwrap().agent_status_events);
+            assert!(view.terminal().unwrap().shell_command_events);
+        }
+        apply(&connection.shared, snapshot(&owner, 1)).unwrap();
+        assert_eq!(first.events().count(), 0);
+        let update =
+            Event::from_json(br#"{"op":"update","state":"done","turn_id":"turn"}"#).unwrap();
+        let mut live = update.frame().unwrap();
+        live.extend(b"\x07\x1b]52;c;Y2xpcGJvYXJk\x07");
+        owner.feed(&live);
+        apply(
+            &connection.shared,
+            ServerMessage::PaneOutput {
+                sequence: 2,
+                pane_id: 7,
+                data: live,
+            },
+        )
+        .unwrap();
+        for view in [&first, &second] {
+            assert!(
+                matches!(view.events().next(), Some(SessionEvent::Effect(Effect::AgentStatus(Event::Update(status)))) if status.state == State::Done)
+            );
+            assert_eq!(view.events().count(), 0);
+        }
+        apply(&connection.shared, snapshot(&owner, 2)).unwrap();
+        assert_eq!(first.events().count(), 0);
+        owner.feed(
+            &Event::from_json(br#"{"op":"update","state":"needs_input"}"#)
+                .unwrap()
+                .frame()
+                .unwrap(),
+        );
+        apply(&connection.shared, snapshot(&owner, 3)).unwrap();
+        for view in [&first, &second] {
+            assert!(
+                matches!(view.events().next(), Some(SessionEvent::Effect(Effect::AgentStatus(Event::Update(status)))) if status.state == State::NeedsInput)
+            );
+            assert_eq!(view.events().count(), 0);
+        }
+        let ending = b"\x1b]133;D;0\x07";
+        owner.feed(ending);
+        apply(
+            &connection.shared,
+            ServerMessage::PaneOutput {
+                sequence: 4,
+                pane_id: 7,
+                data: ending.to_vec(),
+            },
+        )
+        .unwrap();
+        for view in [&first, &second] {
+            let effects = view
+                .events()
+                .filter_map(|event| match event {
+                    SessionEvent::Effect(effect) => Some(effect),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::CommandEnd { .. }, Effect::AgentStatus(Event::End)]
+            ));
+        }
+        apply(&connection.shared, snapshot(&owner, 4)).unwrap();
+        assert_eq!(first.events().count(), 0);
+        let third = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        assert_eq!(third.events().count(), 0);
+    }
+
+    #[test]
+    fn native_command_errors_keep_connection_and_transport_errors_keep_live_panes() {
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        let terminal = tmuxx_terminal::Terminal::new(20, 4, 20);
+        apply(&connection.shared, ServerMessage::Snapshot {
+            instance_id: "owner".into(), sequence: 1,
+            state: serde_json::json!({
+                "sessions": [{"id":1,"name":"test","active":0,"windows":{"0":2}}],
+                "windows": [{"id":2,"name":"shell","active":7,"cols":20,"rows":4,"panes":[7],"layout":Layout::pane(7,20,4).to_legacy().unwrap()}],
+                "panes": [{"id":7,"window":2,"cols":20,"rows":4,"status":null,"terminal":terminal.snapshot()}],
+            }),
+        }).unwrap();
+        let view = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        apply(
+            &connection.shared,
+            ServerMessage::Reply(tmuxx_protocol::native::Response {
+                request_id: 1,
+                output: Vec::new(),
+                status: None,
+                error: Some("invalid command".into()),
+            }),
+        )
+        .unwrap();
+        assert!(!connection.is_closed());
+        assert!(!view.has_exited());
+        assert_eq!(connection.errors(), ["invalid command"]);
+        fail(&connection.shared, "connection lost");
+        assert!(connection.is_closed());
+        assert!(!view.has_exited());
+        assert!(
+            matches!(view.events().next(), Some(SessionEvent::Error(message)) if message == "connection lost")
+        );
+        fail(&connection.shared, "duplicate worker error");
+        assert_eq!(connection.errors(), ["connection lost"]);
+    }
+
     #[test]
     fn streamed_snapshot_restores_large_image_atomically_and_abort_keeps_live_view() {
         let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
@@ -1142,9 +1434,20 @@ mod tests {
         for cols in [8, 16, 8, 16] {
             terminal.resize(cols, 20);
             let snapshot = terminal.snapshot();
-            let restored = restore(&serde_json::to_value(&snapshot).unwrap()).unwrap();
-            let ids = restored.primary_screen().all_rows().map(|r|r.id).collect::<Vec<_>>();
-            assert_eq!(ids, snapshot.primary.all_rows().map(|r|r.id).collect::<Vec<_>>());
+            let (restored, _) = restore(&serde_json::to_value(&snapshot).unwrap()).unwrap();
+            let ids = restored
+                .primary_screen()
+                .all_rows()
+                .map(|r| r.id)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                ids,
+                snapshot
+                    .primary
+                    .all_rows()
+                    .map(|r| r.id)
+                    .collect::<Vec<_>>()
+            );
             let graphics = restored.primary_screen().graphics.view_snapshot();
             assert_eq!(graphics.placements.len(), 1);
             assert!(ids.contains(&graphics.placements[0].row));
@@ -1171,7 +1474,10 @@ mod tests {
             assert_eq!(search.total_matches(), 1);
             let point = search.match_at(0).unwrap().start;
             terminal.screen_mut().selection = terminal.screen().select_output(point);
-            assert_eq!(terminal.screen().selection_text().as_deref(), Some("retained output with wrap\n"));
+            assert_eq!(
+                terminal.screen().selection_text().as_deref(),
+                Some("retained output with wrap\n")
+            );
             assert_eq!(terminal.screen().snapshot_viewport().height(), 3);
         }
         let terminal = second.terminal().unwrap();
@@ -1185,7 +1491,9 @@ mod tests {
         let mut owner = tmuxx_terminal::Terminal::new(10, 3, 100);
         owner.feed("old one\r\nold two\r\nold three\r\nwide 你\r\nlast".as_bytes());
         let snapshot = |owner: &mut tmuxx_terminal::Terminal, sequence| ServerMessage::Snapshot {
-            instance_id: "damage".into(), sequence, state: serde_json::json!({
+            instance_id: "damage".into(),
+            sequence,
+            state: serde_json::json!({
                 "sessions": [{"id":1,"name":"test","active":0,"windows":{"0":2}}],
                 "windows": [{"id":2,"name":"shell","active":7,"cols":10,"rows":3,"panes":[7],"layout":Layout::pane(7,10,3).to_legacy().unwrap()}],
                 "panes": [{"id":7,"window":2,"cols":10,"rows":3,"status":null,"terminal":owner.snapshot()}],
@@ -1210,7 +1518,15 @@ mod tests {
             let generation = second.snapshot().unwrap().generation;
             owner.feed(bytes);
             sequence += 1;
-            apply(&connection.shared, ServerMessage::PaneOutput { sequence, pane_id: 7, data: bytes.to_vec() }).unwrap();
+            apply(
+                &connection.shared,
+                ServerMessage::PaneOutput {
+                    sequence,
+                    pane_id: 7,
+                    data: bytes.to_vec(),
+                },
+            )
+            .unwrap();
             let frame = second.snapshot().unwrap();
             assert_eq!((frame.screen.cursor.row, frame.screen.cursor.col), cursor);
             assert_eq!(frame.screen.cursor.visible, visible);
@@ -1225,7 +1541,15 @@ mod tests {
             assert_eq!(second.terminal().unwrap().screen().viewport_offset, 0);
         }
         sequence += 1;
-        apply(&connection.shared, ServerMessage::PaneOutput { sequence, pane_id: 7, data: b"\x1b[2;7HX".to_vec() }).unwrap();
+        apply(
+            &connection.shared,
+            ServerMessage::PaneOutput {
+                sequence,
+                pane_id: 7,
+                data: b"\x1b[2;7HX".to_vec(),
+            },
+        )
+        .unwrap();
         let frame = second.snapshot().unwrap();
         assert_eq!(frame.screen.row(1).cells[5].width(), 1);
         assert!(frame.screen.row(1).cells[5].codepoint().is_none());
@@ -1246,7 +1570,14 @@ mod tests {
             }) }).unwrap();
             let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
             let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
-            apply(&connection.shared, ServerMessage::Detached { session:"test".into(), hangup }).unwrap();
+            apply(
+                &connection.shared,
+                ServerMessage::Detached {
+                    session: "test".into(),
+                    hangup,
+                },
+            )
+            .unwrap();
             assert!(first.has_exited() && second.has_exited());
             assert!(connection.shared.closed.load(Ordering::Acquire));
             assert!(connection.errors().is_empty());
@@ -1260,11 +1591,15 @@ mod tests {
         let snapshot = |instance: &str, sequence, text: &[u8]| {
             let mut terminal = tmuxx_terminal::Terminal::new(80, 24, 2000);
             terminal.feed(text);
-            ServerMessage::Snapshot { instance_id: instance.into(), sequence, state: serde_json::json!({
-                "sessions": [{"id": 1,"name":"test","active":0,"windows":{"0":2}}],
-                "windows": [{"id":2,"name":"shell","active":7,"cols":80,"rows":24,"panes":[7],"layout":Layout::pane(7,80,24).to_legacy().unwrap()}],
-                "panes": [{"id":7,"window":2,"cols":80,"rows":24,"pid":123,"status":null,"terminal":terminal.snapshot()}],
-            }) }
+            ServerMessage::Snapshot {
+                instance_id: instance.into(),
+                sequence,
+                state: serde_json::json!({
+                    "sessions": [{"id": 1,"name":"test","active":0,"windows":{"0":2}}],
+                    "windows": [{"id":2,"name":"shell","active":7,"cols":80,"rows":24,"panes":[7],"layout":Layout::pane(7,80,24).to_legacy().unwrap()}],
+                    "panes": [{"id":7,"window":2,"cols":80,"rows":24,"pid":123,"status":null,"terminal":terminal.snapshot()}],
+                }),
+            }
         };
         apply(&connection.shared, snapshot("old", 50, b"old owner")).unwrap();
         let old = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
@@ -1273,24 +1608,67 @@ mod tests {
             let row = terminal.screen().row(0).id;
             terminal.screen_mut().selection = Some(rustty_vt::Selection {
                 start: rustty_vt::GridPoint { row, col: 0 },
-                end: rustty_vt::GridPoint { row, col: 2 }, rectangular: false,
+                end: rustty_vt::GridPoint { row, col: 2 },
+                rectangular: false,
             });
         }
-        apply(&connection.shared, ServerMessage::HostEffect { sequence: 50, pane_id: 7, event_id: 90, action: serde_json::json!("Bell") }).unwrap();
-        assert_eq!(old.events().filter(|event| matches!(event, SessionEvent::Effect(Effect::Bell))).count(), 1);
+        apply(
+            &connection.shared,
+            ServerMessage::HostEffect {
+                sequence: 50,
+                pane_id: 7,
+                event_id: 90,
+                action: serde_json::json!("Bell"),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            old.events()
+                .filter(|event| matches!(event, SessionEvent::Effect(Effect::Bell)))
+                .count(),
+            1
+        );
         apply(&connection.shared, snapshot("new", 1, b"new owner")).unwrap();
         assert!(old.has_exited());
         let new = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
         assert!(!new.has_exited());
         assert!(new.terminal().unwrap().screen().selection.is_none());
         assert!(old.terminal().unwrap().screen().selection.is_some());
-        apply(&connection.shared, ServerMessage::HostEffect { sequence: 1, pane_id: 7, event_id: 1, action: serde_json::json!("Bell") }).unwrap();
-        assert_eq!(new.events().filter(|event| matches!(event, SessionEvent::Effect(Effect::Bell))).count(), 1);
+        apply(
+            &connection.shared,
+            ServerMessage::HostEffect {
+                sequence: 1,
+                pane_id: 7,
+                event_id: 1,
+                action: serde_json::json!("Bell"),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            new.events()
+                .filter(|event| matches!(event, SessionEvent::Effect(Effect::Bell)))
+                .count(),
+            1
+        );
         assert_eq!(old.events().count(), 0);
-        apply(&connection.shared, ServerMessage::PaneOutput { sequence: 2, pane_id: 7, data: b" current".to_vec() }).unwrap();
+        apply(
+            &connection.shared,
+            ServerMessage::PaneOutput {
+                sequence: 2,
+                pane_id: 7,
+                data: b" current".to_vec(),
+            },
+        )
+        .unwrap();
         for (session, expected) in [(&old, "old owner"), (&new, "new owner current")] {
             let terminal = session.terminal().unwrap();
-            assert_eq!(terminal.screen().row_text(terminal.screen().row(0)).trim_end(), expected);
+            assert_eq!(
+                terminal
+                    .screen()
+                    .row_text(terminal.screen().row(0))
+                    .trim_end(),
+                expected
+            );
         }
     }
 
@@ -1499,14 +1877,58 @@ mod tests {
     }
 
     #[test]
+    fn embedded_size_clients_use_the_owner_and_release_their_size_context() {
+        let connection = test_owner("import time; time.sleep(30)");
+        let graph = wait(&connection, |g| !g.panes.is_empty());
+        let session = graph.sessions[0].id;
+        let pid = graph.panes[0].pid;
+        let rival = Connection::local(
+            connection.owner.as_ref().unwrap().connect().unwrap(),
+            Arc::new(|| {}),
+            false,
+        )
+        .unwrap();
+        rival
+            .command(["attach-session".into(), "-t".into(), format!("${session}")])
+            .unwrap();
+        rival.command(["refresh-client", "-C", "100,40"]).unwrap();
+        connection
+            .command(["set-option", "-w", "window-size", "smallest"])
+            .unwrap();
+        let Source::Unix(endpoint) = &connection.source else {
+            panic!("missing endpoint");
+        };
+        std::fs::remove_file(endpoint).unwrap();
+        connection.view_size(session, 60, 20, 8, 16).unwrap();
+        wait(&connection, |g| {
+            g.windows[0].cols == 60 && g.windows[0].rows == 20
+        });
+        connection.release_view(session).unwrap();
+        let graph = wait(&connection, |g| {
+            g.windows[0].cols == 100 && g.windows[0].rows == 40
+        });
+        assert_eq!(graph.panes[0].pid, pid);
+        assert!(connection.size_views.lock().unwrap().is_empty());
+        connection.release_view(session).unwrap();
+        connection.view_size(session, 50, 10, 8, 16).unwrap();
+        wait(&connection, |g| {
+            g.windows[0].cols == 50 && g.windows[0].rows == 10
+        });
+    }
+
+    #[test]
     fn native_exit_and_respawn_replace_process_state_and_selection() {
         let connection = test_owner(
-            "import os,tty,sys; tty.setraw(0); os.write(1,b'first-ready\\r\\n'); os.read(0,1); sys.exit(17)",
+            "import os,tty,sys; tty.setraw(0); os.write(1,b'\\x1b]777;rustty-agent;1;eyJvcCI6ImJlZ2luIiwic3RhdGUiOiJuZWVkc19pbnB1dCIsInRocmVhZF9pZCI6InJlbW90ZSJ9\\x07first-ready\\r\\n'); os.read(0,1); sys.exit(17)",
         );
         let graph = wait(&connection, |g| !g.panes.is_empty());
         let pane = graph.panes[0].id;
         let session = Session::attach_tmuxx(&connection, pane, Arc::new(|| {})).unwrap();
         wait_text(&connection, &session, "first-ready");
+        assert!(session.events().any(|event| matches!(
+            event,
+            SessionEvent::Effect(Effect::AgentStatus(rustty_vt::agent::Event::Begin(_)))
+        )));
         connection
             .command(["set-option", "-w", "remain-on-exit", "on"])
             .unwrap();
@@ -1521,8 +1943,15 @@ mod tests {
             });
         }
         session.write(b"x").unwrap();
-        wait(&connection, |g| g.panes[0].status == Some(17));
+        let graph = wait(&connection, |g| g.panes[0].status == Some(17));
         assert!(session.has_exited());
+        let terminal: tmuxx_terminal::Snapshot =
+            serde_json::from_value(graph.panes[0].terminal.clone()).unwrap();
+        assert!(terminal.agent_status.snapshot.is_none());
+        assert!(session.events().any(|event| matches!(
+            event,
+            SessionEvent::Effect(Effect::AgentStatus(rustty_vt::agent::Event::End))
+        )));
         connection.command(["respawn-pane", "-k", "-t", &format!("%{pane}"), "python3", "-u", "-c", "import os,tty; tty.setraw(0); os.write(1,b'second-ready\\r\\n'); data=os.read(0,1); os.write(1,b'RECEIVED:'+data.hex().encode()+b'\\r\\n'); os.read(0,1)"]).unwrap();
         wait_text(&connection, &session, "second-ready");
         let graph = wait(&connection, |g| {

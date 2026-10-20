@@ -66,6 +66,34 @@ fn args(values: &[&str]) -> Vec<String> {
 }
 
 #[test]
+fn native_ssh_command_preserves_shell_quoting_and_resets_to_rustty_helper() {
+    let home = TestHome::new();
+    let default = "rustty tmux --native-stdio";
+    assert_eq!(home.loader.load().config.tmuxx_ssh_command, default);
+    let command =
+        "'/opt/Rustty App/rustty' tmux --native-endpoint /tmp/custom.native --native-stdio";
+    home.own(&format!("tmuxx-ssh-command={command}\n"));
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(loaded.config.tmuxx_ssh_command, command);
+    assert_eq!(
+        home.loader
+            .load_with_args(&args(&["--tmuxx-ssh-command="]))
+            .config
+            .tmuxx_ssh_command,
+        default
+    );
+    for invalid in ["\" \"", "bad\0command"] {
+        home.own(&format!(
+            "tmuxx-ssh-command={command}\ntmuxx-ssh-command={invalid}\n"
+        ));
+        let loaded = home.loader.load();
+        assert_eq!(loaded.diagnostics.len(), 1);
+        assert_eq!(loaded.config.tmuxx_ssh_command, command);
+    }
+}
+
+#[test]
 fn windows_roaming_config_root_is_explicit_and_does_not_read_terminal_settings() {
     let mut home = TestHome::new();
     let roaming = home.root.join("roaming");
