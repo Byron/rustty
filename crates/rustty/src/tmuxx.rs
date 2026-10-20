@@ -965,7 +965,49 @@ fn fail(shared: &Shared, error: impl std::fmt::Display) {
     (shared.wake)();
 }
 fn restore(value: &serde_json::Value) -> io::Result<(Terminal, tmuxx_terminal::AgentStatus)> {
-    let snapshot: tmuxx_terminal::Snapshot = serde_json::from_value(value.clone()).map_err(err)?;
+    let mut value = value.clone();
+    // Older daemons retain capture metadata after shrinking or replacing its rows.
+    for name in ["primary", "alternate"] {
+        let Some(screen) = value.get_mut(name).filter(|screen| screen.is_object()) else {
+            continue;
+        };
+        let widths = ["history", "rows"]
+            .into_iter()
+            .filter_map(|name| screen.get(name)?.as_array())
+            .flatten()
+            .filter_map(|row| {
+                Some((
+                    row.get("id")?.as_u64()?,
+                    row.get("cells")?.as_array()?.len(),
+                ))
+            })
+            .collect::<BTreeMap<_, _>>();
+        let known = screen
+            .get("tmux_capture_known")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let Some(capture) = screen.get_mut("tmux_capture_rows") else {
+            continue;
+        };
+        let mut rows: Vec<(u64, (usize, usize))> =
+            serde_json::from_value(capture.take()).map_err(err)?;
+        let mut ids = std::collections::BTreeSet::new();
+        if rows.iter().any(|(id, (used, allocated))| {
+            !ids.insert(*id) || used > allocated || *allocated > usize::from(u16::MAX)
+        }) {
+            return Err(err("invalid capture allocation bounds"));
+        }
+        rows.retain_mut(|(id, (used, _))| {
+            if let Some(width) = widths.get(id) {
+                *used = (*used).min(*width);
+                true
+            } else {
+                known
+            }
+        });
+        *capture = serde_json::to_value(rows).map_err(err)?;
+    }
+    let snapshot: tmuxx_terminal::Snapshot = serde_json::from_value(value).map_err(err)?;
     let terminal = snapshot.restore()?;
     let agent_status = terminal.agent_status().clone();
     Ok((terminal.into_backend(), agent_status))
@@ -1490,6 +1532,80 @@ mod tests {
                 .images[0]
                 .pixels
         ));
+    }
+
+    #[test]
+    fn native_snapshot_restores_capture_lengths_after_non_reflow_shrink() {
+        for (input, alternate) in [
+            (b"\x1b[?7l01234567890123456789".as_slice(), false),
+            (b"\x1b[?1049h01234567890123456789".as_slice(), true),
+        ] {
+            let mut terminal = tmuxx_terminal::Terminal::new(20, 3, 20);
+            terminal.feed(input);
+            terminal.resize(10, 3);
+            if alternate {
+                terminal.feed(b"\x1b[?1049l");
+            }
+            let mut value = serde_json::to_value(terminal.snapshot()).unwrap();
+            let name = if alternate { "alternate" } else { "primary" };
+            let row = value[name]["rows"][0]["id"].as_u64().unwrap();
+            value[name]["tmux_capture_rows"] = serde_json::json!([[row, [20, 20]]]);
+            let (mut restored, _) = restore(&value).unwrap();
+            let screen = if alternate {
+                restored.alternate_screen().unwrap()
+            } else {
+                restored.primary_screen()
+            };
+            assert_eq!(screen.row_text(screen.row(0)), "0123456789");
+            assert_eq!(screen.tmux_capture_bounds(row), Some((10, 20)));
+            assert!(!restored.is_alternate_screen());
+            restored.feed(b"\x1b[?7h");
+            restored.resize(5, 3);
+        }
+    }
+
+    #[test]
+    fn native_snapshot_restores_stale_capture_rows_after_reflow() {
+        let mut terminal = tmuxx_terminal::Terminal::new(20, 5, 20);
+        terminal.feed(b"abcdefghijklmnopqrstuvwxyz");
+        terminal.resize(6, 2);
+        terminal.feed(b"\x1b[M");
+        terminal.resize(5, 1);
+        terminal.feed(b"\x1b[2J");
+        terminal.resize(18, 2);
+        let mut value = serde_json::to_value(terminal.snapshot()).unwrap();
+        restore(&value).unwrap();
+        value["primary"]["tmux_capture_known"] = false.into();
+        value["primary"]["tmux_capture_rows"] = serde_json::json!([[999999, [0, 0]]]);
+        let (restored, _) = restore(&value).unwrap();
+        assert_eq!((restored.cols, restored.rows), (18, 2));
+        for invalid in [
+            serde_json::json!([[999999, [1, 0]]]),
+            serde_json::json!([[999999, [0, 65536]]]),
+            serde_json::json!([[999999, [0, 0]], [999999, [0, 0]]]),
+        ] {
+            value["primary"]["tmux_capture_rows"] = invalid;
+            assert!(restore(&value).is_err());
+        }
+    }
+
+    #[test]
+    fn native_snapshot_rejects_invalid_capture_metadata_after_compatibility() {
+        let terminal = tmuxx_terminal::Terminal::new(10, 3, 20);
+        let value = serde_json::to_value(terminal.snapshot()).unwrap();
+        let id = value["primary"]["rows"][0]["id"].as_u64().unwrap();
+        for capture in [
+            serde_json::json!([[id, [20, 19]]]),
+            serde_json::json!([[id, [20, 65536]]]),
+            serde_json::json!([[id, [-1, 20]]]),
+            serde_json::json!([[999999, [20, 20]]]),
+            serde_json::json!([[id, [20, 20]], [id, [20, 20]]]),
+            serde_json::json!([[id, [20, 20, 20]]]),
+        ] {
+            let mut invalid = value.clone();
+            invalid["primary"]["tmux_capture_rows"] = capture;
+            assert!(restore(&invalid).is_err());
+        }
     }
 
     #[test]
