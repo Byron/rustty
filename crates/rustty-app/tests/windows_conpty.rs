@@ -1,5 +1,6 @@
 //! Verify DEC 2026 across the real PTY, not only by feeding the parser directly.
 //! Build the debug bundle, then cargo test -p rustty-app --test windows_conpty -- --ignored.
+//! Set RUSTTY_CONPTY_RESOURCES to use another bundle's resources directory.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !std::env::args().any(|arg| arg == "--ignored") {
         println!("windows_conpty: ignored (build the Windows bundle, then pass --ignored)");
@@ -22,13 +23,19 @@ mod windows {
     };
 
     pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-        let resources =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/Rustty/resources");
-        // --system demonstrates the regression against the unpatched OS runtime
-        // in a separate process; DLL selection is fixed for the process lifetime.
-        if !std::env::args().any(|arg| arg == "--system") {
-            rustty_app::platform::initialize_terminal_runtime(&resources)?;
+        if std::env::args().any(|arg| arg == "--system") {
+            return Err(
+                "The PTY backend requires bundled ConPTY; --system is no longer supported".into(),
+            );
         }
+        let resources = std::env::var_os("RUSTTY_CONPTY_RESOURCES")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/Rustty/resources")
+            });
+        rustty_app::platform::initialize_terminal_runtime(&resources)?;
+        // Repeated startup calls must reuse the same process-wide PTY runtime.
+        rustty_app::platform::initialize_terminal_runtime(&resources)?;
         let pair = native_pty_system().openpty(PtySize {
             cols: 80,
             rows: 24,

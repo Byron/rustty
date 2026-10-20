@@ -139,7 +139,9 @@ The native CPU opacity/menu test is opt-in:
 `cargo test -p rustty-app --lib software_surface -- --ignored --test-threads=1`.
 The ConPTY check sends fragmented animated redraws through a real PTY and verifies
 every byte boundary retains synchronization until text and cursor restoration
-are complete. Passing `--system` additionally selects the OS runtime for diagnosis.
+are complete. Set `RUSTTY_CONPTY_RESOURCES` to test another bundle's resources
+directory (for example, `target/release/Rustty/resources`). The shared PTY backend
+requires the pinned bundle; the former `--system` option is no longer supported.
 
 ## macOS
 
@@ -477,11 +479,10 @@ The engine and all Rustty renderers share its `tmuxx-vendored-rustty-vt` package
 native checkpoint/replay uses the same implementation. Update these dependencies
 together when changing the terminal implementation. The workspace also patches
 `portable-pty` to the same revision so Rustty and tmuxx share the required native
-PTY backend; its Unix behavior is unchanged. On Windows the existing ConPTY
-loader must be adapted to this fork's explicit initialization API before any PTY
-can be created, including ordinary Rustty panels. That adaptation and verification
-of the bundled runtime remain TODOs for the Windows agent; this update is
-validated on macOS only.
+PTY backend; its Unix behavior is unchanged. On Windows Rustty calls the shared
+runtime's explicit ConPTY initializer before creating any panes. It verifies the
+bundled DLL and OpenConsole executable against the pinned package and retains
+them for the process lifetime. Ordinary and embedded panes use the same runtime.
 
 GUI connections remain compatible with older native tmuxx daemons. The updated
 `rustty tmux` CLI requires terminal-feature negotiation, so CLI commands against an
