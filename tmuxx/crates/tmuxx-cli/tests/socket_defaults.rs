@@ -271,7 +271,9 @@ fn native_control_rejects_old_servers_before_submitting_commands() {
                 .unwrap()
                 .control_commands
         );
-        stream.write_all(b"{\"version\":1}\n").unwrap();
+        stream
+            .write_all(b"{\"version\":1,\"client_features\":0}\n")
+            .unwrap();
         assert_eq!(
             stream.read(&mut [0; 1]).unwrap(),
             0,
