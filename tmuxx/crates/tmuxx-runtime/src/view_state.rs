@@ -74,6 +74,10 @@ impl Host {
         }
         let input: tmuxx_terminal::Input =
             serde_json::from_slice(&input).map_err(|error| error.to_string())?;
+        // GUI input can arrive after exit while the removal snapshot is still in transit.
+        if !self.engine.panes.contains_key(&pane) {
+            return Ok(Outcome::default());
+        }
         let mut out = self.engine.native_input(pane, &input)?;
         if let Some(pane) = self.engine.panes.get(&pane) {
             self.client_became_latest(client, pane.window);

@@ -1068,10 +1068,22 @@ impl Host {
         }
         if snapshots {
             self.snapshot(id);
-        } else if changed {
-            self.broadcast(ServerMessage::Changed {
-                sequence: self.engine.sequence,
-            });
+        }
+        if changed {
+            let recipients = self
+                .clients
+                .iter()
+                .filter(|(target, client)| client.subscribed && (!snapshots || **target != id))
+                .map(|(target, _)| *target)
+                .collect::<Vec<_>>();
+            for target in recipients {
+                self.send(
+                    target,
+                    ServerMessage::Changed {
+                        sequence: self.engine.sequence,
+                    },
+                );
+            }
         }
         if detach {
             self.detach_client(id, detach_hangup);
