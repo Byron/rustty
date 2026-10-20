@@ -839,11 +839,23 @@ pub struct WindowState {
     pub quick: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SavedAttachment {
+    pub endpoint: PathBuf,
+    #[serde(default)]
+    pub instance_id: String,
+    pub session_id: u64,
+    pub session_name: String,
+    pub frame: [f64; 4],
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Workspace {
     version: u32,
     next_id: Id,
     pub windows: Vec<WindowState>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tmuxx: Vec<SavedAttachment>,
     /// Logical dashboard positions; new reporters may reclaim inactive reservations.
     #[serde(default, deserialize_with = "deck_positions")]
     pub deck_positions: Vec<Option<Id>>,
@@ -884,6 +896,7 @@ impl Default for Workspace {
             version: 1,
             next_id: 1,
             windows: Vec::new(),
+            tmuxx: Vec::new(),
             deck_positions: Vec::new(),
             pinned_panes: Vec::new(),
         }
@@ -1091,6 +1104,7 @@ impl Workspace {
     /// Restoring a layout must not reuse IDs issued after that snapshot.
     pub fn restore(&mut self, mut previous: Self) -> Self {
         previous.next_id = previous.next_id.max(self.next_id);
+        previous.tmuxx.clone_from(&self.tmuxx);
         previous.deck_positions.clone_from(&self.deck_positions);
         previous.reconcile_deck_positions();
         previous.pinned_panes.clone_from(&self.pinned_panes);
@@ -1175,8 +1189,28 @@ impl Workspace {
         result
     }
     pub(crate) fn validate(&self) -> io::Result<()> {
-        if self.version != 1 || self.next_id == 0 || self.windows.len() > 64 {
+        if self.version != 1
+            || self.next_id == 0
+            || self.windows.len() > 64
+            || self.tmuxx.len() > 64
+        {
             return Err(invalid("unsupported or invalid workspace state"));
+        }
+        for attachment in &self.tmuxx {
+            if !attachment.endpoint.is_absolute()
+                || attachment
+                    .endpoint
+                    .as_os_str()
+                    .as_encoded_bytes()
+                    .contains(&0)
+                || attachment.session_name.is_empty()
+                || attachment.session_name.contains('\0')
+                || attachment.frame.iter().any(|value| !value.is_finite())
+                || attachment.frame[2] <= 0.0
+                || attachment.frame[3] <= 0.0
+            {
+                return Err(invalid("invalid saved tmuxx attachment"));
+            }
         }
         let mut ids = HashSet::new();
         let mut maximum = 0;
@@ -1677,6 +1711,7 @@ mod tests {
             version: 1,
             deck_positions: vec![Some(7), None, Some(2)],
             pinned_panes: vec![7, 2],
+            tmuxx: vec![],
             windows: vec![WindowState {
                 id: 20,
                 tabs: vec![quadrants()],
@@ -1695,6 +1730,44 @@ mod tests {
         assert_eq!(tab.root.panes(), [2, 7, 3, 5]);
         assert_eq!(tab.focused, 7);
         assert_eq!(tab.panes[&7].working_directory, PathBuf::from("/tmp"));
+    }
+
+    #[test]
+    fn saved_tmuxx_attachments_are_optional_local_and_independent_of_layout_undo() {
+        let mut state = Workspace::default();
+        let legacy = serde_json::to_value(&state).unwrap();
+        assert!(legacy.get("tmuxx").is_none());
+        assert!(
+            serde_json::from_value::<Workspace>(legacy)
+                .unwrap()
+                .tmuxx
+                .is_empty()
+        );
+        let previous = state.clone();
+        state.tmuxx.push(SavedAttachment {
+            endpoint: std::env::temp_dir().join("rustty-tmuxx.native"),
+            instance_id: "server-one".into(),
+            session_id: 7,
+            session_name: "work".into(),
+            frame: [10.0, 20.0, 800.0, 600.0],
+        });
+        state.validate().unwrap();
+        let decoded: Workspace =
+            serde_json::from_value(serde_json::to_value(&state).unwrap()).unwrap();
+        assert_eq!(decoded.tmuxx, state.tmuxx);
+        state.restore(previous);
+        assert_eq!(state.tmuxx, decoded.tmuxx);
+
+        for invalid in 0..4 {
+            let mut state = decoded.clone();
+            match invalid {
+                0 => state.tmuxx[0].endpoint = "relative.native".into(),
+                1 => state.tmuxx[0].session_name = "bad\0name".into(),
+                2 => state.tmuxx[0].frame[2] = 0.0,
+                _ => state.tmuxx.resize(65, state.tmuxx[0].clone()),
+            }
+            assert!(state.validate().is_err());
+        }
     }
 
     #[test]

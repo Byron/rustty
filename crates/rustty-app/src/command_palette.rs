@@ -363,9 +363,19 @@ fn trigger_label(trigger: &KeyTrigger) -> String {
 fn actions() -> Vec<(&'static str, Action)> {
     let mut actions = vec![
         ("New Window", Action::NewWindow),
+        (
+            "New Temporary tmuxx Window",
+            Action::NewTemporaryTmuxxWindow,
+        ),
+        (
+            "New Persistent tmuxx Window",
+            Action::NewPersistentTmuxxWindow,
+        ),
+        ("Connect to tmuxx Server…", Action::ConnectTmuxx),
         ("New Tab", Action::NewTab),
         ("Split Right", Action::NewSplit(Direction::Right)),
         ("Split Down", Action::NewSplit(Direction::Down)),
+        ("New Floating Panel", Action::NewFloatingPane),
         ("Zoom Pane", Action::ToggleSplitZoom),
         ("Zoom Quadrant", Action::ToggleQuadrantZoom),
         ("Equalize Splits", Action::EqualizeSplits),
@@ -378,10 +388,6 @@ fn actions() -> Vec<(&'static str, Action)> {
         ("Toggle Quick Terminal", Action::ToggleQuickTerminal),
         ("Toggle Outliner", Action::ToggleOutliner),
         ("Toggle Pin", Action::TogglePin),
-        (
-            "Toggle Keep Pane After Disconnect",
-            Action::TogglePanePersistence,
-        ),
         ("Undo Layout Change", Action::Undo),
         ("Redo Layout Change", Action::Redo),
     ];
@@ -893,12 +899,12 @@ mod tests {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert!(labels.contains(&"New Window"), "{labels:?}");
+        assert!(labels.contains(&"Find"), "{labels:?}");
         assert!(
             labels.contains(&if cfg!(windows) {
-                "Ctrl+Shift+N"
+                "Ctrl+Shift+F"
             } else {
-                "⌘N"
+                "⌘F"
             }),
             "{labels:?}"
         );
@@ -933,7 +939,10 @@ mod tests {
             &mut focus,
             vec![key(Key::Enter)],
         );
-        assert_eq!(action, Some(PaletteEvent::Action(Action::NewWindow)));
+        assert_eq!(
+            action,
+            Some(PaletteEvent::Action(Action::NewPersistentTmuxxWindow))
+        );
         assert!(!palette.open);
 
         palette.toggle();
@@ -1119,8 +1128,17 @@ mod tests {
         draw(&context, &mut palette, &config, &mut focus, vec![]);
         draw(&context, &mut palette, &config, &mut focus, vec![]);
         for (query, expected) in [
-            ("New Window", vec!["New Window"]),
-            ("new", vec!["New Tab", "New Window"]),
+            ("Find", vec!["Find"]),
+            (
+                "new",
+                vec![
+                    "New Floating Panel",
+                    "New Persistent tmuxx Window",
+                    "New Tab",
+                    "New Temporary tmuxx Window",
+                    "New Window",
+                ],
+            ),
             ("no such command", vec!["No matches"]),
             ("c f g", vec!["Open Configuration", "Reload Configuration"]),
             (
@@ -1134,21 +1152,21 @@ mod tests {
             (
                 "o",
                 vec![
+                    "Connect to tmuxx Server…",
+                    "New Floating Panel",
+                    "New Persistent tmuxx Window",
+                    "New Temporary tmuxx Window",
                     "New Window",
-                    "Open Configuration",
-                    "Open Saved Layout",
-                    "Redo Layout Change",
-                    "Reload Configuration",
                 ],
             ),
             (
                 "",
                 vec![
+                    "Connect to tmuxx Server…",
                     "Equalize Splits",
                     "Find",
-                    "New Tab",
-                    "New Window",
-                    "Open Configuration",
+                    "New Floating Panel",
+                    "New Persistent tmuxx Window",
                 ],
             ),
         ] {

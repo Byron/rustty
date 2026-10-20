@@ -18,12 +18,12 @@ portable-pty = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
 serde = { workspace = true, optional = true }
-tmuxx-terminal = { path = "../../../../tmux/tmux/rust/crates/tmuxx-terminal", optional = true }
-tmuxx-runtime = { path = "../../../../tmux/tmux/rust/crates/tmuxx-runtime", optional = true }
-tmuxx-protocol = { path = "../../../../tmux/tmux/rust/crates/tmuxx-protocol", optional = true }
-tmuxx-layout = { path = "../../../../tmux/tmux/rust/crates/tmuxx-layout", optional = true }
-tmuxx-client = { path = "../../../../tmux/tmux/rust/crates/tmuxx-client", optional = true }
-tmuxx-command = { path = "../../../../tmux/tmux/rust/crates/tmuxx-command", optional = true }
+tmuxx-terminal = { workspace = true, optional = true }
+tmuxx-runtime = { workspace = true, optional = true }
+tmuxx-protocol = { workspace = true, optional = true }
+tmuxx-layout = { workspace = true, optional = true }
+tmuxx-client = { workspace = true, optional = true }
+tmuxx-command = { workspace = true, optional = true }
 getrandom = { version = "0.3", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]

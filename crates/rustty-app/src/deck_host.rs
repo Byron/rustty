@@ -222,8 +222,7 @@ impl App {
             .iter()
             .flat_map(|w| &w.tabs)
             .flat_map(|tab| {
-                tab.root
-                    .panes()
+                tab.pane_ids()
                     .into_iter()
                     .filter_map(|id| {
                         let pane = self.panes.get(&id)?;

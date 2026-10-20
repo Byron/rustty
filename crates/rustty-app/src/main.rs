@@ -14,6 +14,14 @@ fn main() {
     #[cfg(target_os = "windows")]
     attach_parent_console();
 
+    if std::env::args_os().nth(1).is_some_and(|arg| arg == "tmux") {
+        tmuxx_cli::run_from(
+            std::iter::once("rustty tmux".into()).chain(std::env::args_os().skip(2)),
+            &["tmux"],
+        );
+        return;
+    }
+
     let cli_result = match std::env::args().nth(1).as_deref() {
         Some("agent-status") => Some(agent_cli::run(std::env::args().skip(2))),
         Some("agent-sim") => Some(agent_sim::run(std::env::args().skip(2))),

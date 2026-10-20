@@ -43,6 +43,7 @@ harness = false
 
 [dependencies]
 rustty = { workspace = true, features = ["sessions"] }
+tmuxx-cli.workspace = true
 rustty-font.workspace = true
 rustty-render.workspace = true
 rustty-render-wgpu.workspace = true
@@ -94,3 +95,6 @@ embed-resource = "3"
 
 [target.'cfg(windows)'.dev-dependencies]
 portable-pty.workspace = true
+
+[target.'cfg(unix)'.dev-dependencies]
+libc = "0.2"

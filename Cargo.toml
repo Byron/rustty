@@ -12,6 +12,13 @@ license = "MIT"
 [workspace.dependencies]
 rustty-parser = { path = "crates/rustty-parser" }
 rustty-vt = { package = "tmuxx-vendored-rustty-vt", path = "../../tmux/tmux/rust/vendor/rustty-vt" }
+tmuxx-cli = { path = "../../tmux/tmux/rust/crates/tmuxx-cli" }
+tmuxx-terminal = { path = "../../tmux/tmux/rust/crates/tmuxx-terminal" }
+tmuxx-runtime = { path = "../../tmux/tmux/rust/crates/tmuxx-runtime" }
+tmuxx-protocol = { path = "../../tmux/tmux/rust/crates/tmuxx-protocol" }
+tmuxx-layout = { path = "../../tmux/tmux/rust/crates/tmuxx-layout" }
+tmuxx-client = { path = "../../tmux/tmux/rust/crates/tmuxx-client" }
+tmuxx-command = { path = "../../tmux/tmux/rust/crates/tmuxx-command" }
 rustty-font = { path = "crates/rustty-font" }
 rustty-render = { path = "crates/rustty-render" }
 rustty-render-wgpu = { path = "crates/rustty-render-wgpu" }

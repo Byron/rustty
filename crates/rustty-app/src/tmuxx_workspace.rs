@@ -4,7 +4,7 @@ use crate::workspace::{
 };
 use rustty::config::{Action, Direction};
 use rustty::tmuxx::{Graph, Kind, Layout};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Default)]
 pub struct Mapping {
@@ -20,10 +20,15 @@ impl Mapping {
     fn id(&mut self, workspace: &mut Workspace, key: String) -> Id {
         *self.ids.entry(key).or_insert_with(|| workspace.id())
     }
-    pub fn apply(&mut self, workspace: &mut Workspace, graph: &Graph) -> Result<(), String> {
+    pub fn apply(
+        &mut self,
+        workspace: &mut Workspace,
+        graph: &Graph,
+        selected_sessions: &BTreeSet<u64>,
+    ) -> Result<(), String> {
         let mut next = self.clone();
         let mut next_workspace = workspace.clone();
-        next.apply_inner(&mut next_workspace, graph)?;
+        next.apply_inner(&mut next_workspace, graph, selected_sessions)?;
         next_workspace
             .validate()
             .map_err(|error| error.to_string())?;
@@ -31,20 +36,30 @@ impl Mapping {
         *workspace = next_workspace;
         Ok(())
     }
-    fn apply_inner(&mut self, workspace: &mut Workspace, graph: &Graph) -> Result<(), String> {
+    fn apply_inner(
+        &mut self,
+        workspace: &mut Workspace,
+        graph: &Graph,
+        selected_sessions: &BTreeSet<u64>,
+    ) -> Result<(), String> {
         let mut layouts = BTreeMap::new();
         for window in &graph.windows {
             let layout = rustty::tmuxx::Layout::parse(&window.layout).map_err(|e| e.to_string())?;
             layouts.insert(window.id, layout);
         }
         let previous = workspace.windows.clone();
+        let owned: BTreeSet<_> = self.sessions.keys().copied().collect();
         let mut windows = Vec::new();
         self.panes.clear();
         self.sessions.clear();
         self.windows.clear();
         self.window_indices.clear();
         self.dividers.clear();
-        for session in &graph.sessions {
+        for session in graph
+            .sessions
+            .iter()
+            .filter(|session| selected_sessions.contains(&session.id))
+        {
             let id = self.id(workspace, format!("session:{}", session.id));
             self.sessions.insert(id, session.id);
             let old = previous.iter().find(|w| w.id == id);
@@ -150,7 +165,18 @@ impl Mapping {
                 });
             }
         }
-        workspace.windows = windows;
+        let mut projected: BTreeMap<_, _> = windows.into_iter().map(|w| (w.id, w)).collect();
+        workspace.windows = previous
+            .into_iter()
+            .filter_map(|window| {
+                if owned.contains(&window.id) {
+                    projected.remove(&window.id)
+                } else {
+                    Some(window)
+                }
+            })
+            .collect();
+        workspace.windows.extend(projected.into_values());
         Ok(())
     }
     fn overlays(
@@ -314,7 +340,7 @@ impl Mapping {
             .and_then(|w| w.tabs.get(w.active_tab))
             .map(|t| t.focused);
         let pid = pane.and_then(|p| self.panes.get(&p)).copied();
-        let sid = self.sessions.get(&host).copied();
+        let sid = Some(*self.sessions.get(&host)?);
         let window = workspace.windows.iter().find(|w| w.id == host);
         let tab = window.and_then(|w| w.tabs.get(w.active_tab));
         let wid = tab.and_then(|t| self.windows.get(&t.id)).copied();
@@ -329,8 +355,8 @@ impl Mapping {
             argv
         };
         let command = match action {
-            Action::NewWindow => vec!["new-session".into(), "-d".into()],
             Action::NewTab => target("new-window", "", sid, '$'),
+            Action::NewFloatingPane => target("new-pane", "", pid, '%'),
             Action::NewSplit(direction) => {
                 let mut argv = target(
                     "split-window",
@@ -366,7 +392,6 @@ impl Mapping {
             Action::ToggleSplitZoom => target("resize-pane", "-Z", pid, '%'),
             Action::CloseSurface => target("kill-pane", "", pid, '%'),
             Action::CloseTab => target("kill-window", "", wid, '@'),
-            Action::CloseWindow => target("kill-session", "", sid, '$'),
             Action::NextTab | Action::PreviousTab | Action::LastTab | Action::GotoTab(_) => {
                 let w = window?;
                 let n = w.tabs.len();
@@ -387,11 +412,7 @@ impl Mapping {
                     format!("${}:{target_index}", sid?),
                 ]
             }
-            Action::Undo
-            | Action::Redo
-            | Action::MoveTab(_)
-            | Action::OpenLayout
-            | Action::CloseAllWindows => {
+            Action::Undo | Action::Redo | Action::MoveTab(_) | Action::OpenLayout => {
                 return Some(Err(
                     "this action is unavailable for a server-owned workspace".into(),
                 ));
@@ -504,7 +525,9 @@ mod tests {
     fn linked_windows_get_independent_views_and_commands_use_server_ids() {
         let mut workspace = Workspace::default();
         let mut mapping = Mapping::default();
-        mapping.apply(&mut workspace, &graph()).unwrap();
+        mapping
+            .apply(&mut workspace, &graph(), &[0, 1].into())
+            .unwrap();
         assert_eq!(workspace.windows.len(), 2);
         let first = &workspace.windows[0];
         let second = &workspace.windows[1];
@@ -519,7 +542,9 @@ mod tests {
             ["split-window", "-h", "-t", "%7", "-b"]
         );
         let ids = first.tabs[0].root.panes();
-        mapping.apply(&mut workspace, &graph()).unwrap();
+        mapping
+            .apply(&mut workspace, &graph(), &[0, 1].into())
+            .unwrap();
         assert_eq!(workspace.windows[0].tabs[0].root.panes(), ids);
     }
     #[test]
@@ -529,7 +554,9 @@ mod tests {
         let mut graph = graph();
         graph.sessions[0].windows.insert(8, 9);
         graph.sessions[0].active = 8;
-        mapping.apply(&mut workspace, &graph).unwrap();
+        mapping
+            .apply(&mut workspace, &graph, &[0, 1].into())
+            .unwrap();
         let window = &workspace.windows[0];
         assert_eq!(window.tabs.len(), 2);
         assert_eq!(window.active_tab, 1);
@@ -560,7 +587,9 @@ mod tests {
         graph.windows[0].active = 42;
         let mut workspace = Workspace::default();
         let mut mapping = Mapping::default();
-        mapping.apply(&mut workspace, &graph).unwrap();
+        mapping
+            .apply(&mut workspace, &graph, &[0, 1].into())
+            .unwrap();
         workspace.validate().unwrap();
         let tab = &workspace.windows[0].tabs[0];
         let front = tab.focused;
@@ -607,7 +636,9 @@ mod tests {
         graph.windows[0].layout = graph.windows[0]
             .layout
             .replace(r#"{"t":"p","w":80,"h":24,"x":0,"y":0,"i":0,"I":"%7"},"#, "");
-        mapping.apply(&mut workspace, &graph).unwrap();
+        mapping
+            .apply(&mut workspace, &graph, &[0, 1].into())
+            .unwrap();
         let tab = &workspace.windows[0].tabs[0];
         assert!(tab.root.panes().is_empty());
         assert_eq!(tab.layout(crate::workspace::Rect::UNIT, false).len(), 2);
@@ -632,7 +663,9 @@ mod tests {
         graph.panes[1].modal_close_cancel = true;
         let mut workspace = Workspace::default();
         let mut mapping = Mapping::default();
-        mapping.apply(&mut workspace, &graph).unwrap();
+        mapping
+            .apply(&mut workspace, &graph, &[0, 1].into())
+            .unwrap();
         let tab = &mut workspace.windows[0].tabs[0];
         let zoom = tab.zoom.unwrap();
         assert_eq!(mapping.panes[&zoom], 7);
@@ -673,7 +706,11 @@ mod tests {
         workspace.validate().unwrap();
         let before = serde_json::to_value(&workspace).unwrap();
         graph.windows[0].visible_layout = graph.windows[0].visible_layout.replace("%42", "%999");
-        assert!(mapping.apply(&mut workspace, &graph).is_err());
+        assert!(
+            mapping
+                .apply(&mut workspace, &graph, &[0, 1].into())
+                .is_err()
+        );
         assert_eq!(serde_json::to_value(&workspace).unwrap(), before);
     }
 
@@ -685,7 +722,9 @@ mod tests {
         graph.panes[0].rows = 23;
         let mut workspace = Workspace::default();
         let mut mapping = Mapping::default();
-        mapping.apply(&mut workspace, &graph).unwrap();
+        mapping
+            .apply(&mut workspace, &graph, &[0, 1].into())
+            .unwrap();
         let tab = &workspace.windows[0].tabs[0];
         assert!(tab.root.contains(tab.focused));
         let rect = tab.layout(
@@ -705,7 +744,9 @@ mod tests {
         graph.windows[0].zoomed = true;
         graph.windows[0].zoomed_pane = Some(7);
         graph.windows[0].visible_layout = graph.windows[0].layout.clone();
-        mapping.apply(&mut workspace, &graph).unwrap();
+        mapping
+            .apply(&mut workspace, &graph, &[0, 1].into())
+            .unwrap();
         let rect = workspace.windows[0].tabs[0].layout(
             crate::workspace::Rect {
                 x: 0.0,
@@ -724,10 +765,99 @@ mod tests {
         let mut workspace = Workspace::default();
         let mut mapping = Mapping::default();
         let mut graph = graph();
-        mapping.apply(&mut workspace, &graph).unwrap();
+        mapping
+            .apply(&mut workspace, &graph, &[0, 1].into())
+            .unwrap();
         let before = serde_json::to_value(&workspace).unwrap();
         graph.windows[0].layout = "invalid".into();
-        assert!(mapping.apply(&mut workspace, &graph).is_err());
+        assert!(
+            mapping
+                .apply(&mut workspace, &graph, &[0, 1].into())
+                .is_err()
+        );
         assert_eq!(serde_json::to_value(&workspace).unwrap(), before);
+    }
+
+    #[test]
+    fn selected_sessions_preserve_local_and_other_connections_without_reattaching() {
+        let mut workspace = Workspace::default();
+        let local = WindowState {
+            id: workspace.id(),
+            tabs: vec![Tab::new(workspace.id(), workspace.id(), "/tmp".into())],
+            active_tab: 0,
+            frame: [10.0, 20.0, 800.0, 600.0],
+            quick: false,
+        };
+        workspace.windows.push(local.clone());
+        let mut first = Mapping::default();
+        let mut second = Mapping::default();
+        let mut graph = graph();
+        first.apply(&mut workspace, &graph, &[0].into()).unwrap();
+        let first_id = *first.sessions.keys().next().unwrap();
+        second.apply(&mut workspace, &graph, &[0].into()).unwrap();
+        let second_id = *second.sessions.keys().next().unwrap();
+        assert_ne!(first_id, second_id);
+        assert!(first.panes.keys().all(|id| !second.panes.contains_key(id)));
+
+        let order: Vec<_> = workspace.windows.iter().map(|w| w.id).collect();
+        let mut unselected = graph.sessions[0].clone();
+        unselected.id = 2;
+        graph.sessions.push(unselected);
+        first.apply(&mut workspace, &graph, &[0].into()).unwrap();
+        assert_eq!(
+            workspace.windows.iter().map(|w| w.id).collect::<Vec<_>>(),
+            order
+        );
+        assert_eq!(first.sessions.len(), 1);
+
+        for _ in 0..2 {
+            first
+                .apply(&mut workspace, &graph, &BTreeSet::new())
+                .unwrap();
+            assert!(first.sessions.is_empty());
+            assert_eq!(
+                workspace.windows.iter().map(|w| w.id).collect::<Vec<_>>(),
+                [local.id, second_id]
+            );
+        }
+        first.apply(&mut workspace, &graph, &[0].into()).unwrap();
+        assert_eq!(*first.sessions.keys().next().unwrap(), first_id);
+        assert_eq!(
+            serde_json::to_value(&workspace.windows[0]).unwrap(),
+            serde_json::to_value(local).unwrap()
+        );
+        workspace.validate().unwrap();
+    }
+
+    #[test]
+    fn pane_commands_target_the_server_and_window_lifecycle_stays_with_the_host() {
+        let mut workspace = Workspace::default();
+        let mut mapping = Mapping::default();
+        mapping
+            .apply(&mut workspace, &graph(), &[0].into())
+            .unwrap();
+        let host = workspace.windows[0].id;
+        for (action, command) in [
+            (Action::NewTab, vec!["new-window", "-t", "$0"]),
+            (Action::NewFloatingPane, vec!["new-pane", "-t", "%7"]),
+            (Action::CloseSurface, vec!["kill-pane", "-t", "%7"]),
+            (Action::CloseTab, vec!["kill-window", "-t", "@9"]),
+        ] {
+            assert_eq!(
+                mapping.action(&workspace, host, &action).unwrap().unwrap(),
+                command
+            );
+            assert!(mapping.action(&workspace, u64::MAX, &action).is_none());
+        }
+        assert!(
+            mapping
+                .action(&workspace, host, &Action::NewWindow)
+                .is_none()
+        );
+        assert!(
+            mapping
+                .action(&workspace, host, &Action::CloseWindow)
+                .is_none()
+        );
     }
 }

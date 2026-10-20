@@ -305,94 +305,131 @@ Set `RUSTTY_SMOKE_HOVER=1` in a foreground run to require a stationary pointer o
 during the idle interval. Move the pointer into a test pane before the 45-second
 timeout; leaving the pane or moving the pointer restarts the interval.
 
-### tmuxx workspaces
+### tmuxx windows
 
-Build this checkout beside `github.com/tmux/tmux`; the session feature uses the
-Rust crates in that checkout. Its `rustty-vt` workspace dependency also points to
-tmuxx's vendored VT crate, so native snapshots and subsequent pane output use the
-same terminal implementation as their owner. Ordinary local sessions leave the
-tmux compatibility profile disabled. These are opt-in workspace connections:
+The **tmuxx** menu and command palette create native terminal windows backed by a
+multiplexer. Ordinary Rustty windows can remain open alongside any of these:
 
-| Launch argument | Pane owner |
+| Choice | Owner and lifetime |
 | --- | --- |
-| `--tmuxx=embedded` | This Rustty process; shutdown ends its PTYs |
-| `--tmuxx=unix:/path/to/default.native` | An existing standalone tmuxx daemon |
-| `--tmuxx=ssh:host` | The remote `tmuxx --native-stdio` endpoint over SSH |
-| `--tmuxx=system-ssh:host` | An existing remote C `tmux -C` server |
+| New temporary window | Embedded engine, reached through typed Rust APIs; ends when its last window closes or Rustty exits |
+| New persistent window | Local daemon started with the same executable, `rustty tmux`; survives Rustty exiting |
+| Connect | Existing native tmuxx endpoint or stock tmux over SSH |
 
-Embedded mode binds `TMUXX_ENDPOINT`, or the same per-user default native socket
-as the tmuxx CLI. Thus `ssh host tmuxx --native-stdio` can reach an engine owned by
-remote Rustty. Only one owner may bind an endpoint. Use the Unix connection mode
-to attach to an already running local owner. The remote executable must be on
-SSH's command path. Native Windows hosting/bridging remains pending; this slice
-has been executed on macOS.
+Both window types can coexist. Each connection projects only its attached
+sessions. A server session appears as a Rustty window, a server window as a tab,
+and a server pane as a Rustty panel. Splitting, resizing, zooming, selecting tabs,
+and **New floating panel** change the server's objects. Floating panels use the
+same native rendering and input controls as tiled panels; their server geometry,
+stacking, clipping, and modal input policies remain authoritative.
 
-The server owns sessions, windows, panes, PTYs, and application replies. Sessions
-appear as native windows; linked windows get independent pane views, selections,
-and scroll positions. New tabs, splits, pane close, split resizing, zoom and tab
-selection send server commands. Each native window registers a separate size
-client for server size arbitration. Native key, IME and paste events reach the
-owner before encoding, so synchronized panes use their own terminal modes. Mouse
-reports and terminal protocol replies stay with their destination pane.
-A GUI view never replays snapshot clipboard actions or terminal replies.
-Native one-shot host actions go to the server-elected GUI client and one view;
-clipboard results return the server event ID through the normal Rustty policy UI.
-Native focus/visibility and color scheme state aggregate across linked views and
-connections; `set-option -s focus-events on` enables application focus reports.
-A pane exit updates its view, and respawn retains its identity while clearing old
-selection and scroll state. Initial attachment also respects a dead pane's status.
+Closing a panel kills its pane. Closing a tab kills its server window, including
+linked views in other sessions. Closing a persistent or SSH window asks whether
+to terminate its session or close only the local window. Detached sessions remain
+in the tmuxx menu, which lists their tabs and offers explicit session/server
+termination. Closing a temporary window terminates its session; there is no
+persistent detach choice for an engine bound to that window's lifetime. A linked
+session visible in another temporary window keeps that engine alive until its
+last window closes.
 
-The command palette's **Toggle Keep Pane After Disconnect** changes retention for
-a pane owned by an external native tmuxx daemon. Quitting Rustty detaches views;
-explicit pane/tab/window close commands delete the corresponding server objects.
-A pane in embedded mode cannot survive this process ending. Create restart-safe
-panes through the standalone connection from the outset; moving live PTY ownership
-from the app to a daemon is not implemented. The normal saved local workspace is
-separate from the server workspace.
+On application restart Rustty restores ordinary windows and reconnects saved
+local native-daemon attachments. It verifies the daemon incarnation and session
+ID before restoring a view, so an unrelated replacement daemon cannot inherit an
+old attachment. Local transport interruptions retry without replaying input or
+ambiguous commands. SSH connections require an explicit reconnect, and are not
+saved for automatic reopening. Stopping a daemon disables retries for it.
 
-Stock tmux uses one SSH control stream per session (at most 64), with one canonical
-stream per linked pane to prevent duplicate output. Bootstrap captures visible
-text/rendition and exposed cursor/modes, then streams live output. Stock tmux does
-not export an atomic full terminal/history/graphics checkpoint or replay cursor;
-reconnection is explicitly best effort and clears selections. Targeted mouse and
-protocol reports use random temporary buffers and `paste-buffer -drS`, tested on
-C head and 3.7c, so `synchronize-panes` cannot broadcast them. NUL-containing raw
-reports return an error. A dropped SSH connection can leave a temporary buffer;
-ambiguous input is never replayed. C remains the sole application-query responder.
-The stock GUI backend does not route focus, bell, desktop notification or clipboard
-actions through Rustty; native tmuxx provides the elected host-action path.
-Native tmuxx uses validated terminal/parser/graphics checkpoints. Socket and SSH
-connections negotiate bounded snapshot chunks, assembled privately and applied
-atomically only after the complete snapshot arrives. An aborted or incomplete
-transfer preserves the live view. The receiver caps serialized snapshots at
-8 GiB and restored graphics at 1 GiB; embedded connections deliver snapshots
-directly. Restored row identities keep graphics anchored through text reflow.
+These commands use the same implementation as the menu:
 
-Local layout undo/redo, moving tabs and loading a local layout are unavailable for
-server-owned workspaces. Windows execution remains further integration work.
-The tmuxx conformance matrix, rather than this UI, defines C command compatibility.
+```sh
+rustty --tmuxx=embedded
+rustty --tmuxx=persistent
+rustty --tmuxx=unix:/path/to/default.native
+rustty --tmuxx=ssh:my-host
+rustty --tmuxx=system-ssh:my-host
+```
+
+There is one executable. The CLI mode can create and manage persistent servers:
+
+```sh
+rustty tmux new-session -d -s work
+rustty tmux list-sessions
+rustty tmux kill-session -t work
+rustty tmux kill-server
+```
+
+Rustty's CLI mode exposes only the native endpoint by default. No tmux command
+socket is needed for native SSH access. The standalone tmuxx CLI retains its
+stock command/control socket behavior; ordinary interactive `tmux attach` is not
+an implemented tmuxx client mode. The GUI still supports a real stock tmux server
+through its SSH control-mode adapter.
+
+Native GUI and CLI endpoint discovery share `TMUXX_ENDPOINT`, or the native
+`default.native` socket in the per-user tmux directory (`TMUX_TMPDIR` or `/tmp`).
+Temporary menu windows use unique endpoints, shown in their connection submenu.
+For a known embedded endpoint, start with
+`TMUXX_ENDPOINT=/path/to/private/socket.native rustty --tmuxx=embedded`.
+Only one owner can bind a given endpoint. `rustty tmux -f /path/to/tmux.conf ...`
+loads server configuration, while Rustty-specific settings belong in the normal
+Rustty settings file.
+
+To use a remote native daemon, install the Rustty executable on that host and
+create the session once:
+
+```sh
+ssh my-host 'rustty tmux new-session -d -s work'
+rustty --tmuxx=ssh:my-host
+```
+
+The SSH adapter invokes the configured `tmuxx-ssh-command`, whose default is
+`rustty tmux --native-stdio`. That command bridges an existing daemon; it does not
+start one. A standalone remote tmuxx installation can use
+`tmuxx-ssh-command = tmuxx --native-stdio`. To reach a remote embedded engine,
+include its endpoint, for example
+`tmuxx-ssh-command = rustty tmux --native-endpoint /private/path/temporary.native --native-stdio`.
+This is a remote shell command from trusted configuration: quote paths containing
+spaces for the remote shell. Hosts, ports, identities, and jump hosts use normal
+SSH aliases/configuration. SSH uses noninteractive authentication; establish keys
+or an agent before connecting. Authentication/helper failures are shown in Rustty.
+
+For stock tmux, create a remote session with ordinary tmux and use
+`--tmuxx=system-ssh:my-host`. No Rust helper is required on that host. This adapter
+captures visible text/rendition and exposed cursor/modes, then streams pane output.
+Stock tmux cannot export tmuxx's complete atomic terminal/parser/history/graphics
+snapshot, and the adapter currently has less restoration fidelity. It does not
+route focus, bell, notification, or clipboard actions through Rustty. Native
+multiplexer panels retain the latest forked Codex agent report in the server and
+restore it on attach, including floating-panel Stream Deck entries. This does not
+replay clipboard/notification actions. Stock Codex detection is not added.
+
+Live PTY handover and embedded-to-daemon promotion are deliberately absent.
+Create a persistent window from the outset when programs must survive Rustty.
+Moving tabs, loading a local layout, and layout undo in tmuxx windows are disabled;
+ordinary windows retain their local layout commands. Windows native hosting and
+local transport remain TODOs for a Windows agent; `rustty.exe tmux` dispatch is in
+place, but does not claim a working Windows daemon.
+
+Development currently uses the sibling `github.com/tmux/tmux/rust` workspace.
+The engine and all Rustty renderers share its `tmuxx-vendored-rustty-vt` package so
+native checkpoint/replay uses the same implementation. The centralized Cargo
+dependencies must be moved together to one published Git revision after the new
+CLI and retained-agent changes are published; a sibling checkout remains required
+until then.
 
 Targeted verification:
 
 ```sh
-cargo +1.95.0 test --offline -p rustty --features sessions --lib tmuxx::tests::
-cargo +1.95.0 test --offline -p rustty-app --lib tmuxx_workspace::tests::
-cargo +1.95.0 check --offline -p rustty-app
+cargo +1.95.0 test --locked --offline -p rustty --features sessions --lib tmuxx::tests::
+cargo +1.95.0 test --locked --offline -p rustty-app --lib tmuxx_workspace::tests::
+cargo +1.95.0 test --locked --offline -p rustty-app --bin rustty tmuxx_host::tests::
+cargo +1.95.0 test --locked --offline -p rustty-app --test tmux_cli
 ```
 
-The stock SSH test is run by `tmux/rust/conformance/rustty_system_ssh.py`, which
-provisions disposable loopback sshd keys, sessions, and sockets. For a hidden
-macOS/Metal smoke capture with two disposable panes:
+For a hidden macOS smoke capture with disposable panes:
 
 ```sh
-RUSTTY_TMUXX_SMOKE_DIR=/tmp/tmuxx-smoke TMUXX_ENDPOINT=/tmp/tmuxx-smoke.native \
+RUSTTY_TMUXX_SMOKE_DIR=/tmp/tmuxx-smoke RUSTTY_TMUXX_SMOKE_FLOATING=1 \
   target/debug/rustty --tmuxx=embedded --config-default-files=false --stream-deck=false
 ```
 
 It writes `window.png` and `result.json` and exits without activating a window.
-
-Floating server panes use signed cell positions and C stacking order (`z=0` is front), including windows with no tiled panes. They are clipped at the native content bounds. Zoom uses the server’s visible layout, so a floating pane can remain above the underlying zoomed pane. Pane content rectangles reserve server border-status rows while retaining the full layout for membership and commands. Native modal panes direct input to their owner: `-K` bypasses pane shortcuts, `-C` closes on a click outside the pane, and `-D` passes Escape/Ctrl-C to the server for dismissal. Active Rustty dialogs keep their input handling. Stock C connections support current JSON-v2 and tmux 3.7c legacy floating layouts. C’s `pane_modal_flag` exposes modal presence, but its format API has no fields for `-K`, `-C`, or `-D`; those stock-SSH policies are not inferred.
-
-New embedded owners explicitly set `set-clipboard on` and `get-clipboard request`; Rustty’s existing clipboard Ask/Deny/Allow policy still controls OS access. Existing Unix/SSH owners keep their configured policies. C owns application query replies through stock SSH, including OSC52 buffer reads; mirrors do not answer or issue host clipboard actions.
-
-Set `RUSTTY_TMUXX_SMOKE_FLOATING=1` with the native smoke command to render a partially clipped floating pane.
