@@ -8,3 +8,6 @@ pub use rustty_vt as vt;
 
 #[cfg(feature = "sessions")]
 pub mod session;
+
+#[cfg(feature = "sessions")]
+pub mod tmuxx;
