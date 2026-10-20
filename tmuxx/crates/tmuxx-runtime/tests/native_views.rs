@@ -88,6 +88,116 @@ fn command(
 }
 
 #[test]
+fn native_late_host_states_after_kill_are_idempotent() {
+    let host = host();
+    let admin = host.connect().unwrap();
+    let view = host
+        .connect_with_context(ClientContext {
+            host_effects: true,
+            ..Default::default()
+        })
+        .unwrap();
+    for argv in [
+        vec!["new-session", "-d", "-s", "close", "sleep", "30"],
+        vec!["split-window", "-d", "sleep", "30"],
+    ] {
+        assert_eq!(command(&admin, &argv, None, false).error, None);
+    }
+    assert_eq!(
+        command(&view, &["tmuxx-claim-pane", "-t", "%0"], None, false).error,
+        None
+    );
+    assert_eq!(
+        command(&admin, &["kill-pane", "-t", "%0"], None, false).error,
+        None
+    );
+    let list = [
+        "list-panes",
+        "-a",
+        "-F",
+        "#{pane_id}|#{pane_pid}|#{pane_width}|#{pane_height}",
+    ];
+    let survivor = command(&admin, &list, None, false).output;
+    assert!(survivor.starts_with(b"%1|"));
+    for (focused, visible) in [(false, false), (false, true), (true, true)] {
+        let state = serde_json::to_vec(&serde_json::json!({
+            "focused": focused, "visible": visible, "color_scheme": "dark"
+        }))
+        .unwrap();
+        assert_eq!(
+            command(&view, &["tmuxx-host-state", "-t", "%0"], Some(state), false).error,
+            None
+        );
+    }
+    for _ in 0..2 {
+        assert_eq!(
+            command(&view, &["tmuxx-release-pane", "-t", "%0"], None, false).error,
+            None
+        );
+    }
+    assert_eq!(command(&admin, &list, None, false).output, survivor);
+    host.shutdown().unwrap();
+}
+
+#[test]
+fn native_absent_host_state_still_validates_requests_and_command_targets() {
+    let host = host();
+    let admin = host.connect().unwrap();
+    let view = host
+        .connect_with_context(ClientContext {
+            host_effects: true,
+            ..Default::default()
+        })
+        .unwrap();
+    let state = br#"{"focused":false,"visible":false}"#.to_vec();
+    for (input, expected) in [
+        (None, "missing host state"),
+        (Some(vec![b' '; 513]), "exceeds 512 bytes"),
+        (Some(b"{".to_vec()), "EOF"),
+        (
+            Some(br#"{"focused":false,"visible":false,"extra":true}"#.to_vec()),
+            "unknown field",
+        ),
+    ] {
+        let error = command(&view, &["tmuxx-host-state", "-t", "%0"], input, false)
+            .error
+            .unwrap();
+        assert!(error.contains(expected), "{error}");
+    }
+    let error = command(
+        &admin,
+        &["tmuxx-host-state", "-t", "%0"],
+        Some(state.clone()),
+        false,
+    )
+    .error
+    .unwrap();
+    assert!(error.contains("GUI connection"), "{error}");
+    for target in ["%invalid", "$0"] {
+        let error = command(
+            &view,
+            &["tmuxx-host-state", "-t", target],
+            Some(state.clone()),
+            false,
+        )
+        .error
+        .unwrap();
+        assert!(error.contains("requires -t %PANE"), "{error}");
+    }
+    for argv in [
+        vec!["kill-pane", "-t", "%0"],
+        vec!["tmuxx-claim-pane", "-t", "%0"],
+        vec!["tmuxx-retain-pane", "-t", "%0", "on"],
+        vec!["tmuxx-input", "-t", "%0"],
+    ] {
+        let input = (argv[0] == "tmuxx-input")
+            .then(|| serde_json::to_vec(&tmuxx_terminal::Input::Text(b"x".to_vec())).unwrap());
+        assert!(command(&view, &argv, input, false).error.is_some());
+    }
+    host.shutdown().unwrap();
+}
+
+#[test]
 fn native_reported_colors_are_query_only_and_survive_reconnect() {
     let host = host();
     let admin = host.connect().unwrap();
