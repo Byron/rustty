@@ -443,6 +443,15 @@ impl Attachment {
                     label,
                     MenuCommand::Open(target.clone(), session.id),
                 )];
+                if !matches!(self.source, Source::SystemSsh(_))
+                    && self.selected.contains(&session.id)
+                    && self.mapping.sessions.values().any(|id| *id == session.id)
+                {
+                    items.push(Entry::command(
+                        "Fit to This Window",
+                        MenuCommand::Fit(target.clone(), session.id),
+                    ));
+                }
                 items.extend(
                     session
                         .windows
@@ -756,10 +765,13 @@ impl App {
         command: MenuCommand,
     ) {
         if !command.requires_confirmation() {
-            let connecting = matches!(command, MenuCommand::Connect(_) | MenuCommand::Reconnect(_));
+            let reveal_errors = matches!(
+                command,
+                MenuCommand::Connect(_) | MenuCommand::Reconnect(_) | MenuCommand::Fit(..)
+            );
             let error_count = self.errors.len();
             self.tmuxx_menu_command(command);
-            if connecting && self.errors.len() > error_count {
+            if reveal_errors && self.errors.len() > error_count {
                 if self.windows.is_empty() {
                     self.add_window(false);
                     self.reconcile(event_loop);
@@ -1359,6 +1371,7 @@ impl App {
                 return;
             }
             MenuCommand::Open(target, _)
+            | MenuCommand::Fit(target, _)
             | MenuCommand::Kill(target, _)
             | MenuCommand::Execute(target, _)
             | MenuCommand::Disconnect(target)
@@ -1439,6 +1452,18 @@ impl App {
                     self.reveal_host(&mut host, false);
                     self.active = Some(id);
                     self.windows.insert(native, host);
+                }
+            }
+            MenuCommand::Fit(_, session) => {
+                let entry = &self.tmuxx[index];
+                if !entry.selected.contains(&session)
+                    || !entry.mapping.sessions.values().any(|id| *id == session)
+                {
+                    self.errors
+                        .push("Open this session in a local window before fitting it".into());
+                } else if let Err(error) = entry.connection.as_ref().unwrap().fit_view_size(session)
+                {
+                    self.errors.push(error.to_string());
                 }
             }
             MenuCommand::Kill(_, session) => {

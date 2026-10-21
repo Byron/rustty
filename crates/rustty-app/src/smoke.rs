@@ -451,6 +451,7 @@ impl Smoke {
                     "tmuxx-theme-scope",
                     "tmuxx-theme-picker",
                     "tmuxx-server-management",
+                    "tmuxx-fit-window",
                 ]
                 .map(serde_json::Value::from),
             );
@@ -1354,6 +1355,7 @@ pub(super) fn check_tmuxx_management(
     };
     let mut command = vec![b"new-session".to_vec(), b"-d".to_vec()];
     command.extend(initial);
+    connection.command_bytes(command.clone())?;
     connection.command_bytes(command)?;
     // This second real connection uses Embedded only to check temporary-menu labels.
     let mut owner = tmuxx_host::Attachment::new(
@@ -1365,7 +1367,7 @@ pub(super) fn check_tmuxx_management(
     let deadline = Instant::now() + Duration::from_secs(10);
     let graph = loop {
         if let Some(graph) = connection.graph()
-            && graph.sessions.len() == 1
+            && graph.sessions.len() == 2
         {
             break graph;
         }
@@ -1385,8 +1387,113 @@ pub(super) fn check_tmuxx_management(
     entry.selected.insert(graph.sessions[0].id);
     let target = entry.target();
     let original = std::mem::replace(&mut app.tmuxx, vec![entry]);
+    let active = app.active;
     let errors = std::mem::take(&mut app.errors);
     let result = (|| -> Result<()> {
+        let sessions = [graph.sessions[0].id, graph.sessions[1].id];
+        let windows = graph
+            .sessions
+            .iter()
+            .map(|s| *s.windows.values().next().unwrap())
+            .collect::<Vec<_>>();
+        let wait_sizes = |fitted: (u16, u16)| -> Result<()> {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                if owner
+                    .connection
+                    .as_ref()
+                    .unwrap()
+                    .graph()
+                    .is_some_and(|graph| {
+                        windows.iter().zip([(90, 30), fitted]).all(|(id, size)| {
+                            graph.windows.iter().any(|window| {
+                                window.id == *id && (window.cols, window.rows) == size
+                            })
+                        })
+                    })
+                {
+                    return Ok(());
+                }
+                if Instant::now() >= deadline {
+                    return Err(format!(
+                        "Fit did not preserve the other session and reach {fitted:?}"
+                    )
+                    .into());
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        };
+        let fit_command = |entry: &tmuxx_host::Attachment| {
+            entry
+                .menu_entry(None)
+                .children
+                .into_iter()
+                .find(|item| item.label == graph.sessions[1].name)
+                .and_then(|session| {
+                    session
+                        .children
+                        .into_iter()
+                        .find(|item| item.label == "Fit to This Window")
+                })
+                .and_then(|item| item.command)
+        };
+        if fit_command(&app.tmuxx[0]).is_some() {
+            return Err("Fit was offered for a session without a local window".into());
+        }
+        // Synthetic views exercise routing without creating or focusing native windows.
+        app.tmuxx[0].mapping.sessions =
+            [(u64::MAX - 1, sessions[0]), (u64::MAX, sessions[1])].into();
+        app.tmuxx[0].selected.extend(sessions);
+        app.active = Some(u64::MAX - 1);
+        let fit = fit_command(&app.tmuxx[0]).ok_or("Open native session omitted Fit")?;
+        if fit != tmuxx_host::MenuCommand::Fit(target.clone(), sessions[1]) {
+            return Err("Fit captured the wrong session or server".into());
+        }
+        app.tmuxx[0].source = tmuxx_host::Source::SystemSsh("unused".into());
+        let stock_fit = fit_command(&app.tmuxx[0]);
+        app.tmuxx[0].source = target.source.clone();
+        if stock_fit.is_some() {
+            return Err("Stock tmux offered native Fit".into());
+        }
+        for (session, cols, rows) in [(sessions[0], 90, 30), (sessions[1], 60, 20)] {
+            app.tmuxx[0]
+                .connection
+                .as_ref()
+                .unwrap()
+                .view_size(session, cols, rows, 8, 16)?;
+        }
+        wait_sizes((60, 20))?;
+        for _ in 0..2 {
+            owner.connection.as_ref().unwrap().command([
+                "resize-window".into(),
+                "-t".into(),
+                format!("@{}", windows[1]),
+                "-x".into(),
+                "100".into(),
+                "-y".into(),
+                "40".into(),
+            ])?;
+            wait_sizes((100, 40))?;
+            let mut stale = target.clone();
+            stale.instance.push_str("-replaced");
+            app.tmuxx_menu_command(tmuxx_host::MenuCommand::Fit(stale, sessions[1]));
+            if app.errors.len() != 1 || !app.errors[0].contains("connection changed") {
+                return Err(format!("Stale Fit target was not rejected: {:?}", app.errors).into());
+            }
+            app.errors.clear();
+            // Repeating Fit must work even though this view's cached dimensions are unchanged.
+            app.native_tmuxx_command(event_loop, fit.clone());
+            wait_sizes((60, 20))?;
+        }
+        app.tmuxx[0].mapping.sessions.clear();
+        for session in sessions {
+            app.tmuxx[0]
+                .connection
+                .as_ref()
+                .unwrap()
+                .release_view(session)?;
+        }
+        app.active = active;
         app.tmuxx_menu_command(tmuxx_host::MenuCommand::Disconnect(target.clone()));
         let deadline = Instant::now() + Duration::from_secs(10);
         let connections = loop {
@@ -1560,11 +1667,15 @@ pub(super) fn check_tmuxx_management(
                 "sessions": graph.sessions.len(),
                 "panes": graph.panes.len(),
                 "idle_stop": true,
+                "fit_cached_size_twice": true,
+                "fit_preserved_other_session": true,
+                "fit_rejected_stale_target": true,
             }))?,
         )?;
         Ok(())
     })();
     app.tmuxx = original;
+    app.active = active;
     app.errors = errors;
     app.sync_tmuxx_menu();
     result?;
