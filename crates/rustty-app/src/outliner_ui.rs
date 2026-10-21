@@ -12,28 +12,46 @@ const ICON_SIZE: f32 = 20.0;
 const INDENT: f32 = 18.0;
 pub const TMUXX_TAG_WIDTH: f32 = 44.0;
 
-pub fn tmuxx_tag(ui: &mut egui::Ui, tooltip: &str) {
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(TMUXX_TAG_WIDTH, 18.0), Sense::hover());
-    paint_tmuxx_tag(ui.painter(), rect, ui.visuals().text_color());
-    response
-        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "tmuxx window"));
+pub fn tmuxx_tag_width(ui: &egui::Ui, label: &str, max_width: f32) -> f32 {
+    let text_width = ui
+        .painter()
+        .layout_no_wrap(
+            label.to_owned(),
+            FontId::proportional(11.0),
+            ui.visuals().text_color(),
+        )
+        .size()
+        .x;
+    (text_width + 12.0)
+        .clamp(TMUXX_TAG_WIDTH, 220.0)
+        .min(max_width.max(0.0))
+}
+
+pub fn tmuxx_tag(ui: &mut egui::Ui, label: &str, tooltip: &str, width: f32) {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 18.0), Sense::hover());
+    paint_tmuxx_tag(ui.painter(), rect, ui.visuals().text_color(), label);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, tooltip));
     response.on_hover_text(tooltip);
 }
 
-fn paint_tmuxx_tag(painter: &egui::Painter, rect: Rect, color: Color32) {
+fn paint_tmuxx_tag(painter: &egui::Painter, rect: Rect, color: Color32, label: &str) {
     painter.rect_stroke(
         rect,
         3,
         Stroke::new(1.0, color.gamma_multiply(0.65)),
         egui::StrokeKind::Inside,
     );
-    painter.text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        "tmuxx",
+    let mut job = egui::text::LayoutJob::simple_singleline(
+        label.to_owned(),
         FontId::proportional(11.0),
         color,
     );
+    job.wrap.max_width = (rect.width() - 12.0).max(0.0);
+    job.wrap.max_rows = 1;
+    let galley = painter.layout_job(job);
+    painter
+        .with_clip_rect(rect.intersect(painter.clip_rect()))
+        .galley(rect.center() - galley.size() / 2.0, galley, color);
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -411,7 +429,7 @@ pub fn contents(
                 let mut label_rect = rect;
                 if row.tmuxx.is_some() {
                     let tag = Rect::from_center_size(Pos2::new(rect.right() - TMUXX_TAG_WIDTH / 2.0 - 4.0, rect.center().y), Vec2::new(TMUXX_TAG_WIDTH, 18.0));
-                    paint_tmuxx_tag(ui.painter(), tag, foreground);
+                    paint_tmuxx_tag(ui.painter(), tag, foreground, "tmuxx");
                     label_rect.max.x = tag.left() - 6.0;
                 }
                 if pinned {
@@ -1451,21 +1469,80 @@ mod tests {
     }
 
     #[test]
-    fn tmuxx_tag_is_shared_by_window_rows_and_toolbar_without_becoming_a_button() {
+    fn tmuxx_tag_names_the_toolbar_session_but_keeps_window_rows_compact() {
         let context = egui::Context::default();
+        context.enable_accesskit();
         let mut rows = rows();
         let has_tag = |output: &egui::FullOutput| {
-            output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "tmuxx"))
+            output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "tmuxx" && !text.galley.elided))
         };
         frame(&context, &rows, Vec::new(), false);
         assert!(!has_tag(&frame(&context, &rows, Vec::new(), false).0));
         rows[0].tmuxx = Some("tmuxx · local".into());
         assert!(has_tag(&frame(&context, &rows, Vec::new(), false).0));
         assert!(description(&rows[0]).contains("tmuxx"));
-        let output = context.run_ui(egui::RawInput::default(), |ui| {
-            tmuxx_tag(ui, "tmuxx · local")
+        let label = "tmuxx · work · build";
+        let tooltip = "Session: work\ntmuxx · SSH · me@build.example.com";
+        let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+            let width = tmuxx_tag_width(ui, label, ui.available_width());
+            assert!((TMUXX_TAG_WIDTH..220.0).contains(&width));
+            tmuxx_tag(ui, label, tooltip, width);
         });
-        assert!(has_tag(&output));
+        output.textures_delta.clear();
+        assert!(output.shapes.iter().any(|shape| matches!(
+            &shape.shape,
+            egui::Shape::Text(text) if text.galley.text() == label && !text.galley.elided
+        )));
+        let tag = output
+            .platform_output
+            .accesskit_update
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|(_, node)| node.value() == Some(tooltip))
+            .map(|(_, node)| node)
+            .unwrap();
+        assert_eq!(tag.role(), egui::accesskit::Role::Label);
+        assert!(!tag.supports_action(egui::accesskit::Action::Click));
+    }
+
+    #[test]
+    fn tmuxx_tag_elides_long_names_within_the_available_width() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let label = format!("tmuxx · {} · remote", "開発 🦀 café ".repeat(20));
+        let tooltip = format!("Session: {label}\ntmuxx · SSH · me@remote.example.com");
+        for max_width in [1000.0_f32, 132.0, 30.0] {
+            let width = max_width.min(220.0);
+            let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                assert_eq!(tmuxx_tag_width(ui, &label, max_width), width);
+                tmuxx_tag(ui, &label, &tooltip, width);
+            });
+            output.textures_delta.clear();
+            let tag = output
+                .platform_output
+                .accesskit_update
+                .as_ref()
+                .unwrap()
+                .nodes
+                .iter()
+                .find(|(_, node)| node.value() == Some(tooltip.as_str()))
+                .map(|(_, node)| node)
+                .unwrap();
+            assert_eq!(tag.bounds().unwrap().width(), f64::from(width));
+            let text = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => Some(text),
+                    _ => None,
+                })
+                .unwrap();
+            assert!(text.galley.elided);
+            assert_eq!(text.galley.rows.len(), 1);
+            assert!(text.galley.size().x <= width - 12.0);
+        }
     }
 
     fn node<'a>(output: &'a egui::FullOutput, label: &str) -> Option<&'a egui::accesskit::Node> {

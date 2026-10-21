@@ -494,6 +494,26 @@ impl Attachment {
             format!("tmuxx · {source}")
         }
     }
+
+    pub fn window_tag(&self, window: Id, names: &BTreeMap<String, String>) -> (String, String) {
+        let session = self.mapping.session_names.get(&window);
+        let mut label = session.map_or_else(|| "tmuxx".into(), |name| format!("tmuxx · {name}"));
+        if let Source::Ssh(host) | Source::SystemSsh(host) = &self.source {
+            let host = names
+                .iter()
+                .find(|(_, target)| self.source.matches_target(target))
+                .map(|(name, _)| name.as_str())
+                .unwrap_or_else(|| host.rsplit('@').next().unwrap_or(host));
+            label.push_str(" · ");
+            label.push_str(host);
+        }
+        let source = self.label(names);
+        let tooltip = session.map_or_else(
+            || source.clone(),
+            |name| format!("Session: {name}\n{source}"),
+        );
+        (label, tooltip)
+    }
 }
 
 impl Attachment {
@@ -2339,6 +2359,49 @@ mod tests {
             None
         );
         assert_eq!(hidden_error_window(false, None, [].into_iter()), None);
+    }
+
+    #[test]
+    fn window_tags_include_session_and_remote_identity() {
+        for (source, target) in [
+            (
+                Source::Ssh("user@build.example".into()),
+                "ssh:user@build.example",
+            ),
+            (
+                Source::SystemSsh("user@build.example".into()),
+                "system-ssh:user@build.example",
+            ),
+        ] {
+            let mut entry = Attachment::new(source, None, false);
+            entry.mapping.session_names.insert(7, "work".into());
+            let names = BTreeMap::from([("Azure Linux".into(), target.into())]);
+            let (label, tooltip) = entry.window_tag(7, &names);
+            assert_eq!(label, "tmuxx · work · Azure Linux");
+            assert!(tooltip.contains("Session: work"));
+            assert!(tooltip.contains("user@build.example"));
+            assert!(tooltip.contains("disconnected"));
+            assert_eq!(
+                entry.window_tag(7, &BTreeMap::new()).0,
+                "tmuxx · work · build.example"
+            );
+            entry.mapping.session_names.insert(7, "renamed 雪".into());
+            assert_eq!(
+                entry.window_tag(7, &names).0,
+                "tmuxx · renamed 雪 · Azure Linux"
+            );
+        }
+        for source in [
+            Source::Embedded("temporary.native".into()),
+            Source::Local("local.native".into()),
+        ] {
+            let mut entry = Attachment::new(source, None, false);
+            entry.mapping.session_names.insert(7, "work".into());
+            let (label, tooltip) = entry.window_tag(7, &BTreeMap::new());
+            assert_eq!(label, "tmuxx · work");
+            assert!(tooltip.starts_with("Session: work\n"));
+            assert_eq!(entry.window_tag(8, &BTreeMap::new()).0, "tmuxx");
+        }
     }
 
     #[test]
