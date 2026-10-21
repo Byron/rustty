@@ -454,6 +454,7 @@ impl Smoke {
                     "tmuxx-server-management",
                     "tmuxx-fit-window",
                     "tmuxx-secondary-selection",
+                    "tmuxx-disconnected-input",
                 ]
                 .map(serde_json::Value::from),
             );
@@ -1529,6 +1530,7 @@ pub(super) fn check_tmuxx_management(
             sessions[0],
             directory,
         )?;
+        check_tmuxx_disconnection(app, event_loop, directory)?;
         if !cfg!(windows) {
             for remote in graph.panes.iter().map(|pane| pane.id) {
                 let view = app.tmuxx[0]
@@ -1741,6 +1743,8 @@ pub(super) fn check_tmuxx_management(
                 "local_split_auto_focused": true,
                 "local_floating_pane_auto_focused": true,
                 "remote_split_preserved_local_focus": true,
+                "disconnected_views_retain_content_without_sending_input": true,
+                "reconnect_discards_stale_input": true,
             }))?,
         )?;
         Ok(())
@@ -1756,6 +1760,251 @@ pub(super) fn check_tmuxx_management(
     eprintln!(
         "Native smoke: server menus retained live counts without snapshots; reconnect preserved sessions and idle stop reported a clean shutdown"
     );
+    Ok(())
+}
+
+fn check_tmuxx_disconnection(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    directory: &Path,
+) -> Result<()> {
+    let target = app.tmuxx[0].target();
+    let window = *app.tmuxx[0]
+        .mapping
+        .sessions
+        .keys()
+        .next()
+        .ok_or("no tmuxx window")?;
+    let key = app
+        .windows
+        .iter()
+        .find(|(_, host)| host.id == window)
+        .map(|(key, _)| *key)
+        .ok_or("no tmuxx native host")?;
+    let mut host = app.windows.remove(&key).unwrap();
+    // The selection fixture leaves a small floating pane focused in its first tab.
+    app.action(event_loop, &mut host, Action::GotoTab(2), true);
+    let id = app.focused(window).ok_or("no focused tmuxx pane")?;
+    let draw = app.draw(event_loop, &mut host);
+    app.windows.insert(key, host);
+    draw?;
+    let contents = {
+        let pane = app.panes.get_mut(&id).unwrap();
+        pane.input
+            .push_back(SessionInput::Text(b"stale input".to_vec()));
+        pane.input_bytes = b"stale input".len();
+        pane.mouse_cell = Some([1, 1]);
+        let mut terminal = pane.session.terminal()?;
+        let rows = usize::from(terminal.rows) + 8;
+        terminal.feed("retained content\r\n".repeat(rows).as_bytes());
+        terminal.feed(b"\x1b[?1003h\x1b[?1006h");
+        terminal.plain_text()
+    };
+    let host = app.windows.get_mut(&key).unwrap();
+    host.mouse_button = Some(vt::MouseButton::Left);
+    host.composing = true;
+    host.preedit = "unfinished".into();
+    host.preedit_selection = Some((0, 1));
+    // Drop only the client transport; the disposable server and shells stay alive.
+    drop(app.tmuxx[0].connection.take());
+    app.refresh_tmuxx(event_loop);
+    let host = &app.windows[&key];
+    let pane = &app.panes[&id];
+    if pane.session.accepts_input()
+        || pane.exited
+        || !pane.input.is_empty()
+        || pane.input_bytes != 0
+        || pane.mouse_cell.is_some()
+        || host.mouse_button.is_some()
+        || host.composing
+        || !host.preedit.is_empty()
+        || host.preedit_selection.is_some()
+        || pane.session.terminal()?.plain_text() != contents
+        || !app.tmuxx[0]
+            .window_tag(window, &BTreeMap::new())
+            .0
+            .contains("disconnected")
+    {
+        return Err("disconnect did not retain an inactive view and clear pending input".into());
+    }
+    let error_count = app.errors.len();
+    let mut host = app.windows.remove(&key).unwrap();
+    let pointer_in_window = host.egui.is_pointer_in_window();
+    let result = (|| -> Result<()> {
+        host.mouse = host.rects[&id].left_bottom() + Vec2::new(24.0, -32.0);
+        host.modifiers = Modifiers::default();
+        let _ = host.egui.on_window_event(
+            &host.window,
+            &WindowEvent::CursorMoved {
+                device_id: winit::event::DeviceId::dummy(),
+                position: LogicalPosition::new(host.mouse.x, host.mouse.y)
+                    .to_physical(host.window.scale_factor()),
+            },
+        );
+        for _ in 0..4 {
+            app.mouse(&mut host, vt::MouseAction::Move, None);
+            app.scroll(&mut host, MouseScrollDelta::LineDelta(0.0, 1.0));
+        }
+        let offset = app.panes[&id].session.terminal()?.screen().viewport_offset;
+        if offset == 0 {
+            let terminal = app.panes[&id].session.terminal()?;
+            return Err(format!(
+                "disconnected application mouse mode blocked local scrolling: pane={id}, hovered={:?}, pointer={:?}, rect={:?}, modal={}, peek={}, divider={}, UI={}, history={}, alternate={}",
+                host.hovered_pane(), host.mouse, host.rects[&id], host.modal_input(),
+                host.peek.is_some(), host.divider_drag.is_some(), host.ui_areas.contains(host.mouse),
+                terminal.screen().history_len(), terminal.is_alternate_screen(),
+            ).into());
+        }
+        app.mouse(
+            &mut host,
+            vt::MouseAction::Press,
+            Some(vt::MouseButton::Left),
+        );
+        if host.selection_drag.is_none() {
+            return Err("disconnected application mouse mode blocked local selection".into());
+        }
+        app.mouse(
+            &mut host,
+            vt::MouseAction::Release,
+            Some(vt::MouseButton::Left),
+        );
+        {
+            let pane = app.panes.get_mut(&id).unwrap();
+            for input in [
+                SessionInput::Text(b"text".to_vec()),
+                SessionInput::Mouse(b"mouse".to_vec()),
+                SessionInput::Paste(b"paste".to_vec()),
+                SessionInput::Reply(b"reply".to_vec()),
+                SessionInput::Key {
+                    event: vt::KeyEvent::new(vt::Key::Char('x')),
+                    options: Default::default(),
+                },
+            ] {
+                pane.input.push_back(SessionInput::Text(b"stale".to_vec()));
+                pane.input_bytes = 5;
+                pane.send_input(input)?;
+                if !pane.input.is_empty() || pane.input_bytes != 0 {
+                    return Err("disconnected input retained queued bytes".into());
+                }
+            }
+            pane.input.push_back(SessionInput::Text(b"stale".to_vec()));
+            pane.input_bytes = 5;
+            pane.flush()?;
+            let mut terminal = pane.session.terminal()?;
+            let row = terminal
+                .screen()
+                .viewport()
+                .next()
+                .ok_or("no retained row")?
+                .id;
+            terminal.screen_mut().selection = Some(vt::Selection {
+                start: vt::GridPoint { row, col: 0 },
+                end: vt::GridPoint { row, col: 7 },
+                rectangular: false,
+            });
+            if terminal.screen().selection_text().as_deref() != Some("retained") {
+                return Err("disconnected content could not be copied".into());
+            }
+            let mut search = Search::default();
+            search.query = "retained".into();
+            search.refresh(&mut terminal);
+            if search.highlights(&mut terminal).is_empty() {
+                return Err("disconnected content could not be searched".into());
+            }
+        }
+        app.action(event_loop, &mut host, Action::Text(b"text".to_vec()), true);
+        app.paste(
+            &mut host,
+            PendingPaste {
+                pane: id,
+                data: b"paste".to_vec(),
+            },
+            true,
+        );
+        capture_window(
+            app,
+            event_loop,
+            &mut host,
+            &directory.join("tmuxx-disconnected.png"),
+        )?;
+        if host
+            .prepared
+            .get(&id)
+            .is_none_or(|pane| pane.key.options.cursor_visible)
+        {
+            return Err("disconnected view retained an active terminal cursor".into());
+        }
+        Ok(())
+    })();
+    if !pointer_in_window {
+        let _ = host.egui.on_window_event(
+            &host.window,
+            &WindowEvent::CursorLeft {
+                device_id: winit::event::DeviceId::dummy(),
+            },
+        );
+    }
+    app.windows.insert(key, host);
+    result?;
+    for event in [
+        Ime::Preedit("unfinished".into(), Some((0, 1))),
+        Ime::Commit("input".into()),
+    ] {
+        app.window_event(event_loop, key, WindowEvent::Ime(event));
+    }
+    if app.errors.len() != error_count
+        || !app.panes[&id].input.is_empty()
+        || app.panes[&id].input_bytes != 0
+        || app.windows[&key].composing
+        || !app.windows[&key].preedit.is_empty()
+    {
+        return Err(format!(
+            "disconnected input produced errors or retained input: {:?}",
+            app.errors
+        )
+        .into());
+    }
+    app.tmuxx_menu_command(tmuxx_host::MenuCommand::Reconnect(target));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        app.refresh_tmuxx(event_loop);
+        if app
+            .panes
+            .get(&id)
+            .is_some_and(|pane| pane.session.accepts_input())
+        {
+            break;
+        }
+        if Instant::now() >= deadline {
+            return Err(format!("disconnected view did not reconnect: {:?}", app.errors).into());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    if app.errors.len() != error_count
+        || !app.panes[&id].input.is_empty()
+        || app.panes[&id].input_bytes != 0
+        || app.tmuxx[0]
+            .window_tag(window, &BTreeMap::new())
+            .0
+            .contains("disconnected")
+    {
+        return Err("reconnect retained stale input or disconnected presentation".into());
+    }
+    app.write(id, b"fresh-after-reconnect".to_vec());
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let text = app.panes[&id].session.terminal()?.plain_text();
+        if text.contains("fresh-after-reconnect") {
+            if text.contains("stale") {
+                return Err("reconnect replayed discarded input".into());
+            }
+            break;
+        }
+        if Instant::now() >= deadline {
+            return Err("reconnected pane did not receive fresh input".into());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
     Ok(())
 }
 

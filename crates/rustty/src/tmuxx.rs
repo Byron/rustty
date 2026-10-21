@@ -185,6 +185,17 @@ pub struct PaneInput {
     native: bool,
 }
 impl PaneInput {
+    fn connection(&self) -> io::Result<Arc<Shared>> {
+        self.shared
+            .upgrade()
+            .filter(|shared| {
+                !self.released.load(Ordering::Acquire) && !shared.closed.load(Ordering::Acquire)
+            })
+            .ok_or_else(|| io::ErrorKind::BrokenPipe.into())
+    }
+    pub(crate) fn accepts_input(&self) -> bool {
+        self.connection().is_ok()
+    }
     pub(crate) fn set_appearance(&self, config: &Config) -> io::Result<()> {
         *self.appearance.lock().map_err(err)? = Some(config.clone());
         Ok(())
@@ -230,10 +241,7 @@ impl PaneInput {
         if !self.native {
             return Err(err("retention leases require a native tmuxx server"));
         }
-        let shared = self
-            .shared
-            .upgrade()
-            .ok_or_else(|| io::Error::from(io::ErrorKind::BrokenPipe))?;
+        let shared = self.connection()?;
         send_with_snapshot(
             &shared,
             vec![
@@ -301,10 +309,7 @@ impl PaneInput {
         Ok(())
     }
     pub fn host_reply(&self, effect: Effect, response: HostResponse) -> io::Result<()> {
-        let shared = self
-            .shared
-            .upgrade()
-            .ok_or_else(|| io::Error::from(io::ErrorKind::BrokenPipe))?;
+        let shared = self.connection()?;
         let mut pending = self.pending.lock().map_err(err)?;
         let index = pending
             .iter()
@@ -323,10 +328,7 @@ impl PaneInput {
                 "tmuxx input exceeds one MiB",
             ));
         }
-        let shared = self
-            .shared
-            .upgrade()
-            .ok_or_else(|| io::Error::from(io::ErrorKind::BrokenPipe))?;
+        let shared = self.connection()?;
         shared
             .requests
             .try_send(Request {
@@ -363,10 +365,7 @@ impl PaneInput {
         if bytes.is_empty() {
             return Ok(());
         }
-        let shared = self
-            .shared
-            .upgrade()
-            .ok_or_else(|| io::Error::from(io::ErrorKind::BrokenPipe))?;
+        let shared = self.connection()?;
         shared
             .requests
             .try_send(Request {
@@ -388,10 +387,7 @@ impl PaneInput {
         if self.native {
             return self.write_input(&Input::Text(bytes.to_vec()));
         }
-        let shared = self
-            .shared
-            .upgrade()
-            .ok_or_else(|| io::Error::from(io::ErrorKind::BrokenPipe))?;
+        let shared = self.connection()?;
         if bytes.len() > 1024 * 1024 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -2288,6 +2284,36 @@ mod focus_tests {
     }
 
     #[test]
+    fn released_and_disconnected_inputs_reject_writes_before_queueing() {
+        for native in [false, true] {
+            for disconnect in [false, true] {
+                let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+                snapshot(&connection, 1, state());
+                let mut attached = connection.attach(7, Arc::new(|| {})).unwrap();
+                attached.input.native = native;
+                assert!(attached.input.accepts_input());
+                if disconnect {
+                    fail(&connection.shared, "broken pipe");
+                } else {
+                    attached.input.release();
+                }
+                requests.try_iter().for_each(drop);
+                assert!(!attached.input.accepts_input());
+                for result in [
+                    attached.input.write(b"text"),
+                    attached.input.write_direct(b"mouse report"),
+                    attached
+                        .input
+                        .write_input(&Input::Mouse(b"mouse report".to_vec())),
+                ] {
+                    assert_eq!(result.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
+                }
+                assert!(requests.try_recv().is_err());
+            }
+        }
+    }
+
+    #[test]
     fn closed_connections_release_sources_but_keep_view_contents_and_session_metadata() {
         use crate::session::Session;
 
@@ -2308,6 +2334,7 @@ mod focus_tests {
                 .collect::<Vec<_>>();
             let view = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
             let (contents, selection) = {
+                assert!(view.accepts_input());
                 let mut terminal = view.terminal().unwrap();
                 terminal.screen_mut().scroll_viewport(1);
                 let row = terminal.screen().row(0).id;
@@ -2340,6 +2367,7 @@ mod focus_tests {
                     .all(|snapshot| snapshot.upgrade().is_none())
             );
             assert_eq!(view.has_exited(), close == "detach");
+            assert!(!view.accepts_input());
             {
                 let terminal = view.terminal().unwrap();
                 assert_eq!(terminal.plain_text(), contents);
@@ -3507,10 +3535,10 @@ mod tests {
         assert!(!connection.is_closed());
         assert!(!view.has_exited());
         assert_eq!(connection.errors(), ["invalid command"]);
+        requests.try_iter().for_each(drop);
         fail(&connection.shared, "connection lost");
         assert!(connection.is_closed());
         assert!(!view.has_exited());
-        drop(requests);
         for focused in [true, false, true] {
             view.set_host_state(true, focused, rustty_vt::query::ColorScheme::Dark)
                 .unwrap();
@@ -3518,6 +3546,16 @@ mod tests {
         assert_eq!(
             view.write(b"x").unwrap_err().kind(),
             io::ErrorKind::BrokenPipe
+        );
+        for input in [Input::Text(b"x".to_vec()), Input::Mouse(b"mouse".to_vec())] {
+            assert_eq!(
+                view.write_input(&input).unwrap_err().kind(),
+                io::ErrorKind::BrokenPipe
+            );
+        }
+        assert!(
+            requests.try_recv().is_err(),
+            "closed transport accepted more input"
         );
         assert!(
             matches!(view.events().next(), Some(SessionEvent::Error(message)) if message == "connection lost")
