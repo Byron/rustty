@@ -1349,18 +1349,22 @@ impl App {
         if self.panes.contains_key(&id) || self.failed_panes.contains_key(&id) {
             return Ok(());
         }
-        let directory = directory
-            .is_absolute()
-            .then(|| directory.clone())
-            .or_else(|| directory_from_osc(&directory.to_string_lossy()))
-            .filter(|path| path.is_dir())
-            .or_else(|| {
-                self.config()
-                    .working_directory
-                    .clone()
-                    .filter(|path| path.is_dir())
-            })
-            .unwrap_or_else(|| self.config_loader.home.clone());
+        let directory = if self.tmuxx_pane(id).is_some() {
+            PathBuf::new()
+        } else {
+            directory
+                .is_absolute()
+                .then(|| directory.clone())
+                .or_else(|| directory_from_osc(&directory.to_string_lossy()))
+                .filter(|path| path.is_dir())
+                .or_else(|| {
+                    self.config()
+                        .working_directory
+                        .clone()
+                        .filter(|path| path.is_dir())
+                })
+                .unwrap_or_else(|| self.config_loader.home.clone())
+        };
         let wake_pending = Arc::new(AtomicBool::new(false));
         let pending = wake_pending.clone();
         let proxy = self.proxy.clone();
@@ -1454,6 +1458,10 @@ impl App {
             .clone()
             .or_else(|| saved.and_then(|pane| pane.title.clone()))
             .unwrap_or_default();
+        let directory_report = session.terminal()?.working_directory.clone();
+        let directory = session
+            .directory_from_report(&directory_report)
+            .unwrap_or(directory);
         self.panes.insert(
             id,
             Pane {
@@ -1468,7 +1476,7 @@ impl App {
                 title,
                 title_override,
                 cwd: directory,
-                last_directory_report: String::new(),
+                last_directory_report: directory_report,
                 running: None,
                 activity: Activity::default(),
                 unseen: false,
@@ -2280,7 +2288,7 @@ impl App {
         if let Some(report) = directory_report
             && report != pane.last_directory_report
         {
-            if let Some(directory) = pane.session.shell().directory_from_report(&report) {
+            if let Some(directory) = pane.session.directory_from_report(&report) {
                 content_changed |= pane.cwd != directory;
                 pane.cwd = directory;
             }

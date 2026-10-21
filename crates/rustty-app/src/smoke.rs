@@ -1360,7 +1360,11 @@ pub(super) fn check_tmuxx_management(
     let initial = if cfg!(windows) {
         vec![b"cmd.exe".to_vec(), b"/D".to_vec(), b"/Q".to_vec()]
     } else {
-        vec![b"/bin/sleep".to_vec(), b"60".to_vec()]
+        vec![
+            b"/bin/sh".to_vec(),
+            b"-c".to_vec(),
+            br"printf '\033]7;file://remote.invalid/rustty-cwd-before-attach\007'; exec /bin/sleep 60".to_vec(),
+        ]
     };
     let mut command = vec![b"new-session".to_vec(), b"-d".to_vec()];
     command.extend(initial);
@@ -1389,6 +1393,19 @@ pub(super) fn check_tmuxx_management(
         }
         std::thread::sleep(Duration::from_millis(5));
     };
+    if !cfg!(windows) {
+        // Wait for the remote report before attaching the app to an idle pane.
+        for pane in &graph.panes {
+            let view = Session::attach_tmuxx(&connection, pane.id, Arc::new(|| {}))?;
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while view.terminal()?.working_directory.is_empty() {
+                if Instant::now() >= deadline {
+                    return Err("management smoke did not receive the remote OSC 7".into());
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+    }
     owner.instance = connection.instance();
     let mut entry =
         tmuxx_host::Attachment::new(tmuxx_host::Source::Local(endpoint), Some(connection), false);
@@ -1512,6 +1529,20 @@ pub(super) fn check_tmuxx_management(
             sessions[0],
             directory,
         )?;
+        if !cfg!(windows) {
+            for remote in graph.panes.iter().map(|pane| pane.id) {
+                let view = app.tmuxx[0]
+                    .mapping
+                    .panes
+                    .iter()
+                    .find(|(_, pane)| **pane == remote)
+                    .map(|(view, _)| view)
+                    .ok_or("OSC 7 pane was not attached")?;
+                if app.panes[view].cwd != Path::new("/rustty-cwd-before-attach") {
+                    return Err("attached pane label did not use the remote snapshot CWD".into());
+                }
+            }
+        }
         let graph = app.tmuxx[0]
             .connection
             .as_ref()
