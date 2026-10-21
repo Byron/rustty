@@ -395,6 +395,17 @@ tabs until selected. Ownership requires an updated server. On older native
 servers, Fit sets a fixed size until used again. Stock tmux over SSH retains
 standard tmux sizing.
 
+Native tmuxx windows keep your selected pane locally when the server selects a
+different pane. A small target marker in the pane's lower-right corner shows
+that server-selected pane; hover it for an explanation. Rustty still sends
+`select-pane` when you select a pane.
+The marker represents the latest shared selection, including commands and
+scripts; the protocol does not identify who selected it. It disappears when
+the server selection matches yours. Tab selection, zoom, and modal panels stay
+shared, so hiding or closing your selected pane can require a focus change.
+Splits and floating panels you create receive focus only in your local view.
+Stock tmux over SSH retains its existing focus behavior.
+
 Closing a panel kills its pane. Closing a tab kills its server window, including
 linked views in other sessions. Closing a persistent or SSH window asks whether
 to terminate its session or close only the local window. The tmuxx menu lists
