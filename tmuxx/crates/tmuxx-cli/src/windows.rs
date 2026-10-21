@@ -43,11 +43,10 @@ pub(super) fn native_stdio_bridge(explicit: Option<&std::path::Path>) -> io::Res
     stream.flush()?;
     let mut output = stream.clone();
     std::thread::spawn(move || {
-        let _ = io::copy(&mut stdin, &mut output);
+        let _ = copy_bridge_bytes(&mut stdin, &mut output);
         let _ = output.shutdown(std::net::Shutdown::Write);
     });
-    io::copy(&mut stream, &mut io::stdout().lock())?;
-    Ok(())
+    copy_bridge_bytes(&mut stream, &mut io::stdout().lock())
 }
 
 struct InputWorker {
