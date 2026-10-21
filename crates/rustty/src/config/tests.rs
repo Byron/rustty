@@ -262,6 +262,73 @@ fn named_tmuxx_connections_replace_clear_and_keep_ssh_aliases() {
 }
 
 #[test]
+fn named_local_tmuxx_connections_replace_clear_and_accept_spaces_and_unicode() {
+    let home = TestHome::new();
+    home.own(
+        "tmuxx-connection = Work = local:old\n\
+         tmuxx-connection = Remote = ssh:azure\n\
+         tmuxx-connection = Work = local:work\n",
+    );
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(loaded.config.tmuxx_connections["Work"], "local:work");
+    assert_eq!(loaded.config.tmuxx_connections["Remote"], "ssh:azure");
+    assert_eq!(loaded.config.tmuxx_connections.len(), 2);
+
+    for instance in ["build work".to_owned(), "\u{e9}".repeat(32)] {
+        let loaded = home.loader.load_with_args(&args(&[&format!(
+            "--tmuxx-connection=Work=local:{instance}"
+        )]));
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        assert_eq!(
+            loaded.config.tmuxx_connections["Work"],
+            format!("local:{instance}")
+        );
+        assert_eq!(loaded.config.tmuxx_connections["Remote"], "ssh:azure");
+        assert_eq!(loaded.config.tmuxx_connections.len(), 2);
+    }
+
+    let loaded = home.loader.load_with_args(&args(&["--tmuxx-connection="]));
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert!(loaded.config.tmuxx_connections.is_empty());
+    home.own("tmuxx-connection=Work=local:work\ntmuxx-connection=\n");
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert!(loaded.config.tmuxx_connections.is_empty());
+}
+
+#[test]
+fn invalid_named_local_tmuxx_connections_preserve_previous_entries() {
+    let home = TestHome::new();
+    let too_long_ascii = "a".repeat(65);
+    let too_long_unicode = "\u{e9}".repeat(33);
+    for instance in [
+        "",
+        ".",
+        "..",
+        "../work",
+        "work/child",
+        r"work\child",
+        "wo\0rk",
+        "wo\trk",
+        "wo\u{7f}rk",
+        &too_long_ascii,
+        &too_long_unicode,
+    ] {
+        home.own(&format!(
+            "tmuxx-connection=Work=local:work\n\
+             tmuxx-connection=Remote=ssh:azure\n\
+             tmuxx-connection=Work=local:{instance}\n"
+        ));
+        let loaded = home.loader.load();
+        assert_eq!(loaded.diagnostics.len(), 1, "{instance:?}");
+        assert_eq!(loaded.config.tmuxx_connections.len(), 2);
+        assert_eq!(loaded.config.tmuxx_connections["Work"], "local:work");
+        assert_eq!(loaded.config.tmuxx_connections["Remote"], "ssh:azure");
+    }
+}
+
+#[test]
 fn invalid_named_tmuxx_connections_preserve_previous_entries() {
     let home = TestHome::new();
     for invalid in [
