@@ -93,6 +93,7 @@ pub struct ServerPane {
 #[derive(Default)]
 struct Model {
     instance: String,
+    view_size_ownership: bool,
     sequence: u64,
     graph: Option<Graph>,
     server_status: Option<ServerStatus>,
@@ -585,6 +586,12 @@ impl Connection {
         subscribe: bool,
     ) -> io::Result<Self> {
         let (connection, requests) = Self::base(wake, subscribe);
+        connection
+            .shared
+            .model
+            .lock()
+            .map_err(err)?
+            .view_size_ownership = true;
         let shared = connection.shared.clone();
         thread::Builder::new()
             .name("rustty-tmuxx-local".into())
@@ -776,8 +783,8 @@ impl Connection {
         connection.source = source;
         Ok(connection)
     }
-    /// Each OS window registers its own session-size context, preserving the
-    /// server's latest/smallest/largest arbitration across remote GUI clients.
+    /// Register this window's size. The first native view owns automatic sizing
+    /// until it leaves or another view explicitly fits the session.
     pub fn view_size(
         &self,
         session: u64,
@@ -789,8 +796,45 @@ impl Connection {
         if let Some(system) = &self.system {
             return system.view_size(session, cols, rows);
         }
+        self.update_view_size(session, (cols, rows, cell_width, cell_height), false)
+    }
+    /// Use this window's last reported size for the session and take resize ownership.
+    /// With aggressive-resize enabled, inactive tabs adopt the size when selected.
+    /// Older native servers apply a fixed size until resized again explicitly.
+    pub fn fit_view_size(&self, session: u64) -> io::Result<()> {
+        if self.system.is_some() {
+            return Err(err("fitting requires a native tmuxx connection"));
+        }
+        let size = self
+            .size_views
+            .lock()
+            .map_err(err)?
+            .get(&session)
+            .map(|(_, size)| *size)
+            .ok_or_else(|| err("tmuxx window has not reported its size yet"))?;
+        self.update_view_size(session, size, true)
+    }
+    fn update_view_size(
+        &self,
+        session: u64,
+        dimensions: (u16, u16, u16, u16),
+        force: bool,
+    ) -> io::Result<()> {
+        let (cols, rows, cell_width, cell_height) = dimensions;
+        if [cols, rows, cell_width, cell_height]
+            .iter()
+            .any(|value| !(1..=10_000).contains(value))
+        {
+            return Err(err("invalid tmuxx view size"));
+        }
+        if self.is_closed() {
+            return Err(err("tmuxx connection is closed"));
+        }
         let mut views = self.size_views.lock().map_err(err)?;
         if let std::collections::btree_map::Entry::Vacant(entry) = views.entry(session) {
+            if force {
+                return Err(err("tmuxx window has not reported its size yet"));
+            }
             let connection = if let Some(owner) = &self.owner {
                 Self::local(
                     owner.connect_with_context(tmuxx_runtime::ClientContext::default())?,
@@ -827,18 +871,51 @@ impl Connection {
         if connection.is_closed() {
             return Err(err("tmuxx size connection is closed"));
         }
-        if *size != (cols, rows, cell_width, cell_height) {
-            connection.command([
-                "refresh-client".into(),
-                "-C".into(),
-                format!("{cols},{rows}"),
-            ])?;
-            connection.command([
-                "tmuxx-cell-size".into(),
-                cell_width.to_string(),
-                cell_height.to_string(),
-            ])?;
-            *size = (cols, rows, cell_width, cell_height);
+        if force || *size != dimensions {
+            if self.shared.model.lock().map_err(err)?.view_size_ownership {
+                let mut args = vec![
+                    "tmuxx-view-size".to_owned(),
+                    "-t".into(),
+                    format!("${session}"),
+                ];
+                if force {
+                    args.push("-f".into());
+                }
+                args.extend([cols, rows, cell_width, cell_height].map(|value| value.to_string()));
+                connection.command(args)?;
+            } else if force {
+                let graph = self
+                    .graph()
+                    .ok_or_else(|| err("missing tmuxx session graph"))?;
+                let session = graph
+                    .sessions
+                    .iter()
+                    .find(|entry| entry.id == session)
+                    .ok_or_else(|| err("tmuxx session no longer exists"))?;
+                for window in session.windows.values() {
+                    connection.command([
+                        "resize-window".into(),
+                        "-t".into(),
+                        format!("${}:@{window}", session.id),
+                        "-x".into(),
+                        cols.to_string(),
+                        "-y".into(),
+                        rows.to_string(),
+                    ])?;
+                }
+            } else {
+                connection.command([
+                    "refresh-client".into(),
+                    "-C".into(),
+                    format!("{cols},{rows}"),
+                ])?;
+                connection.command([
+                    "tmuxx-cell-size".into(),
+                    cell_width.to_string(),
+                    cell_height.to_string(),
+                ])?;
+            }
+            *size = dimensions;
         }
         Ok(())
     }
@@ -885,6 +962,8 @@ impl Connection {
                     if hello.version != tmuxx_protocol::native::VERSION {
                         return Err(err("unsupported tmuxx native version"));
                     }
+                    shared.model.lock().map_err(err)?.view_size_ownership =
+                        hello.view_size_ownership;
                     let mut snapshots = SnapshotAssembler::default();
                     let mut instance = hello.instance_id;
                     if let Some(expected) = expected_instance {
@@ -1783,6 +1862,49 @@ mod focus_tests {
     }
     fn active(connection: &Connection) -> u64 {
         connection.graph().unwrap().windows[0].active
+    }
+
+    #[test]
+    fn legacy_view_fit_targets_cached_session_windows_without_context_size_updates() {
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        snapshot(&connection, 1, state());
+        let (sizing, requests) = Connection::base(Arc::new(|| {}), false);
+        connection
+            .size_views
+            .lock()
+            .unwrap()
+            .insert(0, (sizing, (0, 0, 0, 0)));
+        assert!(connection.view_size(0, 0, 20, 8, 16).is_err());
+        assert!(requests.try_recv().is_err());
+        connection.view_size(0, 70, 20, 8, 16).unwrap();
+        let commands = requests
+            .try_iter()
+            .map(|request| request.argv)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            commands,
+            vec![
+                ["refresh-client", "-C", "70,20"]
+                    .map(|arg| arg.as_bytes().to_vec())
+                    .to_vec(),
+                ["tmuxx-cell-size", "8", "16"]
+                    .map(|arg| arg.as_bytes().to_vec())
+                    .to_vec(),
+            ]
+        );
+        connection.fit_view_size(0).unwrap();
+        let commands = requests
+            .try_iter()
+            .map(|request| request.argv)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            commands,
+            ["$0:@1", "$0:@2"].map(|target| {
+                ["resize-window", "-t", target, "-x", "70", "-y", "20"]
+                    .map(|arg| arg.as_bytes().to_vec())
+                    .to_vec()
+            })
+        );
     }
 
     #[test]
@@ -3671,6 +3793,62 @@ mod tests {
     }
 
     #[test]
+    fn native_size_views_keep_the_first_owner_until_fit_or_disconnect() {
+        let owner = test_owner("import time; time.sleep(30)");
+        let graph = wait(&owner, |g| !g.panes.is_empty());
+        let session = graph.sessions[0].id;
+        let Source::Unix(endpoint) = &owner.source else {
+            panic!("missing endpoint");
+        };
+        let remote = Connection::native(endpoint, Arc::new(|| {})).unwrap();
+        wait(&remote, |g| !g.panes.is_empty());
+        assert!(remote.shared.model.lock().unwrap().view_size_ownership);
+        assert!(remote.fit_view_size(session).is_err());
+        let size = |connection: &Connection| {
+            connection.size_views.lock().unwrap()[&session]
+                .0
+                .command_with_reply(
+                    ["display-message", "-p", "#{window_width}x#{window_height}"]
+                        .map(|arg| arg.as_bytes().to_vec())
+                        .to_vec(),
+                )
+                .unwrap()
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap()
+                .unwrap()
+        };
+        owner.view_size(session, 100, 40, 8, 16).unwrap();
+        assert_eq!(size(&owner), b"100x40\n");
+        remote.view_size(session, 60, 20, 8, 16).unwrap();
+        assert_eq!(size(&remote), b"100x40\n");
+        let view = Session::attach_tmuxx(&remote, graph.panes[0].id, Arc::new(|| {})).unwrap();
+        view.set_host_state(true, true, rustty_vt::query::ColorScheme::Dark)
+            .unwrap();
+        view.write(b"input").unwrap();
+        let flushed = remote.command_with_reply(Vec::new()).unwrap();
+        flushed
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        assert_eq!(size(&remote), b"100x40\n");
+        owner.view_size(session, 90, 35, 8, 16).unwrap();
+        assert_eq!(size(&owner), b"90x35\n");
+
+        remote.fit_view_size(session).unwrap();
+        assert_eq!(size(&remote), b"60x20\n");
+        owner.view_size(session, 110, 45, 8, 16).unwrap();
+        assert_eq!(size(&owner), b"60x20\n");
+        remote.view_size(session, 70, 25, 8, 16).unwrap();
+        assert_eq!(size(&remote), b"70x25\n");
+        remote.release_view(session).unwrap();
+        wait(&owner, |g| {
+            g.windows[0].cols == 110 && g.windows[0].rows == 45
+        });
+        assert_eq!(size(&owner), b"110x45\n");
+        assert!(remote.fit_view_size(session).is_err());
+    }
+
+    #[test]
     fn embedded_size_clients_use_the_owner_and_release_their_size_context() {
         let connection = test_owner("import time; time.sleep(30)");
         let graph = wait(&connection, |g| !g.panes.is_empty());
@@ -3739,7 +3917,11 @@ mod tests {
             assert!(Instant::now() < deadline, "stale size client was accepted");
             thread::sleep(Duration::from_millis(5));
         };
-        assert!(error.to_string().contains("incarnation"), "{error}");
+        let error = error.to_string();
+        assert!(
+            error.contains("incarnation") || error == "tmuxx connection is closed",
+            "{error}"
+        );
         for _ in 0..3 {
             assert!(stale.view_size(session, 51, 13, 8, 16).is_err());
         }
