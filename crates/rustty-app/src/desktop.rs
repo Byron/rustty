@@ -3551,7 +3551,7 @@ impl App {
         if accept {
             self.theme_preview = None;
             self.errors.push(format!(
-                "Theme {} selected for this session. To keep it, add or edit this line in {}:\n\n{}\n\nNo configuration file was changed. Reloading configuration or restarting Rustty restores the saved theme.",
+                "Theme {} selected. To keep it, add or edit this line in {}:\n\n{}\n\nNo configuration file was changed. Reloading configuration or restarting Rustty restores the saved theme.",
                 theme.name,
                 self.loaded.edit_config_path.display(),
                 scope.config_line(&theme),

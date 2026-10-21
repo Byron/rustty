@@ -573,9 +573,11 @@ explicit appearance settings in your configuration still take precedence.
 
 These themes change the local window's appearance, including fonts and padding,
 without changing shell commands, key bindings, or the remote owner's settings.
-They survive pane updates and reconnects. In a window with a matching rule, the
-Themes picker previews that rule and shows its configuration line on acceptance;
-other windows matching the same rule share the preview.
+They survive pane updates and reconnects. The Themes picker previews the matching
+session or host rule. Without a matching rule, tmuxx windows preview a new session
+rule; regular local windows preview the global theme. Acceptance shows the same
+rule's configuration line and the file where it belongs. Other windows matching
+that rule share the preview.
 
 The Windows SSH bridge connects to the running owner's local named pipe under
 the same Windows account; SSH authentication and transport remain OpenSSH's

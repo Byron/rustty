@@ -8,13 +8,13 @@ pub(super) enum Scope {
 }
 
 impl Scope {
-    pub fn for_connection(config: &Config, host: Option<&str>, session: &str) -> Option<Self> {
-        if config.tmuxx_theme_sessions.contains_key(session) {
-            Some(Self::Session(session.to_owned()))
-        } else {
-            host.filter(|host| config.tmuxx_theme_hosts.contains_key(*host))
-                .map(|host| Self::Host(host.to_owned()))
+    pub fn for_connection(config: &Config, host: Option<&str>, session: &str) -> Self {
+        if !config.tmuxx_theme_sessions.contains_key(session)
+            && let Some(host) = host.filter(|host| config.tmuxx_theme_hosts.contains_key(*host))
+        {
+            return Self::Host(host.to_owned());
         }
+        Self::Session(session.to_owned())
     }
 
     pub fn select(&self, config: &mut Config, theme: &str) {
@@ -116,12 +116,19 @@ mod tests {
         original
             .tmuxx_theme_sessions
             .insert("build work".into(), "Session".into());
-        assert_eq!(Scope::for_connection(&original, None, "other"), None);
+        assert_eq!(
+            Scope::for_connection(&original, None, "other"),
+            Scope::Session("other".into())
+        );
+        assert_eq!(
+            Scope::for_connection(&original, Some("unconfigured"), "other"),
+            Scope::Session("other".into())
+        );
         assert_eq!(
             Scope::for_connection(&original, Some("windows"), "other"),
-            Some(Scope::Host("windows".into()))
+            Scope::Host("windows".into())
         );
-        let scope = Scope::for_connection(&original, Some("windows"), "build work").unwrap();
+        let scope = Scope::for_connection(&original, Some("windows"), "build work");
         assert_eq!(scope, Scope::Session("build work".into()));
         let mut preview = original.clone();
         scope.select(&mut preview, "/themes/Preview");
