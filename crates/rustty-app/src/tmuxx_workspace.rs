@@ -448,26 +448,6 @@ impl Mapping {
             Action::ToggleSplitZoom => target("resize-pane", "-Z", pid, '%'),
             Action::CloseSurface => target("kill-pane", "", pid, '%'),
             Action::CloseTab => target("kill-window", "", wid, '@'),
-            Action::NextTab | Action::PreviousTab | Action::LastTab | Action::GotoTab(_) => {
-                let w = window?;
-                let n = w.tabs.len();
-                if n == 0 {
-                    return Some(Err("no server windows".into()));
-                }
-                let i = match action {
-                    Action::NextTab => (w.active_tab + 1) % n,
-                    Action::PreviousTab => (w.active_tab + n - 1) % n,
-                    Action::LastTab => n - 1,
-                    Action::GotoTab(i) => i.saturating_sub(1).min(n - 1),
-                    _ => unreachable!(),
-                };
-                let target_index = self.window_indices.get(&w.tabs[i].id)?;
-                vec![
-                    "select-window".into(),
-                    "-t".into(),
-                    format!("${}:{target_index}", sid?),
-                ]
-            }
             Action::Undo | Action::Redo | Action::MoveTab(_) | Action::OpenLayout => {
                 return Some(Err(
                     "this action is unavailable for a server-owned workspace".into(),
@@ -972,13 +952,15 @@ mod tests {
             mapping.focus_target(&workspace, window.id, window.tabs[0].focused),
             None
         );
-        assert_eq!(
-            mapping
-                .action(&workspace, window.id, &Action::GotoTab(2))
-                .unwrap()
-                .unwrap(),
-            ["select-window", "-t", "$0:8"]
-        );
+        for action in [
+            Action::NextTab,
+            Action::PreviousTab,
+            Action::LastTab,
+            Action::GotoTab(0),
+            Action::GotoTab(2),
+        ] {
+            assert!(mapping.action(&workspace, window.id, &action).is_none());
+        }
     }
 
     #[test]

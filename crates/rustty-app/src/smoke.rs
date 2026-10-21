@@ -1952,6 +1952,84 @@ fn check_tmuxx_secondary_selection(
     if app.focused(window) != focused {
         return Err("a remotely created pane stole local keyboard focus".into());
     }
+
+    let mut command = vec![
+        "new-window".into(),
+        "-d".into(),
+        "-t".into(),
+        format!("${session}"),
+    ];
+    command.extend(if cfg!(windows) {
+        ["cmd.exe", "/D", "/Q"].map(str::to_owned).to_vec()
+    } else {
+        ["/bin/sleep", "60"].map(str::to_owned).to_vec()
+    });
+    owner.command(command)?;
+    wait(app, event_loop, "opening a second server tab", |app| {
+        app.workspace.windows[app.index(window).unwrap()].tabs.len() == 2
+    })?;
+    let graph = app.tmuxx[0].connection.as_ref().unwrap().graph().unwrap();
+    for (action, expected) in [
+        (Action::NextTab, 1),
+        (Action::NextTab, 0),
+        (Action::GotoTab(2), 1),
+        (Action::PreviousTab, 0),
+        (Action::LastTab, 1),
+        (Action::GotoTab(0), 0),
+    ] {
+        let mut host = app.windows.remove(&key).unwrap();
+        app.action(event_loop, &mut host, action, true);
+        app.windows.insert(key, host);
+        if app.workspace.windows[app.index(window).unwrap()].active_tab != expected {
+            return Err("tmuxx tab action waited for a server snapshot before switching".into());
+        }
+        let (_, target_index, _) = app.tmuxx[0]
+            .mapping
+            .focus_target(&app.workspace, window, app.focused(window).unwrap())
+            .unwrap();
+        wait(app, event_loop, "acknowledging tab navigation", |_| {
+            owner.graph().is_some_and(|graph| {
+                graph
+                    .sessions
+                    .iter()
+                    .any(|s| s.id == session && s.active == u64::from(target_index))
+            })
+        })?;
+    }
+    // A distinct server selection is visible only after this client's pending focus clears.
+    let local = app.tmuxx[0].mapping.panes[&app.focused(window).unwrap()];
+    let marker = if local == first { second } else { first };
+    owner.focus_pane(session, index, marker)?;
+    wait(
+        app,
+        event_loop,
+        "consuming the tab selection replies",
+        |app| {
+            app.tmuxx[0]
+                .connection
+                .as_ref()
+                .unwrap()
+                .graph()
+                .is_some_and(|graph| {
+                    graph
+                        .windows
+                        .iter()
+                        .any(|window| window.id == server_window && window.active == marker)
+                })
+        },
+    )?;
+    let current = app.tmuxx[0].connection.as_ref().unwrap().graph().unwrap();
+    if graph.panes.len() != current.panes.len()
+        || graph
+            .panes
+            .iter()
+            .zip(&current.panes)
+            .any(|(before, after)| {
+                before.id != after.id || !Arc::ptr_eq(&before.terminal, &after.terminal)
+            })
+    {
+        return Err("tmuxx tab navigation replaced the retained terminal snapshots".into());
+    }
     Ok(())
 }
 

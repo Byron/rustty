@@ -3057,7 +3057,7 @@ impl App {
                         Action::NextTab => (old + 1) % count,
                         Action::PreviousTab => (old + count - 1) % count,
                         Action::LastTab => count - 1,
-                        Action::GotoTab(tab) => (tab - 1).min(count - 1),
+                        Action::GotoTab(tab) => tab.saturating_sub(1).min(count - 1),
                         Action::MoveTab(offset) => {
                             (old as i64 + i64::from(offset)).clamp(0, count as i64 - 1) as usize
                         }
