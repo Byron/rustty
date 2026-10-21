@@ -688,6 +688,24 @@ fn paint_panel_pin(ui: &egui::Ui, pane: Id, bounds: egui::Rect) {
     response.on_hover_text("Pinned panel");
 }
 
+fn paint_server_selection(ui: &egui::Ui, pane: Id, bounds: egui::Rect, accent: Color32) {
+    let rect =
+        egui::Rect::from_min_size(bounds.right_bottom() - Vec2::splat(28.0), Vec2::splat(20.0));
+    let painter = ui.painter().with_clip_rect(bounds);
+    painter.rect_filled(rect, 4, ui.visuals().widgets.inactive.bg_fill);
+    painter.circle_stroke(rect.center(), 5.0, egui::Stroke::new(1.5, accent));
+    painter.circle_filled(rect.center(), 1.5, accent);
+    let response = ui.interact(
+        rect,
+        egui::Id::new(("server-selection", pane)),
+        egui::Sense::hover(),
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "Selected on tmuxx server")
+    });
+    response.on_hover_text("Selected on tmuxx server; your keyboard focus stays local");
+}
+
 struct ThemePreview {
     owner: Id,
     original: Config,
@@ -1777,6 +1795,11 @@ impl App {
         if self.focused(window) != Some(pane) {
             return;
         }
+        if let Some(tab) = self.tab(window).map(|tab| tab.id) {
+            for entry in &mut self.tmuxx {
+                entry.cancel_pending_focus(tab);
+            }
+        }
         if let Some(previous) = previous.filter(|&id| id != pane)
             && let Some(state) = self.panes.get_mut(&previous)
         {
@@ -2799,27 +2822,14 @@ impl App {
                 return true;
             }
         }
-        if let Some(entry) = self.tmuxx_window(host.id)
+        if let Some(entry) = self
+            .tmuxx
+            .iter_mut()
+            .find(|entry| entry.mapping.sessions.contains_key(&host.id))
             && let Some(command) = entry.mapping.action(&self.workspace, host.id, &action)
         {
-            let result = command.and_then(|argv| {
-                entry
-                    .connection
-                    .as_ref()
-                    .filter(|connection| {
-                        !connection.is_closed() && connection.instance() == entry.instance
-                    })
-                    .ok_or_else(|| {
-                        "The tmuxx connection is offline; reconnect before changing its panels"
-                            .to_owned()
-                    })
-                    .and_then(|connection| {
-                        connection
-                            .command(argv)
-                            .map(|_| ())
-                            .map_err(|error| error.to_string())
-                    })
-            });
+            let result = command
+                .and_then(|argv| entry.command_action(&self.workspace, host.id, &action, argv));
             if let Err(error) = result {
                 self.errors.push(error);
             }
@@ -4917,6 +4927,8 @@ impl App {
                         };
                         let pinned = self.workspace.pinned_panes.contains(&id);
                         let selected = host.peek.map_or(focused, |peek| peek.target) == id;
+                        let server_selected = id != focused && self.tmuxx_window(host.id)
+                            .is_some_and(|entry| entry.mapping.server_focused.contains(&id));
                         if let Some(label) = DirectoryLabel::new(
                             directory_name(&pane.cwd),
                             selected,
@@ -4946,6 +4958,9 @@ impl App {
                             .paint(ui);
                         } else if pinned {
                             paint_panel_pin(ui, id, bounds);
+                        }
+                        if server_selected {
+                            paint_server_selection(ui, id, bounds, accent);
                         }
                     }
                 });
@@ -7423,6 +7438,77 @@ fn ui_theme(config: &Config) -> egui::ThemePreference {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn server_selection_marker_is_accessible_and_leaves_room_for_labels() {
+        for pinned in [false, true] {
+            let context = egui::Context::default();
+            context.enable_accesskit();
+            let bounds = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 300.0));
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(bounds),
+                    ..Default::default()
+                },
+                |ui| {
+                    if pinned {
+                        paint_panel_pin(ui, 1, bounds);
+                    } else {
+                        DirectoryBadge {
+                            label: DirectoryLabel::new(Some("rustty".into()), false, true, false)
+                                .unwrap(),
+                            bounds,
+                            centered: false,
+                            shared: false,
+                            active: false,
+                            attention: false,
+                            pinned: false,
+                            flash: 0.0,
+                            accent: TabAccent::new(None, [0; 3]),
+                        }
+                        .paint(ui);
+                    }
+                    paint_server_selection(ui, 1, bounds, Color32::LIGHT_BLUE);
+                },
+            );
+            output.textures_delta.clear();
+            let update = output.platform_output.accesskit_update.unwrap();
+            let marker = update
+                .nodes
+                .iter()
+                .find_map(|(_, node)| {
+                    (node.value() == Some("Selected on tmuxx server")).then_some(node)
+                })
+                .expect("accessible server selection marker");
+            assert!(!marker.supports_action(egui::accesskit::Action::Focus));
+            let marker_bounds = marker.bounds().unwrap();
+            assert!(marker_bounds.x0 >= f64::from(bounds.left()));
+            assert!(marker_bounds.x1 <= f64::from(bounds.right()));
+            assert!(marker_bounds.y0 >= f64::from(bounds.top()));
+            assert!(marker_bounds.y1 <= f64::from(bounds.bottom()));
+            let label = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect) => Some(rect.rect),
+                    _ => None,
+                })
+                .unwrap();
+            assert!(f64::from(label.bottom()) <= marker_bounds.y0);
+            if pinned {
+                let pin = update
+                    .nodes
+                    .iter()
+                    .find_map(|(_, node)| {
+                        (node.value() == Some("Pinned panel"))
+                            .then(|| node.bounds())
+                            .flatten()
+                    })
+                    .expect("accessible pin");
+                assert!(pin.y1 <= marker_bounds.y0);
+            }
+        }
+    }
 
     #[test]
     fn tab_context_menu_keeps_title_and_color_editors_open() {
