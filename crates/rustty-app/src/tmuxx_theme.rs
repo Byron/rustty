@@ -59,11 +59,11 @@ impl App {
             }
             _ => None,
         };
-        theme_preview::Scope::for_connection(
+        Some(theme_preview::Scope::for_connection(
             self.config(),
             host,
             entry.mapping.session_names.get(&window)?,
-        )
+        ))
     }
 
     pub(super) fn window_config(&self, window: Id) -> &Config {
