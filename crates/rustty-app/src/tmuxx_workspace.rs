@@ -11,6 +11,7 @@ pub struct Mapping {
     ids: BTreeMap<String, Id>,
     pub panes: BTreeMap<Id, u64>,
     pub sessions: BTreeMap<Id, u64>,
+    pub session_names: BTreeMap<Id, String>,
     pub windows: BTreeMap<Id, u64>,
     window_indices: BTreeMap<Id, u32>,
     pub sizes: BTreeMap<u64, (u16, u16)>,
@@ -52,6 +53,7 @@ impl Mapping {
         let mut windows = Vec::new();
         self.panes.clear();
         self.sessions.clear();
+        self.session_names.clear();
         self.windows.clear();
         self.window_indices.clear();
         self.dividers.clear();
@@ -62,6 +64,7 @@ impl Mapping {
         {
             let id = self.id(workspace, format!("session:{}", session.id));
             self.sessions.insert(id, session.id);
+            self.session_names.insert(id, session.name.clone());
             let old = previous.iter().find(|w| w.id == id);
             let mut tabs = Vec::new();
             let mut active_tab = 0;
@@ -760,6 +763,8 @@ mod tests {
         assert_ne!(first.tabs[0].focused, second.tabs[0].focused);
         assert_eq!(mapping.panes[&first.tabs[0].focused], 7);
         assert_eq!(mapping.panes[&second.tabs[0].focused], 7);
+        assert_eq!(mapping.session_names[&first.id], "first");
+        assert_eq!(mapping.session_names[&second.id], "linked");
         assert_eq!(
             mapping
                 .action(&workspace, first.id, &Action::NewSplit(Direction::Left))
@@ -768,10 +773,15 @@ mod tests {
             ["split-window", "-h", "-t", "%7", "-b"]
         );
         let ids = first.tabs[0].root.panes();
+        let (first_id, second_id) = (first.id, second.id);
+        let mut renamed = graph();
+        renamed.sessions[0].name = "renamed".into();
         mapping
-            .apply(&mut workspace, &graph(), &[0, 1].into())
+            .apply(&mut workspace, &renamed, &[0, 1].into())
             .unwrap();
         assert_eq!(workspace.windows[0].tabs[0].root.panes(), ids);
+        assert_eq!(mapping.session_names[&first_id], "renamed");
+        assert_eq!(mapping.session_names[&second_id], "linked");
     }
     #[test]
     fn duplicate_window_links_in_one_session_have_distinct_views_and_targets() {

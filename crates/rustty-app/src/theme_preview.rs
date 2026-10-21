@@ -1,4 +1,57 @@
-use rustty::config::Config;
+use rustty::config::{Config, ThemeChoice};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum Scope {
+    Global,
+    Host(String),
+    Session(String),
+}
+
+impl Scope {
+    pub fn for_connection(config: &Config, host: Option<&str>, session: &str) -> Option<Self> {
+        if config.tmuxx_theme_sessions.contains_key(session) {
+            Some(Self::Session(session.to_owned()))
+        } else {
+            host.filter(|host| config.tmuxx_theme_hosts.contains_key(*host))
+                .map(|host| Self::Host(host.to_owned()))
+        }
+    }
+
+    pub fn select(&self, config: &mut Config, theme: &str) {
+        match self {
+            Self::Host(host) => {
+                config
+                    .tmuxx_theme_hosts
+                    .insert(host.clone(), theme.to_owned());
+            }
+            Self::Session(session) => {
+                config
+                    .tmuxx_theme_sessions
+                    .insert(session.clone(), theme.to_owned());
+            }
+            Self::Global => {}
+        }
+    }
+
+    pub fn config_line(&self, theme: &ThemeChoice) -> String {
+        let value = theme.config_value();
+        let (key, name) = match self {
+            Self::Global => return format!("theme = {value}"),
+            Self::Host(host) => ("tmuxx-theme-host", host),
+            Self::Session(session) => ("tmuxx-theme-session", session),
+        };
+        let value = value
+            .strip_prefix('"')
+            .and_then(|value| value.strip_suffix('"'))
+            .unwrap_or(&value);
+        let value = format!("{name} = {value}");
+        if value.starts_with('"') {
+            format!("{key} = \"{value}\"")
+        } else {
+            format!("{key} = {value}")
+        }
+    }
+}
 
 pub(super) fn appearance(original: &Config, theme: Config) -> Config {
     // Theme files can contain behavioral settings; previews must stay reversible.
@@ -50,6 +103,72 @@ mod tests {
         ClipboardAccess, Command, FontStyleRequest, GraphemeWidthMethod, KeyBinding, Padding,
         Renderer, Rgb, TerminalColor, Theme, WindowTheme,
     };
+
+    #[test]
+    fn scoped_selection_preserves_other_rules_and_can_restore_original_config() {
+        let mut original = Config::default();
+        original
+            .tmuxx_theme_hosts
+            .insert("windows".into(), "Host".into());
+        original
+            .tmuxx_theme_hosts
+            .insert("linux".into(), "Host".into());
+        original
+            .tmuxx_theme_sessions
+            .insert("build work".into(), "Session".into());
+        assert_eq!(Scope::for_connection(&original, None, "other"), None);
+        assert_eq!(
+            Scope::for_connection(&original, Some("windows"), "other"),
+            Some(Scope::Host("windows".into()))
+        );
+        let scope = Scope::for_connection(&original, Some("windows"), "build work").unwrap();
+        assert_eq!(scope, Scope::Session("build work".into()));
+        let mut preview = original.clone();
+        scope.select(&mut preview, "/themes/Preview");
+        assert_eq!(
+            preview.tmuxx_theme_sessions["build work"],
+            "/themes/Preview"
+        );
+        assert_eq!(preview.tmuxx_theme_hosts, original.tmuxx_theme_hosts);
+        assert_eq!(preview.background, original.background);
+        assert_eq!(preview.theme, original.theme);
+        scope.select(&mut preview, &original.tmuxx_theme_sessions["build work"]);
+        assert_eq!(preview, original);
+
+        Scope::Host("windows".into()).select(&mut preview, "/themes/Preview");
+        assert_eq!(preview.tmuxx_theme_hosts["windows"], "/themes/Preview");
+        assert_eq!(preview.tmuxx_theme_hosts["linux"], "Host");
+        assert_eq!(preview.tmuxx_theme_sessions, original.tmuxx_theme_sessions);
+    }
+
+    #[test]
+    fn scoped_config_lines_keep_the_selector_and_theme_value() {
+        let mut theme = ThemeChoice {
+            name: "Chosen Theme".into(),
+            path: "/themes/Chosen Theme".into(),
+            user: false,
+        };
+        assert_eq!(Scope::Global.config_line(&theme), "theme = Chosen Theme");
+        assert_eq!(
+            Scope::Host("windows".into()).config_line(&theme),
+            "tmuxx-theme-host = windows = Chosen Theme"
+        );
+        assert_eq!(
+            Scope::Session("build work".into()).config_line(&theme),
+            "tmuxx-theme-session = build work = Chosen Theme"
+        );
+        theme.user = true;
+        assert_eq!(
+            Scope::Session("build work".into()).config_line(&theme),
+            "tmuxx-theme-session = build work = /themes/Chosen Theme"
+        );
+        theme.user = false;
+        theme.name = "\"Quoted\"".into();
+        assert_eq!(
+            Scope::Session("\"quoted session".into()).config_line(&theme),
+            "tmuxx-theme-session = \"\"quoted session = \"Quoted\"\""
+        );
+    }
 
     #[test]
     fn previews_only_change_appearance_and_restore_exactly() {

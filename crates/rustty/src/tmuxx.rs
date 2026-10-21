@@ -2,7 +2,8 @@
 //!
 //! The server owns PTYs and application replies. Views own selection, scroll,
 //! and rendering. Closing a view never kills its server-side pane.
-use crate::session::{Input, SessionEvent};
+use crate::config::Config;
+use crate::session::{Input, SessionEvent, apply_appearance};
 use rustty_vt::{Effect, Terminal};
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -156,6 +157,7 @@ struct PaneState {
 }
 struct View {
     terminal: Weak<Mutex<Terminal>>,
+    appearance: Arc<Mutex<Option<Config>>>,
     events: mpsc::SyncSender<SessionEvent>,
     exited: Weak<AtomicBool>,
     wake: Arc<dyn Fn() + Send + Sync>,
@@ -209,6 +211,7 @@ pub struct Connection {
 #[derive(Clone)]
 pub struct PaneInput {
     shared: Weak<Shared>,
+    appearance: Arc<Mutex<Option<Config>>>,
     pane: u64,
     focused: Arc<AtomicBool>,
     visible: Arc<AtomicBool>,
@@ -219,6 +222,10 @@ pub struct PaneInput {
     native: bool,
 }
 impl PaneInput {
+    pub(crate) fn set_appearance(&self, config: &Config) -> io::Result<()> {
+        *self.appearance.lock().map_err(err)? = Some(config.clone());
+        Ok(())
+    }
     pub fn release(&self) {
         if self.released.swap(true, Ordering::AcqRel) {
             return;
@@ -1118,12 +1125,14 @@ impl Connection {
         let visible = Arc::new(AtomicBool::new(false));
         let dark = Arc::new(AtomicBool::new(true));
         let pending = Arc::new(Mutex::new(Vec::new()));
+        let appearance = Arc::new(Mutex::new(None));
         pane_state.views.push(View {
             focused: focused.clone(),
             visible: visible.clone(),
             dark: dark.clone(),
             pending: pending.clone(),
             terminal: Arc::downgrade(&terminal),
+            appearance: appearance.clone(),
             events: events_tx,
             exited: Arc::downgrade(&exited),
             wake,
@@ -1132,6 +1141,7 @@ impl Connection {
             terminal,
             input: PaneInput {
                 shared: Arc::downgrade(&self.shared),
+                appearance,
                 pane,
                 focused,
                 visible,
@@ -1306,12 +1316,15 @@ fn close_views(pane: &PaneState) {
         (view.wake)();
     }
 }
-fn replace_view(view: &mut Terminal, source: &Terminal) {
+fn replace_view(view: &mut Terminal, source: &Terminal, appearance: Option<&Config>) {
     let selection = view.screen().selection;
     let offset = view.screen().viewport_offset;
     let same_screen = view.is_alternate_screen() == source.is_alternate_screen();
     let pixels = (view.width_px, view.height_px);
     *view = source.clone();
+    if let Some(config) = appearance {
+        apply_appearance(view, config);
+    }
     view.set_pixel_size(pixels.0, pixels.1);
     if same_screen {
         let screen = view.screen_mut();
@@ -1396,12 +1409,14 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
                     if let Some(exited) = view.exited.upgrade() {
                         exited.store(remote.status.is_some(), Ordering::Release);
                     }
-                    if let Ok(mut terminal) = terminal.lock() {
+                    if let Ok(mut terminal) = terminal.lock()
+                        && let Ok(appearance) = view.appearance.lock()
+                    {
                         if replaced {
                             terminal.screen_mut().selection = None;
                             terminal.screen_mut().viewport_offset = 0;
                         }
-                        replace_view(&mut terminal, &pane.terminal);
+                        replace_view(&mut terminal, &pane.terminal, appearance.as_ref());
                     }
                     if let Some(event) = &agent_event {
                         let _ = view
@@ -1653,6 +1668,110 @@ mod focus_tests {
     }
     fn active(connection: &Connection) -> u64 {
         connection.graph().unwrap().windows[0].active
+    }
+
+    #[test]
+    fn view_appearance_survives_native_snapshots_and_application_overrides() {
+        use crate::config::{CursorStyle, Rgb, TerminalColor};
+        use crate::session::Session;
+        use rustty_vt::CursorShape;
+
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);
+        owner.feed(b"one\r\ntwo\r\nthree\r\nfour\r\nfive");
+        let refresh = |owner: &tmuxx_terminal::Terminal, sequence| {
+            let mut state = state();
+            state["panes"][0]["terminal"] = serde_json::to_value(owner.snapshot()).unwrap();
+            snapshot(&connection, sequence, state);
+        };
+        refresh(&owner, 1);
+        let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let history = first.terminal().unwrap().screen().history_len();
+        assert!(history > 0);
+        let mut configs = [Config::default(), Config::default()];
+        for (index, (view, config)) in [&first, &second].into_iter().zip(&mut configs).enumerate() {
+            config.foreground = Rgb::new(index as u8, 20, 30);
+            config.background = Rgb::new(index as u8, 40, 50);
+            config.palette[1] = Rgb::new(index as u8, 60, 70);
+            config.cursor_color = Some(TerminalColor::Rgb(Rgb::new(index as u8, 80, 90)));
+            config.cursor_style = CursorStyle::Underline;
+            config.scrollback_limit_lines = Some(0);
+            config.scrollback_limit_bytes = Some(0);
+            view.apply_appearance(config).unwrap();
+            assert_eq!(view.terminal().unwrap().screen().history_len(), history);
+            assert_eq!(view.terminal().unwrap().limits().lines, Some(10));
+        }
+        let defaults = |configs: &[Config; 2]| {
+            for (view, config) in [&first, &second].into_iter().zip(configs) {
+                let terminal = view.terminal().unwrap();
+                assert_eq!(terminal.foreground, config.foreground.to_array());
+                assert_eq!(terminal.background, config.background.to_array());
+                assert_eq!(terminal.palette[1], config.palette[1].to_array());
+                assert_eq!(terminal.screen().cursor.shape, CursorShape::Underline);
+                assert_eq!(
+                    terminal.cursor_color,
+                    Some(
+                        config
+                            .cursor_color
+                            .unwrap()
+                            .resolve(config.foreground, config.background)
+                            .to_array()
+                    ),
+                );
+            }
+        };
+        refresh(&owner, 2);
+        defaults(&configs);
+        assert!(first.terminal().unwrap().screen().history_len() > 0);
+        {
+            let model = connection.shared.model.lock().unwrap();
+            let source = &model.panes[&7].terminal;
+            assert_eq!(source.limits().lines, Some(10));
+            assert!(source.screen().history_len() > 0);
+            assert_ne!(source.background, configs[0].background.to_array());
+        }
+
+        let overrides = b"\x1b]10;#abcdef\x07\x1b]11;#123456\x07\x1b]12;#778899\x07\x1b]4;1;#112233\x07\x1b[6 q";
+        owner.feed(overrides);
+        apply(
+            &connection.shared,
+            ServerMessage::PaneOutput {
+                sequence: 3,
+                pane_id: 7,
+                data: overrides.to_vec(),
+            },
+        )
+        .unwrap();
+        configs[0].foreground = Rgb::new(100, 101, 102);
+        first.apply_config(&configs[0]).unwrap();
+        for resnapshot in [false, true] {
+            if resnapshot {
+                refresh(&owner, 4);
+            }
+            for view in [&first, &second] {
+                let terminal = view.terminal().unwrap();
+                assert_eq!(terminal.foreground, [0xab, 0xcd, 0xef]);
+                assert_eq!(terminal.background, [0x12, 0x34, 0x56]);
+                assert_eq!(terminal.cursor_color, Some([0x77, 0x88, 0x99]));
+                assert_eq!(terminal.palette[1], [0x11, 0x22, 0x33]);
+                assert_eq!(terminal.screen().cursor.shape, CursorShape::Bar);
+            }
+        }
+        let reset = b"\x1b]110\x07\x1b]111\x07\x1b]112\x07\x1b]104;1\x07\x1b[0 q";
+        owner.feed(reset);
+        apply(
+            &connection.shared,
+            ServerMessage::PaneOutput {
+                sequence: 5,
+                pane_id: 7,
+                data: reset.to_vec(),
+            },
+        )
+        .unwrap();
+        defaults(&configs);
+        refresh(&owner, 6);
+        defaults(&configs);
     }
 
     #[test]

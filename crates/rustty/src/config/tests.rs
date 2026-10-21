@@ -288,6 +288,115 @@ fn invalid_named_tmuxx_connections_preserve_previous_entries() {
 }
 
 #[test]
+fn tmuxx_themes_replace_clear_and_accept_cli_overrides() {
+    let home = TestHome::new();
+    for option in ["tmuxx-theme-host", "tmuxx-theme-session"] {
+        let themes = |config: Config| {
+            if option == "tmuxx-theme-host" {
+                config.tmuxx_theme_hosts
+            } else {
+                config.tmuxx_theme_sessions
+            }
+        };
+        assert!(themes(Config::default()).is_empty());
+        home.own(&format!(
+            "{option} = windows = Old\n\
+             {option} = linux = Other\n\
+             {option} = windows = New Theme\n"
+        ));
+        let loaded = home.loader.load();
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        assert_eq!(
+            themes(loaded.config),
+            BTreeMap::from([
+                ("linux".into(), "Other".into()),
+                ("windows".into(), "New Theme".into()),
+            ])
+        );
+
+        let loaded = home
+            .loader
+            .load_with_args(&[format!("--{option}=windows=CLI Theme")]);
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        assert_eq!(themes(loaded.config)["windows"], "CLI Theme");
+        let loaded = home.loader.load_with_args(&[format!("--{option}=")]);
+        assert!(themes(loaded.config).is_empty());
+        home.own(&format!("{option}=windows=Old\n{option}=\n"));
+        assert!(themes(home.loader.load().config).is_empty());
+    }
+}
+
+#[test]
+fn invalid_tmuxx_themes_preserve_previous_entries() {
+    let home = TestHome::new();
+    for option in ["tmuxx-theme-host", "tmuxx-theme-session"] {
+        for invalid in [
+            "missing-theme",
+            "=Theme",
+            "work=",
+            "wo\0rk=Theme",
+            "wo\u{7f}rk=Theme",
+            "wo\trk=Theme",
+            "work=bad\0theme",
+            "work=bad\u{7f}theme",
+            "work=bad\ttheme",
+            "work=light:Day",
+            "work=light:Day,dark:",
+            "work=light:Day,light:Other,dark:Night",
+            "work=dark:Night,unknown:Day",
+        ] {
+            home.own(&format!("{option}=work=Original\n{option}={invalid}\n"));
+            let loaded = home.loader.load();
+            assert_eq!(loaded.diagnostics.len(), 1, "{option}: {invalid:?}");
+            let themes = if option == "tmuxx-theme-host" {
+                loaded.config.tmuxx_theme_hosts
+            } else {
+                loaded.config.tmuxx_theme_sessions
+            };
+            assert_eq!(themes, BTreeMap::from([("work".into(), "Original".into())]));
+        }
+    }
+    home.own("tmuxx-theme-host=two hosts=Theme\n");
+    let loaded = home.loader.load();
+    assert_eq!(loaded.diagnostics.len(), 1);
+    assert!(loaded.config.tmuxx_theme_hosts.is_empty());
+}
+
+#[test]
+fn tmuxx_themes_match_exactly_with_session_precedence_and_light_dark_variants() {
+    let mut home = TestHome::new();
+    home.own(
+        "tmuxx-theme-host = byron@windows = Host Theme\n\
+         tmuxx-theme-session = build work = light:Day,dark:Night\n\
+         tmuxx-theme-session = build* = Literal\n",
+    );
+    home.write(".config/rustty/themes/Day", "background=white\n");
+    home.write(".config/rustty/themes/Night", "background=black\n");
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    let config = loaded.config;
+    assert_eq!(config.tmuxx_theme_for(None, "other"), None);
+    assert_eq!(config.tmuxx_theme_for(Some("windows"), "other"), None);
+    assert_eq!(config.tmuxx_theme_for(Some("byron@Windows"), "other"), None);
+    assert_eq!(config.tmuxx_theme_for(None, "build123"), None);
+    assert_eq!(config.tmuxx_theme_for(None, "build*"), Some("Literal"));
+    assert_eq!(
+        config.tmuxx_theme_for(Some("byron@windows"), "other"),
+        Some("Host Theme")
+    );
+    let theme = config.tmuxx_theme_for(Some("byron@windows"), "build work");
+    assert_eq!(theme, Some("light:Day,dark:Night"));
+    assert_eq!(config.tmuxx_theme_for(None, "build work"), theme);
+    for (dark, background) in [(false, Rgb::new(255, 255, 255)), (true, Rgb::new(0, 0, 0))] {
+        home.loader.dark_mode = dark;
+        let themed = home.loader.load_with_theme(&[], theme.unwrap());
+        assert!(themed.diagnostics.is_empty(), "{:?}", themed.diagnostics);
+        assert_eq!(themed.config.background, background);
+        assert_eq!(themed.config.window_theme, WindowTheme::System);
+    }
+}
+
+#[test]
 fn windows_roaming_config_root_is_explicit_and_does_not_read_terminal_settings() {
     let mut home = TestHome::new();
     let roaming = home.root.join("roaming");

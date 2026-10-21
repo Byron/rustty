@@ -604,8 +604,21 @@ impl Session {
     }
     pub fn apply_config(&self, config: &Config) -> io::Result<()> {
         let mut terminal = self.terminal()?;
+        if let Some(attached) = &self.attached {
+            attached.set_appearance(config)?;
+        }
         terminal.set_limits(scrollback_limits(config));
         terminal.set_scrollback_memory_limit(config.scrollback_limit_bytes);
+        apply_appearance(&mut terminal, config);
+        Ok(())
+    }
+
+    /// Update appearance without changing terminal history limits.
+    pub fn apply_appearance(&self, config: &Config) -> io::Result<()> {
+        let mut terminal = self.terminal()?;
+        if let Some(attached) = &self.attached {
+            attached.set_appearance(config)?;
+        }
         apply_appearance(&mut terminal, config);
         Ok(())
     }
@@ -840,7 +853,7 @@ fn enqueue(
     Ok(())
 }
 
-fn apply_appearance(terminal: &mut Terminal, config: &Config) {
+pub(crate) fn apply_appearance(terminal: &mut Terminal, config: &Config) {
     terminal.clipboard_write_limit = config.clipboard_write_limit_bytes.unwrap_or(usize::MAX);
     terminal.title_report = config.title_report;
     let palette: Vec<_> = config

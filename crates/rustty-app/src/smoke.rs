@@ -447,6 +447,8 @@ impl Smoke {
                     "theme-cancel",
                     "theme-accept",
                     "theme-reload",
+                    "tmuxx-theme-scope",
+                    "tmuxx-theme-picker",
                 ]
                 .map(serde_json::Value::from),
             );
@@ -1002,7 +1004,7 @@ fn check_themes(
     let files = [
         (
             user.join("config.rustty"),
-            "theme = Saved\nstream-deck = false\n",
+            "theme = Saved\nstream-deck = false\nfont-size = 13\n",
         ),
         (
             user.join("themes/A Preview"),
@@ -1015,6 +1017,10 @@ fn check_themes(
         (
             bundled.join("Bundled"),
             "background = 778899\nforeground = ffffff\n",
+        ),
+        (
+            bundled.join("Z Scoped"),
+            "background = eeeeee\nforeground = 111111\nfont-size = 20\ncommand = exit\nwindow-theme = light\n",
         ),
     ];
     for (path, source) in &files {
@@ -1031,6 +1037,9 @@ fn check_themes(
     let original_loader = std::mem::replace(&mut app.config_loader, loader);
     let original_args = std::mem::take(&mut app.config_args);
     let original_loaded = app.loaded.clone();
+    let original_workspace = app.workspace.clone();
+    let original_tmuxx = std::mem::take(&mut app.tmuxx);
+    let original_tmuxx_themes = std::mem::take(&mut app.tmuxx_themes);
     let original_errors = std::mem::take(&mut app.errors);
     let original_palette = std::mem::take(&mut host.palette);
     let original_focus = host.focused;
@@ -1066,6 +1075,7 @@ fn check_themes(
         app.apply_theme_config(
             theme_preview::appearance(&original_loaded.config, app.loaded.config.clone()),
             Some(host),
+            &theme_preview::Scope::Global,
         );
         let saved = app.config().clone();
         let preview_line = app
@@ -1131,6 +1141,114 @@ fn check_themes(
             return Err("configuration reload left the theme preview active".into());
         }
         colors(app, [0x11, 0x22, 0x33], [0xaa, 0xbb, 0xcc])?;
+        // Reuse the inactive tab's live panes to test an unrelated window.
+        let index = app.index(host.id).ok_or("missing theme smoke window")?;
+        let mut other = app.workspace.windows[index].clone();
+        if other.tabs.len() < 2 {
+            return Err("theme smoke requires two live tabs".into());
+        }
+        other.id = app.workspace.id();
+        other.tabs = app.workspace.windows[index].tabs.split_off(1);
+        other.active_tab = 0;
+        app.workspace.windows[index].active_tab = 0;
+        app.workspace.windows.push(other);
+        let mut attachment =
+            tmuxx_host::Attachment::new(tmuxx_host::Source::Ssh("windows".into()), None, false);
+        attachment.mapping.sessions.insert(host.id, 1);
+        attachment
+            .mapping
+            .session_names
+            .insert(host.id, "work".into());
+        app.tmuxx.push(attachment);
+        let scoped_window = host.id;
+        let scoped_colors = |app: &App, background, other_background| -> Result<()> {
+            for (&id, pane) in &app.panes {
+                let expected = if app.pane_window(id) == Some(scoped_window) {
+                    background
+                } else {
+                    other_background
+                };
+                if pane.session.terminal()?.background != expected {
+                    return Err("connection theme leaked across windows or missed a pane".into());
+                }
+            }
+            Ok(())
+        };
+        let host_config = format!("{}tmuxx-theme-host = windows = Z Scoped\n", files[0].1,);
+        fs::write(&files[0].0, &host_config)?;
+        app.reload_config(Some(host));
+        scoped_colors(app, [0xee; 3], [0x11, 0x22, 0x33])?;
+        if app.window_config(host.id).font_size != 13.0
+            || app.window_config(host.id).command != app.config().command
+            || app.window_color_scheme(host.id) != vt::query::ColorScheme::Light
+        {
+            return Err("connection theme lost explicit settings, behavior, or light mode".into());
+        }
+        let global_ui = app.context.options(|options| options.theme_preference);
+        app.errors.push("Light connection theme".into());
+        app.draw(event_loop, host)?;
+        std::thread::sleep(Duration::from_millis(200));
+        capture_window(
+            app,
+            event_loop,
+            host,
+            &directory.parent().unwrap().join("tmuxx-theme-light.png"),
+        )?;
+        if app.context.options(|options| options.theme_preference) != global_ui {
+            return Err("connection theme leaked into the shared UI theme".into());
+        }
+        app.errors.clear();
+        let session_config = format!("{host_config}tmuxx-theme-session = work = Bundled\n");
+        fs::write(&files[0].0, &session_config)?;
+        app.reload_config(Some(host));
+        scoped_colors(app, [0x77, 0x88, 0x99], [0x11, 0x22, 0x33])?;
+        // Unthemed remote panes can retain defaults different from local config.
+        let mut remote_appearance = app.config().clone();
+        remote_appearance.background = config::Rgb::new(0x21, 0x43, 0x65);
+        for (&id, pane) in &app.panes {
+            if app.pane_window(id) != Some(scoped_window) {
+                pane.session.apply_appearance(&remote_appearance)?;
+            }
+        }
+        let saved_scoped = app.config().clone();
+        app.action(event_loop, host, Action::Themes, false);
+        app.draw(event_loop, host)?;
+        app.draw(event_loop, host)?;
+        scoped_colors(app, [0x44, 0x55, 0x66], [0x21, 0x43, 0x65])?;
+        key(host, egui::Key::Escape);
+        app.draw(event_loop, host)?;
+        scoped_colors(app, [0x77, 0x88, 0x99], [0x21, 0x43, 0x65])?;
+        if app.config() != &saved_scoped {
+            return Err("cancelling a scoped theme did not restore the matching rule".into());
+        }
+        app.action(event_loop, host, Action::Themes, false);
+        app.draw(event_loop, host)?;
+        key(host, egui::Key::Enter);
+        app.draw(event_loop, host)?;
+        scoped_colors(app, [0x44, 0x55, 0x66], [0x21, 0x43, 0x65])?;
+        if !app
+            .errors
+            .iter()
+            .any(|error| error.contains("tmuxx-theme-session = work = "))
+            || fs::read_to_string(&files[0].0)? != session_config
+        {
+            return Err("accepting a scoped theme omitted its hint or wrote configuration".into());
+        }
+        fs::write(&files[0].0, &host_config)?;
+        app.reload_config(Some(host));
+        scoped_colors(app, [0xee; 3], [0x11, 0x22, 0x33])?;
+        fs::write(
+            &files[0].0,
+            format!("{}tmuxx-theme-host = windows = Missing\n", files[0].1),
+        )?;
+        app.reload_config(Some(host));
+        if !app.errors.iter().any(|error| error.contains("Missing")) {
+            return Err("missing connection theme did not report a diagnostic".into());
+        }
+        colors(app, [0x11, 0x22, 0x33], [0xaa, 0xbb, 0xcc])?;
+        fs::write(&files[0].0, files[0].1)?;
+        app.reload_config(Some(host));
+        colors(app, [0x11, 0x22, 0x33], [0xaa, 0xbb, 0xcc])?;
         for (path, source) in &files {
             if fs::read_to_string(path)? != *source {
                 return Err("theme selection changed a configuration or theme file".into());
@@ -1141,7 +1259,14 @@ fn check_themes(
     app.cancel_theme_preview(Some(host));
     app.config_loader = original_loader;
     app.config_args = original_args;
-    app.apply_theme_config(original_loaded.config.clone(), Some(host));
+    app.workspace = original_workspace;
+    app.tmuxx = original_tmuxx;
+    app.tmuxx_themes = original_tmuxx_themes;
+    app.apply_theme_config(
+        original_loaded.config.clone(),
+        Some(host),
+        &theme_preview::Scope::Global,
+    );
     app.loaded = original_loaded;
     if let Some(platform) = &mut app.platform {
         platform.update_config(&app.loaded.config)?;
@@ -1158,7 +1283,7 @@ fn check_themes(
         .push(egui::Event::WindowFocused(original_focus));
     result?;
     eprintln!(
-        "Native smoke: searchable themes previewed across panes, cancelled, accepted with a configuration hint, and reloaded without file writes"
+        "Native smoke: global and connection themes previewed, cancelled, accepted with scoped hints, and reloaded with window isolation and saved-setting preservation"
     );
     Ok(())
 }
