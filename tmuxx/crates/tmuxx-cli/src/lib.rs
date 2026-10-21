@@ -484,11 +484,10 @@ fn native_stdio_bridge(endpoint: &std::path::Path) -> io::Result<()> {
     copy_bridge_bytes(&mut reader, &mut io::stdout().lock())
 }
 
-#[cfg(unix)]
 fn copy_bridge_bytes(input: &mut impl io::Read, output: &mut impl io::Write) -> io::Result<()> {
     // This is an interactive duplex bridge. Linux's kernel splice specialization
     // of io::copy can leave tiny pipe/socket writes waiting for another transfer;
-    // forward each available chunk and flush without waiting for a full record.
+    // forward each available chunk and flush, including stdout's line buffer.
     let mut buffer = [0; 32 * 1024];
     loop {
         let length = match input.read(&mut buffer) {
@@ -500,6 +499,32 @@ fn copy_bridge_bytes(input: &mut impl io::Read, output: &mut impl io::Write) -> 
         output.write_all(&buffer[..length])?;
         output.flush()?;
     }
+}
+
+#[test]
+fn bridge_flushes_binary_records_before_reading_more_input() {
+    use std::io::{LineWriter, Read};
+
+    struct Pending;
+    impl Read for Pending {
+        fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+            Err(io::ErrorKind::WouldBlock.into())
+        }
+    }
+
+    let mut hello = Vec::new();
+    tmuxx_protocol::native::write_record(&mut hello, &tmuxx_protocol::native::Hello::default())
+        .unwrap();
+    assert!(!hello.contains(&b'\n'));
+    let mut input = hello.as_slice().chain(Pending);
+    let mut output = LineWriter::new(Vec::new());
+    assert_eq!(
+        copy_bridge_bytes(&mut input, &mut output)
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::WouldBlock
+    );
+    assert_eq!(output.get_ref(), &hello);
 }
 
 #[cfg(unix)]
