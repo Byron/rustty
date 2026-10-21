@@ -103,7 +103,8 @@ impl Default for TerminalSettings {
     }
 }
 
-/// Both screens retain complete rows/history, cells, styles, and saved cursors.
+/// The checkpoint retains complete screens/history, cells, styles, and saved cursors.
+/// Version 1 repeats screens in JSON; version 2 includes only their native metadata.
 /// Host effects are deliberately absent: reconnect must not repeat notifications
 /// or clipboard actions. Graphics retain display state and pending upload bytes.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -144,13 +145,41 @@ pub struct Snapshot<S = Screen> {
     pub checkpoint_error: Option<String>,
 }
 
+/// Exact terminal contents once, with only native metadata alongside the checkpoint.
+pub type CheckpointSnapshot = Snapshot<rustty_vt::ViewMetadata>;
+
 impl Snapshot {
     pub fn restore(&self) -> io::Result<Terminal> {
         self.restore_with_image_limit(1024 * 1024 * 1024)
     }
     /// Reject oversized image state before replacing the receiving terminal.
     pub fn restore_with_image_limit(&self, max_image_bytes: usize) -> io::Result<Terminal> {
-        if self.version != 1 {
+        self.restore_with_metadata(1, max_image_bytes, |terminal| {
+            terminal.restore_view_row_identity(&self.primary, self.alternate.as_ref())?;
+            terminal.restore_tmux_capture_metadata(&self.primary, self.alternate.as_ref())
+        })
+    }
+}
+
+impl CheckpointSnapshot {
+    pub fn restore(&self) -> io::Result<Terminal> {
+        self.restore_with_image_limit(1024 * 1024 * 1024)
+    }
+    pub fn restore_with_image_limit(&self, max_image_bytes: usize) -> io::Result<Terminal> {
+        self.restore_with_metadata(2, max_image_bytes, |terminal| {
+            terminal.restore_view_metadata(&self.primary, self.alternate.as_ref())
+        })
+    }
+}
+
+impl<S> Snapshot<S> {
+    fn restore_with_metadata(
+        &self,
+        version: u32,
+        max_image_bytes: usize,
+        restore_metadata: impl FnOnce(&mut rustty_vt::Terminal) -> Result<(), &'static str>,
+    ) -> io::Result<Terminal> {
+        if self.version != version {
             return Err(io::Error::other("unsupported terminal snapshot"));
         }
         let bytes = self.checkpoint.as_ref().ok_or_else(|| {
@@ -207,18 +236,13 @@ impl Snapshot {
         inner.tmux_control_colors = self.settings.control_colors;
         inner.tmux_widths = self.settings.widths.clone();
         inner.tmux_vs16_wide = self.settings.vs16_wide;
-        inner
-            .restore_view_row_identity(&self.primary, self.alternate.as_ref())
-            .map_err(io::Error::other)?;
+        restore_metadata(&mut inner).map_err(io::Error::other)?;
         inner
             .restore_view_graphics_with_limit(
                 self.primary_graphics.clone(),
                 self.alternate_graphics.clone(),
                 max_image_bytes,
             )
-            .map_err(io::Error::other)?;
-        inner
-            .restore_tmux_capture_metadata(&self.primary, self.alternate.as_ref())
             .map_err(io::Error::other)?;
         if self.capture_pending.is_some() || self.capture_pending_error.is_some() {
             inner
@@ -668,6 +692,12 @@ impl Terminal {
         self.snapshot_with(|screen| screen.compact())
     }
 
+    pub fn checkpoint_snapshot(&self) -> CheckpointSnapshot {
+        let mut snapshot = self.snapshot_with(Screen::view_metadata);
+        snapshot.version = 2;
+        snapshot
+    }
+
     fn snapshot_with<'a, S>(&'a self, screen: impl Fn(&'a Screen) -> S) -> Snapshot<S> {
         let terminal = &self.inner;
         let continuation = terminal.parser().continuation();
@@ -750,15 +780,20 @@ mod tests {
             let compact: Snapshot =
                 serde_json::from_slice(&serde_json::to_vec(&terminal.compact_snapshot()).unwrap())
                     .unwrap();
-            let mut compact = compact.restore().unwrap();
-            assert_eq!(
-                serde_json::to_value(legacy.snapshot()).unwrap(),
-                serde_json::to_value(compact.snapshot()).unwrap()
-            );
-            assert!(compact.feed(b"").is_empty());
+            let checkpoint: CheckpointSnapshot = serde_json::from_slice(
+                &serde_json::to_vec(&terminal.checkpoint_snapshot()).unwrap(),
+            )
+            .unwrap();
+            for mut restored in [compact.restore().unwrap(), checkpoint.restore().unwrap()] {
+                assert_eq!(
+                    serde_json::to_value(legacy.snapshot()).unwrap(),
+                    serde_json::to_value(restored.snapshot()).unwrap()
+                );
+                assert!(restored.feed(b"").is_empty());
+            }
         }
-        let snapshot: Snapshot =
-            serde_json::from_value(serde_json::to_value(terminal.compact_snapshot()).unwrap())
+        let snapshot: CheckpointSnapshot =
+            serde_json::from_value(serde_json::to_value(terminal.checkpoint_snapshot()).unwrap())
                 .unwrap();
         let mut restored = snapshot.restore().unwrap();
         restored.feed(b"2mcontinued");
@@ -787,19 +822,21 @@ mod tests {
         for split in 0..=stream.len() {
             let mut owner = Terminal::new(20, 4, 20);
             owner.feed(&stream[..split]);
-            let snapshot = owner.snapshot();
-            let mut restored = snapshot.restore().unwrap();
-            assert!(restored.feed(b"").is_empty());
+            let legacy = owner.snapshot().restore().unwrap();
+            let checkpoint = owner.checkpoint_snapshot().restore().unwrap();
             owner.feed(&stream[split..]);
-            restored.feed(&stream[split..]);
-            assert_eq!(restored.agent_status(), owner.agent_status());
-            assert!(restored.agent_status().enclosing_command);
-            assert!(matches!(
-                restored.agent_status().snapshot.as_ref().unwrap().state,
-                rustty_vt::agent::State::Done
-            ));
-            restored.feed(b"\x1b]133;D;0\x07");
-            assert!(restored.agent_status().snapshot.is_none());
+            for mut restored in [legacy, checkpoint] {
+                assert!(restored.feed(b"").is_empty());
+                restored.feed(&stream[split..]);
+                assert_eq!(restored.agent_status(), owner.agent_status());
+                assert!(restored.agent_status().enclosing_command);
+                assert!(matches!(
+                    restored.agent_status().snapshot.as_ref().unwrap().state,
+                    rustty_vt::agent::State::Done
+                ));
+                restored.feed(b"\x1b]133;D;0\x07");
+                assert!(restored.agent_status().snapshot.is_none());
+            }
         }
     }
 

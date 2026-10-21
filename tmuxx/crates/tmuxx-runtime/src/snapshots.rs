@@ -35,6 +35,83 @@ fn one_large_snapshot_does_not_consume_the_slow_output_budget() {
 }
 
 #[test]
+fn checkpoint_snapshots_keep_log_history_and_agent_state_without_duplicate_cells() {
+    let (mut host, rx) = host();
+    let command = tmuxx_command::parse(b"new-session -d -s logs ''")
+        .unwrap()
+        .remove(0);
+    host.engine
+        .execute(&command, &mut ClientContext::default())
+        .unwrap();
+    for row in 0..1000 {
+        host.engine.feed(
+            0,
+            format!(
+                "\x1b[3{}m{row:04}: compiled module successfully with ordinary diagnostic text\x1b[0m\r\n",
+                row % 8
+            )
+            .as_bytes(),
+        );
+    }
+    // Agent begin: {"op":"begin","state":"working","thread_id":"fixture"}.
+    host.engine.feed(0, b"\x1b]133;C\x07\x1b]777;rustty-agent;1;eyJvcCI6ImJlZ2luIiwic3RhdGUiOiJ3b3JraW5nIiwidGhyZWFkX2lkIjoiZml4dHVyZSJ9\x1b\\");
+    let capture = tmuxx_terminal::CaptureOptions {
+        start: Some(i32::MIN),
+        escape_sequences: true,
+        ..Default::default()
+    };
+    let expected = host.engine.panes[&0]
+        .terminal
+        .capture_with(capture)
+        .unwrap();
+    let agent = host.engine.panes[&0].terminal.agent_status().clone();
+    assert_eq!(
+        agent.snapshot.as_ref().unwrap().thread_id.as_deref(),
+        Some("fixture")
+    );
+    assert!(agent.enclosing_command);
+    let mut sizes = Vec::new();
+    for checkpoint in [false, true] {
+        let context = &mut host.clients.get_mut(&1).unwrap().context;
+        context.compact_snapshots = true;
+        context.checkpoint_snapshots = checkpoint;
+        host.snapshot(1);
+        let ServerMessage::Snapshot { state, .. } = rx.recv().unwrap() else {
+            panic!("missing snapshot");
+        };
+        host.snapshots_pending.clear();
+        sizes.push(serde_json::to_vec(&state).unwrap().len());
+        let value = state["panes"][0]["terminal"].clone();
+        assert_eq!(value["version"], if checkpoint { 2 } else { 1 });
+        let restored = if checkpoint {
+            serde_json::from_value::<tmuxx_terminal::CheckpointSnapshot>(value)
+                .unwrap()
+                .restore()
+                .unwrap()
+        } else {
+            serde_json::from_value::<tmuxx_terminal::Snapshot>(value)
+                .unwrap()
+                .restore()
+                .unwrap()
+        };
+        assert_eq!(restored.capture_with(capture).unwrap(), expected);
+        assert_eq!(restored.agent_status(), &agent);
+    }
+    eprintln!(
+        "1000 colored log rows: compact v1={} bytes; checkpoint v2={} bytes",
+        sizes[0], sizes[1]
+    );
+    assert!(
+        sizes[1] * 10 < sizes[0],
+        "duplicate screen cells inflated snapshot: {sizes:?}"
+    );
+    assert!(
+        sizes[1] < 2 * 1024 * 1024,
+        "ordinary logs exceeded snapshot budget: {sizes:?}"
+    );
+}
+
+#[test]
 fn pane_removal_notifies_other_views_when_requester_gets_a_snapshot() {
     fn request(host: &mut Host, client: u64, argv: Vec<Vec<u8>>, subscribe: bool) {
         host.request(

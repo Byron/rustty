@@ -33,6 +33,9 @@ pub struct Hello {
     /// Accept lossless cell runs in terminal screens. Omission keeps expanded cells.
     #[serde(default)]
     pub compact_snapshots: bool,
+    /// Accept terminal checkpoints without duplicate JSON screen cells.
+    #[serde(default)]
+    pub checkpoint_snapshots: bool,
     /// Tagged control requests preserve source blocks and per-command guards.
     #[serde(default)]
     pub control_commands: bool,
@@ -63,6 +66,7 @@ impl Default for Hello {
             host_effects: false,
             snapshot_stream: true,
             compact_snapshots: true,
+            checkpoint_snapshots: false,
             control_commands: true,
             stdin_file_stream: false,
             client_features: None,
@@ -263,6 +267,16 @@ mod tests {
         let current: Hello =
             serde_json::from_slice(&serde_json::to_vec(&Hello::default()).unwrap()).unwrap();
         assert!(current.compact_snapshots);
+    }
+
+    #[test]
+    fn checkpoint_snapshots_require_peer_opt_in() {
+        let legacy: Hello = serde_json::from_str(r#"{"version":1}"#).unwrap();
+        assert!(!legacy.checkpoint_snapshots);
+        assert!(!Hello::default().checkpoint_snapshots);
+        let current: Hello =
+            serde_json::from_str(r#"{"version":1,"checkpoint_snapshots":true}"#).unwrap();
+        assert!(current.checkpoint_snapshots);
     }
 
     #[test]

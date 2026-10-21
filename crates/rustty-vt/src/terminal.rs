@@ -345,6 +345,25 @@ impl Terminal {
         Ok(())
     }
 
+    /// Restore native view metadata omitted by GHOSTSNP, validating both screens first.
+    pub fn restore_view_metadata(
+        &mut self,
+        primary: &ViewMetadata,
+        alternate: Option<&ViewMetadata>,
+    ) -> Result<(), &'static str> {
+        self.primary.validate_view_metadata(primary)?;
+        match (&self.alternate, alternate) {
+            (Some(screen), Some(metadata)) => screen.validate_view_metadata(metadata)?,
+            (None, None) => {}
+            _ => return Err("view alternate screen mismatch"),
+        }
+        self.primary.apply_view_metadata(primary);
+        if let (Some(screen), Some(metadata)) = (&mut self.alternate, alternate) {
+            screen.apply_view_metadata(metadata);
+        }
+        Ok(())
+    }
+
     /// Install validated display graphics after a GHOSTSNP restore, without effects.
     pub fn restore_view_graphics(
         &mut self,

@@ -10,7 +10,9 @@ mod history;
 #[path = "screen/resize.rs"]
 mod resize;
 mod tabs;
+mod view_metadata;
 pub use history::TmuxHistory;
+pub use view_metadata::ViewMetadata;
 #[path = "screen/serde.rs"]
 mod serde_impl;
 #[cfg(test)]

@@ -41,6 +41,11 @@ pub(crate) mod serde_markers {
 }
 
 impl Markers {
+    pub(crate) fn valid(&self) -> bool {
+        self.prompt.is_none_or(|prompt| (1..=3).contains(&prompt.1))
+            && self.columns().all(|column| column <= usize::from(u16::MAX))
+    }
+
     fn columns(&self) -> impl Iterator<Item = usize> {
         self.prompt
             .map(|p| p.0)
@@ -211,11 +216,7 @@ impl Screen {
             .tmux_shell
             .iter()
             .flat_map(|m| m.iter())
-            .any(|(id, m)| {
-                !rows.contains(id)
-                    || m.prompt.is_some_and(|p| p.1 == 0 || p.1 > 3)
-                    || m.columns().any(|col| col > usize::from(u16::MAX))
-            })
+            .any(|(id, m)| !rows.contains(id) || !m.valid())
         {
             return Err("invalid shell marker");
         }
