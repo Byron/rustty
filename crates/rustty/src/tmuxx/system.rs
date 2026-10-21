@@ -811,7 +811,8 @@ fn publish_graph(shared: &Shared, state: &State) {
     let Ok(mut model) = shared.model.lock() else {
         return;
     };
-    if state.discovery_needed
+    if shared.closed.load(Ordering::Acquire)
+        || state.discovery_needed
         || state
             .panes
             .keys()
@@ -918,6 +919,9 @@ fn capture(shared: &Shared, pane_id: u64, data: Vec<u8>, cols: u32, rows: u32) -
     let mut terminal = Terminal::new(cols, rows, 10_000);
     let _ = terminal.feed(&data);
     let mut model = shared.model.lock().map_err(err)?;
+    if shared.closed.load(Ordering::Acquire) {
+        return Ok(());
+    }
     let pane = model.panes.entry(pane_id).or_insert_with(|| PaneState {
         host_state: None,
         agent_status: tmuxx_terminal::AgentStatus::default(),
@@ -944,6 +948,9 @@ fn capture(shared: &Shared, pane_id: u64, data: Vec<u8>, cols: u32, rows: u32) -
 }
 fn live(shared: &Shared, pane_id: u64, data: &[u8]) -> io::Result<()> {
     let mut model = shared.model.lock().map_err(err)?;
+    if shared.closed.load(Ordering::Acquire) {
+        return Ok(());
+    }
     if let Some(pane) = model.panes.get_mut(&pane_id) {
         let _ = pane.terminal.feed(data);
         pane.views.retain(|view| {
@@ -966,6 +973,24 @@ mod tests {
     use crate::session::Session;
     use std::process::Command;
     use std::time::Instant;
+
+    #[test]
+    fn closed_stock_connections_ignore_late_captures_and_topology() {
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        capture(&connection.shared, 7, b"before".to_vec(), 10, 4).unwrap();
+        let view = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let contents = view.terminal().unwrap().plain_text();
+        fail(&connection.shared, "connection lost");
+        capture(&connection.shared, 7, b"after".to_vec(), 10, 4).unwrap();
+        live(&connection.shared, 7, b"late output").unwrap();
+        let mut state = State::default();
+        state.discovery_needed = false;
+        publish_graph(&connection.shared, &state);
+        let model = connection.shared.model.lock().unwrap();
+        assert!(model.panes.is_empty());
+        assert!(model.graph.is_none());
+        assert_eq!(view.terminal().unwrap().plain_text(), contents);
+    }
 
     #[test]
     fn view_appearance_survives_stock_captures() {
