@@ -46,7 +46,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetCursorPos,
     GetMenu, LoadCursorW, MsgWaitForMultipleObjectsEx, PeekMessageW, PostMessageW,
     RegisterClassExW, RegisterWindowMessageA, SetCursor, SetWindowPos, TranslateMessage,
-    CREATESTRUCTW, GIDC_ARRIVAL, GIDC_REMOVAL, GWL_STYLE, GWL_USERDATA, HTCAPTION, HTCLIENT,
+    CREATESTRUCTW, GIDC_ARRIVAL, GIDC_REMOVAL, GWL_STYLE, GWL_USERDATA, HTCLIENT,
     MINMAXINFO, MNC_CLOSE, MSG, MWMO_INPUTAVAILABLE, NCCALCSIZE_PARAMS, PM_REMOVE, PT_PEN,
     PT_TOUCH, QS_ALLINPUT, RI_MOUSE_HWHEEL, RI_MOUSE_WHEEL, SC_MINIMIZE, SC_RESTORE,
     SIZE_MAXIMIZED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WHEEL_DELTA, WINDOWPOS,
@@ -1217,34 +1217,10 @@ unsafe fn public_window_callback_inner(
         },
 
         WM_NCLBUTTONDOWN => {
-            if wparam == HTCAPTION as _ {
-                // Prevent the user event loop from pausing when left clicking the title bar.
-                //
-                // When the user interacts with the title bar, Windows enters the modal event
-                // loop. Currently, a left click causes a pause for about 500ms. Sending a dummy
-                // mouse-move event seems to cancel the modal loop early, preventing the pause.
-                // The application will never see this dummy event.
-                //
-                // The mouse coordinates are encoded into the lparam value, however the WM_MOUSEMOVE
-                // event is not using the same coordinate system of the WM_NCLBUTTONDOWN event.
-                // One uses client-area coordinates and the other is screen-coordinates. In any
-                // case, passing the lparam as-is with the dummy event does not seem the cancel
-                // the modal loop.
-                //
-                // However, passing in a value of 0 has been observed to always cancel the pause.
-                //
-                // Other notes:
-                //
-                // For some unknown reason, the cursor will blink when clicking the title bar.
-                // Cancelling the modal loop early causes the blink to happen *immediately*.
-                // Otherwise, the blank happens *after* the pause.
-                //
-                // When right-click the title bar, the system window menu is presented to the user,
-                // and the modal event loop begins. This dummy event does *not* prevent the freeze
-                // in the main event loop caused by that popup menu.
-                let lparam = 0;
-                unsafe { PostMessageW(window, WM_MOUSEMOVE, 0, lparam) };
-            }
+            // Let Windows start caption drags using the original screen coordinates.
+            // Posting a dummy WM_MOUSEMOVE at (0, 0) to wake its modal loop feeds
+            // fabricated motion into the drag and can make an activation click
+            // jump the window. The native move loop must receive only real input.
             result = ProcResult::DefWindowProc(wparam);
         },
 

@@ -16,7 +16,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(target_os = "windows")]
 mod windows {
     use ::windows::Win32::{
-        Foundation::*, System::DataExchange::GetClipboardSequenceNumber, UI::WindowsAndMessaging::*,
+        Foundation::*,
+        System::DataExchange::GetClipboardSequenceNumber,
+        UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
+        UI::WindowsAndMessaging::*,
     };
     use rustty::{
         config::{Action, Config},
@@ -56,7 +59,7 @@ mod windows {
         event_loop.run_app_on_demand(&mut check)?;
         assert!(check.finished, "native checks did not complete");
         println!(
-            "windows_platform: native menu routing, clipboard isolation, RNG, geometry and lifecycle passed"
+            "windows_platform: caption input, native menu routing, clipboard isolation, RNG, geometry and lifecycle passed"
         );
         Ok(())
     }
@@ -112,6 +115,7 @@ mod windows {
                 unreachable!()
             };
             let hwnd = HWND(raw.hwnd.get() as _);
+            check_caption_input(hwnd);
             unsafe {
                 let menu = GetMenu(hwnd);
                 assert!(!menu.0.is_null());
@@ -230,6 +234,79 @@ mod windows {
             event_loop.set_control_flow(ControlFlow::WaitUntil(
                 platform.next_deadline().unwrap_or(self.next).min(self.next),
             ));
+        }
+    }
+
+    fn check_caption_input(hwnd: HWND) {
+        // Stop only the native move command, after winit has processed the
+        // caption press. This exercises its real message path with a hidden
+        // window, without entering a modal drag or touching the user's mouse.
+        unsafe extern "system" fn intercept_move(
+            hwnd: HWND,
+            message: u32,
+            wparam: WPARAM,
+            lparam: LPARAM,
+            _: usize,
+            data: usize,
+        ) -> LRESULT {
+            if message == WM_SYSCOMMAND && wparam.0 & 0xfff0 == SC_MOVE as usize {
+                unsafe { *(data as *mut Option<isize>) = Some(lparam.0) };
+                return LRESULT(0);
+            }
+            unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
+        }
+
+        let mut move_origin: Option<isize> = None;
+        unsafe {
+            SetWindowSubclass(
+                hwnd,
+                Some(intercept_move),
+                1,
+                (&mut move_origin as *mut Option<isize>) as usize,
+            )
+            .ok()
+            .unwrap();
+            let mut message = MSG::default();
+            while PeekMessageW(
+                &mut message,
+                Some(hwnd),
+                WM_MOUSEMOVE,
+                WM_MOUSEMOVE,
+                PM_REMOVE,
+            )
+            .as_bool()
+            {}
+            // Include signed coordinates for windows on monitors left/above
+            // the primary display, as well as an ordinary caption position.
+            for (x, y) in [(500i16, 400i16), (-500, -400)] {
+                let position = LPARAM((x as u16 as u32 | ((y as u16 as u32) << 16)) as isize);
+                SendMessageW(
+                    hwnd,
+                    WM_NCLBUTTONDOWN,
+                    Some(WPARAM(HTCAPTION as usize)),
+                    Some(position),
+                );
+                assert_eq!(
+                    move_origin,
+                    Some(position.0),
+                    "caption drag lost its screen origin"
+                );
+                assert!(
+                    !PeekMessageW(
+                        &mut message,
+                        Some(hwnd),
+                        WM_MOUSEMOVE,
+                        WM_MOUSEMOVE,
+                        PM_REMOVE
+                    )
+                    .as_bool(),
+                    "caption press injected a mouse move at {:#x}",
+                    message.lParam.0
+                );
+            }
+            RemoveWindowSubclass(hwnd, Some(intercept_move), 1)
+                .ok()
+                .unwrap();
         }
     }
 }
