@@ -1491,20 +1491,22 @@ fn agent_status_is_retained_without_views_and_reconnect_keeps_the_process() {
     let host = host();
     let admin = host.connect().unwrap();
     let frame = "\x1b]777;rustty-agent;1;eyJvcCI6ImJlZ2luIiwic3RhdGUiOiJuZWVkc19pbnB1dCIsInRocmVhZF9pZCI6InJlbW90ZSJ9\x07";
+    // Codex wraps reports inside tmux; both forms must reach the retained state.
+    let frames = format!("{frame}\x1bPtmux;\x1b{frame}\x1b\\");
     #[cfg(unix)]
     let program = [
         "/bin/sh",
         "-c",
         "printf '%s' \"$1\"; printf READY; sleep 30",
         "sh",
-        frame,
+        frames.as_str(),
     ];
     #[cfg(windows)]
     let script = format!(
         "{RAW_CONSOLE}\nimport sys,time\nos.write(1,sys.argv[1].encode('utf-8')+b'READY')\ntime.sleep(30)"
     );
     #[cfg(windows)]
-    let program = ["python", "-u", "-c", script.as_str(), frame];
+    let program = ["python", "-u", "-c", script.as_str(), frames.as_str()];
     let mut argv = vec!["new-session", "-d", "-s", "agent"];
     argv.extend(program);
     assert_eq!(command(&admin, &argv, None, false).error, None);
@@ -1540,7 +1542,7 @@ fn agent_status_is_retained_without_views_and_reconnect_keeps_the_process() {
                 .as_deref(),
             Some("remote")
         );
-        assert_eq!(terminal.agent_status.generation, 1);
+        assert_eq!(terminal.agent_status.generation, 2);
         if let Some(previous) = &pid {
             assert_eq!(previous, &state["panes"][0]["pid"]);
         }

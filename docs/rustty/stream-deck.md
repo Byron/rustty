@@ -31,6 +31,10 @@ stream-deck = true
 # stream-deck-serial = YOUR_SERIAL
 ```
 
+Enable this only in the Rustty instance controlling the USB device. A local or
+remote tmuxx host, including Windows, collects and retains pane status without
+`stream-deck = true`.
+
 Within its panes, launch the companion Codex binary normally with a per-invocation
 override; this does not edit global Codex settings:
 
@@ -289,7 +293,7 @@ advances without incoming HID events. No external accessibility daemon is used.
 | Codex producer | Full automatic reports require the companion TUI option. Stock notification/hook configuration does not provide registration, working start and request resolution. |
 | Scope | One tile per reporting pane and one device. No hidden-subagent/outside-Rustty tiles, approval, command, usage, dial/touch/LCD or desktop Micro actions. |
 | Semantics | Done observes a turn completion, not task success. Any process sharing a PTY can spoof that pane's metadata. Unobserved crash cleanup remains uncertain. |
-| Multiplexers | One reporter through passthrough fits v1. Multiple tmux reporters sharing one Rustty PTY exceed the serialized single-reporter contract. |
+| Multiplexers | Native tmuxx keeps each pane's reporter separate and accepts raw or tmux-wrapped status. Multiple stock tmux reporters sharing one outer Rustty PTY exceed the serialized single-reporter contract. |
 | Layout | Exact 9+6 region targets 5×3 devices; other layouts are rejected. Input/error/paused shapes are distinct; Attention groups these states. Brightness is memory-only. |
 | Persistence | Workspace save policy applies, IDs only reserve positions, and restored panes require a new begin report. Bounded completion-ack history is runtime-only. |
 | Input race | UI validates captured assignments and reporter generations. USB reports cannot identify which image generation was physically seen; a bounded upload/input race remains. Startup held-key baselines suppress stale presses. |
