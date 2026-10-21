@@ -18,4 +18,5 @@ pub mod workspace;
 
 pub mod tmuxx_copy;
 pub mod tmuxx_menu;
+pub mod tmuxx_target;
 pub mod tmuxx_workspace;

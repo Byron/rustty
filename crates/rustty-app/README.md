@@ -436,14 +436,29 @@ These commands use the same implementation as the menu:
 ```sh
 rustty --tmuxx=embedded
 rustty --tmuxx=persistent
+rustty --tmuxx=local:default
+rustty --tmuxx=local:work
 rustty --tmuxx=unix:/path/to/default.native
 rustty --tmuxx=pipe:default
 rustty --tmuxx=ssh:my-host
 rustty --tmuxx=system-ssh:my-host
 ```
 
-`unix:PATH` selects a local Unix socket; `pipe:INSTANCE` selects a local Windows
-owner. On Unix, Rustty's embedded CLI manages its default native owner:
+`local:NAME` selects a local owner on both Windows and Unix. `local:default`
+uses the same default as **New persistent window**, including `TMUXX_ENDPOINT`
+when configured. Other names select the owner used by `tmuxx -L NAME` (or
+`rustty tmux -L NAME` on Unix), using `TMUX_TMPDIR` on Unix. Names contain 1–64
+UTF-8 bytes, may include spaces and Unicode, and cannot contain control
+characters, `/`, or `\`, or be `.` or `..`.
+
+Local connections display as **local · work**. Their menu offers **Copy Connection
+Address** (for example, `local:work`) and retains the full **Native endpoint** in
+the submenu. Existing saved connections keep their endpoints. Custom endpoints
+without a matching short name retain their full address.
+
+`unix:PATH` still selects an explicit Unix socket; `pipe:INSTANCE` still selects
+a Windows owner. Full local pipe paths and absolute Unix socket paths are also
+accepted. On Unix, Rustty's embedded CLI manages its default native owner:
 
 ```sh
 rustty tmux new-session -d -s work
@@ -539,6 +554,7 @@ Add named connections to the tmuxx menu and override their remote helpers in the
 same active configuration file:
 
 ```ini
+tmuxx-connection = Local work = local:work
 tmuxx-connection = Azure Linux = ssh:20.240.208.217
 tmuxx-ssh-command-host = 20.240.208.217 = /home/byron/.cargo/bin/tmuxx -L rustty --native-stdio
 tmuxx-connection = Stock tmux = system-ssh:legacy-linux
