@@ -106,8 +106,8 @@ highlighted entry is outside the viewport, moving just enough to reveal it.
 Collapsed branches stay collapsed; the entry may be a quad or tab instead of
 the panel. Ordinary scrolling remains under your control.
 
-On first open, the tree shows quads with their panels collapsed. Tabs without
-quads stay collapsed, and windows open to show their tabs. Click a branch's
+On first open, windows and tabs expand to show quads with their panels collapsed,
+or panels directly where there are no quads. Click a branch's
 `+` or `−` button to expand or collapse one level; Shift-click applies the same change
 to all its descendants. These buttons only change the tree's visibility, leaving
 terminal focus and zoom alone. Expansion is preserved when panel focus changes

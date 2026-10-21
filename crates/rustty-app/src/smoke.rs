@@ -4047,9 +4047,9 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
                 },
             )),
         )
-        .is_some()
+        .is_none()
     {
-        return Err("Outliner did not initially stop at quads and quadless tabs".into());
+        return Err("Outliner did not initially show quads or ungrouped panels".into());
     }
     for pane in [sibling, first] {
         app.select_outline_target(Target::Pane {
