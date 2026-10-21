@@ -168,6 +168,11 @@ impl Pane {
         .enqueue(input)
     }
     fn flush(&mut self) -> std::io::Result<()> {
+        if !self.session.accepts_input() {
+            self.input.clear();
+            self.input_bytes = 0;
+            return Ok(());
+        }
         while let Some(bytes) = self.input.front() {
             match self.session.write_input(bytes) {
                 Ok(()) => {
@@ -177,7 +182,11 @@ impl Pane {
                 Err(error) => {
                     self.input.clear();
                     self.input_bytes = 0;
-                    return Err(error);
+                    return if self.session.accepts_input() {
+                        Err(error)
+                    } else {
+                        Ok(())
+                    };
                 }
             }
         }
@@ -217,6 +226,11 @@ struct QueuedInput<'a> {
 }
 impl QueuedInput<'_> {
     fn enqueue(&mut self, input: SessionInput) -> std::io::Result<()> {
+        if !self.session.accepts_input() {
+            self.queue.clear();
+            *self.bytes = 0;
+            return Ok(());
+        }
         let size = input.queue_bytes();
         if size == 0 {
             return Ok(());
@@ -225,7 +239,13 @@ impl QueuedInput<'_> {
             match self.session.write_input(&input) {
                 Ok(()) => return Ok(()),
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
-                Err(error) => return Err(error),
+                Err(error) => {
+                    return if self.session.accepts_input() {
+                        Err(error)
+                    } else {
+                        Ok(())
+                    };
+                }
             }
         }
         if self.bytes.saturating_add(size) > INPUT_BUDGET {
@@ -1275,7 +1295,7 @@ impl App {
             if !state.0 {
                 pane.activity.reset_progress_animation();
             }
-            if !pane.exited && pane.host_state != state {
+            if !pane.exited && pane.session.accepts_input() && pane.host_state != state {
                 match pane.session.set_host_state(state.0, state.1, state.2) {
                     Ok(()) => pane.host_state = state,
                     Err(error) => self.errors.push(error.to_string()),
@@ -1695,6 +1715,13 @@ impl App {
         }
     }
     fn terminal_input(&mut self, host: &mut Host, pane: Id) {
+        if !self
+            .panes
+            .get(&pane)
+            .is_some_and(|pane| pane.session.accepts_input())
+        {
+            return;
+        }
         self.cancel_selection_drag(host);
         let now = Instant::now();
         let focused = self
@@ -1713,7 +1740,7 @@ impl App {
             && self
                 .panes
                 .get(&pane)
-                .is_some_and(|pane| !pane.exited && !pane.session.has_exited())
+                .is_some_and(|pane| !pane.exited && pane.session.accepts_input())
     }
     fn paste(&mut self, host: &mut Host, paste: PendingPaste, approved: bool) {
         if paste.data.is_empty() || !self.paste_target_exists(host.id, paste.pane) {
@@ -1839,7 +1866,7 @@ impl App {
             state.reset_selection_gesture();
         }
         if let Some(entry) = self.tmuxx_pane(pane)
-            && let Some(connection) = &entry.connection
+            && let Some(connection) = entry.view_connection()
             && let Some((session, index, pid)) =
                 entry.mapping.focus_target(&self.workspace, window, pane)
             && let Err(error) = connection.focus_pane(session, index, pid)
@@ -4027,6 +4054,10 @@ impl App {
             host.search_focus.is_some() && !host.modal_input() && !host.messages_focused;
         let owner_key = !ui_input
             && self
+                .focused(host.id)
+                .and_then(|id| self.panes.get(&id))
+                .is_some_and(|pane| pane.session.accepts_input())
+            && self
                 .tab(host.id)
                 .and_then(|tab| tab.modal_overlay())
                 .is_some_and(|modal| {
@@ -4119,6 +4150,13 @@ impl App {
         if self.panes.get(&id).is_some_and(|p| p.exited) && key.state == ElementState::Pressed {
             host.consumed_keys.insert(key.physical_key);
             self.action(event_loop, host, Action::CloseSurface, true);
+            return true;
+        }
+        if self
+            .panes
+            .get(&id)
+            .is_none_or(|pane| !pane.session.accepts_input())
+        {
             return true;
         }
         let bytes = self.panes.get(&id).and_then(|pane| {
@@ -4549,8 +4587,7 @@ impl App {
                     let mut composed = None;
                     let mut accessible = Vec::new();
                     if let Some(entry) = self.tmuxx_window(host.id)
-                        && let Some(connection) = &entry.connection
-                        && !connection.is_closed()
+                        && let Some(connection) = entry.view_connection()
                         && let Some(session) = entry.mapping.sessions.get(&host.id)
                     {
                         let metrics = host.fonts.metrics();
@@ -4663,7 +4700,8 @@ impl App {
                                     animation_deadline.map_or(deadline, |old| old.min(deadline)),
                                 );
                             }
-                            let is_focused = host.focused && id == focused && host.peek.is_none();
+                            let accepts_input = !pane.exited && pane.session.accepts_input();
+                            let is_focused = host.focused && id == focused && host.peek.is_none() && accepts_input;
                             needs_blink |= !synchronized
                                 && is_focused
                                 && !pane.exited
@@ -4710,7 +4748,7 @@ impl App {
                                     .try_into()
                                     .unwrap_or([[0; 3]; 256]),
                                 focused: is_focused,
-                                cursor_visible: !pane.exited && (id != focused || !host.composing),
+                                cursor_visible: accepts_input && (id != focused || !host.composing),
                                 blink_visible: blink_on || !is_focused,
                                 background_opacity: config.background_opacity,
                                 preedit: (is_focused && !host.preedit.is_empty()).then(|| {
@@ -4771,7 +4809,7 @@ impl App {
                                 ),
                             });
                             accessible.push((id, rect.intersect(content)));
-                            if id == focused && !pane.exited {
+                            if id == focused && accepts_input {
                                 terminal_ime_rect = Some(prepared.ime_rect);
                             }
                         }
@@ -5647,6 +5685,7 @@ impl App {
                 && self
                     .panes
                     .get(&id)
+                    .filter(|pane| pane.session.accepts_input())
                     .and_then(|p| {
                         p.session.terminal().ok().map(|terminal| {
                             input::mouse_reporting(
@@ -5683,7 +5722,8 @@ impl App {
             } else if let Some(pane) = self.panes.get(&id)
                 && let Ok(mut terminal) = pane.session.terminal()
             {
-                if terminal.is_alternate_screen()
+                if pane.session.accepts_input()
+                    && terminal.is_alternate_screen()
                     && terminal.mouse_mode == 0
                     && terminal.modes.dec(1007)
                 {
@@ -5738,11 +5778,13 @@ impl App {
             let config = self.window_config(host.id).clone();
             let pane = self.panes.get_mut(&id)?;
             let terminal = pane.session.terminal().ok()?;
-            if input::mouse_reporting(
-                &terminal,
-                host.modifiers.state(),
-                config.mouse_shift_capture,
-            ) || terminal.modes.dec(2026)
+            if pane.session.accepts_input()
+                && input::mouse_reporting(
+                    &terminal,
+                    host.modifiers.state(),
+                    config.mouse_shift_capture,
+                )
+                || terminal.modes.dec(2026)
             {
                 return None;
             }
@@ -5832,7 +5874,11 @@ impl App {
                 3.0,
             )
         });
-        if let Some((_, axis, _)) = divider {
+        if let Some((_, axis, _)) = divider
+            && self
+                .tmuxx_window(host.id)
+                .is_none_or(|entry| entry.view_connection().is_some())
+        {
             return Some(match axis {
                 Axis::Horizontal => CursorIcon::ColResize,
                 Axis::Vertical => CursorIcon::RowResize,
@@ -5847,6 +5893,9 @@ impl App {
             return Some(CursorIcon::Pointer);
         }
         let pane = self.panes.get(&id)?;
+        if !pane.session.accepts_input() {
+            return Some(CursorIcon::Text);
+        }
         pane.session.terminal().ok()?.mouse_shape().parse().ok()
     }
 
@@ -5933,7 +5982,7 @@ impl App {
                     Axis::Vertical => (host.mouse.y - bounds.y) / bounds.height,
                 };
                 if let Some(entry) = self.tmuxx_window(host.id) {
-                    if let Some(connection) = &entry.connection
+                    if let Some(connection) = entry.view_connection()
                         && let Some((pane, axis, total)) = entry.mapping.dividers.get(&id)
                     {
                         let amount =
@@ -5975,7 +6024,7 @@ impl App {
             )
             && let Some(entry) = self.tmuxx_window(host.id)
             && let Some(pane) = entry.mapping.panes.get(&modal.pane)
-            && let Some(connection) = &entry.connection
+            && let Some(connection) = entry.view_connection()
         {
             if let Err(error) =
                 connection.command(["kill-pane".into(), "-t".into(), format!("%{pane}")])
@@ -5997,7 +6046,12 @@ impl App {
                     .divider_at(host.content, [host.mouse.x, host.mouse.y], 3.0)
             });
             if let Some(divider) = divider {
-                if action == vt::MouseAction::Press && button == Some(vt::MouseButton::Left) {
+                if action == vt::MouseAction::Press
+                    && button == Some(vt::MouseButton::Left)
+                    && self
+                        .tmuxx_window(host.id)
+                        .is_none_or(|entry| entry.view_connection().is_some())
+                {
                     self.remember();
                     host.divider_drag = Some(divider);
                 }
@@ -6067,11 +6121,13 @@ impl App {
         let Ok(mut terminal) = pane.session.terminal() else {
             return;
         };
-        if input::mouse_reporting(
-            &terminal,
-            host.modifiers.state(),
-            config.mouse_shift_capture,
-        ) {
+        if pane.session.accepts_input()
+            && input::mouse_reporting(
+                &terminal,
+                host.modifiers.state(),
+                config.mouse_shift_capture,
+            )
+        {
             pane.selection_gesture.reset(&mut terminal);
             host.selection_drag = None;
             let bytes = terminal.encode_mouse(
@@ -6708,8 +6764,12 @@ impl ApplicationHandler<Event> for App {
                     .egui_input_mut()
                     .events
                     .drain(egui_event_start..egui_event_end);
+                let accepts_input = self
+                    .focused(host.id)
+                    .and_then(|id| self.panes.get(&id))
+                    .is_some_and(|pane| pane.session.accepts_input());
                 match ime {
-                    Ime::Preedit(text, selection) => {
+                    Ime::Preedit(text, selection) if accepts_input => {
                         if !text.is_empty()
                             && let Some(pane) = self.focused(host.id)
                         {
@@ -6719,7 +6779,7 @@ impl ApplicationHandler<Event> for App {
                         host.preedit = text;
                         host.preedit_selection = selection;
                     }
-                    Ime::Commit(text) => {
+                    Ime::Commit(text) if accepts_input => {
                         host.composing = false;
                         host.preedit.clear();
                         host.preedit_selection = None;
@@ -6738,7 +6798,7 @@ impl ApplicationHandler<Event> for App {
                             );
                         }
                     }
-                    Ime::Disabled => {
+                    Ime::Disabled | Ime::Preedit(..) | Ime::Commit(_) => {
                         host.composing = false;
                         host.preedit.clear();
                         host.preedit_selection = None;

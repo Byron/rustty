@@ -442,6 +442,11 @@ old attachment. Local transport interruptions retry without replaying input or
 ambiguous commands. SSH connections require an explicit reconnect, and are not
 saved for automatic reopening. Stopping a daemon disables retries for it.
 
+Disconnected windows keep their terminal contents available for local scrolling,
+searching, and copying. Terminal input and application mouse capture stop, queued
+input is discarded, and the tmuxx label shows `disconnected` until the reconnected
+view is ready. Window controls and reconnect menus remain available.
+
 These commands use the same implementation as the menu:
 
 ```sh

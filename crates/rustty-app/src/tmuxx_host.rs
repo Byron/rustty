@@ -141,6 +141,14 @@ impl Attachment {
             instance: self.instance.clone(),
         }
     }
+    pub fn view_connection(&self) -> Option<&Connection> {
+        if self.monitoring || self.replacing || self.instance.is_empty() {
+            return None;
+        }
+        self.connection
+            .as_ref()
+            .filter(|connection| !connection.is_closed() && connection.instance() == self.instance)
+    }
     pub fn command_action(
         &mut self,
         workspace: &Workspace,
@@ -148,13 +156,9 @@ impl Attachment {
         action: &Action,
         mut argv: Vec<String>,
     ) -> std::result::Result<(), String> {
-        let connection = self
-            .connection
-            .as_ref()
-            .filter(|connection| !connection.is_closed() && connection.instance() == self.instance)
-            .ok_or_else(|| {
-                "The tmuxx connection is offline; reconnect before changing its panels".to_owned()
-            })?;
+        let connection = self.view_connection().ok_or_else(|| {
+            "The tmuxx connection is offline; reconnect before changing its panels".to_owned()
+        })?;
         if !self.mapping.local_focus
             || !matches!(action, Action::NewSplit(_) | Action::NewFloatingPane)
         {
@@ -497,7 +501,17 @@ impl Attachment {
 
     pub fn window_tag(&self, window: Id, names: &BTreeMap<String, String>) -> (String, String) {
         let session = self.mapping.session_names.get(&window);
-        let mut label = session.map_or_else(|| "tmuxx".into(), |name| format!("tmuxx · {name}"));
+        let disconnected = self.view_connection().is_none();
+        let mut label = if disconnected {
+            "tmuxx · disconnected"
+        } else {
+            "tmuxx"
+        }
+        .to_owned();
+        if let Some(session) = session {
+            label.push_str(" · ");
+            label.push_str(session);
+        }
         if let Source::Ssh(host) | Source::SystemSsh(host) = &self.source {
             let host = names
                 .iter()
@@ -507,7 +521,10 @@ impl Attachment {
             label.push_str(" · ");
             label.push_str(host);
         }
-        let source = self.label(names);
+        let mut source = self.label(names);
+        if disconnected && !source.ends_with(" · disconnected") {
+            source.push_str(" · disconnected");
+        }
         let tooltip = session.map_or_else(
             || source.clone(),
             |name| format!("Session: {name}\n{source}"),
@@ -1204,8 +1221,21 @@ impl App {
         let mut reset = Vec::new();
         let mut remove = Vec::new();
         let mut idle = Vec::new();
+        let mut disconnected = BTreeSet::new();
         for (index, entry) in self.tmuxx.iter_mut().enumerate() {
+            let was_disconnected =
+                entry.status.as_deref() == Some("Disconnected; input is not replayed");
             let Some(connection) = &entry.connection else {
+                if !was_disconnected
+                    && self
+                        .workspace
+                        .windows
+                        .iter()
+                        .any(|window| entry.mapping.sessions.contains_key(&window.id))
+                {
+                    entry.status = Some("Disconnected; input is not replayed".into());
+                    disconnected.extend(entry.mapping.sessions.keys().copied());
+                }
                 if entry.temporary() && !entry.waiting_for_window() {
                     remove.push(index);
                 }
@@ -1247,6 +1277,9 @@ impl App {
                     entry.connection = None;
                 } else {
                     entry.status = Some("Disconnected; input is not replayed".into());
+                    if !was_disconnected {
+                        disconnected.extend(entry.mapping.sessions.keys().copied());
+                    }
                 }
                 if entry.reconnect_enabled && entry.retry_at.is_none() {
                     entry.retry_at = Some(Instant::now() + Duration::from_secs(2));
@@ -1380,6 +1413,34 @@ impl App {
         for view in reset {
             self.panes.remove(&view);
             self.failed_panes.remove(&view);
+        }
+        for host in self
+            .windows
+            .values_mut()
+            .filter(|host| disconnected.contains(&host.id))
+        {
+            host.divider_drag = None;
+            host.mouse_button = None;
+            host.selection_drag = None;
+            host.composing = false;
+            host.preedit.clear();
+            host.preedit_selection = None;
+            for id in self
+                .workspace
+                .windows
+                .iter()
+                .filter(|window| window.id == host.id)
+                .flat_map(|window| &window.tabs)
+                .flat_map(Tab::pane_ids)
+            {
+                if let Some(pane) = self.panes.get_mut(&id) {
+                    pane.input.clear();
+                    pane.input_bytes = 0;
+                    pane.mouse_cell = None;
+                    pane.scroll = Default::default();
+                    pane.reset_selection_gesture();
+                }
+            }
         }
         if connection_error && self.windows.is_empty() && self.workspace.windows.is_empty() {
             self.add_window(false);
@@ -2374,6 +2435,52 @@ mod tests {
         assert_eq!(hidden_error_window(false, None, [].into_iter()), None);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn mapped_views_wait_for_handshake_and_replacement_snapshot() {
+        let (mut entry, mut peer) = monitoring_peer("view-ready", false);
+        entry.monitoring = false;
+        assert!(entry.view_connection().is_none());
+        tmuxx_protocol::native::write_record(
+            &mut peer,
+            &tmuxx_protocol::native::Hello {
+                instance_id: Some("owner".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let until = Instant::now() + Duration::from_secs(2);
+        while entry.connection.as_ref().unwrap().instance() != "owner" {
+            assert!(Instant::now() < until, "view handshake did not complete");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(entry.view_connection().is_some());
+        entry.replacing = true;
+        assert!(entry.view_connection().is_none());
+        assert!(
+            entry
+                .window_tag(7, &BTreeMap::new())
+                .0
+                .starts_with("tmuxx · disconnected")
+        );
+        assert!(
+            entry
+                .command_action(&Workspace::default(), 7, &Action::CloseSurface, Vec::new())
+                .is_err()
+        );
+        entry.replacing = false;
+        assert!(entry.view_connection().is_some());
+        entry.monitoring = true;
+        assert!(entry.view_connection().is_none());
+        entry.monitoring = false;
+        for instance in ["", "replacement-owner"] {
+            entry.instance = instance.into();
+            assert!(entry.view_connection().is_none());
+        }
+        entry.instance = "owner".into();
+        assert!(entry.view_connection().is_some());
+    }
+
     #[test]
     fn window_tags_include_session_and_remote_identity() {
         for (source, target) in [
@@ -2390,18 +2497,18 @@ mod tests {
             entry.mapping.session_names.insert(7, "work".into());
             let names = BTreeMap::from([("Azure Linux".into(), target.into())]);
             let (label, tooltip) = entry.window_tag(7, &names);
-            assert_eq!(label, "tmuxx · work · Azure Linux");
+            assert_eq!(label, "tmuxx · disconnected · work · Azure Linux");
             assert!(tooltip.contains("Session: work"));
             assert!(tooltip.contains("user@build.example"));
             assert!(tooltip.contains("disconnected"));
             assert_eq!(
                 entry.window_tag(7, &BTreeMap::new()).0,
-                "tmuxx · work · build.example"
+                "tmuxx · disconnected · work · build.example"
             );
             entry.mapping.session_names.insert(7, "renamed 雪".into());
             assert_eq!(
                 entry.window_tag(7, &names).0,
-                "tmuxx · renamed 雪 · Azure Linux"
+                "tmuxx · disconnected · renamed 雪 · Azure Linux"
             );
         }
         for source in [
@@ -2411,9 +2518,12 @@ mod tests {
             let mut entry = Attachment::new(source, None, false);
             entry.mapping.session_names.insert(7, "work".into());
             let (label, tooltip) = entry.window_tag(7, &BTreeMap::new());
-            assert_eq!(label, "tmuxx · work");
+            assert_eq!(label, "tmuxx · disconnected · work");
             assert!(tooltip.starts_with("Session: work\n"));
-            assert_eq!(entry.window_tag(8, &BTreeMap::new()).0, "tmuxx");
+            assert_eq!(
+                entry.window_tag(8, &BTreeMap::new()).0,
+                "tmuxx · disconnected"
+            );
         }
     }
 

@@ -419,6 +419,9 @@ impl Session {
     }
 
     pub fn write_input(&self, input: &Input) -> io::Result<()> {
+        if !self.accepts_input() {
+            return Err(io::ErrorKind::BrokenPipe.into());
+        }
         if let Some(attached) = &self.attached
             && attached.is_native()
         {
@@ -438,11 +441,11 @@ impl Session {
 
     /// Queues the entire input or returns an error without sending any prefix.
     pub fn write(&self, bytes: &[u8]) -> io::Result<()> {
+        if !self.accepts_input() {
+            return Err(io::ErrorKind::BrokenPipe.into());
+        }
         if let Some(attached) = &self.attached {
             return attached.write(bytes);
-        }
-        if self.exited.load(Ordering::Acquire) {
-            return Err(io::ErrorKind::BrokenPipe.into());
         }
         if bytes.len() > MAX_PENDING_INPUT {
             return Err(io::Error::new(
@@ -607,6 +610,14 @@ impl Session {
     }
     pub fn has_exited(&self) -> bool {
         self.exited.load(Ordering::Acquire)
+    }
+    /// A disconnected view keeps its contents without implying that the remote process exited.
+    pub fn accepts_input(&self) -> bool {
+        !self.has_exited()
+            && self
+                .attached
+                .as_ref()
+                .is_none_or(crate::tmuxx::PaneInput::accepts_input)
     }
     /// Request asynchronous termination. The host can close all sessions, then
     /// give their `has_exited` flags a bounded drain period before process exit.
