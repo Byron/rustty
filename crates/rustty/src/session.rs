@@ -58,6 +58,8 @@ pub struct SessionOptions {
     pub resources: Option<PathBuf>,
     /// Initial host state is installed before the child can issue queries.
     pub color_scheme: Option<query::ColorScheme>,
+    /// Inherited split color; applications can replace it or reset to the theme.
+    pub background: Option<[u8; 3]>,
     pub visible: bool,
     pub focused: bool,
 }
@@ -71,6 +73,7 @@ impl Default for SessionOptions {
             command: None,
             resources: None,
             color_scheme: None,
+            background: None,
             visible: true,
             focused: false,
         }
@@ -184,6 +187,9 @@ impl Session {
         terminal.query_defaults.size = Some(terminal.query_size());
         terminal.visible = options.visible;
         apply_appearance(&mut terminal, config);
+        if let Some(background) = options.background {
+            terminal.set_color_override(rustty_vt::color::Target::Background, Some(background));
+        }
         terminal.working_directory = options
             .working_directory
             .as_ref()
@@ -1112,6 +1118,30 @@ mod tests {
         assert_eq!(command.get_argv(), &original);
         assert!(command.get_env("GHOSTTY_BASH_INJECT").is_none());
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn inherited_background_precedes_child_output_and_keeps_theme_reset() {
+        let config = Config::default();
+        let session = Session::spawn(
+            &config,
+            SessionOptions {
+                command: Some(Command::Direct(vec!["/bin/sleep".into(), "30".into()])),
+                background: Some([1, 2, 3]),
+                ..SessionOptions::default()
+            },
+            Arc::new(|| {}),
+        )
+        .unwrap();
+        assert_eq!(session.snapshot().unwrap().background, [1, 2, 3]);
+        session.apply_appearance(&config).unwrap();
+        let mut terminal = session.terminal().unwrap();
+        assert_eq!(terminal.background, [1, 2, 3]);
+        terminal.feed(b"\x1b]11;#040506\x07");
+        assert_eq!(terminal.background, [4, 5, 6]);
+        terminal.feed(b"\x1b]111\x07");
+        assert_eq!(terminal.background, config.background.to_array());
     }
 
     #[cfg(unix)]
