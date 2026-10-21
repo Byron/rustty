@@ -2025,7 +2025,12 @@ fn check_tmuxx_secondary_selection(
             .iter()
             .zip(&current.panes)
             .any(|(before, after)| {
-                before.id != after.id || !Arc::ptr_eq(&before.terminal, &after.terminal)
+                before.id != after.id
+                    || !before
+                        .terminal
+                        .as_ref()
+                        .zip(after.terminal.as_ref())
+                        .is_some_and(|(before, after)| Arc::ptr_eq(before, after))
             })
     {
         return Err("tmuxx tab navigation replaced the retained terminal snapshots".into());

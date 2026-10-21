@@ -1,8 +1,11 @@
-use super::ServerMessage;
-use base64::Engine;
+use super::{
+    ServerMessage, SnapshotState,
+    codec::{encode_error, write_record},
+};
+use serde::{Deserialize, Serialize};
 use std::{
     fs::{File, OpenOptions},
-    io::{self, Seek, Write},
+    io::{self, Read, Seek, Write},
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -13,7 +16,7 @@ fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
 
-pub fn snapshot_bytes(state: &serde_json::Value, limit: u64) -> io::Result<u64> {
+pub fn snapshot_bytes(state: &SnapshotState, limit: u64) -> io::Result<u64> {
     struct Counter {
         bytes: u64,
         limit: u64,
@@ -32,12 +35,10 @@ pub fn snapshot_bytes(state: &serde_json::Value, limit: u64) -> io::Result<u64> 
         }
     }
     let mut counter = Counter { bytes: 0, limit };
-    serde_json::to_writer(&mut counter, state).map_err(io::Error::from)?;
+    state
+        .serialize(&mut rmp_serde::Serializer::new(&mut counter).with_struct_map())
+        .map_err(encode_error)?;
     Ok(counter.bytes)
-}
-fn record(writer: &mut impl Write, message: &ServerMessage) -> io::Result<()> {
-    serde_json::to_writer(&mut *writer, message)?;
-    writer.write_all(b"\n")
 }
 
 /// Stream one immutable snapshot; bound rejection is a recoverable wire record.
@@ -45,13 +46,13 @@ pub fn write_snapshot(
     writer: &mut impl Write,
     instance_id: &str,
     sequence: u64,
-    state: &serde_json::Value,
+    state: &SnapshotState,
     limit: u64,
 ) -> io::Result<()> {
     let bytes = match snapshot_bytes(state, limit) {
         Ok(bytes) => bytes,
         Err(error) => {
-            return record(
+            return write_record(
                 writer,
                 &ServerMessage::SnapshotAborted {
                     instance_id: instance_id.into(),
@@ -61,7 +62,7 @@ pub fn write_snapshot(
             );
         }
     };
-    record(
+    write_record(
         writer,
         &ServerMessage::SnapshotStart {
             instance_id: instance_id.into(),
@@ -79,15 +80,16 @@ pub fn write_snapshot(
             if self.bytes.is_empty() {
                 return Ok(());
             }
-            record(
-                self.writer,
-                &ServerMessage::SnapshotChunk {
-                    offset: self.offset,
-                    data: base64::engine::general_purpose::STANDARD.encode(&self.bytes),
-                },
-            )?;
-            self.offset += self.bytes.len() as u64;
-            self.bytes.clear();
+            let message = ServerMessage::SnapshotChunk {
+                offset: self.offset,
+                data: std::mem::take(&mut self.bytes),
+            };
+            write_record(self.writer, &message)?;
+            if let ServerMessage::SnapshotChunk { data, .. } = message {
+                self.offset += data.len() as u64;
+                self.bytes = data;
+                self.bytes.clear();
+            }
             Ok(())
         }
     }
@@ -113,9 +115,11 @@ pub fn write_snapshot(
         bytes: Vec::with_capacity(SNAPSHOT_CHUNK_BYTES),
         offset: 0,
     };
-    serde_json::to_writer(&mut chunks, state)?;
+    state
+        .serialize(&mut rmp_serde::Serializer::new(&mut chunks).with_struct_map())
+        .map_err(encode_error)?;
     chunks.flush()?;
-    record(chunks.writer, &ServerMessage::SnapshotEnd { sequence })
+    write_record(chunks.writer, &ServerMessage::SnapshotEnd { sequence })
 }
 
 struct Spool {
@@ -224,21 +228,18 @@ impl SnapshotAssembler {
                     .pending
                     .as_mut()
                     .ok_or_else(|| invalid("snapshot chunk without start"))?;
-                if offset != spool.bytes || data.len() > SNAPSHOT_CHUNK_BYTES.div_ceil(3) * 4 {
+                if offset != spool.bytes || data.len() > SNAPSHOT_CHUNK_BYTES {
                     return Err(invalid("invalid snapshot chunk offset or size"));
                 }
-                let bytes = base64::engine::general_purpose::STANDARD
-                    .decode(data)
-                    .map_err(|_| invalid("invalid snapshot chunk data"))?;
                 let total = spool
                     .bytes
-                    .checked_add(bytes.len() as u64)
+                    .checked_add(data.len() as u64)
                     .filter(|total| *total <= spool.expected)
                     .ok_or_else(|| invalid("snapshot exceeds declared size"))?;
-                if bytes.is_empty() {
+                if data.is_empty() {
                     return Err(invalid("empty snapshot chunk"));
                 }
-                spool.file.write_all(&bytes)?;
+                spool.file.write_all(&data)?;
                 spool.bytes = total;
                 Ok(None)
             }
@@ -251,7 +252,13 @@ impl SnapshotAssembler {
                     return Err(invalid("incomplete or mismatched snapshot"));
                 }
                 spool.file.rewind()?;
-                let state = serde_json::from_reader(io::BufReader::new(&mut spool.file))?;
+                let mut reader = io::BufReader::new(&mut spool.file).take(spool.expected);
+                let mut decoder = rmp_serde::Deserializer::new(&mut reader);
+                decoder.set_max_depth(128);
+                let state = SnapshotState::deserialize(&mut decoder).map_err(io::Error::other)?;
+                if reader.read(&mut [0])? != 0 {
+                    return Err(invalid("trailing snapshot data"));
+                }
                 Ok(Some(ServerMessage::Snapshot {
                     instance_id: spool.instance_id.clone(),
                     sequence,
@@ -278,40 +285,63 @@ impl SnapshotAssembler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::native::{
+        SnapshotSession,
+        codec::{decode, read_record},
+    };
+
+    fn state() -> SnapshotState {
+        SnapshotState {
+            sessions: vec![SnapshotSession {
+                id: 1,
+                name: "x".repeat(SNAPSHOT_CHUNK_BYTES * 2 + 17),
+                active: 1,
+                windows: Default::default(),
+            }],
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn streaming_is_atomic_bounded_and_recoverable() {
-        let state = serde_json::json!({"pixels": "x".repeat(SNAPSHOT_CHUNK_BYTES * 2 + 17)});
+        let state = state();
         let mut wire = Vec::new();
         write_snapshot(&mut wire, "owner", 9, &state, MAX_SNAPSHOT_BYTES).unwrap();
         let mut assembler = SnapshotAssembler::default();
         let mut result = Vec::new();
-        for line in wire
-            .split(|byte| *byte == b'\n')
-            .filter(|line| !line.is_empty())
-        {
-            assert!(line.len() < 512 * 1024);
-            if let Some(message) = assembler
-                .push(serde_json::from_slice(line).unwrap())
-                .unwrap()
-            {
+        let mut reader = wire.as_slice();
+        let mut chunks = 0;
+        while let Some(bytes) = read_record(&mut reader, SNAPSHOT_CHUNK_BYTES + 128).unwrap() {
+            let message = decode(&bytes).unwrap();
+            chunks += usize::from(matches!(message, ServerMessage::SnapshotChunk { .. }));
+            if let Some(message) = assembler.push(message).unwrap() {
                 result.push(message);
             }
         }
+        assert_eq!(chunks, 3);
+        assert_eq!(result.len(), 1);
+        let ServerMessage::Snapshot {
+            instance_id,
+            sequence,
+            state: restored,
+        } = &result[0]
+        else {
+            panic!("missing assembled snapshot");
+        };
+        assert_eq!(instance_id, "owner");
+        assert_eq!(*sequence, 9);
         assert_eq!(
-            result,
-            [ServerMessage::Snapshot {
-                instance_id: "owner".into(),
-                sequence: 9,
-                state: state.clone()
-            }]
+            rmp_serde::to_vec_named(restored).unwrap(),
+            rmp_serde::to_vec_named(&state).unwrap()
         );
         assembler.finish().unwrap();
         let mut rejected = Vec::new();
         write_snapshot(&mut rejected, "owner", 10, &state, 16).unwrap();
+        let rejected = read_record(&mut rejected.as_slice(), 1024)
+            .unwrap()
+            .unwrap();
         assert!(matches!(
-            assembler
-                .push(serde_json::from_slice(&rejected).unwrap())
-                .unwrap(),
+            assembler.push(decode(&rejected).unwrap()).unwrap(),
             Some(ServerMessage::SnapshotAborted { sequence: 10, .. })
         ));
         assert!(
@@ -328,7 +358,7 @@ mod tests {
             assembler
                 .push(ServerMessage::SnapshotChunk {
                     offset: 1,
-                    data: "e30=".into()
+                    data: vec![0x80]
                 })
                 .is_err()
         );
@@ -354,5 +384,68 @@ mod tests {
                 })
                 .is_err()
         );
+    }
+
+    #[test]
+    fn malformed_interleaved_or_incomplete_snapshots_never_publish() {
+        let state = SnapshotState::default();
+        let bytes = rmp_serde::to_vec_named(&state).unwrap();
+        for message in [
+            ServerMessage::SnapshotChunk {
+                offset: 0,
+                data: Vec::new(),
+            },
+            ServerMessage::SnapshotChunk {
+                offset: 0,
+                data: vec![0; SNAPSHOT_CHUNK_BYTES + 1],
+            },
+            ServerMessage::SnapshotEnd { sequence: 1 },
+            ServerMessage::Changed { sequence: 1 },
+            ServerMessage::SnapshotStart {
+                instance_id: "owner".into(),
+                sequence: 2,
+                bytes: 1,
+            },
+        ] {
+            let mut assembler = SnapshotAssembler::default();
+            assembler
+                .push(ServerMessage::SnapshotStart {
+                    instance_id: "owner".into(),
+                    sequence: 1,
+                    bytes: bytes.len() as u64,
+                })
+                .unwrap();
+            assert!(assembler.push(message).is_err());
+            assembler.finish().unwrap();
+        }
+        for mut bytes in [
+            bytes,
+            vec![
+                0x81, 0xa8, b's', b'e', b's', b's', b'i', b'o', b'n', b's', 0xc6, 0xff, 0xff, 0xff,
+                0xff,
+            ],
+        ] {
+            bytes.push(0xc0);
+            let mut assembler = SnapshotAssembler::default();
+            assembler
+                .push(ServerMessage::SnapshotStart {
+                    instance_id: "owner".into(),
+                    sequence: 1,
+                    bytes: bytes.len() as u64,
+                })
+                .unwrap();
+            assembler
+                .push(ServerMessage::SnapshotChunk {
+                    offset: 0,
+                    data: bytes,
+                })
+                .unwrap();
+            assert!(
+                assembler
+                    .push(ServerMessage::SnapshotEnd { sequence: 1 })
+                    .is_err()
+            );
+            assembler.finish().unwrap();
+        }
     }
 }

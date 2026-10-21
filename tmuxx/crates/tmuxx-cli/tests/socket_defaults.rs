@@ -250,9 +250,9 @@ fn explicit_native_control_wait_exit_observes_client_flags_and_newline() {
 }
 
 #[test]
-fn native_control_rejects_old_servers_before_submitting_commands() {
+fn native_control_requires_server_capability_before_submitting_commands() {
     use std::{
-        io::{BufRead, BufReader, Read, Write},
+        io::{BufReader, Read},
         os::unix::net::UnixListener,
         time::Duration,
     };
@@ -264,16 +264,20 @@ fn native_control_rejects_old_servers_before_submitting_commands() {
         stream
             .set_read_timeout(Some(Duration::from_secs(5)))
             .unwrap();
-        let mut hello = String::new();
-        BufReader::new(&stream).read_line(&mut hello).unwrap();
-        assert!(
-            serde_json::from_str::<tmuxx_protocol::native::Hello>(&hello)
-                .unwrap()
-                .control_commands
-        );
-        stream
-            .write_all(b"{\"version\":1,\"client_features\":0}\n")
+        let bytes = tmuxx_protocol::native::read_record(&mut BufReader::new(&stream), 1024 * 1024)
+            .unwrap()
             .unwrap();
+        let hello: tmuxx_protocol::native::Hello = tmuxx_protocol::native::decode(&bytes).unwrap();
+        assert!(hello.control_commands);
+        tmuxx_protocol::native::write_record(
+            &mut stream,
+            &tmuxx_protocol::native::Hello {
+                control_commands: false,
+                client_features: Some(0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(
             stream.read(&mut [0; 1]).unwrap(),
             0,

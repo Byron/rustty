@@ -129,11 +129,15 @@ pub struct Snapshot<S = Screen> {
     pub foreground: [u8; 3],
     pub background: [u8; 3],
     pub cursor_color: Option<[u8; 3]>,
+    #[serde(with = "serde_bytes")]
     pub title: Vec<u8>,
+    #[serde(with = "serde_bytes")]
     pub working_directory: Vec<u8>,
+    #[serde(with = "serde_bytes")]
     pub parser_continuation: Option<Vec<u8>>,
     pub continuation_error: Option<String>,
     #[serde(default)]
+    #[serde(with = "serde_bytes")]
     pub capture_pending: Option<Vec<u8>>,
     #[serde(default)]
     pub capture_pending_error: Option<String>,
@@ -141,6 +145,7 @@ pub struct Snapshot<S = Screen> {
     pub graphics_included: bool,
     pub primary_graphics: GraphicsSnapshot,
     pub alternate_graphics: Option<GraphicsSnapshot>,
+    #[serde(with = "serde_bytes")]
     pub checkpoint: Option<Vec<u8>>,
     pub checkpoint_error: Option<String>,
 }
@@ -702,7 +707,10 @@ impl Terminal {
         let terminal = &self.inner;
         let continuation = terminal.parser().continuation();
         let capture_pending = terminal.parser().pending_input();
-        let checkpoint = rustty_vt::snapshot::encode_to_vec(terminal);
+        let (checkpoint, checkpoint_error) = match rustty_vt::snapshot::encode_to_vec(terminal) {
+            Ok(bytes) => (Some(bytes), None),
+            Err(error) => (None, Some(error.to_string())),
+        };
         Snapshot {
             agent_status: self.agent_status.clone(),
             version: 1,
@@ -758,8 +766,8 @@ impl Terminal {
             alternate_graphics: terminal
                 .alternate_screen()
                 .map(|screen| screen.graphics.view_snapshot()),
-            checkpoint: checkpoint.as_ref().ok().cloned(),
-            checkpoint_error: checkpoint.err().map(|error| error.to_string()),
+            checkpoint,
+            checkpoint_error,
         }
     }
 }

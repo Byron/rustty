@@ -17,7 +17,7 @@ description = "Explicit native control observes changing client flags and remain
 
 [[suites.assertions]]
 id = "cli.native-control-capability-before-command"
-tests = ["native_control_rejects_old_servers_before_submitting_commands"]
+tests = ["native_control_requires_server_capability_before_submitting_commands"]
 description = "A legacy native handshake omitting control_commands is rejected before any command bytes are sent; supported native control uses server-authored guards and source preparation."
 
 [[suites.assertions]]

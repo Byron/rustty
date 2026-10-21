@@ -15,7 +15,9 @@ pub use tmuxx_core::ClientContext;
 use tmuxx_core::{
     Effect, Engine, HostAction, HostResponse, Id, Notification as EngineNotification, Outcome,
 };
-use tmuxx_protocol::native::{Hello, Request, Response, ServerMessage, VERSION};
+use tmuxx_protocol::native::{
+    self, ClientMessage, Hello, Request, Response, ServerMessage, VERSION,
+};
 
 mod client_commands;
 mod control;
@@ -789,7 +791,7 @@ pub fn native_handshake_with_features(
         })
         .collect::<io::Result<_>>()?;
     let mut output = io::BufWriter::new(&mut *stream);
-    serde_json::to_writer(
+    native::write_record(
         &mut output,
         &Hello {
             cwd: Some(cwd),
@@ -799,17 +801,15 @@ pub fn native_handshake_with_features(
             ..Hello::default()
         },
     )?;
-    output.write_all(b"\n")?;
     output.flush()?;
     drop(output);
-    let hello = read_record(&mut BufReader::new(stream), 1024)?.ok_or_else(|| {
+    let hello = native::read_record(&mut BufReader::new(stream), 1024)?.ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::UnexpectedEof,
             "missing native protocol hello",
         )
     })?;
-    let hello: Hello = serde_json::from_slice(&hello)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let hello: Hello = native::decode(&hello)?;
     if hello.version != VERSION {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
@@ -874,30 +874,27 @@ fn serve_connection(
     reader
         .get_ref()
         .set_read_timeout(Some(Duration::from_secs(10)))?;
-    let hello = read_record(&mut reader, MAX_REQUEST_BYTES)?.ok_or_else(|| {
+    let hello = native::read_record(&mut reader, MAX_REQUEST_BYTES)?.ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::UnexpectedEof,
             "missing native protocol hello",
         )
     })?;
-    let hello: Hello = serde_json::from_slice(&hello)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let hello: Hello = native::decode(&hello)?;
     #[cfg(windows)]
     let (client_pid, client_sid, client_user) = reader.get_ref().verify_client()?;
     let mut handshake = io::BufWriter::new(&mut output);
-    serde_json::to_writer(
+    native::write_record(
         &mut handshake,
         &Hello {
             instance_id: instance_id.clone(),
             stdin_file_stream: true,
             client_features: Some(0),
             view_size_ownership: true,
-            checkpoint_snapshots: true,
             selection_updates: true,
             ..Hello::default()
         },
     )?;
-    handshake.write_all(b"\n")?;
     handshake.flush()?;
     drop(handshake);
     if hello.version != VERSION {
@@ -929,8 +926,6 @@ fn serve_connection(
         cwd: hello.cwd,
         environment: hello.environment,
         host_effects: hello.host_effects,
-        compact_snapshots: hello.compact_snapshots,
-        checkpoint_snapshots: hello.checkpoint_snapshots,
         selection_updates: hello.selection_updates,
         ..ClientContext::default()
     };
@@ -948,7 +943,6 @@ fn serve_connection(
         ]);
         context
     };
-    let control_commands = hello.control_commands;
     let delivery_bytes = Arc::new(AtomicUsize::new(0));
     tx.send(Event::Connect {
         files: false,
@@ -973,34 +967,15 @@ fn serve_connection(
                 state,
             } = &message
             {
-                if hello.snapshot_stream {
-                    tmuxx_protocol::native::write_snapshot(
-                        &mut output,
-                        instance_id,
-                        *sequence,
-                        state,
-                        tmuxx_protocol::native::MAX_SNAPSHOT_BYTES,
-                    )
-                } else if tmuxx_protocol::native::snapshot_bytes(state, 64 * 1024 * 1024).is_err() {
-                    serde_json::to_writer(
-                        &mut output,
-                        &ServerMessage::SnapshotAborted {
-                            instance_id: instance_id.clone(),
-                            sequence: *sequence,
-                            error: "large snapshot requires snapshot_stream negotiation".into(),
-                        },
-                    )
-                    .map_err(io::Error::from)
-                    .and_then(|_| output.write_all(b"\n"))
-                } else {
-                    serde_json::to_writer(&mut output, &message)
-                        .map_err(io::Error::from)
-                        .and_then(|_| output.write_all(b"\n"))
-                }
+                native::write_snapshot(
+                    &mut output,
+                    instance_id,
+                    *sequence,
+                    state,
+                    native::MAX_SNAPSHOT_BYTES,
+                )
             } else {
-                serde_json::to_writer(&mut output, &message)
-                    .map_err(io::Error::from)
-                    .and_then(|_| output.write_all(b"\n"))
+                native::write_record(&mut output, &message)
             };
             if result.and_then(|_| output.flush()).is_err() {
                 break;
@@ -1012,34 +987,19 @@ fn serve_connection(
         let _ = output.get_ref().shutdown(Shutdown::Both);
     });
     let result = (|| {
-        while let Some(line) = read_record(&mut reader, MAX_REQUEST_BYTES)? {
-            let value: serde_json::Value = serde_json::from_slice(&line)
-                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-            #[cfg(windows)]
-            if value == serde_json::json!({"type": "end_of_input"}) {
-                break;
-            }
-            let event = if value.get("type").is_some() {
-                if !control_commands {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Unsupported,
-                        "native control requests were not negotiated",
-                    ));
+        while let Some(bytes) = native::read_record(&mut reader, MAX_REQUEST_BYTES)? {
+            let event = match native::decode::<ClientMessage>(&bytes)? {
+                ClientMessage::EndOfInput => break,
+                ClientMessage::Control(request) => {
+                    if request.source.is_some() && !request.argv.is_empty() {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "control source and argv are mutually exclusive",
+                        ));
+                    }
+                    Event::ControlSource { id, request }
                 }
-                let tmuxx_protocol::native::ClientMessage::Control(request) =
-                    serde_json::from_value(value)
-                        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-                if request.source.is_some() && !request.argv.is_empty() {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "control source and argv are mutually exclusive",
-                    ));
-                }
-                Event::ControlSource { id, request }
-            } else {
-                let request = serde_json::from_value(value)
-                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-                Event::Request { id, request }
+                ClientMessage::Request(request) => Event::Request { id, request },
             };
             if tx.send(event).is_err() {
                 break;
@@ -1480,10 +1440,7 @@ impl Host {
             self.snapshots_requested.insert(id);
             return;
         }
-        let context = &self.clients[&id].context;
-        let state = self
-            .engine
-            .native_snapshot(context.compact_snapshots, context.checkpoint_snapshots);
+        let state = self.engine.native_snapshot();
         if let Err(error) = tmuxx_protocol::native::snapshot_bytes(&state, self.snapshot_limit) {
             self.send(
                 id,

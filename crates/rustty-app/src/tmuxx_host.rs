@@ -1784,7 +1784,6 @@ mod tests {
 
     #[cfg(unix)]
     fn monitoring_peer(name: &str, hello: bool) -> (Attachment, std::os::unix::net::UnixStream) {
-        use std::io::Write;
         use std::os::unix::net::UnixListener;
         let path = std::env::temp_dir().join(format!(
             "rustty-monitor-{name}-{}.native",
@@ -1797,8 +1796,14 @@ mod tests {
         let (mut peer, _) = listener.accept().unwrap();
         std::fs::remove_file(path).unwrap();
         if hello {
-            peer.write_all(b"{\"version\":1,\"instance_id\":\"owner\"}\n")
-                .unwrap();
+            tmuxx_protocol::native::write_record(
+                &mut peer,
+                &tmuxx_protocol::native::Hello {
+                    instance_id: Some("owner".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
             let until = Instant::now() + Duration::from_secs(2);
             while entry.connection.as_ref().unwrap().instance() != "owner" {
                 assert!(Instant::now() < until, "monitor handshake did not complete");
@@ -1811,13 +1816,17 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn monitoring_requires_known_idle_count_and_never_offers_force_stop() {
-        use std::io::Write;
         let (mut entry, mut peer) = monitoring_peer("menu", true);
         for count in [None, Some(0), Some(2)] {
             if let Some(count) = count {
-                writeln!(
-                    peer,
-                    r#"{{"type":"server_status","instance_id":"owner","connections":{count}}}"#
+                tmuxx_protocol::native::write_record(
+                    &mut peer,
+                    &tmuxx_protocol::native::ServerMessage::ServerStatus(
+                        tmuxx_protocol::native::ServerStatus {
+                            instance_id: "owner".into(),
+                            connections: count,
+                        },
+                    ),
                 )
                 .unwrap();
                 let until = Instant::now() + Duration::from_secs(2);
@@ -1860,7 +1869,6 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn server_shutdown_confirmation_warns_only_for_other_connections() {
-        use std::io::Write;
         let (mut entry, mut peer) = monitoring_peer("shutdown-wording", true);
         let target = entry.target();
         let unknown = "The connection count is unavailable. This will close the server's sessions.";
@@ -1894,9 +1902,14 @@ mod tests {
                 "Other connections: 3. The server will stay running while they are connected.",
             ),
         ] {
-            writeln!(
-                peer,
-                r#"{{"type":"server_status","instance_id":"owner","connections":{count}}}"#
+            tmuxx_protocol::native::write_record(
+                &mut peer,
+                &tmuxx_protocol::native::ServerMessage::ServerStatus(
+                    tmuxx_protocol::native::ServerStatus {
+                        instance_id: "owner".into(),
+                        connections: count,
+                    },
+                ),
             )
             .unwrap();
             let until = Instant::now() + Duration::from_secs(2);

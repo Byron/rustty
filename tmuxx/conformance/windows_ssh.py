@@ -22,6 +22,7 @@ import sys
 import time
 import uuid
 from windows_native_views import wait_json
+import native_wire
 
 K = ctypes.WinDLL("kernel32", use_last_error=True)
 A = ctypes.WinDLL("advapi32", use_last_error=True)
@@ -204,7 +205,7 @@ def peek(file):
 class Connection:
     def __init__(self, reader, writer, process=None, pipe_handle=None):
         self.reader, self.writer, self.process = reader, writer, process
-        self.buffer, self.stderr = bytearray(), bytearray()
+        self.stderr = bytearray()
         self.next_id, self.hello, self.owner_pid = 1, None, None
         if pipe_handle is not None:
             owner = w.ULONG()
@@ -226,39 +227,41 @@ class Connection:
         return cls(process.stdout, process.stdin, process=process)
 
     def write(self, record, fragment=False):
-        payload = json.dumps(record, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
-        for at in range(0, len(payload), 3 if fragment else len(payload)):
-            self.writer.write(payload[at:at + (3 if fragment else len(payload))])
+        payload = native_wire.encode(record)
+        at = 0
+        while at < len(payload):
+            written = self.writer.write(payload[at:at + (3 if fragment else len(payload))])
+            if not written:
+                raise EOFError("native writer closed")
+            at += written
         self.writer.flush()
 
     def record(self, timeout=TIMEOUT):
         deadline = time.monotonic() + timeout
-        while True:
-            if b"\n" in self.buffer:
-                line, _, self.buffer = self.buffer.partition(b"\n")
-                return json.loads(line)
-            if len(self.buffer) > 2 * 1024 * 1024:
-                raise AssertionError("unbounded native protocol record")
-            if self.process and self.process.stderr:
-                available = peek(self.process.stderr)
+
+        def read(size):
+            while True:
+                if self.process and self.process.stderr:
+                    available = peek(self.process.stderr)
+                    if available:
+                        self.stderr.extend(self.process.stderr.read(min(available, 65536)))
+                        assert len(self.stderr) <= 65536, "unbounded bridge diagnostics"
+                available = peek(self.reader)
+                if available is None:
+                    raise EOFError(self.stderr.decode("utf-8", "replace"))
                 if available:
-                    self.stderr.extend(self.process.stderr.read(min(available, 65536)))
-                    assert len(self.stderr) <= 65536, "unbounded bridge diagnostics"
-            available = peek(self.reader)
-            if available is None:
-                raise EOFError(self.stderr.decode("utf-8", "replace"))
-            if available:
-                self.buffer.extend(self.reader.read(min(available, 65536)))
-                continue
-            if time.monotonic() >= deadline:
-                raise TimeoutError("native response timed out: " + self.stderr.decode("utf-8", "replace"))
-            time.sleep(0.005)
+                    return self.reader.read(min(available, size, 65536))
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("native response timed out: " + self.stderr.decode("utf-8", "replace"))
+                time.sleep(0.005)
+
+        return native_wire.read_record(read)
 
     def handshake(self, instance, incarnation=None):
-        self.write({"version": 1, "instance": instance, "instance_id": incarnation,
-                    "snapshot_stream": True, "host_effects": False, "control_commands": True}, fragment=True)
+        self.write({"version": 2, "instance": instance, "instance_id": incarnation,
+                    "host_effects": False, "control_commands": True}, fragment=True)
         self.hello = self.record()
-        assert self.hello["version"] == 1 and self.hello.get("instance_id"), self.hello
+        assert self.hello["version"] == 2 and self.hello.get("instance_id"), self.hello
         if incarnation:
             assert self.hello["instance_id"] == incarnation
         return self.hello
@@ -269,8 +272,9 @@ class Connection:
         # This helper sends exactly one command. Quote tmux's trailing argv
         # separator while preserving the literal semicolon in names/content.
         arguments = [arg[:-1] + "\\;" if arg.endswith(";") else arg for arg in arguments]
-        self.write({"request_id": request_id, "argv": [list(arg.encode("utf-8")) for arg in arguments],
-                    "stdin": None if stdin is None else list(stdin), "subscribe": subscribe, "control": False}, fragment=True)
+        self.write({"type": "request", "request": {
+            "request_id": request_id, "argv": [arg.encode("utf-8") for arg in arguments],
+            "stdin": stdin, "subscribe": subscribe, "control": False}}, fragment=True)
         snapshot, stream, expected, sequence, reply = None, None, None, None, None
         while reply is None or (subscribe and snapshot is None):
             record = self.record()
@@ -287,11 +291,11 @@ class Connection:
                 assert 0 <= expected <= 64 * 1024 * 1024
             elif kind == "snapshot_chunk":
                 assert stream is not None and record["offset"] == len(stream)
-                stream.extend(base64.b64decode(record["data"], validate=True))
+                stream.extend(record["data"])
                 assert len(stream) <= expected
             elif kind == "snapshot_end":
                 assert stream is not None and len(stream) == expected and record["sequence"] == sequence
-                snapshot, stream = json.loads(stream), None
+                snapshot, stream = native_wire.msgpack.unpackb(stream, raw=False, strict_map_key=False), None
             elif kind in ("snapshot_aborted", "exit"):
                 raise AssertionError(record)
         return (reply, snapshot) if subscribe else reply
@@ -339,10 +343,16 @@ def remote_images(args, path):
     return run_ssh_json(args, "--process-image " + ps_quote(str(path)))
 
 
+def native_bridge_command(path, arguments):
+    # Inherit SSH handles directly; PowerShell's object pipeline is not binary safe.
+    return ps_source("$p = New-Object System.Diagnostics.ProcessStartInfo; $p.FileName = "
+                     + ps_quote(str(path)) + "; $p.Arguments = " + ps_quote(arguments)
+                     + "; $p.UseShellExecute = $false; $p.CreateNoWindow = $true; $c = [System.Diagnostics.Process]::Start($p); "
+                     "$c.WaitForExit(); exit $c.ExitCode")
+
+
 def rustty_bridge_command(path):
-    # One complete trusted command; instance selection remains binary protocol
-    # data and never becomes part of the remote shell command.
-    return ps_source("& " + ps_quote(str(path)) + " tmux --native-stdio; exit $LASTEXITCODE")
+    return native_bridge_command(path, "tmux --native-stdio")
 
 
 def dispatch_receipts(directory, previous, command, bridge, *, accepted):
@@ -641,7 +651,7 @@ def exercise(args, report):
     bridge_executable = bridge_directory / "tmuxx.exe"
     shutil.copy2(args.tmuxx, bridge_executable)
     assert hashlib.sha256(bridge_executable.read_bytes()).hexdigest() == report["candidate_sha256"]
-    bridge = ps_source("& " + ps_quote(str(bridge_executable)) + " --native-stdio; exit $LASTEXITCODE")
+    bridge = native_bridge_command(bridge_executable, "--native-stdio")
     try:
         assert args.gui and args.viewer_key and args.viewer_bridge, "native SSH view needs --gui, --viewer-key and --viewer-bridge"
         assert args.rustty_viewer_key and args.rustty_bridge, "trusted Rustty view needs --rustty-viewer-key and --rustty-bridge"
@@ -724,7 +734,7 @@ def exercise(args, report):
         assert sorted(observer["live_pids"]) == sorted(baseline_pids + created_panes)
         _, checkpoint = ssh.request("list-panes", "-a", "-F", "#{pane_id}|#{pane_pid}", subscribe=True)
         report.update(shared_graph=graph, live_capture=capture, new_pane_pids=created_panes, window_id=window, pane_id=pane,
-                      snapshot_sha256=hashlib.sha256(json.dumps(checkpoint, sort_keys=True).encode()).hexdigest())
+                      snapshot_sha256=hashlib.sha256(native_wire.msgpack.packb(checkpoint, use_bin_type=True)).hexdigest())
         report["tests"].append("windows_ssh::desktop_cross_logon_shared_live_graph")
         # Release only the second GUI; its final screenshots must include every
         # externally created native session, shared tab, duplicate link and split.

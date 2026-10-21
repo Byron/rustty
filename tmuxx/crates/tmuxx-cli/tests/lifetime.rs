@@ -1,6 +1,6 @@
 #![cfg(unix)]
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::BufReader;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -66,7 +66,7 @@ impl Drop for Owner {
             if let Ok(mut stream) = UnixStream::connect(&self.endpoint) {
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
                 if tmuxx_runtime::native_handshake(&mut stream).is_ok() {
-                    let _ = serde_json::to_writer(
+                    let _ = tmuxx_protocol::native::write_request(
                         &mut stream,
                         &Request {
                             request_id: 1,
@@ -76,7 +76,6 @@ impl Drop for Owner {
                             control: false,
                         },
                     );
-                    let _ = stream.write_all(b"\n");
                 }
             }
             let deadline = Instant::now() + Duration::from_secs(3);
@@ -107,28 +106,25 @@ impl View {
             .spawn()
             .unwrap();
         let mut input = child.stdin.take().unwrap();
-        serde_json::to_writer(&mut input, &Hello::default()).unwrap();
-        input.write_all(b"\n").unwrap();
+        tmuxx_protocol::native::write_record(&mut input, &Hello::default()).unwrap();
         let mut reader = BufReader::new(child.stdout.take().unwrap());
         let (hello_tx, hello_rx) = mpsc::channel();
         let (tx, messages) = mpsc::channel();
         std::thread::spawn(move || {
-            let mut line = String::new();
-            if reader.read_line(&mut line).is_err() {
+            let Ok(Some(bytes)) = tmuxx_protocol::native::read_record(&mut reader, 1024) else {
                 return;
-            }
-            let Ok(hello) = serde_json::from_str::<Hello>(&line) else {
+            };
+            let Ok(hello) = tmuxx_protocol::native::decode::<Hello>(&bytes) else {
                 return;
             };
             if hello_tx.send(hello).is_err() {
                 return;
             }
             let mut assembler = SnapshotAssembler::default();
-            for line in reader.lines() {
-                let Ok(line) = line else {
-                    break;
-                };
-                let Ok(message) = serde_json::from_str(&line) else {
+            while let Ok(Some(bytes)) =
+                tmuxx_protocol::native::read_record(&mut reader, 128 * 1024 * 1024)
+            {
+                let Ok(message) = tmuxx_protocol::native::decode(&bytes) else {
                     break;
                 };
                 match assembler.push(message) {
@@ -165,8 +161,7 @@ impl View {
             subscribe,
             control: false,
         };
-        serde_json::to_writer(&mut self.input, &request).unwrap();
-        self.input.write_all(b"\n").unwrap();
+        tmuxx_protocol::native::write_request(&mut self.input, &request).unwrap();
         loop {
             if let ServerMessage::Reply(reply) = self.recv()
                 && reply.request_id == self.id
@@ -188,7 +183,7 @@ impl View {
                 instance_id, state, ..
             } = self.recv()
             {
-                return (instance_id, state);
+                return (instance_id, serde_json::to_value(state).unwrap());
             }
         }
     }

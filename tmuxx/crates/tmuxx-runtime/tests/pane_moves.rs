@@ -172,23 +172,22 @@ fn reconnected_native_view_keeps_zoomed_child_and_modal_cancel_restores_focus() 
         assert!(Instant::now() < deadline, "missing reconnect snapshot");
         std::thread::sleep(Duration::from_millis(2));
     };
-    let window = &state["windows"][0];
-    assert_eq!(window["zoomed_pane"], 0);
-    assert_eq!(window["active"], 2);
-    let layout: serde_json::Value =
-        serde_json::from_str(window["visible_layout"].as_str().unwrap()).unwrap();
+    let window = &state.windows[0];
+    assert_eq!(window.zoomed_pane, Some(0));
+    assert_eq!(window.active, 2);
+    let layout: serde_json::Value = serde_json::from_str(&window.visible_layout).unwrap();
     assert_eq!(layout["L"]["c"].as_array().unwrap().len(), 2);
-    assert_eq!(state["panes"][0]["cols"], 80);
-    let modal = &state["panes"][2];
-    assert_eq!(modal["x"], -2);
-    assert_eq!(modal["cols"], 18);
+    assert_eq!(state.panes[0].cols, 80);
+    let modal = &state.panes[2];
+    assert_eq!(modal.x, Some(-2));
+    assert_eq!(modal.cols, 18);
     for flag in [
-        "modal",
-        "modal_capture_keys",
-        "modal_close_click",
-        "modal_close_cancel",
+        modal.modal,
+        modal.modal_capture_keys,
+        modal.modal_close_click,
+        modal.modal_close_cancel,
     ] {
-        assert_eq!(modal[flag], true);
+        assert!(flag);
     }
     let event = tmuxx_terminal::Input::Key {
         event: tmuxx_terminal::KeyEvent {

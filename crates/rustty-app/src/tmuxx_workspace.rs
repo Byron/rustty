@@ -96,16 +96,8 @@ impl Mapping {
                         .panes
                         .iter()
                         .find(|p| p.id == pid)
-                        .and_then(|p| p.terminal["title"].as_array())
-                        .map(|bytes| {
-                            String::from_utf8_lossy(
-                                &bytes
-                                    .iter()
-                                    .filter_map(|b| b.as_u64().map(|n| n as u8))
-                                    .collect::<Vec<_>>(),
-                            )
-                            .into_owned()
-                        });
+                        .and_then(|p| p.terminal.as_deref())
+                        .map(|terminal| String::from_utf8_lossy(&terminal.title).into_owned());
                     panes.insert(
                         view,
                         SavedPane {
@@ -566,7 +558,7 @@ mod tests {
                 modal_capture_keys: false,
                 modal_close_click: false,
                 modal_close_cancel: false,
-                terminal: serde_json::Value::Null.into(),
+                terminal: None,
             }],
         }
     }

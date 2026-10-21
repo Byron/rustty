@@ -43,22 +43,21 @@ the pane UI. Conversely, Rustty can attach to stock tmux with
 `--tmuxx=system-ssh:HOST`; that control-mode adapter remains independent of native
 tmuxx features. See the [Rustty guide](../crates/rustty-app/README.md).
 
-Native clients negotiate version and optional features in `Hello`. The Unix
-command protocol and native JSON protocol use separate endpoints; native JSON
-must never be sent to a stock tmux socket. This already permits richer Rustty
-interop without requiring extensions in stock tmux. Terminal snapshots have
-their own version and validation. Compatibility with arbitrary future or older
-snapshot formats is not implied by sharing a native protocol version.
+Native clients negotiate version and optional features in `Hello`. Native
+protocol v2 uses MessagePack binary records with independent LZ4 blocks, including
+live terminal output and streamed snapshots. It has a separate endpoint from
+stock tmux command/control sockets; never send native messages to those sockets.
+Update clients, bridges, and servers together and restart existing owners before
+reconnecting. Version 1's JSON transport is no longer accepted.
 
-Peers advertising `compact_snapshots` receive lossless runs of identical screen
-cells, avoiding repeated blank-cell styles in large multi-pane snapshots. Older
-clients continue to receive expanded cells; no history or terminal state is omitted.
+Snapshots retain one binary terminal checkpoint per pane, including history,
+plus explicit graph and agent state. They are streamed with bounded blocks and
+installed atomically; ordinary focus changes use small selection updates. See
+[transfer framing and limits](NATIVE-SNAPSHOTS.md).
 
 Rustty validates the native greeting before sending queued commands. Window-size
 connections also verify the primary connection's server incarnation, so a daemon
 replacement cannot resize unrelated sessions that reuse the same numeric IDs.
-Older daemons without an incarnation in their greeting are checked through a
-read-only snapshot on that connection before any size commands are sent.
 
 ## Source and maintenance
 
