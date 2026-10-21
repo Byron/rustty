@@ -4255,7 +4255,7 @@ impl App {
             .collect();
         let tmuxx_tag = self
             .tmuxx_window(host.id)
-            .map(|entry| entry.label(&self.config().tmuxx_connections));
+            .map(|entry| entry.window_tag(host.id, &self.config().tmuxx_connections));
         let breadcrumb = if state.tabs.len() > 1 {
             outliner::breadcrumb(active, &pane_labels)
         } else {
@@ -4363,8 +4363,9 @@ impl App {
                     .show(root_ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.add_space(72.0);
-                            let tag_width = tmuxx_tag.as_ref().map_or(0.0, |_| outliner_ui::TMUXX_TAG_WIDTH + ui.spacing().item_spacing.x);
-                            let available = (ui.available_width() - tag_width).max(1.0);
+                            let tag_width = tmuxx_tag.as_ref().map_or(0.0, |(label, _)| outliner_ui::tmuxx_tag_width(ui, label, ui.available_width() * 0.4));
+                            let tag_space = if tmuxx_tag.is_some() { tag_width + ui.spacing().item_spacing.x } else { 0.0 };
+                            let available = (ui.available_width() - tag_space).max(1.0);
                             let crumb_width = (available * 0.4)
                                 .min(420.0)
                                 .min((available - 160.0).max(0.0));
@@ -4483,7 +4484,7 @@ impl App {
                                 commands.push(Action::NewTab);
                             }
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if let Some(tooltip) = &tmuxx_tag { outliner_ui::tmuxx_tag(ui, tooltip); }
+                                if let Some((label, tooltip)) = &tmuxx_tag { outliner_ui::tmuxx_tag(ui, label, tooltip, tag_width); }
                                 outline_selection = outliner_ui::breadcrumb(ui, &breadcrumb, crumb_width);
                             });
                         });
@@ -5038,15 +5039,16 @@ impl App {
                         }
                     }
                 });
-            if state.tabs.len() == 1 && let Some(tooltip) = &tmuxx_tag {
+            if state.tabs.len() == 1 && let Some((label, tooltip)) = &tmuxx_tag {
                 let bounds = root_ui.max_rect();
+                let width = outliner_ui::tmuxx_tag_width(root_ui, label, (bounds.width() - 88.0).max(0.0));
                 let rect = egui::Rect::from_min_size(
-                    Pos2::new(bounds.right() - outliner_ui::TMUXX_TAG_WIDTH - 8.0, bounds.top() + 6.0),
-                    Vec2::new(outliner_ui::TMUXX_TAG_WIDTH, 18.0),
+                    Pos2::new(bounds.right() - width - 8.0, bounds.top() + 6.0),
+                    Vec2::new(width, 18.0),
                 );
                 let mut tag_ui = root_ui.new_child(egui::UiBuilder::new().id_salt("tmuxx-window-tag").max_rect(rect));
                 tag_ui.painter().rect_filled(rect.expand(3.0), 4, rgb(config.background));
-                outliner_ui::tmuxx_tag(&mut tag_ui, tooltip);
+                outliner_ui::tmuxx_tag(&mut tag_ui, label, tooltip, width);
             }
             #[cfg(target_os = "macos")]
             if state.tabs.len() == 1
