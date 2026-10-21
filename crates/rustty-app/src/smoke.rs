@@ -3900,8 +3900,20 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     let window = host.id;
     let first = app.focused(window).ok_or("missing Outliner pane")?;
     let first_tab = app.tab(window).unwrap().id;
+    app.panes[&first]
+        .session
+        .terminal()?
+        .feed(b"\x1b]11;#123456\x07");
     for direction in [Direction::Right, Direction::Down] {
         app.action(event_loop, &mut host, Action::NewSplit(direction), true);
+        let split = app.focused(window).unwrap();
+        if app.panes[&split].session.terminal()?.background != [0x12, 0x34, 0x56] {
+            return Err("split did not inherit the source pane's application background".into());
+        }
+        app.draw(event_loop, &mut host)?;
+        if host.prepared[&split].key.options.background != [0x12, 0x34, 0x56] {
+            return Err("split rendered the theme background before shell initialization".into());
+        }
     }
     let bottom_right = app.focused(window).unwrap();
     let right = app.tab(window).unwrap().root.panes()[1];
@@ -3934,6 +3946,14 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     tab.color = Some([121, 96, 205]);
     app.action(event_loop, &mut host, Action::NewTab, true);
     let second = app.focused(window).unwrap();
+    if app.panes[&second]
+        .session
+        .terminal()?
+        .color_override(vt::color::Target::Background)
+        .is_some()
+    {
+        return Err("new tab inherited a split's application background".into());
+    }
     let second_tab = app.tab(window).unwrap().id;
     app.action(
         event_loop,

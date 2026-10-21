@@ -260,6 +260,10 @@ impl Terminal {
             ][index],
         )
     }
+    pub fn set_background(&mut self, background: Option<[u8; 3]>) {
+        self.inner
+            .set_color_override(rustty_vt::color::Target::Background, background);
+    }
     /// These fields read the live state without copying history or image payloads.
     pub fn format_value(&self, key: &str) -> Option<String> {
         let t = &self.inner;
