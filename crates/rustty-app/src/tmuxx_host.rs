@@ -740,7 +740,7 @@ impl App {
         }
         let metrics = host.fonts.metrics();
         let scale = host.window.scale_factor() as f32;
-        let config = self.config();
+        let config = self.window_config(host.id);
         let size = window
             .tabs
             .iter()
@@ -1112,6 +1112,7 @@ impl App {
             self.add_window(false);
         }
         self.reconcile(event_loop);
+        self.sync_tmuxx_themes();
         if connection_error {
             self.reveal_tmuxx_errors();
         }

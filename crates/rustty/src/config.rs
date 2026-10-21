@@ -310,6 +310,10 @@ pub struct Config {
     pub tmuxx_ssh_command_hosts: BTreeMap<String, String>,
     /// Named remote targets offered by the native tmuxx menu.
     pub tmuxx_connections: BTreeMap<String, String>,
+    /// Themes keyed by the exact SSH target or alias supplied when connecting.
+    pub tmuxx_theme_hosts: BTreeMap<String, String>,
+    /// Themes keyed by exact tmuxx session names, taking precedence over hosts.
+    pub tmuxx_theme_sessions: BTreeMap<String, String>,
     pub title_report: bool,
     pub macos_option_as_alt: OptionAsAlt,
     pub copy_on_select: CopyOnSelect,
@@ -409,6 +413,8 @@ impl Default for Config {
             tmuxx_ssh_command: "rustty tmux --native-stdio".into(),
             tmuxx_ssh_command_hosts: BTreeMap::new(),
             tmuxx_connections: BTreeMap::new(),
+            tmuxx_theme_hosts: BTreeMap::new(),
+            tmuxx_theme_sessions: BTreeMap::new(),
             title_report: false,
             macos_option_as_alt: OptionAsAlt::False,
             copy_on_select: CopyOnSelect::None,
@@ -464,6 +470,13 @@ impl Config {
             .get(host)
             .map(String::as_str)
             .unwrap_or(&self.tmuxx_ssh_command)
+    }
+
+    pub fn tmuxx_theme_for(&self, host: Option<&str>, session: &str) -> Option<&str> {
+        self.tmuxx_theme_sessions
+            .get(session)
+            .or_else(|| host.and_then(|host| self.tmuxx_theme_hosts.get(host)))
+            .map(String::as_str)
     }
 
     /// Find a single-key root binding. Sequence-aware hosts can inspect
@@ -631,6 +644,36 @@ impl Config {
                     }
                     self.tmuxx_connections
                         .insert(name.to_owned(), target.to_owned());
+                }
+            }
+            "tmuxx-theme-host" | "tmuxx-theme-session" => {
+                let host = entry.key == "tmuxx-theme-host";
+                let themes = if host {
+                    &mut self.tmuxx_theme_hosts
+                } else {
+                    &mut self.tmuxx_theme_sessions
+                };
+                if value.is_empty() {
+                    themes.clear();
+                } else {
+                    let (name, theme) = value
+                        .split_once('=')
+                        .ok_or("tmuxx theme requires host=theme or session=theme")?;
+                    let name = name.trim();
+                    let theme = theme.trim();
+                    if name.is_empty() || name.chars().any(char::is_control) {
+                        return Err(
+                            "tmuxx theme selector must be nonempty and contain no control characters",
+                        );
+                    }
+                    if host && name.chars().any(char::is_whitespace) {
+                        return Err("SSH host must contain no whitespace");
+                    }
+                    if theme.is_empty() || theme.chars().any(char::is_control) {
+                        return Err("theme must be nonempty and contain no control characters");
+                    }
+                    Theme::parse(theme)?;
+                    themes.insert(name.to_owned(), theme.to_owned());
                 }
             }
             "title-report" => set!(title_report, parse_bool(value)?),

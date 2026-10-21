@@ -12,6 +12,8 @@ mod smoke;
 mod theme_preview;
 #[path = "tmuxx_host.rs"]
 mod tmuxx_host;
+#[path = "tmuxx_theme.rs"]
+mod tmuxx_theme;
 use command_palette::{CommandPalette, PaletteEvent};
 use egui::{Color32, Pos2, Sense, Vec2, ViewportId};
 use rustty::{
@@ -441,6 +443,7 @@ impl ComposedFrame {
 
 struct Host {
     id: Id,
+    tmuxx_theme: Option<String>,
     viewport: ViewportId,
     window: Arc<Window>,
     egui: egui_winit::State,
@@ -688,6 +691,7 @@ fn paint_panel_pin(ui: &egui::Ui, pane: Id, bounds: egui::Rect) {
 struct ThemePreview {
     owner: Id,
     original: Config,
+    scope: theme_preview::Scope,
 }
 
 struct App {
@@ -698,6 +702,7 @@ struct App {
     config_loader: config::ConfigLoader,
     config_args: Vec<String>,
     theme_preview: Option<ThemePreview>,
+    tmuxx_themes: BTreeMap<String, Config>,
     workspace: Workspace,
     state_path: PathBuf,
     resources: Option<PathBuf>,
@@ -1007,6 +1012,7 @@ pub fn run() -> Result<()> {
         config_loader,
         config_args: args,
         theme_preview: None,
+        tmuxx_themes: BTreeMap::new(),
         workspace,
         state_path,
         resources,
@@ -1034,6 +1040,7 @@ pub fn run() -> Result<()> {
         smoke_error: None,
         startup_error: None,
     };
+    app.reload_tmuxx_themes();
     app.restore_tmuxx();
     if tmuxx_mode.as_deref() == Some("persistent") {
         app.start_tmuxx(false)?;
@@ -1208,8 +1215,24 @@ impl App {
             }
         }
         let visible = self.visible_panes();
-        let scheme = color_scheme(self.config_loader.dark_mode);
+        let schemes = self
+            .workspace
+            .windows
+            .iter()
+            .flat_map(|window| {
+                let scheme = self.window_color_scheme(window.id);
+                window
+                    .tabs
+                    .iter()
+                    .flat_map(Tab::pane_ids)
+                    .map(move |pane| (pane, scheme))
+            })
+            .collect::<HashMap<_, _>>();
         for (&id, pane) in &mut self.panes {
+            let scheme = schemes
+                .get(&id)
+                .copied()
+                .unwrap_or_else(|| color_scheme(self.config_loader.dark_mode));
             let state = (visible.contains(&id), focused_panes.contains(&id), scheme);
             if pane.host_state.1 && !state.1 {
                 pane.reset_selection_gesture();
@@ -1330,7 +1353,11 @@ impl App {
                     .get(window.active_tab)
                     .is_some_and(|tab| tab.focused == id)
         });
-        let host_state = (visible, focused, color_scheme(self.config_loader.dark_mode));
+        let pane_window = self.pane_window(id);
+        let scheme = pane_window.map_or(color_scheme(self.config_loader.dark_mode), |window| {
+            self.window_color_scheme(window)
+        });
+        let host_state = (visible, focused, scheme);
         let tmuxx = self.tmuxx_pane(id);
         let created = if let Some(entry) = tmuxx {
             Session::attach_tmuxx(
@@ -1364,6 +1391,9 @@ impl App {
             }
         };
         if self.tmuxx_pane(id).is_some() {
+            if let Some(window) = pane_window.filter(|window| self.tmuxx_theme(*window).is_some()) {
+                session.apply_appearance(self.window_config(window))?;
+            }
             session.set_host_state(host_state.0, host_state.1, host_state.2)?;
         }
         if let Some(diagnostic) = session.shell().diagnostic()
@@ -1417,11 +1447,12 @@ impl App {
             return Ok(());
         }
         let state = self.workspace.windows[self.index(id).ok_or("missing window")?].clone();
+        let config = self.window_config(id).clone();
         let quick = state.quick;
         let mut frame = state.frame;
         if quick
             && let Some(bounds) = self.platform.as_ref().and_then(|platform| {
-                platform.quick_terminal_frame(self.config(), Some([frame[2], frame[3]]))
+                platform.quick_terminal_frame(&config, Some([frame[2], frame[3]]))
             })
         {
             frame = bounds;
@@ -1437,7 +1468,7 @@ impl App {
             ))
             .with_position(LogicalPosition::new(frame[0], frame[1]))
             .with_min_inner_size(MIN_WINDOW_SIZE)
-            .with_transparent(self.config().background_opacity < 1.0);
+            .with_transparent(config.background_opacity < 1.0);
         #[cfg(target_os = "macos")]
         let attributes = attributes
             // AppKit consumes the activation click before any terminal/UI action.
@@ -1450,12 +1481,12 @@ impl App {
         let attributes = attributes.with_skip_taskbar(quick);
         let window = Arc::new(event_loop.create_window(attributes)?);
         if let Some(platform) = &self.platform {
-            platform.configure_window(&window, quick, self.config())?;
+            platform.configure_window(&window, quick, &config)?;
         }
         let viewport = ViewportId::from_hash_of(id);
         pollster::block_on(self.painter.set_window(viewport, window.clone()))?;
         let fonts =
-            rustty_render::Renderer::new(font_config(self.config(), window.scale_factor() as f32))?;
+            rustty_render::Renderer::new(font_config(&config, window.scale_factor() as f32))?;
         for family in fonts.missing_families() {
             self.errors
                 .push(format!("Font family unavailable: {family}"));
@@ -1479,6 +1510,7 @@ impl App {
         window.set_visible(!quick && !self.background_smoke);
         let host = Host {
             id,
+            tmuxx_theme: self.tmuxx_theme(id).map(str::to_owned),
             viewport,
             window: window.clone(),
             egui,
@@ -3114,6 +3146,9 @@ impl App {
                         self.theme_preview = Some(ThemePreview {
                             owner: host.id,
                             original: self.config().clone(),
+                            scope: self
+                                .tmuxx_theme_scope(host.id)
+                                .unwrap_or(theme_preview::Scope::Global),
                         });
                         host.palette.show_themes(themes);
                         host.focus_text_input = true;
@@ -3290,15 +3325,28 @@ impl App {
             }
             Action::IncreaseFontSize(amount) => {
                 self.loaded.config.font_size = (self.config().font_size + amount).clamp(4.0, 200.0);
+                for theme in self.tmuxx_themes.values_mut() {
+                    theme.font_size = (theme.font_size + amount).clamp(4.0, 200.0);
+                }
                 self.update_fonts(Some(host));
             }
             Action::DecreaseFontSize(amount) => {
                 self.loaded.config.font_size = (self.config().font_size - amount).clamp(4.0, 200.0);
+                for theme in self.tmuxx_themes.values_mut() {
+                    theme.font_size = (theme.font_size - amount).clamp(4.0, 200.0);
+                }
                 self.update_fonts(Some(host));
             }
             Action::ResetFontSize => {
                 let loaded = self.config_loader.load_with_args(&self.config_args);
                 self.loaded.config.font_size = loaded.config.font_size;
+                for (name, theme) in &mut self.tmuxx_themes {
+                    theme.font_size = self
+                        .config_loader
+                        .load_with_theme(&self.config_args, name)
+                        .config
+                        .font_size;
+                }
                 self.update_fonts(Some(host));
             }
             Action::Undo | Action::Redo => {
@@ -3377,10 +3425,9 @@ impl App {
         {
             self.errors.push(error);
         }
+        self.reload_tmuxx_themes();
+        self.apply_pane_configs(Session::apply_config, &theme_preview::Scope::Global);
         for pane in self.panes.values_mut() {
-            if let Err(error) = pane.session.apply_config(&self.loaded.config) {
-                self.errors.push(error.to_string());
-            }
             if !self.loaded.config.progress_style {
                 pane.activity.progress_reported(0, None, Instant::now());
             }
@@ -3399,31 +3446,50 @@ impl App {
         }
     }
     fn configure_windows(&mut self, host: Option<&mut Host>) {
+        let configs = self.window_configs();
+        let themes = self
+            .workspace
+            .windows
+            .iter()
+            .map(|window| (window.id, self.tmuxx_theme(window.id).map(str::to_owned)))
+            .collect::<BTreeMap<_, _>>();
         for window in host.into_iter().chain(self.windows.values_mut()) {
+            window.tmuxx_theme = themes.get(&window.id).cloned().flatten();
             if let Some(platform) = &self.platform {
                 let quick = self
                     .workspace
                     .windows
                     .iter()
                     .any(|state| state.id == window.id && state.quick);
-                if let Err(error) =
-                    platform.configure_window(&window.window, quick, &self.loaded.config)
-                {
+                if let Err(error) = platform.configure_window(
+                    &window.window,
+                    quick,
+                    configs.get(&window.id).unwrap_or(&self.loaded.config),
+                ) {
                     self.errors.push(error);
                 }
             }
             window.repaint();
         }
     }
-    fn apply_theme_config(&mut self, config: Config, mut host: Option<&mut Host>) {
-        let fonts_changed = font_config(self.config(), 1.0) != font_config(&config, 1.0);
+    fn apply_theme_config(
+        &mut self,
+        config: Config,
+        mut host: Option<&mut Host>,
+        scope: &theme_preview::Scope,
+    ) {
+        let fonts = self
+            .workspace
+            .windows
+            .iter()
+            .map(|window| (window.id, font_config(self.window_config(window.id), 1.0)))
+            .collect::<Vec<_>>();
         self.loaded.config = config;
         self.context.set_theme(ui_theme(self.config()));
-        for pane in self.panes.values_mut() {
-            if let Err(error) = pane.session.apply_config(&self.loaded.config) {
-                self.errors.push(error.to_string());
-            }
-        }
+        self.apply_pane_configs(Session::apply_appearance, scope);
+        let fonts_changed = fonts
+            .iter()
+            .any(|(window, previous)| *previous != font_config(self.window_config(*window), 1.0));
         if fonts_changed {
             self.update_fonts(host.as_deref_mut());
         }
@@ -3443,7 +3509,7 @@ impl App {
                 window.focus_text_input = window.search_focus.is_some();
             }
         }
-        self.apply_theme_config(preview.original, host);
+        self.apply_theme_config(preview.original, host, &preview.scope);
     }
     fn preview_theme(&mut self, host: &mut Host, theme: config::ThemeChoice, accept: bool) {
         let Some(preview) = self
@@ -3473,22 +3539,30 @@ impl App {
             self.errors.extend(errors);
             return;
         }
-        let config = theme_preview::appearance(&preview.original, loaded.config);
-        self.apply_theme_config(config, Some(host));
+        let scope = preview.scope.clone();
+        let mut config = theme_preview::appearance(&preview.original, loaded.config);
+        if scope != theme_preview::Scope::Global {
+            let name = theme.path.to_string_lossy().into_owned();
+            self.tmuxx_themes.entry(name.clone()).or_insert(config);
+            config = preview.original.clone();
+            scope.select(&mut config, &name);
+        }
+        self.apply_theme_config(config, Some(host), &scope);
         if accept {
             self.theme_preview = None;
             self.errors.push(format!(
-                "Theme {} selected for this session. To keep it, add or edit this line in {}:\n\ntheme = {}\n\nNo configuration file was changed. Reloading configuration or restarting Rustty restores the saved theme.",
+                "Theme {} selected for this session. To keep it, add or edit this line in {}:\n\n{}\n\nNo configuration file was changed. Reloading configuration or restarting Rustty restores the saved theme.",
                 theme.name,
                 self.loaded.edit_config_path.display(),
-                theme.config_value(),
+                scope.config_line(&theme),
             ));
         }
     }
     fn update_fonts(&mut self, host: Option<&mut Host>) {
+        let configs = self.window_configs();
         for current in host.into_iter().chain(self.windows.values_mut()) {
             match rustty_render::Renderer::new(font_config(
-                &self.loaded.config,
+                configs.get(&current.id).unwrap_or(&self.loaded.config),
                 current.window.scale_factor() as f32,
             )) {
                 Ok(fonts) => current.fonts = fonts,
@@ -4072,7 +4146,7 @@ impl App {
         let Some(index) = self.index(host.id) else {
             return Ok(());
         };
-        let config = self.config().clone();
+        let config = self.window_config(host.id).clone();
         let state = self.workspace.windows[index].clone();
         if let Some(Confirmation::Paste(paste)) = &host.confirm
             && !self.paste_target_exists(host.id, paste.pane)
@@ -4131,6 +4205,9 @@ impl App {
         input::filter_egui_events(&mut raw, host.ui_input());
         let context = self.context.clone();
         let now = Instant::now();
+        // Popups also use the shared context; restore its theme after this window's pass.
+        let previous_theme = context.options(|options| options.theme_preference);
+        context.set_theme(ui_theme(&config));
         let platform_accent = self
             .platform
             .as_ref()
@@ -5153,6 +5230,7 @@ impl App {
             host.messages_open = !self.errors.is_empty();
             host.messages_focused = host.messages_open && messages_input(ctx);
         });
+        context.set_theme(previous_theme);
         host.ui_areas.capture(&context);
         if presentation_changed {
             self.changed();
@@ -5394,8 +5472,8 @@ impl App {
         let scale = host.window.scale_factor() as f32;
         let metrics = host.fonts.metrics();
         let padding = [
-            self.config().window_padding_x.start * scale,
-            (self.config().window_padding_y.start
+            self.window_config(host.id).window_padding_x.start * scale,
+            (self.window_config(host.id).window_padding_y.start
                 + if self.tab(host.id).is_some_and(|tab| tab.panes.len() > 1) {
                     18.0
                 } else {
@@ -5558,7 +5636,7 @@ impl App {
             let header = if tab.panes.len() > 1 { 18.0 } else { 0.0 };
             let id = host.hovered_pane()?;
             let rect = host.rects[&id];
-            let config = &self.loaded.config;
+            let config = self.window_config(host.id).clone();
             let pane = self.panes.get_mut(&id)?;
             let terminal = pane.session.terminal().ok()?;
             if input::mouse_reporting(
@@ -5871,16 +5949,16 @@ impl App {
         let metrics = host.fonts.metrics();
         let surface = (host.mouse - rect.min) * scale;
         let padding = [
-            self.config().window_padding_x.start * scale,
-            (self.config().window_padding_y.start
+            self.window_config(host.id).window_padding_x.start * scale,
+            (self.window_config(host.id).window_padding_y.start
                 + if self.tab(host.id).is_some_and(|t| t.panes.len() > 1) {
                     18.0
                 } else {
                     0.0
                 })
                 * scale,
-            self.config().window_padding_x.end * scale,
-            self.config().window_padding_y.end * scale,
+            self.window_config(host.id).window_padding_x.end * scale,
+            self.window_config(host.id).window_padding_y.end * scale,
         ];
         let position = surface - Vec2::new(padding[0], padding[1]);
         let config = &self.loaded.config;
