@@ -188,6 +188,11 @@ impl WindowCopy {
                         &layout.to_json_v2().map_err(|error| error.to_string())?,
                     ],
                 )?;
+                // resize-window temporarily forces manual sizing while copying the layout.
+                command(
+                    send,
+                    &["set-window-option", "-u", "-t", &target, "window-size"],
+                )?;
                 for (source, saved) in &tab.panes {
                     if let Some(title) = saved.title_override.as_ref().or(saved.title.as_ref()) {
                         command(
@@ -620,6 +625,7 @@ mod tests {
             ("default-shell", "/bin/sh"),
             ("default-command", ""),
             ("base-index", "7"),
+            ("window-size", "largest"),
         ] {
             command(&mut send, &["set-option", "-g", option, value]).unwrap();
         }
@@ -663,6 +669,20 @@ mod tests {
             assert_eq!(window.active, copied.panes[&tab.focused]);
             assert_eq!(window.zoomed, tab.zoom.is_some());
             assert_eq!((window.cols, window.rows), (80, 24));
+            assert_eq!(
+                command(
+                    &mut send,
+                    &[
+                        "display-message",
+                        "-p",
+                        "-t",
+                        &format!("@{}", window.id),
+                        "#{window-size}",
+                    ],
+                )
+                .unwrap(),
+                b"largest\n"
+            );
         }
         let first = graph
             .windows
@@ -699,6 +719,19 @@ mod tests {
             if let Some(title) = &saved.title {
                 assert!(text.ends_with(&format!("{title}\n")), "{text}");
             }
+        }
+        for size in [(100, 40), (60, 20)] {
+            connection
+                .view_size(copied.session, size.0, size.1, 8, 16)
+                .unwrap();
+            wait(&connection, |graph| {
+                copied.tabs.values().all(|id| {
+                    graph
+                        .windows
+                        .iter()
+                        .any(|window| window.id == *id && (window.cols, window.rows) == size)
+                })
+            });
         }
 
         let mut tiny = sample(&cwd);
