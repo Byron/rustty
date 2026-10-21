@@ -160,7 +160,15 @@ impl Engine {
             floating,
         );
         let environment = self.pane_environment(sid, ctx, process::environment_overrides(&a)?);
-        let cwd = a.get(b'c').map(admission::path).transpose()?;
+        let source = &self.panes[&target];
+        let cwd = a.get(b'c').map(admission::path).transpose()?.or_else(|| {
+            admission::reported_path(
+                source.terminal.cwd(),
+                self.identity.get("host").map(String::as_str),
+            )
+            .or_else(|| source.current_path.clone())
+            .or_else(|| source.cwd.clone())
+        });
         let mut out = Outcome::default();
         let pane = self.create_pane(
             wid,
