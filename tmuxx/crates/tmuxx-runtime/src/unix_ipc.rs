@@ -688,6 +688,7 @@ fn serve_control(
                     | ServerMessage::SnapshotEnd { .. }
                     | ServerMessage::SnapshotAborted { .. }
                     | ServerMessage::Changed { .. }
+                    | ServerMessage::Selection { .. }
                     | ServerMessage::ServerStatus(_)
                     | ServerMessage::HostEffect { .. },
                 ) => {}

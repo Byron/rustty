@@ -47,6 +47,9 @@ pub struct Hello {
     /// Server supports first-view size ownership and explicit ownership transfer.
     #[serde(default)]
     pub view_size_ownership: bool,
+    /// Accept selection and pane appearance updates without retransmitting screens.
+    #[serde(default)]
+    pub selection_updates: bool,
 }
 
 impl Default for Hello {
@@ -64,6 +67,7 @@ impl Default for Hello {
             stdin_file_stream: false,
             client_features: None,
             view_size_ownership: false,
+            selection_updates: false,
         }
     }
 }
@@ -182,6 +186,12 @@ pub enum ServerMessage {
     },
     Changed {
         sequence: u64,
+    },
+    /// Authoritative active IDs and pane appearance; contains no terminal contents.
+    /// Sent only after selection_updates negotiation, following the command reply.
+    Selection {
+        sequence: u64,
+        state: serde_json::Value,
     },
     /// Control wire bytes without the final LF. This may be a notification,
     /// a complete guarded command result, or deferred unframed server output.

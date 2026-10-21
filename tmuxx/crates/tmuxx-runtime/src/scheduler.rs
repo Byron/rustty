@@ -61,6 +61,7 @@ struct Batch {
     error: Option<String>,
     status: Option<i32>,
     subscribe: bool,
+    selection: bool,
     control: bool,
     control_guards: Option<u64>,
     started: bool,
@@ -672,6 +673,7 @@ impl Host {
             error,
             status: None,
             subscribe: request.subscribe,
+            selection: false,
             control: request.control,
             control_guards,
             started: false,
@@ -747,6 +749,7 @@ impl Host {
             error: None,
             status: None,
             subscribe: false,
+            selection: false,
             control: false,
             control_guards: None,
             started: false,
@@ -805,6 +808,8 @@ impl Host {
         let mut events = Vec::new();
         let mut client_events = Vec::new();
         let mut changed = false;
+        let mut selection = false;
+        let mut selection_changed = false;
         let mut snapshots = false;
         let mut replies = Vec::new();
         let mut detach = false;
@@ -904,7 +909,10 @@ impl Host {
                             events.extend(self.prepare_notification(notification));
                         }
                         client_events.extend(out.client_notifications);
-                        changed |= out.changed;
+                        changed |= out.changed && !out.selection_only;
+                        selection |= out.selection_only;
+                        batch.selection |= out.selection_only;
+                        selection_changed |= out.changed && out.selection_only;
                         detach |= out.detach;
                         detach_hangup |= out.detach_hangup;
                         if out.changed
@@ -1054,6 +1062,8 @@ impl Host {
             let batch = queue.pending.pop_front().unwrap();
             queue.bytes -= batch.bytes;
             snapshots |= batch.subscribe;
+            // Hooks may suspend or exhaust a quantum after the selection itself.
+            selection |= batch.selection;
             if batch.acknowledge {
                 replies.push(Response {
                     request_id: batch.request_id,
@@ -1095,7 +1105,8 @@ impl Host {
         if snapshots {
             self.snapshot(id);
         }
-        if changed {
+        if changed || selection {
+            let selection_state = (selection && !changed).then(|| self.engine.selection_state());
             let recipients = self
                 .clients
                 .iter()
@@ -1103,12 +1114,24 @@ impl Host {
                 .map(|(target, _)| *target)
                 .collect::<Vec<_>>();
             for target in recipients {
-                self.send(
-                    target,
-                    ServerMessage::Changed {
-                        sequence: self.engine.sequence,
-                    },
-                );
+                if self.clients[&target].context.selection_updates
+                    && let Some(state) = &selection_state
+                {
+                    self.send(
+                        target,
+                        ServerMessage::Selection {
+                            sequence: self.engine.sequence,
+                            state: state.clone(),
+                        },
+                    );
+                } else if changed || selection_changed {
+                    self.send(
+                        target,
+                        ServerMessage::Changed {
+                            sequence: self.engine.sequence,
+                        },
+                    );
+                }
             }
         }
         if detach {
@@ -1190,6 +1213,7 @@ impl Host {
             error: None,
             status: None,
             subscribe: false,
+            selection: false,
             control: true,
             control_guards: Some(0),
             started: true,

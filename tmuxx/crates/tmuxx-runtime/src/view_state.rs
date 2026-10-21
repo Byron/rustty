@@ -150,8 +150,10 @@ impl Host {
         }
         let generation = self.engine.panes[&pane].terminal.generation();
         self.apply_view_state(pane)?;
+        let changed = self.engine.panes[&pane].terminal.generation() != generation;
         Ok(Outcome {
-            changed: self.engine.panes[&pane].terminal.generation() != generation,
+            changed,
+            selection_only: changed,
             ..Outcome::default()
         })
     }
