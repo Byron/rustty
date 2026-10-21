@@ -219,8 +219,10 @@ fn focus_updates_do_not_transfer_scrollback_and_other_mutations_still_refresh() 
     legacy_client.context.selection_updates = false;
     legacy_client.delivery_bytes = Arc::new(AtomicUsize::new(0));
     host.clients.insert(3, legacy_client);
-    for command in
-        tmuxx_command::parse(b"new-session -d -x 140 -y 50 ''; split-window -h ''").unwrap()
+    for command in tmuxx_command::parse(
+        b"new-session -d -x 140 -y 50 ''; split-window -h ''; new-window -d ''",
+    )
+    .unwrap()
     {
         host.engine
             .execute(&command, &mut ClientContext::default())
@@ -250,13 +252,18 @@ fn focus_updates_do_not_transfer_scrollback_and_other_mutations_still_refresh() 
         }
         panic!("selection request did not finish");
     };
-    for target in ["%0", "%1", "%1"] {
+    for (window, target) in [
+        ("$0:0", "%0"),
+        ("$0:1", "%2"),
+        ("$0:0", "%1"),
+        ("$0:0", "%1"),
+    ] {
         run(
             &mut host,
             &[
                 "select-window",
                 "-t",
-                "$0:0",
+                window,
                 ";",
                 "select-pane",
                 "-t",
