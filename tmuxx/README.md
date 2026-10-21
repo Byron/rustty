@@ -29,6 +29,14 @@ with `-f PATH`, or set `tmuxx-config-file` in Rustty's settings for GUI-launched
 servers; SSH clients use the remote server's settings. See the
 [Rustty configuration guide](../crates/rustty-app/README.md#tmuxx-windows) for examples.
 
+Splits and new floating panes inherit the source pane's reported working directory
+(OSC 7, including file URIs and kitty shell reports, or OSC 9;9). An explicit
+`split-window -c PATH` or `new-pane -c PATH` takes precedence. Without a usable
+local report, tmuxx uses the source process's detected directory or its starting
+directory. Reports naming another host are ignored; directories that no longer
+exist use the normal home-directory fallback when the child starts. New windows
+and sessions retain their existing directory defaults.
+
 An unmodified supported tmux client can send commands and use control mode with
 tmuxx. Ordinary interactive tmux TTY attachment is unsupported: Rustty supplies
 the pane UI. Conversely, Rustty can attach to stock tmux with

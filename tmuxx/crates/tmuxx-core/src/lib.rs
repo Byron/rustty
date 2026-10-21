@@ -3031,6 +3031,78 @@ mod tests {
         e.execute(&commands[0], c)
     }
     #[test]
+    fn split_and_floating_panes_inherit_target_directory_without_overriding_c() {
+        let start = if cfg!(windows) { "C:/start" } else { "/start" };
+        let detected = if cfg!(windows) {
+            "C:/detected"
+        } else {
+            "/detected"
+        };
+        let reported = if cfg!(windows) {
+            "C:/reported one"
+        } else {
+            "/reported one"
+        };
+        let uri = if cfg!(windows) {
+            "file://server/C:/reported%20one"
+        } else {
+            "file://server/reported%20one"
+        };
+        for verb in ["split-window", "new-pane"] {
+            for (report, process_path, explicit, expected) in [
+                (Some(uri), Some(detected), false, reported),
+                (Some(uri), Some(detected), true, start),
+                (Some("file:///bad%00"), Some(detected), false, detected),
+                (
+                    Some("file://other/elsewhere"),
+                    Some(detected),
+                    false,
+                    detected,
+                ),
+                (None, Some(detected), false, detected),
+                (None, None, false, start),
+            ] {
+                let mut e = Engine::default();
+                e.identity.insert("host".into(), "server".into());
+                let mut c = ClientContext {
+                    cwd: Some(start.into()),
+                    ..Default::default()
+                };
+                run(&mut e, &mut c, "new-session -d -x 160 -y 80").unwrap();
+                run(&mut e, &mut c, "split-window -h -t %0").unwrap();
+                assert_eq!(e.windows[&0].active, 1);
+                e.panes.get_mut(&0).unwrap().current_path = process_path.map(str::to_owned);
+                e.feed(1, b"\x1b]7;file://server/unrelated\x07");
+                e.feed(0, b"\x1b]7;file://server/previous\x07");
+                if let Some(report) = report {
+                    e.feed(0, format!("\x1b]7;{report}\x07").as_bytes());
+                } else {
+                    e.feed(0, b"\x1b]7;\x07");
+                }
+                let command = format!(
+                    "{verb} -t %0{}",
+                    if explicit {
+                        format!(" -c {start}")
+                    } else {
+                        String::new()
+                    }
+                );
+                let out = run(&mut e, &mut c, &command).unwrap();
+                let cwd = out
+                    .effects
+                    .iter()
+                    .find_map(|effect| match effect {
+                        Effect::Spawn { cwd, .. } => Some(cwd.as_deref()),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(cwd, Some(expected), "{command}: {report:?}");
+                assert_eq!(e.panes[&2].cwd.as_deref(), Some(expected));
+            }
+        }
+    }
+
+    #[test]
     fn split_inherits_target_background_before_spawn_and_preserves_style_and_reset() {
         let mut e = Engine::default();
         let mut c = ClientContext::default();
