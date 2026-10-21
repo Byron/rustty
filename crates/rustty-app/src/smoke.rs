@@ -435,6 +435,7 @@ impl Smoke {
             let result = check_themes(app, event_loop, &mut host, &self.directory);
             app.windows.insert(key, host);
             result?;
+            check_tmuxx_management(app, event_loop, &self.directory)?;
             if std::env::var_os("RUSTTY_SMOKE_DECK").is_some() {
                 super::deck_host::check_native_deck(app, event_loop)?;
             }
@@ -449,6 +450,7 @@ impl Smoke {
                     "theme-reload",
                     "tmuxx-theme-scope",
                     "tmuxx-theme-picker",
+                    "tmuxx-server-management",
                 ]
                 .map(serde_json::Value::from),
             );
@@ -1284,6 +1286,271 @@ fn check_themes(
     result?;
     eprintln!(
         "Native smoke: global and connection themes previewed, cancelled, accepted with scoped hints, and reloaded with window isolation and saved-setting preservation"
+    );
+    Ok(())
+}
+
+pub(super) fn check_tmuxx_management(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    directory: &Path,
+) -> Result<()> {
+    use rustty::tmuxx::Connection;
+
+    let endpoint =
+        tmuxx_host::temporary_endpoint(&format!("rustty-management-{}", std::process::id()))?;
+    let configuration = directory.join("tmuxx-management.conf");
+    fs::write(&configuration, "")?;
+    let executable = std::env::current_exe()?;
+    #[cfg(windows)]
+    let executable = executable.with_file_name("tmuxx.exe");
+    let prefix: &[&str] = if cfg!(windows) { &[] } else { &["tmux"] };
+    struct Daemon(std::process::Child);
+    impl Drop for Daemon {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let mut daemon = Daemon(
+        tmuxx_cli::native_daemon_command(&executable, &endpoint, prefix)
+            .arg("-f")
+            .arg(configuration)
+            .spawn()?,
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let connection = loop {
+        if let Ok(connection) = Connection::native(&endpoint, Arc::new(|| {})) {
+            break connection;
+        }
+        if daemon.0.try_wait()?.is_some() || Instant::now() >= deadline {
+            return Err("management smoke daemon did not start".into());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    let initial = if cfg!(windows) {
+        vec![b"cmd.exe".to_vec(), b"/D".to_vec(), b"/Q".to_vec()]
+    } else {
+        vec![b"/bin/sleep".to_vec(), b"60".to_vec()]
+    };
+    let mut command = vec![b"new-session".to_vec(), b"-d".to_vec()];
+    command.extend(initial);
+    connection.command_bytes(command)?;
+    // This second real connection uses Embedded only to check temporary-menu labels.
+    let mut owner = tmuxx_host::Attachment::new(
+        tmuxx_host::Source::Embedded(endpoint.clone()),
+        Some(connection),
+        false,
+    );
+    let connection = Connection::native(&endpoint, Arc::new(|| {}))?;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let graph = loop {
+        if let Some(graph) = connection.graph()
+            && graph.sessions.len() == 1
+        {
+            break graph;
+        }
+        if connection.is_closed() || Instant::now() >= deadline {
+            return Err(format!(
+                "management smoke could not connect: {:?}",
+                connection.errors()
+            )
+            .into());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    owner.instance = connection.instance();
+    let mut entry =
+        tmuxx_host::Attachment::new(tmuxx_host::Source::Local(endpoint), Some(connection), false);
+    entry.instance = entry.connection.as_ref().unwrap().instance();
+    entry.selected.insert(graph.sessions[0].id);
+    let target = entry.target();
+    let original = std::mem::replace(&mut app.tmuxx, vec![entry]);
+    let errors = std::mem::take(&mut app.errors);
+    let result = (|| -> Result<()> {
+        app.tmuxx_menu_command(tmuxx_host::MenuCommand::Disconnect(target.clone()));
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let connections = loop {
+            let entry = app
+                .tmuxx
+                .first()
+                .ok_or("Disconnect removed the local server menu")?;
+            if !entry.monitoring || !entry.selected.is_empty() || entry.retry_at.is_some() {
+                return Err(
+                    "Disconnect retained an active selection or automatic reconnect".into(),
+                );
+            }
+            if let Some(connection) = &entry.connection {
+                if connection.graph().is_some() {
+                    return Err("Disconnected server monitor retained terminal snapshots".into());
+                }
+                if let Some(status) = connection.server_status()
+                    && status.instance_id == target.instance
+                    && status.connections == 1
+                    && owner
+                        .connection
+                        .as_ref()
+                        .unwrap()
+                        .server_status()
+                        .is_some_and(|status| status.connections == 1)
+                {
+                    for attachment in [entry, &owner] {
+                        if !attachment
+                            .menu_entry(None)
+                            .children
+                            .iter()
+                            .any(|item| item.label == "Connections: 1")
+                        {
+                            return Err(
+                                "local or temporary server menu omitted its connection count"
+                                    .into(),
+                            );
+                        }
+                    }
+                    if !entry.menu_entry(None).children.iter().any(|item| {
+                        item.label == "Stop Idle Server (connections remain)"
+                            && item.command.is_none()
+                    }) {
+                        return Err("busy server monitor offered idle shutdown".into());
+                    }
+                    break status.connections;
+                }
+            }
+            if Instant::now() >= deadline {
+                return Err(format!(
+                    "management smoke did not receive the owner client count: {:?}",
+                    app.errors
+                )
+                .into());
+            }
+            app.refresh_tmuxx(event_loop);
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        app.tmuxx_menu_command(tmuxx_host::MenuCommand::Reconnect(target.clone()));
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let entry = app
+                .tmuxx
+                .first()
+                .ok_or("Reconnect removed the local server")?;
+            if let Some(connection) = &entry.connection
+                && let Some(reconnected) = connection.graph()
+            {
+                if entry.monitoring
+                    || !entry.selected.is_empty()
+                    || connection.instance() != target.instance
+                    || !reconnected
+                        .sessions
+                        .iter()
+                        .map(|session| (&session.name, session.id))
+                        .eq(graph
+                            .sessions
+                            .iter()
+                            .map(|session| (&session.name, session.id)))
+                    || !reconnected
+                        .panes
+                        .iter()
+                        .map(|pane| pane.id)
+                        .eq(graph.panes.iter().map(|pane| pane.id))
+                {
+                    return Err(
+                        "Reconnect changed the owner, sessions, panes, or opened windows".into(),
+                    );
+                }
+                break;
+            }
+            if Instant::now() >= deadline {
+                return Err(
+                    format!("management smoke reconnect timed out: {:?}", app.errors).into(),
+                );
+            }
+            app.refresh_tmuxx(event_loop);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        if owner.connection.as_ref().unwrap().is_closed() || !app.errors.is_empty() {
+            return Err(format!(
+                "management smoke stopped the owner or reported errors: {:?}",
+                app.errors
+            )
+            .into());
+        }
+        owner.connection = None;
+        app.tmuxx_menu_command(tmuxx_host::MenuCommand::Disconnect(target.clone()));
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let entry = &app.tmuxx[0];
+            if entry
+                .connection
+                .as_ref()
+                .and_then(Connection::server_status)
+                .is_some_and(|status| status.connections == 0)
+            {
+                if !entry.menu_entry(None).children.iter().any(|item| {
+                    item.command == Some(tmuxx_host::MenuCommand::ShutdownIdle(target.clone()))
+                }) {
+                    return Err("idle server monitor omitted its stop command".into());
+                }
+                break;
+            }
+            if Instant::now() >= deadline {
+                return Err("management smoke server did not become idle".into());
+            }
+            app.refresh_tmuxx(event_loop);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        app.tmuxx_menu_command(tmuxx_host::MenuCommand::ShutdownIdle(target.clone()));
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            app.refresh_tmuxx(event_loop);
+            if app.tmuxx[0].status.as_deref() == Some("Server stopped")
+                && let Some(status) = daemon.0.try_wait()?
+            {
+                if !status.success() {
+                    return Err(format!(
+                        "management smoke daemon failed during idle stop: {status}"
+                    )
+                    .into());
+                }
+                break;
+            }
+            if Instant::now() >= deadline {
+                return Err(format!(
+                    "management smoke idle shutdown failed: {:?}; {:?}",
+                    app.tmuxx[0].status, app.errors
+                )
+                .into());
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        app.refresh_tmuxx(event_loop);
+        if app.tmuxx[0].status.as_deref() != Some("Server stopped")
+            || app.tmuxx[0].deadline().is_some()
+            || !app.errors.is_empty()
+        {
+            return Err(format!(
+                "successful idle shutdown lost its status or reported errors: {:?}",
+                app.errors
+            )
+            .into());
+        }
+        fs::write(
+            directory.join("tmuxx-management.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "instance": target.instance,
+                "connections_after_disconnect": connections,
+                "sessions": graph.sessions.len(),
+                "panes": graph.panes.len(),
+                "idle_stop": true,
+            }))?,
+        )?;
+        Ok(())
+    })();
+    app.tmuxx = original;
+    app.errors = errors;
+    app.sync_tmuxx_menu();
+    result?;
+    eprintln!(
+        "Native smoke: server menus retained live counts without snapshots; reconnect preserved sessions and idle stop reported a clean shutdown"
     );
     Ok(())
 }

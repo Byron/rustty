@@ -92,6 +92,7 @@ pub(super) struct Attachment {
     pub instance: String,
     pub retry_at: Option<Instant>,
     pub status: Option<String>,
+    pub monitoring: bool,
     reconnect_enabled: bool,
     open_all: bool,
     pending_session: Option<PendingSession>,
@@ -104,6 +105,9 @@ pub(super) struct Attachment {
 
 impl Attachment {
     pub fn new(source: Source, connection: Option<Connection>, open_all: bool) -> Self {
+        if let Some(connection) = &connection {
+            let _ = connection.watch_server();
+        }
         let reconnect_enabled = matches!(source, Source::Local(_));
         let connection_deadline = connection
             .is_some()
@@ -116,6 +120,7 @@ impl Attachment {
             instance: String::new(),
             retry_at: None,
             status: None,
+            monitoring: false,
             open_all,
             pending_session: None,
             copied_window: None,
@@ -134,6 +139,23 @@ impl Attachment {
             source: self.source.clone(),
             instance: self.instance.clone(),
         }
+    }
+    fn monitor(&mut self, wake: Arc<dyn Fn() + Send + Sync>) -> Result<()> {
+        let Source::Local(endpoint) = self.source.clone() else {
+            return Err("Only local servers can be monitored after disconnect".into());
+        };
+        let instance = self.instance.clone();
+        *self = Self::new(Source::Local(endpoint.clone()), None, false);
+        self.instance = instance;
+        self.monitoring = true;
+        self.reconnect_enabled = false;
+        if !self.instance.is_empty() {
+            let connection = Connection::native_commands(&endpoint, &self.instance, wake)?;
+            connection.watch_server()?;
+            self.connection = Some(connection);
+            self.connection_deadline = Some(Instant::now() + connection_timeout(&self.source));
+        }
+        Ok(())
     }
     pub fn deadline(&self) -> Option<Instant> {
         self.retry_at
@@ -155,15 +177,26 @@ impl Attachment {
             return false;
         }
         self.connection_deadline = None;
-        if self
-            .connection
-            .as_ref()
-            .is_some_and(|connection| connection.graph().is_some())
-        {
+        if self.connection.as_ref().is_some_and(|connection| {
+            if self.monitoring {
+                !connection.is_closed()
+                    && !self.instance.is_empty()
+                    && connection.instance() == self.instance
+            } else {
+                connection.graph().is_some()
+            }
+        }) {
             return false;
         }
         self.connection = None;
-        self.status = Some("Connection timed out waiting for the server session list".into());
+        self.status = Some(
+            if self.monitoring {
+                "Connection timed out waiting for the server handshake"
+            } else {
+                "Connection timed out waiting for the server session list"
+            }
+            .into(),
+        );
         if self.reconnect_enabled && matches!(self.source, Source::Local(_)) {
             self.retry_at = Some(now + Duration::from_secs(2));
         } else {
@@ -341,7 +374,7 @@ impl Attachment {
                     .map(|(name, _)| format!("{name} · {source}"))
             })
             .unwrap_or(source);
-        if self.connection.as_ref().is_none_or(Connection::is_closed) {
+        if self.monitoring || self.connection.as_ref().is_none_or(Connection::is_closed) {
             format!("tmuxx · {source} · disconnected")
         } else {
             format!("tmuxx · {source}")
@@ -359,7 +392,7 @@ impl Attachment {
             })
     }
 
-    fn menu_entry(&self, name: Option<&str>) -> rustty_app::tmuxx_menu::Entry {
+    pub(super) fn menu_entry(&self, name: Option<&str>) -> rustty_app::tmuxx_menu::Entry {
         use rustty_app::tmuxx_menu::Entry;
         let mut children = Vec::new();
         if let Some(status) = &self.status {
@@ -377,6 +410,19 @@ impl Attachment {
                 && !target.instance.is_empty()
                 && connection.instance() == target.instance
         });
+        let connections = self
+            .connection
+            .as_ref()
+            .filter(|_| live)
+            .and_then(Connection::server_status)
+            .filter(|status| status.instance_id == target.instance)
+            .map(|status| status.connections);
+        if !matches!(self.source, Source::SystemSsh(_)) {
+            children.push(Entry::label(connections.map_or_else(
+                || "Connections: unavailable".into(),
+                |count| format!("Connections: {count}"),
+            )));
+        }
         for session in self
             .connection
             .as_ref()
@@ -413,17 +459,31 @@ impl Attachment {
             };
             children.push(Entry::submenu(session.name, session_entries));
         }
-        if !self.temporary() {
+        if !self.temporary() && !self.monitoring {
             children.push(Entry::command(
                 "Disconnect",
                 MenuCommand::Disconnect(target.clone()),
             ));
         }
         if live {
-            children.push(Entry::command(
-                "Stop Server…",
-                MenuCommand::Shutdown(target),
-            ));
+            if self.monitoring {
+                children.push(match connections {
+                    Some(0) => Entry::command(
+                        "Stop Idle Server…",
+                        MenuCommand::ShutdownIdle(target.clone()),
+                    ),
+                    Some(_) => Entry::label("Stop Idle Server (connections remain)"),
+                    None => Entry::label("Stop Idle Server (connection count unavailable)"),
+                });
+            } else {
+                children.push(Entry::command(
+                    "Stop Server…",
+                    MenuCommand::Shutdown(target.clone()),
+                ));
+            }
+        }
+        if matches!(self.source, Source::Local(_)) && (self.monitoring || !live) {
+            children.push(Entry::command("Reconnect", MenuCommand::Reconnect(target)));
         }
         if name.is_some()
             && let Some(target) = self.source.ssh_target()
@@ -448,6 +508,42 @@ impl Attachment {
             }),
             children,
         )
+    }
+}
+
+pub(super) fn shutdown_confirmation(
+    attachments: &[Attachment],
+    target: &Target,
+    idle: bool,
+) -> String {
+    let others = attachments
+        .iter()
+        .find(|entry| entry.target() == *target)
+        .and_then(|entry| {
+            let connection = entry.connection.as_ref().filter(|connection| {
+                !connection.is_closed() && connection.instance() == target.instance
+            })?;
+            let status = connection
+                .server_status()
+                .filter(|status| status.instance_id == target.instance)?;
+            let own = if entry.monitoring {
+                0
+            } else {
+                connection.view_connection_count()?
+            };
+            Some(status.connections.saturating_sub(own))
+        });
+    match others {
+        Some(0) => "No other clients are connected. This will close the server's sessions.".into(),
+        Some(count) if idle => format!(
+            "Other connections: {count}. The server will stay running while they are connected."
+        ),
+        Some(count) => {
+            format!("Other connections: {count}. Stopping this server will also end their work.")
+        }
+        None => {
+            "The connection count is unavailable. This will close the server's sessions.".into()
+        }
     }
 }
 
@@ -660,7 +756,7 @@ impl App {
         command: MenuCommand,
     ) {
         if !command.requires_confirmation() {
-            let connecting = matches!(command, MenuCommand::Connect(_));
+            let connecting = matches!(command, MenuCommand::Connect(_) | MenuCommand::Reconnect(_));
             let error_count = self.errors.len();
             self.tmuxx_menu_command(command);
             if connecting && self.errors.len() > error_count {
@@ -801,7 +897,7 @@ impl App {
             let endpoint = std::path::absolute(tmuxx_cli::default_native_endpoint()?)?;
             let source = Source::Local(endpoint.clone());
             let index = if let Some(index) = self.tmuxx.iter().position(|e| e.source == source) {
-                if !self.tmuxx[index].reconnect_enabled
+                if self.tmuxx[index].shutdown_deadline.is_some()
                     && self.tmuxx[index]
                         .connection
                         .as_ref()
@@ -822,10 +918,11 @@ impl App {
                 self.tmuxx.push(Attachment::new(source, None, false));
                 self.tmuxx.len() - 1
             };
-            if self.tmuxx[index]
-                .connection
-                .as_ref()
-                .is_none_or(Connection::is_closed)
+            if self.tmuxx[index].monitoring
+                || self.tmuxx[index]
+                    .connection
+                    .as_ref()
+                    .is_none_or(Connection::is_closed)
             {
                 let connection = Connection::native(&endpoint, self.tmuxx_wake()).ok();
                 if connection.is_none() {
@@ -837,6 +934,10 @@ impl App {
                 let entry = &mut self.tmuxx[index];
                 entry.restore = entry.saved_attachments(&self.workspace);
                 entry.connection = connection;
+                entry.monitoring = false;
+                if let Some(connection) = &entry.connection {
+                    let _ = connection.watch_server();
+                }
                 entry.connection_deadline = entry
                     .connection
                     .is_some()
@@ -860,8 +961,12 @@ impl App {
         } else {
             Source::Local(local_endpoint(target)?)
         };
+        self.connect_tmuxx_source(source)
+    }
+    fn connect_tmuxx_source(&mut self, source: Source) -> Result<()> {
         let existing = self.tmuxx.iter().position(|entry| entry.source == source);
         if let Some(index) = existing
+            && !self.tmuxx[index].monitoring
             && let Some(connection) = self.tmuxx[index].connection.as_ref()
             && !connection.is_closed()
         {
@@ -895,10 +1000,12 @@ impl App {
             Source::Embedded(_) => unreachable!("connect targets refer to existing owners"),
         };
         if let Some(index) = existing {
+            let _ = connection.watch_server();
             let entry = &mut self.tmuxx[index];
             entry.restore = entry.saved_attachments(&self.workspace);
             entry.open_all |= entry.instance.is_empty() && entry.restore.is_empty();
             entry.connection = Some(connection);
+            entry.monitoring = false;
             entry.connection_deadline = Some(Instant::now() + connection_timeout(&source));
             entry.reconnect_enabled = matches!(source, Source::Local(_));
             entry.retry_at = None;
@@ -945,6 +1052,7 @@ impl App {
         let mut connection_error = false;
         let mut reset = Vec::new();
         let mut remove = Vec::new();
+        let mut idle = Vec::new();
         for (index, entry) in self.tmuxx.iter_mut().enumerate() {
             let Some(connection) = &entry.connection else {
                 if entry.temporary() && !entry.waiting_for_window() {
@@ -952,9 +1060,15 @@ impl App {
                 }
                 continue;
             };
-            let errors = connection.errors();
+            let mut errors = connection.errors();
+            if entry.shutdown_deadline.is_some() && connection.is_closed() {
+                errors.retain(|error| error != "server exited");
+            }
             if !errors.is_empty() {
                 connection_error = true;
+                if !connection.is_closed() {
+                    entry.shutdown_deadline = None;
+                }
                 if entry.copied_window.is_none()
                     && !entry
                         .pending_session
@@ -978,6 +1092,7 @@ impl App {
                         .windows
                         .retain(|window| !entry.mapping.sessions.contains_key(&window.id));
                     entry.status = Some("Server stopped".into());
+                    entry.connection = None;
                 } else {
                     entry.status = Some("Disconnected; input is not replayed".into());
                 }
@@ -1088,6 +1203,18 @@ impl App {
             if entry.temporary() && !entry.waiting_for_window() && entry.selected.is_empty() {
                 remove.push(index);
             }
+            if matches!(entry.source, Source::Local(_))
+                && graph.sessions.is_empty()
+                && !entry.waiting_for_window()
+            {
+                idle.push(index);
+            }
+        }
+        for index in idle {
+            let wake = self.tmuxx_wake();
+            if let Err(error) = self.tmuxx[index].monitor(wake) {
+                self.tmuxx[index].status = Some(error.to_string());
+            }
         }
         for index in remove.into_iter().rev() {
             let entry = self.tmuxx.remove(index);
@@ -1169,6 +1296,7 @@ impl App {
             };
             match Connection::native(endpoint, wake) {
                 Ok(connection) => {
+                    let _ = connection.watch_server();
                     entry.restore = entry.saved_attachments(&self.workspace);
                     entry.connection = Some(connection);
                     entry.connection_deadline = Some(now + Duration::from_secs(10));
@@ -1206,6 +1334,14 @@ impl App {
         self.workspace.windows.retain(|w| w.id != window);
         if entry.temporary() && entry.selected.is_empty() {
             self.tmuxx.remove(index);
+        } else if matches!(entry.source, Source::Local(_))
+            && entry.selected.is_empty()
+            && !entry.waiting_for_window()
+        {
+            let wake = self.tmuxx_wake();
+            if let Err(error) = self.tmuxx[index].monitor(wake) {
+                self.tmuxx[index].status = Some(error.to_string());
+            }
         }
         self.changed();
     }
@@ -1226,7 +1362,9 @@ impl App {
             | MenuCommand::Kill(target, _)
             | MenuCommand::Execute(target, _)
             | MenuCommand::Disconnect(target)
-            | MenuCommand::Shutdown(target) => target,
+            | MenuCommand::Reconnect(target)
+            | MenuCommand::Shutdown(target)
+            | MenuCommand::ShutdownIdle(target) => target,
         };
         let Some(index) = self
             .tmuxx
@@ -1237,14 +1375,16 @@ impl App {
                 .push("The tmuxx connection changed; select it again in the menu".into());
             return;
         };
-        if !matches!(command, MenuCommand::Disconnect(_))
-            && (target.instance.is_empty()
-                || self.tmuxx[index]
-                    .connection
-                    .as_ref()
-                    .is_none_or(|connection| {
-                        connection.is_closed() || connection.instance() != target.instance
-                    }))
+        if !matches!(
+            command,
+            MenuCommand::Disconnect(_) | MenuCommand::Reconnect(_)
+        ) && (target.instance.is_empty()
+            || self.tmuxx[index]
+                .connection
+                .as_ref()
+                .is_none_or(|connection| {
+                    connection.is_closed() || connection.instance() != target.instance
+                }))
         {
             self.errors.push(
                 "The tmuxx server changed or disconnected; select it again in the menu".into(),
@@ -1253,6 +1393,11 @@ impl App {
         }
         match command {
             MenuCommand::Connect(_) => unreachable!("connection command handled above"),
+            MenuCommand::Reconnect(target) => {
+                if let Err(error) = self.connect_tmuxx_source(target.source) {
+                    self.errors.push(error.to_string());
+                }
+            }
             MenuCommand::Open(_, session) => {
                 let entry = &mut self.tmuxx[index];
                 if entry
@@ -1325,7 +1470,7 @@ impl App {
                 }
             }
             MenuCommand::Disconnect(_) => {
-                let entry = self.tmuxx.remove(index);
+                let entry = &self.tmuxx[index];
                 if let Some(connection) = &entry.connection {
                     for session in entry.mapping.sessions.values() {
                         if let Err(error) = connection.release_view(*session) {
@@ -1336,14 +1481,30 @@ impl App {
                 self.workspace
                     .windows
                     .retain(|w| !entry.mapping.sessions.contains_key(&w.id));
+                if matches!(entry.source, Source::Local(_)) {
+                    let wake = self.tmuxx_wake();
+                    if let Err(error) = self.tmuxx[index].monitor(wake) {
+                        self.tmuxx[index].status = Some(error.to_string());
+                    }
+                } else {
+                    self.tmuxx.remove(index);
+                }
             }
-            MenuCommand::Shutdown(_) => {
+            MenuCommand::Shutdown(_) | MenuCommand::ShutdownIdle(_) => {
+                let idle = matches!(command, MenuCommand::ShutdownIdle(_));
                 let entry = &mut self.tmuxx[index];
                 let result = entry
                     .connection
                     .as_ref()
                     .ok_or_else(|| "Disconnected".to_owned())
-                    .and_then(|c| c.command(["kill-server"]).map_err(|e| e.to_string()));
+                    .and_then(|c| {
+                        c.command([if idle {
+                            "tmuxx-stop-if-idle"
+                        } else {
+                            "kill-server"
+                        }])
+                        .map_err(|e| e.to_string())
+                    });
                 if let Err(error) = result {
                     self.errors.push(error);
                     return;
@@ -1363,6 +1524,7 @@ impl App {
         self.changed();
     }
     pub(super) fn detach_all_tmuxx(&mut self) {
+        let wake = self.tmuxx_wake();
         for entry in &mut self.tmuxx {
             entry.selected.clear();
             entry.restore.clear();
@@ -1379,6 +1541,12 @@ impl App {
             self.workspace
                 .windows
                 .retain(|window| !entry.mapping.sessions.contains_key(&window.id));
+            if matches!(entry.source, Source::Local(_))
+                && !entry.monitoring
+                && let Err(error) = entry.monitor(wake.clone())
+            {
+                entry.status = Some(error.to_string());
+            }
         }
         self.tmuxx.retain(|entry| !entry.temporary());
         self.changed();
@@ -1400,6 +1568,201 @@ impl App {
 mod tests {
     use super::*;
     use rustty::tmuxx::{Graph, ServerSession};
+
+    #[test]
+    fn disconnected_local_servers_remain_reachable_without_a_view_connection() {
+        let mut entry = Attachment::new(Source::Local("/tmp/server.native".into()), None, false);
+        entry.instance = "owner".into();
+        entry.monitoring = true;
+        entry.reconnect_enabled = false;
+        let menu = entry.menu_entry(None);
+        assert!(menu.label.contains("disconnected"));
+        assert!(
+            menu.children
+                .iter()
+                .any(|item| { item.command == Some(MenuCommand::Reconnect(entry.target())) })
+        );
+        assert!(menu.children.iter().all(|item| !matches!(
+            item.command,
+            Some(MenuCommand::Disconnect(_) | MenuCommand::ShutdownIdle(_))
+        )));
+        assert!(entry.deadline().is_none());
+    }
+
+    #[cfg(unix)]
+    fn monitoring_peer(name: &str, hello: bool) -> (Attachment, std::os::unix::net::UnixStream) {
+        use std::io::Write;
+        use std::os::unix::net::UnixListener;
+        let path = std::env::temp_dir().join(format!(
+            "rustty-monitor-{name}-{}.native",
+            std::process::id()
+        ));
+        let listener = UnixListener::bind(&path).unwrap();
+        let mut entry = Attachment::new(Source::Local(path.clone()), None, false);
+        entry.instance = "owner".into();
+        entry.monitor(Arc::new(|| {})).unwrap();
+        let (mut peer, _) = listener.accept().unwrap();
+        std::fs::remove_file(path).unwrap();
+        if hello {
+            peer.write_all(b"{\"version\":1,\"instance_id\":\"owner\"}\n")
+                .unwrap();
+            let until = Instant::now() + Duration::from_secs(2);
+            while entry.connection.as_ref().unwrap().instance() != "owner" {
+                assert!(Instant::now() < until, "monitor handshake did not complete");
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        }
+        (entry, peer)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn monitoring_requires_known_idle_count_and_never_offers_force_stop() {
+        use std::io::Write;
+        let (mut entry, mut peer) = monitoring_peer("menu", true);
+        for count in [None, Some(0), Some(2)] {
+            if let Some(count) = count {
+                writeln!(
+                    peer,
+                    r#"{{"type":"server_status","instance_id":"owner","connections":{count}}}"#
+                )
+                .unwrap();
+                let until = Instant::now() + Duration::from_secs(2);
+                while entry
+                    .connection
+                    .as_ref()
+                    .unwrap()
+                    .server_status()
+                    .is_none_or(|status| status.connections != count)
+                {
+                    assert!(Instant::now() < until, "monitor status did not arrive");
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+            }
+            let menu = entry.menu_entry(None);
+            assert!(menu.children.iter().all(|item| !matches!(
+                item.command,
+                Some(MenuCommand::Shutdown(_) | MenuCommand::Disconnect(_))
+            )));
+            let stop = menu
+                .children
+                .iter()
+                .find(|item| item.label.starts_with("Stop Idle Server"))
+                .unwrap();
+            assert_eq!(
+                stop.command,
+                (count == Some(0)).then(|| MenuCommand::ShutdownIdle(entry.target()))
+            );
+        }
+        entry.monitoring = false;
+        assert!(
+            entry
+                .menu_entry(None)
+                .children
+                .iter()
+                .any(|item| item.command == Some(MenuCommand::Shutdown(entry.target())))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn server_shutdown_confirmation_warns_only_for_other_connections() {
+        use std::io::Write;
+        let (mut entry, mut peer) = monitoring_peer("shutdown-wording", true);
+        let target = entry.target();
+        let unknown = "The connection count is unavailable. This will close the server's sessions.";
+        assert_eq!(
+            shutdown_confirmation(std::slice::from_ref(&entry), &target, false),
+            unknown
+        );
+        for (count, monitoring, idle, expected) in [
+            (
+                0,
+                true,
+                true,
+                "No other clients are connected. This will close the server's sessions.",
+            ),
+            (
+                1,
+                false,
+                false,
+                "No other clients are connected. This will close the server's sessions.",
+            ),
+            (
+                3,
+                false,
+                false,
+                "Other connections: 2. Stopping this server will also end their work.",
+            ),
+            (
+                3,
+                true,
+                true,
+                "Other connections: 3. The server will stay running while they are connected.",
+            ),
+        ] {
+            writeln!(
+                peer,
+                r#"{{"type":"server_status","instance_id":"owner","connections":{count}}}"#
+            )
+            .unwrap();
+            let until = Instant::now() + Duration::from_secs(2);
+            while entry
+                .connection
+                .as_ref()
+                .unwrap()
+                .server_status()
+                .is_none_or(|status| status.connections != count)
+            {
+                assert!(Instant::now() < until, "server status did not arrive");
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            entry.monitoring = monitoring;
+            assert_eq!(
+                shutdown_confirmation(std::slice::from_ref(&entry), &target, idle),
+                expected
+            );
+        }
+        let stale = Target {
+            instance: "previous-owner".into(),
+            ..target
+        };
+        assert_eq!(
+            shutdown_confirmation(std::slice::from_ref(&entry), &stale, false),
+            unknown
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn monitoring_deadline_requires_validated_identity_without_session_or_status() {
+        for (index, expected) in [None, Some("owner"), Some("replacement"), Some("")]
+            .into_iter()
+            .enumerate()
+        {
+            let (mut entry, _peer) =
+                monitoring_peer(&format!("deadline-{index}"), expected.is_some());
+            if let Some(expected) = expected {
+                entry.instance = expected.into();
+            }
+            let connection = entry.connection.as_ref().unwrap();
+            assert!(connection.graph().is_none());
+            assert!(connection.server_status().is_none());
+            let deadline = entry.connection_deadline.unwrap();
+            assert_eq!(entry.deadline(), Some(deadline));
+            assert!(!entry.expire_connection(deadline - Duration::from_millis(1)));
+            let expires = expected != Some("owner");
+            assert_eq!(entry.expire_connection(deadline), expires);
+            assert_eq!(entry.connection.is_none(), expires);
+            assert!(entry.connection_deadline.is_none());
+            assert!(entry.retry_at.is_none());
+            assert!(!entry.reconnect_enabled);
+            assert_eq!(
+                entry.status.as_deref(),
+                expires.then_some("Connection timed out waiting for the server handshake")
+            );
+        }
+    }
 
     #[test]
     fn server_configuration_is_checked_and_passed_as_a_separate_daemon_argument() {

@@ -269,6 +269,9 @@ impl Scheduler {
     pub(super) fn has_jobs(&self) -> bool {
         !self.jobs.is_empty()
     }
+    pub(super) fn is_internal(&self, id: u64) -> bool {
+        self.internal.contains_key(&id)
+    }
     pub(super) fn flush_waiters(&mut self) {
         let mut ids = std::mem::take(&mut self.event_waiters)
             .into_keys()
@@ -579,6 +582,7 @@ impl Host {
             .first()
             .is_some_and(|arg| arg == b"tmuxx-stdin")
         {
+            self.management_clients.remove(&id);
             let result = if request.argv.len() != 2 {
                 Err("usage: tmuxx-stdin request-id".into())
             } else if let Some(original) = std::str::from_utf8(&request.argv[1])
@@ -623,6 +627,26 @@ impl Host {
             ),
             Err(error) => (VecDeque::new(), Some(error.to_string())),
         };
+        let management = error.is_none()
+            && commands.len() == 1
+            && commands.front().is_some_and(|item| {
+                item.command.args.len() == 1
+                    && matches!(
+                        item.command.args[0].as_slice(),
+                        b"tmuxx-server-status" | b"tmuxx-stop-if-idle"
+                    )
+            })
+            && !request.subscribe
+            && !self.clients[&id].subscribed
+            && !self.hooks.attached.contains(&id)
+            && control_guards.is_none();
+        if !management {
+            self.management_clients.remove(&id);
+        } else if !self.scheduler.queues.contains_key(&id) {
+            // Only a fresh transport can become a management-only observer.
+            // Work queued after its watch must revoke this before either runs.
+            self.management_clients.insert(id);
+        }
         let queue = self.scheduler.queues.entry(id).or_default();
         if request.argv.len() > MAX_COMMANDS
             || queue.pending.len() >= MAX_PENDING_REQUESTS
@@ -659,6 +683,8 @@ impl Host {
     }
 
     pub(super) fn disconnect(&mut self, id: u64) {
+        self.server_watchers.remove(&id);
+        self.management_clients.remove(&id);
         self.snapshots_pending.remove(&id);
         self.snapshots_requested.remove(&id);
         self.pane_waiters.remove(&id);
@@ -1206,6 +1232,9 @@ impl Host {
             return Err("command nesting limit exceeded".into());
         }
         let name = command.args.first().map(Vec::as_slice).unwrap_or_default();
+        if matches!(name, b"tmuxx-server-status" | b"tmuxx-stop-if-idle") {
+            return self.server_command(id, command, context).map(Step::Done);
+        }
         if tmuxx_command::registry::find(name).is_ok() {
             tmuxx_command::registry::validate_server(command)?;
         }
@@ -1724,6 +1753,8 @@ impl Host {
                         | b"tmuxx-retain-pane"
                         | b"tmuxx-claim-pane"
                         | b"tmuxx-release-pane"
+                        | b"tmuxx-server-status"
+                        | b"tmuxx-stop-if-idle"
                 )
             }) {
                 continue;

@@ -5073,6 +5073,7 @@ impl App {
                 let (title, button) = match confirmation {
                     Confirmation::Close(_) => ("Close running commands?", "Close"),
                     Confirmation::TmuxxClose { .. } => ("Close tmuxx window?", "Terminate session"),
+                    Confirmation::TmuxxTerminate(tmuxx_host::MenuCommand::Shutdown(_) | tmuxx_host::MenuCommand::ShutdownIdle(_)) => ("Stop tmuxx server?", "Stop Server"),
                     Confirmation::TmuxxTerminate(_) => ("Terminate tmuxx programs?", "Terminate"),
                     Confirmation::Paste(_) => ("Paste potentially unsafe text?", "Paste"),
                     Confirmation::OpenUrl { .. } => {
@@ -5091,6 +5092,13 @@ impl App {
                                 } else {
                                     ui.label("Close the window to keep programs running, or terminate the session.");
                                 }
+                            }
+                            Confirmation::TmuxxTerminate(command @ (tmuxx_host::MenuCommand::Shutdown(target) | tmuxx_host::MenuCommand::ShutdownIdle(target))) => {
+                                ui.label(tmuxx_host::shutdown_confirmation(
+                                    &self.tmuxx,
+                                    target,
+                                    matches!(command, tmuxx_host::MenuCommand::ShutdownIdle(_)),
+                                ));
                             }
                             Confirmation::TmuxxTerminate(_) => {
                                 ui.label("This stops the selected server programs, including work in other clients.");

@@ -770,7 +770,9 @@ fn native_client(cli: Cli, mut stream: NativeStream, stdin_file_stream: bool) ->
             ServerMessage::ClientFlags { flags } => {
                 wait_exit = flags.split(',').any(|flag| flag == "wait-exit");
             }
-            ServerMessage::Changed { .. } | ServerMessage::HostEffect { .. } => {}
+            ServerMessage::Changed { .. }
+            | ServerMessage::HostEffect { .. }
+            | ServerMessage::ServerStatus(_) => {}
         }
         stdout.flush()?;
     }

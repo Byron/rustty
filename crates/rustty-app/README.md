@@ -385,12 +385,32 @@ stacking, clipping, and modal input policies remain authoritative.
 
 Closing a panel kills its pane. Closing a tab kills its server window, including
 linked views in other sessions. Closing a persistent or SSH window asks whether
-to terminate its session or close only the local window. Detached sessions remain
-in the tmuxx menu, which lists their tabs and offers explicit session/server
-termination. Closing a temporary window terminates its session; there is no
+to terminate its session or close only the local window. The tmuxx menu lists
+sessions and their tabs and offers explicit session/server termination.
+Closing a temporary window terminates its session; there is no
 persistent detach choice for an engine bound to that window's lifetime. A linked
 session visible in another temporary window keeps that engine alive until its
 last window closes.
+
+Local servers remain in the menu after **Disconnect**, closing their last local
+window, or terminating all sessions. Rustty releases their terminal snapshots
+and keeps a lightweight management connection. Choose **Reconnect** to browse
+the sessions again. **Stop Idle Server…** is available when the connection count
+is zero; the server checks again before stopping, so a client connecting while
+the confirmation is open prevents shutdown. Stopping also ends any programs
+still running in detached sessions.
+
+Temporary and persistent native servers show live connection counts without
+transferring terminal contents. Counts include GUI, window-size, and CLI
+connections; management-only observers and internal server jobs are excluded.
+Older servers show **Connections: unavailable**; live counts and guarded idle
+shutdown require an updated server. Connected views retain the existing
+**Stop Server…** confirmation, which also stops work in other clients. On macOS
+the daemon's small PTY watchdog exits with the daemon.
+
+Server-stop confirmations use neutral wording when no other clients are connected,
+excluding the current view's own connection and sizing clients. Other local and
+remote connections trigger a warning; an unavailable count is stated explicitly.
 
 On application restart Rustty restores ordinary windows and reconnects saved
 local native-daemon attachments. It verifies the daemon incarnation and session
