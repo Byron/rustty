@@ -14,6 +14,63 @@ pub(super) fn path(bytes: &[u8]) -> Result<String, String> {
     Ok(value)
 }
 
+pub(super) fn reported_path(bytes: &[u8], hostname: Option<&str>) -> Option<String> {
+    let report = std::str::from_utf8(bytes).ok()?;
+    let report = report
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .unwrap_or(report);
+    let file_uri = report.starts_with("file://");
+    let uri = report
+        .strip_prefix("file://")
+        .or_else(|| report.strip_prefix("kitty-shell-cwd://"));
+    let value = if let Some(uri) = uri {
+        let (host, path) = uri.split_once('/')?;
+        let host = host.trim_end_matches('.');
+        // A nested SSH shell can report a directory on a different host.
+        if !host.is_empty()
+            && !host.eq_ignore_ascii_case("localhost")
+            && !hostname.is_some_and(|local| {
+                let local = local.trim_end_matches('.');
+                host.eq_ignore_ascii_case(local)
+                    || ((!host.contains('.') || !local.contains('.'))
+                        && host
+                            .split('.')
+                            .next()
+                            .unwrap_or(host)
+                            .eq_ignore_ascii_case(local.split('.').next().unwrap_or(local)))
+            })
+        {
+            return None;
+        }
+        let mut decoded = vec![b'/'];
+        let mut input = path.bytes();
+        while let Some(byte) = input.next() {
+            decoded.push(if file_uri && byte == b'%' {
+                let high = char::from(input.next()?).to_digit(16)?;
+                let low = char::from(input.next()?).to_digit(16)?;
+                (high * 16 + low) as u8
+            } else {
+                byte
+            });
+        }
+        String::from_utf8(decoded).ok()?
+    } else {
+        report.to_owned()
+    };
+    #[cfg(windows)]
+    let value = if uri.is_some()
+        && value.as_bytes().get(1).is_some_and(u8::is_ascii_alphabetic)
+        && value.as_bytes().get(2) == Some(&b':')
+        && matches!(value.as_bytes().get(3), Some(b'/' | b'\\'))
+    {
+        value[1..].to_owned()
+    } else {
+        value
+    };
+    (!value.contains('\0') && std::path::Path::new(&value).is_absolute()).then_some(value)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{ClientContext, Engine, Outcome};
@@ -28,6 +85,86 @@ mod tests {
             &Command::new(args.iter().map(|arg| arg.to_vec()).collect()),
             context,
         )
+    }
+
+    #[test]
+    fn reported_directories_decode_only_local_native_paths() {
+        let path = if cfg!(windows) {
+            "C:/work 雪 %20"
+        } else {
+            "/work 雪 %20"
+        };
+        let uri_path = if cfg!(windows) {
+            "/C:/work%20%E9%9B%AA%20%2520"
+        } else {
+            "/work%20%E9%9B%AA%20%2520"
+        };
+        for host in ["", "localhost", "SERVER", "server.example"] {
+            assert_eq!(
+                super::reported_path(
+                    format!("file://{host}{uri_path}").as_bytes(),
+                    Some("server")
+                ),
+                Some(path.into())
+            );
+        }
+        assert_eq!(
+            super::reported_path(
+                format!("file://server{uri_path}").as_bytes(),
+                Some("server.example.")
+            ),
+            Some(path.into())
+        );
+        assert_eq!(
+            super::reported_path(
+                format!("file://server.other{uri_path}").as_bytes(),
+                Some("server.example")
+            ),
+            None
+        );
+        assert_eq!(
+            super::reported_path(path.as_bytes(), None),
+            Some(path.into())
+        );
+        assert_eq!(
+            super::reported_path(format!("\"{path}\"").as_bytes(), None),
+            Some(path.into())
+        );
+        #[cfg(unix)]
+        assert_eq!(
+            super::reported_path(b"kitty-shell-cwd://server/work%20", Some("server")),
+            Some("/work%20".into())
+        );
+        #[cfg(windows)]
+        {
+            assert_eq!(
+                super::reported_path(br"C:\work\one", None),
+                Some(r"C:\work\one".into())
+            );
+            assert_eq!(
+                super::reported_path(b"kitty-shell-cwd://server/C:/work%20", Some("server")),
+                Some("C:/work%20".into())
+            );
+        }
+        for value in [
+            b"".as_slice(),
+            b"relative",
+            b"file://server",
+            b"file:///bad%0",
+            b"file:///bad%xx",
+            b"file:///bad%00",
+            b"file:///bad%ff",
+            b"/bad\xff",
+            b"/bad\0",
+            b"file://other/home/work",
+            b"kitty-shell-cwd://other/home/work",
+        ] {
+            assert_eq!(
+                super::reported_path(value, Some("server")),
+                None,
+                "{value:?}"
+            );
+        }
     }
 
     #[test]

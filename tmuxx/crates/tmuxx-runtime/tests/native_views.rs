@@ -88,6 +88,159 @@ fn command(
 }
 
 #[test]
+fn native_splits_spawn_in_reported_directory_with_override_and_stale_fallback() {
+    let directory = std::env::temp_dir().join(format!(
+        "tmuxx-split-cwd-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    struct Directory(std::path::PathBuf);
+    impl Drop for Directory {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let _directory = Directory(directory.clone());
+    let reported = directory.join("reported 雪 space");
+    let explicit = directory.join("explicit");
+    let fallback = directory.join("fallback");
+    for path in [&reported, &explicit, &fallback] {
+        std::fs::create_dir_all(path).unwrap();
+    }
+    let host = host();
+    let admin = host.connect().unwrap();
+    assert_eq!(
+        command(
+            &admin,
+            &[
+                "new-session",
+                "-d",
+                "-s",
+                "cwd",
+                "-c",
+                directory.to_str().unwrap(),
+                "sleep",
+                "30"
+            ],
+            None,
+            false,
+        )
+        .error,
+        None
+    );
+    assert_eq!(
+        command(&admin, &["respawn-pane", "-kE", "-t", "%0"], None, false).error,
+        None
+    );
+    let report = |path: &std::path::Path| {
+        let path = path.to_str().unwrap().replace('\\', "/");
+        let encoded = path
+            .bytes()
+            .map(|byte| match byte {
+                b'/' | b':' | b'-' | b'_' | b'.' | b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z' => {
+                    char::from(byte).to_string()
+                }
+                _ => format!("%{byte:02X}"),
+            })
+            .collect::<String>();
+        let separator = if path.starts_with('/') { "" } else { "/" };
+        assert_eq!(
+            command(
+                &admin,
+                &["display-message", "-I", "-t", "%0"],
+                Some(format!("\x1b]7;file://localhost{separator}{encoded}\x07").into_bytes()),
+                false,
+            )
+            .error,
+            None
+        );
+    };
+    let home = format!("HOME={}", fallback.display());
+    let script = "import os,time; print('CWD:'+os.getcwd().encode('utf-8').hex()+':END', flush=True); time.sleep(30)";
+    for operation in ["split-window", "new-pane"] {
+        for mode in ["reported", "explicit", "stale"] {
+            let expected = match mode {
+                "explicit" => &explicit,
+                "stale" => &fallback,
+                _ => &reported,
+            };
+            if mode == "stale" {
+                let stale = directory.join("deleted");
+                std::fs::create_dir(&stale).unwrap();
+                report(&stale);
+                std::fs::remove_dir(stale).unwrap();
+            } else {
+                report(&reported);
+            }
+            let mut argv = vec![
+                operation,
+                "-dP",
+                "-t",
+                "%0",
+                "-F",
+                "#{pane_id}",
+                "-e",
+                &home,
+            ];
+            if mode == "explicit" {
+                argv.extend(["-c", explicit.to_str().unwrap()]);
+            }
+            argv.extend(["python3", "-u", "-c", script]);
+            let reply = command(&admin, &argv, None, false);
+            assert_eq!(reply.error, None, "{operation}: {mode}");
+            let pane = String::from_utf8(reply.output).unwrap();
+            let pane = pane.trim();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let capture = command(
+                    &admin,
+                    &["capture-pane", "-p", "-J", "-S", "-", "-t", pane],
+                    None,
+                    false,
+                );
+                assert_eq!(capture.error, None);
+                let capture = String::from_utf8(capture.output).unwrap();
+                if let Some(path) = capture
+                    .lines()
+                    .find_map(|line| line.strip_prefix("CWD:")?.strip_suffix(":END"))
+                {
+                    let bytes = path
+                        .as_bytes()
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
+                        .map(|pair| {
+                            u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap()
+                        })
+                        .collect::<Vec<_>>();
+                    let actual = std::path::PathBuf::from(String::from_utf8(bytes).unwrap());
+                    assert_eq!(
+                        actual.canonicalize().unwrap(),
+                        expected.canonicalize().unwrap(),
+                        "{operation}: {mode}"
+                    );
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "{operation}: {mode}: {capture:?}"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert_eq!(
+                command(&admin, &["kill-pane", "-t", pane], None, false).error,
+                None
+            );
+        }
+    }
+    host.shutdown().unwrap();
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn native_late_gui_events_after_kill_are_idempotent() {
     let host = host();
     let admin = host.connect().unwrap();
