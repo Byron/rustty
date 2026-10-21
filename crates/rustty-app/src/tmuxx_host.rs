@@ -1032,21 +1032,12 @@ impl App {
                     entry.status = Some("Copying window into a persistent session…".into());
                     std::thread::spawn(move || {
                         let result = (|| {
-                            let connection = Connection::native(&endpoint, Arc::new(|| {}))
-                                .map_err(|e| e.to_string())?;
-                            let deadline = Instant::now() + Duration::from_secs(10);
-                            while connection.instance().is_empty() {
-                                if connection.is_closed() || Instant::now() >= deadline {
-                                    return Err("Could not connect to the destination server; window was not copied".into());
-                                }
-                                std::thread::sleep(Duration::from_millis(5));
-                            }
-                            if connection.instance() != target.instance {
-                                return Err(
-                                    "The destination server was replaced; window was not copied"
-                                        .into(),
-                                );
-                            }
+                            let connection = Connection::native_commands(
+                                &endpoint,
+                                &target.instance,
+                                Arc::new(|| {}),
+                            )
+                            .map_err(|e| e.to_string())?;
                             copy.run(&connection, &name)
                         })();
                         let _ = proxy.send_event(Event::TmuxxCopied(target, name, result));
