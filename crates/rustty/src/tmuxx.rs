@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex, Weak, mpsc};
 use std::thread;
 use std::time::Duration;
 pub use tmuxx_layout::{Axis, Kind, Layout};
+pub use tmuxx_protocol::native::ServerStatus;
 use tmuxx_protocol::native::{Hello, Request, ServerMessage, SnapshotAssembler};
 pub use tmuxx_runtime::Options as ServerOptions;
 #[cfg(windows)]
@@ -94,6 +95,7 @@ struct Model {
     instance: String,
     sequence: u64,
     graph: Option<Graph>,
+    server_status: Option<ServerStatus>,
     panes: BTreeMap<u64, PaneState>,
     errors: Vec<String>,
     last_host_event: Option<u64>,
@@ -135,6 +137,7 @@ impl Model {
     }
     fn release_terminals(&mut self) {
         self.panes.clear();
+        self.server_status = None;
         if let Some(graph) = &mut self.graph {
             // Keep session identity for disconnected windows and saved attachments.
             let empty = Arc::new(serde_json::Value::Null);
@@ -883,8 +886,9 @@ impl Connection {
                         return Err(err("unsupported tmuxx native version"));
                     }
                     let mut snapshots = SnapshotAssembler::default();
+                    let mut instance = hello.instance_id;
                     if let Some(expected) = expected_instance {
-                        let actual = if let Some(instance) = hello.instance_id {
+                        let actual = if let Some(instance) = instance.take() {
                             instance
                         } else {
                             // Legacy owners expose incarnation only in read-only snapshots.
@@ -930,6 +934,18 @@ impl Connection {
                                 "tmuxx server incarnation changed; command was not applied",
                             ));
                         }
+                        instance = Some(actual);
+                    }
+                    if let Some(instance) = instance {
+                        if instance.is_empty() {
+                            return Err(err("empty tmuxx server incarnation"));
+                        }
+                        let mut model = shared.model.lock().map_err(err)?;
+                        if shared.closed.load(Ordering::Acquire) {
+                            return Ok(());
+                        }
+                        model.instance = instance;
+                        (shared.wake)();
                     }
                     // No queued command may reach a peer before negotiation succeeds.
                     let shared_writer = shared.clone();
@@ -1005,6 +1021,59 @@ impl Connection {
         let request_id = send(&self.shared, argv)?;
         model.pending_replies.insert(request_id, reply);
         Ok(receiver)
+    }
+    /// Watch native server connection counts without requesting pane snapshots.
+    pub fn watch_server(&self) -> io::Result<()> {
+        if self.system.is_some() {
+            return Ok(());
+        }
+        let mut model = self.shared.model.lock().map_err(err)?;
+        if self.is_closed() {
+            return Err(err("tmuxx connection is closed"));
+        }
+        let request_id = self.shared.next.fetch_add(1, Ordering::Relaxed);
+        self.shared
+            .requests
+            .try_send(Request {
+                request_id,
+                argv: vec![b"tmuxx-server-status".to_vec()],
+                stdin: None,
+                subscribe: false,
+                control: false,
+            })
+            .map_err(err)?;
+        // Older owners reject the optional watch; consume only this command's reply.
+        let (reply, _) = mpsc::channel();
+        model.pending_replies.insert(request_id, reply);
+        Ok(())
+    }
+    pub fn server_status(&self) -> Option<ServerStatus> {
+        self.shared.model.lock().ok()?.server_status.clone()
+    }
+    /// Live transports used by this view, including its separate sizing clients.
+    pub fn view_connection_count(&self) -> Option<usize> {
+        let instance = self.shared.model.lock().ok()?.instance.clone();
+        if instance.is_empty() {
+            return None;
+        }
+        let mut count = usize::from(!self.is_closed());
+        for (connection, _) in self.size_views.lock().ok()?.values() {
+            if connection.is_closed() {
+                continue;
+            }
+            // In-process sizing clients are bound to our held owner without a Hello.
+            if self.owner.is_none() {
+                let child_instance = connection.shared.model.lock().ok()?.instance.clone();
+                if child_instance.is_empty() {
+                    return None;
+                }
+                if child_instance != instance {
+                    continue;
+                }
+            }
+            count += 1;
+        }
+        Some(count)
     }
     /// Keep a local focus choice until its command and subsequent snapshot arrive.
     pub fn focus_pane(&self, session: u64, index: u32, pane: u64) -> io::Result<()> {
@@ -1385,6 +1454,16 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
         return Ok(());
     }
     match message {
+        ServerMessage::ServerStatus(status) => {
+            if status.instance_id.is_empty()
+                || !model.instance.is_empty() && model.instance != status.instance_id
+            {
+                return Err(err("tmuxx server status incarnation changed"));
+            }
+            model.instance = status.instance_id.clone();
+            model.server_status = Some(status);
+            (shared.wake)();
+        }
         ServerMessage::File { .. } => {
             return Err(err(
                 "unexpected Unix IPC file operation on native transport",
@@ -1412,6 +1491,7 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
                     close_views(pane);
                 }
                 model.panes.clear();
+                model.server_status = None;
                 model.last_host_event = None;
                 model.pending_focus.clear();
             }
@@ -1703,6 +1783,74 @@ mod focus_tests {
     }
     fn active(connection: &Connection) -> u64 {
         connection.graph().unwrap().windows[0].active
+    }
+
+    #[test]
+    fn server_watch_keeps_only_status_and_consumes_its_optional_reply() {
+        let (connection, requests) = Connection::base(Arc::new(|| {}), false);
+        for error in [Some("unknown command: tmuxx-server-status"), None] {
+            connection.watch_server().unwrap();
+            let request = requests.try_recv().unwrap();
+            assert_eq!(request.argv, [b"tmuxx-server-status".to_vec()]);
+            assert!(!request.subscribe && !request.control && request.stdin.is_none());
+            reply(&connection, request.request_id, error);
+            assert!(connection.errors().is_empty());
+            assert!(
+                connection
+                    .shared
+                    .model
+                    .lock()
+                    .unwrap()
+                    .pending_replies
+                    .is_empty()
+            );
+        }
+        for connections in [3, 0] {
+            let status = ServerStatus {
+                instance_id: "owner".into(),
+                connections,
+            };
+            apply(
+                &connection.shared,
+                ServerMessage::ServerStatus(status.clone()),
+            )
+            .unwrap();
+            assert_eq!(connection.server_status(), Some(status));
+            assert_eq!(connection.instance(), "owner");
+        }
+        snapshot(&connection, 1, state());
+        apply(&connection.shared, ServerMessage::Changed { sequence: 2 }).unwrap();
+        assert!(connection.graph().is_none());
+        assert!(connection.shared.model.lock().unwrap().panes.is_empty());
+        assert!(requests.try_recv().is_err());
+        for instance_id in ["", "replacement"] {
+            assert!(
+                apply(
+                    &connection.shared,
+                    ServerMessage::ServerStatus(ServerStatus {
+                        instance_id: instance_id.into(),
+                        connections: 1
+                    }),
+                )
+                .is_err()
+            );
+            assert_eq!(connection.instance(), "owner");
+        }
+        let command = connection.command(["invalid-command"]).unwrap();
+        reply(&connection, command, Some("ordinary command failed"));
+        assert_eq!(connection.errors(), ["ordinary command failed"]);
+        fail(&connection.shared, "connection lost");
+        assert!(connection.server_status().is_none());
+        apply(
+            &connection.shared,
+            ServerMessage::ServerStatus(ServerStatus {
+                instance_id: "owner".into(),
+                connections: 9,
+            }),
+        )
+        .unwrap();
+        assert!(connection.server_status().is_none());
+        assert!(connection.watch_server().is_err());
     }
 
     #[test]
@@ -2362,6 +2510,7 @@ mod tests {
                     Some("owner".into()),
                 )
                 .unwrap();
+                connection.watch_server().unwrap();
                 let reply = connection
                     .command_with_reply(vec![b"new-session".to_vec(), b"-d".to_vec()])
                     .unwrap();
@@ -2370,6 +2519,16 @@ mod tests {
                 let hello: Hello =
                     serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
                 assert!(hello.instance_id.is_none());
+                peer.get_ref()
+                    .set_read_timeout(Some(Duration::from_millis(100)))
+                    .unwrap();
+                assert!(matches!(
+                    record(&mut peer).unwrap_err().kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                ));
+                peer.get_ref()
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
                 write_record(
                     peer.get_mut(),
                     &Hello {
@@ -2394,6 +2553,20 @@ mod tests {
                     .unwrap();
                 }
                 if actual == "owner" {
+                    let watch: Request =
+                        serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+                    assert_eq!(watch.argv, [b"tmuxx-server-status".to_vec()]);
+                    assert!(!watch.subscribe && !watch.control);
+                    write_record(
+                        peer.get_mut(),
+                        &ServerMessage::Reply(tmuxx_protocol::native::Response {
+                            request_id: watch.request_id,
+                            output: Vec::new(),
+                            status: None,
+                            error: Some("unknown command: tmuxx-server-status".into()),
+                        }),
+                    )
+                    .unwrap();
                     let request: Request =
                         serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
                     assert_eq!(request.argv[0], b"new-session");
@@ -2427,6 +2600,7 @@ mod tests {
                     ));
                     assert!(connection.errors().is_empty());
                     assert!(connection.graph().is_none());
+                    assert_eq!(connection.instance(), "owner");
                 } else {
                     let mut requests = Vec::new();
                     peer.read_to_end(&mut requests).unwrap();
@@ -3500,6 +3674,7 @@ mod tests {
     fn embedded_size_clients_use_the_owner_and_release_their_size_context() {
         let connection = test_owner("import time; time.sleep(30)");
         let graph = wait(&connection, |g| !g.panes.is_empty());
+        assert_eq!(connection.view_connection_count(), Some(1));
         let session = graph.sessions[0].id;
         let pid = graph.panes[0].pid;
         let rival = Connection::local(
@@ -3523,7 +3698,9 @@ mod tests {
         wait(&connection, |g| {
             g.windows[0].cols == 60 && g.windows[0].rows == 20
         });
+        assert_eq!(connection.view_connection_count(), Some(2));
         connection.release_view(session).unwrap();
+        assert_eq!(connection.view_connection_count(), Some(1));
         let graph = wait(&connection, |g| {
             g.windows[0].cols == 100 && g.windows[0].rows == 40
         });

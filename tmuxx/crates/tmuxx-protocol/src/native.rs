@@ -112,6 +112,13 @@ pub struct Response {
     pub error: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ServerStatus {
+    pub instance_id: String,
+    /// Connected transports, excluding command-only management observers.
+    pub connections: usize,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
@@ -140,6 +147,8 @@ pub enum ServerMessage {
         action: serde_json::Value,
     },
     Reply(Response),
+    /// Sent only after the client opts in with tmuxx-server-status.
+    ServerStatus(ServerStatus),
     Snapshot {
         instance_id: String,
         sequence: u64,
@@ -205,6 +214,23 @@ mod tests {
         assert_eq!(
             serde_json::from_slice::<serde_json::Value>(&json).unwrap()["type"],
             "reply"
+        );
+    }
+
+    #[test]
+    fn server_status_is_a_flat_tagged_message() {
+        let message = ServerMessage::ServerStatus(ServerStatus {
+            instance_id: "owner".into(),
+            connections: 3,
+        });
+        let value = serde_json::to_value(&message).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({"type":"server_status", "instance_id":"owner", "connections":3})
+        );
+        assert_eq!(
+            serde_json::from_value::<ServerMessage>(value).unwrap(),
+            message
         );
     }
 
