@@ -1339,7 +1339,13 @@ impl App {
         self.changed();
         id
     }
-    fn spawn_pane(&mut self, id: Id, directory: PathBuf, host: Option<&Host>) -> Result<()> {
+    fn spawn_pane(
+        &mut self,
+        id: Id,
+        directory: PathBuf,
+        host: Option<&Host>,
+        background: Option<[u8; 3]>,
+    ) -> Result<()> {
         if self.panes.contains_key(&id) || self.failed_panes.contains_key(&id) {
             return Ok(());
         }
@@ -1411,6 +1417,7 @@ impl App {
                     command,
                     resources: self.resources.clone(),
                     color_scheme: Some(host_state.2),
+                    background,
                     visible: host_state.0,
                     focused: host_state.1,
                     ..Default::default()
@@ -1540,7 +1547,7 @@ impl App {
         }
         for tab in &state.tabs {
             for (&pane, saved) in &tab.panes {
-                self.spawn_pane(pane, saved.working_directory.clone(), None)?;
+                self.spawn_pane(pane, saved.working_directory.clone(), None, None)?;
             }
         }
         window.set_visible(!quick && !self.background_smoke);
@@ -2918,19 +2925,25 @@ impl App {
                     window.tabs.push(Tab::new(tab, pane, directory.clone()));
                     window.active_tab = window.tabs.len() - 1;
                 }
-                if let Err(error) = self.spawn_pane(pane, directory, Some(host)) {
+                if let Err(error) = self.spawn_pane(pane, directory, Some(host), None) {
                     self.errors.push(error.to_string());
                 }
             }
             Action::NewSplit(direction) => {
                 let directory = self.directory(host.id);
+                let background = focused.and_then(|id| self.panes.get(&id)).and_then(|pane| {
+                    pane.session
+                        .terminal()
+                        .ok()?
+                        .color_override(vt::color::Target::Background)
+                });
                 let pane = self.workspace.id();
                 let split = self.workspace.id();
                 self.remember();
                 if let Some(tab) = self.tab_mut(host.id) {
                     tab.split(pane, split, direction, directory.clone());
                 }
-                if let Err(error) = self.spawn_pane(pane, directory, Some(host)) {
+                if let Err(error) = self.spawn_pane(pane, directory, Some(host), background) {
                     self.errors.push(error.to_string());
                 }
             }
@@ -3754,7 +3767,7 @@ impl App {
         self.closing.retain(|session| !session.has_exited());
         self.failed_panes.retain(|id, _| retained.contains(id));
         for (id, directory) in required {
-            if let Err(error) = self.spawn_pane(id, directory, None) {
+            if let Err(error) = self.spawn_pane(id, directory, None, None) {
                 self.errors.push(error.to_string());
             }
         }

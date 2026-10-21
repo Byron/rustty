@@ -97,6 +97,11 @@ impl Terminal {
             _ => self.metadata.colors[target.dynamic_index().unwrap()][1],
         }
     }
+
+    /// Set or reset an application color without changing its configured default.
+    pub fn set_color_override(&mut self, target: Target, value: Option<[u8; 3]>) {
+        change(self, target, value);
+    }
 }
 
 /// Parse Ghostty's X11, hexadecimal and rgb/rgbi color specifications.

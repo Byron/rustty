@@ -172,6 +172,14 @@ impl Engine {
             environment,
             &mut out,
         );
+        if split {
+            let background = self.panes[&target].terminal.application_color(1);
+            self.panes
+                .get_mut(&pane)
+                .unwrap()
+                .terminal
+                .set_background(background);
+        }
         if empty {
             self.make_empty(pane, &mut out);
         }
