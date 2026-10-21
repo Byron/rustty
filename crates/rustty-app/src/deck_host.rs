@@ -1021,7 +1021,10 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
                 command: Some(config::Command::Direct(vec![
                     "/bin/sh".into(),
                     "-c".into(),
-                    r#"printf '\033]133;C\007'; sleep 0.2; printf '\033]133;D;0\007'
+                    r#"printf '\033]133;A\007$ \033]133;B\007tix\r\n\033]133;C\007'
+sleep 0.2
+printf '\033]133;D;0\007'; sleep 0.2
+printf '\033]133;C\007'; sleep 0.2; printf '\033]133;D;0\007'
 sleep 0.2
 printf '\033]133;C\007'; printf '%s' "$1"; printf '\033]9;4;3\007'
 sleep 0.2
@@ -1031,7 +1034,7 @@ printf '%s' "$3"; printf '\033]9;4;3\007'
 sleep 0.2
 printf '\033]133;D;0\007'
 sleep 0.2
-printf '\033]133;C\007\033]9;4;3\007'
+printf '\033]133;C;cmdline_url=tix\007\033]9;4;3\007'
 sleep 0.2
 printf '\033]9;✅ merged\007\033]9;4;0\007'
 sleep 0.2
@@ -1056,6 +1059,22 @@ printf '\033]133;D;0\007'; exec sleep 120"#
         previous.close();
         app.closing.push(previous);
         let deadline = Instant::now() + Duration::from_secs(5);
+        let mut saw_excluded = false;
+        loop {
+            app.drain(event_loop, second);
+            app.sync_deck();
+            assert!(app.deck.dashboard.board.no_sessions);
+            saw_excluded |= app.panes[&second].running.is_some();
+            if saw_excluded && app.panes[&second].running.is_none() {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "excluded command did not complete"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(!app.panes[&second].unseen);
         let mut saw_running = false;
         loop {
             app.drain(event_loop, second);

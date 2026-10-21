@@ -161,6 +161,51 @@ pub enum Command {
     Direct(Vec<String>),
 }
 
+// Read literal command words only; shell expansions and arbitrary wrappers need their own exclusion.
+fn command_program(line: &str) -> Option<String> {
+    let mut chars = line.chars().peekable();
+    loop {
+        while chars.peek().is_some_and(|c| c.is_whitespace()) {
+            chars.next();
+        }
+        let mut word = String::new();
+        let mut quote = None;
+        while let Some(c) = chars.next() {
+            match c {
+                '\'' | '"' if quote == Some(c) => quote = None,
+                '\'' | '"' if quote.is_none() => quote = Some(c),
+                '\\' if quote != Some('\'') => {
+                    let next = chars.peek().copied()?;
+                    if quote.is_none() || matches!(next, '\\' | '"' | '$' | '`' | '\n') {
+                        chars.next();
+                        if next != '\n' {
+                            word.push(next);
+                        }
+                    } else {
+                        word.push(c);
+                    }
+                }
+                '$' | '`' if quote != Some('\'') => return None,
+                '|' | ';' | '&' | '(' | ')' | '<' | '>' if quote.is_none() => return None,
+                c if c.is_whitespace() && quote.is_none() => break,
+                c => word.push(c),
+            }
+        }
+        if quote.is_some() || word.is_empty() {
+            return None;
+        }
+        let assignment = word.split_once('=').is_some_and(|(name, _)| {
+            !name.is_empty()
+                && name.chars().enumerate().all(|(i, c)| {
+                    c == '_' || c.is_ascii_alphabetic() || i > 0 && c.is_ascii_digit()
+                })
+        });
+        if !assignment && !matches!(word.as_str(), "command" | "exec" | "builtin" | "env") {
+            return Some(word);
+        }
+    }
+}
+
 impl Command {
     pub fn parse(value: &str) -> Result<Self, &'static str> {
         let value = value.trim();
@@ -333,6 +378,7 @@ pub struct Config {
     pub notify_on_command_finish: NotifyOnCommandFinish,
     pub notify_on_command_finish_action: NotifyActions,
     pub notify_on_command_finish_after: Duration,
+    pub notify_on_command_finish_exclude: Vec<String>,
     pub quick_terminal_animation_duration: Duration,
     pub quick_terminal_position: QuickTerminalPosition,
     pub quick_terminal_screen: QuickTerminalScreen,
@@ -434,6 +480,9 @@ impl Default for Config {
             notify_on_command_finish: NotifyOnCommandFinish::Never,
             notify_on_command_finish_action: NotifyActions::default(),
             notify_on_command_finish_after: Duration::from_secs(5),
+            notify_on_command_finish_exclude: ["ssh", "mosh", "tmux", "tmuxx", "screen", "tix"]
+                .map(str::to_owned)
+                .to_vec(),
             quick_terminal_animation_duration: Duration::from_millis(200),
             quick_terminal_position: QuickTerminalPosition::Top,
             quick_terminal_screen: QuickTerminalScreen::Mouse,
@@ -456,6 +505,24 @@ impl Default for Config {
 }
 
 impl Config {
+    pub fn command_finish_excluded(&self, command_line: Option<&[u8]>) -> bool {
+        command_line
+            .and_then(|line| std::str::from_utf8(line).ok())
+            .and_then(command_program)
+            .is_some_and(|program| {
+                let name = program.rsplit(['/', '\\']).next().unwrap_or(&program);
+                self.notify_on_command_finish_exclude
+                    .iter()
+                    .any(|excluded| {
+                        name == excluded
+                            || name
+                                .get(name.len().saturating_sub(4)..)
+                                .is_some_and(|ext| ext.eq_ignore_ascii_case(".exe"))
+                                && name[..name.len() - 4].eq_ignore_ascii_case(excluded)
+                    })
+            })
+    }
+
     pub fn load() -> io::Result<LoadedConfig> {
         Self::load_with_args(&[])
     }
@@ -738,6 +805,24 @@ impl Config {
             ),
             "notify-on-command-finish-after" => {
                 set!(notify_on_command_finish_after, parse_duration(value)?)
+            }
+            "notify-on-command-finish-exclude" => {
+                if value.is_empty() {
+                    self.notify_on_command_finish_exclude.clear();
+                } else if value
+                    .chars()
+                    .any(|c| c.is_whitespace() || c.is_control() || matches!(c, '/' | '\\'))
+                {
+                    return Err(
+                        "command exclusion must be an executable name without whitespace or path separators",
+                    );
+                } else if !self
+                    .notify_on_command_finish_exclude
+                    .iter()
+                    .any(|name| name == value)
+                {
+                    self.notify_on_command_finish_exclude.push(value.to_owned());
+                }
             }
             "quick-terminal-animation-duration" => set!(
                 quick_terminal_animation_duration,

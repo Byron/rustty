@@ -3,6 +3,84 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
+#[test]
+fn command_finish_exclusions_match_programs_without_guessing_from_arguments() {
+    let config = Config::default();
+    for command in [
+        "ssh host",
+        "tix",
+        "tix status",
+        "mosh host",
+        "tmux attach",
+        "tmuxx",
+        "screen",
+        "/usr/bin/ssh host",
+        "command ssh host",
+        "exec ssh host",
+        "env TERM=xterm ssh host",
+        "TERM=xterm ssh host",
+        "'/opt/my tools/ssh' host",
+        "SSH.EXE host",
+        "\"C:\\Windows\\ssh.exe\" host",
+    ] {
+        assert!(
+            config.command_finish_excluded(Some(command.as_bytes())),
+            "{command}"
+        );
+    }
+    for command in [
+        "",
+        "cargo build",
+        "echo ssh",
+        "ssh-keygen",
+        "my-ssh-wrapper",
+        "$PROGRAM host",
+        "'ssh",
+        "echo; ssh host",
+        "env -i ssh host",
+    ] {
+        assert!(
+            !config.command_finish_excluded(Some(command.as_bytes())),
+            "{command}"
+        );
+    }
+    assert!(!config.command_finish_excluded(None));
+    assert!(!config.command_finish_excluded(Some(b"\xff")));
+}
+
+#[test]
+fn command_finish_exclusions_extend_defaults_and_can_be_replaced() {
+    let home = TestHome::new();
+    home.own("notify-on-command-finish-exclude=nvim\nnotify-on-command-finish-exclude=nvim\n");
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert!(loaded.config.command_finish_excluded(Some(b"ssh host")));
+    assert!(loaded.config.command_finish_excluded(Some(b"nvim file")));
+    assert_eq!(
+        loaded
+            .config
+            .notify_on_command_finish_exclude
+            .iter()
+            .filter(|name| *name == "nvim")
+            .count(),
+        1
+    );
+
+    home.own("notify-on-command-finish-exclude=\nnotify-on-command-finish-exclude=my-ssh-wrapper\nnotify-on-command-finish-exclude=bad name\nnotify-on-command-finish-exclude=/bin/ssh\n");
+    let loaded = home.loader.load();
+    assert_eq!(loaded.diagnostics.len(), 2);
+    assert_eq!(
+        loaded.config.notify_on_command_finish_exclude,
+        ["my-ssh-wrapper"]
+    );
+    assert!(!loaded.config.command_finish_excluded(Some(b"ssh host")));
+    assert!(
+        loaded
+            .config
+            .command_finish_excluded(Some(b"my-ssh-wrapper host"))
+    );
+}
+
 struct TestHome {
     root: PathBuf,
     loader: ConfigLoader,

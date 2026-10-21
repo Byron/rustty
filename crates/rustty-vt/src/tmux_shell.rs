@@ -94,7 +94,9 @@ impl Terminal {
                     command_line: command_line(data),
                 });
                 if self.shell_command_events {
-                    effects.push(Effect::CommandStart);
+                    effects.push(Effect::CommandStart {
+                        command_line: self.take_command_line(data),
+                    });
                 }
             }
             b'D' => {
@@ -122,7 +124,7 @@ fn exit_status(data: &[u8]) -> u8 {
         .and_then(|s| s.trim_start().parse::<u8>().ok())
         .unwrap_or(255)
 }
-fn command_line(data: &[u8]) -> Option<Vec<u8>> {
+pub(crate) fn command_line(data: &[u8]) -> Option<Vec<u8>> {
     if data.get(1) != Some(&b';') {
         return None;
     }

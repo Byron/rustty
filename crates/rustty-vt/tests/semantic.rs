@@ -72,7 +72,7 @@ fn output_markers_reset_semantics_independently_of_host_events() {
         assert_eq!(
             effects,
             if enabled {
-                vec![Effect::CommandStart]
+                vec![Effect::CommandStart { command_line: None }]
             } else {
                 vec![]
             }

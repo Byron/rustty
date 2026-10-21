@@ -166,6 +166,32 @@ and `always` admits them regardless of focus. Running shell commands never acqui
 generic Working tiles: OSC 133 cannot distinguish a task from an interactive SSH
 session. Explicit progress and agent status still report running work.
 
+`notify-on-command-finish-exclude` suppresses generic completion tiles and alerts
+for named executables. The defaults are `ssh`, `mosh`, `tmux`, `tmuxx`, `screen`,
+and `tix`. Repeat the setting to add names; an empty value clears the list,
+including the defaults:
+
+```ini
+# Add to the defaults.
+notify-on-command-finish-exclude = nvim
+notify-on-command-finish-exclude = my-ssh-wrapper
+
+# Or replace the defaults with your own list.
+notify-on-command-finish-exclude =
+notify-on-command-finish-exclude = ssh
+notify-on-command-finish-exclude = tix
+```
+
+Exclusions are checked when the command starts. Rustty uses OSC 133's optional
+`cmdline_url` field, otherwise the input text between the shell's input and output
+markers. Plain OSC 133 C alone carries no command name. Missing or discarded input
+stays unknown and does not match an exclusion; window titles are not used.
+The first literal executable name is matched, ignoring its directory and a Windows
+`.exe` suffix. Leading environment assignments and flagless `command`, `exec`,
+`builtin`, and `env` prefixes are skipped. Aliases, shell expansions, and other
+wrappers are not resolved: add the wrapper or alias name to the list. Explicit
+progress, notifications, and agent status still work for excluded commands.
+
 At command completion, the current policy and duration threshold determine
 whether its result appears: exit 0 is Done, nonzero is Error, and missing exit
 status is Needs input. Revealing/focusing a finished command clears its tile;

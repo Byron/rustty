@@ -38,7 +38,7 @@ impl AgentStatus {
                 self.snapshot = None;
                 self.enclosing_command = false;
             }
-            Effect::CommandStart => self.command_running = true,
+            Effect::CommandStart { .. } => self.command_running = true,
             Effect::CommandEnd { .. } => {
                 self.command_running = false;
                 if self.enclosing_command {
