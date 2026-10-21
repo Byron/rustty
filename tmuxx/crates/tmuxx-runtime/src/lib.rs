@@ -892,6 +892,7 @@ fn serve_connection(
             stdin_file_stream: true,
             client_features: Some(0),
             view_size_ownership: true,
+            checkpoint_snapshots: true,
             selection_updates: true,
             ..Hello::default()
         },
@@ -929,6 +930,7 @@ fn serve_connection(
         environment: hello.environment,
         host_effects: hello.host_effects,
         compact_snapshots: hello.compact_snapshots,
+        checkpoint_snapshots: hello.checkpoint_snapshots,
         selection_updates: hello.selection_updates,
         ..ClientContext::default()
     };
@@ -1478,9 +1480,10 @@ impl Host {
             self.snapshots_requested.insert(id);
             return;
         }
+        let context = &self.clients[&id].context;
         let state = self
             .engine
-            .snapshot_with_compact_cells(self.clients[&id].context.compact_snapshots);
+            .native_snapshot(context.compact_snapshots, context.checkpoint_snapshots);
         if let Err(error) = tmuxx_protocol::native::snapshot_bytes(&state, self.snapshot_limit) {
             self.send(
                 id,

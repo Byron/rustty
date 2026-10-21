@@ -321,7 +321,7 @@ fn native_socket_streams_snapshots_and_cap_rejection_keeps_the_process() {
 }
 
 #[test]
-fn native_socket_only_compacts_snapshots_for_opted_in_clients() {
+fn native_socket_negotiates_legacy_and_checkpoint_snapshots() {
     let path = endpoint();
     let host = tmuxx_runtime::start(tmuxx_runtime::Options::new(&path)).unwrap();
     assert!(
@@ -341,7 +341,7 @@ fn native_socket_only_compacts_snapshots_for_opted_in_clients() {
         .is_none()
     );
     let mut readers = Vec::new();
-    for compact in [false, true] {
+    for (compact, checkpoint) in [(false, false), (true, false), (false, true)] {
         let mut stream = connect(&path).unwrap();
         stream
             .set_read_timeout(Some(Duration::from_secs(10)))
@@ -349,6 +349,9 @@ fn native_socket_only_compacts_snapshots_for_opted_in_clients() {
         let mut hello = serde_json::json!({"version": 1, "snapshot_stream": true});
         if compact {
             hello["compact_snapshots"] = true.into();
+        }
+        if checkpoint {
+            hello["checkpoint_snapshots"] = true.into();
         }
         serde_json::to_writer(&mut stream, &hello).unwrap();
         stream.write_all(b"\n").unwrap();
@@ -358,6 +361,7 @@ fn native_socket_only_compacts_snapshots_for_opted_in_clients() {
             .unwrap();
         let greeting: tmuxx_protocol::native::Hello = serde_json::from_slice(&greeting).unwrap();
         assert!(greeting.compact_snapshots);
+        assert!(greeting.checkpoint_snapshots);
         serde_json::to_writer(
             reader.get_mut(),
             &Request {
@@ -380,12 +384,22 @@ fn native_socket_only_compacts_snapshots_for_opted_in_clients() {
                 .unwrap()
             {
                 assert_eq!(state["panes"].as_array().unwrap().len(), 1, "{state}");
-                let cells = &state["panes"][0]["terminal"]["primary"]["rows"][0]["cells"];
-                assert_eq!(cells.is_object(), compact);
-                assert_eq!(cells.is_array(), !compact);
-                let terminal: tmuxx_terminal::Snapshot =
-                    serde_json::from_value(state["panes"][0]["terminal"].clone()).unwrap();
-                terminal.restore().unwrap();
+                let terminal = &state["panes"][0]["terminal"];
+                assert_eq!(terminal["version"], if checkpoint { 2 } else { 1 });
+                if checkpoint {
+                    serde_json::from_value::<tmuxx_terminal::CheckpointSnapshot>(terminal.clone())
+                        .unwrap()
+                        .restore()
+                        .unwrap();
+                } else {
+                    let cells = &terminal["primary"]["rows"][0]["cells"];
+                    assert_eq!(cells.is_object(), compact);
+                    assert_eq!(cells.is_array(), !compact);
+                    serde_json::from_value::<tmuxx_terminal::Snapshot>(terminal.clone())
+                        .unwrap()
+                        .restore()
+                        .unwrap();
+                }
                 break;
             }
         }

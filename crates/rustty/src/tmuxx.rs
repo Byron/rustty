@@ -544,6 +544,7 @@ impl Connection {
             host_effects: true,
             compact_snapshots: true,
             selection_updates: true,
+            checkpoint_snapshots: true,
             ..Default::default()
         })?;
         // Only this newly created owner adopts Rustty's clipboard policy UI.
@@ -948,6 +949,7 @@ impl Connection {
             &Hello {
                 host_effects,
                 selection_updates: true,
+                checkpoint_snapshots: true,
                 ..Default::default()
             },
         )?;
@@ -1440,6 +1442,13 @@ fn fail(shared: &Shared, error: impl std::fmt::Display) {
     (shared.wake)();
 }
 fn restore(value: &serde_json::Value) -> io::Result<(Terminal, tmuxx_terminal::AgentStatus)> {
+    if value.get("version").and_then(serde_json::Value::as_u64) == Some(2) {
+        let snapshot: tmuxx_terminal::CheckpointSnapshot =
+            serde_json::from_value(value.clone()).map_err(err)?;
+        let terminal = snapshot.restore()?;
+        let agent_status = terminal.agent_status().clone();
+        return Ok((terminal.into_backend(), agent_status));
+    }
     let mut value = value.clone();
     // Older daemons retain capture metadata after shrinking or replacing its rows.
     for name in ["primary", "alternate"] {
@@ -2919,6 +2928,7 @@ mod tests {
         let mut peer = BufReader::new(peer);
         let hello: Hello = serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
         assert_eq!(hello.version, tmuxx_protocol::native::VERSION);
+        assert!(hello.checkpoint_snapshots);
         peer.get_ref()
             .set_read_timeout(Some(Duration::from_millis(100)))
             .unwrap();
@@ -3318,108 +3328,111 @@ mod tests {
     #[test]
     fn native_agent_status_attach_live_and_resync_do_not_replay_host_actions() {
         use rustty_vt::agent::{Event, State};
-        let codex_frame = |event: &Event| {
-            let frame = event.frame().unwrap();
-            [
-                b"\x1bPtmux;\x1b".as_slice(),
-                &frame[..frame.len() - 2],
-                b"\x07\x1b\\",
-            ]
-            .concat()
-        };
-        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
-        let mut owner = tmuxx_terminal::Terminal::new(20, 4, 20);
-        let begin =
-            Event::from_json(br#"{"op":"begin","state":"working","thread_id":"thread"}"#).unwrap();
-        owner.feed(b"\x1b]133;C\x07");
-        owner.feed(&codex_frame(&begin));
-        owner.feed(b"\x07\x1b]52;c;Y2xpcGJvYXJk\x07");
-        let snapshot = |owner: &tmuxx_terminal::Terminal, sequence| ServerMessage::Snapshot {
-            instance_id: "agent-owner".into(),
-            sequence,
-            state: serde_json::json!({
-                "sessions": [{"id":1,"name":"agent","active":0,"windows":{"0":2}}],
-                "windows": [{"id":2,"name":"shell","active":7,"cols":20,"rows":4,"panes":[7],"layout":Layout::pane(7,20,4).to_legacy().unwrap()}],
-                "panes": [{"id":7,"window":2,"cols":20,"rows":4,"pid":123,"status":null,"terminal":owner.snapshot()}],
-            }),
-        };
-        apply(&connection.shared, snapshot(&owner, 1)).unwrap();
-        let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
-        let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
-        for view in [&first, &second] {
-            assert!(matches!(
-                view.events().next(),
-                Some(SessionEvent::Effect(Effect::AgentStatus(Event::Begin(_))))
-            ));
-            assert_eq!(view.events().count(), 0);
-            assert!(view.terminal().unwrap().agent_status_events);
-            assert!(view.terminal().unwrap().shell_command_events);
-        }
-        apply(&connection.shared, snapshot(&owner, 1)).unwrap();
-        assert_eq!(first.events().count(), 0);
-        let update =
-            Event::from_json(br#"{"op":"update","state":"done","turn_id":"turn"}"#).unwrap();
-        let mut live = codex_frame(&update);
-        live.extend(b"\x07\x1b]52;c;Y2xpcGJvYXJk\x07");
-        owner.feed(&live);
-        apply(
-            &connection.shared,
-            ServerMessage::PaneOutput {
-                sequence: 2,
-                pane_id: 7,
-                data: live,
-            },
-        )
-        .unwrap();
-        for view in [&first, &second] {
-            assert!(
-                matches!(view.events().next(), Some(SessionEvent::Effect(Effect::AgentStatus(Event::Update(status)))) if status.state == State::Done)
+        for checkpoint in [false, true] {
+            let codex_frame = |event: &Event| {
+                let frame = event.frame().unwrap();
+                [
+                    b"\x1bPtmux;\x1b".as_slice(),
+                    &frame[..frame.len() - 2],
+                    b"\x07\x1b\\",
+                ]
+                .concat()
+            };
+            let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+            let mut owner = tmuxx_terminal::Terminal::new(20, 4, 20);
+            let begin =
+                Event::from_json(br#"{"op":"begin","state":"working","thread_id":"thread"}"#)
+                    .unwrap();
+            owner.feed(b"\x1b]133;C\x07");
+            owner.feed(&codex_frame(&begin));
+            owner.feed(b"\x07\x1b]52;c;Y2xpcGJvYXJk\x07");
+            let snapshot = |owner: &tmuxx_terminal::Terminal, sequence| ServerMessage::Snapshot {
+                instance_id: "agent-owner".into(),
+                sequence,
+                state: serde_json::json!({
+                    "sessions": [{"id":1,"name":"agent","active":0,"windows":{"0":2}}],
+                    "windows": [{"id":2,"name":"shell","active":7,"cols":20,"rows":4,"panes":[7],"layout":Layout::pane(7,20,4).to_legacy().unwrap()}],
+                    "panes": [{"id":7,"window":2,"cols":20,"rows":4,"pid":123,"status":null,"terminal":(if checkpoint { serde_json::to_value(owner.checkpoint_snapshot()).unwrap() } else { serde_json::to_value(owner.snapshot()).unwrap() })}],
+                }),
+            };
+            apply(&connection.shared, snapshot(&owner, 1)).unwrap();
+            let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+            let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+            for view in [&first, &second] {
+                assert!(matches!(
+                    view.events().next(),
+                    Some(SessionEvent::Effect(Effect::AgentStatus(Event::Begin(_))))
+                ));
+                assert_eq!(view.events().count(), 0);
+                assert!(view.terminal().unwrap().agent_status_events);
+                assert!(view.terminal().unwrap().shell_command_events);
+            }
+            apply(&connection.shared, snapshot(&owner, 1)).unwrap();
+            assert_eq!(first.events().count(), 0);
+            let update =
+                Event::from_json(br#"{"op":"update","state":"done","turn_id":"turn"}"#).unwrap();
+            let mut live = codex_frame(&update);
+            live.extend(b"\x07\x1b]52;c;Y2xpcGJvYXJk\x07");
+            owner.feed(&live);
+            apply(
+                &connection.shared,
+                ServerMessage::PaneOutput {
+                    sequence: 2,
+                    pane_id: 7,
+                    data: live,
+                },
+            )
+            .unwrap();
+            for view in [&first, &second] {
+                assert!(
+                    matches!(view.events().next(), Some(SessionEvent::Effect(Effect::AgentStatus(Event::Update(status)))) if status.state == State::Done)
+                );
+                assert_eq!(view.events().count(), 0);
+            }
+            apply(&connection.shared, snapshot(&owner, 2)).unwrap();
+            assert_eq!(first.events().count(), 0);
+            owner.feed(
+                &Event::from_json(br#"{"op":"update","state":"needs_input"}"#)
+                    .unwrap()
+                    .frame()
+                    .unwrap(),
             );
-            assert_eq!(view.events().count(), 0);
+            apply(&connection.shared, snapshot(&owner, 3)).unwrap();
+            for view in [&first, &second] {
+                assert!(
+                    matches!(view.events().next(), Some(SessionEvent::Effect(Effect::AgentStatus(Event::Update(status)))) if status.state == State::NeedsInput)
+                );
+                assert_eq!(view.events().count(), 0);
+            }
+            let ending = b"\x1b]133;D;0\x07";
+            owner.feed(ending);
+            apply(
+                &connection.shared,
+                ServerMessage::PaneOutput {
+                    sequence: 4,
+                    pane_id: 7,
+                    data: ending.to_vec(),
+                },
+            )
+            .unwrap();
+            for view in [&first, &second] {
+                let effects = view
+                    .events()
+                    .filter_map(|event| match event {
+                        SessionEvent::Effect(effect) => Some(effect),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                assert!(matches!(
+                    effects.as_slice(),
+                    [Effect::CommandEnd { .. }, Effect::AgentStatus(Event::End)]
+                ));
+            }
+            apply(&connection.shared, snapshot(&owner, 4)).unwrap();
+            assert_eq!(first.events().count(), 0);
+            let third = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+            assert_eq!(third.events().count(), 0);
         }
-        apply(&connection.shared, snapshot(&owner, 2)).unwrap();
-        assert_eq!(first.events().count(), 0);
-        owner.feed(
-            &Event::from_json(br#"{"op":"update","state":"needs_input"}"#)
-                .unwrap()
-                .frame()
-                .unwrap(),
-        );
-        apply(&connection.shared, snapshot(&owner, 3)).unwrap();
-        for view in [&first, &second] {
-            assert!(
-                matches!(view.events().next(), Some(SessionEvent::Effect(Effect::AgentStatus(Event::Update(status)))) if status.state == State::NeedsInput)
-            );
-            assert_eq!(view.events().count(), 0);
-        }
-        let ending = b"\x1b]133;D;0\x07";
-        owner.feed(ending);
-        apply(
-            &connection.shared,
-            ServerMessage::PaneOutput {
-                sequence: 4,
-                pane_id: 7,
-                data: ending.to_vec(),
-            },
-        )
-        .unwrap();
-        for view in [&first, &second] {
-            let effects = view
-                .events()
-                .filter_map(|event| match event {
-                    SessionEvent::Effect(effect) => Some(effect),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            assert!(matches!(
-                effects.as_slice(),
-                [Effect::CommandEnd { .. }, Effect::AgentStatus(Event::End)]
-            ));
-        }
-        apply(&connection.shared, snapshot(&owner, 4)).unwrap();
-        assert_eq!(first.events().count(), 0);
-        let third = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
-        assert_eq!(third.events().count(), 0);
     }
 
     #[test]
@@ -3762,55 +3775,62 @@ mod tests {
         for cols in [8, 16, 8, 16] {
             terminal.resize(cols, 20);
             let snapshot = terminal.snapshot();
-            let (restored, _) = restore(&serde_json::to_value(&snapshot).unwrap()).unwrap();
-            let ids = restored
-                .primary_screen()
-                .all_rows()
-                .map(|r| r.id)
-                .collect::<Vec<_>>();
-            assert_eq!(
-                ids,
-                snapshot
-                    .primary
+            for snapshot_value in [
+                serde_json::to_value(&snapshot).unwrap(),
+                serde_json::to_value(terminal.checkpoint_snapshot()).unwrap(),
+            ] {
+                let (restored, _) = restore(&snapshot_value).unwrap();
+                let ids = restored
+                    .primary_screen()
                     .all_rows()
                     .map(|r| r.id)
-                    .collect::<Vec<_>>()
-            );
-            let graphics = restored.primary_screen().graphics.view_snapshot();
-            assert_eq!(graphics.placements.len(), 1);
-            assert!(ids.contains(&graphics.placements[0].row));
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    ids,
+                    snapshot
+                        .primary
+                        .all_rows()
+                        .map(|r| r.id)
+                        .collect::<Vec<_>>()
+                );
+                let graphics = restored.primary_screen().graphics.view_snapshot();
+                assert_eq!(graphics.placements.len(), 1);
+                assert!(ids.contains(&graphics.placements[0].row));
+            }
         }
     }
 
     #[test]
     fn restored_native_views_search_and_select_shell_output_independently() {
-        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
-        let mut terminal = tmuxx_terminal::Terminal::new(12, 3, 2000);
-        terminal.feed(b"\x1b]133;A\x07$ \x1b]133;B\x07build\r\n\x1b]133;C\x07retained output with wrap\r\n\x1b]133;D;0\x07\x1b]133;A\x07$ ");
-        terminal.resize(10, 3);
-        apply(&connection.shared, ServerMessage::Snapshot { instance_id: "search".into(), sequence: 1, state: serde_json::json!({
+        for checkpoint in [false, true] {
+            let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+            let mut terminal = tmuxx_terminal::Terminal::new(12, 3, 2000);
+            terminal.feed(b"\x1b]133;A\x07$ \x1b]133;B\x07build\r\n\x1b]133;C\x07retained output with wrap\r\n\x1b]133;D;0\x07\x1b]133;A\x07$ ");
+            terminal.resize(10, 3);
+            apply(&connection.shared, ServerMessage::Snapshot { instance_id: "search".into(), sequence: 1, state: serde_json::json!({
             "sessions": [{"id":1,"name":"test","active":0,"windows":{"0":2}}],
             "windows": [{"id":2,"name":"shell","active":7,"cols":10,"rows":3,"panes":[7],"layout":Layout::pane(7,10,3).to_legacy().unwrap()}],
-            "panes": [{"id":7,"window":2,"cols":10,"rows":3,"status":null,"terminal":terminal.snapshot()}],
+            "panes": [{"id":7,"window":2,"cols":10,"rows":3,"status":null,"terminal":(if checkpoint { serde_json::to_value(terminal.checkpoint_snapshot()).unwrap() } else { serde_json::to_value(terminal.snapshot()).unwrap() })}],
         }) }).unwrap();
-        let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
-        let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
-        {
-            let mut terminal = first.terminal().unwrap();
-            let mut search = rustty_vt::search::TerminalSearch::new(b"output");
-            search.run(&mut terminal);
-            assert_eq!(search.total_matches(), 1);
-            let point = search.match_at(0).unwrap().start;
-            terminal.screen_mut().selection = terminal.screen().select_output(point);
-            assert_eq!(
-                terminal.screen().selection_text().as_deref(),
-                Some("retained output with wrap\n")
-            );
-            assert_eq!(terminal.screen().snapshot_viewport().height(), 3);
+            let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+            let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+            {
+                let mut terminal = first.terminal().unwrap();
+                let mut search = rustty_vt::search::TerminalSearch::new(b"output");
+                search.run(&mut terminal);
+                assert_eq!(search.total_matches(), 1);
+                let point = search.match_at(0).unwrap().start;
+                terminal.screen_mut().selection = terminal.screen().select_output(point);
+                assert_eq!(
+                    terminal.screen().selection_text().as_deref(),
+                    Some("retained output with wrap\n")
+                );
+                assert_eq!(terminal.screen().snapshot_viewport().height(), 3);
+            }
+            let terminal = second.terminal().unwrap();
+            assert!(terminal.screen().selection.is_none());
+            assert_eq!(terminal.screen().search_literal(b"output").len(), 1);
         }
-        let terminal = second.terminal().unwrap();
-        assert!(terminal.screen().selection.is_none());
-        assert_eq!(terminal.screen().search_literal(b"output").len(), 1);
     }
 
     #[test]
@@ -3824,7 +3844,7 @@ mod tests {
             state: serde_json::json!({
                 "sessions": [{"id":1,"name":"test","active":0,"windows":{"0":2}}],
                 "windows": [{"id":2,"name":"shell","active":7,"cols":10,"rows":3,"panes":[7],"layout":Layout::pane(7,10,3).to_legacy().unwrap()}],
-                "panes": [{"id":7,"window":2,"cols":10,"rows":3,"status":null,"terminal":owner.snapshot()}],
+                "panes": [{"id":7,"window":2,"cols":10,"rows":3,"status":null,"terminal":owner.checkpoint_snapshot()}],
             }),
         };
         apply(&connection.shared, snapshot(&mut owner, 1)).unwrap();
@@ -4476,9 +4496,8 @@ mod tests {
         session.write(b"x").unwrap();
         let graph = wait(&connection, |g| g.panes[0].status == Some(17));
         assert!(session.has_exited());
-        let terminal: tmuxx_terminal::Snapshot =
-            serde_json::from_value((*graph.panes[0].terminal).clone()).unwrap();
-        assert!(terminal.agent_status.snapshot.is_none());
+        let (_, agent_status) = restore(&graph.panes[0].terminal).unwrap();
+        assert!(agent_status.snapshot.is_none());
         assert!(session.events().any(|event| matches!(
             event,
             SessionEvent::Effect(Effect::AgentStatus(rustty_vt::agent::Event::End))
@@ -4598,7 +4617,8 @@ mod tests {
         ));
         let local = Connection::embedded(&endpoint, Arc::new(|| {})).unwrap();
         let graph = wait(&local, |g| !g.panes.is_empty());
-        assert!(graph.panes[0].terminal["primary"]["rows"][0]["cells"].is_object());
+        assert_eq!(graph.panes[0].terminal["version"], 2);
+        assert!(graph.panes[0].terminal["primary"]["rows"][0].is_array());
         let pid = graph.panes[0].id;
         let first = Session::attach_tmuxx(&local, pid, Arc::new(|| {})).unwrap();
         let second = Session::attach_tmuxx(&local, pid, Arc::new(|| {})).unwrap();
@@ -4630,6 +4650,8 @@ mod tests {
         let remote = Connection::unix(&endpoint, Arc::new(|| {})).unwrap();
         let graph = wait(&remote, |g| g.panes.iter().any(|p| p.id == pid));
         assert_eq!(graph.panes[0].id, pid);
+        assert_eq!(graph.panes[0].terminal["version"], 2);
+        assert!(graph.panes[0].terminal["primary"]["rows"][0].is_array());
         let third = Session::attach_tmuxx(&remote, pid, Arc::new(|| {})).unwrap();
         {
             let t = third.terminal().unwrap();
