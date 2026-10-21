@@ -1,7 +1,8 @@
 # Rustty agent dashboard for Stream Deck
 
 Rustty owns one USB device and one tile per **reporting live Rustty pane**, across
-all windows and tabs. The companion Codex TUI emits private pane-local OSC status;
+all windows and tabs. Completed OSC 133 shell commands also qualify for a tile under
+the command notification policy. The companion Codex TUI emits private pane-local OSC status;
 normal launching and shared daemon use are unchanged. Hidden subagents have no
 separate tiles. Two panes in the same directory remain distinct. Switching the
 thread displayed by a TUI updates its existing tile.
@@ -115,15 +116,15 @@ to run it and close the menu, or tap Page again to cancel. Brightness still work
 Only fresh presses count; held keys and stale artwork cannot select an alternative.
 Sleep, disconnect and layout changes cancel the menu.
 
-Attention, Working, Done and Idle cycle live agent and OSC progress panes in stable slot order,
+Attention, Working, Done and Idle cycle live agent, command and OSC progress panes in stable slot order,
 including off-page and hidden panes. They advance from the focused matching pane,
 otherwise from the group's last slot cursor, and wrap. Membership is recomputed
 each time; an empty group is dimmed and inert. The selected agent pane's page is revealed.
 Attention includes needs-input, error and paused states. Unknown remains directly
 tappable and pageable. Progress-only panes follow assigned panes in workspace order
-without occupying agent slots. Each pane counts once per group; independent agent
-and progress signals can put it in different groups. These actions never approve a request, submit a prompt or send agent
-keystrokes.
+without occupying agent slots. Each pane counts in one group: structured agent
+status takes precedence over progress, and OSC 133 command status is the fallback.
+These actions never approve a request, submit a prompt or send agent keystrokes.
 
 Brightness starts at 100%; successive taps select **25 → 50 → 75 → 100 → 25%**.
 The worker changes the displayed level only after a successful USB write. The
@@ -157,6 +158,34 @@ first. This prioritizes incoming agents without rearranging familiar positions.
 Idle agents are never promoted, and displaced assignments remain on later pages.
 
 ## Status and completion semantics
+
+OSC 133 shell commands acquire a tile only after completion, following
+`notify-on-command-finish-after` and `notify-on-command-finish`: `never` disables
+command tiles, `unfocused` admits results when the pane is unfocused at completion,
+and `always` admits them regardless of focus. Running shell commands never acquire
+generic Working tiles: OSC 133 cannot distinguish a task from an interactive SSH
+session. Explicit progress and agent status still report running work.
+
+At command completion, the current policy and duration threshold determine
+whether its result appears: exit 0 is Done, nonzero is Error, and missing exit
+status is Needs input. Revealing/focusing a finished command clears its tile;
+starting another command, resetting the terminal or closing the pane also clears
+it. OSC 133 is only a fallback: once a command emits structured agent status,
+OSC 9;4 progress, or a terminal notification, its generic tile and completion
+actions are suppressed for the rest of that invocation. Progress clear, expiry,
+reporter shutdown and focus acknowledgement do not release that suppression.
+Structured agent status also supersedes progress from the same invocation,
+preventing a second aggregate entry after the agent reporter ends.
+Native tmuxx does not restore command start times on attach, so commands already
+running before attachment cannot qualify by elapsed duration.
+
+Commands that use an explicit system control their own notifications; Rustty does
+not add a generic “Command finished” alert, even if their terminal notification
+cannot be delivered. Bell and title changes alone do not suppress the fallback.
+Notifications sent directly by external OS hooks are invisible to Rustty and
+cannot be deduplicated.
+
+The following states describe explicit agent reports:
 
 | State | Source/meaning |
 |---|---|
@@ -193,7 +222,7 @@ The v1 protocol has no request identity: same-state updates cannot distinguish a
 new approval from a duplicate. A new observed state transition is needed to rearm.
 
 Existing Rustty title/progress presentation remains available; it cannot override
-an explicit structured status or register a session. Progress expiry, redraw,
+an explicit structured status or allocate a tile by itself. Progress expiry, redraw,
 RIS and compaction are not exits. Normal end, pane/PTY exit, or a trustworthy
 foreground-command end clears registration. A crash with no observable cleanup
 boundary can leave uncertain state. There is no heartbeat or silence-to-done rule.
@@ -203,11 +232,16 @@ and indeterminate progress join Working; error and paused progress join Attentio
 100% is still Working. The 15-second progress timeout drops the stale entry from
 the aggregate controls without marking it Attention or Done; fresh progress resumes
 tracking. An explicit clear finishes with Attention unless a result is known.
-A foreground shell command that contained progress can resolve its result:
-exit 0 joins Done; nonzero or missing exit status
-joins Attention. Leading ✅ notifications mark success; leading ❌, ⚠, or ✅⚠ mark
-Attention, catering to `wait-pr` and `notify-me`. Error/warning evidence takes
-precedence over exit 0, including `wait-pr`'s “CI finished, but not merged” warning.
+For still-tracked progress with no explicit result, shell completion can resolve
+that existing entry: exit 0 joins Done; nonzero or missing exit status joins
+Attention. It never restores an expired or acknowledged entry. Leading ✅
+notifications mark success; leading ❌, ⚠, or ✅⚠ mark Attention, catering to
+`wait-pr` and `notify-me`. Explicit results take precedence over shell exit status:
+`wait-pr`'s merged notification remains Done even if subsequent cleanup fails,
+and its “CI finished, but not merged” warning remains Attention despite exit 0.
+Heartbeats retain result evidence across timeouts, and duplicate results do not
+rearm acknowledged entries. An explicit final result also takes precedence over
+an earlier progress error, allowing a reported recovery to finish successfully.
 Other notification prose is not interpreted as a result. A timeout alone never
 proves success. Terminal reset discards progress; disabling visual progress bars
 does not disable aggregate tracking. Finished progress remains until the pane is
@@ -216,9 +250,13 @@ and pauses remain selectable until progress changes, finishes, or times out.
 These runtime signals are not persisted and do not change the pane's structured
 agent status.
 
+Native tmuxx views all observe terminal notifications for status and fallback
+suppression. Only the elected recipient delivers the desktop notification;
+delivery does not reapply status or attribute a delayed alert to a later command.
+
 ## Empty board and persistence
 
-With zero live registered sessions and no pending OSC progress the entire board becomes:
+With no live agent or qualifying command tiles and no pending OSC progress the entire board becomes:
 
 | | | | | |
 |---|---|---|---|---|
@@ -291,7 +329,7 @@ advances without incoming HID events. No external accessibility daemon is used.
 |---|---|
 | Driver/device | Pinned `elgato-streamdeck` c8b9f854 (0.13.2); no image, profile, brightness or pane-map readback. Previous artwork/settings cannot be restored. Only USB display devices with the accepted 5×3 layout; backend HID writes have no driver-level timeout. |
 | Codex producer | Full automatic reports require the companion TUI option. Stock notification/hook configuration does not provide registration, working start and request resolution. |
-| Scope | One tile per reporting pane and one device. No hidden-subagent/outside-Rustty tiles, approval, command, usage, dial/touch/LCD or desktop Micro actions. |
+| Scope | One tile per reporting agent or qualifying shell-command pane and one device. No hidden-subagent/outside-Rustty tiles, approval, command execution, usage, dial/touch/LCD or desktop Micro actions. |
 | Semantics | Done observes a turn completion, not task success. Any process sharing a PTY can spoof that pane's metadata. Unobserved crash cleanup remains uncertain. |
 | Multiplexers | Native tmuxx keeps each pane's reporter separate and accepts raw or tmux-wrapped status. Multiple stock tmux reporters sharing one outer Rustty PTY exceed the serialized single-reporter contract. |
 | Layout | Exact 9+6 region targets 5×3 devices; other layouts are rejected. Input/error/paused shapes are distinct; Attention groups these states. Brightness is memory-only. |
