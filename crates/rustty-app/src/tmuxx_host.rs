@@ -6,11 +6,7 @@ use rustty_app::tmuxx_workspace::Mapping;
 use std::collections::BTreeSet;
 
 pub(super) use rustty_app::tmuxx_menu::{Command as MenuCommand, Source, Target};
-
-#[cfg(unix)]
-pub(super) const LOCAL_TARGET_HINT: &str = "unix:/path/socket.native";
-#[cfg(windows)]
-pub(super) const LOCAL_TARGET_HINT: &str = "pipe:INSTANCE";
+pub(super) use rustty_app::tmuxx_target::LOCAL_TARGET_HINT;
 
 pub(super) fn temporary_endpoint(name: &str) -> std::io::Result<PathBuf> {
     #[cfg(windows)]
@@ -21,15 +17,7 @@ pub(super) fn temporary_endpoint(name: &str) -> std::io::Result<PathBuf> {
 }
 
 pub(super) fn local_endpoint(target: &str) -> Result<PathBuf> {
-    #[cfg(unix)]
-    if let Some(path) = target.strip_prefix("unix:") {
-        return Ok(std::path::absolute(path)?);
-    }
-    #[cfg(windows)]
-    if let Some(instance) = target.strip_prefix("pipe:") {
-        return Ok(rustty::tmuxx::windows_endpoint(instance)?);
-    }
-    Err(format!("Use {LOCAL_TARGET_HINT}, ssh:HOST, or system-ssh:HOST").into())
+    Ok(rustty_app::tmuxx_target::local_endpoint(target)?)
 }
 
 pub(super) fn connection_timeout(source: &Source) -> Duration {
@@ -361,18 +349,13 @@ impl Attachment {
     pub fn label(&self, names: &BTreeMap<String, String>) -> String {
         let source = match &self.source {
             Source::Embedded(_) => "temporary".into(),
-            Source::Local(path) => format!("local · {}", path.display()),
+            Source::Local(path) => rustty_app::tmuxx_target::local_label(path),
             Source::Ssh(host) | Source::SystemSsh(host) => format!("SSH · {host}"),
         };
-        let source = self
-            .source
-            .ssh_target()
-            .and_then(|target| {
-                names
-                    .iter()
-                    .find(|(_, value)| **value == target)
-                    .map(|(name, _)| format!("{name} · {source}"))
-            })
+        let source = names
+            .iter()
+            .find(|(_, target)| self.source.matches_target(target))
+            .map(|(name, _)| format!("{name} · {source}"))
             .unwrap_or(source);
         if self.monitoring || self.connection.as_ref().is_none_or(Connection::is_closed) {
             format!("tmuxx · {source} · disconnected")
@@ -398,11 +381,17 @@ impl Attachment {
         if let Some(status) = &self.status {
             children.push(Entry::label(status));
         }
-        if let Source::Embedded(endpoint) = &self.source {
+        if let Source::Embedded(endpoint) | Source::Local(endpoint) = &self.source {
             children.push(Entry::label(format!(
                 "Native endpoint: {}",
                 endpoint.display()
             )));
+        }
+        if let Some(address) = self.source.connection_target() {
+            children.push(Entry::command(
+                "Copy Connection Address",
+                MenuCommand::CopyAddress(address),
+            ));
         }
         let target = self.target();
         let live = self.connection.as_ref().is_some_and(|connection| {
@@ -495,7 +484,7 @@ impl Attachment {
             children.push(Entry::command("Reconnect", MenuCommand::Reconnect(target)));
         }
         if name.is_some()
-            && let Some(target) = self.source.ssh_target()
+            && let Some(target) = self.source.connection_target()
         {
             children.insert(0, Entry::label(target));
         }
@@ -566,7 +555,7 @@ fn menu_entries(
         .map(|(name, target)| {
             attachments
                 .iter()
-                .find(|entry| entry.source.ssh_target().as_ref() == Some(target))
+                .find(|entry| entry.source.matches_target(target))
                 .map_or_else(
                     || Entry::command(name, MenuCommand::Connect(target.clone())),
                     |entry| entry.menu_entry(Some(name)),
@@ -577,10 +566,9 @@ fn menu_entries(
         attachments
             .iter()
             .filter(|entry| {
-                entry
-                    .source
-                    .ssh_target()
-                    .is_none_or(|target| !names.values().any(|value| *value == target))
+                !names
+                    .values()
+                    .any(|target| entry.source.matches_target(target))
             })
             .map(|entry| entry.menu_entry(None)),
     );
@@ -1359,6 +1347,28 @@ impl App {
     }
     pub(super) fn tmuxx_menu_command(&mut self, command: MenuCommand) {
         let target = match &command {
+            MenuCommand::CopyAddress(address) => {
+                use vt::clipboard::{Content, Location, Write, WriteResult};
+                let request = Write::osc52(
+                    Location::Standard,
+                    vec![Content {
+                        mime: b"text/plain".to_vec(),
+                        data: address.as_bytes().into(),
+                    }],
+                );
+                let result = self
+                    .platform
+                    .as_ref()
+                    .map_or(WriteResult::IoError, |platform| {
+                        platform.clipboard_write(&request)
+                    });
+                if !matches!(result, WriteResult::Success { .. }) {
+                    self.errors
+                        .push(format!("Could not copy connection address: {result:?}"));
+                    self.reveal_tmuxx_errors();
+                }
+                return;
+            }
             MenuCommand::Connect(target) => {
                 if let Err(error) = self.connect_tmuxx(target) {
                     self.errors.push(error.to_string());
@@ -1405,7 +1415,9 @@ impl App {
             return;
         }
         match command {
-            MenuCommand::Connect(_) => unreachable!("connection command handled above"),
+            MenuCommand::Connect(_) | MenuCommand::CopyAddress(_) => {
+                unreachable!("connection command handled above")
+            }
             MenuCommand::Reconnect(target) => {
                 if let Err(error) = self.connect_tmuxx_source(target.source) {
                     self.errors.push(error.to_string());
@@ -1858,7 +1870,8 @@ mod tests {
         }
         // The Connect dialog resolves the same instance without losing its
         // account namespace; an invalid filename replacement cannot bind here.
-        let target = local_endpoint(&format!("pipe:{name}")).unwrap();
+        let target = local_endpoint(&format!("local:{name}")).unwrap();
+        assert_eq!(target, local_endpoint(&format!("pipe:{name}")).unwrap());
         let attached = Connection::native(&target, Arc::new(|| {})).unwrap();
         drop(attached);
         drop(connection);
@@ -2059,6 +2072,41 @@ mod tests {
         assert_eq!(
             entries[2].command,
             Some(MenuCommand::Connect("system-ssh:host".into()))
+        );
+    }
+
+    #[test]
+    fn local_connections_show_friendly_names_and_copy_round_trippable_addresses() {
+        let endpoint = local_endpoint("local:work").unwrap();
+        let entry = Attachment::new(Source::Local(endpoint.clone()), None, false);
+        assert_eq!(
+            entry.label(&BTreeMap::new()),
+            "tmuxx · local · work · disconnected"
+        );
+        let menu = entry.menu_entry(None);
+        assert!(menu.children.iter().any(|item| {
+            item.label == "Copy Connection Address"
+                && item.command == Some(MenuCommand::CopyAddress("local:work".into()))
+        }));
+        assert!(
+            menu.children
+                .iter()
+                .any(|item| { item.label == format!("Native endpoint: {}", endpoint.display()) })
+        );
+
+        let names = BTreeMap::from([("My work".into(), "local:work".into())]);
+        let entries = menu_entries(std::slice::from_ref(&entry), &names);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].label, "My work");
+        assert_eq!(
+            entry.label(&names),
+            "tmuxx · My work · local · work · disconnected"
+        );
+        assert!(
+            entries[0]
+                .children
+                .iter()
+                .any(|item| { item.command == Some(MenuCommand::Reconnect(entry.target())) })
         );
     }
 

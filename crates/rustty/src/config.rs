@@ -308,7 +308,7 @@ pub struct Config {
     pub tmuxx_ssh_command: String,
     /// Overrides keyed by the exact SSH target or alias supplied when connecting.
     pub tmuxx_ssh_command_hosts: BTreeMap<String, String>,
-    /// Named remote targets offered by the native tmuxx menu.
+    /// Named local and remote targets offered by the native tmuxx menu.
     pub tmuxx_connections: BTreeMap<String, String>,
     /// Themes keyed by the exact SSH target or alias supplied when connecting.
     pub tmuxx_theme_hosts: BTreeMap<String, String>,
@@ -622,9 +622,9 @@ impl Config {
                 if value.is_empty() {
                     self.tmuxx_connections.clear();
                 } else {
-                    let (name, target) = value
-                        .split_once('=')
-                        .ok_or("tmuxx connection requires name=ssh:host or name=system-ssh:host")?;
+                    let (name, target) = value.split_once('=').ok_or(
+                        "tmuxx connection requires name=local:instance, name=ssh:host or name=system-ssh:host",
+                    )?;
                     let name = name.trim();
                     let target = target.trim();
                     if name.is_empty() || name.chars().any(char::is_control) {
@@ -632,15 +632,32 @@ impl Config {
                             "tmuxx connection name must be nonempty and contain no control characters",
                         );
                     }
-                    let host = target
-                        .strip_prefix("ssh:")
-                        .or_else(|| target.strip_prefix("system-ssh:"))
-                        .ok_or("tmuxx connection target must be ssh:host or system-ssh:host")?;
-                    if host.is_empty() || host.chars().any(|c| c.is_whitespace() || c.is_control())
-                    {
-                        return Err(
-                            "SSH host must be nonempty and contain no whitespace or control characters",
-                        );
+                    if let Some(instance) = target.strip_prefix("local:") {
+                        if instance.is_empty()
+                            || instance.len() > 64
+                            || matches!(instance, "." | "..")
+                            || instance
+                                .chars()
+                                .any(|c| c.is_control() || matches!(c, '/' | '\\'))
+                        {
+                            return Err(
+                                "local instance must be 1-64 UTF-8 bytes, not . or .., and contain no control characters or path separators",
+                            );
+                        }
+                    } else {
+                        let host = target
+                            .strip_prefix("ssh:")
+                            .or_else(|| target.strip_prefix("system-ssh:"))
+                            .ok_or(
+                                "tmuxx connection target must be local:instance, ssh:host or system-ssh:host",
+                            )?;
+                        if host.is_empty()
+                            || host.chars().any(|c| c.is_whitespace() || c.is_control())
+                        {
+                            return Err(
+                                "SSH host must be nonempty and contain no whitespace or control characters",
+                            );
+                        }
                     }
                     self.tmuxx_connections
                         .insert(name.to_owned(), target.to_owned());

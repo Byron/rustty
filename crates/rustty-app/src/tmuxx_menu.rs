@@ -10,6 +10,22 @@ pub enum Source {
 }
 
 impl Source {
+    pub fn connection_target(&self) -> Option<String> {
+        match self {
+            Self::Local(path) => Some(crate::tmuxx_target::local_target(path)),
+            _ => self.ssh_target(),
+        }
+    }
+
+    pub fn matches_target(&self, target: &str) -> bool {
+        match self {
+            Self::Local(path) => {
+                crate::tmuxx_target::local_endpoint(target).is_ok_and(|endpoint| endpoint == *path)
+            }
+            _ => self.ssh_target().as_deref() == Some(target),
+        }
+    }
+
     pub fn ssh_target(&self) -> Option<String> {
         match self {
             Self::Ssh(host) => Some(format!("ssh:{host}")),
@@ -28,6 +44,7 @@ pub struct Target {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
     Connect(String),
+    CopyAddress(String),
     Open(Target, u64),
     Fit(Target, u64),
     Kill(Target, u64),
@@ -233,5 +250,6 @@ mod tests {
         assert!(!Command::Fit(target.clone(), 7).requires_confirmation());
         assert!(!Command::Disconnect(target).requires_confirmation());
         assert!(!Command::Connect("ssh:build-host".into()).requires_confirmation());
+        assert!(!Command::CopyAddress("local:work".into()).requires_confirmation());
     }
 }

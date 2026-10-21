@@ -9,6 +9,8 @@ use tmuxx_protocol::encode_output;
 use tmuxx_protocol::native::{Request, ServerMessage};
 #[cfg(test)]
 mod arguments_tests;
+#[cfg(test)]
+mod native_endpoint_tests;
 #[cfg(windows)]
 mod windows;
 #[cfg(unix)]
@@ -230,6 +232,93 @@ pub fn default_native_endpoint() -> io::Result<PathBuf> {
         io::ErrorKind::Unsupported,
         "native tmux hosting is not implemented on this platform",
     ))
+}
+
+/// Resolve a portable local connection name to this account's native endpoint.
+/// `default` honors `TMUXX_ENDPOINT`; other names use the same namespace as `-L`.
+pub fn named_native_endpoint(name: &str) -> io::Result<PathBuf> {
+    named_native_endpoint_in(
+        name,
+        std::env::var_os("TMUXX_ENDPOINT"),
+        std::env::var_os("TMUX_TMPDIR"),
+    )
+}
+
+fn named_native_endpoint_in(
+    name: &str,
+    default: Option<OsString>,
+    _temporary: Option<OsString>,
+) -> io::Result<PathBuf> {
+    if name.is_empty()
+        || name.len() > 64
+        || matches!(name, "." | "..")
+        || name
+            .chars()
+            .any(|c| c.is_control() || matches!(c, '/' | '\\'))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "local name must contain 1..64 UTF-8 bytes, no control characters or slashes, and cannot be . or ..",
+        ));
+    }
+    if name == "default"
+        && let Some(path) = default
+    {
+        return Ok(path.into());
+    }
+    #[cfg(unix)]
+    return socket_path(None, Some(name), None, _temporary).map(|path| native_path(&path));
+    #[cfg(windows)]
+    return tmuxx_runtime::windows::endpoint(name);
+    #[cfg(not(any(unix, windows)))]
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "native tmux hosting is not implemented on this platform",
+    ))
+}
+
+/// Return a portable local name only when resolving it selects this same endpoint.
+/// Endpoints without a matching local name retain their explicit address.
+pub fn native_endpoint_name(path: &std::path::Path) -> Option<String> {
+    native_endpoint_name_in(
+        path,
+        std::env::var_os("TMUXX_ENDPOINT"),
+        std::env::var_os("TMUX_TMPDIR"),
+    )
+}
+
+fn native_endpoint_name_in(
+    path: &std::path::Path,
+    default: Option<OsString>,
+    temporary: Option<OsString>,
+) -> Option<String> {
+    let resolves_to = |name: &str| {
+        named_native_endpoint_in(name, default.clone(), temporary.clone())
+            .ok()
+            .is_some_and(|resolved| {
+                #[cfg(unix)]
+                return std::path::absolute(path).ok().is_some_and(|path| {
+                    std::path::absolute(resolved).is_ok_and(|resolved| path == resolved)
+                });
+                #[cfg(not(unix))]
+                return path == resolved;
+            })
+    };
+    if resolves_to("default") {
+        return Some("default".into());
+    }
+    #[cfg(unix)]
+    let name = path
+        .file_name()?
+        .to_str()?
+        .strip_suffix(".native")?
+        .to_owned();
+    #[cfg(windows)]
+    let name = tmuxx_runtime::windows::endpoint_name(path)?;
+    #[cfg(any(unix, windows))]
+    return resolves_to(&name).then_some(name);
+    #[cfg(not(any(unix, windows)))]
+    None
 }
 
 fn run(mut cli: Cli) -> io::Result<()> {

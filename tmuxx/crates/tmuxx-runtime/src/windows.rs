@@ -121,6 +121,27 @@ pub fn endpoint(instance: &str) -> io::Result<PathBuf> {
     Ok(PathBuf::from(format!("{}{encoded}", prefix()?)))
 }
 
+/// Decode this account's canonical pipe names without changing legacy name rules.
+pub fn endpoint_name(path: &Path) -> Option<String> {
+    let prefix = prefix().ok()?;
+    let encoded = path.to_str()?.strip_prefix(&prefix)?;
+    if encoded.is_empty() || encoded.len() > 128 || encoded.len() % 2 != 0 {
+        return None;
+    }
+    let digit = |value: u8| match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        _ => None,
+    };
+    let decoded = encoded
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| Some((digit(pair[0])? << 4) | digit(pair[1])?))
+        .collect::<Option<Vec<_>>>()?;
+    let name = String::from_utf8(decoded).ok()?;
+    (endpoint(&name).ok().as_deref() == Some(path)).then_some(name)
+}
+
 fn validate_endpoint(path: &Path) -> io::Result<()> {
     let value = path.to_str().ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, "pipe endpoint must be Unicode")
@@ -571,6 +592,37 @@ mod tests {
         assert!(endpoint("a\0b").is_err());
         assert!(validate_endpoint(Path::new(r"\\remote\pipe\tmuxx-test")).is_err());
         assert!(validate_endpoint(Path::new(r"\\.\pipe\unrelated")).is_err());
+    }
+
+    #[test]
+    fn endpoint_names_decode_only_canonical_current_account_pipes() {
+        for name in [
+            "default",
+            "work",
+            "Pane",
+            "pane",
+            "space 雪 & | ^ % $ ; '",
+            "a/b",
+        ] {
+            assert_eq!(
+                endpoint_name(&endpoint(name).unwrap()).as_deref(),
+                Some(name)
+            );
+        }
+        let prefix = prefix().unwrap();
+        for suffix in ["", "0", "gg", "FF", "ff", "00", "c328"] {
+            assert_eq!(endpoint_name(Path::new(&format!("{prefix}{suffix}"))), None);
+        }
+        assert_eq!(
+            endpoint_name(Path::new(&format!("{prefix}{}", "61".repeat(65)))),
+            None
+        );
+        assert_eq!(
+            endpoint_name(Path::new(r"\\.\pipe\tmuxx-S-1-0-0-776f726b")),
+            None
+        );
+        assert_eq!(endpoint_name(Path::new(r"\\remote\pipe\tmuxx-work")), None);
+        assert_eq!(endpoint_name(Path::new(r"\\.\pipe\unrelated")), None);
     }
 
     #[test]
