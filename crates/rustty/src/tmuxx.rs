@@ -1958,6 +1958,7 @@ fn feed_view(terminal: &mut Terminal, data: &[u8], events: &mpsc::SyncSender<Ses
 #[cfg(test)]
 mod focus_tests {
     use super::*;
+    use crate::session::Session;
 
     fn state() -> serde_json::Value {
         let terminal = tmuxx_terminal::Terminal::new(10, 4, 10).snapshot();
@@ -1988,6 +1989,56 @@ mod focus_tests {
             },
         )
         .unwrap();
+    }
+    #[test]
+    fn native_cwd_survives_attach_live_output_snapshot_and_reopen() {
+        for checkpoint in [false, true] {
+            let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+            let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);
+            let state_with_cwd = |owner: &tmuxx_terminal::Terminal| {
+                let mut state = state();
+                state["panes"][0]["terminal"] = if checkpoint {
+                    serde_json::to_value(owner.checkpoint_snapshot()).unwrap()
+                } else {
+                    serde_json::to_value(owner.snapshot()).unwrap()
+                };
+                state
+            };
+            let check = |view: &Session, expected: &str| {
+                let report = view.terminal().unwrap().working_directory.clone();
+                assert_eq!(
+                    view.directory_from_report(&report),
+                    Some(std::path::PathBuf::from(expected)),
+                    "{report}"
+                );
+            };
+            owner.feed(b"\x1b]7;file://linux/home/one%20two\x07");
+            snapshot(&connection, 1, state_with_cwd(&owner));
+            let view = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+            check(&view, "/home/one two");
+            for (sequence, data) in [
+                (2, b"\x1b]7;file://windows/C:/Users/".as_slice()),
+                (3, b"one%20two\x07".as_slice()),
+            ] {
+                owner.feed(data);
+                apply(
+                    &connection.shared,
+                    ServerMessage::PaneOutput {
+                        sequence,
+                        pane_id: 7,
+                        data: data.to_vec(),
+                    },
+                )
+                .unwrap();
+            }
+            check(&view, "C:/Users/one two");
+            owner.feed(b"\x1b]7;file://linux/var/remote\x07");
+            snapshot(&connection, 4, state_with_cwd(&owner));
+            check(&view, "/var/remote");
+            drop(view);
+            let reopened = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+            check(&reopened, "/var/remote");
+        }
     }
     fn reply(connection: &Connection, request_id: u64, error: Option<&str>) {
         apply(
