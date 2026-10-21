@@ -615,6 +615,25 @@ impl Connection {
         let source = Source::Windows(endpoint.to_owned());
         Self::connect_source(source, wake, true, true, None)
     }
+    /// Send commands to a known owner without retaining or refreshing its pane snapshots.
+    #[cfg(any(unix, windows))]
+    pub fn native_commands(
+        endpoint: &Path,
+        expected_instance: &str,
+        wake: Arc<dyn Fn() + Send + Sync>,
+    ) -> io::Result<Self> {
+        #[cfg(unix)]
+        let source = Source::Unix(endpoint.to_owned());
+        #[cfg(windows)]
+        let source = Source::Windows(endpoint.to_owned());
+        Self::connect_source(
+            source,
+            wake,
+            false,
+            false,
+            Some(expected_instance.to_owned()),
+        )
+    }
     #[cfg(unix)]
     pub fn unix(endpoint: &Path, wake: Arc<dyn Fn() + Send + Sync>) -> io::Result<Self> {
         Self::native(endpoint, wake)
@@ -898,7 +917,7 @@ impl Connection {
                         };
                         if actual != expected {
                             return Err(err(
-                                "tmuxx server incarnation changed; size was not applied",
+                                "tmuxx server incarnation changed; command was not applied",
                             ));
                         }
                     }
@@ -2227,7 +2246,7 @@ mod tests {
     }
 
     #[test]
-    fn native_size_identity_checks_current_and_legacy_peers_before_commands() {
+    fn native_command_identity_checks_current_and_legacy_peers_before_mutations() {
         for advertised in [true, false] {
             for actual in ["owner", "replacement"] {
                 let (stream, peer) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -2240,7 +2259,9 @@ mod tests {
                     Some("owner".into()),
                 )
                 .unwrap();
-                connection.command(["attach-session", "-t", "$0"]).unwrap();
+                let reply = connection
+                    .command_with_reply(vec![b"new-session".to_vec(), b"-d".to_vec()])
+                    .unwrap();
                 peer.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
                 let mut peer = BufReader::new(peer);
                 let hello: Hello =
@@ -2272,18 +2293,28 @@ mod tests {
                 if actual == "owner" {
                     let request: Request =
                         serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
-                    assert_eq!(request.argv[0], b"attach-session");
+                    assert_eq!(request.argv[0], b"new-session");
                     assert!(!request.subscribe);
                     for message in [
+                        ServerMessage::Reply(tmuxx_protocol::native::Response {
+                            request_id: request.request_id,
+                            output: b"$1 @2 %3".to_vec(),
+                            status: None,
+                            error: None,
+                        }),
                         ServerMessage::PaneOutput {
                             sequence: 1,
                             pane_id: 0,
-                            data: b"ignored size-only output".to_vec(),
+                            data: b"ignored command-only output".to_vec(),
                         },
                         ServerMessage::Changed { sequence: 2 },
                     ] {
                         write_record(peer.get_mut(), &message).unwrap();
                     }
+                    assert_eq!(
+                        reply.recv_timeout(Duration::from_secs(5)).unwrap().unwrap(),
+                        b"$1 @2 %3",
+                    );
                     peer.get_ref()
                         .set_read_timeout(Some(Duration::from_millis(100)))
                         .unwrap();
@@ -2296,13 +2327,21 @@ mod tests {
                 } else {
                     let mut requests = Vec::new();
                     peer.read_to_end(&mut requests).unwrap();
-                    assert!(requests.is_empty(), "wrong owner received size commands");
+                    assert!(requests.is_empty(), "wrong owner received mutations");
                     let deadline = Instant::now() + Duration::from_secs(5);
                     while !connection.is_closed() {
                         assert!(Instant::now() < deadline, "wrong owner was accepted");
                         thread::sleep(Duration::from_millis(5));
                     }
                     assert!(connection.errors().join(";").contains("incarnation"));
+                    assert!(
+                        reply
+                            .recv_timeout(Duration::from_secs(5))
+                            .unwrap()
+                            .unwrap_err()
+                            .to_string()
+                            .contains("incarnation")
+                    );
                 }
                 drop(connection);
                 let _ = peer.get_ref().shutdown(std::net::Shutdown::Both);
