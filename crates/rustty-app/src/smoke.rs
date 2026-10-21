@@ -1200,41 +1200,60 @@ fn check_themes(
             return Err("connection theme leaked into the shared UI theme".into());
         }
         app.errors.clear();
-        let session_config = format!("{host_config}tmuxx-theme-session = work = Bundled\n");
-        fs::write(&files[0].0, &session_config)?;
-        app.reload_config(Some(host));
-        scoped_colors(app, [0x77, 0x88, 0x99], [0x11, 0x22, 0x33])?;
-        // Unthemed remote panes can retain defaults different from local config.
-        let mut remote_appearance = app.config().clone();
-        remote_appearance.background = config::Rgb::new(0x21, 0x43, 0x65);
-        for (&id, pane) in &app.panes {
-            if app.pane_window(id) != Some(scoped_window) {
-                pane.session.apply_appearance(&remote_appearance)?;
+        for (saved_config, background, hint) in [
+            (
+                files[0].1.to_owned(),
+                [0x11, 0x22, 0x33],
+                "tmuxx-theme-session = work = ",
+            ),
+            (
+                host_config.clone(),
+                [0xee; 3],
+                "tmuxx-theme-host = windows = ",
+            ),
+            (
+                format!("{host_config}tmuxx-theme-session = work = Bundled\n"),
+                [0x77, 0x88, 0x99],
+                "tmuxx-theme-session = work = ",
+            ),
+        ] {
+            fs::write(&files[0].0, &saved_config)?;
+            app.reload_config(Some(host));
+            scoped_colors(app, background, [0x11, 0x22, 0x33])?;
+            // Unthemed remote panes can retain defaults different from local config.
+            let mut remote_appearance = app.config().clone();
+            remote_appearance.background = config::Rgb::new(0x21, 0x43, 0x65);
+            for (&id, pane) in &app.panes {
+                if app.pane_window(id) != Some(scoped_window) {
+                    pane.session.apply_appearance(&remote_appearance)?;
+                }
             }
-        }
-        let saved_scoped = app.config().clone();
-        app.action(event_loop, host, Action::Themes, false);
-        app.draw(event_loop, host)?;
-        app.draw(event_loop, host)?;
-        scoped_colors(app, [0x44, 0x55, 0x66], [0x21, 0x43, 0x65])?;
-        key(host, egui::Key::Escape);
-        app.draw(event_loop, host)?;
-        scoped_colors(app, [0x77, 0x88, 0x99], [0x21, 0x43, 0x65])?;
-        if app.config() != &saved_scoped {
-            return Err("cancelling a scoped theme did not restore the matching rule".into());
-        }
-        app.action(event_loop, host, Action::Themes, false);
-        app.draw(event_loop, host)?;
-        key(host, egui::Key::Enter);
-        app.draw(event_loop, host)?;
-        scoped_colors(app, [0x44, 0x55, 0x66], [0x21, 0x43, 0x65])?;
-        if !app
-            .errors
-            .iter()
-            .any(|error| error.contains("tmuxx-theme-session = work = "))
-            || fs::read_to_string(&files[0].0)? != session_config
-        {
-            return Err("accepting a scoped theme omitted its hint or wrote configuration".into());
+            let saved_scoped = app.config().clone();
+            app.action(event_loop, host, Action::Themes, false);
+            app.draw(event_loop, host)?;
+            app.draw(event_loop, host)?;
+            scoped_colors(app, [0x44, 0x55, 0x66], [0x21, 0x43, 0x65])?;
+            key(host, egui::Key::Escape);
+            app.draw(event_loop, host)?;
+            scoped_colors(app, background, [0x21, 0x43, 0x65])?;
+            if app.config() != &saved_scoped {
+                return Err("cancelling a scoped theme did not restore the original rules".into());
+            }
+            app.action(event_loop, host, Action::Themes, false);
+            app.draw(event_loop, host)?;
+            key(host, egui::Key::Enter);
+            app.draw(event_loop, host)?;
+            scoped_colors(app, [0x44, 0x55, 0x66], [0x21, 0x43, 0x65])?;
+            if !app.errors.iter().any(|error| {
+                error.contains(hint)
+                    && error.contains(&app.loaded.edit_config_path.display().to_string())
+            }) || fs::read_to_string(&files[0].0)? != saved_config
+            {
+                return Err(
+                    "accepting a scoped theme omitted its hint or wrote configuration".into(),
+                );
+            }
+            app.errors.clear();
         }
         fs::write(&files[0].0, &host_config)?;
         app.reload_config(Some(host));
