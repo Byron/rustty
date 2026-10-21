@@ -123,6 +123,186 @@ fn pane_removal_notifies_other_views_when_requester_gets_a_snapshot() {
     }
 }
 #[test]
+fn focus_updates_do_not_transfer_scrollback_and_other_mutations_still_refresh() {
+    let (mut host, first) = host();
+    host.clients.get_mut(&1).unwrap().context.selection_updates = true;
+    host.clients.get_mut(&1).unwrap().context.host_effects = true;
+    let (tx, second) = mpsc::sync_channel(32);
+    host.clients.insert(
+        2,
+        Client {
+            tx,
+            delivery_bytes: Arc::new(AtomicUsize::new(0)),
+            ..host.clients[&1].clone()
+        },
+    );
+    let (tx, legacy) = mpsc::sync_channel(32);
+    let mut legacy_client = host.clients[&1].clone();
+    legacy_client.tx = tx;
+    legacy_client.context.selection_updates = false;
+    legacy_client.delivery_bytes = Arc::new(AtomicUsize::new(0));
+    host.clients.insert(3, legacy_client);
+    for command in
+        tmuxx_command::parse(b"new-session -d -x 140 -y 50 ''; split-window -h ''").unwrap()
+    {
+        host.engine
+            .execute(&command, &mut ClientContext::default())
+            .unwrap();
+    }
+    host.engine.feed(
+        0,
+        b"ordinary build output with enough text to create scrollback\r\n"
+            .repeat(1000)
+            .as_slice(),
+    );
+    let run = |host: &mut Host, argv: &[&str], stdin| {
+        host.request(
+            1,
+            Request {
+                request_id: 10,
+                argv: argv.iter().map(|arg| arg.as_bytes().to_vec()).collect(),
+                stdin,
+                subscribe: false,
+                control: false,
+            },
+        );
+        for _ in 0..1024 {
+            if !host.scheduled_work() {
+                return;
+            }
+        }
+        panic!("selection request did not finish");
+    };
+    for target in ["%0", "%1", "%1"] {
+        run(
+            &mut host,
+            &[
+                "select-window",
+                "-t",
+                "$0:0",
+                ";",
+                "select-pane",
+                "-t",
+                target,
+            ],
+            None,
+        );
+        let messages = first.try_iter().collect::<Vec<_>>();
+        let reply = messages
+            .iter()
+            .position(
+                |message| matches!(message, ServerMessage::Reply(reply) if reply.error.is_none()),
+            )
+            .unwrap();
+        let update = messages
+            .iter()
+            .position(|message| matches!(message, ServerMessage::Selection { .. }))
+            .unwrap();
+        assert!(reply < update, "selection must follow its acknowledgement");
+        for messages in [messages, second.try_iter().collect()] {
+            assert!(!messages.iter().any(|message| matches!(
+                message,
+                ServerMessage::Snapshot { .. } | ServerMessage::Changed { .. }
+            )));
+            let bytes = serde_json::to_vec(&messages).unwrap().len();
+            assert!(bytes < 4096, "focus transferred {bytes} bytes");
+        }
+        assert!(
+            !legacy
+                .try_iter()
+                .any(|message| matches!(message, ServerMessage::Selection { .. }))
+        );
+    }
+    run(
+        &mut host,
+        &["tmuxx-host-state", "-t", "%0"],
+        Some(br#"{"focused":true,"visible":true,"color_scheme":"light"}"#.to_vec()),
+    );
+    for messages in [
+        first.try_iter().collect::<Vec<_>>(),
+        second.try_iter().collect(),
+    ] {
+        assert!(
+            messages
+                .iter()
+                .any(|message| matches!(message, ServerMessage::Selection { .. }))
+        );
+        assert!(!messages.iter().any(|message| matches!(
+            message,
+            ServerMessage::Snapshot { .. } | ServerMessage::Changed { .. }
+        )));
+    }
+    let sequence = host.engine.sequence;
+    host.pane_output(0, b"after focus");
+    for messages in [
+        first.try_iter().collect::<Vec<_>>(),
+        second.try_iter().collect(),
+    ] {
+        assert!(messages.iter().any(|message| matches!(message, ServerMessage::PaneOutput { sequence: output_sequence, data, .. } if *output_sequence > sequence && data == b"after focus")));
+    }
+    for command in [
+        vec!["select-pane", "-t", "%0", "-T", "changed title"],
+        vec!["resize-pane", "-t", "%0", "-Z"],
+        vec!["select-pane", "-t", "%1"],
+        vec![
+            "set-hook",
+            "-g",
+            "after-select-pane",
+            "select-pane -t %0 -T hook",
+        ],
+        vec!["select-pane", "-t", "%0"],
+    ] {
+        run(&mut host, &command, None);
+        for messages in [
+            first.try_iter().collect::<Vec<_>>(),
+            second.try_iter().collect(),
+        ] {
+            assert!(
+                messages
+                    .iter()
+                    .any(|message| matches!(message, ServerMessage::Changed { .. })),
+                "mutation failed to invalidate: {command:?}"
+            );
+        }
+        legacy.try_iter().for_each(drop);
+    }
+    run(
+        &mut host,
+        &["set-hook", "-g", "after-select-pane", "wait-for focus-hook"],
+        None,
+    );
+    first.try_iter().for_each(drop);
+    second.try_iter().for_each(drop);
+    run(&mut host, &["select-pane", "-t", "%1"], None);
+    assert!(
+        !first
+            .try_iter()
+            .any(|message| matches!(message, ServerMessage::Reply(_)))
+    );
+    host.request(
+        2,
+        Request {
+            request_id: 11,
+            argv: ["wait-for", "-S", "focus-hook"]
+                .map(|arg| arg.as_bytes().to_vec())
+                .to_vec(),
+            stdin: None,
+            subscribe: false,
+            control: false,
+        },
+    );
+    while host.scheduled_work() {}
+    let messages = first.try_iter().collect::<Vec<_>>();
+    let reply = messages.iter().position(|message| matches!(message, ServerMessage::Reply(reply) if reply.request_id == 10 && reply.error.is_none())).unwrap();
+    assert!(
+        messages[reply + 1..]
+            .iter()
+            .any(|message| matches!(message, ServerMessage::Selection { .. })),
+        "selection must follow a delayed hook acknowledgement"
+    );
+}
+
+#[test]
 fn image_snapshots_stream_atomically_and_rejection_preserves_the_live_owner() {
     let (mut host, rx) = host();
     let command = tmuxx_command::parse(b"new-session -d -s images ''")

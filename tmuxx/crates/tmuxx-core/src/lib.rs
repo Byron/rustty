@@ -169,6 +169,7 @@ pub struct Outcome {
     pub detach: bool,
     pub detach_hangup: bool,
     pub changed: bool,
+    pub selection_only: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -200,6 +201,7 @@ pub struct ClientContext {
     pub format_client: Option<bool>,
     pub native_view: bool,
     pub compact_snapshots: bool,
+    pub selection_updates: bool,
     pub no_hooks: bool,
     pub no_format_jobs: bool,
     pub client_flags: String,
@@ -235,6 +237,7 @@ impl Default for ClientContext {
             format_client: None,
             native_view: false,
             compact_snapshots: false,
+            selection_updates: false,
             no_hooks: false,
             no_format_jobs: false,
             client_flags: String::new(),
@@ -2836,6 +2839,14 @@ impl Engine {
 
     pub fn snapshot(&self) -> serde_json::Value {
         self.snapshot_with_compact_cells(false)
+    }
+
+    pub fn selection_state(&self) -> serde_json::Value {
+        serde_json::json!({
+            "sessions": self.sessions.values().map(|s| serde_json::json!({"id":s.id,"active":s.active})).collect::<Vec<_>>(),
+            "windows": self.windows.values().map(|w| serde_json::json!({"id":w.id,"active":w.active})).collect::<Vec<_>>(),
+            "panes": self.panes.values().map(|p| serde_json::json!({"id":p.id,"style":self.pane_style(p.id),"control_colors":p.terminal.control_colors(),"host_dark":p.terminal.host_dark()})).collect::<Vec<_>>()
+        })
     }
 
     pub fn snapshot_with_compact_cells(&self, compact: bool) -> serde_json::Value {

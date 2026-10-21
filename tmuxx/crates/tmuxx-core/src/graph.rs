@@ -609,7 +609,10 @@ impl Engine {
         } else {
             requested
         };
-        let mut out = Outcome::default();
+        let mut out = Outcome {
+            selection_only: true,
+            ..Outcome::default()
+        };
         if index != session.active {
             let wid = session.windows[&index];
             self.sessions.get_mut(&sid).unwrap().select(index);

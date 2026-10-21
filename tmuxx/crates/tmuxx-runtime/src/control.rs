@@ -107,7 +107,8 @@ pub(super) fn message_bytes(message: &ServerMessage) -> usize {
         ServerMessage::Snapshot { .. } => 0,
         ServerMessage::SnapshotChunk { data, .. } => data.len(),
         ServerMessage::SnapshotAborted { error, .. } => error.len(),
-        ServerMessage::HostEffect { action: state, .. } => {
+        ServerMessage::HostEffect { action: state, .. }
+        | ServerMessage::Selection { state, .. } => {
             serde_json::to_vec(state).map_or(BYTE_LIMIT, |bytes| bytes.len())
         }
         ServerMessage::Exit { reason } => reason.len(),
