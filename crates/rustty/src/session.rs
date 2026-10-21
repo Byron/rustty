@@ -398,6 +398,15 @@ impl Session {
         &self.shell
     }
 
+    /// Decode CWD metadata in the filesystem of the process that reported it.
+    pub fn directory_from_report(&self, report: &str) -> Option<PathBuf> {
+        if self.attached.is_some() {
+            self.shell.decode_directory(report, true)
+        } else {
+            self.shell.directory_from_report(report)
+        }
+    }
+
     pub fn reset_terminal(&self) -> io::Result<()> {
         if self.attached.is_some() {
             return Err(error("reset belongs to the tmuxx pane owner"));

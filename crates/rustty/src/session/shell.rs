@@ -141,7 +141,7 @@ impl ShellInfo {
         {
             return previous.path.clone();
         }
-        let result = self.decode_directory(report);
+        let result = self.decode_directory(report, false);
         if let Ok(mut cache) = self.directory_cache.lock() {
             *cache = Some(DirectoryCache {
                 report: report.to_owned(),
@@ -151,7 +151,7 @@ impl ShellInfo {
         result
     }
 
-    fn decode_directory(&self, report: &str) -> Option<PathBuf> {
+    pub(super) fn decode_directory(&self, report: &str, remote: bool) -> Option<PathBuf> {
         let report = report
             .strip_prefix('"')
             .and_then(|value| value.strip_suffix('"'))
@@ -170,6 +170,24 @@ impl ShellInfo {
         };
         if value.contains('\0') {
             return None;
+        }
+        if remote {
+            let drive_path = |value: &str| {
+                let bytes = value.as_bytes();
+                bytes.first().is_some_and(u8::is_ascii_alphabetic)
+                    && bytes.get(1) == Some(&b':')
+                    && matches!(bytes.get(2), Some(b'/' | b'\\'))
+            };
+            let mut value = value;
+            if authority.is_some() && value.strip_prefix('/').is_some_and(drive_path) {
+                value.remove(0);
+            }
+            // Server paths describe the server filesystem, regardless of the viewer OS.
+            let windows_path = drive_path(&value) || value.starts_with(r"\\");
+            if windows_path {
+                value = value.replace('\\', "/");
+            }
+            return (windows_path || value.starts_with('/')).then(|| PathBuf::from(value));
         }
         #[cfg(windows)]
         let value = {
@@ -375,6 +393,44 @@ mod tests {
         );
         for invalid in ["relative", "file://host", "file:///bad%0", "file:///bad%00"] {
             assert_eq!(shell.directory_from_report(invalid), None);
+        }
+    }
+
+    #[test]
+    fn server_cwd_reports_do_not_use_the_viewer_filesystem() {
+        let shell = ShellInfo::new(vec!["tmuxx".into()], "attached server pane".into());
+        for (report, expected) in [
+            ("file://linux/home/one%20two", "/home/one two"),
+            ("kitty-shell-cwd://linux/home/one two", "/home/one two"),
+            (r"/home/a\b", r"/home/a\b"),
+            (r"file://linux/home/a%5Cb", r"/home/a\b"),
+            ("file://windows/C:/Users/one%20two", "C:/Users/one two"),
+            ("file:///C:/Users/one%20two", "C:/Users/one two"),
+            (r"C:\Users\one", "C:/Users/one"),
+            ("C:/Users/one", "C:/Users/one"),
+            (r#""C:\Users\one two""#, "C:/Users/one two"),
+            (r"\\server\share\one", "//server/share/one"),
+            ("/", "/"),
+        ] {
+            assert_eq!(
+                shell.decode_directory(report, true),
+                Some(PathBuf::from(expected)),
+                "{report}"
+            );
+        }
+        for report in [
+            "",
+            "relative",
+            "C:relative",
+            r"\relative",
+            "https://host/home",
+            "file://host",
+            "file:///bad%0",
+            "file:///bad%00",
+            "file:///bad%ff",
+            "/bad\0path",
+        ] {
+            assert_eq!(shell.decode_directory(report, true), None, "{report}");
         }
     }
 
