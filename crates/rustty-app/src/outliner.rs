@@ -53,14 +53,9 @@ impl Expansion {
         self.open.retain(|target| branches.contains(target));
         let initialize = !self.initialized && !rows.is_empty();
         if initialize {
-            for (index, row) in rows.iter().enumerate() {
+            for row in rows {
                 if branches.contains(&row.target)
-                    && (matches!(row.target, Target::Window(_))
-                        || matches!(row.target, Target::Tab(_))
-                            && rows[index + 1..]
-                                .iter()
-                                .take_while(|child| child.depth > row.depth)
-                                .any(|child| matches!(child.target, Target::Quad { .. })))
+                    && matches!(row.target, Target::Window(_) | Target::Tab(_))
                 {
                     self.open.insert(row.target);
                 }
@@ -617,7 +612,7 @@ mod tests {
     }
 
     #[test]
-    fn expansion_initially_shows_quads_or_tabs_without_opening_panels() {
+    fn expansion_initially_shows_quads_or_panels_without_opening_quads() {
         let rows = expansion_rows();
         let mut expansion = Expansion::default();
         assert_eq!(
@@ -631,7 +626,13 @@ mod tests {
         expansion.sync(&rows);
         assert_eq!(
             expansion.open,
-            [Target::Window(100), Target::Tab(1), Target::Window(200)].into()
+            [
+                Target::Window(100),
+                Target::Tab(1),
+                Target::Tab(11),
+                Target::Window(200),
+            ]
+            .into()
         );
         assert!(
             expansion
@@ -644,9 +645,14 @@ mod tests {
                 .contains(&row_index(&rows, Target::Pane { tab: 1, pane: 9 }))
         );
         assert!(
-            !expansion
+            expansion
                 .visible(&rows)
                 .contains(&row_index(&rows, Target::Pane { tab: 11, pane: 12 }))
+        );
+        assert!(
+            expansion
+                .visible(&rows)
+                .contains(&row_index(&rows, Target::Pane { tab: 21, pane: 22 }))
         );
     }
 
@@ -671,7 +677,7 @@ mod tests {
                 assert!(expansion.is_open(row.target));
             }
         }
-        assert!(!expansion.is_open(Target::Tab(11)));
+        assert!(expansion.is_open(Target::Tab(11)));
         assert!(expansion.is_open(Target::Window(200)));
     }
 
