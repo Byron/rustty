@@ -1,15 +1,19 @@
 //! Explicitly selected native protocol; never send these records to a tmux socket.
 //!
-//! Transport framing is one JSON value per line. Endpoints must negotiate the
-//! protocol version and impose their own byte limit before deserializing.
+//! MessagePack records use bounded, independently compressed binary blocks.
+//! Endpoints impose a decoded byte limit before deserializing each record.
 
 use serde::{Deserialize, Serialize};
+mod codec;
+pub use codec::{decode, read_record, write_record};
+mod state;
+pub use state::{SnapshotPane, SnapshotSession, SnapshotState, SnapshotWindow};
 mod snapshot;
 pub use snapshot::{
     MAX_SNAPSHOT_BYTES, SNAPSHOT_CHUNK_BYTES, SnapshotAssembler, snapshot_bytes, write_snapshot,
 };
 
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 /// The first record in each direction, before requests or server messages.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -27,15 +31,6 @@ pub struct Hello {
     pub environment: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     pub host_effects: bool,
-    /// Opt into bounded, atomic snapshot streams instead of one large record.
-    #[serde(default)]
-    pub snapshot_stream: bool,
-    /// Accept lossless cell runs in terminal screens. Omission keeps expanded cells.
-    #[serde(default)]
-    pub compact_snapshots: bool,
-    /// Accept terminal checkpoints without duplicate JSON screen cells.
-    #[serde(default)]
-    pub checkpoint_snapshots: bool,
     /// Tagged control requests preserve source blocks and per-command guards.
     #[serde(default)]
     pub control_commands: bool,
@@ -64,9 +59,6 @@ impl Default for Hello {
             cwd: None,
             environment: Default::default(),
             host_effects: false,
-            snapshot_stream: true,
-            compact_snapshots: true,
-            checkpoint_snapshots: false,
             control_commands: true,
             stdin_file_stream: false,
             client_features: None,
@@ -86,6 +78,7 @@ pub struct Request {
     /// use a fresh request ID, at most 65536 bytes per chunk, and None for EOF.
     /// Each chunk receives a Reply acknowledgement before the next is sent.
     #[serde(default)]
+    #[serde(with = "serde_bytes")]
     pub stdin: Option<Vec<u8>>,
     #[serde(default)]
     pub subscribe: bool,
@@ -103,6 +96,7 @@ pub struct ControlRequest {
     /// A source line, prepared in the owner before any of its commands execute.
     /// Source and nonempty argv are mutually exclusive.
     #[serde(default)]
+    #[serde(with = "serde_bytes")]
     pub source: Option<Vec<u8>>,
     #[serde(default)]
     pub subscribe: bool,
@@ -111,7 +105,18 @@ pub struct ControlRequest {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "request", rename_all = "snake_case")]
 pub enum ClientMessage {
+    Request(Request),
     Control(ControlRequest),
+    EndOfInput,
+}
+
+pub fn write_request(writer: &mut impl std::io::Write, request: &Request) -> std::io::Result<()> {
+    #[derive(Serialize)]
+    #[serde(tag = "type", content = "request", rename_all = "snake_case")]
+    enum Borrowed<'a> {
+        Request(&'a Request),
+    }
+    write_record(writer, &Borrowed::Request(request))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -120,6 +125,7 @@ pub struct Response {
     /// Shell-job process status, distinct from a command error or unchanged status.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<i32>,
+    #[serde(with = "serde_bytes")]
     pub output: Vec<u8>,
     pub error: Option<String>,
 }
@@ -131,7 +137,7 @@ pub struct ServerStatus {
     pub connections: usize,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
     /// File transfer issued after command validation and expansion. The Unix
@@ -140,6 +146,7 @@ pub enum ServerMessage {
     File {
         request_id: u64,
         path: Vec<u8>,
+        #[serde(with = "serde_bytes")]
         data: Option<Vec<u8>>,
         append: bool,
     },
@@ -164,7 +171,7 @@ pub enum ServerMessage {
     Snapshot {
         instance_id: String,
         sequence: u64,
-        state: serde_json::Value,
+        state: SnapshotState,
     },
     SnapshotStart {
         instance_id: String,
@@ -173,7 +180,8 @@ pub enum ServerMessage {
     },
     SnapshotChunk {
         offset: u64,
-        data: String,
+        #[serde(with = "serde_bytes")]
+        data: Vec<u8>,
     },
     SnapshotEnd {
         sequence: u64,
@@ -186,6 +194,7 @@ pub enum ServerMessage {
     PaneOutput {
         sequence: u64,
         pane_id: u64,
+        #[serde(with = "serde_bytes")]
         data: Vec<u8>,
     },
     Changed {
@@ -201,6 +210,7 @@ pub enum ServerMessage {
     /// a complete guarded command result, or deferred unframed server output.
     /// A control bridge writes these bytes followed by exactly one LF.
     Control {
+        #[serde(with = "serde_bytes")]
         data: Vec<u8>,
     },
     Detached {
@@ -226,8 +236,8 @@ mod tests {
         });
         let json = serde_json::to_vec(&message).unwrap();
         assert_eq!(
-            serde_json::from_slice::<ServerMessage>(&json).unwrap(),
-            message
+            serde_json::to_value(serde_json::from_slice::<ServerMessage>(&json).unwrap()).unwrap(),
+            serde_json::to_value(&message).unwrap()
         );
         assert_eq!(
             serde_json::from_slice::<serde_json::Value>(&json).unwrap()["type"],
@@ -247,8 +257,8 @@ mod tests {
             serde_json::json!({"type":"server_status", "instance_id":"owner", "connections":3})
         );
         assert_eq!(
-            serde_json::from_value::<ServerMessage>(value).unwrap(),
-            message
+            serde_json::to_value(serde_json::from_value::<ServerMessage>(value).unwrap()).unwrap(),
+            serde_json::to_value(&message).unwrap()
         );
     }
 
@@ -258,25 +268,6 @@ mod tests {
         assert!(!request.subscribe);
         assert!(!request.control);
         assert_eq!(request.argv, [vec![255]]);
-    }
-
-    #[test]
-    fn compact_snapshots_require_peer_opt_in() {
-        let legacy: Hello = serde_json::from_str(r#"{"version":1}"#).unwrap();
-        assert!(!legacy.compact_snapshots);
-        let current: Hello =
-            serde_json::from_slice(&serde_json::to_vec(&Hello::default()).unwrap()).unwrap();
-        assert!(current.compact_snapshots);
-    }
-
-    #[test]
-    fn checkpoint_snapshots_require_peer_opt_in() {
-        let legacy: Hello = serde_json::from_str(r#"{"version":1}"#).unwrap();
-        assert!(!legacy.checkpoint_snapshots);
-        assert!(!Hello::default().checkpoint_snapshots);
-        let current: Hello =
-            serde_json::from_str(r#"{"version":1,"checkpoint_snapshots":true}"#).unwrap();
-        assert!(current.checkpoint_snapshots);
     }
 
     #[test]

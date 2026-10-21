@@ -220,7 +220,10 @@ impl PipeStream {
     /// record, ordered after preceding requests, while retaining output delivery.
     pub fn shutdown(&self, direction: Shutdown) -> io::Result<()> {
         if direction == Shutdown::Write {
-            return self.clone().write_all(b"{\"type\":\"end_of_input\"}\n");
+            return tmuxx_protocol::native::write_record(
+                &mut self.clone(),
+                &tmuxx_protocol::native::ClientMessage::EndOfInput,
+            );
         }
         self.0.stopped.store(true, Ordering::Release);
         unsafe {

@@ -3,7 +3,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tmuxx_core::ClientContext;
-use tmuxx_protocol::native::{Request, Response, ServerMessage};
+use tmuxx_protocol::native::{Request, Response, ServerMessage, SnapshotState};
 use tmuxx_runtime::{LocalClient, Options, ServerHandle};
 
 fn host() -> ServerHandle {
@@ -409,7 +409,7 @@ fn native_reported_colors_are_query_only_and_survive_reconnect() {
         None
     );
     let initial = snapshot(&view);
-    let pid = initial["panes"][0]["pid"].clone();
+    let pid = initial.panes[0].pid;
     for value in [
         "%0:\x1b]10;rgb:8000/ab00/ffff\x1b\\",
         "%0:\x1b]11;#ffffff\x07",
@@ -425,8 +425,7 @@ fn native_reported_colors_are_query_only_and_survive_reconnect() {
         None
     );
     let state = snapshot(&view);
-    let terminal: tmuxx_terminal::Snapshot =
-        serde_json::from_value(state["panes"][0]["terminal"].clone()).unwrap();
+    let terminal = state.panes[0].terminal.as_ref().unwrap();
     assert_eq!(terminal.foreground, [0x11, 0x22, 0x33]);
     assert_eq!(terminal.background, [4, 5, 6]);
     let mut restored = terminal.restore().unwrap();
@@ -460,9 +459,8 @@ fn native_reported_colors_are_query_only_and_survive_reconnect() {
         None
     );
     let reconnected = snapshot(&second);
-    assert_eq!(reconnected["panes"][0]["pid"], pid);
-    let terminal: tmuxx_terminal::Snapshot =
-        serde_json::from_value(reconnected["panes"][0]["terminal"].clone()).unwrap();
+    assert_eq!(reconnected.panes[0].pid, pid);
+    let terminal = reconnected.panes[0].terminal.as_ref().unwrap();
     assert_eq!(
         terminal.settings.control_colors,
         [Some([128, 171, 255]), Some([255; 3])]
@@ -1377,17 +1375,15 @@ fn native_style_theme_and_active_pane_survive_view_reconnect() {
             _ => None,
         })
     };
-    let pane = |state: &serde_json::Value, id: u64| -> tmuxx_terminal::Snapshot {
-        serde_json::from_value(
-            state["panes"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|p| p["id"] == id)
-                .unwrap()["terminal"]
-                .clone(),
-        )
-        .unwrap()
+    let pane = |state: &SnapshotState, id: u64| {
+        state
+            .panes
+            .iter()
+            .find(|pane| pane.id == id)
+            .unwrap()
+            .terminal
+            .clone()
+            .unwrap()
     };
     let first = host
         .connect_with_context(ClientContext {
@@ -1400,7 +1396,7 @@ fn native_style_theme_and_active_pane_survive_view_reconnect() {
         None
     );
     let initial = snapshot(&first);
-    let pid = initial["panes"][0]["pid"].clone();
+    let pid = initial.panes[0].pid;
     assert_eq!(pane(&initial, 0).background, [0x12, 0x34, 0x56]);
     assert_eq!(
         command(
@@ -1444,7 +1440,7 @@ fn native_style_theme_and_active_pane_survive_view_reconnect() {
         None
     );
     let restored = snapshot(&second);
-    assert_eq!(restored["panes"][0]["pid"], pid);
+    assert_eq!(restored.panes[0].pid, pid);
     let terminal = pane(&restored, 1).restore().unwrap().snapshot();
     assert_eq!(terminal.background, [0x12, 0x34, 0x56]);
     assert_eq!(terminal.settings.host_dark, Some(false));
@@ -1683,8 +1679,7 @@ fn agent_status_is_retained_without_views_and_reconnect_keeps_the_process() {
             ServerMessage::HostEffect { .. } => panic!("attachment replayed a host action"),
             _ => None,
         });
-        let terminal: tmuxx_terminal::Snapshot =
-            serde_json::from_value(state["panes"][0]["terminal"].clone()).unwrap();
+        let terminal = state.panes[0].terminal.as_ref().unwrap();
         assert_eq!(
             terminal
                 .agent_status
@@ -1697,9 +1692,9 @@ fn agent_status_is_retained_without_views_and_reconnect_keeps_the_process() {
         );
         assert_eq!(terminal.agent_status.generation, 2);
         if let Some(previous) = &pid {
-            assert_eq!(previous, &state["panes"][0]["pid"]);
+            assert_eq!(previous, &state.panes[0].pid);
         }
-        pid = Some(state["panes"][0]["pid"].clone());
+        pid = Some(state.panes[0].pid);
     }
     host.shutdown().unwrap();
 }

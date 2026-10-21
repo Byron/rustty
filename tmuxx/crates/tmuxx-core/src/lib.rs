@@ -200,8 +200,6 @@ pub struct ClientContext {
     pub format_type: Option<u8>,
     pub format_client: Option<bool>,
     pub native_view: bool,
-    pub compact_snapshots: bool,
-    pub checkpoint_snapshots: bool,
     pub selection_updates: bool,
     pub no_hooks: bool,
     pub no_format_jobs: bool,
@@ -237,8 +235,6 @@ impl Default for ClientContext {
             format_type: None,
             format_client: None,
             native_view: false,
-            compact_snapshots: false,
-            checkpoint_snapshots: false,
             selection_updates: false,
             no_hooks: false,
             no_format_jobs: false,
@@ -2851,15 +2847,73 @@ impl Engine {
         })
     }
 
-    pub fn snapshot_with_compact_cells(&self, compact: bool) -> serde_json::Value {
-        self.native_snapshot(compact, false)
+    pub fn native_snapshot(&self) -> tmuxx_protocol::native::SnapshotState {
+        use tmuxx_protocol::native::{
+            SnapshotPane, SnapshotSession, SnapshotState, SnapshotWindow,
+        };
+        SnapshotState {
+            sessions: self
+                .sessions
+                .values()
+                .map(|session| SnapshotSession {
+                    id: session.id,
+                    name: session.name.clone(),
+                    active: u64::from(session.active),
+                    windows: session.windows.clone(),
+                })
+                .collect(),
+            windows: self
+                .windows
+                .values()
+                .map(|window| SnapshotWindow {
+                    id: window.id,
+                    name: window.name.clone(),
+                    active: window.active,
+                    cols: window.cols,
+                    rows: window.rows,
+                    zoomed: window.zoomed,
+                    zoomed_pane: window.zoom_target(),
+                    visible_layout: self.formatted_layout(
+                        window.id,
+                        true,
+                        &ClientContext::default(),
+                    ),
+                    panes: window.panes.clone(),
+                    layout: if window.layout.panes().iter().any(|pane| pane.z.is_some()) {
+                        self.formatted_layout(window.id, false, &ClientContext::default())
+                    } else {
+                        self.layout(window.id)
+                    },
+                })
+                .collect(),
+            panes: self
+                .panes
+                .values()
+                .map(|pane| SnapshotPane {
+                    id: pane.id,
+                    window: pane.window,
+                    x: Some(pane.x),
+                    y: Some(pane.y),
+                    cols: pane.cols,
+                    rows: pane.rows,
+                    pid: pane.pid,
+                    status: pane.status,
+                    persistent: pane.persistent,
+                    modal: self.windows[&pane.window].modal == Some(pane.id),
+                    modal_capture_keys: pane.modal_capture_keys,
+                    modal_close_click: pane.modal_close_click,
+                    modal_close_cancel: pane.modal_close_cancel,
+                    terminal: Some(std::sync::Arc::new(pane.terminal.checkpoint_snapshot())),
+                })
+                .collect(),
+        }
     }
 
-    pub fn native_snapshot(&self, compact: bool, checkpoint: bool) -> serde_json::Value {
+    pub fn snapshot_with_compact_cells(&self, compact: bool) -> serde_json::Value {
         serde_json::json!({
             "sessions": self.sessions.values().map(|s| serde_json::json!({"id":s.id,"name":s.name,"active":s.active,"windows":s.windows})).collect::<Vec<_>>(),
             "windows": self.windows.values().map(|w| serde_json::json!({"id":w.id,"name":w.name,"active":w.active,"cols":w.cols,"rows":w.rows,"zoomed":w.zoomed,"zoomed_pane":w.zoom_target(),"visible_layout":self.formatted_layout(w.id,true,&ClientContext::default()),"panes":w.panes,"layout":if w.layout.panes().iter().any(|p| p.z.is_some()) { self.formatted_layout(w.id,false,&ClientContext::default()) } else { self.layout(w.id) }})).collect::<Vec<_>>(),
-            "panes":self.panes.values().map(|p| serde_json::json!({"id":p.id,"window":p.window,"x":p.x,"y":p.y,"cols":p.cols,"rows":p.rows,"pid":p.pid,"status":p.status,"persistent":p.persistent,"modal":self.windows[&p.window].modal == Some(p.id),"modal_capture_keys":p.modal_capture_keys,"modal_close_click":p.modal_close_click,"modal_close_cancel":p.modal_close_cancel,"terminal":if checkpoint { serde_json::to_value(p.terminal.checkpoint_snapshot()).unwrap() } else if compact { serde_json::to_value(p.terminal.compact_snapshot()).unwrap() } else { serde_json::to_value(p.terminal.snapshot()).unwrap() }})).collect::<Vec<_>>()
+            "panes":self.panes.values().map(|p| serde_json::json!({"id":p.id,"window":p.window,"x":p.x,"y":p.y,"cols":p.cols,"rows":p.rows,"pid":p.pid,"status":p.status,"persistent":p.persistent,"modal":self.windows[&p.window].modal == Some(p.id),"modal_capture_keys":p.modal_capture_keys,"modal_close_click":p.modal_close_click,"modal_close_cancel":p.modal_close_cancel,"terminal":if compact { serde_json::to_value(p.terminal.compact_snapshot()).unwrap() } else { serde_json::to_value(p.terminal.snapshot()).unwrap() }})).collect::<Vec<_>>()
         })
     }
 }

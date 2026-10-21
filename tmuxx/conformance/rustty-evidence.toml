@@ -25,8 +25,8 @@ env = {}
 
 [[suites.assertions]]
 id = "rustty.shared-native-backend-and-independent-views"
-tests = ["tmuxx::tests::embedded_and_socket_views_share_panes_but_keep_selection_local", "tmuxx::tests::native_snapshot_preserves_row_ids_and_image_anchors_after_resize", "tmuxx::tests::streamed_snapshot_restores_large_image_atomically_and_abort_keeps_live_view", "tmuxx::tests::native_snapshot_restores_capture_lengths_after_non_reflow_shrink", "tmuxx::tests::native_snapshot_restores_stale_capture_rows_after_reflow", "tmuxx::tests::native_snapshot_rejects_invalid_capture_metadata_after_compatibility"]
-description = "Actual Rustty embeds and restores the shared terminal backend through embedded/socket views, preserving independent selection, stable rows and image anchors, atomic large image snapshots and bounded abort recovery. Legacy owners with resized capture lengths or stale unknown capture rows reconnect through narrow metadata normalization; malformed tuples, invalid integer values, duplicate IDs, invalid allocations and known-cache orphan rows remain rejected."
+tests = ["tmuxx::tests::embedded_and_socket_views_share_panes_but_keep_selection_local", "tmuxx::tests::native_snapshot_preserves_row_ids_and_image_anchors_after_resize", "tmuxx::tests::streamed_snapshot_restores_large_image_atomically_and_abort_keeps_live_view", "tmuxx::tests::native_snapshot_restores_capture_lengths_after_non_reflow_shrink", "tmuxx::tests::native_snapshot_restores_capture_rows_after_reflow", "tmuxx::tests::native_snapshot_rejects_invalid_capture_metadata"]
+description = "Actual Rustty embeds and restores the shared terminal backend through embedded/socket views, preserving independent selection, stable rows and image anchors, atomic large image snapshots and bounded abort recovery. Native checkpoint snapshots preserve resized capture rows and reject malformed tuples, invalid integer values, duplicate IDs, invalid allocations and orphan rows before replacing a view."
 
 [[suites.assertions]]
 id = "rustty.restored-native-search-and-shell-selection"

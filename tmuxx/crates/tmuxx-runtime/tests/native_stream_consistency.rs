@@ -5,13 +5,16 @@ mod windows_fixture;
 #[cfg(unix)]
 use std::os::unix::net::UnixStream as Stream;
 use std::{
-    io::{BufRead, BufReader, Write},
+    io::BufReader,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant},
 };
 use tmuxx_core::ClientContext;
-use tmuxx_protocol::native::{Hello, Request, Response, ServerMessage, SnapshotAssembler};
+use tmuxx_protocol::native::{
+    Hello, Request, Response, ServerMessage, SnapshotAssembler, SnapshotState, decode,
+    write_request,
+};
 #[cfg(windows)]
 use tmuxx_runtime::windows::PipeStream as Stream;
 use tmuxx_runtime::{LocalClient, Options, ServerHandle};
@@ -78,7 +81,7 @@ fn command(
     assert_eq!(response.error, None, "{argv:?}");
     response
 }
-fn snapshot(client: &LocalClient) -> (u64, serde_json::Value) {
+fn snapshot(client: &LocalClient) -> (u64, SnapshotState) {
     receive(client, |message| {
         if let ServerMessage::Snapshot {
             sequence, state, ..
@@ -90,20 +93,14 @@ fn snapshot(client: &LocalClient) -> (u64, serde_json::Value) {
         }
     })
 }
-fn terminal(state: &serde_json::Value) -> tmuxx_terminal::Terminal {
-    serde_json::from_value::<tmuxx_terminal::Snapshot>(state["panes"][0]["terminal"].clone())
-        .unwrap()
-        .restore()
-        .unwrap()
-}
-fn write_record(stream: &mut Stream, value: &impl serde::Serialize) {
-    serde_json::to_writer(&mut *stream, value).unwrap();
-    stream.write_all(b"\n").unwrap();
+fn terminal(state: &SnapshotState) -> tmuxx_terminal::Terminal {
+    state.panes[0].terminal.as_ref().unwrap().restore().unwrap()
 }
 fn read_record(reader: &mut BufReader<Stream>) -> ServerMessage {
-    let mut line = String::new();
-    assert!(reader.read_line(&mut line).unwrap() > 0, "native EOF");
-    serde_json::from_str(&line).unwrap()
+    let bytes = tmuxx_protocol::native::read_record(reader, 512 * 1024)
+        .unwrap()
+        .expect("native EOF");
+    decode(&bytes).unwrap()
 }
 
 #[test]
@@ -135,17 +132,19 @@ fn live_native_snapshot_has_one_cut_and_updates_follow_its_end() {
         .set_write_timeout(Some(Duration::from_secs(20)))
         .unwrap();
     let mut reader = BufReader::new(stream.try_clone().unwrap());
-    write_record(&mut stream, &Hello::default());
-    let mut hello = String::new();
-    reader.read_line(&mut hello).unwrap();
+    tmuxx_protocol::native::write_record(&mut stream, &Hello::default()).unwrap();
+    let hello = tmuxx_protocol::native::read_record(&mut reader, 1024)
+        .unwrap()
+        .unwrap();
     assert_eq!(
-        serde_json::from_str::<Hello>(&hello).unwrap().version,
+        decode::<Hello>(&hello).unwrap().version,
         Hello::default().version
     );
-    write_record(
+    write_request(
         &mut stream,
         &request(&["attach-session", "-t", "cut"], None, true),
-    );
+    )
+    .unwrap();
     let mut assembler = SnapshotAssembler::default();
     let cut = loop {
         let message = read_record(&mut reader);
@@ -177,10 +176,11 @@ fn live_native_snapshot_has_one_cut_and_updates_follow_its_end() {
         false,
     );
     command(&admin, &["rename-window", "after"], None, false);
-    write_record(
+    write_request(
         &mut stream,
         &request(&["display-message", "-p", "updated"], None, true),
-    );
+    )
+    .unwrap();
 
     let initial = loop {
         let message = read_record(&mut reader);
@@ -206,7 +206,7 @@ fn live_native_snapshot_has_one_cut_and_updates_follow_its_end() {
             .len(),
         256 * 256 * 4
     );
-    assert_ne!(initial["windows"][0]["name"], "after");
+    assert_ne!(initial.windows[0].name, "after");
 
     let mut output = Vec::new();
     let mut update_seen = false;
@@ -245,7 +245,7 @@ fn live_native_snapshot_has_one_cut_and_updates_follow_its_end() {
         "output after the snapshot cut is delivered exactly once"
     );
     assert!(update_seen);
-    assert_eq!(final_state["windows"][0]["name"], "after");
+    assert_eq!(final_state.windows[0].name, "after");
     let final_terminal = terminal(&final_state);
     assert_eq!(final_terminal.size(), (60, 8));
     assert!(final_terminal.snapshot().alternate_active);
@@ -305,12 +305,12 @@ fn blocked_native_view_disconnects_while_healthy_view_and_pty_survive() {
             ..Default::default()
         })
         .unwrap();
-    let mut pid = serde_json::Value::Null;
+    let mut pid = None;
     for client in [&slow, &healthy] {
         command(client, &["attach-session", "-t", "backlog"], None, true);
         let (_, state) = snapshot(client);
-        pid = state["panes"][0]["pid"].clone();
-        assert!(pid.as_u64().is_some_and(|pid| pid > 0));
+        pid = state.panes[0].pid;
+        assert!(pid.is_some_and(|pid| pid > 0));
     }
     let healthy_reader = std::thread::spawn(move || {
         let mut bytes = 0;
@@ -359,7 +359,7 @@ fn blocked_native_view_disconnects_while_healthy_view_and_pty_survive() {
             false
         )
         .output,
-        format!("{}:0\n", pid.as_u64().unwrap()).as_bytes()
+        format!("{}:0\n", pid.unwrap()).as_bytes()
     );
     let reconnected = host.connect().unwrap();
     command(
@@ -369,7 +369,7 @@ fn blocked_native_view_disconnects_while_healthy_view_and_pty_survive() {
         true,
     );
     let (_, state) = snapshot(&reconnected);
-    assert_eq!(state["panes"][0]["pid"], pid);
+    assert_eq!(state.panes[0].pid, pid);
     assert!(terminal(&state).capture().starts_with("READYDONE"));
     command(&healthy, &["display-message", "-p", "healthy"], None, false);
     host.shutdown().unwrap();

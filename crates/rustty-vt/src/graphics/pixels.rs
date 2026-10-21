@@ -104,24 +104,32 @@ pub(super) mod serde_rgba {
         pixels: &Arc<Vec<u8>>,
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
-        serializer
-            .serialize_str(&base64::engine::general_purpose::STANDARD.encode(pixels.as_slice()))
+        if serializer.is_human_readable() {
+            serializer
+                .serialize_str(&base64::engine::general_purpose::STANDARD.encode(pixels.as_slice()))
+        } else {
+            serializer.serialize_bytes(pixels.as_slice())
+        }
     }
     pub fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Arc<Vec<u8>>, D::Error> {
+        if !deserializer.is_human_readable() {
+            return serde_bytes::ByteBuf::deserialize(deserializer)
+                .map(|bytes| Arc::new(bytes.into_vec()));
+        }
         #[derive(Deserialize)]
         #[serde(untagged)]
         enum Bytes {
             Encoded(String),
-            Legacy(Vec<u8>),
+            Raw(serde_bytes::ByteBuf),
         }
         match Bytes::deserialize(deserializer)? {
             Bytes::Encoded(encoded) => base64::engine::general_purpose::STANDARD
                 .decode(encoded)
                 .map(Arc::new)
                 .map_err(serde::de::Error::custom),
-            Bytes::Legacy(bytes) => Ok(Arc::new(bytes)),
+            Bytes::Raw(bytes) => Ok(Arc::new(bytes.into_vec())),
         }
     }
 }

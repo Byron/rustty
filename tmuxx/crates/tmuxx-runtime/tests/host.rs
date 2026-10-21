@@ -8,7 +8,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 #[cfg(unix)]
 use std::time::{SystemTime, UNIX_EPOCH};
-use tmuxx_protocol::native::{Request, Response, ServerMessage};
+use tmuxx_protocol::native::{
+    Hello, Request, Response, ServerMessage, decode, read_record, write_record, write_request,
+};
 
 fn fixture_argv(args: &[&str]) -> Vec<Vec<u8>> {
     let values = args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>();
@@ -72,13 +74,10 @@ fn command(endpoint: &Path, args: &[&str]) -> Response {
         subscribe: false,
         control: false,
     };
-    serde_json::to_writer(&mut stream, &request).unwrap();
-    stream.write_all(b"\n").unwrap();
+    write_request(&mut stream, &request).unwrap();
     let mut reader = BufReader::new(stream);
-    let line = tmuxx_runtime::read_record(&mut reader, 32 * 1024 * 1024)
-        .unwrap()
-        .unwrap();
-    match serde_json::from_slice(&line).unwrap() {
+    let line = read_record(&mut reader, 32 * 1024 * 1024).unwrap().unwrap();
+    match decode(&line).unwrap() {
         ServerMessage::Reply(response) => response,
         message => panic!("unexpected message: {message:?}"),
     }
@@ -184,30 +183,35 @@ fn native_handshake_rejects_mismatched_versions_before_requests() {
     stream
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();
-    stream
-        .write_all(b"{\"version\":4294967295}\n{\"request_id\":1,\"argv\":[]}\n")
-        .unwrap();
+    let mut queued = Vec::new();
+    write_record(
+        &mut queued,
+        &Hello {
+            version: u32::MAX,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    write_request(
+        &mut queued,
+        &Request {
+            request_id: 1,
+            argv: vec![b"new-session".to_vec(), b"-d".to_vec(), Vec::new()],
+            stdin: None,
+            subscribe: false,
+            control: false,
+        },
+    )
+    .unwrap();
+    stream.write_all(&queued).unwrap();
     let mut data = Vec::new();
     stream.read_to_end(&mut data).unwrap();
-    let hello = serde_json::from_slice::<tmuxx_protocol::native::Hello>(&data).unwrap();
-    let hello = {
-        let mut hello = hello;
-        assert!(
-            hello
-                .instance_id
-                .take()
-                .is_some_and(|value| !value.is_empty())
-        );
-        hello
-    };
-    assert_eq!(
-        hello,
-        tmuxx_protocol::native::Hello {
-            stdin_file_stream: true,
-            client_features: Some(0),
-            ..Default::default()
-        }
-    );
+    let mut reader = data.as_slice();
+    let hello = read_record(&mut reader, 1024).unwrap().unwrap();
+    let hello: Hello = decode(&hello).unwrap();
+    assert_eq!(hello.version, Hello::default().version);
+    assert!(hello.instance_id.as_ref().is_some_and(|id| !id.is_empty()));
+    assert!(read_record(&mut reader, 1024).unwrap().is_none());
     assert!(command(&path, &["has-session"]).error.is_some());
     host.shutdown().unwrap();
 }
@@ -268,7 +272,7 @@ fn native_socket_streams_snapshots_and_cap_rejection_keeps_the_process() {
             .set_read_timeout(Some(Duration::from_secs(10)))
             .unwrap();
         tmuxx_runtime::native_handshake(&mut stream).unwrap();
-        serde_json::to_writer(
+        write_request(
             &mut stream,
             &Request {
                 request_id: 1,
@@ -279,15 +283,12 @@ fn native_socket_streams_snapshots_and_cap_rejection_keeps_the_process() {
             },
         )
         .unwrap();
-        stream.write_all(b"\n").unwrap();
         let mut reader = BufReader::new(stream);
         let mut assembler = tmuxx_protocol::native::SnapshotAssembler::default();
         let mut started = false;
         loop {
-            let bytes = tmuxx_runtime::read_record(&mut reader, 512 * 1024)
-                .unwrap()
-                .unwrap();
-            let message: ServerMessage = serde_json::from_slice(&bytes).unwrap();
+            let bytes = read_record(&mut reader, 512 * 1024).unwrap().unwrap();
+            let message: ServerMessage = decode(&bytes).unwrap();
             started |= matches!(message, ServerMessage::SnapshotStart { .. });
             let Some(message) = assembler.push(message).unwrap() else {
                 continue;
@@ -297,7 +298,7 @@ fn native_socket_streams_snapshots_and_cap_rejection_keeps_the_process() {
                     assert!(started);
                     assert_ne!(limit, 16);
                     assert_eq!(
-                        state["panes"][0]["pid"].as_u64().unwrap().to_string(),
+                        state.panes[0].pid.unwrap().to_string(),
                         String::from_utf8_lossy(&pid).trim()
                     );
                     break;
@@ -321,7 +322,7 @@ fn native_socket_streams_snapshots_and_cap_rejection_keeps_the_process() {
 }
 
 #[test]
-fn native_socket_negotiates_legacy_and_checkpoint_snapshots() {
+fn native_socket_restores_checkpoint_snapshots() {
     let path = endpoint();
     let host = tmuxx_runtime::start(tmuxx_runtime::Options::new(&path)).unwrap();
     assert!(
@@ -340,72 +341,37 @@ fn native_socket_negotiates_legacy_and_checkpoint_snapshots() {
         .error
         .is_none()
     );
-    let mut readers = Vec::new();
-    for (compact, checkpoint) in [(false, false), (true, false), (false, true)] {
-        let mut stream = connect(&path).unwrap();
-        stream
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .unwrap();
-        let mut hello = serde_json::json!({"version": 1, "snapshot_stream": true});
-        if compact {
-            hello["compact_snapshots"] = true.into();
-        }
-        if checkpoint {
-            hello["checkpoint_snapshots"] = true.into();
-        }
-        serde_json::to_writer(&mut stream, &hello).unwrap();
-        stream.write_all(b"\n").unwrap();
-        let mut reader = BufReader::new(stream);
-        let greeting = tmuxx_runtime::read_record(&mut reader, 1024)
-            .unwrap()
-            .unwrap();
-        let greeting: tmuxx_protocol::native::Hello = serde_json::from_slice(&greeting).unwrap();
-        assert!(greeting.compact_snapshots);
-        assert!(greeting.checkpoint_snapshots);
-        serde_json::to_writer(
-            reader.get_mut(),
-            &Request {
-                request_id: 1,
-                argv: Vec::new(),
-                stdin: None,
-                subscribe: true,
-                control: false,
-            },
-        )
+    let mut stream = connect(&path).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
         .unwrap();
-        reader.get_mut().write_all(b"\n").unwrap();
-        let mut assembler = tmuxx_protocol::native::SnapshotAssembler::default();
-        loop {
-            let bytes = tmuxx_runtime::read_record(&mut reader, 512 * 1024)
-                .unwrap()
-                .unwrap();
-            if let Some(ServerMessage::Snapshot { state, .. }) = assembler
-                .push(serde_json::from_slice(&bytes).unwrap())
-                .unwrap()
-            {
-                assert_eq!(state["panes"].as_array().unwrap().len(), 1, "{state}");
-                let terminal = &state["panes"][0]["terminal"];
-                assert_eq!(terminal["version"], if checkpoint { 2 } else { 1 });
-                if checkpoint {
-                    serde_json::from_value::<tmuxx_terminal::CheckpointSnapshot>(terminal.clone())
-                        .unwrap()
-                        .restore()
-                        .unwrap();
-                } else {
-                    let cells = &terminal["primary"]["rows"][0]["cells"];
-                    assert_eq!(cells.is_object(), compact);
-                    assert_eq!(cells.is_array(), !compact);
-                    serde_json::from_value::<tmuxx_terminal::Snapshot>(terminal.clone())
-                        .unwrap()
-                        .restore()
-                        .unwrap();
-                }
-                break;
-            }
+    tmuxx_runtime::native_handshake(&mut stream).unwrap();
+    write_request(
+        &mut stream,
+        &Request {
+            request_id: 1,
+            argv: Vec::new(),
+            stdin: None,
+            subscribe: true,
+            control: false,
+        },
+    )
+    .unwrap();
+    let mut reader = BufReader::new(stream);
+    let mut assembler = tmuxx_protocol::native::SnapshotAssembler::default();
+    loop {
+        let bytes = read_record(&mut reader, 512 * 1024).unwrap().unwrap();
+        if let Some(ServerMessage::Snapshot { state, .. }) =
+            assembler.push(decode(&bytes).unwrap()).unwrap()
+        {
+            assert_eq!(state.panes.len(), 1);
+            let terminal = state.panes[0].terminal.as_ref().unwrap();
+            assert_eq!(terminal.version, 2);
+            terminal.restore().unwrap();
+            break;
         }
-        readers.push(reader);
     }
-    drop(readers);
+    drop(reader);
     host.shutdown().unwrap();
 }
 

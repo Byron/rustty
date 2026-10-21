@@ -73,7 +73,15 @@ impl Native {
     fn new(endpoint: &Path, directory: &Path, session: &str) -> Self {
         use std::os::windows::process::CommandExt;
         let mut child = Command::new(std::env::var_os("TMUXX_REMOTE_PYTHON").unwrap())
-            .args(["-u", "-c", include_str!("windows_peer.py")])
+            .args([
+                "-u",
+                "-c",
+                concat!(
+                    include_str!("../../../../conformance/native_wire.py"),
+                    "\n",
+                    include_str!("windows_peer.py")
+                ),
+            ])
             .arg(endpoint)
             .current_dir(directory)
             .creation_flags(0x08000000)

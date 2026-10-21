@@ -4,7 +4,7 @@
 
 use rustty::tmuxx::{Connection, windows_endpoint};
 use std::{
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufReader, Read, Write},
     os::windows::process::CommandExt,
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Output, Stdio},
@@ -236,11 +236,10 @@ impl Bridge {
         let (send, records) = mpsc::channel();
         std::thread::spawn(move || {
             let mut reader = BufReader::new(stdout);
-            loop {
-                let mut record = Vec::new();
-                if reader.read_until(b'\n', &mut record).unwrap_or(0) == 0
-                    || send.send(record).is_err()
-                {
+            while let Ok(Some(record)) =
+                tmuxx_protocol::native::read_record(&mut reader, 128 * 1024 * 1024)
+            {
+                if send.send(record).is_err() {
                     break;
                 }
             }
@@ -254,15 +253,14 @@ impl Bridge {
             instance: (!explicit_endpoint).then(|| server.label.clone()),
             ..Hello::default()
         });
-        let hello: Hello = serde_json::from_slice(&bridge.record()).unwrap();
+        let hello: Hello = tmuxx_protocol::native::decode(&bridge.record()).unwrap();
         assert_eq!(hello.version, Hello::default().version);
         assert_eq!(hello.instance_id.as_deref(), Some(server.instance.as_str()));
         bridge
     }
 
     fn send(&mut self, value: &impl serde::Serialize) {
-        serde_json::to_writer(&mut self.input, value).unwrap();
-        self.input.write_all(b"\n").unwrap();
+        tmuxx_protocol::native::write_record(&mut self.input, value).unwrap();
         self.input.flush().unwrap();
     }
 
@@ -273,14 +271,14 @@ impl Bridge {
     }
 
     fn command(&mut self, argv: &[&str]) -> Vec<u8> {
-        self.send(&Request {
+        self.send(&tmuxx_protocol::native::ClientMessage::Request(Request {
             request_id: 1,
             argv: argv.iter().map(|arg| arg.as_bytes().to_vec()).collect(),
             stdin: None,
             subscribe: false,
             control: false,
-        });
-        match serde_json::from_slice::<ServerMessage>(&self.record()).unwrap() {
+        }));
+        match tmuxx_protocol::native::decode::<ServerMessage>(&self.record()).unwrap() {
             ServerMessage::Reply(reply) => {
                 assert_eq!(reply.request_id, 1);
                 assert!(reply.error.is_none(), "{reply:?}");
@@ -291,13 +289,13 @@ impl Bridge {
     }
 
     fn subscribe(&mut self, server: &Server) {
-        self.send(&Request {
+        self.send(&tmuxx_protocol::native::ClientMessage::Request(Request {
             request_id: 2,
             argv: Vec::new(),
             stdin: None,
             subscribe: true,
             control: false,
-        });
+        }));
         let deadline = Instant::now() + TIMEOUT;
         let mut snapshots = SnapshotAssembler::default();
         loop {
@@ -306,12 +304,13 @@ impl Bridge {
                 .recv_timeout(deadline.saturating_duration_since(Instant::now()))
                 .expect("native subscription snapshot");
             match snapshots
-                .push(serde_json::from_slice(&bytes).unwrap())
+                .push(tmuxx_protocol::native::decode(&bytes).unwrap())
                 .unwrap()
             {
                 Some(ServerMessage::Snapshot {
                     instance_id, state, ..
                 }) => {
+                    let state = serde_json::to_value(state).unwrap();
                     assert_eq!(instance_id, server.instance);
                     assert!(
                         state["sessions"]

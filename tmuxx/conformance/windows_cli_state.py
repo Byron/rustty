@@ -2,8 +2,8 @@
 """Windows CLI selection, control negotiation and explicit owner election.
 
 Legacy suite IDs are retained, with Windows namespace/explicit-start mechanisms.
-All endpoints and owners are private. The only fake peer is a deliberately old
-native protocol server used to prove that no unsupported command is submitted.
+All endpoints and owners are private. The only fake peer withholds native
+control capability to prove that no unsupported command is submitted.
 """
 from __future__ import annotations
 import argparse
@@ -151,7 +151,7 @@ class CLIState(Lifetimes):
             until(connected, 'old protocol control client did not connect')
             hello = peer.record()
             assert hello['control_commands'] is True
-            peer.write({'version': 1, 'client_features': 0})
+            peer.write({'version': 2, 'client_features': 0})
             assert child.wait(timeout=5) != 0
             stdout, stderr = child.stdout.read(), child.stderr.read()
             assert not stdout and b'server does not support control command framing' in stderr

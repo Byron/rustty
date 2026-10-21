@@ -93,9 +93,11 @@ windows = { version = "0.62.2", features = [
 [target.'cfg(windows)'.build-dependencies]
 embed-resource = "3"
 
+[dev-dependencies]
+tmuxx-protocol.workspace = true
+
 [target.'cfg(windows)'.dev-dependencies]
 portable-pty.workspace = true
-tmuxx-protocol.workspace = true
 
 [target.'cfg(unix)'.dev-dependencies]
 libc = "0.2"

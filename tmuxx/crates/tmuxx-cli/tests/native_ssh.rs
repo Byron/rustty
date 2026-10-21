@@ -250,13 +250,13 @@ impl Fixture {
             subscribe: false,
             control: false,
         };
-        serde_json::to_writer(&mut stream, &request).unwrap();
-        stream.write_all(b"\n").unwrap();
+        tmuxx_protocol::native::write_request(&mut stream, &request).unwrap();
         let mut reader = BufReader::new(stream);
         loop {
-            let mut line = String::new();
-            assert!(reader.read_line(&mut line).unwrap() > 0);
-            if let ServerMessage::Reply(reply) = serde_json::from_str(&line).unwrap() {
+            let bytes = tmuxx_protocol::native::read_record(&mut reader, 128 * 1024 * 1024)
+                .unwrap()
+                .unwrap();
+            if let ServerMessage::Reply(reply) = tmuxx_protocol::native::decode(&bytes).unwrap() {
                 assert_eq!(reply.error, None, "{argv:?}");
                 return reply;
             }
@@ -272,7 +272,16 @@ impl Drop for Fixture {
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
                 let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
                 if tmuxx_runtime::native_handshake(&mut stream).is_ok() {
-                    let _ = stream.write_all(b"{\"request_id\":1,\"argv\":[[107,105,108,108,45,115,101,114,118,101,114]]}\n");
+                    let _ = tmuxx_protocol::native::write_request(
+                        &mut stream,
+                        &Request {
+                            request_id: 1,
+                            argv: vec![b"kill-server".to_vec()],
+                            stdin: None,
+                            subscribe: false,
+                            control: false,
+                        },
+                    );
                 }
             }
             let deadline = Instant::now() + Duration::from_secs(3);
@@ -344,28 +353,25 @@ impl Remote {
             .unwrap();
         let process = PinnedProcess::open(pid);
         let mut output = BufReader::new(child.stdout.take().unwrap());
-        serde_json::to_writer(&mut input, &Hello::default()).unwrap();
-        input.write_all(b"\n").unwrap();
+        tmuxx_protocol::native::write_record(&mut input, &Hello::default()).unwrap();
         input.flush().unwrap();
         let (hello_tx, hello_rx) = mpsc::channel();
         // Bounded delivery deliberately backpressures SSH when the application
         // stops consuming replies; it cannot hide slow clients in an unbounded Vec.
         let (tx, messages) = mpsc::sync_channel(1);
         std::thread::spawn(move || {
-            let mut line = String::new();
-            if output.read_line(&mut line).is_err() {
+            let Ok(Some(bytes)) = tmuxx_protocol::native::read_record(&mut output, 1024) else {
                 return;
-            }
-            let hello = serde_json::from_str::<Hello>(&line);
+            };
+            let hello = tmuxx_protocol::native::decode::<Hello>(&bytes);
             if hello_tx.send(hello).is_err() {
                 return;
             }
             let mut assembler = SnapshotAssembler::default();
-            for line in output.lines() {
-                let Ok(line) = line else {
-                    break;
-                };
-                let Ok(message) = serde_json::from_str(&line) else {
+            while let Ok(Some(bytes)) =
+                tmuxx_protocol::native::read_record(&mut output, 128 * 1024 * 1024)
+            {
+                let Ok(message) = tmuxx_protocol::native::decode(&bytes) else {
                     break;
                 };
                 match assembler.push(message) {
@@ -410,8 +416,8 @@ impl Remote {
             control: false,
         };
         let input = self.input.as_mut().unwrap();
-        let mut bytes = serde_json::to_vec(&request).unwrap();
-        bytes.push(b'\n');
+        let mut bytes = Vec::new();
+        tmuxx_protocol::native::write_request(&mut bytes, &request).unwrap();
         // Fragment every command independently of OpenSSH packet boundaries.
         for chunk in bytes.chunks(31) {
             input.write_all(chunk).unwrap();
@@ -557,6 +563,7 @@ fn native_ssh_preserves_bytes_reconnects_and_never_replays_ambiguous_mutations()
     reconnected.reply(id);
     loop {
         if let ServerMessage::Snapshot { state, .. } = reconnected.receive() {
+            let state = serde_json::to_value(state).unwrap();
             assert!(!state.is_null());
             break;
         }

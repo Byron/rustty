@@ -5,7 +5,7 @@ See [README.md](README.md) for current workspace ownership and maintenance.
 References below to sibling checkouts and prior platform authorization describe
 the source repository; they do not authorize actions or qualify this import.
 
-Architecture and implementation contract, revised 2026-10-20. The Rust workspace
+Architecture and implementation contract, revised 2026-10-21. The Rust workspace
 implements the Unix engine, runtime, native client and C command/control
 transports. All six scoped macOS profiles passed the
 [conformance runner](conformance/README.md): 149 executable suites and 430 scoped
@@ -336,7 +336,9 @@ The fixed `tmuxx --native-stdio` invocation receives instance selection in the
 first native hello. Without selection exactly one discovered owner is required.
 An optional expected incarnation rejects replacement owners before submitting
 commands. Windows OpenSSH may invoke `cmd.exe` or PowerShell; instance names are
-never interpolated into either shell. Stdin/stdout remain binary-safe and stderr
+never interpolated into either shell. PowerShell launchers must inherit the SSH
+standard handles directly, without an object/text pipeline. Stdin/stdout remain
+binary-safe and stderr
 separate. Named pipes use an explicit ordered input-EOF record because Windows
 has no duplex-pipe half-close. The bridge never uses a PTY or terminal parser.
 
@@ -570,6 +572,13 @@ Drain transport independently of rendering and stream large responses. An
 ambiguous disconnect after a mutating request is not permission to retry it.
 
 ### Native snapshots and stock tmux limits
+
+Native version 2 carries MessagePack named-field maps and binary byte strings in
+bounded, independently LZ4-compressed blocks. Compression is the default; blocks
+that would expand travel raw. No JSON numeric arrays or base64 layer are needed
+for terminal output or snapshot chunks. Clients, bridges, and running owners
+must use the same version; version 1 is not accepted. Framing, allocation limits,
+and snapshot ordering are specified in [NATIVE-SNAPSHOTS.md](NATIVE-SNAPSHOTS.md).
 
 Tmuxx can provide a complete snapshot at one engine boundary and subsequent
 sequence-numbered updates. Give every server an incarnation. If a bounded

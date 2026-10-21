@@ -589,9 +589,18 @@ uses the same syntax, for example
 The Azure example connects to the existing daemon named `rustty`; the stock tmux
 entry requires an existing ordinary tmux session and no tmuxx helper. The Windows
 entry runs the packaged executable through an existing OpenSSH server using its
-default cmd.exe shell. If that server uses PowerShell, prefix the quoted
-executable with `&`. Keep the complete `Rustty` folder, including `resources`,
-on the Windows host.
+default cmd.exe shell. If that server uses PowerShell, use a child process with
+inherited standard handles so the binary stream bypasses its text pipeline:
+
+```ini
+tmuxx-ssh-command-host = windows = $p = New-Object System.Diagnostics.ProcessStartInfo; $p.FileName = 'C:/Apps/Rustty/tmuxx.exe'; $p.Arguments = '--native-stdio'; $p.UseShellExecute = $false; $p.CreateNoWindow = $true; $c = [System.Diagnostics.Process]::Start($p); $c.WaitForExit(); exit $c.ExitCode
+```
+
+For `rustty.exe`, use `tmux --native-stdio` as `Arguments`. Remove any old
+`| ForEach-Object { $_ }` suffix. Keep the complete `Rustty` folder, including
+`resources`, on the Windows host. Native protocol v2 uses binary MessagePack and
+per-block LZ4 compression; update Rustty, the remote bridge, and each owner
+together, then restart the owners before reconnecting.
 
 Give connection windows different themes with exact SSH targets or session names:
 
@@ -688,10 +697,11 @@ runtime's explicit ConPTY initializer before creating any panes. It verifies the
 bundled DLL and OpenConsole executable against the pinned package and retains
 them for the process lifetime. Ordinary and embedded panes use the same runtime.
 
-GUI connections remain compatible with older native tmuxx daemons. The updated
-`rustty tmux` CLI requires terminal-feature negotiation, so CLI commands against an
-older daemon may require upgrading and restarting that daemon first. Restarting
-a daemon ends its running programs; a GUI reconnect does not require a restart.
+GUI connections and the `rustty tmux` CLI require native protocol v2. Native
+clients, SSH bridges, and daemons must be upgraded together; restart older
+daemons before connecting. Incompatible native connections fail without falling
+back to stock tmux. Restarting a daemon ends its running programs; reconnecting
+a compatible GUI client does not require a daemon restart.
 
 Targeted verification:
 

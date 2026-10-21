@@ -8,9 +8,12 @@ description = "Byte-preserving tmux control protocol and native tmuxx messages"
 
 [features]
 default = []
-native = ["dep:serde", "dep:serde_json", "dep:base64"]
+native = ["dep:serde", "dep:serde_json", "dep:rmp-serde", "dep:serde_bytes", "dep:lz4_flex", "dep:tmuxx-terminal"]
 
 [dependencies]
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
-base64 = { version = "0.22", optional = true }
+rmp-serde = { workspace = true, optional = true }
+serde_bytes = { workspace = true, optional = true }
+lz4_flex = { workspace = true, optional = true }
+tmuxx-terminal = { workspace = true, optional = true }

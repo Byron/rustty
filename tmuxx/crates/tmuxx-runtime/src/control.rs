@@ -98,7 +98,7 @@ impl Subscription {
 /// Conservative in-memory cost, shared by enqueue and receive accounting.
 pub(super) fn message_bytes(message: &ServerMessage) -> usize {
     128 + match message {
-        ServerMessage::PaneOutput { data, .. } => data.len().saturating_mul(4).saturating_add(128),
+        ServerMessage::PaneOutput { data, .. } => data.len(),
         ServerMessage::Control { data } => data.len(),
         ServerMessage::Reply(response) => {
             response.output.len() + response.error.as_ref().map_or(0, String::len)
@@ -902,12 +902,8 @@ mod tests {
         let bytes = host.clients[&1].delivery_bytes.clone();
         host.flush_control(1);
         assert!(!host.clients.contains_key(&1));
-        assert_eq!(
-            rx.recv().unwrap(),
-            ServerMessage::Detached {
-                session: "test".into(),
-                hangup: true
-            }
+        assert!(
+            matches!(rx.recv().unwrap(), ServerMessage::Detached { session, hangup: true } if session == "test")
         );
         bytes.store(0, Ordering::Release);
 
@@ -1146,21 +1142,15 @@ mod tests {
         output(&mut host, b"discarded");
         reply(&mut host);
         assert!(matches!(receive(&host, &rx), ServerMessage::Reply(_)));
-        assert_eq!(
-            receive(&host, &rx),
-            ServerMessage::Control {
-                data: b"%pause %0".to_vec()
-            }
+        assert!(
+            matches!(receive(&host, &rx), ServerMessage::Control { data } if data == b"%pause %0")
         );
         assert!(rx.try_recv().is_err());
         refresh(&mut host, &["refresh", "-A", "%0:continue"]).unwrap();
         reply(&mut host);
         assert!(matches!(receive(&host, &rx), ServerMessage::Reply(_)));
-        assert_eq!(
-            receive(&host, &rx),
-            ServerMessage::Control {
-                data: b"%continue %0".to_vec()
-            }
+        assert!(
+            matches!(receive(&host, &rx), ServerMessage::Control { data } if data == b"%continue %0")
         );
         output(&mut host, b"new");
         assert!(
@@ -1212,11 +1202,8 @@ mod tests {
         assert!(host.control.clients[&1].panes[&0].1);
         receive(&host, &rx);
         host.flush_control(1);
-        assert_eq!(
-            receive(&host, &rx),
-            ServerMessage::Control {
-                data: b"%pause %0".to_vec()
-            }
+        assert!(
+            matches!(receive(&host, &rx), ServerMessage::Control { data } if data == b"%pause %0")
         );
         assert_eq!(host.clients[&1].delivery_bytes.load(Ordering::Acquire), 0);
         assert_eq!(host.control.clients[&1].pending_bytes, 0);
@@ -1230,11 +1217,8 @@ mod tests {
             .store(BYTE_LIMIT, Ordering::Release);
         output(&mut host, b"x");
         assert!(!host.clients.contains_key(&1));
-        assert_eq!(
-            receive(&host, &rx),
-            ServerMessage::Exit {
-                reason: "control output exceeds byte budget".into()
-            }
+        assert!(
+            matches!(receive(&host, &rx), ServerMessage::Exit { reason } if reason == "control output exceeds byte budget")
         );
         let (mut host, rx) = self::host(1);
         reply(&mut host);
@@ -1250,11 +1234,8 @@ mod tests {
         receive(&host, &rx);
         host.flush_control(1);
         assert!(!host.clients.contains_key(&1));
-        assert_eq!(
-            receive(&host, &rx),
-            ServerMessage::Exit {
-                reason: "too far behind".into()
-            }
+        assert!(
+            matches!(receive(&host, &rx), ServerMessage::Exit { reason } if reason == "too far behind")
         );
     }
 
