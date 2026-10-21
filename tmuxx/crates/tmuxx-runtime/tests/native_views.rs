@@ -690,6 +690,225 @@ fn two_view_sizes_are_arbitrated_without_changing_process_identity() {
 }
 
 #[test]
+fn native_view_size_preserves_policies_and_fits_all_session_windows() {
+    let host = host();
+    let owner = host.connect().unwrap();
+    let other = host.connect().unwrap();
+    let run = |client: &LocalClient, argv: &[&str]| {
+        let result = command(client, argv, None, true);
+        assert_eq!(result.error, None, "{argv:?}");
+        result.output
+    };
+    run(&owner, &["new-session", "-s", "sizing", "sleep", "30"]);
+    run(&owner, &["new-window", "-d", "sleep", "30"]);
+    assert_eq!(
+        run(
+            &owner,
+            &[
+                "tmuxx-view-size",
+                "-t",
+                "$0",
+                "100",
+                "40",
+                "8",
+                "16",
+                ";",
+                "display-message",
+                "-p",
+                "#{window_width}x#{window_height}",
+            ]
+        ),
+        b"100x40\n"
+    );
+    run(&other, &["attach-session", "-t", "sizing"]);
+    run(
+        &other,
+        &["tmuxx-view-size", "-t", "$0", "60", "20", "10", "20"],
+    );
+    let sizes = [
+        "list-windows",
+        "-F",
+        "#{window_width}x#{window_height}:#{window-size}",
+    ];
+    assert_eq!(run(&owner, &sizes), b"100x40:latest\n100x40:latest\n");
+
+    for (policy, expected) in [("smallest", "60x20"), ("largest", "100x40")] {
+        run(
+            &owner,
+            &["set-window-option", "-t", "@0", "window-size", policy],
+        );
+        assert_eq!(
+            run(
+                &owner,
+                &["display-message", "-p", "#{window_width}x#{window_height}"]
+            ),
+            format!("{expected}\n").as_bytes(),
+        );
+    }
+    run(
+        &owner,
+        &["resize-window", "-t", "@0", "-x", "80", "-y", "24"],
+    );
+    run(
+        &other,
+        &["tmuxx-view-size", "-t", "$0", "50", "15", "10", "20"],
+    );
+    assert_eq!(run(&owner, &sizes), b"80x24:manual\n100x40:latest\n");
+    for argv in [
+        vec!["tmuxx-view-size", "-t", "$0", "-f", "0", "20", "8", "16"],
+        vec![
+            "tmuxx-view-size",
+            "-t",
+            "$0",
+            "-f",
+            "10001",
+            "20",
+            "8",
+            "16",
+        ],
+        vec!["tmuxx-view-size", "-t", "$0", "-f", "60", "20", "0", "16"],
+        vec!["tmuxx-view-size", "-t", "$0", "-f", "60", "20", "8"],
+    ] {
+        assert!(command(&other, &argv, None, false).error.is_some());
+        assert_eq!(run(&owner, &sizes), b"80x24:manual\n100x40:latest\n");
+    }
+    run(
+        &other,
+        &["tmuxx-view-size", "-t", "$0", "-f", "60", "20", "10", "20"],
+    );
+    assert_eq!(run(&owner, &sizes), b"60x20:latest\n60x20:latest\n");
+    assert_eq!(
+        run(
+            &other,
+            &[
+                "display-message",
+                "-p",
+                "#{window_cell_width}x#{window_cell_height}"
+            ]
+        ),
+        b"10x20\n",
+    );
+    run(
+        &owner,
+        &["tmuxx-view-size", "-t", "$0", "120", "50", "8", "16"],
+    );
+    assert_eq!(run(&owner, &sizes), b"60x20:latest\n60x20:latest\n");
+
+    let ordinary = host.connect().unwrap();
+    run(&ordinary, &["attach-session", "-t", "sizing"]);
+    run(&ordinary, &["refresh-client", "-C", "75,30"]);
+    assert_eq!(run(&owner, &sizes), b"75x30:latest\n60x20:latest\n");
+    run(
+        &owner,
+        &["tmuxx-view-size", "-t", "$0", "115", "45", "8", "16"],
+    );
+    assert_eq!(run(&owner, &sizes), b"75x30:latest\n60x20:latest\n");
+    host.shutdown().unwrap();
+}
+
+#[test]
+fn native_view_size_fit_can_claim_a_window_linked_into_another_session() {
+    let host = host();
+    let first = host.connect().unwrap();
+    let second = host.connect().unwrap();
+    let run = |client: &LocalClient, argv: &[&str]| {
+        let result = command(client, argv, None, true);
+        assert_eq!(result.error, None, "{argv:?}");
+        result.output
+    };
+    run(&first, &["new-session", "-s", "first", "sleep", "30"]);
+    run(
+        &first,
+        &["tmuxx-view-size", "-t", "$0", "100", "40", "8", "16"],
+    );
+    run(&second, &["new-session", "-s", "second", "sleep", "30"]);
+    run(&second, &["link-window", "-s", "first:0", "-t", "second:1"]);
+    run(
+        &second,
+        &["tmuxx-view-size", "-t", "$1", "70", "25", "8", "16"],
+    );
+    run(
+        &first,
+        &["tmuxx-view-size", "-t", "$0", "110", "45", "8", "16"],
+    );
+    let size = [
+        "display-message",
+        "-p",
+        "-t",
+        "@0",
+        "#{window_width}x#{window_height}",
+    ];
+    assert_eq!(run(&first, &size), b"110x45\n");
+    run(
+        &second,
+        &["tmuxx-view-size", "-t", "$1", "-f", "70", "25", "8", "16"],
+    );
+    assert_eq!(run(&first, &size), b"70x25\n");
+    run(
+        &first,
+        &["tmuxx-view-size", "-t", "$0", "120", "50", "8", "16"],
+    );
+    assert_eq!(run(&first, &size), b"70x25\n");
+    host.shutdown().unwrap();
+}
+
+#[test]
+fn native_view_size_cannot_follow_a_client_into_a_different_session() {
+    let host = host();
+    let first = host.connect().unwrap();
+    let second = host.connect().unwrap();
+    let run = |client: &LocalClient, argv: &[&str]| {
+        let result = command(client, argv, None, true);
+        assert_eq!(result.error, None, "{argv:?}");
+        result.output
+    };
+    run(&first, &["new-session", "-s", "first", "sleep", "30"]);
+    run(&first, &["set-option", "detach-on-destroy", "off"]);
+    run(
+        &first,
+        &["tmuxx-view-size", "-t", "$0", "100", "40", "8", "16"],
+    );
+    run(&second, &["new-session", "-s", "second", "sleep", "30"]);
+    run(
+        &second,
+        &["tmuxx-view-size", "-t", "$1", "60", "20", "8", "16"],
+    );
+    run(&second, &["set-window-option", "window-size", "largest"]);
+    run(&first, &["kill-session", "-t", "first"]);
+    let size = [
+        "display-message",
+        "-p",
+        "#{session_id}:#{window_width}x#{window_height}",
+    ];
+    assert_eq!(run(&second, &size), b"$1:60x20\n");
+    for session in ["$0", "$1"] {
+        assert!(
+            command(
+                &first,
+                &[
+                    "tmuxx-view-size",
+                    "-t",
+                    session,
+                    "-f",
+                    "100",
+                    "40",
+                    "8",
+                    "16",
+                ],
+                None,
+                false
+            )
+            .error
+            .is_some()
+        );
+        assert_eq!(run(&second, &size), b"$1:60x20\n");
+    }
+    run(&second, &["resize-window", "-A"]);
+    assert_eq!(run(&second, &size), b"$1:60x20\n");
+    host.shutdown().unwrap();
+}
+
+#[test]
 fn retention_acknowledgement_preserves_only_selected_panes_after_all_views_leave() {
     let host = host();
     let admin = host.connect().unwrap();

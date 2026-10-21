@@ -1238,6 +1238,7 @@ impl Host {
         if tmuxx_command::registry::find(name).is_ok() {
             tmuxx_command::registry::validate_server(command)?;
         }
+        self.clear_stale_view_size(id, context);
         self.refresh_format_clients();
         if !context.no_hooks
             && context
@@ -1298,6 +1299,9 @@ impl Host {
                 changed: true,
                 ..Outcome::default()
             }));
+        }
+        if name == b"tmuxx-view-size" {
+            return self.view_size(id, command, context).map(Step::Done);
         }
         if name == b"tmuxx-input" {
             let input = self.request_stdin.take();
@@ -1748,6 +1752,7 @@ impl Host {
                     name.as_slice(),
                     b"tmuxx-input"
                         | b"tmuxx-cell-size"
+                        | b"tmuxx-view-size"
                         | b"tmuxx-host-state"
                         | b"tmuxx-host-reply"
                         | b"tmuxx-retain-pane"

@@ -132,7 +132,13 @@ impl Host {
             .hooks
             .attached
             .iter()
-            .filter_map(|id| self.clients.get(id).map(|client| client.context.clone()))
+            .filter_map(|id| {
+                self.clients.get(id).map(|client| {
+                    let mut context = client.context.clone();
+                    self.clear_stale_view_size(*id, &mut context);
+                    context
+                })
+            })
             .collect();
     }
     pub(super) fn hook_target(

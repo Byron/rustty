@@ -1,7 +1,112 @@
 use super::*;
 
 impl Host {
+    pub(super) fn size_view_matches_session(&self, client: u64, context: &ClientContext) -> bool {
+        self.size_views
+            .iter()
+            .find(|(id, _)| *id == client)
+            .is_none_or(|(_, session)| {
+                context.session == Some(*session) && self.engine.sessions.contains_key(session)
+            })
+    }
+
+    pub(super) fn clear_stale_view_size(&self, client: u64, context: &mut ClientContext) {
+        if !self.size_view_matches_session(client, context) {
+            context.size_requested = false;
+            context.window_size_requested = false;
+            context.window_sizes.clear();
+            context.ignore_size = true;
+        }
+    }
+
+    pub(super) fn view_size(
+        &mut self,
+        client: u64,
+        command: &tmuxx_command::Command,
+        context: &mut ClientContext,
+    ) -> Result<Outcome, String> {
+        let args = tmuxx_command::Args::parse(&command.args[1..], "ft:")?;
+        if args.rest.len() != 4 {
+            return Err("expected columns, rows, cell width and cell height".into());
+        }
+        let values = args
+            .rest
+            .iter()
+            .map(|value| {
+                std::str::from_utf8(value)
+                    .ok()
+                    .and_then(|value| value.parse::<u16>().ok())
+                    .filter(|value| (1..=10_000).contains(value))
+            })
+            .collect::<Option<Vec<_>>>()
+            .ok_or("invalid view size")?;
+        let session = args
+            .get(b't')
+            .and_then(|value| value.strip_prefix(b"$"))
+            .and_then(|value| std::str::from_utf8(value).ok())
+            .and_then(|value| value.parse::<Id>().ok())
+            .filter(|session| self.engine.sessions.contains_key(session))
+            .ok_or("view size requires an existing session ID (-t $ID)")?;
+        if context.session != Some(session) {
+            return Err("view size client is attached to a different session".into());
+        }
+        if !self.size_view_matches_session(client, context) {
+            return Err("view size client belongs to a different session".into());
+        }
+        if args.has(b'f') {
+            self.size_views.retain(|(id, _)| *id != client);
+            self.size_views.insert(0, (client, session));
+        } else if !self.size_views.iter().any(|(id, _)| *id == client) {
+            self.size_views.push((client, session));
+        }
+        context.cols = values[0];
+        context.rows = values[1];
+        context.cell_width = values[2];
+        context.cell_height = values[3];
+        context.size_requested = true;
+        context.resize_order = self.engine.sequence + 1;
+        let windows = self.engine.sessions[&session]
+            .windows
+            .values()
+            .copied()
+            .collect::<Vec<_>>();
+        for window in windows {
+            if args.has(b'f') {
+                self.engine
+                    .windows
+                    .get_mut(&window)
+                    .unwrap()
+                    .options
+                    .insert("window-size".into(), "latest".into());
+            }
+            let owner =
+                self.size_views.iter().find(|(id, session)| {
+                    self.clients.get(id).is_some_and(|client| {
+                        client.context.session == Some(*session)
+                            && self.engine.sessions.get(session).is_some_and(|session| {
+                                session.windows.values().any(|id| *id == window)
+                            })
+                    })
+                });
+            if owner.is_some_and(|(id, _)| *id == client) {
+                self.client_became_latest(client, window);
+            }
+        }
+        self.sizes_pending = true;
+        Ok(Outcome {
+            changed: true,
+            ..Outcome::default()
+        })
+    }
+
     pub(super) fn command_sizes(&mut self, command: &tmuxx_command::Command) -> bool {
+        if command
+            .args
+            .first()
+            .is_some_and(|name| name == b"tmuxx-view-size")
+        {
+            return true;
+        }
         let Some(name) = command
             .args
             .first()
@@ -28,6 +133,8 @@ impl Host {
 
     pub(super) fn recalculate_sizes(&mut self) {
         self.sizes_pending = false;
+        self.size_views
+            .retain(|(id, _)| self.clients.contains_key(id));
         self.latest_clients
             .retain(|window, _| self.engine.windows.contains_key(window));
         self.size_activity
@@ -51,8 +158,9 @@ impl Host {
                 *latest = *id;
             }
         }
-        let unflagged = self.clients.values().any(|client| {
-            client.context.session.is_some()
+        let unflagged = self.clients.iter().any(|(id, client)| {
+            self.size_view_matches_session(*id, &client.context)
+                && client.context.session.is_some()
                 && (client.context.control
                     || client.context.size_requested
                     || client.context.window_size_requested)
@@ -63,9 +171,10 @@ impl Host {
             let clients: Vec<_> = self
                 .clients
                 .iter()
-                .filter(|(_, client)| {
+                .filter(|(id, client)| {
                     let c = &client.context;
-                    (c.size_requested || c.window_size_requested)
+                    self.size_view_matches_session(**id, c)
+                        && (c.size_requested || c.window_size_requested)
                         && (!c.ignore_size || !unflagged)
                         && c.session
                             .and_then(|sid| self.engine.sessions.get(&sid))
@@ -94,7 +203,24 @@ impl Host {
                             })
                 })
                 .collect();
-            let latest = self.latest_clients.get(&window.id).copied();
+            // GUI input and size reports arrive on different connections.
+            let owner = self
+                .size_views
+                .iter()
+                .find(|(view, _)| candidates.iter().any(|(id, _)| *id == view))
+                .map(|(id, _)| *id);
+            let latest = self
+                .latest_clients
+                .get(&window.id)
+                .copied()
+                .filter(|latest| {
+                    candidates.iter().any(|(id, _)| {
+                        **id == *latest
+                            && (!self.size_views.iter().any(|(view, _)| view == *id)
+                                || Some(**id) == owner)
+                    })
+                })
+                .or(owner);
             let selected: Vec<_> = candidates
                 .iter()
                 .copied()

@@ -891,6 +891,7 @@ fn serve_connection(
             instance_id: instance_id.clone(),
             stdin_file_stream: true,
             client_features: Some(0),
+            view_size_ownership: true,
             ..Hello::default()
         },
     )?;
@@ -1052,6 +1053,7 @@ struct Host {
     watchdog: Option<Arc<watchdog::Watchdog>>,
     format_jobs: BTreeMap<u64, format_jobs::FormatProcess>,
     latest_clients: BTreeMap<Id, u64>,
+    size_views: Vec<(u64, Id)>,
     size_activity: BTreeMap<u64, Instant>,
     sizes_pending: bool,
     snapshot_limit: u64,
@@ -1147,6 +1149,7 @@ impl Host {
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             watchdog: None,
             latest_clients: BTreeMap::new(),
+            size_views: Vec::new(),
             size_activity: BTreeMap::new(),
             sizes_pending: false,
             snapshot_limit: options
