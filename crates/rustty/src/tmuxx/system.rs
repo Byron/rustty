@@ -930,8 +930,10 @@ fn capture(shared: &Shared, pane_id: u64, data: Vec<u8>, cols: u32, rows: u32) -
         let Some(terminal) = view.terminal.upgrade() else {
             return false;
         };
-        if let Ok(mut terminal) = terminal.lock() {
-            replace_view(&mut terminal, &pane.terminal);
+        if let Ok(mut terminal) = terminal.lock()
+            && let Ok(appearance) = view.appearance.lock()
+        {
+            replace_view(&mut terminal, &pane.terminal, appearance.as_ref());
             // Stock captures do not preserve row identity for selections.
             terminal.screen_mut().selection = None;
         }
@@ -964,6 +966,30 @@ mod tests {
     use crate::session::Session;
     use std::process::Command;
     use std::time::Instant;
+
+    #[test]
+    fn view_appearance_survives_stock_captures() {
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        capture(&connection.shared, 7, b"initial".to_vec(), 10, 4).unwrap();
+        let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let mut config = Config::default();
+        config.background = crate::config::Rgb::new(1, 2, 3);
+        first.apply_config(&config).unwrap();
+        config.background = crate::config::Rgb::new(4, 5, 6);
+        second.apply_config(&config).unwrap();
+        capture(&connection.shared, 7, b"recaptured".to_vec(), 10, 4).unwrap();
+        assert_eq!(first.snapshot().unwrap().background, [1, 2, 3]);
+        assert_eq!(second.snapshot().unwrap().background, [4, 5, 6]);
+        assert!(
+            first
+                .terminal()
+                .unwrap()
+                .plain_text()
+                .contains("recaptured")
+        );
+    }
+
     #[test]
     fn focus_queries_validate_scope_and_keep_authoritative_state_before_notifications() {
         let mut client = SystemClient::new(b"focus".to_vec()).unwrap();

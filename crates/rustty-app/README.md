@@ -534,6 +534,29 @@ default cmd.exe shell. If that server uses PowerShell, prefix the quoted
 executable with `&`. Keep the complete `Rustty` folder, including `resources`,
 on the Windows host.
 
+Give connection windows different themes with exact SSH targets or session names:
+
+```ini
+tmuxx-theme-host = windows = Catppuccin Mocha
+tmuxx-theme-host = azure-linux = light:Catppuccin Latte,dark:Catppuccin Frappe
+tmuxx-theme-session = work = Gruvbox Dark
+```
+
+Session rules take precedence over host rules and also apply to local sessions.
+Host rules match the literal SSH target, including any `user@` prefix, for both
+native tmuxx and stock tmux connections. Matches are case-sensitive. Later entries
+replace the same selector; an empty `tmuxx-theme-host =` or
+`tmuxx-theme-session =` clears that set of rules. Reload configuration to apply
+changes to open windows. Missing or invalid themes report a diagnostic and use
+the global appearance. Theme lookup and light/dark pairs work as with `theme`;
+explicit appearance settings in your configuration still take precedence.
+
+These themes change the local window's appearance, including fonts and padding,
+without changing shell commands, key bindings, or the remote owner's settings.
+They survive pane updates and reconnects. In a window with a matching rule, the
+Themes picker previews that rule and shows its configuration line on acceptance;
+other windows matching the same rule share the preview.
+
 The Windows SSH bridge connects to the running owner's local named pipe under
 the same Windows account; SSH authentication and transport remain OpenSSH's
 responsibility. With one owner, `tmuxx.exe --native-stdio` discovers it.
