@@ -73,7 +73,7 @@ impl ProgressReport {
                 }
             }
             Effect::Progress { state: 0, .. } => self.finish(),
-            Effect::ProgressReset | Effect::CommandStart => self.clear(),
+            Effect::ProgressReset | Effect::CommandStart { .. } => self.clear(),
             Effect::CommandEnd { exit_code } if self.enclosing_command => {
                 self.active = false;
                 self.deadline = None;
@@ -150,7 +150,7 @@ pub struct CommandReport {
     generation: u64,
     last_activity: Option<Instant>,
     agent_reported: bool,
-    explicit_reported: bool,
+    suppressed: bool,
 }
 impl CommandReport {
     pub fn start(&mut self, now: Instant, generation: u64) {
@@ -170,14 +170,14 @@ impl CommandReport {
         if self.started.is_some() {
             self.agent_reported = true;
         }
-        self.explicit_reported();
+        self.suppress();
     }
     pub fn has_agent_report(&self) -> bool {
         self.agent_reported && self.started.is_some()
     }
-    pub fn explicit_reported(&mut self) {
+    pub fn suppress(&mut self) {
         if self.started.is_some() {
-            self.explicit_reported = true;
+            self.suppressed = true;
         }
         self.state = None;
     }
@@ -214,12 +214,13 @@ impl CommandReport {
         if self.started.is_none() {
             return false;
         }
-        self.state = (!self.explicit_reported && self.qualifies(now, policy, after, focused))
-            .then_some(match exit_code {
+        self.state = (!self.suppressed && self.qualifies(now, policy, after, focused)).then_some(
+            match exit_code {
                 Some(0) => State::Done,
                 Some(_) => State::Error,
                 None => State::NeedsInput,
-            });
+            },
+        );
         self.started = None;
         self.last_activity = Some(now);
         self.is_registered()
@@ -873,7 +874,7 @@ mod tests {
         assert!(report.view(1, "").is_none());
         report.update(policy);
         assert!(report.view(1, "").is_none());
-        report.explicit_reported();
+        report.suppress();
         report.acknowledge();
         report.update(policy);
         assert!(report.view(1, "").is_none());
@@ -886,7 +887,7 @@ mod tests {
             if agent {
                 report.agent_reported();
             } else {
-                report.explicit_reported();
+                report.suppress();
             }
             report.update(policy);
             assert!(report.view(1, "").is_none());
@@ -979,12 +980,12 @@ mod tests {
         let now = Instant::now();
         let policy = NotifyOnCommandFinish::Always;
         let mut command = CommandReport::default();
-        command.explicit_reported();
+        command.suppress();
 
         command.start(now, 1);
         assert!(command.finish(now, policy, Duration::ZERO, false, Some(0)));
         command.start(now, 2);
-        command.explicit_reported();
+        command.suppress();
         command.acknowledge();
         assert!(!command.finish(now, policy, Duration::ZERO, false, Some(0)));
 
@@ -1037,7 +1038,7 @@ mod tests {
                     for effect in terminal.feed(bytes) {
                         report.apply(&effect, running);
                         match effect {
-                            Effect::CommandStart => running = true,
+                            Effect::CommandStart { .. } => running = true,
                             Effect::CommandEnd { .. } => running = false,
                             _ => {}
                         }
@@ -1079,7 +1080,7 @@ mod tests {
         assert_eq!(report.state(), None);
         report.apply(&Effect::CommandEnd { exit_code: Some(1) }, true);
         assert_eq!(report.state(), None);
-        report.apply(&Effect::CommandStart, false);
+        report.apply(&Effect::CommandStart { command_line: None }, false);
         assert_eq!(report.state(), None);
         report.apply(&progress(1), true);
         report.apply(&Effect::ProgressReset, true);
@@ -1182,7 +1183,7 @@ mod tests {
             report.apply(&Effect::CommandEnd { exit_code: Some(1) }, true);
             assert_eq!(report.state(), None);
 
-            report.apply(&Effect::CommandStart, false);
+            report.apply(&Effect::CommandStart { command_line: None }, false);
             report.apply(&progress, true);
             report.apply(&notification(body), true);
             report.expire(report.deadline().unwrap());
@@ -1206,7 +1207,7 @@ mod tests {
         report.apply(&Effect::CommandEnd { exit_code: Some(0) }, true);
         assert_eq!(report.state(), None);
 
-        report.apply(&Effect::CommandStart, false);
+        report.apply(&Effect::CommandStart { command_line: None }, false);
         report.apply(
             &Effect::Progress {
                 state: 2,
@@ -1219,7 +1220,7 @@ mod tests {
         report.apply(&Effect::CommandEnd { exit_code: Some(0) }, true);
         assert_eq!(report.state(), Some(State::Error));
 
-        report.apply(&Effect::CommandStart, false);
+        report.apply(&Effect::CommandStart { command_line: None }, false);
         let error = Effect::Progress {
             state: 2,
             value: None,

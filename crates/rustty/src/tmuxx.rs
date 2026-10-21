@@ -3013,7 +3013,7 @@ mod tests {
 
     #[test]
     fn notification_observations_keep_command_order_across_split_reads() {
-        let bytes = b"\x1b]133;C\x07\x1b]9;4;3\x07\x1b]9;result\x07\x1b]777;notify;title;body\x07\x1b]133;D;0\x07";
+        let bytes = b"\x1b]133;C;cmdline_url=tix%20status\x07\x1b]9;4;3\x07\x1b]9;result\x07\x1b]777;notify;title;body\x07\x1b]133;D;0\x07";
         for split in 0..=bytes.len() {
             let mut terminal = tmuxx_terminal::Terminal::new(10, 4, 0).into_backend();
             let (sender, receiver) = mpsc::sync_channel(16);
@@ -3023,12 +3023,12 @@ mod tests {
             assert!(
                 matches!(events.as_slice(), [
                 SessionEvent::Effect(Effect::TmuxCommandStart { .. }),
-                SessionEvent::Effect(Effect::CommandStart),
+                SessionEvent::Effect(Effect::CommandStart { command_line: Some(command) }),
                 SessionEvent::Effect(Effect::Progress { state: 3, .. }),
                 SessionEvent::NotificationObserved { title: first_title, body: first_body },
                 SessionEvent::NotificationObserved { title, body },
                 SessionEvent::Effect(Effect::CommandEnd { exit_code: Some(0) }),
-            ] if first_title.is_empty() && first_body == b"result" && title == b"title" && body == b"body"),
+            ] if command == b"tix status" && first_title.is_empty() && first_body == b"result" && title == b"title" && body == b"body"),
                 "split {split}: {events:?}"
             );
         }
@@ -3755,7 +3755,7 @@ mod tests {
     #[test]
     fn native_notifications_are_observed_by_all_views_and_delivered_to_one_host() {
         let connection = test_owner(
-            "import os,tty; tty.setraw(0); os.write(1,b'READY'); os.read(0,1); os.write(1,b'\\x1b]133;C\\x07\\x1b]9;4;3\\x07\\x1b]9;result\\x07\\x1b]777;notify;title;body\\x07\\x1b]133;D;0\\x07FINISHED'); os.read(0,1)",
+            "import os,tty; tty.setraw(0); os.write(1,b'READY'); os.read(0,1); os.write(1,b'\\x1b]133;C;cmdline_url=tix%20status\\x07\\x1b]9;4;3\\x07\\x1b]9;result\\x07\\x1b]777;notify;title;body\\x07\\x1b]133;D;0\\x07FINISHED'); os.read(0,1)",
         );
         let graph = wait(&connection, |graph| !graph.panes.is_empty());
         let pane = graph.panes[0].id;
@@ -3803,12 +3803,12 @@ mod tests {
             assert!(
                 matches!(observations.as_slice(), [
                 SessionEvent::Effect(Effect::TmuxCommandStart { .. }),
-                SessionEvent::Effect(Effect::CommandStart),
+                SessionEvent::Effect(Effect::CommandStart { command_line: Some(command) }),
                 SessionEvent::Effect(Effect::Progress { state: 3, .. }),
                 SessionEvent::NotificationObserved { title: first_title, body: first_body },
                 SessionEvent::NotificationObserved { title, body },
                 SessionEvent::Effect(Effect::CommandEnd { exit_code: Some(0) }),
-            ] if first_title.is_empty() && first_body == b"result" && title == b"title" && body == b"body"),
+            ] if command == b"tix status" && first_title.is_empty() && first_body == b"result" && title == b"title" && body == b"body"),
                 "{observations:?}"
             );
         }

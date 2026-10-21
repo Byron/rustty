@@ -2298,7 +2298,7 @@ impl App {
                     effect,
                     vt::Effect::Progress { state: 1..=4, .. } | vt::Effect::Notification { .. }
                 ) {
-                    pane.deck_command.explicit_reported();
+                    pane.deck_command.suppress();
                 }
             }
             content_changed |= !matches!(
@@ -2334,12 +2334,15 @@ impl App {
                     stopped |= pane.activity.progress_reported(0, None, Instant::now());
                     pane.deck_command.clear();
                 }
-                SessionEvent::Effect(vt::Effect::CommandStart) => {
+                SessionEvent::Effect(vt::Effect::CommandStart { command_line }) => {
                     let now = Instant::now();
                     pane.running = Some(now);
                     if live && !pane.exited {
                         self.deck.report_generation += 1;
                         pane.deck_command.start(now, self.deck.report_generation);
+                        if config.command_finish_excluded(command_line.as_deref()) {
+                            pane.deck_command.suppress();
+                        }
                         if pane.agent.is_registered() {
                             pane.deck_command.agent_reported();
                         }
@@ -2375,7 +2378,7 @@ impl App {
                     }
                 }
                 SessionEvent::NotificationObserved { title, body } if live && !pane.exited => {
-                    pane.deck_command.explicit_reported();
+                    pane.deck_command.suppress();
                     if !pane.agent.is_registered() && !pane.deck_command.has_agent_report() {
                         pane.deck_progress.apply(
                             &vt::Effect::Notification { title, body },
