@@ -35,6 +35,39 @@ fn notifications_preserve_bytes_and_require_complete_rxvt_fields() {
 }
 
 #[test]
+fn tmux_notifications_preserve_strict_progress_and_ignore_conemu_metadata() {
+    let mut terminal = Terminal::new(10, 2, 0);
+    terminal.set_tmux_strings(true);
+    terminal.tmux_graphics = true;
+    assert_eq!(
+        terminal.feed(b"\x1b]9;finished\x07\x1b]9;4;1;42\x07"),
+        [
+            Effect::Notification {
+                title: Vec::new(),
+                body: b"finished".to_vec(),
+            },
+            Effect::Progress {
+                state: 1,
+                value: Some(42),
+            },
+        ]
+    );
+    for payload in [
+        "4", "4;", "4;5;100", "4;1;101", "4;1;-1", "9;/tmp", "12", "1;200",
+    ] {
+        assert!(
+            terminal
+                .feed(format!("\x1b]9;{payload}\x07").as_bytes())
+                .is_empty(),
+            "{payload}"
+        );
+    }
+    assert_eq!(terminal.tmux_state.progress_state, 1);
+    assert_eq!(terminal.tmux_state.progress, 42);
+    assert!(terminal.working_directory.is_empty());
+}
+
+#[test]
 fn progress_distinguishes_missing_invalid_and_clamped_values() {
     let mut terminal = Terminal::new(10, 2, 0);
     for (data, state, value) in [

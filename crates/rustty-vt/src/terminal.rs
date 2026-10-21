@@ -3340,8 +3340,13 @@ impl Terminal {
 
     fn osc9(&mut self, data: &[u8], effects: &mut Vec<Effect>) {
         if self.tmux_graphics {
-            self.tmux_progress(data, effects);
-            return;
+            if data == b"4" || data.starts_with(b"4;") {
+                self.tmux_progress(data, effects);
+                return;
+            }
+            if data.starts_with(b"12") || data.starts_with(b"9;") {
+                return;
+            }
         }
         if data.starts_with(b"12") {
             self.semantic_fresh_line();

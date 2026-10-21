@@ -198,10 +198,37 @@ impl App {
             .find(|host| host.visible && host.focused && !host.occluded && host.peek.is_none())
             .and_then(|host| self.focused(host.id))
     }
+    pub(super) fn notification_focused(&self, pane: Id, host: Option<&Host>) -> bool {
+        host.into_iter()
+            .chain(self.windows.values())
+            .any(|host| host.visible && host.focused && self.focused(host.id) == Some(pane))
+    }
+    pub(super) fn update_deck_commands(&mut self) {
+        let config = &self.loaded.config;
+        let mut had_reports = false;
+        let mut has_reports = false;
+        for id in self
+            .workspace
+            .windows
+            .iter()
+            .flat_map(|window| &window.tabs)
+            .flat_map(|tab| tab.pane_ids())
+        {
+            if let Some(pane) = self.panes.get_mut(&id).filter(|pane| !pane.exited) {
+                had_reports |= pane.has_deck_report();
+                pane.deck_command.update(config.notify_on_command_finish);
+                has_reports |= pane.has_deck_report();
+            }
+        }
+        if had_reports != has_reports {
+            self.deck.registration_transition();
+        }
+    }
     fn sync_deck(&mut self) {
         self.sync_deck_with_host(None);
     }
     fn sync_deck_with_host(&mut self, host: Option<&Host>) {
+        self.update_deck_commands();
         let focused = host
             .filter(|host| {
                 self.deck.dashboard.board.screens_awake
@@ -215,6 +242,7 @@ impl App {
         if let Some(pane) = focused.and_then(|id| self.panes.get_mut(&id)) {
             pane.agent.acknowledge();
             pane.deck_progress.acknowledge();
+            pane.deck_command.acknowledge();
         }
         let reports = self
             .workspace
@@ -223,14 +251,12 @@ impl App {
             .flat_map(|w| &w.tabs)
             .flat_map(|tab| tab.pane_ids())
             .filter_map(|id| {
-                let pane = self
-                    .panes
-                    .get(&id)
-                    .filter(|pane| pane.agent.is_registered())?;
+                let pane = self.panes.get(&id).filter(|pane| {
+                    !pane.exited
+                        && (pane.agent.is_registered() || pane.deck_command.is_registered())
+                })?;
                 let label = task_label(&pane.title, &pane.cwd);
-                pane.agent
-                    .view(id, &label, &pane.activity)
-                    .map(|view| (id, view))
+                pane.deck_view(id, &label).map(|view| (id, view))
             })
             .collect();
         let progress = self
@@ -256,8 +282,7 @@ impl App {
             && self.panes.get(&target.pane).is_some_and(|pane| {
                 !pane.exited
                     && pane
-                        .agent
-                        .view(target.pane, "", &pane.activity)
+                        .deck_view(target.pane, "")
                         .is_some_and(|r| r.target == target)
             })
     }
@@ -300,6 +325,7 @@ impl App {
         if let Some(state) = self.panes.get_mut(&pane) {
             state.agent.acknowledge();
             state.deck_progress.acknowledge();
+            state.deck_command.acknowledge();
         }
         // Detached hosts are restored before their caller synchronizes session focus.
         if host.is_none() {
@@ -559,6 +585,9 @@ impl App {
 pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> Result<()> {
     use rustty::vt::agent::{Event as AgentEvent, Snapshot, State};
     let saved = app.workspace.clone();
+    let screens_awake = app.deck.dashboard.board.screens_awake;
+    // The offscreen fixture must also work while the real displays sleep.
+    app.deck.dashboard.screens_awake(true);
     let one = app.add_window(false);
     let two = app.add_window(false);
     let quick = app.add_window(true);
@@ -819,9 +848,9 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
         .deck_progress
         .apply(&Effect::CommandEnd { exit_code: Some(1) }, true);
     app.sync_deck();
-    assert_eq!(app.deck.dashboard.board.counts, [1, 0, 0, 0]);
+    assert_eq!(app.deck.dashboard.board.counts, [0; 4]);
     assert!(app.deck_command(StreamDeckAction::NeedsInput));
-    assert_eq!(app.focused(app.active.unwrap()), Some(second));
+    assert_eq!(app.focused(app.active.unwrap()), Some(first));
     assert_eq!(app.panes[&second].deck_progress.state(), None);
     app.reveal_pane(first);
     let report = &mut app.panes.get_mut(&second).unwrap().deck_progress;
@@ -840,6 +869,297 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
     assert_eq!(app.panes[&second].deck_progress.state(), None);
     assert_eq!(app.workspace.deck_positions, positions);
     assert_eq!(app.panes[&second].input_bytes, input_before[1]);
+
+    // Qualifying shell commands use the same tiles and physical focus action as agents.
+    let notification_policy = app.loaded.config.notify_on_command_finish;
+    let notification_after = app.loaded.config.notify_on_command_finish_after;
+    let notification_action = app.loaded.config.notify_on_command_finish_action;
+    let policy = config::NotifyOnCommandFinish::Always;
+    let after = Duration::from_secs(30);
+    app.loaded.config.notify_on_command_finish = policy;
+    app.loaded.config.notify_on_command_finish_after = after;
+    app.loaded.config.notify_on_command_finish_action.notify = false;
+    app.reveal_pane(first);
+    let now = Instant::now();
+    app.panes
+        .get_mut(&second)
+        .unwrap()
+        .deck_command
+        .start(now, 100);
+    app.update_deck_commands();
+    app.sync_deck();
+    assert!(app.deck.dashboard.board.no_sessions);
+    app.update_deck_commands();
+    app.sync_deck();
+    let tile = |app: &App| {
+        app.deck
+            .dashboard
+            .board
+            .tiles
+            .iter()
+            .find(|tile| tile.capture.assignment == Some(second))
+            .unwrap()
+            .clone()
+    };
+    assert!(app.deck.dashboard.board.no_sessions);
+    assert!(!app.panes[&second].deck_command.is_registered());
+    for (generation, exit_code, expected, group) in [
+        (101, Some(0), State::Done, 2),
+        (102, Some(1), State::Error, 0),
+        (103, None, State::NeedsInput, 0),
+    ] {
+        let report = &mut app.panes.get_mut(&second).unwrap().deck_command;
+        report.start(now, generation);
+        report.finish(now + after, policy, after, false, exit_code);
+        app.sync_deck();
+        let completed = tile(app);
+        assert_eq!(completed.state, Some(expected));
+        assert_eq!(app.deck.dashboard.board.counts[group], 1);
+        assert!(completed.unseen);
+        app.deck_action(Action::Focus(completed.capture));
+        app.sync_deck();
+        assert_eq!(app.focused(app.active.unwrap()), Some(second));
+        assert!(app.deck.dashboard.board.no_sessions);
+        assert!(!app.panes[&second].deck_command.is_registered());
+        app.reveal_pane(first);
+    }
+    let report = &mut app.panes.get_mut(&second).unwrap().deck_command;
+    report.start(now, 104);
+    report.finish(now + after, policy, after, false, Some(0));
+    app.sync_deck();
+    let old_completion = tile(app).capture;
+    let report = &mut app.panes.get_mut(&second).unwrap().deck_command;
+    report.start(now, 105);
+    report.finish(
+        now + Duration::from_millis(1),
+        policy,
+        after,
+        false,
+        Some(0),
+    );
+    app.sync_deck();
+    assert!(app.deck.dashboard.board.no_sessions);
+    app.deck_action(Action::Focus(old_completion));
+    assert_eq!(app.focused(app.active.unwrap()), Some(first));
+
+    app.panes
+        .get_mut(&second)
+        .unwrap()
+        .deck_command
+        .start(now, 106);
+    app.panes.get_mut(&second).unwrap().deck_command.finish(
+        now + after,
+        policy,
+        after,
+        false,
+        Some(0),
+    );
+    app.update_deck_commands();
+    app.sync_deck();
+    let command_capture = tile(app).capture;
+    app.panes.get_mut(&second).unwrap().agent.apply(
+        AgentEvent::Begin(snapshot(State::NeedsInput, None)),
+        107,
+        true,
+    );
+    app.sync_deck();
+    assert_eq!(tile(app).state, Some(State::NeedsInput));
+    assert_eq!(tile(app).capture.target.unwrap().generation, 107);
+    assert_eq!(app.deck.dashboard.board.counts, [1, 0, 0, 0]);
+    app.deck_action(Action::Focus(command_capture));
+    assert_eq!(app.focused(app.active.unwrap()), Some(first));
+    app.panes.get_mut(&second).unwrap().agent.clear();
+    app.panes.get_mut(&second).unwrap().deck_command.clear();
+
+    // Simulate focus in the hidden native window without asking the OS to activate it.
+    let focused_hosts: Vec<_> = app
+        .windows
+        .iter()
+        .map(|(&id, host)| (id, host.focused))
+        .collect();
+    for (&id, host) in &mut app.windows {
+        host.focused = id == native;
+    }
+    let unfocused = config::NotifyOnCommandFinish::Unfocused;
+    app.loaded.config.notify_on_command_finish = unfocused;
+    app.reveal_pane(second);
+    app.panes
+        .get_mut(&second)
+        .unwrap()
+        .deck_command
+        .start(now - after, 108);
+    app.update_deck_commands();
+    app.sync_deck();
+    assert!(app.notification_focused(second, None));
+    assert!(app.deck.dashboard.board.no_sessions);
+    app.reveal_pane(first);
+    app.sync_deck();
+    assert!(app.deck.dashboard.board.no_sessions);
+    app.reveal_pane(second);
+    app.panes.get_mut(&second).unwrap().deck_command.finish(
+        Instant::now(),
+        unfocused,
+        after,
+        true,
+        Some(0),
+    );
+    app.sync_deck();
+    assert!(app.deck.dashboard.board.no_sessions);
+    for (id, focused) in focused_hosts {
+        app.windows.get_mut(&id).unwrap().focused = focused;
+    }
+    app.loaded.config.notify_on_command_finish = policy;
+    app.reveal_pane(first);
+
+    #[cfg(unix)]
+    {
+        // Exercise the PTY decoder and drain path with an owned, input-free child.
+        app.loaded.config.notify_on_command_finish_after = Duration::from_millis(20);
+        let session = Session::spawn(
+            app.config(),
+            SessionOptions {
+                command: Some(config::Command::Direct(vec![
+                    "/bin/sh".into(),
+                    "-c".into(),
+                    r#"printf '\033]133;C\007'; sleep 0.2; printf '\033]133;D;0\007'
+sleep 0.2
+printf '\033]133;C\007'; printf '%s' "$1"; printf '\033]9;4;3\007'
+sleep 0.2
+printf '%s' "$2"; printf '\033]9;4;2\007'
+sleep 0.2
+printf '%s' "$3"; printf '\033]9;4;3\007'
+sleep 0.2
+printf '\033]133;D;0\007'
+sleep 0.2
+printf '\033]133;C\007\033]9;4;3\007'
+sleep 0.2
+printf '\033]9;✅ merged\007\033]9;4;0\007'
+sleep 0.2
+printf '\033]133;D;1\007'
+sleep 0.2
+printf '\033]133;C\007\033]777;notify;Finished;notification-only\007'
+sleep 0.2
+printf '\033]133;D;0\007'; exec sleep 120"#
+                        .into(),
+                    "review-status-smoke".into(),
+                    String::from_utf8(AgentEvent::Begin(snapshot(State::Working, None)).frame()?)?,
+                    String::from_utf8(
+                        AgentEvent::Update(snapshot(State::Done, Some("review".into()))).frame()?,
+                    )?,
+                    String::from_utf8(AgentEvent::End.frame()?)?,
+                ])),
+                ..SessionOptions::default()
+            },
+            Arc::new(|| {}),
+        )?;
+        let previous = std::mem::replace(&mut app.panes.get_mut(&second).unwrap().session, session);
+        previous.close();
+        app.closing.push(previous);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut saw_running = false;
+        loop {
+            app.drain(event_loop, second);
+            app.sync_deck();
+            if app.panes[&second].deck_command.is_registered() {
+                assert_eq!(tile(app).state, Some(State::Done));
+                break;
+            }
+            saw_running |= app.panes[&second].running.is_some();
+            assert!(app.deck.dashboard.board.no_sessions);
+            assert!(
+                Instant::now() < deadline,
+                "OSC 133 command did not complete"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(saw_running, "quiet command did not start");
+        assert!(app.panes[&second].running.is_none());
+        assert_eq!(app.panes[&second].input_bytes, input_before[1]);
+        app.deck_action(Action::Focus(tile(app).capture));
+        app.sync_deck();
+        assert!(app.deck.dashboard.board.no_sessions);
+        app.reveal_pane(first);
+        let mut saw_review_working = false;
+        let mut saw_review_done = false;
+        loop {
+            app.drain(event_loop, second);
+            app.sync_deck();
+            let state = tile(app).state;
+            saw_review_working |= state == Some(State::Working);
+            if state == Some(State::Done) {
+                saw_review_done = true;
+                assert_eq!(app.deck.dashboard.board.counts, [0, 0, 1, 0]);
+                app.deck_action(Action::Focus(tile(app).capture));
+                app.sync_deck();
+                assert_eq!(tile(app).state, Some(State::Idle));
+            }
+            if saw_review_done && !app.panes[&second].agent.is_registered() {
+                assert!(app.deck.dashboard.board.no_sessions);
+                if app.panes[&second].running.is_none() {
+                    break;
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "review status lifecycle did not complete"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(saw_review_working);
+        assert!(!app.panes[&second].unseen);
+        // Observe explicit notification effects without posting real desktop alerts.
+        let platform = app.platform.take();
+        app.reveal_pane(first);
+        let mut saw_progress = false;
+        let mut saw_result = false;
+        loop {
+            app.drain(event_loop, second);
+            app.sync_deck();
+            saw_progress |= app.panes[&second].deck_progress.state() == Some(State::Working);
+            assert!(!app.panes[&second].deck_command.is_registered());
+            if app.panes[&second].deck_progress.state() == Some(State::Done) {
+                saw_result = true;
+                assert_eq!(app.deck.dashboard.board.counts, [0, 0, 1, 0]);
+                assert!(app.deck_command(StreamDeckAction::Done));
+            }
+            if saw_result && app.panes[&second].running.is_none() {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "progress command did not complete"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(saw_progress);
+        assert!(app.deck.dashboard.board.no_sessions);
+        assert!(!app.panes[&second].unseen);
+        app.reveal_pane(first);
+        let mut saw_notification = false;
+        loop {
+            app.drain(event_loop, second);
+            app.sync_deck();
+            if app.panes[&second].unseen {
+                saw_notification = true;
+                app.reveal_pane(second);
+            }
+            assert!(app.deck.dashboard.board.no_sessions);
+            if saw_notification && app.panes[&second].running.is_none() {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "notification command did not complete"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(!app.panes[&second].unseen);
+        app.platform = platform;
+    }
+    app.loaded.config.notify_on_command_finish = notification_policy;
+    app.loaded.config.notify_on_command_finish_after = notification_after;
+    app.loaded.config.notify_on_command_finish_action = notification_action;
+    app.panes.get_mut(&second).unwrap().deck_command.clear();
     app.deck_action(Action::Disconnected(Ok(())));
     assert!(!app.deck_command(StreamDeckAction::PullToFirst));
     app.loaded.config.stream_deck = enabled;
@@ -852,12 +1172,13 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
     assert_eq!(std::fs::read(&app.state_path).ok(), before);
     app.loaded.config.window_save_state = policy;
     app.workspace = saved;
+    app.deck.dashboard.screens_awake(screens_awake);
     app.reconcile(event_loop);
     app.sync_deck();
     assert!(app.deck.worker.is_none());
     assert!(app.deck.discovery.is_none());
     eprintln!(
-        "Native Stream Deck smoke: exact panes across windows/tabs, completion acknowledgement, progress-only Working/Attention/Done cycling and timeout removal, menu/shortcut chains, pull-to-first, stale control rejection, disconnected gating, input preservation, pane removal and save-state-never passed; no USB used; native minimization and quick animation {}",
+        "Native Stream Deck smoke: exact panes across windows/tabs, completion acknowledgement, qualifying command tiles and agent precedence, progress-only Working/Attention/Done cycling and timeout removal, menu/shortcut chains, pull-to-first, stale control rejection, disconnected gating, input preservation, pane removal and save-state-never passed; no USB used; native minimization and quick animation {}",
         if app.background_smoke {
             "skipped"
         } else {

@@ -96,6 +96,7 @@ fn dispatch_binding(
 struct Pane {
     agent: rustty_app::deck::Report,
     deck_progress: rustty_app::deck::ProgressReport,
+    deck_command: rustty_app::deck::CommandReport,
     session: Session,
     host_state: (bool, bool, vt::query::ColorScheme),
     wake_pending: Arc<AtomicBool>,
@@ -119,6 +120,22 @@ struct Pane {
     search: Option<Search>,
 }
 impl Pane {
+    fn has_deck_report(&self) -> bool {
+        !self.exited
+            && (self.agent.is_registered()
+                || self.deck_command.is_registered()
+                || self.deck_progress.state().is_some())
+    }
+
+    fn deck_view(&self, id: Id, label: &str) -> Option<rustty_app::deck::PaneView> {
+        if self.exited {
+            return None;
+        }
+        self.agent
+            .view(id, label, &self.activity)
+            .or_else(|| self.deck_command.view(id, label))
+    }
+
     fn reset_selection_gesture(&mut self) {
         if let Ok(mut terminal) = self.session.terminal() {
             self.selection_gesture.reset(&mut terminal);
@@ -1435,6 +1452,7 @@ impl App {
             Pane {
                 agent: rustty_app::deck::Report::default(),
                 deck_progress: rustty_app::deck::ProgressReport::default(),
+                deck_command: rustty_app::deck::CommandReport::default(),
                 session,
                 host_state,
                 wake_pending,
@@ -2224,10 +2242,7 @@ impl App {
         let mut close = false;
         let mut stopped = false;
         let mut clipboard = Vec::new();
-        let focused = self
-            .windows
-            .values()
-            .any(|host| host.visible && host.focused && self.focused(host.id) == Some(id));
+        let focused = self.notification_focused(id, None);
         let config = &self.loaded.config;
         let mut deck_panes = self
             .workspace
@@ -2235,11 +2250,7 @@ impl App {
             .iter()
             .flat_map(|window| &window.tabs)
             .flat_map(|tab| tab.pane_ids())
-            .filter(|id| {
-                self.panes.get(id).is_some_and(|pane| {
-                    pane.agent.is_registered() || pane.deck_progress.state().is_some()
-                })
-            })
+            .filter(|id| self.panes.get(id).is_some_and(Pane::has_deck_report))
             .count();
         let Some(pane) = self.panes.get_mut(&id) else {
             return;
@@ -2270,12 +2281,25 @@ impl App {
         }
         let events = pane.session.events().collect::<Vec<_>>();
         for event in events {
-            let was_registered = pane.agent.is_registered() || pane.deck_progress.state().is_some();
+            let was_registered = pane.has_deck_report();
             if live
                 && !pane.exited
                 && let SessionEvent::Effect(effect) = &event
             {
-                pane.deck_progress.apply(effect, pane.running.is_some());
+                if pane.agent.is_registered()
+                    || pane.deck_command.has_agent_report()
+                    || matches!(effect, vt::Effect::AgentStatus(vt::agent::Event::Begin(_)))
+                {
+                    pane.deck_progress.clear();
+                } else {
+                    pane.deck_progress.apply(effect, pane.running.is_some());
+                }
+                if matches!(
+                    effect,
+                    vt::Effect::Progress { state: 1..=4, .. } | vt::Effect::Notification { .. }
+                ) {
+                    pane.deck_command.explicit_reported();
+                }
             }
             content_changed |= !matches!(
                 &event,
@@ -2285,6 +2309,8 @@ impl App {
                 SessionEvent::Effect(vt::Effect::AgentStatus(event)) if live && !pane.exited => {
                     if matches!(event, vt::agent::Event::Begin(_)) {
                         self.deck.report_generation += 1;
+                        // The reporter can end before OSC 133 D arrives, including codex review.
+                        pane.deck_command.agent_reported();
                     }
                     pane.agent
                         .apply(event, self.deck.report_generation, pane.running.is_some());
@@ -2306,23 +2332,32 @@ impl App {
                 }
                 SessionEvent::Effect(vt::Effect::ProgressReset) => {
                     stopped |= pane.activity.progress_reported(0, None, Instant::now());
+                    pane.deck_command.clear();
                 }
                 SessionEvent::Effect(vt::Effect::CommandStart) => {
-                    pane.running = Some(Instant::now());
+                    let now = Instant::now();
+                    pane.running = Some(now);
+                    if live && !pane.exited {
+                        self.deck.report_generation += 1;
+                        pane.deck_command.start(now, self.deck.report_generation);
+                        if pane.agent.is_registered() {
+                            pane.deck_command.agent_reported();
+                        }
+                    }
                     pane.activity.command_started();
                 }
                 SessionEvent::Effect(vt::Effect::CommandEnd { exit_code }) => {
                     pane.agent.command_ended();
+                    let notify = pane.deck_command.finish(
+                        Instant::now(),
+                        config.notify_on_command_finish,
+                        config.notify_on_command_finish_after,
+                        focused,
+                        exit_code,
+                    );
                     stopped |= pane.activity.command_finished();
-                    let elapsed = pane.running.take().map(|start| start.elapsed());
-                    if elapsed
-                        .is_some_and(|elapsed| elapsed >= config.notify_on_command_finish_after)
-                        && (config.notify_on_command_finish
-                            == config::NotifyOnCommandFinish::Always
-                            || config.notify_on_command_finish
-                                == config::NotifyOnCommandFinish::Unfocused
-                                && !focused)
-                    {
+                    pane.running = None;
+                    if notify {
                         pane.unseen = !focused;
                         if live
                             && config.notify_on_command_finish_action.notify
@@ -2339,7 +2374,17 @@ impl App {
                         }
                     }
                 }
-                SessionEvent::Effect(vt::Effect::Notification { title, body }) => {
+                SessionEvent::NotificationObserved { title, body } if live && !pane.exited => {
+                    pane.deck_command.explicit_reported();
+                    if !pane.agent.is_registered() && !pane.deck_command.has_agent_report() {
+                        pane.deck_progress.apply(
+                            &vt::Effect::Notification { title, body },
+                            pane.running.is_some(),
+                        );
+                    }
+                }
+                SessionEvent::Effect(vt::Effect::Notification { title, body })
+                | SessionEvent::NotificationDelivery { title, body } => {
                     pane.unseen = !focused;
                     if live
                         && let Some(platform) = &self.platform
@@ -2361,6 +2406,7 @@ impl App {
                 SessionEvent::OutputClosed => {
                     pane.agent.clear();
                     pane.deck_progress.clear();
+                    pane.deck_command.clear();
                 }
                 SessionEvent::Exited {
                     code,
@@ -2370,6 +2416,7 @@ impl App {
                     pane.exited = true;
                     pane.agent.clear();
                     pane.deck_progress.clear();
+                    pane.deck_command.clear();
                     pane.running = None;
                     pane.title = format!(
                         "Exited {code}{}",
@@ -2385,7 +2432,7 @@ impl App {
                 SessionEvent::Error(error) if !tmuxx => self.errors.push(error),
                 _ => {}
             }
-            let registered = pane.agent.is_registered() || pane.deck_progress.state().is_some();
+            let registered = pane.has_deck_report();
             if live && registered != was_registered {
                 let was_empty = deck_panes == 0;
                 if registered {
@@ -2402,6 +2449,7 @@ impl App {
         if pane.exited {
             pane.agent.clear();
             pane.deck_progress.clear();
+            pane.deck_command.clear();
             pane.running = None;
             stopped |= pane.activity.clear();
         }
@@ -3085,6 +3133,7 @@ impl App {
                         pane.search = None;
                         pane.activity.progress_reported(0, None, Instant::now());
                         pane.deck_progress.clear();
+                        pane.deck_command.clear();
                         if pane.title_override.is_none() {
                             pane.title.clear();
                         }
@@ -3682,6 +3731,7 @@ impl App {
         for (id, pane) in &mut self.panes {
             if !required.contains_key(id) {
                 pane.agent.clear();
+                pane.deck_command.clear();
             }
         }
         for (_, state) in self.history.iter().chain(&self.redo) {
@@ -6732,6 +6782,7 @@ impl ApplicationHandler<Event> for App {
         for pane in self.panes.values_mut() {
             pane.deck_progress.expire(now);
         }
+        self.update_deck_commands();
         self.tick_deck();
         #[cfg(target_os = "windows")]
         if let Some(platform) = &self.platform {

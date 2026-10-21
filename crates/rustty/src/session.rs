@@ -77,9 +77,19 @@ impl Default for SessionOptions {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum SessionEvent {
     Effect(Effect),
+    /// Metadata seen in pane output; only the elected host delivers the notification.
+    NotificationObserved {
+        title: Vec<u8>,
+        body: Vec<u8>,
+    },
+    /// Elected native host action; pane metadata is observed separately in output order.
+    NotificationDelivery {
+        title: Vec<u8>,
+        body: Vec<u8>,
+    },
     Exited {
         code: u32,
         signal: Option<String>,

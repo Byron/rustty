@@ -14,6 +14,11 @@ const DECK_LEGEND: &str = "Rustty Stream Deck legend (5 × 3)
 
 Agent keys: large status icon, with a short worktree task slug below when available.
 For example, gitoxide.foo-bar becomes foo-bar. Long slugs are shortened to fit.
+Completed OSC 133 shell commands get tiles, following notify-on-command-finish
+and notify-on-command-finish-after. Agent status, progress or terminal notifications
+supersede the generic command tile and completion alert for that invocation.
+Eligible commands show Done (exit 0) or Attention (failure/unknown).
+Revealing a finished command clears its tile; revealing running work keeps it.
 
   ▂█▅  Working       Blue activity bars
    !   Needs input   Amber; a pending question does not mean all work stopped

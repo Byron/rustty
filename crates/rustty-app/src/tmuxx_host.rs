@@ -1382,6 +1382,7 @@ impl App {
                         pane.running = None;
                         pane.agent.clear();
                         pane.deck_progress.clear();
+                        pane.deck_command.clear();
                         pane.exit_message =
                             Some(format!("Exited {status} — press any key to close"));
                     } else if pane.exited {
