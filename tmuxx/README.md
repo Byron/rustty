@@ -24,9 +24,18 @@ shares the bundle's ConPTY resources with Rustty.
 
 Windows servers inherit the account's Windows Terminal default shell and its
 arguments at startup, including Git Bash's login flags. Explicit `default-shell`
-or command options override that preference for new panes. Load server settings
-with `-f PATH`, or set `tmuxx-config-file` in Rustty's settings for GUI-launched
-servers; SSH clients use the remote server's settings. See the
+or command options override that preference for new panes.
+
+On startup, `tmuxx` and `rustty tmux` load `$XDG_CONFIG_HOME/tmuxx/tmux.conf`, or
+`~/.config/tmuxx/tmux.conf` when `XDG_CONFIG_HOME` is unset, empty or relative.
+Windows uses `%APPDATA%\tmuxx\tmux.conf`. A missing default file is ignored.
+Explicit `-f PATH` arguments replace this default lookup; use `-f /dev/null` on
+Unix to start without user configuration. The file loads once, before the first
+session. Reload a running server with `tmuxx source-file PATH` to apply changes
+to future panes; existing shells keep running.
+
+Set `tmuxx-config-file` in Rustty's settings to select a file for GUI-launched
+servers, including embedded servers. SSH clients use the remote server's settings. See
 [Rustty configuration guide](../crates/rustty-app/README.md#tmuxx-windows) for examples.
 
 Splits and new floating panes inherit the source pane's reported working directory

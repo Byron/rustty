@@ -59,6 +59,7 @@ struct Cli {
     version: bool,
     #[arg(short='v',action=clap::ArgAction::Count)]
     verbose: u8,
+    /// Load a file instead of the default user configuration (may be repeated).
     #[arg(short = 'f')]
     config: Vec<PathBuf>,
     #[arg(short = 'L')]
@@ -321,6 +322,21 @@ fn native_endpoint_name_in(
     None
 }
 
+fn default_config() -> Option<PathBuf> {
+    let environment = if cfg!(windows) {
+        "APPDATA"
+    } else {
+        "XDG_CONFIG_HOME"
+    };
+    let directory = std::env::var_os(environment)
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute());
+    #[cfg(not(windows))]
+    let directory = directory.or_else(|| std::env::home_dir().map(|home| home.join(".config")));
+    let path = directory?.join("tmuxx").join("tmux.conf");
+    path.is_file().then_some(path)
+}
+
 fn run(mut cli: Cli) -> io::Result<()> {
     if cli.version {
         println!("tmuxx {}", env!("CARGO_PKG_VERSION"));
@@ -418,7 +434,11 @@ fn run(mut cli: Cli) -> io::Result<()> {
         }
         let mut options = tmuxx_runtime::Options::new(endpoint);
         options.tmux_endpoint = cli.socket;
-        options.config = cli.config;
+        options.config = if cli.config.is_empty() {
+            default_config().into_iter().collect()
+        } else {
+            cli.config
+        };
         options.exit_empty = cli.exit_empty;
         return tmuxx_runtime::start(options)?.wait();
     }
