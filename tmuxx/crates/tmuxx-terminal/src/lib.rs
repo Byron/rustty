@@ -772,7 +772,14 @@ mod tests {
         let mut stream = b"\x1b]133;C\x07".to_vec();
         stream.extend(begin.frame().unwrap());
         stream.extend(b"\x07\x1b]52;c;Y2xpcGJvYXJk\x07");
-        stream.extend(update.frame().unwrap());
+        stream.extend(b"\x1bPtmux;");
+        for byte in update.frame().unwrap() {
+            stream.push(byte);
+            if byte == 0x1b {
+                stream.push(byte);
+            }
+        }
+        stream.extend(b"\x1b\\");
         for split in 0..=stream.len() {
             let mut owner = Terminal::new(20, 4, 20);
             owner.feed(&stream[..split]);

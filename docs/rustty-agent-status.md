@@ -90,6 +90,10 @@ ESC ] 777;rustty-agent;1;BASE64(COMPACT_UTF8_JSON) ST
 
 BEL or ordinary ST (`ESC \`) may terminate it. Encode the whole JSON document as
 canonical standard padded base64; never splice a raw label into OSC syntax.
+Native tmuxx also accepts a single report inside the tmux passthrough envelope
+`ESC P tmux; ... ESC \`, with each inner ESC doubled, as emitted by Codex when
+`TMUX` or `TMUX_PANE` is set. This unwraps only private agent metadata; it does
+not enable general passthrough or replay clipboard and notification actions.
 Examples of decoded payloads:
 
 ```json

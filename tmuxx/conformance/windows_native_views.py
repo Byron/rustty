@@ -227,6 +227,8 @@ class Fixture:
         assert self.alive(owner)
         marker = directory / "emit agent 雪 &^.txt"
         frame = "\x1b]777;rustty-agent;1;eyJvcCI6ImJlZ2luIiwic3RhdGUiOiJuZWVkc19pbnB1dCIsInRocmVhZF9pZCI6InJlbW90ZSJ9\x07"
+        # Keep raw coverage and exercise the BEL tmux wrapper emitted by Codex.
+        frames = frame + "\x1bPtmux;\x1b" + frame + "\x1b\\"
         script = (
             "import ctypes,msvcrt,os,pathlib,sys,time\n"
             "k=ctypes.WinDLL('kernel32',use_last_error=True)\n"
@@ -244,7 +246,7 @@ class Fixture:
         session = "$" + str(first["server_sessions"][0]["id"])
         added = self.command(instance, "new-window", "-d", "-P", "-F", "#{window_id}|#{pane_id}",
                              "-t", session, "-n", "Persistent 雪 &^", sys.executable, "-u", "-c",
-                             script, str(marker), frame).strip().split("|")
+                             script, str(marker), frames).strip().split("|")
         window, pane = added
         self.command(instance, "link-window", "-s", window, "-t", session + ":9")
         for retained in self.command(instance, "list-panes", "-a", "-F", "#{pane_id}").splitlines():
@@ -273,7 +275,7 @@ class Fixture:
             _, snapshot = connection.request("display-message", "-p", "", subscribe=True)
             terminal = next(item["terminal"] for item in snapshot["panes"] if item["id"] == int(pane[1:]))
             status = terminal["agent_status"]
-            assert status["generation"] == 1 and status["snapshot"]["thread_id"] == "remote", status
+            assert status["generation"] == 2 and status["snapshot"]["thread_id"] == "remote", status
         finally:
             connection.close()
         gui, _, second = self.view("persistent-second", instance, False,

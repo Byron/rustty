@@ -3394,7 +3394,22 @@ impl Terminal {
         if self.string_overflow {
             return;
         }
-        if self.tmux_graphics && self.dcs_header.0.is_empty() && self.dcs_header.2 == b'q' {
+        if self.tmux_strings
+            && self.agent_status_events
+            && self.dcs_header.0.is_empty()
+            && self.dcs_header.1.is_empty()
+            && self.dcs_header.2 == b't'
+            && let Some(payload) = self.dcs.strip_prefix(b"mux;\x1b]777;rustty-agent;")
+        {
+            // Interpret only private metadata, never replay arbitrary passthrough host actions.
+            if let Some(payload) = payload
+                .strip_suffix(b"\x07")
+                .or_else(|| payload.strip_suffix(b"\x1b\\"))
+                && let Some(event) = crate::agent::Event::decode(payload)
+            {
+                effects.push(Effect::AgentStatus(event));
+            }
+        } else if self.tmux_graphics && self.dcs_header.0.is_empty() && self.dcs_header.2 == b'q' {
             let data = std::mem::take(&mut self.dcs);
             let transparent = self.dcs_header.1.get(1) == Some(&1);
             self.sixel_command(&data, transparent);

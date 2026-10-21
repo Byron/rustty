@@ -2902,12 +2902,21 @@ mod tests {
     #[test]
     fn native_agent_status_attach_live_and_resync_do_not_replay_host_actions() {
         use rustty_vt::agent::{Event, State};
+        let codex_frame = |event: &Event| {
+            let frame = event.frame().unwrap();
+            [
+                b"\x1bPtmux;\x1b".as_slice(),
+                &frame[..frame.len() - 2],
+                b"\x07\x1b\\",
+            ]
+            .concat()
+        };
         let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
         let mut owner = tmuxx_terminal::Terminal::new(20, 4, 20);
         let begin =
             Event::from_json(br#"{"op":"begin","state":"working","thread_id":"thread"}"#).unwrap();
         owner.feed(b"\x1b]133;C\x07");
-        owner.feed(&begin.frame().unwrap());
+        owner.feed(&codex_frame(&begin));
         owner.feed(b"\x07\x1b]52;c;Y2xpcGJvYXJk\x07");
         let snapshot = |owner: &tmuxx_terminal::Terminal, sequence| ServerMessage::Snapshot {
             instance_id: "agent-owner".into(),
@@ -2934,7 +2943,7 @@ mod tests {
         assert_eq!(first.events().count(), 0);
         let update =
             Event::from_json(br#"{"op":"update","state":"done","turn_id":"turn"}"#).unwrap();
-        let mut live = update.frame().unwrap();
+        let mut live = codex_frame(&update);
         live.extend(b"\x07\x1b]52;c;Y2xpcGJvYXJk\x07");
         owner.feed(&live);
         apply(

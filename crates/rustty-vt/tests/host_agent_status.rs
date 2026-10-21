@@ -7,6 +7,18 @@ fn osc(json: &[u8], terminator: &[u8]) -> Vec<u8> {
     frame
 }
 
+fn tmux(bytes: &[u8]) -> Vec<u8> {
+    let mut frame = b"\x1bPtmux;".to_vec();
+    for &byte in bytes {
+        if byte == 0x1b {
+            frame.push(byte);
+        }
+        frame.push(byte);
+    }
+    frame.extend_from_slice(b"\x1b\\");
+    frame
+}
+
 #[test]
 fn every_state_and_unicode_survive_both_terminators_and_every_split() {
     for state in [
@@ -23,15 +35,21 @@ fn every_state_and_unicode_survive_both_terminators_and_every_split() {
         );
         let expected = agent::Event::from_json(json.as_bytes()).unwrap();
         for terminator in [&b"\x07"[..], &b"\x1b\\"[..]] {
-            let frame = osc(json.as_bytes(), terminator);
-            for split in 0..=frame.len() {
-                let mut terminal = Terminal::new(8, 3, 0);
-                terminal.agent_status_events = true;
-                let mut effects = terminal.feed(&frame[..split]);
-                effects.extend(terminal.feed(&frame[split..]));
-                assert_eq!(effects, [Effect::AgentStatus(expected.clone())]);
-                assert!(terminal.title.is_empty());
-                assert_eq!(terminal.generation, 0);
+            for wrapped in [false, true] {
+                let mut frame = osc(json.as_bytes(), terminator);
+                if wrapped {
+                    frame = tmux(&frame);
+                }
+                for split in 0..=frame.len() {
+                    let mut terminal = Terminal::new(8, 3, 0);
+                    terminal.set_tmux_strings(wrapped);
+                    terminal.agent_status_events = true;
+                    let mut effects = terminal.feed(&frame[..split]);
+                    effects.extend(terminal.feed(&frame[split..]));
+                    assert_eq!(effects, [Effect::AgentStatus(expected.clone())]);
+                    assert!(terminal.title.is_empty());
+                    assert_eq!(terminal.generation, 0);
+                }
             }
         }
         let frame = expected.frame().unwrap();
@@ -40,6 +58,48 @@ fn every_state_and_unicode_survive_both_terminators_and_every_split() {
             Some(expected)
         );
     }
+}
+
+#[test]
+fn tmux_wrapper_requires_opt_in_and_only_accepts_one_private_status_packet() {
+    let mut terminal = Terminal::new(8, 3, 0);
+    terminal.set_tmux_strings(true);
+    let end = agent::Event::End.frame().unwrap();
+    let frame = tmux(&end);
+    let harmless = |effects: Vec<Effect>| {
+        assert!(
+            effects
+                .iter()
+                .all(|effect| matches!(effect, Effect::UnknownSequence(_))),
+            "{effects:?}"
+        );
+    };
+    harmless(terminal.feed(&frame));
+    terminal.agent_status_events = true;
+    assert_eq!(
+        terminal.feed(&frame),
+        [Effect::AgentStatus(agent::Event::End)]
+    );
+
+    for inner in [
+        b"\x1b]777;notify;title;body\x07".to_vec(),
+        b"\x1b]52;c;Y2xpcGJvYXJk\x07".to_vec(),
+        b"\x1b[6n\x1b[2Jtext".to_vec(),
+        osc(br#"{"op":"begin","state":"invalid"}"#, b"\x07"),
+        b"\x1b]777;rustty-agent;2;eyJvcCI6ImVuZCJ9\x07".to_vec(),
+        end[..end.len() - 2].to_vec(),
+        [end.as_slice(), end.as_slice()].concat(),
+        [end.as_slice(), b"\x1b]777;notify;title;body\x07"].concat(),
+        tmux(&end),
+    ] {
+        harmless(terminal.feed(&tmux(&inner)));
+    }
+    for header in [b"\x1bP0t".as_slice(), b"\x1bP$t", b"\x1bPtwrong;"] {
+        let frame = [header, &frame[3..]].concat();
+        harmless(terminal.feed(&frame));
+    }
+    assert_eq!(terminal.generation, 0);
+    assert!(terminal.title.is_empty());
 }
 
 #[test]
