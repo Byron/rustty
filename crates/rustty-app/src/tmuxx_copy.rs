@@ -601,15 +601,21 @@ mod tests {
             vec![b"/bin/sleep".to_vec(), b"60".to_vec()],
         )
         .unwrap();
+        let original = wait(&connection, |graph| graph.sessions.len() == 1);
+        let worker = Connection::native_commands(
+            &directory.join("server.native"),
+            &connection.instance(),
+            Arc::new(|| {}),
+        )
+        .unwrap();
         let mut send = |argv| {
-            connection
+            worker
                 .command_with_reply(argv)
                 .unwrap()
                 .recv_timeout(Duration::from_secs(10))
                 .unwrap()
                 .map_err(|e| e.to_string())
         };
-        let original = wait(&connection, |graph| graph.sessions.len() == 1);
         for (option, value) in [
             ("default-shell", "/bin/sh"),
             ("default-command", ""),
@@ -629,7 +635,7 @@ mod tests {
             .unwrap()
             .working_directory = directory.clone();
         let saved = serde_json::to_value(&copy.window).unwrap();
-        let copied = copy.run(&connection, "copy #{pane_id};").unwrap();
+        let copied = copy.run(&worker, "copy #{pane_id};").unwrap();
         assert_eq!(serde_json::to_value(&copied.window).unwrap(), saved);
         let graph = wait(&connection, |graph| {
             graph.sessions.iter().any(|s| {
@@ -697,7 +703,7 @@ mod tests {
 
         let mut tiny = sample(&cwd);
         tiny.size = (1, 1);
-        let tiny = tiny.run(&connection, "tiny").unwrap();
+        let tiny = tiny.run(&worker, "tiny").unwrap();
         let graph = wait(&connection, |g| {
             g.windows
                 .iter()
@@ -733,7 +739,7 @@ mod tests {
             .get_mut(&2)
             .unwrap()
             .working_directory = directory.clone();
-        let grouped = grouped.run(&connection, "grouped").unwrap();
+        let grouped = grouped.run(&worker, "grouped").unwrap();
         let graph = wait(&connection, |g| {
             g.sessions
                 .iter()
@@ -823,6 +829,10 @@ mod tests {
                 .sessions
                 .iter()
                 .any(|s| s.id == source.id)
+        );
+        assert!(
+            worker.graph().is_none(),
+            "copy worker retained pane snapshots"
         );
     }
 }
