@@ -29,7 +29,10 @@ pub enum Effect {
     /// Private pane-local metadata, enabled by `Terminal::agent_status_events`.
     AgentStatus(crate::agent::Event),
     /// Rustty host extension, enabled by `Terminal::shell_command_events`.
-    CommandStart,
+    CommandStart {
+        /// Explicit OSC metadata, otherwise retained input text; never inferred from the title.
+        command_line: Option<Vec<u8>>,
+    },
     /// tmux-only owner event, without a duplicate GUI lifecycle event.
     TmuxCommandStart {
         command_line: Option<Vec<u8>>,
@@ -176,6 +179,8 @@ pub struct Terminal {
     pub(crate) parser: Parser,
     pub(crate) tabstops: Vec<bool>,
     pub(crate) previous_char: Option<char>,
+    // Runtime pin follows input reflow and is omitted from snapshots.
+    command_input: Option<TrackedPoint>,
     grapheme_state: u8,
     pub(crate) status_display: bool,
     dcs: Vec<u8>,
@@ -262,6 +267,7 @@ impl Terminal {
             parser,
             tabstops: (0..cols).map(|i| i > 0 && i % 8 == 0).collect(),
             previous_char: None,
+            command_input: None,
             grapheme_state: 0,
             status_display: false,
             dcs: Vec::new(),
@@ -3259,6 +3265,20 @@ impl Terminal {
     }
 
     fn osc133(&mut self, data: &[u8], effects: &mut Vec<Effect>) {
+        if self.shell_command_events {
+            match data.split(|&b| b == b';').next() {
+                Some(b"A" | b"N" | b"D") => self.clear_command_input(),
+                Some(b"B" | b"I") if self.command_input.is_none() => {
+                    let screen = self.screen_mut();
+                    let point = GridPoint {
+                        row: screen.row(screen.cursor.row).id,
+                        col: screen.cursor.col,
+                    };
+                    self.command_input = Some(screen.track(point));
+                }
+                _ => {}
+            }
+        }
         if self.tmux_strings {
             self.tmux_osc133(data, effects);
             return;
@@ -3322,7 +3342,9 @@ impl Terminal {
                 }
                 if self.shell_command_events {
                     effects.push(if action == b'C' {
-                        Effect::CommandStart
+                        Effect::CommandStart {
+                            command_line: self.take_command_line(data),
+                        }
                     } else {
                         Effect::CommandEnd {
                             exit_code: options
@@ -3336,6 +3358,61 @@ impl Terminal {
             }
             _ => {}
         }
+    }
+
+    fn clear_command_input(&mut self) {
+        if let Some(point) = self.command_input.take() {
+            self.primary.untrack(point);
+            if let Some(screen) = &mut self.alternate {
+                screen.untrack(point);
+            }
+        }
+    }
+
+    pub(crate) fn take_command_line(&mut self, data: &[u8]) -> Option<Vec<u8>> {
+        let command = crate::tmux_shell::command_line(data).or_else(|| {
+            let screen = self.screen();
+            let start = screen.resolve(self.command_input?)?;
+            let end = screen.row(screen.cursor.row).id;
+            let mut text = String::new();
+            let mut scanned = 0;
+            for row in screen.all_rows().skip_while(|row| row.id != start.row) {
+                let from = if row.id == start.row { start.col } else { 0 };
+                let to = if row.id == end {
+                    screen.cursor.col + usize::from(screen.cursor.pending_wrap)
+                } else {
+                    row.cells.len()
+                };
+                let to = to.min(row.cells.len());
+                scanned += to.saturating_sub(from);
+                if scanned > 16384 {
+                    return None;
+                }
+                for col in from..to {
+                    if row.cells[col].semantic() == SemanticContent::Input
+                        && row.cells[col].width() != 0
+                    {
+                        if row.cells[col].codepoint().is_none() {
+                            text.push(' ');
+                        } else {
+                            text.push_str(&row.text(col));
+                        }
+                        if text.len() > 16384 {
+                            return None;
+                        }
+                    }
+                }
+                if row.id == end {
+                    return (!text.trim().is_empty()).then(|| text.trim().as_bytes().to_vec());
+                }
+                if !row.wrapped {
+                    text.push('\n');
+                }
+            }
+            None
+        });
+        self.clear_command_input();
+        command
     }
 
     fn osc9(&mut self, data: &[u8], effects: &mut Vec<Effect>) {

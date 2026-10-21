@@ -360,7 +360,7 @@ fn effects_and_terminal_replies_are_ordered() {
             Effect::Title("test".into()),
             Effect::Write(b"\x1b[4;3R".to_vec()),
             Effect::Bell,
-            Effect::CommandStart,
+            Effect::CommandStart { command_line: None },
             Effect::CommandEnd { exit_code: Some(2) },
             Effect::ClipboardWrite(rustty_vt::clipboard::Write::osc52(
                 rustty_vt::clipboard::Location::Standard,

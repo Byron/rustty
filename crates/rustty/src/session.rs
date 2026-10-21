@@ -1406,7 +1406,9 @@ mod tests {
                     SessionEvent::Effect(Effect::Title(title)) => {
                         effects.push(format!("title:{}", String::from_utf8_lossy(&title)))
                     }
-                    SessionEvent::Effect(Effect::CommandStart) => effects.push("start".into()),
+                    SessionEvent::Effect(Effect::CommandStart { .. }) => {
+                        effects.push("start".into())
+                    }
                     SessionEvent::Effect(Effect::CommandEnd { .. }) => effects.push("end".into()),
                     SessionEvent::Effect(Effect::Progress { state, .. }) => {
                         effects.push(format!("progress:{state}"))
@@ -1455,7 +1457,7 @@ mod tests {
             assert_eq!(
                 effects,
                 [
-                    Effect::CommandStart,
+                    Effect::CommandStart { command_line: None },
                     Effect::Title(b"temporary".to_vec()),
                     Effect::CommandEnd { exit_code: Some(0) },
                     Effect::ProgressReset,
