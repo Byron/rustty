@@ -679,7 +679,7 @@ fn native_client(cli: Cli, mut stream: NativeStream, stdin_file_stream: bool) ->
     };
     let mut output = io::BufWriter::new(&mut stream);
     if cli.control > 0 {
-        serde_json::to_writer(
+        tmuxx_protocol::native::write_record(
             &mut output,
             &tmuxx_protocol::native::ClientMessage::Control(
                 tmuxx_protocol::native::ControlRequest {
@@ -691,9 +691,8 @@ fn native_client(cli: Cli, mut stream: NativeStream, stdin_file_stream: bool) ->
             ),
         )?;
     } else {
-        serde_json::to_writer(&mut output, &request)?;
+        tmuxx_protocol::native::write_request(&mut output, &request)?;
     }
-    output.write_all(b"\n")?;
     output.flush()?;
     drop(output);
     let (completion_tx, completion_rx) = std::sync::mpsc::sync_channel(1);
@@ -722,8 +721,7 @@ fn native_client(cli: Cli, mut stream: NativeStream, stdin_file_stream: bool) ->
                         );
                         id += 1;
                         let mut output = io::BufWriter::new(&mut input);
-                        if serde_json::to_writer(&mut output, &request).is_err()
-                            || output.write_all(b"\n").is_err()
+                        if tmuxx_protocol::native::write_record(&mut output, &request).is_err()
                             || output.flush().is_err()
                         {
                             return;
@@ -749,8 +747,10 @@ fn native_client(cli: Cli, mut stream: NativeStream, stdin_file_stream: bool) ->
     loop {
         let message = if let Some(message) = deferred.pop_front() {
             message
-        } else if let Some(line) = tmuxx_runtime::read_record(&mut reader, 256 * 1024 * 1024)? {
-            serde_json::from_slice(&line)?
+        } else if let Some(line) =
+            tmuxx_protocol::native::read_record(&mut reader, 128 * 1024 * 1024)?
+        {
+            tmuxx_protocol::native::decode(&line)?
         } else {
             snapshots.finish()?;
             // End-of-input drains the native delivery queue and then closes
@@ -913,9 +913,9 @@ fn native_stdin(
             return Err(error);
         }
         if ready > 0 {
-            let line = tmuxx_runtime::read_record(reader, 256 * 1024 * 1024)?
+            let line = tmuxx_protocol::native::read_record(reader, 128 * 1024 * 1024)?
                 .ok_or_else(|| io::Error::other("server stopped during stdin"))?;
-            let Some(message) = snapshots.push(serde_json::from_slice(&line)?)? else {
+            let Some(message) = snapshots.push(tmuxx_protocol::native::decode(&line)?)? else {
                 continue;
             };
             if let ServerMessage::Reply(reply) = &message
@@ -964,8 +964,7 @@ fn native_stdin(
             control: false,
         };
         let mut output = io::BufWriter::new(reader.get_mut());
-        serde_json::to_writer(&mut output, &request)?;
-        output.write_all(b"\n")?;
+        tmuxx_protocol::native::write_request(&mut output, &request)?;
         output.flush()?;
         pending = Some(next_id);
         next_id -= 1;

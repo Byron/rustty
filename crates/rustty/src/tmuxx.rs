@@ -28,66 +28,15 @@ mod system;
 
 const RECORD_LIMIT: usize = 128 * 1024 * 1024;
 
-#[derive(Clone, Debug, Deserialize)]
-pub struct Graph {
-    pub sessions: Vec<ServerSession>,
-    pub windows: Vec<ServerWindow>,
-    pub panes: Vec<ServerPane>,
-}
-#[derive(Clone, Debug, Deserialize)]
-pub struct ServerSession {
-    pub id: u64,
-    pub name: String,
-    pub active: u64,
-    pub windows: BTreeMap<u32, u64>,
-}
+pub use tmuxx_protocol::native::{
+    SnapshotPane as ServerPane, SnapshotSession as ServerSession, SnapshotState as Graph,
+    SnapshotWindow as ServerWindow,
+};
 #[derive(Clone, Debug)]
 pub struct SessionInfo {
     pub id: u64,
     pub name: String,
     pub windows: Vec<String>,
-}
-#[derive(Clone, Debug, Deserialize)]
-pub struct ServerWindow {
-    pub id: u64,
-    pub name: String,
-    pub active: u64,
-    pub cols: u16,
-    pub rows: u16,
-    pub panes: Vec<u64>,
-    pub layout: String,
-    #[serde(default)]
-    pub zoomed: bool,
-    #[serde(default)]
-    pub zoomed_pane: Option<u64>,
-    #[serde(default)]
-    pub visible_layout: String,
-}
-#[derive(Clone, Debug, Deserialize)]
-pub struct ServerPane {
-    pub id: u64,
-    pub window: u64,
-    #[serde(default)]
-    pub x: Option<i32>,
-    #[serde(default)]
-    pub y: Option<i32>,
-    pub cols: u16,
-    pub rows: u16,
-    pub status: Option<i32>,
-    #[serde(default)]
-    pub persistent: bool,
-    #[serde(default)]
-    pub pid: Option<u32>,
-    #[serde(default)]
-    pub modal: bool,
-    #[serde(default)]
-    pub modal_capture_keys: bool,
-    #[serde(default)]
-    pub modal_close_click: bool,
-    #[serde(default)]
-    pub modal_close_cancel: bool,
-    #[serde(default)]
-    pub terminal: Arc<serde_json::Value>,
 }
 
 #[derive(Default)]
@@ -142,9 +91,8 @@ impl Model {
         self.server_status = None;
         if let Some(graph) = &mut self.graph {
             // Keep session identity for disconnected windows and saved attachments.
-            let empty = Arc::new(serde_json::Value::Null);
             for pane in &mut graph.panes {
-                pane.terminal = empty.clone();
+                pane.terminal = None;
             }
         }
     }
@@ -542,9 +490,7 @@ impl Connection {
         let owner = tmuxx_runtime::start(options)?;
         let client = owner.connect_with_context(tmuxx_runtime::ClientContext {
             host_effects: true,
-            compact_snapshots: true,
             selection_updates: true,
-            checkpoint_snapshots: true,
             ..Default::default()
         })?;
         // Only this newly created owner adopts Rustty's clipboard policy UI.
@@ -949,7 +895,6 @@ impl Connection {
             &Hello {
                 host_effects,
                 selection_updates: true,
-                checkpoint_snapshots: true,
                 ..Default::default()
             },
         )?;
@@ -959,7 +904,7 @@ impl Connection {
             .spawn(move || {
                 let result = (|| -> io::Result<()> {
                     let mut reader = BufReader::new(reader);
-                    let hello: Hello = serde_json::from_slice(
+                    let hello: Hello = tmuxx_protocol::native::decode(
                         &record(&mut reader)?.ok_or_else(|| err("missing tmuxx hello"))?,
                     )
                     .map_err(err)?;
@@ -974,47 +919,9 @@ impl Connection {
                     let mut snapshots = SnapshotAssembler::default();
                     let mut instance = hello.instance_id;
                     if let Some(expected) = expected_instance {
-                        let actual = if let Some(instance) = instance.take() {
-                            instance
-                        } else {
-                            // Legacy owners expose incarnation only in read-only snapshots.
-                            write_record(
-                                &mut writer,
-                                &Request {
-                                    request_id: 0,
-                                    argv: Vec::new(),
-                                    stdin: None,
-                                    subscribe: true,
-                                    control: true,
-                                },
-                            )?;
-                            loop {
-                                let bytes = record(&mut reader)?
-                                    .ok_or_else(|| err("missing tmuxx identity snapshot"))?;
-                                match snapshots
-                                    .push(serde_json::from_slice(&bytes).map_err(err)?)?
-                                {
-                                    Some(ServerMessage::Snapshot { instance_id, .. }) => {
-                                        break instance_id;
-                                    }
-                                    Some(ServerMessage::Reply(reply)) => {
-                                        if let Some(error) = reply.error {
-                                            return Err(err(error));
-                                        }
-                                    }
-                                    Some(ServerMessage::SnapshotAborted { error, .. }) => {
-                                        return Err(err(error));
-                                    }
-                                    Some(ServerMessage::Exit { reason }) => {
-                                        return Err(err(reason));
-                                    }
-                                    Some(ServerMessage::Detached { .. }) => {
-                                        return Err(err("tmuxx identity probe detached"));
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        };
+                        let actual = instance
+                            .take()
+                            .ok_or_else(|| err("missing tmuxx server incarnation"))?;
                         if actual != expected {
                             return Err(err(
                                 "tmuxx server incarnation changed; command was not applied",
@@ -1041,7 +948,12 @@ impl Connection {
                             while !shared_writer.closed.load(Ordering::Acquire) {
                                 match requests.recv_timeout(Duration::from_millis(50)) {
                                     Ok(request) => {
-                                        if let Err(error) = write_record(&mut writer, &request) {
+                                        if let Err(error) = tmuxx_protocol::native::write_request(
+                                            &mut writer,
+                                            &request,
+                                        )
+                                        .and_then(|()| writer.flush())
+                                        {
                                             fail(&shared_writer, error);
                                             return;
                                         }
@@ -1057,7 +969,7 @@ impl Connection {
                             return Err(err("tmuxx disconnected"));
                         };
                         if let Some(message) =
-                            snapshots.push(serde_json::from_slice(&bytes).map_err(err)?)?
+                            snapshots.push(tmuxx_protocol::native::decode(&bytes).map_err(err)?)?
                         {
                             apply(&shared, message)?;
                         }
@@ -1370,12 +1282,21 @@ impl Drop for Connection {
     }
 }
 fn write_record(writer: &mut impl Write, value: &impl serde::Serialize) -> io::Result<()> {
-    serde_json::to_writer(&mut *writer, value).map_err(err)?;
-    writer.write_all(b"\n")?;
+    tmuxx_protocol::native::write_record(writer, value)?;
     writer.flush()
 }
 fn record(reader: &mut impl BufRead) -> io::Result<Option<Vec<u8>>> {
-    tmuxx_runtime::read_record(reader, RECORD_LIMIT)
+    tmuxx_protocol::native::read_record(reader, RECORD_LIMIT)
+}
+#[cfg(test)]
+fn request_record(reader: &mut impl BufRead) -> Request {
+    let bytes = record(reader).unwrap().unwrap();
+    let tmuxx_protocol::native::ClientMessage::Request(request) =
+        tmuxx_protocol::native::decode(&bytes).unwrap()
+    else {
+        panic!("expected request")
+    };
+    request
 }
 fn read_ssh_errors(mut reader: impl Read, shared: &Shared, host: &str) {
     let mut bytes = Vec::new();
@@ -1441,66 +1362,9 @@ fn fail(shared: &Shared, error: impl std::fmt::Display) {
     }
     (shared.wake)();
 }
-fn restore(value: &serde_json::Value) -> io::Result<(Terminal, tmuxx_terminal::AgentStatus)> {
-    if value.get("version").and_then(serde_json::Value::as_u64) == Some(2) {
-        let snapshot: tmuxx_terminal::CheckpointSnapshot =
-            serde_json::from_value(value.clone()).map_err(err)?;
-        let terminal = snapshot.restore()?;
-        let agent_status = terminal.agent_status().clone();
-        return Ok((terminal.into_backend(), agent_status));
-    }
-    let mut value = value.clone();
-    // Older daemons retain capture metadata after shrinking or replacing its rows.
-    for name in ["primary", "alternate"] {
-        let Some(screen) = value.get_mut(name).filter(|screen| screen.is_object()) else {
-            continue;
-        };
-        let widths = ["history", "rows"]
-            .into_iter()
-            .filter_map(|name| screen.get(name)?.as_array())
-            .flatten()
-            .filter_map(|row| {
-                Some((
-                    row.get("id")?.as_u64()?,
-                    if let Some(cells) = row.get("cells")?.as_array() {
-                        cells.len()
-                    } else {
-                        row.get("cells")?.get("runs")?.as_array()?.iter().try_fold(
-                            0usize,
-                            |width, run| {
-                                width.checked_add(usize::try_from(run.get(0)?.as_u64()?).ok()?)
-                            },
-                        )?
-                    },
-                ))
-            })
-            .collect::<BTreeMap<_, _>>();
-        let known = screen
-            .get("tmux_capture_known")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let Some(capture) = screen.get_mut("tmux_capture_rows") else {
-            continue;
-        };
-        let mut rows: Vec<(u64, (usize, usize))> =
-            serde_json::from_value(capture.take()).map_err(err)?;
-        let mut ids = std::collections::BTreeSet::new();
-        if rows.iter().any(|(id, (used, allocated))| {
-            !ids.insert(*id) || used > allocated || *allocated > usize::from(u16::MAX)
-        }) {
-            return Err(err("invalid capture allocation bounds"));
-        }
-        rows.retain_mut(|(id, (used, _))| {
-            if let Some(width) = widths.get(id) {
-                *used = (*used).min(*width);
-                true
-            } else {
-                known
-            }
-        });
-        *capture = serde_json::to_value(rows).map_err(err)?;
-    }
-    let snapshot: tmuxx_terminal::Snapshot = serde_json::from_value(value).map_err(err)?;
+fn restore(
+    snapshot: &tmuxx_terminal::CheckpointSnapshot,
+) -> io::Result<(Terminal, tmuxx_terminal::AgentStatus)> {
     let terminal = snapshot.restore()?;
     let agent_status = terminal.agent_status().clone();
     Ok((terminal.into_backend(), agent_status))
@@ -1695,11 +1559,18 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
                 }
                 return Ok(());
             }
-            let graph: Graph = serde_json::from_value(state).map_err(err)?;
+            let graph = state;
             validate_graph(&graph)?;
             let mut restored = BTreeMap::new();
             for pane in &graph.panes {
-                restored.insert(pane.id, restore(&pane.terminal)?);
+                restored.insert(
+                    pane.id,
+                    restore(
+                        pane.terminal
+                            .as_deref()
+                            .ok_or_else(|| err("missing terminal snapshot"))?,
+                    )?,
+                );
             }
             if model.instance != instance_id {
                 for pane in model.panes.values() {
@@ -1956,12 +1827,17 @@ fn feed_view(terminal: &mut Terminal, data: &[u8], events: &mpsc::SyncSender<Ses
 }
 
 #[cfg(test)]
+fn snapshot_state(value: serde_json::Value) -> Graph {
+    serde_json::from_value(value).unwrap()
+}
+
+#[cfg(test)]
 mod focus_tests {
     use super::*;
     use crate::session::Session;
 
     fn state() -> serde_json::Value {
-        let terminal = tmuxx_terminal::Terminal::new(10, 4, 10).snapshot();
+        let terminal = tmuxx_terminal::Terminal::new(10, 4, 10).checkpoint_snapshot();
         let layout = r#"{"V":2,"L":{"t":"h","w":21,"h":4,"x":0,"y":0,"c":[{"t":"p","w":10,"h":4,"x":0,"y":0,"i":0,"I":"%7"},{"t":"p","w":10,"h":4,"x":11,"y":0,"i":1,"I":"%8"}]}}"#;
         serde_json::json!({
             "sessions": [
@@ -1985,23 +1861,20 @@ mod focus_tests {
             ServerMessage::Snapshot {
                 instance_id: "owner".into(),
                 sequence,
-                state,
+                state: snapshot_state(state),
             },
         )
         .unwrap();
     }
     #[test]
     fn native_cwd_survives_attach_live_output_snapshot_and_reopen() {
-        for checkpoint in [false, true] {
+        {
             let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
             let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);
             let state_with_cwd = |owner: &tmuxx_terminal::Terminal| {
                 let mut state = state();
-                state["panes"][0]["terminal"] = if checkpoint {
-                    serde_json::to_value(owner.checkpoint_snapshot()).unwrap()
-                } else {
-                    serde_json::to_value(owner.snapshot()).unwrap()
-                };
+                state["panes"][0]["terminal"] =
+                    serde_json::to_value(owner.checkpoint_snapshot()).unwrap();
                 state
             };
             let check = |view: &Session, expected: &str| {
@@ -2144,7 +2017,8 @@ mod focus_tests {
         let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);
         owner.feed(b"one\r\ntwo\r\nthree\r\nfour\r\nfive");
         let mut initial = state();
-        initial["panes"][0]["terminal"] = serde_json::to_value(owner.snapshot()).unwrap();
+        initial["panes"][0]["terminal"] =
+            serde_json::to_value(owner.checkpoint_snapshot()).unwrap();
         snapshot(&connection, 1, initial);
         let before = connection.graph().unwrap();
         let view = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
@@ -2199,7 +2073,10 @@ mod focus_tests {
         .unwrap();
         let after = connection.graph().unwrap();
         for (old, new) in before.panes.iter().zip(&after.panes) {
-            assert!(Arc::ptr_eq(&old.terminal, &new.terminal));
+            assert!(Arc::ptr_eq(
+                old.terminal.as_ref().unwrap(),
+                new.terminal.as_ref().unwrap()
+            ));
         }
         {
             let terminal = view.terminal().unwrap();
@@ -2419,14 +2296,15 @@ mod focus_tests {
             let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);
             owner.feed(b"one\r\ntwo\r\nthree\r\nfour\r\nfive");
             let mut initial = state();
-            initial["panes"][0]["terminal"] = serde_json::to_value(owner.snapshot()).unwrap();
+            initial["panes"][0]["terminal"] =
+                serde_json::to_value(owner.checkpoint_snapshot()).unwrap();
             snapshot(&connection, 1, initial);
             let snapshots = connection
                 .graph()
                 .unwrap()
                 .panes
                 .iter()
-                .map(|pane| Arc::downgrade(&pane.terminal))
+                .map(|pane| Arc::downgrade(pane.terminal.as_ref().unwrap()))
                 .collect::<Vec<_>>();
             let view = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
             let (contents, selection) = {
@@ -2483,7 +2361,7 @@ mod focus_tests {
                 ServerMessage::Snapshot {
                     instance_id: "late".into(),
                     sequence: 2,
-                    state: state(),
+                    state: snapshot_state(state()),
                 },
             )
             .unwrap();
@@ -2493,7 +2371,7 @@ mod focus_tests {
             let graph = model.graph.as_ref().unwrap();
             assert_eq!(graph.sessions[0].name, "one");
             assert_eq!(graph.windows[0].panes, [7, 8]);
-            assert!(graph.panes.iter().all(|pane| pane.terminal.is_null()));
+            assert!(graph.panes.iter().all(|pane| pane.terminal.is_none()));
         }
     }
 
@@ -2508,7 +2386,8 @@ mod focus_tests {
         owner.feed(b"one\r\ntwo\r\nthree\r\nfour\r\nfive");
         let refresh = |owner: &tmuxx_terminal::Terminal, sequence| {
             let mut state = state();
-            state["panes"][0]["terminal"] = serde_json::to_value(owner.snapshot()).unwrap();
+            state["panes"][0]["terminal"] =
+                serde_json::to_value(owner.checkpoint_snapshot()).unwrap();
             snapshot(&connection, sequence, state);
         };
         refresh(&owner, 1);
@@ -2611,14 +2490,17 @@ mod focus_tests {
         assert_eq!(original.windows[0].active, 7);
         assert_eq!(projected.windows[0].active, 8);
         for (old, new) in original.panes.iter().zip(&projected.panes) {
-            assert!(Arc::ptr_eq(&old.terminal, &new.terminal));
-            assert!(new.terminal["primary"]["rows"].is_array());
+            assert!(Arc::ptr_eq(
+                old.terminal.as_ref().unwrap(),
+                new.terminal.as_ref().unwrap()
+            ));
+            assert!(new.terminal.as_ref().unwrap().checkpoint.is_some());
         }
         snapshot(&connection, 2, state());
         let refreshed = connection.graph().unwrap();
         assert!(!Arc::ptr_eq(
-            &original.panes[0].terminal,
-            &refreshed.panes[0].terminal
+            original.panes[0].terminal.as_ref().unwrap(),
+            refreshed.panes[0].terminal.as_ref().unwrap()
         ));
     }
 
@@ -2808,7 +2690,7 @@ mod focus_tests {
             ServerMessage::Snapshot {
                 instance_id: "replacement".into(),
                 sequence: 1,
-                state: state(),
+                state: snapshot_state(state()),
             },
         )
         .unwrap();
@@ -2977,9 +2859,9 @@ mod tests {
             Connection::stream(stream.try_clone().unwrap(), stream, Arc::new(|| {})).unwrap();
         let request_id = connection.command(["new-session", "-d"]).unwrap();
         let mut peer = BufReader::new(peer);
-        let hello: Hello = serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+        let hello: Hello =
+            tmuxx_protocol::native::decode(&record(&mut peer).unwrap().unwrap()).unwrap();
         assert_eq!(hello.version, tmuxx_protocol::native::VERSION);
-        assert!(hello.checkpoint_snapshots);
         peer.get_ref()
             .set_read_timeout(Some(Duration::from_millis(100)))
             .unwrap();
@@ -3004,11 +2886,9 @@ mod tests {
         )
         .unwrap();
         peer.get_mut().write_all(&response).unwrap();
-        let subscription: Request =
-            serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+        let subscription = request_record(&mut peer);
         assert!(subscription.argv.is_empty() && subscription.subscribe);
-        let request: Request =
-            serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+        let request = request_record(&mut peer);
         assert_eq!(request.request_id, request_id);
         assert_eq!(request.argv, [b"new-session".to_vec(), b"-d".to_vec()]);
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -3034,7 +2914,7 @@ mod tests {
             peer.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
             let mut peer = BufReader::new(peer);
             let hello: Hello =
-                serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+                tmuxx_protocol::native::decode(&record(&mut peer).unwrap().unwrap()).unwrap();
             assert!(hello.selection_updates);
             write_record(
                 peer.get_mut(),
@@ -3045,21 +2925,19 @@ mod tests {
                 },
             )
             .unwrap();
-            let initial: Request =
-                serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+            let initial = request_record(&mut peer);
             assert!(initial.subscribe && initial.argv.is_empty());
             write_record(peer.get_mut(), &ServerMessage::Snapshot {
                 instance_id: "owner".into(), sequence: 1,
-                state: serde_json::json!({
+                state: snapshot_state(serde_json::json!({
                     "sessions": [{"id":1,"name":"focus","active":0,"windows":{"0":2}}],
                     "windows": [{"id":2,"name":"shell","active":7,"cols":20,"rows":3,"panes":[7],"layout":Layout::pane(7,20,3).to_legacy().unwrap()}],
-                    "panes": [{"id":7,"window":2,"cols":20,"rows":3,"status":null,"terminal":tmuxx_terminal::Terminal::new(20,3,10).snapshot()}],
-                }),
+                    "panes": [{"id":7,"window":2,"cols":20,"rows":3,"status":null,"terminal":tmuxx_terminal::Terminal::new(20,3,10).checkpoint_snapshot()}],
+                })),
             }).unwrap();
             wait(&connection, |_| true);
             connection.focus_pane(1, 0, 7).unwrap();
-            let focus: Request =
-                serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+            let focus = request_record(&mut peer);
             assert_eq!(focus.subscribe, !supported);
             assert_eq!(tmuxx_command::parse_argv(&focus.argv).unwrap().len(), 2);
             peer.get_ref().shutdown(std::net::Shutdown::Both).unwrap();
@@ -3080,7 +2958,8 @@ mod tests {
             connection.command(["new-session", "-d"]).unwrap();
             peer.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
             let mut peer = BufReader::new(peer);
-            let _: Hello = serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+            let _: Hello =
+                tmuxx_protocol::native::decode(&record(&mut peer).unwrap().unwrap()).unwrap();
             peer.get_mut().write_all(greeting).unwrap();
             peer.get_ref().shutdown(std::net::Shutdown::Write).unwrap();
             let mut requests = Vec::new();
@@ -3096,7 +2975,7 @@ mod tests {
     }
 
     #[test]
-    fn native_command_identity_checks_current_and_legacy_peers_before_mutations() {
+    fn native_command_identity_is_required_before_mutations() {
         for advertised in [true, false] {
             for actual in ["owner", "replacement"] {
                 let (stream, peer) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -3116,7 +2995,7 @@ mod tests {
                 peer.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
                 let mut peer = BufReader::new(peer);
                 let hello: Hello =
-                    serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+                    tmuxx_protocol::native::decode(&record(&mut peer).unwrap().unwrap()).unwrap();
                 assert!(hello.instance_id.is_none());
                 peer.get_ref()
                     .set_read_timeout(Some(Duration::from_millis(100)))
@@ -3136,24 +3015,8 @@ mod tests {
                     },
                 )
                 .unwrap();
-                if !advertised {
-                    let probe: Request =
-                        serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
-                    assert_eq!(probe.request_id, 0);
-                    assert!(probe.argv.is_empty() && probe.subscribe && probe.control);
-                    assert!(probe.stdin.is_none());
-                    tmuxx_protocol::native::write_snapshot(
-                        peer.get_mut(),
-                        actual,
-                        0,
-                        &serde_json::json!({}),
-                        tmuxx_protocol::native::MAX_SNAPSHOT_BYTES,
-                    )
-                    .unwrap();
-                }
-                if actual == "owner" {
-                    let watch: Request =
-                        serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+                if actual == "owner" && advertised {
+                    let watch = request_record(&mut peer);
                     assert_eq!(watch.argv, [b"tmuxx-server-status".to_vec()]);
                     assert!(!watch.subscribe && !watch.control);
                     write_record(
@@ -3166,8 +3029,7 @@ mod tests {
                         }),
                     )
                     .unwrap();
-                    let request: Request =
-                        serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+                    let request = request_record(&mut peer);
                     assert_eq!(request.argv[0], b"new-session");
                     assert!(!request.subscribe);
                     for message in [
@@ -3260,11 +3122,11 @@ mod tests {
         let terminal = tmuxx_terminal::Terminal::new(20, 3, 20);
         apply(&connection.shared, ServerMessage::Snapshot {
             instance_id: "input".into(), sequence: 1,
-            state: serde_json::json!({
+            state: snapshot_state(serde_json::json!({
                 "sessions": [{"id":1,"name":"input","active":0,"windows":{"0":2}}],
                 "windows": [{"id":2,"name":"shell","active":7,"cols":20,"rows":3,"panes":[7],"layout":Layout::pane(7,20,3).to_legacy().unwrap()}],
-                "panes": [{"id":7,"window":2,"cols":20,"rows":3,"status":null,"terminal":terminal.snapshot()}],
-            }),
+                "panes": [{"id":7,"window":2,"cols":20,"rows":3,"status":null,"terminal":terminal.checkpoint_snapshot()}],
+            })),
         }).unwrap();
         let view = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
         let claim = requests.try_recv().unwrap();
@@ -3379,7 +3241,7 @@ mod tests {
     #[test]
     fn native_agent_status_attach_live_and_resync_do_not_replay_host_actions() {
         use rustty_vt::agent::{Event, State};
-        for checkpoint in [false, true] {
+        {
             let codex_frame = |event: &Event| {
                 let frame = event.frame().unwrap();
                 [
@@ -3400,11 +3262,11 @@ mod tests {
             let snapshot = |owner: &tmuxx_terminal::Terminal, sequence| ServerMessage::Snapshot {
                 instance_id: "agent-owner".into(),
                 sequence,
-                state: serde_json::json!({
+                state: snapshot_state(serde_json::json!({
                     "sessions": [{"id":1,"name":"agent","active":0,"windows":{"0":2}}],
                     "windows": [{"id":2,"name":"shell","active":7,"cols":20,"rows":4,"panes":[7],"layout":Layout::pane(7,20,4).to_legacy().unwrap()}],
-                    "panes": [{"id":7,"window":2,"cols":20,"rows":4,"pid":123,"status":null,"terminal":(if checkpoint { serde_json::to_value(owner.checkpoint_snapshot()).unwrap() } else { serde_json::to_value(owner.snapshot()).unwrap() })}],
-                }),
+                    "panes": [{"id":7,"window":2,"cols":20,"rows":4,"pid":123,"status":null,"terminal":(serde_json::to_value(owner.checkpoint_snapshot()).unwrap())}],
+                })),
             };
             apply(&connection.shared, snapshot(&owner, 1)).unwrap();
             let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
@@ -3625,11 +3487,11 @@ mod tests {
         let terminal = tmuxx_terminal::Terminal::new(20, 4, 20);
         apply(&connection.shared, ServerMessage::Snapshot {
             instance_id: "owner".into(), sequence: 1,
-            state: serde_json::json!({
+            state: snapshot_state(serde_json::json!({
                 "sessions": [{"id":1,"name":"test","active":0,"windows":{"0":2}}],
                 "windows": [{"id":2,"name":"shell","active":7,"cols":20,"rows":4,"panes":[7],"layout":Layout::pane(7,20,4).to_legacy().unwrap()}],
-                "panes": [{"id":7,"window":2,"cols":20,"rows":4,"status":null,"terminal":terminal.snapshot()}],
-            }),
+                "panes": [{"id":7,"window":2,"cols":20,"rows":4,"status":null,"terminal":terminal.checkpoint_snapshot()}],
+            })),
         }).unwrap();
         let view = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
         apply(
@@ -3672,7 +3534,7 @@ mod tests {
         let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
         let mut terminal = tmuxx_terminal::Terminal::new(80, 24, 2000);
         terminal.feed(b"\x1b_Ga=T,i=7,f=32,s=1,v=1;/wAA/w==\x1b\\");
-        let mut snapshot = terminal.snapshot();
+        let mut snapshot = terminal.checkpoint_snapshot();
         snapshot.primary_graphics.images[0].width = 4096;
         snapshot.primary_graphics.images[0].height = 1024;
         snapshot.primary_graphics.images[0].pixels = Arc::new(vec![255; 4096 * 1024 * 4]);
@@ -3686,19 +3548,19 @@ mod tests {
             &mut wire,
             "large",
             1,
-            &state,
+            &snapshot_state(state),
             tmuxx_protocol::native::MAX_SNAPSHOT_BYTES,
         )
         .unwrap();
-        assert!(wire.len() > 16 * tmuxx_protocol::native::SNAPSHOT_CHUNK_BYTES);
+        assert!(wire.len() < 1024 * 1024, "uniform image should compress");
         let mut reader = BufReader::new(wire.as_slice());
         let mut snapshots = SnapshotAssembler::default();
         let mut completed = 0;
+        let mut chunks = 0;
         while let Some(bytes) = record(&mut reader).unwrap() {
-            if let Some(message) = snapshots
-                .push(serde_json::from_slice(&bytes).unwrap())
-                .unwrap()
-            {
+            let message = tmuxx_protocol::native::decode(&bytes).unwrap();
+            chunks += usize::from(matches!(message, ServerMessage::SnapshotChunk { .. }));
+            if let Some(message) = snapshots.push(message).unwrap() {
                 apply(&connection.shared, message).unwrap();
                 completed += 1;
             } else {
@@ -3707,6 +3569,7 @@ mod tests {
         }
         snapshots.finish().unwrap();
         assert_eq!(completed, 1);
+        assert!(chunks > 16);
         let before = connection.shared.model.lock().unwrap().panes[&7]
             .terminal
             .primary_screen()
@@ -3742,41 +3605,33 @@ mod tests {
 
     #[test]
     fn native_snapshot_restores_capture_lengths_after_non_reflow_shrink() {
-        for compact in [false, true] {
-            for (input, alternate) in [
-                (b"\x1b[?7l01234567890123456789".as_slice(), false),
-                (b"\x1b[?1049h01234567890123456789".as_slice(), true),
-            ] {
-                let mut terminal = tmuxx_terminal::Terminal::new(20, 3, 20);
-                terminal.feed(input);
-                terminal.resize(10, 3);
-                if alternate {
-                    terminal.feed(b"\x1b[?1049l");
-                }
-                let mut value = if compact {
-                    serde_json::to_value(terminal.compact_snapshot()).unwrap()
-                } else {
-                    serde_json::to_value(terminal.snapshot()).unwrap()
-                };
-                let name = if alternate { "alternate" } else { "primary" };
-                let row = value[name]["rows"][0]["id"].as_u64().unwrap();
-                value[name]["tmux_capture_rows"] = serde_json::json!([[row, [20, 20]]]);
-                let (mut restored, _) = restore(&value).unwrap();
-                let screen = if alternate {
-                    restored.alternate_screen().unwrap()
-                } else {
-                    restored.primary_screen()
-                };
-                assert_eq!(screen.row_text(screen.row(0)), "0123456789");
-                assert_eq!(screen.tmux_capture_bounds(row), Some((10, 20)));
-                assert!(!restored.is_alternate_screen());
-                restored.feed(b"\x1b[?7h");
-                restored.resize(5, 3);
+        for (input, alternate) in [
+            (b"\x1b[?7l01234567890123456789".as_slice(), false),
+            (b"\x1b[?1049h01234567890123456789".as_slice(), true),
+        ] {
+            let mut terminal = tmuxx_terminal::Terminal::new(20, 3, 20);
+            terminal.feed(input);
+            terminal.resize(10, 3);
+            if alternate {
+                terminal.feed(b"\x1b[?1049l");
             }
+            let (mut restored, _) = restore(&terminal.checkpoint_snapshot()).unwrap();
+            let screen = if alternate {
+                restored.alternate_screen().unwrap()
+            } else {
+                restored.primary_screen()
+            };
+            let row = screen.row(0);
+            assert_eq!(screen.row_text(row), "0123456789");
+            assert_eq!(screen.tmux_capture_bounds(row.id), Some((10, 20)));
+            assert!(!restored.is_alternate_screen());
+            restored.feed(b"\x1b[?7h");
+            restored.resize(5, 3);
         }
     }
+
     #[test]
-    fn native_snapshot_restores_stale_capture_rows_after_reflow() {
+    fn native_snapshot_restores_capture_rows_after_reflow() {
         let mut terminal = tmuxx_terminal::Terminal::new(20, 5, 20);
         terminal.feed(b"abcdefghijklmnopqrstuvwxyz");
         terminal.resize(6, 2);
@@ -3784,27 +3639,15 @@ mod tests {
         terminal.resize(5, 1);
         terminal.feed(b"\x1b[2J");
         terminal.resize(18, 2);
-        let mut value = serde_json::to_value(terminal.snapshot()).unwrap();
-        restore(&value).unwrap();
-        value["primary"]["tmux_capture_known"] = false.into();
-        value["primary"]["tmux_capture_rows"] = serde_json::json!([[999999, [0, 0]]]);
-        let (restored, _) = restore(&value).unwrap();
+        let (restored, _) = restore(&terminal.checkpoint_snapshot()).unwrap();
         assert_eq!((restored.cols, restored.rows), (18, 2));
-        for invalid in [
-            serde_json::json!([[999999, [1, 0]]]),
-            serde_json::json!([[999999, [0, 65536]]]),
-            serde_json::json!([[999999, [0, 0]], [999999, [0, 0]]]),
-        ] {
-            value["primary"]["tmux_capture_rows"] = invalid;
-            assert!(restore(&value).is_err());
-        }
     }
 
     #[test]
-    fn native_snapshot_rejects_invalid_capture_metadata_after_compatibility() {
+    fn native_snapshot_rejects_invalid_capture_metadata() {
         let terminal = tmuxx_terminal::Terminal::new(10, 3, 20);
-        let value = serde_json::to_value(terminal.snapshot()).unwrap();
-        let id = value["primary"]["rows"][0]["id"].as_u64().unwrap();
+        let value = serde_json::to_value(terminal.checkpoint_snapshot()).unwrap();
+        let id = value["primary"]["rows"][0][0].as_u64().unwrap();
         for capture in [
             serde_json::json!([[id, [20, 19]]]),
             serde_json::json!([[id, [20, 65536]]]),
@@ -3815,7 +3658,11 @@ mod tests {
         ] {
             let mut invalid = value.clone();
             invalid["primary"]["tmux_capture_rows"] = capture;
-            assert!(restore(&invalid).is_err());
+            if let Ok(snapshot) =
+                serde_json::from_value::<tmuxx_terminal::CheckpointSnapshot>(invalid)
+            {
+                assert!(restore(&snapshot).is_err());
+            }
         }
     }
 
@@ -3825,44 +3672,39 @@ mod tests {
         terminal.feed(b"abcdefghijklmnopqrstuvwx\r\n\x1b_Ga=T,i=7,f=32,s=1,v=1;/wAA/w==\x1b\\");
         for cols in [8, 16, 8, 16] {
             terminal.resize(cols, 20);
-            let snapshot = terminal.snapshot();
-            for snapshot_value in [
-                serde_json::to_value(&snapshot).unwrap(),
-                serde_json::to_value(terminal.checkpoint_snapshot()).unwrap(),
-            ] {
-                let (restored, _) = restore(&snapshot_value).unwrap();
-                let ids = restored
-                    .primary_screen()
+            let expected = terminal.snapshot();
+            let (restored, _) = restore(&terminal.checkpoint_snapshot()).unwrap();
+            let ids = restored
+                .primary_screen()
+                .all_rows()
+                .map(|r| r.id)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                ids,
+                expected
+                    .primary
                     .all_rows()
                     .map(|r| r.id)
-                    .collect::<Vec<_>>();
-                assert_eq!(
-                    ids,
-                    snapshot
-                        .primary
-                        .all_rows()
-                        .map(|r| r.id)
-                        .collect::<Vec<_>>()
-                );
-                let graphics = restored.primary_screen().graphics.view_snapshot();
-                assert_eq!(graphics.placements.len(), 1);
-                assert!(ids.contains(&graphics.placements[0].row));
-            }
+                    .collect::<Vec<_>>()
+            );
+            let graphics = restored.primary_screen().graphics.view_snapshot();
+            assert_eq!(graphics.placements.len(), 1);
+            assert!(ids.contains(&graphics.placements[0].row));
         }
     }
 
     #[test]
     fn restored_native_views_search_and_select_shell_output_independently() {
-        for checkpoint in [false, true] {
+        {
             let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
             let mut terminal = tmuxx_terminal::Terminal::new(12, 3, 2000);
             terminal.feed(b"\x1b]133;A\x07$ \x1b]133;B\x07build\r\n\x1b]133;C\x07retained output with wrap\r\n\x1b]133;D;0\x07\x1b]133;A\x07$ ");
             terminal.resize(10, 3);
-            apply(&connection.shared, ServerMessage::Snapshot { instance_id: "search".into(), sequence: 1, state: serde_json::json!({
+            apply(&connection.shared, ServerMessage::Snapshot { instance_id: "search".into(), sequence: 1, state: snapshot_state(serde_json::json!({
             "sessions": [{"id":1,"name":"test","active":0,"windows":{"0":2}}],
             "windows": [{"id":2,"name":"shell","active":7,"cols":10,"rows":3,"panes":[7],"layout":Layout::pane(7,10,3).to_legacy().unwrap()}],
-            "panes": [{"id":7,"window":2,"cols":10,"rows":3,"status":null,"terminal":(if checkpoint { serde_json::to_value(terminal.checkpoint_snapshot()).unwrap() } else { serde_json::to_value(terminal.snapshot()).unwrap() })}],
-        }) }).unwrap();
+            "panes": [{"id":7,"window":2,"cols":10,"rows":3,"status":null,"terminal":(serde_json::to_value(terminal.checkpoint_snapshot()).unwrap())}],
+        })) }).unwrap();
             let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
             let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
             {
@@ -3892,11 +3734,11 @@ mod tests {
         let snapshot = |owner: &mut tmuxx_terminal::Terminal, sequence| ServerMessage::Snapshot {
             instance_id: "damage".into(),
             sequence,
-            state: serde_json::json!({
+            state: snapshot_state(serde_json::json!({
                 "sessions": [{"id":1,"name":"test","active":0,"windows":{"0":2}}],
                 "windows": [{"id":2,"name":"shell","active":7,"cols":10,"rows":3,"panes":[7],"layout":Layout::pane(7,10,3).to_legacy().unwrap()}],
                 "panes": [{"id":7,"window":2,"cols":10,"rows":3,"status":null,"terminal":owner.checkpoint_snapshot()}],
-            }),
+            })),
         };
         apply(&connection.shared, snapshot(&mut owner, 1)).unwrap();
         let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
@@ -3962,11 +3804,11 @@ mod tests {
         for hangup in [false, true] {
             let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
             let terminal = tmuxx_terminal::Terminal::new(80, 24, 2000);
-            apply(&connection.shared, ServerMessage::Snapshot { instance_id: "detach".into(), sequence: 1, state: serde_json::json!({
+            apply(&connection.shared, ServerMessage::Snapshot { instance_id: "detach".into(), sequence: 1, state: snapshot_state(serde_json::json!({
                 "sessions": [{"id":1,"name":"test","active":0,"windows":{"0":2}}],
                 "windows": [{"id":2,"name":"shell","active":7,"cols":80,"rows":24,"panes":[7],"layout":Layout::pane(7,80,24).to_legacy().unwrap()}],
-                "panes": [{"id":7,"window":2,"cols":80,"rows":24,"status":null,"terminal":terminal.snapshot()}],
-            }) }).unwrap();
+                "panes": [{"id":7,"window":2,"cols":80,"rows":24,"status":null,"terminal":terminal.checkpoint_snapshot()}],
+            })) }).unwrap();
             let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
             let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
             apply(
@@ -3993,11 +3835,11 @@ mod tests {
             ServerMessage::Snapshot {
                 instance_id: instance.into(),
                 sequence,
-                state: serde_json::json!({
+                state: snapshot_state(serde_json::json!({
                     "sessions": [{"id": 1,"name":"test","active":0,"windows":{"0":2}}],
                     "windows": [{"id":2,"name":"shell","active":7,"cols":80,"rows":24,"panes":[7],"layout":Layout::pane(7,80,24).to_legacy().unwrap()}],
-                    "panes": [{"id":7,"window":2,"cols":80,"rows":24,"pid":123,"status":null,"terminal":terminal.snapshot()}],
-                }),
+                    "panes": [{"id":7,"window":2,"cols":80,"rows":24,"pid":123,"status":null,"terminal":terminal.checkpoint_snapshot()}],
+                })),
             }
         };
         apply(&connection.shared, snapshot("old", 50, b"old owner")).unwrap();
@@ -4076,7 +3918,7 @@ mod tests {
         let (connection, requests) = Connection::base(Arc::new(|| {}), true);
         let mut terminal = tmuxx_terminal::Terminal::new(80, 24, 2000);
         terminal.feed(b"snapshot text");
-        let snapshot = terminal.snapshot();
+        let snapshot = terminal.checkpoint_snapshot();
         let state = serde_json::json!({
             "sessions": [{"id": 1,"name":"test","active":0,"windows":{"0":2}}],
             "windows": [{"id":2,"name":"shell","active":7,"cols":80,"rows":24,"panes":[7],"layout":Layout::pane(7,80,24).to_legacy().unwrap()}],
@@ -4087,7 +3929,7 @@ mod tests {
             ServerMessage::Snapshot {
                 instance_id: "one".into(),
                 sequence: 1,
-                state: state.clone(),
+                state: snapshot_state(state.clone()),
             },
         )
         .unwrap();
@@ -4161,7 +4003,7 @@ mod tests {
             ServerMessage::Snapshot {
                 instance_id: "one".into(),
                 sequence: 3,
-                state,
+                state: snapshot_state(state),
             },
         )
         .unwrap();
@@ -4547,7 +4389,7 @@ mod tests {
         session.write(b"x").unwrap();
         let graph = wait(&connection, |g| g.panes[0].status == Some(17));
         assert!(session.has_exited());
-        let (_, agent_status) = restore(&graph.panes[0].terminal).unwrap();
+        let (_, agent_status) = restore(graph.panes[0].terminal.as_deref().unwrap()).unwrap();
         assert!(agent_status.snapshot.is_none());
         assert!(session.events().any(|event| matches!(
             event,
@@ -4668,8 +4510,15 @@ mod tests {
         ));
         let local = Connection::embedded(&endpoint, Arc::new(|| {})).unwrap();
         let graph = wait(&local, |g| !g.panes.is_empty());
-        assert_eq!(graph.panes[0].terminal["version"], 2);
-        assert!(graph.panes[0].terminal["primary"]["rows"][0].is_array());
+        assert_eq!(graph.panes[0].terminal.as_ref().unwrap().version, 2);
+        assert!(
+            graph.panes[0]
+                .terminal
+                .as_ref()
+                .unwrap()
+                .checkpoint
+                .is_some()
+        );
         let pid = graph.panes[0].id;
         let first = Session::attach_tmuxx(&local, pid, Arc::new(|| {})).unwrap();
         let second = Session::attach_tmuxx(&local, pid, Arc::new(|| {})).unwrap();
@@ -4701,8 +4550,15 @@ mod tests {
         let remote = Connection::unix(&endpoint, Arc::new(|| {})).unwrap();
         let graph = wait(&remote, |g| g.panes.iter().any(|p| p.id == pid));
         assert_eq!(graph.panes[0].id, pid);
-        assert_eq!(graph.panes[0].terminal["version"], 2);
-        assert!(graph.panes[0].terminal["primary"]["rows"][0].is_array());
+        assert_eq!(graph.panes[0].terminal.as_ref().unwrap().version, 2);
+        assert!(
+            graph.panes[0]
+                .terminal
+                .as_ref()
+                .unwrap()
+                .checkpoint
+                .is_some()
+        );
         let third = Session::attach_tmuxx(&remote, pid, Arc::new(|| {})).unwrap();
         {
             let t = third.terminal().unwrap();

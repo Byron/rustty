@@ -22,9 +22,24 @@ where
             mut map: M,
         ) -> Result<Self::Value, M::Error> {
             let mut rows = std::collections::BTreeMap::new();
-            while let Some((key, value)) = map.next_entry::<String, V>()? {
-                let id = key.parse::<u64>().map_err(M::Error::custom)?;
-                if id.to_string() != key || rows.insert(id, value).is_some() {
+            #[derive(Deserialize)]
+            #[serde(untagged)]
+            enum RowId {
+                Native(u64),
+                Json(String),
+            }
+            while let Some((key, value)) = map.next_entry::<RowId, V>()? {
+                let id = match key {
+                    RowId::Native(id) => id,
+                    RowId::Json(key) => {
+                        let id = key.parse::<u64>().map_err(M::Error::custom)?;
+                        if id.to_string() != key {
+                            return Err(M::Error::custom("invalid row ID"));
+                        }
+                        id
+                    }
+                };
+                if rows.insert(id, value).is_some() {
                     return Err(M::Error::custom("invalid or duplicate row ID"));
                 }
             }

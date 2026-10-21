@@ -50,6 +50,9 @@ is `target/debug/tmuxx/tmuxx.exe`; Rustty is
 Ordinary hosted CI builds and runs the named backend/format/resource subsets.
 The runner passes its actual native Python interpreter to the fixture panes;
 direct Cargo checks should set `TMUXX_REMOTE_PYTHON` to `sys.executable` too.
+Install `python -m pip install -r tmuxx/conformance/requirements-native.txt`
+into that interpreter: native peers use MessagePack and LZ4 for protocol v2.
+The identity peer retains JSON only on its private Rust-parent test channel.
 Endpoint and special-file vectors require Windows symlink privilege or Developer
 Mode. CI checks that capability with a private link before testing; failure is a
 missing prerequisite rather than permission to omit those vectors.

@@ -1,5 +1,8 @@
 use super::*;
-use tmuxx_protocol::native::{SnapshotAssembler, write_snapshot};
+use tmuxx_protocol::native::{
+    SnapshotAssembler, SnapshotSession, SnapshotState, decode, read_record, snapshot_bytes,
+    write_snapshot,
+};
 
 fn host() -> (Host, Receiver<ServerMessage>) {
     let (events, _) = mpsc::sync_channel(32);
@@ -26,7 +29,15 @@ fn one_large_snapshot_does_not_consume_the_slow_output_budget() {
         ServerMessage::Snapshot {
             instance_id: "owner".into(),
             sequence: 1,
-            state: serde_json::json!({"data":"x".repeat(65 * 1024 * 1024)}),
+            state: SnapshotState {
+                sessions: vec![SnapshotSession {
+                    id: 0,
+                    name: "x".repeat(65 * 1024 * 1024),
+                    active: 0,
+                    windows: Default::default(),
+                }],
+                ..Default::default()
+            },
         },
     );
     assert!(host.clients.contains_key(&1));
@@ -70,44 +81,24 @@ fn checkpoint_snapshots_keep_log_history_and_agent_state_without_duplicate_cells
         Some("fixture")
     );
     assert!(agent.enclosing_command);
-    let mut sizes = Vec::new();
-    for checkpoint in [false, true] {
-        let context = &mut host.clients.get_mut(&1).unwrap().context;
-        context.compact_snapshots = true;
-        context.checkpoint_snapshots = checkpoint;
-        host.snapshot(1);
-        let ServerMessage::Snapshot { state, .. } = rx.recv().unwrap() else {
-            panic!("missing snapshot");
-        };
-        host.snapshots_pending.clear();
-        sizes.push(serde_json::to_vec(&state).unwrap().len());
-        let value = state["panes"][0]["terminal"].clone();
-        assert_eq!(value["version"], if checkpoint { 2 } else { 1 });
-        let restored = if checkpoint {
-            serde_json::from_value::<tmuxx_terminal::CheckpointSnapshot>(value)
-                .unwrap()
-                .restore()
-                .unwrap()
-        } else {
-            serde_json::from_value::<tmuxx_terminal::Snapshot>(value)
-                .unwrap()
-                .restore()
-                .unwrap()
-        };
-        assert_eq!(restored.capture_with(capture).unwrap(), expected);
-        assert_eq!(restored.agent_status(), &agent);
-    }
-    eprintln!(
-        "1000 colored log rows: compact v1={} bytes; checkpoint v2={} bytes",
-        sizes[0], sizes[1]
+    host.snapshot(1);
+    let ServerMessage::Snapshot { state, .. } = rx.recv().unwrap() else {
+        panic!("missing snapshot");
+    };
+    let terminal = state.panes[0].terminal.as_ref().unwrap();
+    assert_eq!(terminal.version, 2);
+    let restored = terminal.restore().unwrap();
+    assert_eq!(restored.capture_with(capture).unwrap(), expected);
+    assert_eq!(restored.agent_status(), &agent);
+    let bytes = snapshot_bytes(&state, u64::MAX).unwrap() as usize;
+    let checkpoint_bytes = terminal.checkpoint.as_ref().unwrap().len();
+    assert!(
+        bytes < checkpoint_bytes + 64 * 1024,
+        "checkpoint bytes expanded during serialization: {bytes} versus {checkpoint_bytes}"
     );
     assert!(
-        sizes[1] * 10 < sizes[0],
-        "duplicate screen cells inflated snapshot: {sizes:?}"
-    );
-    assert!(
-        sizes[1] < 2 * 1024 * 1024,
-        "ordinary logs exceeded snapshot budget: {sizes:?}"
+        bytes < 2 * 1024 * 1024,
+        "ordinary logs exceeded snapshot budget: {bytes}"
     );
 }
 
@@ -192,10 +183,9 @@ fn pane_removal_notifies_other_views_when_requester_gets_a_snapshot() {
                 _ => None,
             })
             .expect("the notified view must be able to refresh its graph");
-        for key in ["panes", "windows"] {
-            assert_eq!(state[key].as_array().unwrap().len(), 1 - pane);
-        }
-        assert_eq!(state["sessions"].as_array().unwrap().len(), 1 - pane);
+        assert_eq!(state.panes.len(), 1 - pane);
+        assert_eq!(state.windows.len(), 1 - pane);
+        assert_eq!(state.sessions.len(), 1 - pane);
         host.snapshots_pending.clear();
     }
 }
@@ -428,11 +418,9 @@ fn image_snapshots_stream_atomically_and_rejection_preserves_the_live_owner() {
     let mut assembler = SnapshotAssembler::default();
     let mut restored = None;
     let mut chunks = 0;
-    for line in wire
-        .split(|byte| *byte == b'\n')
-        .filter(|line| !line.is_empty())
-    {
-        let message: ServerMessage = serde_json::from_slice(line).unwrap();
+    let mut reader = wire.as_slice();
+    while let Some(bytes) = read_record(&mut reader, 512 * 1024).unwrap() {
+        let message: ServerMessage = decode(&bytes).unwrap();
         chunks += usize::from(matches!(message, ServerMessage::SnapshotChunk { .. }));
         if let Some(message) = assembler.push(message).unwrap() {
             restored = Some(message);
@@ -442,8 +430,7 @@ fn image_snapshots_stream_atomically_and_rejection_preserves_the_live_owner() {
     let Some(ServerMessage::Snapshot { state, .. }) = restored else {
         panic!("missing completed snapshot")
     };
-    let terminal: tmuxx_terminal::Snapshot =
-        serde_json::from_value(state["panes"][0]["terminal"].clone()).unwrap();
+    let terminal = state.panes[0].terminal.as_ref().unwrap();
     assert_eq!(
         terminal.primary_graphics.images[0].pixels.len(),
         256 * 256 * 4
@@ -531,7 +518,7 @@ fn native_byte_backlog_disconnects_before_record_capacity() {
             &mut ClientContext::default(),
         )
         .unwrap();
-    let (slow_tx, slow_rx) = mpsc::sync_channel(1024);
+    let (slow_tx, slow_rx) = mpsc::sync_channel(4096);
     host.clients.get_mut(&1).unwrap().tx = slow_tx;
     let (healthy_tx, healthy_rx) = mpsc::sync_channel(1);
     host.clients.insert(
@@ -549,7 +536,7 @@ fn native_byte_backlog_disconnects_before_record_capacity() {
     let mut previous = 0;
     while host.clients.contains_key(&1) {
         assert!(
-            sent < 1024,
+            sent < 4096,
             "byte budget must precede the enlarged record capacity"
         );
         host.pane_output(0, &output);

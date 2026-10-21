@@ -3,6 +3,8 @@ import base64
 from contextlib import contextmanager
 import ctypes
 import hashlib
+import importlib.util
+import io
 import json
 from pathlib import Path
 import sys
@@ -10,6 +12,10 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+
+native_wire = None
+if importlib.util.find_spec("msgpack") and importlib.util.find_spec("lz4"):
+    import native_wire
 
 if sys.platform == "win32":
     import windows_ssh
@@ -42,7 +48,10 @@ class TrustedDispatcherEvidence(unittest.TestCase):
         prefix, encoded = self.command.rsplit(" ", 1)
         self.assertEqual(prefix, "powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand")
         self.assertEqual(base64.b64decode(encoded).decode("utf-16-le"),
-                         "& '" + str(self.bridge).replace("'", "''") + "' tmux --native-stdio; exit $LASTEXITCODE")
+                         "$p = New-Object System.Diagnostics.ProcessStartInfo; $p.FileName = '"
+                         + str(self.bridge).replace("'", "''")
+                         + "'; $p.Arguments = 'tmux --native-stdio'; $p.UseShellExecute = $false; $p.CreateNoWindow = $true; "
+                         "$c = [System.Diagnostics.Process]::Start($p); $c.WaitForExit(); exit $c.ExitCode")
 
     def test_receipts_must_be_fresh_and_bound_to_command_image_and_child(self):
         path = self.write_receipt()
@@ -140,6 +149,54 @@ class TrustedDispatcherEvidence(unittest.TestCase):
             identity.side_effect = PermissionError("live matched process token denied")
             with self.assertRaisesRegex(PermissionError, "live matched"):
                 windows_ssh.identities_for_image(self.bridge)
+
+
+@unittest.skipUnless(native_wire, "install conformance/requirements-native.txt for native wire tests")
+class NativeFrames(unittest.TestCase):
+    def test_binary_compression_fragmentation_and_record_boundaries(self):
+        first = {"type": "pane_output", "data": bytes(range(256)) * 2048}
+        second = {"version": 2, "instance": "雪"}
+        wire = native_wire.encode(first)
+        self.assertTrue(wire[4] & native_wire.COMPRESSED)
+        self.assertFalse(wire[4] & native_wire.FINAL)
+        source = io.BytesIO(wire + native_wire.encode(second))
+        read = lambda size: source.read(min(size, 3))
+        self.assertEqual(native_wire.read_record(read), first)
+        self.assertEqual(native_wire.read_record(read), second)
+        self.assertEqual(source.read(), b"")
+        with self.assertRaises(EOFError):
+            native_wire.read_record(io.BytesIO(wire[:-1]).read)
+
+    def test_raw_record_and_declared_limits_before_payload_read(self):
+        raw = {"version": 2}
+        wire = native_wire.encode(raw)
+        self.assertEqual(wire[4], native_wire.FINAL)
+        self.assertEqual(native_wire.read_record(io.BytesIO(wire).read), raw)
+        header = native_wire.HEADER
+        cases = [
+            (b"nope", 1, b"\0\0\0", 1, 1),
+            (b"TMX2", 4, b"\0\0\0", 1, 1),
+            (b"TMX2", 1, b"\0\0x", 1, 1),
+            (b"TMX2", 1, b"\0\0\0", 0, 0),
+            (b"TMX2", 0, b"\0\0\0", 1, 1),
+            (b"TMX2", 1, b"\0\0\0", 1, 2),
+            (b"TMX2", 3, b"\0\0\0", 2, 2),
+            (b"TMX2", 3, b"\0\0\0", 1, native_wire.BLOCK_BYTES + 1),
+        ]
+        for values in cases:
+            with self.subTest(header=values), self.assertRaises(ValueError):
+                native_wire.read_record(io.BytesIO(header.pack(*values)).read)
+        with self.assertRaisesRegex(ValueError, "record exceeds"):
+            native_wire.read_record(io.BytesIO(wire[:header.size]).read, max_bytes=1)
+
+    def test_corrupt_compression_and_trailing_messagepack_are_rejected(self):
+        wire = native_wire.HEADER.pack(b"TMX2", 3, b"\0\0\0", 1, 64) + b"\xff"
+        with self.assertRaises(native_wire.lz4.block.LZ4BlockError):
+            native_wire.read_record(io.BytesIO(wire).read)
+        payload = native_wire.msgpack.packb({}) * 2
+        wire = native_wire.HEADER.pack(b"TMX2", 1, b"\0\0\0", len(payload), len(payload)) + payload
+        with self.assertRaises(native_wire.msgpack.ExtraData):
+            native_wire.read_record(io.BytesIO(wire).read)
 
 
 if __name__ == "__main__":

@@ -7,9 +7,9 @@ use tmuxx_protocol::native::Hello;
 /// names are never interpolated into cmd.exe or PowerShell source.
 pub(super) fn native_stdio_bridge(explicit: Option<&std::path::Path>) -> io::Result<()> {
     let mut stdin = BufReader::new(io::stdin());
-    let first = tmuxx_runtime::read_record(&mut stdin, tmuxx_runtime::MAX_REQUEST_BYTES)?
+    let first = tmuxx_protocol::native::read_record(&mut stdin, tmuxx_runtime::MAX_REQUEST_BYTES)?
         .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "missing bridge hello"))?;
-    let hello: Hello = serde_json::from_slice(&first)?;
+    let hello: Hello = tmuxx_protocol::native::decode(&first)?;
     if hello.version != tmuxx_protocol::native::VERSION {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
@@ -39,7 +39,8 @@ pub(super) fn native_stdio_bridge(explicit: Option<&std::path::Path>) -> io::Res
         }
     };
     let mut stream = tmuxx_runtime::windows::connect(&endpoint)?;
-    stream.write_all(&first)?;
+    tmuxx_protocol::native::write_record(&mut stream, &hello)?;
+    stream.flush()?;
     let mut output = stream.clone();
     std::thread::spawn(move || {
         let _ = io::copy(&mut stdin, &mut output);
@@ -103,16 +104,9 @@ pub(super) fn native_stdin(
                 subscribe: false,
                 control: false,
             };
-            // A named-pipe write allocates an OVERLAPPED event and enters the
-            // kernel. Serializing each JSON token directly to it makes a
-            // 64 KiB stdin chunk take hundreds of thousands of tiny writes.
-            // The chunk already has a fixed bound; assemble exactly one
-            // newline-delimited record and keep the existing ACK barrier.
-            let Ok(mut record) = serde_json::to_vec(&request) else {
-                break;
-            };
-            record.push(b'\n');
-            if output.write_all(&record).is_err() {
+            if tmuxx_protocol::native::write_request(&mut output, &request).is_err()
+                || output.flush().is_err()
+            {
                 break;
             }
             loop {
@@ -135,9 +129,9 @@ pub(super) fn native_stdin(
     };
     let mut pending = u64::MAX;
     loop {
-        let line = tmuxx_runtime::read_record(reader, 256 * 1024 * 1024)?
+        let line = tmuxx_protocol::native::read_record(reader, 128 * 1024 * 1024)?
             .ok_or_else(|| io::Error::other("server stopped during stdin"))?;
-        let Some(message) = snapshots.push(serde_json::from_slice(&line)?)? else {
+        let Some(message) = snapshots.push(tmuxx_protocol::native::decode(&line)?)? else {
             continue;
         };
         if let ServerMessage::Reply(reply) = &message

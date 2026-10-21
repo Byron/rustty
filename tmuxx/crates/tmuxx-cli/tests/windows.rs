@@ -226,7 +226,7 @@ fn native_cli_and_fixed_stdio_bridge_share_live_panes() {
             .unwrap(),
     );
     let mut input = bridge.0.stdin.take().unwrap();
-    serde_json::to_writer(
+    tmuxx_protocol::native::write_record(
         &mut input,
         &Hello {
             instance: Some(fixture.label.clone()),
@@ -234,13 +234,13 @@ fn native_cli_and_fixed_stdio_bridge_share_live_panes() {
         },
     )
     .unwrap();
-    input.write_all(b"\n").unwrap();
+    input.flush().unwrap();
     let mut output = BufReader::new(bridge.0.stdout.take().unwrap());
-    let hello = tmuxx_runtime::read_record(&mut output, 1024)
+    let hello = tmuxx_protocol::native::read_record(&mut output, 1024)
         .unwrap()
         .unwrap();
     assert!(
-        serde_json::from_slice::<Hello>(&hello)
+        tmuxx_protocol::native::decode::<Hello>(&hello)
             .unwrap()
             .instance_id
             .is_some()
@@ -254,12 +254,12 @@ fn native_cli_and_fixed_stdio_bridge_share_live_panes() {
         subscribe: false,
         control: false,
     };
-    serde_json::to_writer(&mut input, &request).unwrap();
-    input.write_all(b"\n").unwrap();
-    let response = tmuxx_runtime::read_record(&mut output, 4096)
+    tmuxx_protocol::native::write_request(&mut input, &request).unwrap();
+    input.flush().unwrap();
+    let response = tmuxx_protocol::native::read_record(&mut output, 4096)
         .unwrap()
         .unwrap();
-    match serde_json::from_slice::<ServerMessage>(&response).unwrap() {
+    match tmuxx_protocol::native::decode::<ServerMessage>(&response).unwrap() {
         ServerMessage::Reply(reply) => {
             assert_eq!(reply.request_id, 7);
             assert_eq!(reply.output, expected.repeat(2).as_bytes());
@@ -369,16 +369,23 @@ fn pipe(fixture: &Fixture) -> tmuxx_runtime::windows::PipeStream {
 }
 
 fn record(reader: &mut impl std::io::BufRead) -> Option<Vec<u8>> {
-    tmuxx_runtime::read_record(reader, 16 * 1024 * 1024).unwrap()
+    tmuxx_protocol::native::read_record(reader, 16 * 1024 * 1024).unwrap()
 }
 
 fn send(stream: &mut impl Write, value: &impl serde::Serialize) {
-    let mut bytes = serde_json::to_vec(value).unwrap();
-    bytes.push(b'\n');
+    let mut bytes = Vec::new();
+    tmuxx_protocol::native::write_record(&mut bytes, value).unwrap();
     // Every possible record boundary passes through real overlapped pipe I/O.
     for byte in bytes {
         stream.write_all(&[byte]).unwrap();
     }
+}
+
+fn send_request(stream: &mut impl Write, request: &Request) {
+    send(
+        stream,
+        &tmuxx_protocol::native::ClientMessage::Request(request.clone()),
+    );
 }
 
 fn request(id: u64, args: &[&str]) -> Request {
@@ -405,7 +412,7 @@ fn malformed_version_and_partial_eof_never_mutate_or_replace_owner() {
         },
     );
     let mut reader = BufReader::new(stream);
-    let hello: Hello = serde_json::from_slice(&record(&mut reader).unwrap()).unwrap();
+    let hello: Hello = tmuxx_protocol::native::decode(&record(&mut reader).unwrap()).unwrap();
     assert_eq!(hello.version, tmuxx_protocol::native::VERSION);
     assert!(record(&mut reader).is_none());
     for malformed in [b"not json\n".as_slice(), b"{\"request_id\":1,\"argv\":"] {
@@ -421,13 +428,14 @@ fn malformed_version_and_partial_eof_never_mutate_or_replace_owner() {
     }
     let mut stream = pipe(&fixture);
     tmuxx_runtime::native_handshake(&mut stream).unwrap();
-    send(
+    send_request(
         &mut stream,
         &request(99, &["set-buffer", "-b", "binary", "snow 雪"]),
     );
     stream.shutdown(std::net::Shutdown::Write).unwrap();
     let mut reader = BufReader::new(stream);
-    let message: ServerMessage = serde_json::from_slice(&record(&mut reader).unwrap()).unwrap();
+    let message: ServerMessage =
+        tmuxx_protocol::native::decode(&record(&mut reader).unwrap()).unwrap();
     assert!(
         matches!(message, ServerMessage::Reply(reply) if reply.request_id == 99 && reply.error.is_none())
     );
@@ -483,23 +491,23 @@ fn replacement_incarnation_rejects_stale_mutations_and_discovery_is_live() {
     let mut stream = pipe(&fixture);
     // Pipeline a mutation behind stale identity, including when all bytes arrive
     // in the same ReadFile operation. Nothing after the hello may be submitted.
-    let mut bytes = serde_json::to_vec(&Hello {
-        instance_id: original.instance_id,
-        ..Hello::default()
-    })
+    let mut bytes = Vec::new();
+    tmuxx_protocol::native::write_record(
+        &mut bytes,
+        &Hello {
+            instance_id: original.instance_id,
+            ..Hello::default()
+        },
+    )
     .unwrap();
-    bytes.push(b'\n');
-    bytes.extend(
-        serde_json::to_vec(&request(
-            4,
-            &["set-buffer", "-b", "must-not-exist", "mutation"],
-        ))
-        .unwrap(),
-    );
-    bytes.push(b'\n');
+    tmuxx_protocol::native::write_request(
+        &mut bytes,
+        &request(4, &["set-buffer", "-b", "must-not-exist", "mutation"]),
+    )
+    .unwrap();
     stream.write_all(&bytes).unwrap();
     let mut reader = BufReader::new(stream);
-    let observed: Hello = serde_json::from_slice(&record(&mut reader).unwrap()).unwrap();
+    let observed: Hello = tmuxx_protocol::native::decode(&record(&mut reader).unwrap()).unwrap();
     assert_eq!(observed.instance_id, replacement.instance_id);
     assert!(record(&mut reader).is_none());
     assert!(fixture.command(&["list-buffers"]).is_empty());
@@ -540,12 +548,12 @@ fn snapshot_stream_reconnect_preserves_shared_graph_and_live_processes() {
         );
         let mut subscribe = request(8, &["list-panes", "-a", "-F", "#{pane_pid}"]);
         subscribe.subscribe = true;
-        send(&mut stream, &subscribe);
+        send_request(&mut stream, &subscribe);
         let mut reader = BufReader::with_capacity(1, stream);
         let mut assembler = tmuxx_protocol::native::SnapshotAssembler::default();
         let (mut reply, mut snapshot) = (false, false);
         while !reply || !snapshot {
-            let message = serde_json::from_slice(&record(&mut reader).unwrap()).unwrap();
+            let message = tmuxx_protocol::native::decode(&record(&mut reader).unwrap()).unwrap();
             match assembler.push(message).unwrap() {
                 Some(ServerMessage::Reply(result)) => {
                     assert!(result.error.is_none());
@@ -555,6 +563,7 @@ fn snapshot_stream_reconnect_preserves_shared_graph_and_live_processes() {
                 Some(ServerMessage::Snapshot {
                     instance_id, state, ..
                 }) => {
+                    let state = serde_json::to_value(state).unwrap();
                     assert_eq!(Some(instance_id), *incarnations.last().unwrap());
                     assert_eq!(state["panes"].as_array().unwrap().len(), 1);
                     assert_eq!(state["panes"][0]["pid"], pid);

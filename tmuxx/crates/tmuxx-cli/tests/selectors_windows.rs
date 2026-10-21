@@ -164,13 +164,15 @@ impl Fixture {
         let (sender, receiver) = std::sync::mpsc::channel();
         let reader = std::thread::spawn(move || {
             let mut output = BufReader::new(stdout);
-            while let Ok(Some(record)) = tmuxx_runtime::read_record(&mut output, 32 * 1024 * 1024) {
+            while let Ok(Some(record)) =
+                tmuxx_protocol::native::read_record(&mut output, 32 * 1024 * 1024)
+            {
                 if sender.send(record).is_err() {
                     break;
                 }
             }
         });
-        serde_json::to_writer(
+        tmuxx_protocol::native::write_record(
             &mut input,
             &Hello {
                 instance: Some(self.label.clone()),
@@ -179,12 +181,12 @@ impl Fixture {
             },
         )
         .unwrap();
-        input.write_all(b"\n").unwrap();
+        input.flush().unwrap();
         let hello: Hello =
-            serde_json::from_slice(&receiver.recv_timeout(Duration::from_secs(5)).unwrap())
+            tmuxx_protocol::native::decode(&receiver.recv_timeout(Duration::from_secs(5)).unwrap())
                 .unwrap();
         assert!(hello.instance_id.is_some());
-        serde_json::to_writer(
+        tmuxx_protocol::native::write_request(
             &mut input,
             &Request {
                 request_id: 1,
@@ -195,12 +197,12 @@ impl Fixture {
             },
         )
         .unwrap();
-        input.write_all(b"\n").unwrap();
+        input.flush().unwrap();
         let reply = loop {
             let record = receiver
                 .recv_timeout(Duration::from_secs(10))
                 .expect("binary selector reply deadline");
-            if let ServerMessage::Reply(reply) = serde_json::from_slice(&record).unwrap() {
+            if let ServerMessage::Reply(reply) = tmuxx_protocol::native::decode(&record).unwrap() {
                 break reply;
             }
         };
