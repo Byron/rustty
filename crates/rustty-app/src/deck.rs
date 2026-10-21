@@ -3,11 +3,14 @@ use crate::{
     presentation::Activity,
     workspace::{Id, MAX_DECK_SLOTS, Workspace},
 };
-use rustty::vt::agent::{Event, Snapshot, State};
+use rustty::{
+    config::NotifyOnCommandFinish,
+    vt::agent::{Event, Snapshot, State},
+};
 use std::{
     cmp::Reverse,
     collections::{HashMap, VecDeque},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 pub const PAGE_SIZE: usize = 9;
@@ -20,13 +23,14 @@ fn in_group(state: State, group: usize) -> bool {
     })
 }
 
-/// OSC progress contributes only to aggregate controls, never to agent tiles.
+/// OSC progress owns aggregate status without allocating a command tile.
 #[derive(Default)]
 pub struct ProgressReport {
     state: Option<State>,
     active: bool,
     enclosing_command: bool,
     outcome: Option<State>,
+    progress_error: bool,
     deadline: Option<Instant>,
 }
 impl ProgressReport {
@@ -51,8 +55,11 @@ impl ProgressReport {
         match effect {
             Effect::Progress { state: 1..=4, .. } => {
                 if !self.active {
-                    self.clear();
-                    self.enclosing_command = command_running;
+                    // A late heartbeat must retain this command's explicit result.
+                    if !self.enclosing_command {
+                        self.clear();
+                    }
+                    self.enclosing_command |= command_running;
                 }
                 self.active = true;
                 self.deadline = Some(Instant::now() + crate::presentation::PROGRESS_TIMEOUT);
@@ -62,7 +69,7 @@ impl ProgressReport {
                     _ => State::Working,
                 });
                 if self.state == Some(State::Error) {
-                    self.outcome = Some(State::Error);
+                    self.progress_error = true;
                 }
             }
             Effect::Progress { state: 0, .. } => self.finish(),
@@ -71,11 +78,14 @@ impl ProgressReport {
                 self.active = false;
                 self.deadline = None;
                 self.enclosing_command = false;
-                self.state = Some(match exit_code {
-                    _ if self.outcome == Some(State::Error) => State::Error,
-                    Some(0) => State::Done,
-                    Some(_) => State::Error,
-                    None => self.outcome.unwrap_or(State::NeedsInput),
+                self.state = self.state.map(|_| {
+                    self.outcome
+                        .or(self.progress_error.then_some(State::Error))
+                        .unwrap_or(match exit_code {
+                            Some(0) => State::Done,
+                            Some(_) => State::Error,
+                            None => State::NeedsInput,
+                        })
                 });
             }
             Effect::Notification { title, body }
@@ -98,8 +108,9 @@ impl ProgressReport {
                 if let Some(outcome) = outcome
                     && self.outcome != Some(State::Error)
                 {
+                    let changed = self.outcome != Some(outcome);
                     self.outcome = Some(outcome);
-                    if !self.active {
+                    if !self.active && (self.state.is_some() || changed) {
                         self.state = Some(outcome);
                     }
                 }
@@ -112,17 +123,124 @@ impl ProgressReport {
         if self.active {
             self.active = false;
             self.deadline = None;
-            self.state = Some(self.outcome.unwrap_or(State::NeedsInput));
+            self.state = Some(
+                self.outcome
+                    .or(self.progress_error.then_some(State::Error))
+                    .unwrap_or(State::NeedsInput),
+            );
         }
     }
     pub fn acknowledge(&mut self) {
-        // A clear may precede the shell's exit status in a later PTY read.
+        // Keep the command's outcome to distinguish new results from delayed duplicates.
         if !self.active {
             self.state = None;
             if !self.enclosing_command {
                 self.clear();
             }
         }
+    }
+}
+
+/// Completed shell commands occupy a tile when the notification policy qualifies them.
+#[derive(Default)]
+pub struct CommandReport {
+    // shortcut: tmuxx attach cannot restore timing until its snapshots carry command start times.
+    started: Option<Instant>,
+    state: Option<State>,
+    generation: u64,
+    last_activity: Option<Instant>,
+    agent_reported: bool,
+    explicit_reported: bool,
+}
+impl CommandReport {
+    pub fn start(&mut self, now: Instant, generation: u64) {
+        *self = Self {
+            started: Some(now),
+            generation,
+            ..Self::default()
+        };
+    }
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+    pub fn is_registered(&self) -> bool {
+        self.state.is_some()
+    }
+    pub fn agent_reported(&mut self) {
+        if self.started.is_some() {
+            self.agent_reported = true;
+        }
+        self.explicit_reported();
+    }
+    pub fn has_agent_report(&self) -> bool {
+        self.agent_reported && self.started.is_some()
+    }
+    pub fn explicit_reported(&mut self) {
+        if self.started.is_some() {
+            self.explicit_reported = true;
+        }
+        self.state = None;
+    }
+    fn eligible(policy: NotifyOnCommandFinish, focused: bool) -> bool {
+        policy == NotifyOnCommandFinish::Always
+            || policy == NotifyOnCommandFinish::Unfocused && !focused
+    }
+    fn qualifies(
+        &self,
+        now: Instant,
+        policy: NotifyOnCommandFinish,
+        after: Duration,
+        focused: bool,
+    ) -> bool {
+        Self::eligible(policy, focused)
+            && self
+                .started
+                .is_some_and(|start| now.saturating_duration_since(start) >= after)
+    }
+    pub fn update(&mut self, policy: NotifyOnCommandFinish) {
+        if policy == NotifyOnCommandFinish::Never {
+            self.state = None;
+        }
+    }
+    /// Return whether the generic command completion should draw attention.
+    pub fn finish(
+        &mut self,
+        now: Instant,
+        policy: NotifyOnCommandFinish,
+        after: Duration,
+        focused: bool,
+        exit_code: Option<i32>,
+    ) -> bool {
+        if self.started.is_none() {
+            return false;
+        }
+        self.state = (!self.explicit_reported && self.qualifies(now, policy, after, focused))
+            .then_some(match exit_code {
+                Some(0) => State::Done,
+                Some(_) => State::Error,
+                None => State::NeedsInput,
+            });
+        self.started = None;
+        self.last_activity = Some(now);
+        self.is_registered()
+    }
+    pub fn acknowledge(&mut self) {
+        if self.started.is_none() {
+            self.clear();
+        }
+    }
+    pub fn view(&self, pane: Id, label: &str) -> Option<PaneView> {
+        let state = self.state?;
+        Some(PaneView {
+            target: Target {
+                pane,
+                generation: self.generation,
+            },
+            state,
+            last_activity: self.last_activity,
+            label: label.to_owned(),
+            unseen: state != State::Working,
+        })
     }
 }
 
@@ -457,8 +575,11 @@ impl Dashboard {
                 }))
                 .filter(|(_, id)| {
                     live.contains(id)
-                        && (reports.get(id).is_some_and(|r| in_group(r.state, group))
-                            || progress.get(id).is_some_and(|s| in_group(*s, group)))
+                        && reports
+                            .get(id)
+                            .map(|r| r.state)
+                            .or_else(|| progress.get(id).copied())
+                            .is_some_and(|state| in_group(state, group))
                 })
                 .collect()
         });
@@ -636,11 +757,254 @@ mod tests {
         }
     }
     #[test]
+    fn commands_stay_off_the_deck_until_completion() {
+        let now = Instant::now();
+        let after = Duration::from_secs(5);
+        let policy = NotifyOnCommandFinish::Always;
+        let mut report = CommandReport::default();
+        report.start(now, 7);
+        report.update(policy);
+        report.acknowledge();
+        assert!(!report.is_registered());
+        assert!(report.view(1, "ssh").is_none());
+        report.finish(now + after * 1000, policy, after, false, Some(0));
+        let view = report.view(1, "build").unwrap();
+        assert_eq!(view.state, State::Done);
+        assert_eq!(view.label, "build");
+        assert_eq!(view.last_activity, Some(now + after * 1000));
+        assert!(view.unseen);
+        report.acknowledge();
+        assert!(!report.is_registered());
+    }
+    #[test]
+    fn command_report_finish_qualifies_without_a_timer_tick() {
+        let now = Instant::now();
+        let after = Duration::from_secs(5);
+        let policy = NotifyOnCommandFinish::Always;
+        for (exit, expected) in [
+            (Some(0), State::Done),
+            (Some(1), State::Error),
+            (Some(-1), State::Error),
+            (None, State::NeedsInput),
+        ] {
+            let mut report = CommandReport::default();
+            report.finish(now + after, policy, after, false, exit);
+            assert!(!report.is_registered());
+            report.start(now, 1);
+            report.finish(
+                now + after - Duration::from_nanos(1),
+                policy,
+                after,
+                false,
+                exit,
+            );
+            assert!(!report.is_registered());
+            report.start(now, 2);
+            report.finish(now + after, policy, after, false, exit);
+            assert_eq!(report.view(1, "").unwrap().state, expected);
+            report.finish(now + after, policy, after, false, Some(0));
+            assert_eq!(report.view(1, "").unwrap().state, expected);
+        }
+    }
+    #[test]
+    fn command_report_follows_completion_focus_and_reloaded_policy() {
+        use NotifyOnCommandFinish::{Always, Never, Unfocused};
+        let now = Instant::now();
+        let after = Duration::from_secs(5);
+        let mut report = CommandReport::default();
+        for (policy, focused, eligible) in [
+            (Always, true, true),
+            (Unfocused, true, false),
+            (Unfocused, false, true),
+            (Never, false, false),
+        ] {
+            report.start(now, 1);
+            report.update(policy);
+            assert!(!report.is_registered());
+            assert_eq!(
+                report.finish(now + after, policy, after, focused, Some(0)),
+                eligible
+            );
+        }
+        report.start(now, 2);
+        report.finish(now + after, Always, after, false, Some(0));
+        report.update(Never);
+        assert!(!report.is_registered());
+        report.update(Always);
+        assert!(!report.is_registered());
+        report.start(now, 3);
+        report.finish(now + after, Always, after * 2, false, Some(0));
+        assert!(!report.is_registered());
+    }
+    #[test]
+    fn command_report_new_command_rejects_old_tile_capture_and_reset_clears() {
+        let (mut workspace, mut reports) = setup(1);
+        let pane = *reports.keys().next().unwrap();
+        let now = Instant::now();
+        let policy = NotifyOnCommandFinish::Always;
+        let mut report = CommandReport::default();
+        let mut dashboard = Dashboard::default();
+        report.start(now, 1);
+        report.finish(now, policy, Duration::ZERO, false, Some(0));
+        reports.insert(pane, report.view(pane, "").unwrap());
+        dashboard.update(&mut workspace, &reports, &HashMap::new(), None);
+        let captured = dashboard.board.tile(0).capture;
+        assert!(dashboard.board.valid(captured));
+        report.finish(now, policy, Duration::ZERO, false, Some(0));
+        report.start(now, 2);
+        assert!(report.view(pane, "").is_none());
+        report.finish(now, policy, Duration::ZERO, false, Some(0));
+        reports.insert(pane, report.view(pane, "").unwrap());
+        dashboard.update(&mut workspace, &reports, &HashMap::new(), None);
+        assert_eq!(dashboard.board.tile(0).capture.assignment, Some(pane));
+        assert!(!dashboard.board.valid(captured));
+        report.clear();
+        report.finish(now, policy, Duration::ZERO, false, Some(0));
+        report.update(policy);
+        assert!(!report.is_registered());
+    }
+    #[test]
+    fn explicit_signals_suppress_command_completions_and_remove_late_tiles() {
+        let now = Instant::now();
+        let after = Duration::from_secs(5);
+        let policy = NotifyOnCommandFinish::Always;
+        let mut report = CommandReport::default();
+        report.start(now, 1);
+        assert!(report.view(1, "").is_none());
+        report.update(policy);
+        assert!(report.view(1, "").is_none());
+        report.explicit_reported();
+        report.acknowledge();
+        report.update(policy);
+        assert!(report.view(1, "").is_none());
+        assert!(!report.finish(now + after, policy, after, false, Some(0)));
+        assert!(report.view(1, "").is_none());
+
+        for agent in [false, true] {
+            report.start(now, 2);
+            assert!(report.finish(now + after, policy, after, false, Some(0)));
+            if agent {
+                report.agent_reported();
+            } else {
+                report.explicit_reported();
+            }
+            report.update(policy);
+            assert!(report.view(1, "").is_none());
+            assert!(!report.has_agent_report());
+        }
+    }
+    #[test]
+    fn structured_status_wins_over_progress_in_aggregate_counts() {
+        let (mut workspace, mut reports) = setup(1);
+        let pane = *reports.keys().next().unwrap();
+        reports.get_mut(&pane).unwrap().state = State::Done;
+        let mut dashboard = Dashboard::default();
+        dashboard.update(
+            &mut workspace,
+            &reports,
+            &HashMap::from([(pane, State::Error)]),
+            None,
+        );
+        assert_eq!(dashboard.board.counts, [0, 0, 1, 0]);
+        assert_eq!(dashboard.cycle(0, None), None);
+        assert_eq!(dashboard.cycle(2, None), Some(pane));
+    }
+    #[test]
+    fn review_completion_does_not_reappear_as_a_shell_command_after_agent_end() {
+        let (mut workspace, mut reports) = setup(1);
+        let pane = *reports.keys().next().unwrap();
+        let now = Instant::now();
+        let after = Duration::from_secs(5);
+        let policy = NotifyOnCommandFinish::Always;
+        let mut command = CommandReport::default();
+        let mut agent = Report::default();
+        let activity = Activity::default();
+        let mut dashboard = Dashboard::default();
+        command.start(now, 1);
+        command.update(policy);
+        assert!(!command.is_registered());
+
+        for (event, expected) in [
+            (
+                Event::Begin(snapshot(State::Working, "review", None)),
+                Some(State::Working),
+            ),
+            (
+                Event::Update(snapshot(State::Done, "review", Some("turn"))),
+                Some(State::Done),
+            ),
+            (Event::End, None),
+        ] {
+            if matches!(event, Event::Begin(_)) {
+                command.agent_reported();
+            }
+            agent.apply(event, 2, true);
+            command.update(policy);
+            assert!(!command.is_registered());
+            assert!(command.has_agent_report());
+            reports.clear();
+            if let Some(view) = agent
+                .view(pane, "review", &activity)
+                .or_else(|| command.view(pane, "review"))
+            {
+                reports.insert(pane, view);
+            }
+            dashboard.update(&mut workspace, &reports, &HashMap::new(), None);
+            assert_eq!(dashboard.board.tile(0).state, expected);
+            assert_eq!(
+                dashboard.board.counts.iter().sum::<usize>(),
+                usize::from(expected.is_some())
+            );
+            if expected == Some(State::Done) {
+                agent.acknowledge();
+                command.acknowledge();
+                assert!(!agent.view(pane, "review", &activity).unwrap().unseen);
+            }
+        }
+
+        agent.command_ended();
+        assert!(!command.finish(now + after, policy, after, false, Some(0)));
+        command.update(policy);
+        assert!(command.view(pane, "review").is_none());
+        assert!(!command.has_agent_report());
+
+        command.start(now + after * 2, 3);
+        command.update(policy);
+        assert!(command.view(pane, "build").is_none());
+        command.finish(now + after * 3, policy, after, false, Some(0));
+        assert_eq!(command.view(pane, "build").unwrap().state, State::Done);
+    }
+    #[test]
+    fn explicit_ownership_and_reset_block_attention_until_the_next_command() {
+        let now = Instant::now();
+        let policy = NotifyOnCommandFinish::Always;
+        let mut command = CommandReport::default();
+        command.explicit_reported();
+
+        command.start(now, 1);
+        assert!(command.finish(now, policy, Duration::ZERO, false, Some(0)));
+        command.start(now, 2);
+        command.explicit_reported();
+        command.acknowledge();
+        assert!(!command.finish(now, policy, Duration::ZERO, false, Some(0)));
+
+        command.start(now, 3);
+        assert!(command.finish(now, policy, Duration::ZERO, false, Some(0)));
+        assert!(!command.finish(now, policy, Duration::ZERO, false, Some(0)));
+        command.start(now, 4);
+        command.clear();
+        assert!(!command.finish(now, policy, Duration::ZERO, false, Some(0)));
+    }
+    #[test]
     fn wait_pr_and_notify_me_results_survive_split_reads() {
         use rustty::vt::{Effect, Terminal};
         for (ending, expected) in [
             (
                 "\x1b]9;✅ PR #42 merged: title\x1b\\\x1b]9;4;0\x1b\\\x1b]133;D;0\x07",
+                State::Done,
+            ),
+            (
+                "\x1b]9;✅ PR #42 merged: title\x1b\\\x1b]9;4;0\x1b\\\x1b]133;D;1\x07",
                 State::Done,
             ),
             (
@@ -714,7 +1078,7 @@ mod tests {
         report.acknowledge();
         assert_eq!(report.state(), None);
         report.apply(&Effect::CommandEnd { exit_code: Some(1) }, true);
-        assert_eq!(report.state(), Some(State::Error));
+        assert_eq!(report.state(), None);
         report.apply(&Effect::CommandStart, false);
         assert_eq!(report.state(), None);
         report.apply(&progress(1), true);
@@ -751,7 +1115,7 @@ mod tests {
         assert_eq!(report.state(), Some(State::Error));
     }
     #[test]
-    fn progress_timeout_loses_tracking_until_fresh_progress_or_a_command_result() {
+    fn progress_timeout_loses_tracking_until_fresh_progress_or_an_explicit_result() {
         use rustty::vt::Effect;
         let mut report = ProgressReport::default();
         let progress = Effect::Progress {
@@ -771,12 +1135,12 @@ mod tests {
         assert_eq!(report.state(), Some(State::Working));
         assert!(report.deadline().is_some());
 
-        for (exit_code, expected) in [(Some(0), State::Done), (Some(1), State::Error)] {
+        for exit_code in [Some(0), Some(1), None] {
             report.clear();
             report.apply(&progress, true);
             report.expire(report.deadline().unwrap());
             report.apply(&Effect::CommandEnd { exit_code }, true);
-            assert_eq!(report.state(), Some(expected));
+            assert_eq!(report.state(), None);
         }
         report.clear();
         report.apply(
@@ -789,7 +1153,83 @@ mod tests {
         report.expire(report.deadline().unwrap());
         assert_eq!(report.state(), None);
         report.apply(&Effect::CommandEnd { exit_code: Some(0) }, true);
+        assert_eq!(report.state(), None);
+    }
+    #[test]
+    fn explicit_progress_results_survive_expiry_and_do_not_rearm_when_repeated() {
+        use rustty::vt::Effect;
+        let progress = Effect::Progress {
+            state: 3,
+            value: None,
+        };
+        let clear = Effect::Progress {
+            state: 0,
+            value: None,
+        };
+        let notification = |body: &str| Effect::Notification {
+            title: Vec::new(),
+            body: body.as_bytes().to_vec(),
+        };
+        for (body, expected) in [("✅ merged", State::Done), ("❌ failed", State::Error)] {
+            let mut report = ProgressReport::default();
+            report.apply(&progress, true);
+            report.expire(report.deadline().unwrap());
+            report.apply(&notification(body), true);
+            assert_eq!(report.state(), Some(expected));
+            report.acknowledge();
+            report.apply(&notification(body), true);
+            assert_eq!(report.state(), None);
+            report.apply(&Effect::CommandEnd { exit_code: Some(1) }, true);
+            assert_eq!(report.state(), None);
+
+            report.apply(&Effect::CommandStart, false);
+            report.apply(&progress, true);
+            report.apply(&notification(body), true);
+            report.expire(report.deadline().unwrap());
+            report.apply(&progress, true);
+            report.apply(&clear, true);
+            assert_eq!(report.state(), Some(expected));
+            report.apply(&Effect::CommandEnd { exit_code: Some(1) }, true);
+            assert_eq!(report.state(), Some(expected));
+        }
+
+        let mut report = ProgressReport::default();
+        report.apply(&progress, true);
+        report.apply(&clear, true);
+        report.apply(&notification("✅ merged"), true);
+        report.acknowledge();
+        report.apply(&notification("❌ cleanup failed"), true);
         assert_eq!(report.state(), Some(State::Error));
+        report.acknowledge();
+        report.apply(&notification("✅ merged"), true);
+        report.apply(&notification("❌ cleanup failed"), true);
+        report.apply(&Effect::CommandEnd { exit_code: Some(0) }, true);
+        assert_eq!(report.state(), None);
+
+        report.apply(&Effect::CommandStart, false);
+        report.apply(
+            &Effect::Progress {
+                state: 2,
+                value: None,
+            },
+            true,
+        );
+        report.expire(report.deadline().unwrap());
+        report.apply(&progress, true);
+        report.apply(&Effect::CommandEnd { exit_code: Some(0) }, true);
+        assert_eq!(report.state(), Some(State::Error));
+
+        report.apply(&Effect::CommandStart, false);
+        let error = Effect::Progress {
+            state: 2,
+            value: None,
+        };
+        report.apply(&error, true);
+        report.apply(&notification("✅ recovered and merged"), true);
+        report.apply(&error, true);
+        report.apply(&clear, true);
+        report.apply(&Effect::CommandEnd { exit_code: Some(1) }, true);
+        assert_eq!(report.state(), Some(State::Done));
     }
     #[test]
     fn progress_aggregates_deduplicate_without_allocating_agent_slots() {

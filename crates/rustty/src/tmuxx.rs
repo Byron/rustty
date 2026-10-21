@@ -1646,14 +1646,14 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
             if let Some(pane) = model.panes.get_mut(&pane_id) {
                 // Application replies belong to the owner. Host actions require
                 // the native elected-recipient protocol, never replay effects.
-                let mut effects = Vec::new();
+                let mut events = Vec::new();
                 for effect in pane.terminal.feed(&data) {
                     let ended = pane.agent_status.observe(&effect);
-                    if view_effect(&effect) {
-                        effects.push(effect);
+                    if let Some(event) = view_event(effect) {
+                        events.push(event);
                     }
                     if let Some(event) = ended {
-                        effects.push(Effect::AgentStatus(event));
+                        events.push(SessionEvent::Effect(Effect::AgentStatus(event)));
                     }
                 }
                 pane.views.retain(|view| {
@@ -1663,8 +1663,8 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
                     if let Ok(mut terminal) = terminal.lock() {
                         let _ = terminal.feed(&data);
                     }
-                    for effect in &effects {
-                        let _ = view.events.try_send(SessionEvent::Effect(effect.clone()));
+                    for event in &events {
+                        let _ = view.events.try_send(event.clone());
                     }
                     (view.wake)();
                     true
@@ -1700,6 +1700,13 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
                     )),
                 ),
             };
+            let event = match &effect {
+                Effect::Notification { title, body } => SessionEvent::NotificationDelivery {
+                    title: title.clone(),
+                    body: body.clone(),
+                },
+                effect => SessionEvent::Effect(effect.clone()),
+            };
             let mut delivered = false;
             if let Some(pane) = model.panes.get_mut(&pane_id) {
                 pane.views.retain(|v| v.terminal.strong_count() > 0);
@@ -1709,10 +1716,7 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
                     .find(|v| v.focused.load(Ordering::Acquire))
                     .or_else(|| pane.views.first())
                     && view.pending.lock().map_err(err)?.len() < 256
-                    && view
-                        .events
-                        .try_send(SessionEvent::Effect(effect.clone()))
-                        .is_ok()
+                    && view.events.try_send(event).is_ok()
                 {
                     if denied.is_some() {
                         view.pending.lock().map_err(err)?.push((event_id, effect));
@@ -1798,19 +1802,20 @@ fn host_reply(shared: &Shared, event_id: u64, response: HostResponse) -> io::Res
         .map_err(err)
 }
 
-fn view_effect(effect: &Effect) -> bool {
-    !matches!(
-        effect,
-        Effect::Write(_)
-            | Effect::Bell
-            | Effect::Notification { .. }
-            | Effect::ClipboardRead(_)
-            | Effect::ClipboardWrite(_)
-    )
+fn view_event(effect: Effect) -> Option<SessionEvent> {
+    match effect {
+        Effect::Notification { title, body } => {
+            Some(SessionEvent::NotificationObserved { title, body })
+        }
+        Effect::Write(_) | Effect::Bell | Effect::ClipboardRead(_) | Effect::ClipboardWrite(_) => {
+            None
+        }
+        effect => Some(SessionEvent::Effect(effect)),
+    }
 }
 fn feed_view(terminal: &mut Terminal, data: &[u8], events: &mpsc::SyncSender<SessionEvent>) {
-    for effect in terminal.feed(data).into_iter().filter(view_effect) {
-        let _ = events.try_send(SessionEvent::Effect(effect));
+    for event in terminal.feed(data).into_iter().filter_map(view_event) {
+        let _ = events.try_send(event);
     }
 }
 
@@ -3007,6 +3012,29 @@ mod tests {
     }
 
     #[test]
+    fn notification_observations_keep_command_order_across_split_reads() {
+        let bytes = b"\x1b]133;C\x07\x1b]9;4;3\x07\x1b]9;result\x07\x1b]777;notify;title;body\x07\x1b]133;D;0\x07";
+        for split in 0..=bytes.len() {
+            let mut terminal = tmuxx_terminal::Terminal::new(10, 4, 0).into_backend();
+            let (sender, receiver) = mpsc::sync_channel(16);
+            feed_view(&mut terminal, &bytes[..split], &sender);
+            feed_view(&mut terminal, &bytes[split..], &sender);
+            let events = receiver.try_iter().collect::<Vec<_>>();
+            assert!(
+                matches!(events.as_slice(), [
+                SessionEvent::Effect(Effect::TmuxCommandStart { .. }),
+                SessionEvent::Effect(Effect::CommandStart),
+                SessionEvent::Effect(Effect::Progress { state: 3, .. }),
+                SessionEvent::NotificationObserved { title: first_title, body: first_body },
+                SessionEvent::NotificationObserved { title, body },
+                SessionEvent::Effect(Effect::CommandEnd { exit_code: Some(0) }),
+            ] if first_title.is_empty() && first_body == b"result" && title == b"title" && body == b"body"),
+                "split {split}: {events:?}"
+            );
+        }
+    }
+
+    #[test]
     fn native_command_replies_are_registered_before_delivery() {
         let (connection, requests) = Connection::base(Arc::new(|| {}), true);
         thread::scope(|scope| {
@@ -3723,6 +3751,69 @@ mod tests {
             assert!(Instant::now() < deadline, "missing {marker}: {text:?}");
             thread::sleep(Duration::from_millis(5));
         }
+    }
+    #[test]
+    fn native_notifications_are_observed_by_all_views_and_delivered_to_one_host() {
+        let connection = test_owner(
+            "import os,tty; tty.setraw(0); os.write(1,b'READY'); os.read(0,1); os.write(1,b'\\x1b]133;C\\x07\\x1b]9;4;3\\x07\\x1b]9;result\\x07\\x1b]777;notify;title;body\\x07\\x1b]133;D;0\\x07FINISHED'); os.read(0,1)",
+        );
+        let graph = wait(&connection, |graph| !graph.panes.is_empty());
+        let pane = graph.panes[0].id;
+        let first = Session::attach_tmuxx(&connection, pane, Arc::new(|| {})).unwrap();
+        let second = Session::attach_tmuxx(&connection, pane, Arc::new(|| {})).unwrap();
+        wait_text(&connection, &first, "READY");
+        second
+            .set_host_state(true, true, rustty_vt::query::ColorScheme::Dark)
+            .unwrap();
+        let Source::Unix(endpoint) = &connection.source else {
+            panic!("missing endpoint")
+        };
+        let remote = Connection::native(endpoint, Arc::new(|| {})).unwrap();
+        wait(&remote, |graph| graph.panes.iter().any(|p| p.id == pane));
+        let third = Session::attach_tmuxx(&remote, pane, Arc::new(|| {})).unwrap();
+        third
+            .set_host_state(true, false, rustty_vt::query::ColorScheme::Dark)
+            .unwrap();
+        remote
+            .command_with_reply(Vec::new())
+            .unwrap()
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        first.write(b"x").unwrap();
+        for (connection, session, delivered) in [
+            (&connection, &first, 0),
+            (&connection, &second, 2),
+            (&remote, &third, 0),
+        ] {
+            wait_text(connection, session, "FINISHED");
+            let events = session.events().collect::<Vec<_>>();
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|event| matches!(event, SessionEvent::NotificationDelivery { .. }))
+                    .count(),
+                delivered,
+                "{events:?}"
+            );
+            let observations = events
+                .into_iter()
+                .filter(|event| !matches!(event, SessionEvent::NotificationDelivery { .. }))
+                .collect::<Vec<_>>();
+            assert!(
+                matches!(observations.as_slice(), [
+                SessionEvent::Effect(Effect::TmuxCommandStart { .. }),
+                SessionEvent::Effect(Effect::CommandStart),
+                SessionEvent::Effect(Effect::Progress { state: 3, .. }),
+                SessionEvent::NotificationObserved { title: first_title, body: first_body },
+                SessionEvent::NotificationObserved { title, body },
+                SessionEvent::Effect(Effect::CommandEnd { exit_code: Some(0) }),
+            ] if first_title.is_empty() && first_body == b"result" && title == b"title" && body == b"body"),
+                "{observations:?}"
+            );
+        }
+        let attached = Session::attach_tmuxx(&remote, pane, Arc::new(|| {})).unwrap();
+        assert_eq!(attached.events().count(), 0);
     }
     #[test]
     fn native_focus_is_aggregated_across_views_and_connections_and_gated_by_server_option() {
