@@ -383,6 +383,18 @@ and **New floating panel** change the server's objects. Floating panels use the
 same native rendering and input controls as tiled panels; their server geometry,
 stacking, clipping, and modal input policies remain authoritative.
 
+Native tmuxx sessions using `window-size=latest` follow the first Rustty view
+that reports dimensions. Other views do not take control by resizing or focusing
+their own windows. Closing the owner transfers sizing to the next view.
+
+For an open session, choose **tmuxx → server → session → Fit to This Window**
+to use its local window's dimensions and take control. This switches its tabs
+to `latest`, including tabs left in `manual` by old window copies. Automatic
+size reports preserve other policies; `aggressive-resize` still delays inactive
+tabs until selected. Ownership requires an updated server. On older native
+servers, Fit sets a fixed size until used again. Stock tmux over SSH retains
+standard tmux sizing.
+
 Closing a panel kills its pane. Closing a tab kills its server window, including
 linked views in other sessions. Closing a persistent or SSH window asks whether
 to terminate its session or close only the local window. The tmuxx menu lists

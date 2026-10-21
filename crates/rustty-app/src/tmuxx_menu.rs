@@ -29,6 +29,7 @@ pub struct Target {
 pub enum Command {
     Connect(String),
     Open(Target, u64),
+    Fit(Target, u64),
     Kill(Target, u64),
     Execute(Target, Vec<String>),
     Disconnect(Target),
@@ -229,6 +230,7 @@ mod tests {
         assert!(!Command::Reconnect(target.clone()).requires_confirmation());
         assert!(Command::Execute(target.clone(), vec!["kill-pane".into()]).requires_confirmation());
         assert!(!Command::Open(target.clone(), 7).requires_confirmation());
+        assert!(!Command::Fit(target.clone(), 7).requires_confirmation());
         assert!(!Command::Disconnect(target).requires_confirmation());
         assert!(!Command::Connect("ssh:build-host".into()).requires_confirmation());
     }
