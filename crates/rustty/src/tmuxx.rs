@@ -133,6 +133,16 @@ impl Model {
             let _ = reply.send(Err(err(message)));
         }
     }
+    fn release_terminals(&mut self) {
+        self.panes.clear();
+        if let Some(graph) = &mut self.graph {
+            // Keep session identity for disconnected windows and saved attachments.
+            let empty = Arc::new(serde_json::Value::Null);
+            for pane in &mut graph.panes {
+                pane.terminal = empty.clone();
+            }
+        }
+    }
     fn focus_reply(&mut self, request_id: u64, failed: bool) {
         self.pending_focus.retain_mut(|focus| {
             if focus.request_id == request_id {
@@ -1181,6 +1191,7 @@ impl Drop for Connection {
         if let Ok(mut model) = self.shared.model.lock() {
             model.pending_focus.clear();
             model.fail_replies("tmuxx connection is closed");
+            model.release_terminals();
         }
         if let Some(system) = &mut self.system {
             system.close();
@@ -1267,6 +1278,7 @@ fn fail(shared: &Shared, error: impl std::fmt::Display) {
                 (view.wake)();
             }
         }
+        model.release_terminals();
     }
     (shared.wake)();
 }
@@ -1369,6 +1381,9 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
         return Ok(());
     }
     let mut model = shared.model.lock().map_err(err)?;
+    if shared.closed.load(Ordering::Acquire) {
+        return Ok(());
+    }
     match message {
         ServerMessage::File { .. } => {
             return Err(err(
@@ -1575,6 +1590,7 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
             for pane in model.panes.values() {
                 close_views(pane);
             }
+            model.release_terminals();
             (shared.wake)();
         }
         ServerMessage::Exit { reason } => {
@@ -1687,6 +1703,93 @@ mod focus_tests {
     }
     fn active(connection: &Connection) -> u64 {
         connection.graph().unwrap().windows[0].active
+    }
+
+    #[test]
+    fn closed_connections_release_sources_but_keep_view_contents_and_session_metadata() {
+        use crate::session::Session;
+
+        for close in ["failure", "detach", "drop"] {
+            let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+            let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);
+            owner.feed(b"one\r\ntwo\r\nthree\r\nfour\r\nfive");
+            let mut initial = state();
+            initial["panes"][0]["terminal"] = serde_json::to_value(owner.snapshot()).unwrap();
+            snapshot(&connection, 1, initial);
+            let snapshots = connection
+                .graph()
+                .unwrap()
+                .panes
+                .iter()
+                .map(|pane| Arc::downgrade(&pane.terminal))
+                .collect::<Vec<_>>();
+            let view = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+            let (contents, selection) = {
+                let mut terminal = view.terminal().unwrap();
+                terminal.screen_mut().scroll_viewport(1);
+                let row = terminal.screen().row(0).id;
+                let selection = rustty_vt::Selection {
+                    start: rustty_vt::GridPoint { row, col: 0 },
+                    end: rustty_vt::GridPoint { row, col: 2 },
+                    rectangular: false,
+                };
+                terminal.screen_mut().selection = Some(selection);
+                (terminal.plain_text(), selection)
+            };
+            let shared = connection.shared.clone();
+            let mut connection = Some(connection);
+            match close {
+                "failure" => fail(&shared, "connection lost"),
+                "detach" => apply(
+                    &shared,
+                    ServerMessage::Detached {
+                        session: "one".into(),
+                        hangup: false,
+                    },
+                )
+                .unwrap(),
+                "drop" => drop(connection.take()),
+                _ => unreachable!(),
+            }
+            assert!(
+                snapshots
+                    .iter()
+                    .all(|snapshot| snapshot.upgrade().is_none())
+            );
+            assert_eq!(view.has_exited(), close == "detach");
+            {
+                let terminal = view.terminal().unwrap();
+                assert_eq!(terminal.plain_text(), contents);
+                assert_eq!(terminal.screen().selection, Some(selection));
+                assert_eq!(terminal.screen().viewport_offset, 1);
+            }
+            assert_eq!(view.snapshot().unwrap().screen.selection, Some(selection));
+            if let Some(connection) = &connection {
+                assert!(connection.is_closed());
+                assert_eq!(connection.instance(), "owner");
+                let sessions = connection.sessions();
+                assert_eq!(sessions[0].id, 0);
+                assert_eq!(sessions[0].name, "one");
+                assert_eq!(sessions[0].windows, ["split", "single"]);
+            }
+            // A frame already read when another worker closes cannot retain data again.
+            apply(
+                &shared,
+                ServerMessage::Snapshot {
+                    instance_id: "late".into(),
+                    sequence: 2,
+                    state: state(),
+                },
+            )
+            .unwrap();
+            let model = shared.model.lock().unwrap();
+            assert!(model.panes.is_empty());
+            assert_eq!(model.instance, "owner");
+            let graph = model.graph.as_ref().unwrap();
+            assert_eq!(graph.sessions[0].name, "one");
+            assert_eq!(graph.windows[0].panes, [7, 8]);
+            assert!(graph.panes.iter().all(|pane| pane.terminal.is_null()));
+        }
     }
 
     #[test]
