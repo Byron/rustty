@@ -29,6 +29,7 @@ mod names;
 mod process;
 mod reports;
 mod scheduler;
+mod server_status;
 mod sizes;
 #[cfg(test)]
 mod snapshots;
@@ -1071,6 +1072,8 @@ struct Host {
     engine: Engine,
     processes: BTreeMap<Id, Process>,
     clients: BTreeMap<u64, Client>,
+    server_watchers: BTreeMap<u64, Option<usize>>,
+    management_clients: BTreeSet<u64>,
     file_clients: BTreeSet<u64>,
     tx: SyncSender<Event>,
     instance: String,
@@ -1167,6 +1170,8 @@ impl Host {
             format_jobs: BTreeMap::new(),
             processes: BTreeMap::new(),
             clients: BTreeMap::new(),
+            server_watchers: BTreeMap::new(),
+            management_clients: BTreeSet::new(),
             file_clients: BTreeSet::new(),
             tx,
             instance: format!(
@@ -1193,6 +1198,7 @@ impl Host {
         self.start_configuration(&options.config);
         let mut had_session = false;
         while !self.stopping {
+            self.refresh_server_status();
             self.engine.now = tmuxx_core::timestamp();
             had_session |= !self.engine.sessions.is_empty();
             let unattached = self
@@ -1210,7 +1216,9 @@ impl Host {
                 && (self.engine.sessions.is_empty() || unattached)
             {
                 self.scheduler.flush_waiters();
-                if self.clients.is_empty() && !self.scheduler.has_jobs() {
+                if self.clients.keys().all(|id| self.is_management_client(*id))
+                    && !self.scheduler.has_jobs()
+                {
                     break;
                 }
             }

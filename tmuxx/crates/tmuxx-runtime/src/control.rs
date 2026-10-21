@@ -114,6 +114,7 @@ pub(super) fn message_bytes(message: &ServerMessage) -> usize {
         ServerMessage::File { path, data, .. } => path.len() + data.as_ref().map_or(0, Vec::len),
         ServerMessage::Detached { session, .. } => session.len(),
         ServerMessage::ClientFlags { flags } => flags.len(),
+        ServerMessage::ServerStatus(status) => status.instance_id.len(),
         _ => 0,
     }
 }

@@ -32,14 +32,16 @@ pub enum Command {
     Kill(Target, u64),
     Execute(Target, Vec<String>),
     Disconnect(Target),
+    Reconnect(Target),
     Shutdown(Target),
+    ShutdownIdle(Target),
 }
 
 impl Command {
     pub fn requires_confirmation(&self) -> bool {
         matches!(
             self,
-            Self::Kill(..) | Self::Execute(..) | Self::Shutdown(..)
+            Self::Kill(..) | Self::Execute(..) | Self::Shutdown(..) | Self::ShutdownIdle(..)
         )
     }
 }
@@ -223,6 +225,8 @@ mod tests {
         };
         assert!(Command::Kill(target.clone(), 7).requires_confirmation());
         assert!(Command::Shutdown(target.clone()).requires_confirmation());
+        assert!(Command::ShutdownIdle(target.clone()).requires_confirmation());
+        assert!(!Command::Reconnect(target.clone()).requires_confirmation());
         assert!(Command::Execute(target.clone(), vec!["kill-pane".into()]).requires_confirmation());
         assert!(!Command::Open(target.clone(), 7).requires_confirmation());
         assert!(!Command::Disconnect(target).requires_confirmation());
