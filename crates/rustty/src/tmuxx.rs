@@ -94,6 +94,7 @@ pub struct ServerPane {
 struct Model {
     instance: String,
     view_size_ownership: bool,
+    selection_updates: bool,
     sequence: u64,
     graph: Option<Graph>,
     server_status: Option<ServerStatus>,
@@ -542,6 +543,7 @@ impl Connection {
         let client = owner.connect_with_context(tmuxx_runtime::ClientContext {
             host_effects: true,
             compact_snapshots: true,
+            selection_updates: true,
             ..Default::default()
         })?;
         // Only this newly created owner adopts Rustty's clipboard policy UI.
@@ -586,12 +588,11 @@ impl Connection {
         subscribe: bool,
     ) -> io::Result<Self> {
         let (connection, requests) = Self::base(wake, subscribe);
-        connection
-            .shared
-            .model
-            .lock()
-            .map_err(err)?
-            .view_size_ownership = true;
+        {
+            let mut model = connection.shared.model.lock().map_err(err)?;
+            model.view_size_ownership = true;
+            model.selection_updates = true;
+        }
         let shared = connection.shared.clone();
         thread::Builder::new()
             .name("rustty-tmuxx-local".into())
@@ -946,6 +947,7 @@ impl Connection {
             &mut writer,
             &Hello {
                 host_effects,
+                selection_updates: true,
                 ..Default::default()
             },
         )?;
@@ -962,8 +964,11 @@ impl Connection {
                     if hello.version != tmuxx_protocol::native::VERSION {
                         return Err(err("unsupported tmuxx native version"));
                     }
-                    shared.model.lock().map_err(err)?.view_size_ownership =
-                        hello.view_size_ownership;
+                    {
+                        let mut model = shared.model.lock().map_err(err)?;
+                        model.view_size_ownership = hello.view_size_ownership;
+                        model.selection_updates = hello.selection_updates;
+                    }
                     let mut snapshots = SnapshotAssembler::default();
                     let mut instance = hello.instance_id;
                     if let Some(expected) = expected_instance {
@@ -1154,7 +1159,7 @@ impl Connection {
         }
         Some(count)
     }
-    /// Keep a local focus choice until its command and subsequent snapshot arrive.
+    /// Keep a local focus choice until its command and authoritative selection arrive.
     pub fn focus_pane(&self, session: u64, index: u32, pane: u64) -> io::Result<()> {
         let mut model = self.shared.model.lock().map_err(err)?;
         let graph = model
@@ -1179,15 +1184,19 @@ impl Connection {
         if !focus.valid(graph) {
             return Err(err("tmuxx focus pane is unavailable"));
         }
-        focus.request_id = self.command([
-            "select-window".into(),
-            "-t".into(),
-            format!("${session}:{index}"),
-            ";".into(),
-            "select-pane".into(),
-            "-t".into(),
-            format!("%{pane}"),
-        ])?;
+        focus.request_id = send_with_snapshot(
+            &self.shared,
+            vec![
+                b"select-window".to_vec(),
+                b"-t".to_vec(),
+                format!("${session}:{index}").into_bytes(),
+                b";".to_vec(),
+                b"select-pane".to_vec(),
+                b"-t".to_vec(),
+                format!("%{pane}").into_bytes(),
+            ],
+            !model.selection_updates,
+        )?;
         model.pending_focus.retain(|focus| focus.session != session);
         // Linked windows share pane focus: later intents must be projected last.
         model.pending_focus.push(focus);
@@ -1517,11 +1526,126 @@ fn replace_view(view: &mut Terminal, source: &Terminal, appearance: Option<&Conf
         });
     }
 }
+
+#[derive(Deserialize)]
+struct Selection {
+    sessions: Vec<Selected>,
+    windows: Vec<Selected>,
+    panes: Vec<SelectedPane>,
+}
+#[derive(Deserialize)]
+struct Selected {
+    id: u64,
+    active: u64,
+}
+#[derive(Deserialize)]
+struct SelectedPane {
+    id: u64,
+    style: rustty_vt::TmuxPaneStyle,
+    control_colors: [Option<[u8; 3]>; 2],
+    host_dark: Option<bool>,
+}
+impl SelectedPane {
+    fn apply(&self, terminal: &mut Terminal) {
+        terminal.set_tmux_pane_style(self.style);
+        terminal.tmux_control_colors = self.control_colors;
+        terminal.query_defaults.color_scheme = self.host_dark.map(|dark| {
+            if dark {
+                rustty_vt::query::ColorScheme::Dark
+            } else {
+                rustty_vt::query::ColorScheme::Light
+            }
+        });
+    }
+}
+fn apply_selection(
+    model: &mut Model,
+    shared: &Shared,
+    sequence: u64,
+    state: serde_json::Value,
+) -> io::Result<()> {
+    if sequence < model.sequence {
+        return Ok(());
+    }
+    let selection: Selection = serde_json::from_value(state).map_err(err)?;
+    let counts = (
+        selection.sessions.len(),
+        selection.windows.len(),
+        selection.panes.len(),
+    );
+    let sessions = selection
+        .sessions
+        .into_iter()
+        .map(|selected| (selected.id, selected.active))
+        .collect::<BTreeMap<_, _>>();
+    let windows = selection
+        .windows
+        .into_iter()
+        .map(|selected| (selected.id, selected.active))
+        .collect::<BTreeMap<_, _>>();
+    let panes = selection
+        .panes
+        .into_iter()
+        .map(|pane| (pane.id, pane))
+        .collect::<BTreeMap<_, _>>();
+    let Some(graph) = &model.graph else {
+        return model.request_refresh(shared);
+    };
+    if counts != (sessions.len(), windows.len(), panes.len())
+        || counts != (graph.sessions.len(), graph.windows.len(), graph.panes.len())
+        || graph.sessions.iter().any(|session| {
+            sessions.get(&session.id).is_none_or(|active| {
+                u32::try_from(*active)
+                    .ok()
+                    .is_none_or(|index| !session.windows.contains_key(&index))
+            })
+        })
+        || graph.windows.iter().any(|window| {
+            windows
+                .get(&window.id)
+                .is_none_or(|active| !window.panes.contains(active))
+        })
+        || graph
+            .panes
+            .iter()
+            .any(|pane| !panes.contains_key(&pane.id) || !model.panes.contains_key(&pane.id))
+    {
+        return model.request_refresh(shared);
+    }
+    let mut graph = model.graph.take().unwrap();
+    for session in &mut graph.sessions {
+        session.active = sessions[&session.id];
+    }
+    for window in &mut graph.windows {
+        window.active = windows[&window.id];
+    }
+    for (id, selected) in panes {
+        let pane = model.panes.get_mut(&id).unwrap();
+        selected.apply(&mut pane.terminal);
+        pane.views.retain(|view| {
+            let Some(terminal) = view.terminal.upgrade() else {
+                return false;
+            };
+            if let Ok(mut terminal) = terminal.lock() {
+                selected.apply(&mut terminal);
+            }
+            (view.wake)();
+            true
+        });
+    }
+    model.sequence = sequence;
+    model.focus_snapshot(&graph);
+    model.graph = Some(graph);
+    // A selection update cannot satisfy a pending structural refresh.
+    (shared.wake)();
+    Ok(())
+}
 fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
     if !shared.subscribe
         && matches!(
             message,
             ServerMessage::Snapshot { .. }
+                | ServerMessage::Selection { .. }
                 | ServerMessage::PaneOutput { .. }
                 | ServerMessage::Changed { .. }
         )
@@ -1533,6 +1657,9 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
         return Ok(());
     }
     match message {
+        ServerMessage::Selection { sequence, state } => {
+            apply_selection(&mut model, shared, sequence, state)?;
+        }
         ServerMessage::ServerStatus(status) => {
             if status.instance_id.is_empty()
                 || !model.instance.is_empty() && model.instance != status.instance_id
@@ -1867,6 +1994,249 @@ mod focus_tests {
     }
     fn active(connection: &Connection) -> u64 {
         connection.graph().unwrap().windows[0].active
+    }
+    fn selection_state(active: u64) -> serde_json::Value {
+        serde_json::json!({
+            "sessions": [{"id":0,"active":0},{"id":1,"active":0}],
+            "windows": [{"id":1,"active":active},{"id":2,"active":9}],
+            "panes": ([7,8,9].map(|id| serde_json::json!({
+                "id":id,
+                "style":rustty_vt::TmuxPaneStyle {
+                    is_active: id == active || id == 9,
+                    ..Default::default()
+                },
+                "control_colors":[null,null],
+                "host_dark":null,
+            }))),
+        })
+    }
+    fn selection(connection: &Connection, sequence: u64, active: u64) {
+        apply(
+            &connection.shared,
+            ServerMessage::Selection {
+                sequence,
+                state: selection_state(active),
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn selection_updates_release_noop_and_rapid_focus_without_snapshot_requests() {
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        connection.shared.model.lock().unwrap().selection_updates = true;
+        snapshot(&connection, 1, state());
+        connection.focus_pane(0, 0, 7).unwrap();
+        let noop = requests.try_recv().unwrap();
+        assert!(!noop.subscribe && !noop.control);
+        reply(&connection, noop.request_id, None);
+        selection(&connection, 1, 7);
+        assert!(
+            connection
+                .shared
+                .model
+                .lock()
+                .unwrap()
+                .pending_focus
+                .is_empty()
+        );
+
+        connection.focus_pane(1, 0, 8).unwrap();
+        let first = requests.try_recv().unwrap();
+        selection(&connection, 2, 7);
+        assert_eq!(active(&connection), 8, "old selection reversed the click");
+        reply(&connection, first.request_id, None);
+        assert_eq!(active(&connection), 8, "reply exposed the cached graph");
+        connection.focus_pane(0, 0, 7).unwrap();
+        let second = requests.try_recv().unwrap();
+        assert!(!first.subscribe && !second.subscribe);
+        selection(&connection, 3, 8);
+        assert_eq!(
+            active(&connection),
+            7,
+            "earlier click replaced the latest one"
+        );
+        reply(&connection, second.request_id, None);
+        selection(&connection, 4, 7);
+        assert!(
+            connection
+                .shared
+                .model
+                .lock()
+                .unwrap()
+                .pending_focus
+                .is_empty()
+        );
+        selection(&connection, 5, 8);
+        assert_eq!(
+            active(&connection),
+            8,
+            "later external selection was hidden"
+        );
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
+    fn selection_updates_preserve_live_output_history_selection_and_view_appearance() {
+        use crate::session::Session;
+
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);
+        owner.feed(b"one\r\ntwo\r\nthree\r\nfour\r\nfive");
+        let mut initial = state();
+        initial["panes"][0]["terminal"] = serde_json::to_value(owner.snapshot()).unwrap();
+        snapshot(&connection, 1, initial);
+        let before = connection.graph().unwrap();
+        let view = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let mut config = Config::default();
+        config.background = crate::config::Rgb::new(1, 2, 3);
+        view.apply_appearance(&config).unwrap();
+        let selected = {
+            let mut terminal = view.terminal().unwrap();
+            terminal.screen_mut().scroll_viewport(1);
+            let row = terminal.screen().row(0).id;
+            let selected = rustty_vt::Selection {
+                start: rustty_vt::GridPoint { row, col: 0 },
+                end: rustty_vt::GridPoint { row, col: 2 },
+                rectangular: false,
+            };
+            terminal.screen_mut().selection = Some(selected);
+            selected
+        };
+        requests.try_iter().for_each(drop);
+        apply(
+            &connection.shared,
+            ServerMessage::PaneOutput {
+                sequence: 2,
+                pane_id: 7,
+                data: b" streamed".to_vec(),
+            },
+        )
+        .unwrap();
+        let (text, rows, offset) = {
+            let terminal = view.terminal().unwrap();
+            (
+                terminal.plain_text(),
+                terminal
+                    .screen()
+                    .all_rows()
+                    .map(|row| row.id)
+                    .collect::<Vec<_>>(),
+                terminal.screen().viewport_offset,
+            )
+        };
+        let owner_text = connection.shared.model.lock().unwrap().panes[&7]
+            .terminal
+            .plain_text();
+        let mut state = selection_state(8);
+        state["panes"][0]["style"]["normal"][1] = serde_json::json!([4, 5, 6]);
+        state["panes"][0]["control_colors"] = serde_json::json!([[7, 8, 9], [10, 11, 12]]);
+        state["panes"][0]["host_dark"] = true.into();
+        apply(
+            &connection.shared,
+            ServerMessage::Selection { sequence: 3, state },
+        )
+        .unwrap();
+        let after = connection.graph().unwrap();
+        for (old, new) in before.panes.iter().zip(&after.panes) {
+            assert!(Arc::ptr_eq(&old.terminal, &new.terminal));
+        }
+        {
+            let terminal = view.terminal().unwrap();
+            assert_eq!(terminal.plain_text(), text);
+            assert_eq!(
+                terminal
+                    .screen()
+                    .all_rows()
+                    .map(|row| row.id)
+                    .collect::<Vec<_>>(),
+                rows
+            );
+            assert_eq!(terminal.screen().selection, Some(selected));
+            assert_eq!(terminal.screen().viewport_offset, offset);
+            assert_eq!(terminal.background, [4, 5, 6]);
+            assert_eq!(
+                terminal.color_default(rustty_vt::color::Target::Background),
+                Some([1, 2, 3])
+            );
+            assert_eq!(
+                terminal.tmux_control_colors,
+                [Some([7, 8, 9]), Some([10, 11, 12])]
+            );
+            assert_eq!(
+                terminal.query_defaults.color_scheme,
+                Some(rustty_vt::query::ColorScheme::Dark)
+            );
+        }
+        let model = connection.shared.model.lock().unwrap();
+        assert_eq!(model.panes[&7].terminal.background, [4, 5, 6]);
+        assert_eq!(model.panes[&7].terminal.plain_text(), owner_text);
+        drop(model);
+        selection(&connection, 1, 7);
+        assert_eq!(active(&connection), 8, "stale selection was applied");
+        apply(
+            &connection.shared,
+            ServerMessage::PaneOutput {
+                sequence: 4,
+                pane_id: 7,
+                data: b"!".to_vec(),
+            },
+        )
+        .unwrap();
+        let terminal = view.terminal().unwrap();
+        assert!(
+            terminal
+                .screen()
+                .all_rows()
+                .any(|row| terminal.screen().row_text(row).contains('!'))
+        );
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
+    fn selection_updates_require_matching_graph_and_do_not_satisfy_structural_refreshes() {
+        let mut invalid = Vec::new();
+        let mut missing = selection_state(8);
+        missing["panes"].as_array_mut().unwrap().pop();
+        invalid.push(missing);
+        for (section, index, field, value) in [
+            ("sessions", 1, "id", 0),
+            ("sessions", 0, "active", u64::from(u32::MAX) + 1),
+            ("windows", 0, "active", 9),
+            ("windows", 0, "id", 99),
+            ("panes", 0, "id", 99),
+            ("panes", 0, "id", 8),
+        ] {
+            let mut state = selection_state(8);
+            state[section][index][field] = value.into();
+            invalid.push(state);
+        }
+        for state in invalid {
+            let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+            snapshot(&connection, 1, self::state());
+            apply(
+                &connection.shared,
+                ServerMessage::Selection { sequence: 2, state },
+            )
+            .unwrap();
+            assert_eq!(
+                active(&connection),
+                7,
+                "invalid update partly changed the graph"
+            );
+            let refresh = requests.try_recv().unwrap();
+            assert!(refresh.subscribe && refresh.argv.is_empty());
+            selection(&connection, 3, 8);
+            assert!(connection.shared.model.lock().unwrap().refresh_pending);
+            apply(&connection.shared, ServerMessage::Changed { sequence: 4 }).unwrap();
+            assert!(requests.try_recv().is_err());
+            snapshot(&connection, 4, self::state());
+            assert!(!connection.shared.model.lock().unwrap().refresh_pending);
+        }
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        selection(&connection, 1, 7);
+        assert!(connection.graph().is_none());
+        assert!(requests.try_recv().unwrap().subscribe);
     }
 
     #[test]
@@ -2592,6 +2962,47 @@ mod tests {
         }
         drop(connection);
         peer.get_ref().shutdown(std::net::Shutdown::Both).unwrap();
+    }
+
+    #[test]
+    fn native_focus_snapshot_fallback_follows_server_negotiation() {
+        for supported in [false, true] {
+            let (stream, peer) = std::os::unix::net::UnixStream::pair().unwrap();
+            let connection =
+                Connection::stream(stream.try_clone().unwrap(), stream, Arc::new(|| {})).unwrap();
+            peer.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut peer = BufReader::new(peer);
+            let hello: Hello =
+                serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+            assert!(hello.selection_updates);
+            write_record(
+                peer.get_mut(),
+                &Hello {
+                    instance_id: Some("owner".into()),
+                    selection_updates: supported,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let initial: Request =
+                serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+            assert!(initial.subscribe && initial.argv.is_empty());
+            write_record(peer.get_mut(), &ServerMessage::Snapshot {
+                instance_id: "owner".into(), sequence: 1,
+                state: serde_json::json!({
+                    "sessions": [{"id":1,"name":"focus","active":0,"windows":{"0":2}}],
+                    "windows": [{"id":2,"name":"shell","active":7,"cols":20,"rows":3,"panes":[7],"layout":Layout::pane(7,20,3).to_legacy().unwrap()}],
+                    "panes": [{"id":7,"window":2,"cols":20,"rows":3,"status":null,"terminal":tmuxx_terminal::Terminal::new(20,3,10).snapshot()}],
+                }),
+            }).unwrap();
+            wait(&connection, |_| true);
+            connection.focus_pane(1, 0, 7).unwrap();
+            let focus: Request =
+                serde_json::from_slice(&record(&mut peer).unwrap().unwrap()).unwrap();
+            assert_eq!(focus.subscribe, !supported);
+            assert_eq!(tmuxx_command::parse_argv(&focus.argv).unwrap().len(), 2);
+            peer.get_ref().shutdown(std::net::Shutdown::Both).unwrap();
+        }
     }
 
     #[test]

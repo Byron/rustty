@@ -892,6 +892,7 @@ fn serve_connection(
             stdin_file_stream: true,
             client_features: Some(0),
             view_size_ownership: true,
+            selection_updates: true,
             ..Hello::default()
         },
     )?;
@@ -928,6 +929,7 @@ fn serve_connection(
         environment: hello.environment,
         host_effects: hello.host_effects,
         compact_snapshots: hello.compact_snapshots,
+        selection_updates: hello.selection_updates,
         ..ClientContext::default()
     };
     #[cfg(windows)]
