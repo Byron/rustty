@@ -108,6 +108,7 @@ impl Smoke {
             "find-focused.png",
             "find-unfocused.png",
             "theme-picker.png",
+            "tmuxx-secondary-selection.png",
             "outliner.png",
             "outliner-collapsed.png",
             "outliner-terminal.png",
@@ -452,6 +453,7 @@ impl Smoke {
                     "tmuxx-theme-picker",
                     "tmuxx-server-management",
                     "tmuxx-fit-window",
+                    "tmuxx-secondary-selection",
                 ]
                 .map(serde_json::Value::from),
             );
@@ -1320,7 +1322,14 @@ pub(super) fn check_tmuxx_management(
     let endpoint =
         tmuxx_host::temporary_endpoint(&format!("rustty-management-{}", std::process::id()))?;
     let configuration = directory.join("tmuxx-management.conf");
-    fs::write(&configuration, "")?;
+    fs::write(
+        &configuration,
+        if cfg!(windows) {
+            "set-option -g default-shell cmd.exe\nset-option -g default-command 'cmd.exe /D /Q'\n"
+        } else {
+            "set-option -g default-shell /bin/sh\nset-option -g default-command '/bin/sleep 60'\n"
+        },
+    )?;
     let executable = std::env::current_exe()?;
     #[cfg(windows)]
     let executable = executable.with_file_name("tmuxx.exe");
@@ -1387,8 +1396,10 @@ pub(super) fn check_tmuxx_management(
     entry.selected.insert(graph.sessions[0].id);
     let target = entry.target();
     let original = std::mem::replace(&mut app.tmuxx, vec![entry]);
+    let workspace = app.workspace.clone();
     let active = app.active;
     let errors = std::mem::take(&mut app.errors);
+    let background_smoke = std::mem::replace(&mut app.background_smoke, true);
     let result = (|| -> Result<()> {
         let sessions = [graph.sessions[0].id, graph.sessions[1].id];
         let windows = graph
@@ -1494,6 +1505,18 @@ pub(super) fn check_tmuxx_management(
                 .release_view(session)?;
         }
         app.active = active;
+        check_tmuxx_secondary_selection(
+            app,
+            event_loop,
+            owner.connection.as_ref().unwrap(),
+            sessions[0],
+            directory,
+        )?;
+        let graph = app.tmuxx[0]
+            .connection
+            .as_ref()
+            .and_then(Connection::graph)
+            .ok_or("secondary-selection smoke lost its server snapshot")?;
         app.tmuxx_menu_command(tmuxx_host::MenuCommand::Disconnect(target.clone()));
         let deadline = Instant::now() + Duration::from_secs(10);
         let connections = loop {
@@ -1552,6 +1575,16 @@ pub(super) fn check_tmuxx_management(
             app.refresh_tmuxx(event_loop);
             std::thread::sleep(Duration::from_millis(5));
         };
+        app.reconcile(event_loop);
+        if !app.tmuxx[0].mapping.sessions.is_empty()
+            || app.workspace.windows.len() != workspace.windows.len()
+            || app
+                .windows
+                .values()
+                .any(|host| !workspace.windows.iter().any(|window| window.id == host.id))
+        {
+            return Err("Disconnect retained the selection fixture's native views".into());
+        }
         app.tmuxx_menu_command(tmuxx_host::MenuCommand::Reconnect(target.clone()));
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
@@ -1670,18 +1703,224 @@ pub(super) fn check_tmuxx_management(
                 "fit_cached_size_twice": true,
                 "fit_preserved_other_session": true,
                 "fit_rejected_stale_target": true,
+                "local_focus_sent_select_pane": true,
+                "server_selection_kept_local_focus": true,
+                "secondary_selection_rendered": true,
+                "secondary_selection_suppressed_when_focused": true,
+                "local_split_auto_focused": true,
+                "local_floating_pane_auto_focused": true,
+                "remote_split_preserved_local_focus": true,
             }))?,
         )?;
         Ok(())
     })();
+    app.workspace = workspace;
     app.tmuxx = original;
     app.active = active;
+    app.reconcile(event_loop);
+    app.background_smoke = background_smoke;
     app.errors = errors;
     app.sync_tmuxx_menu();
     result?;
     eprintln!(
         "Native smoke: server menus retained live counts without snapshots; reconnect preserved sessions and idle stop reported a clean shutdown"
     );
+    Ok(())
+}
+
+fn check_tmuxx_secondary_selection(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    owner: &rustty::tmuxx::Connection,
+    session: u64,
+    directory: &Path,
+) -> Result<()> {
+    fn wait(
+        app: &mut App,
+        event_loop: &ActiveEventLoop,
+        label: &str,
+        ready: impl Fn(&App) -> bool,
+    ) -> Result<()> {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            app.refresh_tmuxx(event_loop);
+            if !app.errors.is_empty() {
+                return Err(format!("{label}: {:?}", app.errors).into());
+            }
+            if ready(app) {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err(format!("secondary-selection smoke timed out: {label}").into());
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+    let graph = owner.graph().ok_or("selection owner has no snapshot")?;
+    let server_session = graph.sessions.iter().find(|s| s.id == session).unwrap();
+    let index = u32::try_from(server_session.active)?;
+    let server_window = server_session.windows[&index];
+    let first = graph
+        .windows
+        .iter()
+        .find(|window| window.id == server_window)
+        .unwrap()
+        .active;
+    let split = || -> Result<u64> {
+        let mut argv = [
+            "split-window".into(),
+            "-h".into(),
+            "-P".into(),
+            "-F".into(),
+            "#{pane_id}".into(),
+            "-t".into(),
+            format!("%{first}"),
+        ]
+        .into_iter()
+        .map(String::into_bytes)
+        .collect::<Vec<_>>();
+        let command: &[&str] = if cfg!(windows) {
+            &["cmd.exe", "/D", "/Q"]
+        } else {
+            &["/bin/sleep", "60"]
+        };
+        argv.extend(command.iter().map(|arg| arg.as_bytes().to_vec()));
+        let output = owner
+            .command_with_reply(argv)?
+            .recv_timeout(Duration::from_secs(10))??;
+        Ok(std::str::from_utf8(&output)?
+            .trim()
+            .strip_prefix('%')
+            .ok_or("split command omitted its pane ID")?
+            .parse()?)
+    };
+    let second = split()?;
+    wait(app, event_loop, "opening native session panes", |app| {
+        app.tmuxx[0]
+            .mapping
+            .panes
+            .values()
+            .any(|pane| *pane == second)
+    })?;
+    let mapping = &app.tmuxx[0].mapping;
+    let window = *mapping
+        .sessions
+        .iter()
+        .find(|(_, sid)| **sid == session)
+        .ok_or("selection session did not open a window")?
+        .0;
+    let local = |app: &App, remote| {
+        app.tab(window)
+            .unwrap()
+            .panes
+            .keys()
+            .find(|pane| app.tmuxx[0].mapping.panes.get(pane) == Some(&remote))
+            .copied()
+            .unwrap()
+    };
+    let (first_view, second_view) = (local(app, first), local(app, second));
+    let key = app
+        .windows
+        .iter()
+        .find(|(_, host)| host.id == window)
+        .map(|(key, _)| *key)
+        .ok_or("selection session has no native host")?;
+    if app.windows[&key].window.is_visible().unwrap_or(false)
+        || app.windows[&key].window.has_focus()
+    {
+        return Err("selection fixture opened a visible or focused native window".into());
+    }
+    app.active = Some(window);
+    wait(app, event_loop, "observing initial server focus", |_| {
+        owner.graph().is_some_and(|graph| {
+            graph
+                .windows
+                .iter()
+                .any(|window| window.id == server_window && window.active == second)
+        })
+    })?;
+    app.focus_pane(window, first_view);
+    wait(app, event_loop, "local focus sent select-pane", |_| {
+        owner.graph().is_some_and(|graph| {
+            graph
+                .windows
+                .iter()
+                .any(|window| window.id == server_window && window.active == first)
+        })
+    })?;
+    owner.focus_pane(session, index, second)?;
+    wait(
+        app,
+        event_loop,
+        "receiving secondary server selection",
+        |app| app.tmuxx[0].mapping.server_focused.contains(&second_view),
+    )?;
+    if app.focused(window) != Some(first_view) {
+        return Err("incoming server selection stole the local keyboard focus".into());
+    }
+
+    let marker = egui::Id::new(("server-selection", second_view));
+    let mut host = app.windows.remove(&key).unwrap();
+    let capture = capture_window(
+        app,
+        event_loop,
+        &mut host,
+        &directory.join("tmuxx-secondary-selection.png"),
+    );
+    let visible = app.context.viewport_for(host.viewport, |viewport| {
+        viewport.prev_pass.widgets.get(marker).is_some()
+    });
+    app.windows.insert(key, host);
+    capture?;
+    if !visible {
+        return Err("secondary server selection was absent from the rendered frame".into());
+    }
+    app.focus_pane(window, second_view);
+    let mut host = app.windows.remove(&key).unwrap();
+    let draw = app.draw(event_loop, &mut host);
+    let visible = app.context.viewport_for(host.viewport, |viewport| {
+        viewport.prev_pass.widgets.get(marker).is_some()
+    });
+    app.windows.insert(key, host);
+    draw?;
+    if app.focused(window) != Some(second_view) || visible {
+        return Err("locally focusing the selected pane did not suppress its marker".into());
+    }
+
+    for action in [Action::NewSplit(Direction::Right), Action::NewFloatingPane] {
+        let before = app
+            .tab(window)
+            .unwrap()
+            .panes
+            .keys()
+            .copied()
+            .collect::<HashSet<_>>();
+        let mut host = app.windows.remove(&key).unwrap();
+        app.action(event_loop, &mut host, action, true);
+        app.windows.insert(key, host);
+        wait(app, event_loop, "focusing a locally created pane", |app| {
+            app.tab(window).is_some_and(|tab| {
+                tab.panes.len() == before.len() + 1 && !before.contains(&tab.focused)
+            })
+        })?;
+    }
+    let focused = app.focused(window);
+    let remote = split()?;
+    wait(
+        app,
+        event_loop,
+        "receiving a remotely created pane",
+        |app| {
+            app.tmuxx[0]
+                .mapping
+                .server_focused
+                .iter()
+                .any(|pane| app.tmuxx[0].mapping.panes[pane] == remote)
+        },
+    )?;
+    if app.focused(window) != focused {
+        return Err("a remotely created pane stole local keyboard focus".into());
+    }
     Ok(())
 }
 

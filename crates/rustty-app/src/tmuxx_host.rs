@@ -4,6 +4,7 @@ use rustty::tmuxx::{Connection, ServerOptions};
 use rustty_app::tmuxx_copy::{CopiedWindow, WindowCopy};
 use rustty_app::tmuxx_workspace::Mapping;
 use std::collections::BTreeSet;
+use std::sync::mpsc;
 
 pub(super) use rustty_app::tmuxx_menu::{Command as MenuCommand, Source, Target};
 pub(super) use rustty_app::tmuxx_target::LOCAL_TARGET_HINT;
@@ -72,6 +73,14 @@ struct PendingSession {
     copying: bool,
 }
 
+struct PendingPane {
+    reply: mpsc::Receiver<std::io::Result<Vec<u8>>>,
+    tab: Option<Id>,
+    pane: Option<u64>,
+    focused: Id,
+    deadline: Instant,
+}
+
 pub(super) struct Attachment {
     pub source: Source,
     pub connection: Option<Connection>,
@@ -84,6 +93,7 @@ pub(super) struct Attachment {
     reconnect_enabled: bool,
     open_all: bool,
     pending_session: Option<PendingSession>,
+    pending_panes: Vec<PendingPane>,
     copied_window: Option<CopiedWindow>,
     connection_deadline: Option<Instant>,
     shutdown_deadline: Option<Instant>,
@@ -97,13 +107,15 @@ impl Attachment {
             let _ = connection.watch_server();
         }
         let reconnect_enabled = matches!(source, Source::Local(_));
+        let mut mapping = Mapping::default();
+        mapping.local_focus = !matches!(source, Source::SystemSsh(_));
         let connection_deadline = connection
             .is_some()
             .then(|| Instant::now() + connection_timeout(&source));
         Self {
             source,
             connection,
-            mapping: Mapping::default(),
+            mapping,
             selected: BTreeSet::new(),
             instance: String::new(),
             retry_at: None,
@@ -111,6 +123,7 @@ impl Attachment {
             monitoring: false,
             open_all,
             pending_session: None,
+            pending_panes: Vec::new(),
             copied_window: None,
             connection_deadline,
             shutdown_deadline: None,
@@ -127,6 +140,115 @@ impl Attachment {
             source: self.source.clone(),
             instance: self.instance.clone(),
         }
+    }
+    pub fn command_action(
+        &mut self,
+        workspace: &Workspace,
+        window: Id,
+        action: &Action,
+        mut argv: Vec<String>,
+    ) -> std::result::Result<(), String> {
+        let connection = self
+            .connection
+            .as_ref()
+            .filter(|connection| !connection.is_closed() && connection.instance() == self.instance)
+            .ok_or_else(|| {
+                "The tmuxx connection is offline; reconnect before changing its panels".to_owned()
+            })?;
+        if !self.mapping.local_focus
+            || !matches!(action, Action::NewSplit(_) | Action::NewFloatingPane)
+        {
+            return connection
+                .command(argv)
+                .map(|_| ())
+                .map_err(|e| e.to_string());
+        }
+        let tab = workspace
+            .windows
+            .iter()
+            .find(|state| state.id == window)
+            .and_then(|state| state.tabs.get(state.active_tab))
+            .filter(|tab| self.mapping.windows.contains_key(&tab.id))
+            .ok_or("The tab is no longer available")?;
+        argv.extend(["-P".into(), "-F".into(), "#{pane_id}".into()]);
+        let reply = connection
+            .command_with_reply(argv.into_iter().map(String::into_bytes).collect())
+            .map_err(|e| e.to_string())?;
+        self.cancel_pending_focus(tab.id);
+        self.pending_panes.push(PendingPane {
+            reply,
+            tab: Some(tab.id),
+            pane: None,
+            focused: tab.focused,
+            deadline: Instant::now() + connection_timeout(&self.source),
+        });
+        Ok(())
+    }
+    pub fn cancel_pending_focus(&mut self, tab: Id) {
+        // Keep the reply receiver so canceled focus cannot hide command failures.
+        for pending in &mut self.pending_panes {
+            if pending.tab == Some(tab) {
+                pending.tab = None;
+            }
+        }
+    }
+    fn apply_pending_focus(&mut self, workspace: &mut Workspace) -> Vec<String> {
+        let mut errors = Vec::new();
+        self.pending_panes.retain_mut(|pending| {
+            let tab = workspace
+                .windows
+                .iter_mut()
+                .flat_map(|window| &mut window.tabs)
+                .find(|tab| Some(tab.id) == pending.tab)
+                .filter(|tab| {
+                    self.mapping.windows.contains_key(&tab.id) && tab.focused == pending.focused
+                });
+            if tab.is_none() {
+                pending.tab = None;
+            }
+            if pending.pane.is_none() {
+                match pending.reply.try_recv() {
+                    Ok(Ok(output)) => {
+                        pending.pane = std::str::from_utf8(&output)
+                            .ok()
+                            .and_then(|text| text.trim().strip_prefix('%'))
+                            .and_then(|id| id.parse().ok());
+                        if pending.pane.is_none() {
+                            errors.push("Pane creation returned an invalid pane ID".into());
+                            return false;
+                        }
+                    }
+                    Ok(Err(error)) => {
+                        errors.push(format!("Could not create pane: {error}"));
+                        return false;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => return true,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        errors.push("Pane creation reply was lost".into());
+                        return false;
+                    }
+                }
+            }
+            let Some(tab) = tab else {
+                return false;
+            };
+            if let Some(pane) = tab
+                .panes
+                .keys()
+                .find(|pane| self.mapping.panes.get(pane) == pending.pane.as_ref())
+                .copied()
+            {
+                tab.focus(pane);
+                return false;
+            }
+            // The command reply can arrive before its new pane appears in the snapshot.
+            !self
+                .mapping
+                .panes
+                .values()
+                .any(|pane| Some(*pane) == pending.pane)
+        });
+        errors
     }
     fn monitor(&mut self, wake: Arc<dyn Fn() + Send + Sync>) -> Result<()> {
         let Source::Local(endpoint) = self.source.clone() else {
@@ -155,6 +277,7 @@ impl Attachment {
             )
             .chain(self.connection_deadline)
             .chain(self.shutdown_deadline)
+            .chain(self.pending_panes.iter().map(|pending| pending.deadline))
             .min()
     }
     fn expire_connection(&mut self, now: Instant) -> bool {
@@ -177,6 +300,7 @@ impl Attachment {
             return false;
         }
         self.connection = None;
+        self.pending_panes.clear();
         self.status = Some(
             if self.monitoring {
                 "Connection timed out waiting for the server handshake"
@@ -208,6 +332,12 @@ impl Attachment {
     }
     fn expire_requests(&mut self, now: Instant) -> bool {
         let mut expired = false;
+        let pending_panes = self.pending_panes.len();
+        self.pending_panes.retain(|pending| pending.deadline > now);
+        if pending_panes != self.pending_panes.len() {
+            self.status = Some("Pane creation timed out; focus was left unchanged".into());
+            expired = true;
+        }
         if self
             .pending_session
             .as_ref()
@@ -241,6 +371,7 @@ impl Attachment {
         if !self.instance.is_empty() && self.instance != instance {
             self.selected.clear();
             self.copied_window = None;
+            self.pending_panes.clear();
             if self
                 .pending_session
                 .as_ref()
@@ -1083,6 +1214,7 @@ impl App {
             }
             if connection.is_closed() {
                 entry.connection_deadline = None;
+                entry.pending_panes.clear();
                 if !entry.reconnect_enabled {
                     entry.open_all = false;
                 }
@@ -1109,6 +1241,7 @@ impl App {
             };
             if entry.replacing {
                 reset.extend(entry.mapping.panes.keys().copied());
+                entry.pending_panes.clear();
                 entry.replacing = false;
             }
             let instance = connection.instance();
@@ -1183,6 +1316,8 @@ impl App {
                 self.errors.push(error);
                 continue;
             }
+            self.errors
+                .extend(entry.apply_pending_focus(&mut self.workspace));
             for (session, frame) in frames {
                 if let Some(id) = entry
                     .mapping
@@ -1902,6 +2037,202 @@ mod tests {
         )
     }
 
+    fn pending_pane_fixture() -> (Attachment, Workspace) {
+        let mut entry = local();
+        entry.instance = "owner".into();
+        entry.mapping.sessions.insert(1, 7);
+        entry.mapping.windows.insert(2, 9);
+        entry.mapping.panes.extend([(3, 10), (4, 11)]);
+        let mut tab = Tab::new(2, 3, PathBuf::new());
+        tab.split(4, 5, Direction::Right, PathBuf::new());
+        tab.focus(3);
+        let mut workspace = Workspace::default();
+        workspace.windows.push(WindowState {
+            id: 1,
+            tabs: vec![tab, Tab::new(6, 7, PathBuf::new())],
+            active_tab: 1,
+            frame: [0.0; 4],
+            quick: false,
+        });
+        (entry, workspace)
+    }
+
+    fn pending_pane(entry: &mut Attachment) -> mpsc::Sender<std::io::Result<Vec<u8>>> {
+        let (sender, reply) = mpsc::channel();
+        entry.cancel_pending_focus(2);
+        entry.pending_panes.push(PendingPane {
+            reply,
+            tab: Some(2),
+            pane: None,
+            focused: 3,
+            deadline: Instant::now() + Duration::from_secs(10),
+        });
+        sender
+    }
+
+    #[test]
+    fn created_pane_focus_waits_for_reply_and_mapping_without_switching_tabs() {
+        for reply_first in [false, true] {
+            let (mut entry, mut workspace) = pending_pane_fixture();
+            let sender = pending_pane(&mut entry);
+            if reply_first {
+                entry.mapping.panes.remove(&4);
+                sender.send(Ok(b"%11\n".to_vec())).unwrap();
+            }
+            assert!(entry.apply_pending_focus(&mut workspace).is_empty());
+            assert_eq!(workspace.windows[0].tabs[0].focused, 3);
+            assert_eq!(entry.pending_panes.len(), 1);
+            if reply_first {
+                entry.mapping.panes.insert(4, 11);
+            } else {
+                sender.send(Ok(b"%11\n".to_vec())).unwrap();
+            }
+            assert!(entry.apply_pending_focus(&mut workspace).is_empty());
+            assert_eq!(workspace.windows[0].tabs[0].focused, 4);
+            assert_eq!(workspace.windows[0].active_tab, 1);
+            assert!(entry.pending_panes.is_empty());
+        }
+    }
+
+    #[test]
+    fn created_pane_focus_rejects_failed_invalid_and_lost_replies() {
+        for cancel in [false, true] {
+            for reply in [
+                Some(Err(std::io::Error::other("split failed"))),
+                Some(Ok(b"%11\n%12\n".to_vec())),
+                Some(Ok(b"not a pane".to_vec())),
+                None,
+            ] {
+                let (mut entry, mut workspace) = pending_pane_fixture();
+                let sender = pending_pane(&mut entry);
+                if cancel {
+                    entry.cancel_pending_focus(2);
+                    assert!(entry.apply_pending_focus(&mut workspace).is_empty());
+                    assert_eq!(entry.pending_panes.len(), 1);
+                }
+                if let Some(reply) = reply {
+                    sender.send(reply).unwrap();
+                }
+                drop(sender);
+                assert_eq!(entry.apply_pending_focus(&mut workspace).len(), 1);
+                assert_eq!(workspace.windows[0].tabs[0].focused, 3);
+                assert!(entry.pending_panes.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn created_pane_focus_does_not_outlive_user_focus_tab_or_daemon() {
+        for stale in ["focus", "cancel", "tab", "moved", "daemon", "timeout"] {
+            let (mut entry, mut workspace) = pending_pane_fixture();
+            let sender = pending_pane(&mut entry);
+            sender.send(Ok(b"%11\n".to_vec())).unwrap();
+            match stale {
+                "focus" => workspace.windows[0].tabs[0].focus(4),
+                "cancel" => entry.cancel_pending_focus(2),
+                "tab" => {
+                    workspace.windows[0].tabs.remove(0);
+                    workspace.windows[0].active_tab = 0;
+                }
+                "moved" => {
+                    workspace.windows[0].tabs[0].panes.remove(&4);
+                }
+                "daemon" => {
+                    entry.observe_graph(&graph(&[(7, "work")]), "new-owner".into());
+                }
+                "timeout" => {
+                    let deadline = entry.pending_panes[0].deadline;
+                    assert_eq!(entry.deadline(), Some(deadline));
+                    assert!(entry.expire_requests(deadline));
+                }
+                _ => unreachable!(),
+            }
+            let before = serde_json::to_value(&workspace).unwrap();
+            assert!(entry.apply_pending_focus(&mut workspace).is_empty());
+            assert_eq!(serde_json::to_value(&workspace).unwrap(), before);
+            assert!(entry.pending_panes.is_empty(), "{stale}");
+        }
+        let (mut entry, mut workspace) = pending_pane_fixture();
+        let old = pending_pane(&mut entry);
+        let newest = pending_pane(&mut entry);
+        old.send(Err(std::io::Error::other("older split failed")))
+            .unwrap();
+        newest.send(Ok(b"%11\n".to_vec())).unwrap();
+        assert_eq!(
+            entry.apply_pending_focus(&mut workspace),
+            ["Could not create pane: older split failed"]
+        );
+        assert_eq!(workspace.windows[0].tabs[0].focused, 4);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn native_created_panes_focus_only_the_requesting_view() {
+        fn refresh(entry: &mut Attachment, workspace: &mut Workspace) -> Option<Graph> {
+            let connection = entry.connection.as_ref().unwrap();
+            assert!(!connection.is_closed(), "{:?}", connection.errors());
+            let graph = connection.graph()?;
+            entry.observe_graph(&graph, connection.instance());
+            entry
+                .mapping
+                .apply(workspace, &graph, &entry.selected)
+                .unwrap();
+            assert!(entry.apply_pending_focus(workspace).is_empty());
+            Some(graph)
+        }
+        let endpoint = std::env::temp_dir().join(format!(
+            "rustty-created-focus-{}.native",
+            std::process::id()
+        ));
+        let connection = Connection::embedded_with_command(
+            &endpoint,
+            Arc::new(|| {}),
+            vec![b"/bin/sleep".to_vec(), b"60".to_vec()],
+        )
+        .unwrap();
+        let mut entry = Attachment::new(Source::Embedded(endpoint), Some(connection), true);
+        let mut workspace = Workspace::default();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while workspace.windows.is_empty() {
+            refresh(&mut entry, &mut workspace);
+            assert!(Instant::now() < deadline, "initial pane did not arrive");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let mut observer = entry.mapping.clone();
+        let mut other_workspace = workspace.clone();
+        let original = other_workspace.windows[0].tabs[0].focused;
+        for action in [Action::NewSplit(Direction::Right), Action::NewFloatingPane] {
+            let host = workspace.windows[0].id;
+            let previous = workspace.windows[0].tabs[0].focused;
+            let argv = entry
+                .mapping
+                .action(&workspace, host, &action)
+                .unwrap()
+                .unwrap();
+            entry
+                .command_action(&workspace, host, &action, argv)
+                .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                if let Some(graph) = refresh(&mut entry, &mut workspace) {
+                    observer
+                        .apply(&mut other_workspace, &graph, &entry.selected)
+                        .unwrap();
+                    assert_eq!(other_workspace.windows[0].tabs[0].focused, original);
+                    if entry.pending_panes.is_empty() {
+                        assert_ne!(workspace.windows[0].tabs[0].focused, previous);
+                        break;
+                    }
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "created pane did not receive focus"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+    }
+
     #[test]
     fn copied_window_waits_for_completion_and_restores_local_metadata() {
         let mut source = WindowState {
@@ -2114,12 +2445,18 @@ mod tests {
     fn ssh_connections_allow_time_for_authentication_prompts() {
         for source in [Source::Ssh("host".into()), Source::SystemSsh("host".into())] {
             assert_eq!(connection_timeout(&source), Duration::from_secs(120));
+            let native = !matches!(source, Source::SystemSsh(_));
+            assert_eq!(
+                Attachment::new(source, None, false).mapping.local_focus,
+                native
+            );
         }
         for source in [
             Source::Embedded("local".into()),
             Source::Local("local".into()),
         ] {
             assert_eq!(connection_timeout(&source), Duration::from_secs(10));
+            assert!(Attachment::new(source, None, false).mapping.local_focus);
         }
     }
 

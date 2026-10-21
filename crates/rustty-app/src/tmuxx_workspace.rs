@@ -9,6 +9,9 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Clone, Default)]
 pub struct Mapping {
     ids: BTreeMap<String, Id>,
+    /// Native clients keep their pane focus independent of shared server selection.
+    pub local_focus: bool,
+    pub server_focused: BTreeSet<Id>,
     pub panes: BTreeMap<Id, u64>,
     pub sessions: BTreeMap<Id, u64>,
     pub session_names: BTreeMap<Id, String>,
@@ -57,6 +60,7 @@ impl Mapping {
         self.windows.clear();
         self.window_indices.clear();
         self.dividers.clear();
+        self.server_focused.clear();
         for session in graph
             .sessions
             .iter()
@@ -127,7 +131,6 @@ impl Mapping {
                 tab.overlays = overlays;
                 tab.server_size = Some([u32::from(window.cols), u32::from(window.rows)]);
                 tab.panes = panes;
-                tab.focused = focused;
                 tab.title = Some(window.name.clone());
                 let visible = if window.zoomed && !window.visible_layout.is_empty() {
                     Layout::parse(&window.visible_layout).map_err(|e| e.to_string())?
@@ -166,6 +169,19 @@ impl Mapping {
                     None
                 };
                 tab.quadrant_zoom = None;
+                if self.local_focus {
+                    let visible = tab.visible_panes(false);
+                    tab.focused = tab
+                        .modal_pane()
+                        .filter(|pane| visible.contains(pane))
+                        .or_else(|| visible.contains(&tab.focused).then_some(tab.focused))
+                        .or_else(|| visible.contains(&focused).then_some(focused))
+                        .or_else(|| visible.first().copied())
+                        .ok_or("server window has no visible pane")?;
+                    self.server_focused.insert(focused);
+                } else {
+                    tab.focused = focused;
+                }
                 tabs.push(tab);
             }
             if !tabs.is_empty() {
@@ -601,6 +617,154 @@ mod tests {
     }
     const FOUR_TILES: &str = r#"{"V":2,"L":{"t":"h","w":81,"h":49,"x":0,"y":0,"c":[{"t":"v","w":40,"h":49,"x":0,"y":0,"c":[{"t":"p","w":40,"h":24,"x":0,"y":0,"i":0,"I":"%7"},{"t":"p","w":40,"h":24,"x":0,"y":25,"i":1,"I":"%8"}]},{"t":"v","w":40,"h":49,"x":41,"y":0,"c":[{"t":"p","w":40,"h":24,"x":41,"y":0,"i":2,"I":"%9"},{"t":"p","w":40,"h":24,"x":41,"y":25,"i":3,"I":"%10"}]}]}}"#;
 
+    fn pane_id(mapping: &Mapping, tab: &Tab, server: u64) -> Id {
+        tab.pane_ids()
+            .into_iter()
+            .find(|pane| mapping.panes[pane] == server)
+            .unwrap()
+    }
+
+    #[test]
+    fn shared_selection_keeps_independent_local_focus_and_shared_active_tabs() {
+        let mut graph = tiled_graph(FOUR_TILES);
+        graph.sessions[0].windows.insert(8, 9);
+        let mut mapping = Mapping {
+            local_focus: true,
+            ..Default::default()
+        };
+        let mut workspace = Workspace::default();
+        mapping
+            .apply(&mut workspace, &graph, &[0, 1].into())
+            .unwrap();
+        let mut choices = [8, 9, 10].into_iter();
+        for tab in workspace.windows.iter_mut().flat_map(|w| &mut w.tabs) {
+            assert_eq!(mapping.panes[&tab.focused], 7);
+            tab.focus(pane_id(&mapping, tab, choices.next().unwrap()));
+        }
+
+        graph.windows[0].active = 10;
+        graph.sessions[0].active = 8;
+        mapping
+            .apply(&mut workspace, &graph, &[0, 1].into())
+            .unwrap();
+        assert_eq!(workspace.windows[0].active_tab, 1);
+        assert_eq!(
+            workspace
+                .windows
+                .iter()
+                .flat_map(|window| &window.tabs)
+                .map(|tab| mapping.panes[&tab.focused])
+                .collect::<Vec<_>>(),
+            [8, 9, 10]
+        );
+        assert_eq!(mapping.server_focused.len(), 3);
+        for tab in workspace.windows.iter().flat_map(|window| &window.tabs) {
+            assert!(mapping.server_focused.contains(&pane_id(&mapping, tab, 10)));
+        }
+        let window = &workspace.windows[0];
+        assert_eq!(
+            mapping.focus_target(&workspace, window.id, window.tabs[1].focused),
+            Some((0, 8, 9))
+        );
+        assert_eq!(
+            mapping
+                .action(&workspace, window.id, &Action::NewSplit(Direction::Right))
+                .unwrap()
+                .unwrap(),
+            ["split-window", "-h", "-t", "%9"]
+        );
+    }
+
+    #[test]
+    fn remote_creation_does_not_steal_focus_but_new_tabs_follow_server_selection() {
+        let mut workspace = Workspace::default();
+        let mut mapping = Mapping {
+            local_focus: true,
+            ..Default::default()
+        };
+        mapping
+            .apply(&mut workspace, &graph(), &[0].into())
+            .unwrap();
+
+        let mut expanded = tiled_graph(FOUR_TILES);
+        expanded.windows[0].active = 10;
+        expanded.sessions[0].windows.insert(8, 9);
+        mapping
+            .apply(&mut workspace, &expanded, &[0].into())
+            .unwrap();
+        let window = &workspace.windows[0];
+        assert_eq!(mapping.panes[&window.tabs[0].focused], 7);
+        assert_eq!(mapping.panes[&window.tabs[1].focused], 10);
+
+        let tab = &mut workspace.windows[0].tabs[0];
+        tab.focus(pane_id(&mapping, tab, 8));
+        mapping
+            .apply(&mut workspace, &graph(), &[0].into())
+            .unwrap();
+        let window = &workspace.windows[0];
+        assert_eq!(window.tabs.len(), 1);
+        assert_eq!(mapping.panes[&window.tabs[0].focused], 7);
+        assert_eq!(mapping.server_focused, [window.tabs[0].focused].into());
+    }
+
+    #[test]
+    fn local_focus_follows_shared_zoom_only_when_its_pane_becomes_hidden() {
+        for with_visible_layout in [false, true] {
+            let mut graph = tiled_graph(FOUR_TILES);
+            for pane in &mut graph.panes {
+                pane.x = None;
+                pane.y = None;
+            }
+            let mut mapping = Mapping {
+                local_focus: true,
+                ..Default::default()
+            };
+            let mut workspace = Workspace::default();
+            mapping.apply(&mut workspace, &graph, &[0].into()).unwrap();
+            let tab = &mut workspace.windows[0].tabs[0];
+            tab.focus(pane_id(&mapping, tab, 8));
+
+            graph.windows[0].zoomed = true;
+            graph.windows[0].zoomed_pane = Some(7);
+            // The shared selection can differ from the zoomed pane.
+            graph.windows[0].active = 9;
+            if with_visible_layout {
+                graph.windows[0].visible_layout = Layout::pane(7, 81, 49).to_legacy().unwrap();
+            }
+            mapping.apply(&mut workspace, &graph, &[0].into()).unwrap();
+            let tab = &workspace.windows[0].tabs[0];
+            assert_eq!(mapping.panes[&tab.focused], 7);
+            assert_eq!(tab.zoom, Some(tab.focused));
+            assert_eq!(tab.server_view.is_some(), with_visible_layout);
+            assert_eq!(mapping.server_focused, [pane_id(&mapping, tab, 9)].into());
+        }
+    }
+
+    #[test]
+    fn legacy_mapping_still_follows_server_focus_without_secondary_markers() {
+        let mut graph = tiled_graph(FOUR_TILES);
+        let mut mapping = Mapping::default();
+        let mut workspace = Workspace::default();
+        mapping.apply(&mut workspace, &graph, &[0].into()).unwrap();
+        let tab = &mut workspace.windows[0].tabs[0];
+        tab.focus(pane_id(&mapping, tab, 8));
+        graph.windows[0].active = 9;
+        mapping.apply(&mut workspace, &graph, &[0].into()).unwrap();
+        assert_eq!(mapping.panes[&workspace.windows[0].tabs[0].focused], 9);
+        assert!(mapping.server_focused.is_empty());
+
+        mapping.local_focus = true;
+        graph.windows[0].active = 10;
+        mapping.apply(&mut workspace, &graph, &[0].into()).unwrap();
+        assert_eq!(mapping.panes[&workspace.windows[0].tabs[0].focused], 9);
+        assert_eq!(mapping.server_focused.len(), 1);
+
+        mapping.local_focus = false;
+        mapping.apply(&mut workspace, &graph, &[0].into()).unwrap();
+        assert_eq!(mapping.panes[&workspace.windows[0].tabs[0].focused], 10);
+        assert!(mapping.server_focused.is_empty());
+    }
+
     #[test]
     fn tiled_views_fill_native_rectangles_without_server_cell_gutters() {
         let cases: [(&str, &[_]); 4] = [
@@ -820,6 +984,14 @@ mod tests {
     #[test]
     fn floating_panes_keep_signed_geometry_front_order_modal_focus_and_independent_views() {
         let mut graph = graph();
+        let mut workspace = Workspace::default();
+        let mut mapping = Mapping {
+            local_focus: true,
+            ..Default::default()
+        };
+        mapping
+            .apply(&mut workspace, &graph, &[0, 1].into())
+            .unwrap();
         graph.windows[0].layout = r#"{"V":2,"L":{"t":"h","w":80,"h":24,"x":0,"y":0,"c":[{"t":"p","w":80,"h":24,"x":0,"y":0,"i":0,"I":"%7"},{"t":"p","w":20,"h":5,"x":-2,"y":3,"i":1,"I":"%42","z":0},{"t":"p","w":30,"h":8,"x":2,"y":4,"i":2,"I":"%43","z":1}]}}"#.into();
         for (id, modal) in [(42, true), (43, false)] {
             let mut pane = graph.panes[0].clone();
@@ -829,8 +1001,6 @@ mod tests {
             graph.windows[0].panes.push(id);
         }
         graph.windows[0].active = 42;
-        let mut workspace = Workspace::default();
-        let mut mapping = Mapping::default();
         mapping
             .apply(&mut workspace, &graph, &[0, 1].into())
             .unwrap();
@@ -1057,12 +1227,16 @@ mod tests {
     #[test]
     fn malformed_graph_does_not_replace_live_workspace() {
         let mut workspace = Workspace::default();
-        let mut mapping = Mapping::default();
-        let mut graph = graph();
+        let mut mapping = Mapping {
+            local_focus: true,
+            ..Default::default()
+        };
+        let mut graph = tiled_graph(FOUR_TILES);
         mapping
             .apply(&mut workspace, &graph, &[0, 1].into())
             .unwrap();
         let before = serde_json::to_value(&workspace).unwrap();
+        let markers = mapping.server_focused.clone();
         graph.windows[0].layout = "invalid".into();
         assert!(
             mapping
@@ -1070,6 +1244,18 @@ mod tests {
                 .is_err()
         );
         assert_eq!(serde_json::to_value(&workspace).unwrap(), before);
+        assert_eq!(mapping.server_focused, markers);
+
+        graph.windows[0].layout = FOUR_TILES.into();
+        graph.windows[0].active = 10;
+        graph.sessions[1].windows.insert(8, 99);
+        assert!(
+            mapping
+                .apply(&mut workspace, &graph, &[0, 1].into())
+                .is_err()
+        );
+        assert_eq!(serde_json::to_value(&workspace).unwrap(), before);
+        assert_eq!(mapping.server_focused, markers);
     }
 
     #[test]
