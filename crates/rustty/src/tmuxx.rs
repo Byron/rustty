@@ -196,6 +196,18 @@ impl PaneInput {
     pub(crate) fn accepts_input(&self) -> bool {
         self.connection().is_ok()
     }
+    pub(crate) fn current_path(&self) -> Option<String> {
+        let shared = self.connection().ok()?;
+        let model = shared.model.lock().ok()?;
+        model
+            .graph
+            .as_ref()?
+            .panes
+            .iter()
+            .find(|pane| pane.id == self.pane)?
+            .current_path
+            .clone()
+    }
     pub(crate) fn set_appearance(&self, config: &Config) -> io::Result<()> {
         *self.appearance.lock().map_err(err)? = Some(config.clone());
         Ok(())
@@ -1410,6 +1422,8 @@ struct Selected {
 #[derive(Deserialize)]
 struct SelectedPane {
     id: u64,
+    #[serde(default)]
+    current_path: Option<String>,
     style: rustty_vt::TmuxPaneStyle,
     control_colors: [Option<[u8; 3]>; 2],
     host_dark: Option<bool>,
@@ -1487,6 +1501,9 @@ fn apply_selection(
     }
     for window in &mut graph.windows {
         window.active = windows[&window.id];
+    }
+    for pane in &mut graph.panes {
+        pane.current_path.clone_from(&panes[&pane.id].current_path);
     }
     for (id, selected) in panes {
         let pane = model.panes.get_mut(&id).unwrap();
@@ -1908,6 +1925,77 @@ mod focus_tests {
             let reopened = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
             check(&reopened, "/var/remote");
         }
+    }
+
+    #[test]
+    fn native_process_cwd_survives_reconnect_and_light_updates_without_shell_reports() {
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        let mut initial = state();
+        let paths = [r"C:\work\one", r"C:\work\two", r"C:\work\雪 é"];
+        for (pane, path) in initial["panes"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .zip(paths)
+        {
+            pane["current_path"] = path.into();
+        }
+        snapshot(&connection, 1, initial.clone());
+        let check = |view: &Session, path: &str| {
+            let report = view.terminal().unwrap().working_directory.clone();
+            assert_eq!(
+                view.directory_from_report(&report),
+                Some(PathBuf::from(path.replace('\\', "/")))
+            );
+        };
+        let views = [7, 8, 9]
+            .map(|pane| Session::attach_tmuxx(&connection, pane, Arc::new(|| {})).unwrap());
+        for (view, path) in views.iter().zip(paths) {
+            check(view, path);
+        }
+        // Opening another view refreshes every existing pane without new shell output.
+        snapshot(&connection, 2, initial.clone());
+        for (view, path) in views.iter().zip(paths) {
+            check(view, path);
+        }
+        let (reconnected, _requests) = Connection::base(Arc::new(|| {}), true);
+        snapshot(&reconnected, 2, initial);
+        let reopened = Session::attach_tmuxx(&reconnected, 7, Arc::new(|| {})).unwrap();
+        check(&reopened, paths[0]);
+
+        let mut update = selection_state(8);
+        for (pane, path) in update["panes"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .zip(paths)
+        {
+            pane["current_path"] = path.into();
+        }
+        update["panes"][0]["current_path"] = r"C:\work\changed".into();
+        apply(
+            &reconnected.shared,
+            ServerMessage::Selection {
+                sequence: 3,
+                state: update,
+            },
+        )
+        .unwrap();
+        check(&reopened, r"C:\work\changed");
+        apply(
+            &reconnected.shared,
+            ServerMessage::PaneOutput {
+                sequence: 4,
+                pane_id: 7,
+                data: b"\x1b]7;file:///C:/shell%20report\x07".to_vec(),
+            },
+        )
+        .unwrap();
+        check(&reopened, "C:/shell report");
+        let legacy = Session::attach_tmuxx(&connection, 9, Arc::new(|| {})).unwrap();
+        snapshot(&connection, 3, state());
+        assert_eq!(legacy.directory_from_report(""), None);
+        assert_eq!(reopened.directory_from_report("bad\0path"), None);
     }
     fn reply(connection: &Connection, request_id: u64, error: Option<&str>) {
         apply(
