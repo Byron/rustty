@@ -41,6 +41,12 @@ A file for [guiding coding agents](https://agents.md/).
 - Ghostty tools and utilities may be added or updated to support inspection,
   profiling, and comparisons with Rustty.
 
+## Protocol Compatibility
+
+- Prefer additive, optional fields with defaults so older and newer peers can
+  communicate when doing so does not add unnecessary complexity.
+- Keep the protocol version unchanged for backward-compatible additions.
+
 ## Commit Guidelines
 
 - After completing and validating each semantic change, create a commit
@@ -48,10 +54,13 @@ A file for [guiding coding agents](https://agents.md/).
 - Keep distinct semantic changes in separate commits.
 - Amend follow-up work that belongs to the same semantic change into its
   existing commit instead of creating another commit.
-- Use a descriptive commit subject and message that explain the motivation
-  for the change, including the problem with the previous behavior and why
-  the new behavior is preferable. Do not merely summarize the edited files
-  or implementation mechanics.
+- Use Conventional Commit subjects: `type(scope): summary`, for example
+  `fix(tmuxx): retain pane CWDs across reconnects`.
+- Mark incompatible changes with `!` in the subject and a `BREAKING CHANGE:`
+  footer explaining the impact and migration. Compatible additions need neither.
+- Write commit bodies in Markdown as concise changelogs. Prefer bullets covering
+  behavior changes, fixes, compatibility, and relevant validation over detailed
+  implementation narratives.
 
 ## Issue and PR Guidelines
 

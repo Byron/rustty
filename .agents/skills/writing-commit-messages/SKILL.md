@@ -12,23 +12,24 @@ Write commit messages that follow commit style guidelines for the project.
 ## Format
 
 ```
-<subsystem>: <summary>
+fix(tmuxx): retain pane CWDs across reconnects
 
-<reference issues/PRs/etc.>
-
-<long form description>
+- Restore directories for panes without shell CWD reports.
+- Keep older peers compatible through an optional metadata field.
+- Validate reconnects and lightweight updates.
 ```
 
 ## Rules
 
 ### Subject line
 
-- **Subsystem prefix**: Use a short, lowercase identifier for the
-  area of code changed (e.g., `terminal`, `vt`, `lib`, `config`,
-  `font`). Determine this from the file paths in the diff. If
-  changes span the macOS app, use `macos`. For GTK, use `gtk`. For
-  build system, use `build`. Use nested subsystems with `/` when
-  helpful and exclusive (e.g., `terminal/osc`).
+- **Conventional Commits**: Use `<type>(<scope>): <summary>`, such as
+  `fix(tmuxx): retain pane CWDs across reconnects`. Choose a type matching the
+  change (`fix`, `feat`, `docs`, `refactor`, `test`, `build`, `ci`, or `chore`)
+  and a concise scope when useful.
+- **Compatibility**: Mark incompatible changes with `!` after the type/scope
+  and a `BREAKING CHANGE:` footer describing the impact and migration.
+  Backward-compatible additions need neither marker.
 - **Summary**: Lowercase start (not capitalized), imperative mood,
   no trailing period. Keep it concise—ideally under 60 characters
   total for the whole subject line.
@@ -41,14 +42,13 @@ Write commit messages that follow commit style guidelines for the project.
 - If there are no references, omit this section entirely (no blank
   line).
 
-### Long form description
+### Markdown changelog body
 
-- Describe **what changed**, **what the previous behavior was**,
-  and **how the new behavior works** at a high level.
-- Use plain prose, not bullet points. Wrap lines at ~72 characters.
-- Focus on the _why_ and _how_ rather than restating the diff.
-- Keep the tone direct and technical without filler phrases.
-- Don't exceed a handful of paragraphs; less is more.
+- Prefer concise bullets describing behavior changes, fixes, compatibility,
+  and relevant validation.
+- Explain user impact and motivation where useful; avoid detailed accounts
+  of implementation mechanics or the development process.
+- Wrap prose at roughly 72 characters. Omit a body when the subject is enough.
 
 ## Workflow
 
