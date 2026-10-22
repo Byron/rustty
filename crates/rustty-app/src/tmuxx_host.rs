@@ -567,13 +567,13 @@ impl Attachment {
                 && !target.instance.is_empty()
                 && connection.instance() == target.instance
         });
-        let connections = self
+        let server_status = self
             .connection
             .as_ref()
             .filter(|_| live)
             .and_then(Connection::server_status)
-            .filter(|status| status.instance_id == target.instance)
-            .map(|status| status.connections);
+            .filter(|status| status.instance_id == target.instance);
+        let connections = server_status.as_ref().map(|status| status.connections);
         if !matches!(self.source, Source::SystemSsh(_)) {
             children.push(Entry::label(connections.map_or_else(
                 || "Connections: unavailable".into(),
@@ -626,6 +626,16 @@ impl Attachment {
             ));
         }
         if live {
+            if !matches!(self.source, Source::SystemSsh(_)) {
+                children.push(match server_status.and_then(|status| status.config_files) {
+                    Some(files) if !files.is_empty() => Entry::command(
+                        "Reload Server Configuration",
+                        MenuCommand::ReloadConfig(target.clone()),
+                    ),
+                    Some(_) => Entry::label("Reload Server Configuration (no files)"),
+                    None => Entry::label("Reload Server Configuration (unavailable)"),
+                });
+            }
             if self.monitoring {
                 children.push(match connections {
                     Some(0) => Entry::command(
@@ -917,7 +927,10 @@ impl App {
         if !command.requires_confirmation() {
             let reveal_errors = matches!(
                 command,
-                MenuCommand::Connect(_) | MenuCommand::Reconnect(_) | MenuCommand::Fit(..)
+                MenuCommand::Connect(_)
+                    | MenuCommand::Reconnect(_)
+                    | MenuCommand::Fit(..)
+                    | MenuCommand::ReloadConfig(_)
             );
             let error_count = self.errors.len();
             self.tmuxx_menu_command(command);
@@ -1595,6 +1608,7 @@ impl App {
             | MenuCommand::Fit(target, _)
             | MenuCommand::Kill(target, _)
             | MenuCommand::Execute(target, _)
+            | MenuCommand::ReloadConfig(target)
             | MenuCommand::Disconnect(target)
             | MenuCommand::Reconnect(target)
             | MenuCommand::Shutdown(target)
@@ -1713,6 +1727,17 @@ impl App {
             }
             MenuCommand::Execute(_, argv) => {
                 if let Err(error) = self.tmuxx[index].connection.as_ref().unwrap().command(argv) {
+                    self.errors.push(error.to_string());
+                    return;
+                }
+            }
+            MenuCommand::ReloadConfig(_) => {
+                if let Err(error) = self.tmuxx[index]
+                    .connection
+                    .as_ref()
+                    .unwrap()
+                    .reload_configuration()
+                {
                     self.errors.push(error.to_string());
                     return;
                 }
@@ -1870,6 +1895,69 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn reload_menu_requires_live_owner_with_configuration_files() {
+        let (mut entry, mut peer) = monitoring_peer("reload", true);
+        for config_files in [None, Some(vec![]), Some(vec!["C:/tmuxx.conf".into()])] {
+            tmuxx_protocol::native::write_record(
+                &mut peer,
+                &tmuxx_protocol::native::ServerMessage::ServerStatus(
+                    tmuxx_protocol::native::ServerStatus {
+                        instance_id: "owner".into(),
+                        connections: 0,
+                        config_files: config_files.clone(),
+                    },
+                ),
+            )
+            .unwrap();
+            let until = Instant::now() + Duration::from_secs(2);
+            while entry
+                .connection
+                .as_ref()
+                .unwrap()
+                .server_status()
+                .is_none_or(|status| status.config_files != config_files)
+            {
+                assert!(
+                    Instant::now() < until,
+                    "server configuration status did not arrive"
+                );
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            let menu = entry.menu_entry(None);
+            let reload = menu
+                .children
+                .iter()
+                .find(|item| item.label.starts_with("Reload Server Configuration"))
+                .unwrap();
+            assert_eq!(
+                reload.command,
+                config_files
+                    .is_some_and(|files| !files.is_empty())
+                    .then(|| MenuCommand::ReloadConfig(entry.target()))
+            );
+        }
+        assert!(!MenuCommand::ReloadConfig(entry.target()).requires_confirmation());
+        entry.instance = "replacement".into();
+        assert!(
+            entry
+                .menu_entry(None)
+                .children
+                .iter()
+                .all(|item| !matches!(item.command, Some(MenuCommand::ReloadConfig(_))))
+        );
+        entry.instance = "owner".into();
+        entry.source = Source::SystemSsh("stock-tmux".into());
+        assert!(
+            entry
+                .menu_entry(None)
+                .children
+                .iter()
+                .all(|item| !item.label.starts_with("Reload Server Configuration"))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn monitoring_requires_known_idle_count_and_never_offers_force_stop() {
         let (mut entry, mut peer) = monitoring_peer("menu", true);
         for count in [None, Some(0), Some(2)] {
@@ -1880,6 +1968,7 @@ mod tests {
                         tmuxx_protocol::native::ServerStatus {
                             instance_id: "owner".into(),
                             connections: count,
+                            config_files: None,
                         },
                     ),
                 )
@@ -1963,6 +2052,7 @@ mod tests {
                     tmuxx_protocol::native::ServerStatus {
                         instance_id: "owner".into(),
                         connections: count,
+                        config_files: None,
                     },
                 ),
             )

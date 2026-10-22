@@ -135,6 +135,10 @@ pub struct ServerStatus {
     pub instance_id: String,
     /// Connected transports, excluding command-only management observers.
     pub connections: usize,
+    /// Startup source-file paths in order, resolved in the owner's directory.
+    /// Omitted by owners that cannot report them; empty when no files were used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_files: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -250,6 +254,7 @@ mod tests {
         let message = ServerMessage::ServerStatus(ServerStatus {
             instance_id: "owner".into(),
             connections: 3,
+            config_files: None,
         });
         let value = serde_json::to_value(&message).unwrap();
         assert_eq!(
@@ -260,6 +265,26 @@ mod tests {
             serde_json::to_value(serde_json::from_value::<ServerMessage>(value).unwrap()).unwrap(),
             serde_json::to_value(&message).unwrap()
         );
+        for files in [vec![], vec!["C:/config, first.conf".to_owned()]] {
+            let status = ServerStatus {
+                instance_id: "owner".into(),
+                connections: 3,
+                config_files: Some(files),
+            };
+            let bytes = rmp_serde::to_vec_named(&status).unwrap();
+            assert_eq!(
+                rmp_serde::from_slice::<ServerStatus>(&bytes).unwrap(),
+                status
+            );
+            #[derive(Deserialize)]
+            struct LegacyStatus {
+                instance_id: String,
+                connections: usize,
+            }
+            let legacy: LegacyStatus = rmp_serde::from_slice(&bytes).unwrap();
+            assert_eq!(legacy.instance_id, "owner");
+            assert_eq!(legacy.connections, 3);
+        }
     }
 
     #[test]

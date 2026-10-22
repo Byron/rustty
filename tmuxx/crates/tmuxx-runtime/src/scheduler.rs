@@ -971,7 +971,8 @@ impl Host {
                         } else {
                             batch.output.extend(output);
                         }
-                        if failed {
+                        // Subscribed native views also need a failing Reply status.
+                        if failed || !client.control {
                             batch.status = Some(1);
                         }
                     }

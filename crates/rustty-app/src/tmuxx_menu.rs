@@ -49,6 +49,7 @@ pub enum Command {
     Fit(Target, u64),
     Kill(Target, u64),
     Execute(Target, Vec<String>),
+    ReloadConfig(Target),
     Disconnect(Target),
     Reconnect(Target),
     Shutdown(Target),

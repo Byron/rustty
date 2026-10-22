@@ -45,6 +45,7 @@ impl Host {
                 ServerMessage::ServerStatus(ServerStatus {
                     instance_id: self.instance.clone(),
                     connections,
+                    config_files: self.config_files.clone(),
                 }),
             );
         }
@@ -137,6 +138,129 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn status_reports_startup_paths_in_owner_directory_and_order() {
+        let mut options = Options::new("unused-config-status");
+        options.config = vec![
+            PathBuf::from("config, first.conf"),
+            std::env::temp_dir().join("配置.conf"),
+        ];
+        let (tx, _) = mpsc::sync_channel(64);
+        let mut host = Host::new(tx, &options, BTreeMap::new());
+        let observer = client(&mut host, 1);
+        request(&mut host, 1, &["tmuxx-server-status"], false, false);
+        drive(&mut host);
+        let status = observer
+            .try_iter()
+            .find_map(|message| match message {
+                ServerMessage::ServerStatus(status) => Some(status),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(
+            status.config_files,
+            Some(vec![
+                std::env::current_dir()
+                    .unwrap()
+                    .join("config, first.conf")
+                    .into_os_string()
+                    .into_string()
+                    .unwrap(),
+                options.config[1]
+                    .clone()
+                    .into_os_string()
+                    .into_string()
+                    .unwrap(),
+            ])
+        );
+        assert_eq!(self::host().config_files, Some(vec![]));
+    }
+
+    #[test]
+    fn source_reload_applies_files_in_order_keeps_sessions_and_reports_failures() {
+        let directory = std::env::temp_dir().join(format!(
+            "tmuxx-reload-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let paths = [
+            directory.join("config, first.conf"),
+            directory.join("配置;second.conf"),
+        ];
+        std::fs::write(&paths[0], "set -g @reload first\n").unwrap();
+        std::fs::write(&paths[1], "set -g @reload startup\n").unwrap();
+        let mut options = Options::new("unused-reload");
+        options.config = paths.to_vec();
+        let (tx, _) = mpsc::sync_channel(64);
+        let mut host = Host::new(tx, &options, BTreeMap::new());
+        host.start_configuration(&options.config);
+        drive(&mut host);
+        assert_eq!(host.engine.options["@reload"], "startup");
+        host.engine
+            .execute(
+                &Command::new(vec![b"new-session".to_vec(), b"-d".to_vec()]),
+                &mut ClientContext::default(),
+            )
+            .unwrap();
+        let sessions = host.engine.sessions.keys().copied().collect::<Vec<_>>();
+        let panes = host.engine.panes.keys().copied().collect::<Vec<_>>();
+        let replies = client(&mut host, 1);
+        // The remote client's directory must not affect the owner's absolute paths.
+        host.clients.get_mut(&1).unwrap().context.cwd =
+            Some(directory.join("missing").to_string_lossy().into());
+        std::fs::write(&paths[1], "set -g @reload updated\n").unwrap();
+        let files = host.config_files.clone().unwrap();
+        request(
+            &mut host,
+            1,
+            &["source-file", "--", &files[0], &files[1]],
+            false,
+            false,
+        );
+        drive(&mut host);
+        assert_eq!(host.engine.options["@reload"], "updated");
+        assert!(replies.try_iter().any(
+            |message| matches!(message, ServerMessage::Reply(reply) if reply.error.is_none())
+        ));
+        assert_eq!(
+            host.engine.sessions.keys().copied().collect::<Vec<_>>(),
+            sessions
+        );
+        assert_eq!(host.engine.panes.keys().copied().collect::<Vec<_>>(), panes);
+        std::fs::write(&paths[1], "set -g @reload \"unterminated\n").unwrap();
+        request(
+            &mut host,
+            1,
+            &["source-file", "--", &files[1]],
+            false,
+            false,
+        );
+        drive(&mut host);
+        assert!(replies.try_iter().any(|message| matches!(message, ServerMessage::Reply(reply)
+            if reply.status == Some(1) && String::from_utf8_lossy(&reply.output).contains("unterminated"))));
+        request(&mut host, 1, &["source-file", "--", &files[1]], true, false);
+        drive(&mut host);
+        assert!(replies.try_iter().any(|message| matches!(message, ServerMessage::Reply(reply)
+            if reply.status == Some(1) && String::from_utf8_lossy(&reply.output).contains("unterminated"))));
+        std::fs::remove_file(&paths[1]).unwrap();
+        request(
+            &mut host,
+            1,
+            &["source-file", "--", &files[1]],
+            false,
+            false,
+        );
+        drive(&mut host);
+        assert!(replies.try_iter().any(
+            |message| matches!(message, ServerMessage::Reply(reply) if reply.error.is_some())
+        ));
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
