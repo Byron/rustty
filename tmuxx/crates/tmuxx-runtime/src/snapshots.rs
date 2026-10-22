@@ -45,6 +45,93 @@ fn one_large_snapshot_does_not_consume_the_slow_output_budget() {
     assert!(host.clients[&1].delivery_bytes.load(Ordering::Acquire) < 1024);
 }
 
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
+#[test]
+fn process_directory_changes_send_only_negotiated_light_metadata_updates() {
+    let (mut host, received) = host();
+    host.clients.get_mut(&1).unwrap().context.selection_updates = true;
+    let mut muted = Vec::new();
+    for (id, subscribed, negotiated) in [(2, true, false), (3, false, true)] {
+        let (tx, rx) = mpsc::sync_channel(32);
+        let mut client = host.clients[&1].clone();
+        client.tx = tx;
+        client.subscribed = subscribed;
+        client.context.selection_updates = negotiated;
+        host.clients.insert(id, client);
+        muted.push(rx);
+    }
+    host.engine
+        .execute(
+            &tmuxx_command::parse(b"new-session -d ''").unwrap()[0],
+            &mut ClientContext::default(),
+        )
+        .unwrap();
+    host.engine
+        .windows
+        .get_mut(&0)
+        .unwrap()
+        .options
+        .insert("automatic-rename".into(), "off".into());
+    let cwd = std::env::current_dir().unwrap();
+    #[cfg(unix)]
+    let cwd = cwd.canonicalize().unwrap();
+    let cwd = cwd.into_os_string().into_string().unwrap();
+    let shell = defaults::system_shell();
+    #[cfg(unix)]
+    let argv = [&shell, "-c", "read wait"];
+    #[cfg(windows)]
+    let argv = [&shell, "/D", "/Q", "/K"];
+    host.spawn(
+        0,
+        shell.clone(),
+        argv.iter().map(|arg| arg.as_bytes().to_vec()).collect(),
+        Some(cwd.clone()),
+        std::env::vars().collect(),
+        (80, 24),
+    )
+    .unwrap();
+    let expected = Path::new(&cwd).canonicalize().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let reported = loop {
+        host.refresh_process_metadata();
+        if let Some(path) = &host.engine.panes[&0].current_path
+            && Path::new(path)
+                .canonicalize()
+                .is_ok_and(|path| path == expected)
+        {
+            break path.clone();
+        }
+        assert!(Instant::now() < deadline, "shell CWD was never available");
+        thread::sleep(Duration::from_millis(5));
+    };
+    received.try_iter().for_each(drop);
+    let pane = host.engine.panes.get_mut(&0).unwrap();
+    pane.cwd = Some(reported.clone());
+    pane.current_path = None;
+    let sequence = host.engine.sequence;
+    host.refresh_process_metadata();
+    assert_eq!(host.engine.sequence, sequence);
+    assert_eq!(received.try_iter().count(), 0);
+
+    host.engine.panes.get_mut(&0).unwrap().current_path = Some("stale path".into());
+    host.next_name_check = Instant::now();
+    host.check_window_names();
+    let ServerMessage::Selection {
+        sequence: updated,
+        state,
+    } = received.try_recv().unwrap()
+    else {
+        panic!("missing directory metadata update");
+    };
+    assert_eq!(updated, sequence + 1);
+    assert_eq!(state["panes"][0]["current_path"], reported);
+    assert!(state["panes"][0].get("terminal").is_none());
+    host.refresh_process_metadata();
+    assert_eq!(host.engine.sequence, updated);
+    assert_eq!(received.try_iter().count(), 0);
+    assert!(muted.iter().all(|rx| rx.try_iter().count() == 0));
+}
+
 #[test]
 fn checkpoint_snapshots_keep_log_history_and_agent_state_without_duplicate_cells() {
     let (mut host, rx) = host();

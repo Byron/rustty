@@ -885,6 +885,7 @@ fn publish_graph(shared: &Shared, state: &State) {
                 cols: p.width.min(u16::MAX as u32) as u16,
                 rows: p.height.min(u16::MAX as u32) as u16,
                 pid: None,
+                current_path: None,
                 modal: p.modal,
                 // Stock control formats do not expose these modal policies.
                 modal_capture_keys: false,

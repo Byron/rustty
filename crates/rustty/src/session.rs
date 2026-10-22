@@ -398,9 +398,12 @@ impl Session {
         &self.shell
     }
 
-    /// Decode CWD metadata in the filesystem of the process that reported it.
+    /// Decode CWD metadata, using the attached process path when no shell report exists.
     pub fn directory_from_report(&self, report: &str) -> Option<PathBuf> {
-        if self.attached.is_some() {
+        if let Some(attached) = &self.attached {
+            if report.is_empty() {
+                return self.shell.decode_directory(&attached.current_path()?, true);
+            }
             self.shell.decode_directory(report, true)
         } else {
             self.shell.directory_from_report(report)

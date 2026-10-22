@@ -183,6 +183,7 @@ fn foreground(fd: libc::c_int) -> (Option<String>, Option<String>) {
 
 impl Host {
     pub(super) fn refresh_process_metadata(&mut self) {
+        let mut paths_changed = false;
         #[cfg(windows)]
         for (id, process) in &self.processes {
             if let Some(pane) = self.engine.panes.get_mut(id) {
@@ -191,6 +192,8 @@ impl Host {
                     .as_ref()
                     .map(windows_process)
                     .unwrap_or_default();
+                paths_changed |= pane.current_path.as_ref().or(pane.cwd.as_ref())
+                    != cwd.as_ref().or(pane.cwd.as_ref());
                 pane.current_command = name;
                 pane.current_path = cwd;
             }
@@ -203,8 +206,31 @@ impl Host {
                     .as_raw_fd()
                     .map(foreground)
                     .unwrap_or_default();
+                paths_changed |= pane.current_path.as_ref().or(pane.cwd.as_ref())
+                    != cwd.as_ref().or(pane.cwd.as_ref());
                 pane.current_command = name;
                 pane.current_path = cwd;
+            }
+        }
+        if paths_changed {
+            let clients = self
+                .clients
+                .iter()
+                .filter(|(_, client)| client.subscribed && client.context.selection_updates)
+                .map(|(id, _)| *id)
+                .collect::<Vec<_>>();
+            if !clients.is_empty() {
+                self.engine.sequence += 1;
+                let state = self.engine.selection_state();
+                for id in clients {
+                    self.send(
+                        id,
+                        ServerMessage::Selection {
+                            sequence: self.engine.sequence,
+                            state: state.clone(),
+                        },
+                    );
+                }
             }
         }
     }

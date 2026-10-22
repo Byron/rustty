@@ -48,6 +48,9 @@ pub struct SnapshotPane {
     pub persistent: bool,
     #[serde(default)]
     pub pid: Option<u32>,
+    /// Directory fallback for shells that do not report their CWD.
+    #[serde(default)]
+    pub current_path: Option<String>,
     #[serde(default)]
     pub modal: bool,
     #[serde(default)]
@@ -83,6 +86,8 @@ mod tests {
             "windows": [{"id":0,"name":"shell","active":0,"cols":40,"rows":6,"panes":[0],"layout":""}],
             "panes": [{"id":0,"window":0,"cols":40,"rows":6,"status":null}]
         })).unwrap();
+        assert_eq!(state.panes[0].current_path, None);
+        state.panes[0].current_path = Some("C:\\work 雪 é".into());
         state.panes[0].terminal = Some(snapshot.clone());
         let copied = state.clone();
         assert!(Arc::ptr_eq(
@@ -122,6 +127,10 @@ mod tests {
         let ServerMessage::Snapshot { state, .. } = decode(&bytes).unwrap() else {
             panic!("missing snapshot");
         };
+        assert_eq!(
+            state.panes[0].current_path.as_deref(),
+            Some("C:\\work 雪 é")
+        );
         let mut restored = state.panes[0].terminal.as_ref().unwrap().restore().unwrap();
         let capture = tmuxx_terminal::CaptureOptions {
             start: Some(i32::MIN),

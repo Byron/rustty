@@ -244,4 +244,34 @@ mod tests {
         assert_eq!(engine.selection_state(), state);
         assert!(serde_json::to_vec(&state).unwrap().len() < 2048);
     }
+
+    #[test]
+    fn snapshots_and_selection_updates_include_process_and_start_paths() {
+        let mut engine = engine();
+        engine.panes.get_mut(&0).unwrap().cwd = Some("C:\\start".into());
+        let pane = engine.panes.get_mut(&1).unwrap();
+        pane.cwd = Some("C:\\start".into());
+        pane.current_path = Some("C:\\work 雪 é".into());
+        engine.feed(1, b"\x1b]7;file://host/C:/shell\x07");
+
+        let snapshot = engine.native_snapshot();
+        for state in [
+            serde_json::to_value(&snapshot).unwrap(),
+            engine.selection_state(),
+        ] {
+            assert_eq!(state["panes"][0]["current_path"], "C:\\start");
+            assert_eq!(state["panes"][1]["current_path"], "C:\\work 雪 é");
+            assert_eq!(state["panes"][2]["current_path"], serde_json::Value::Null);
+        }
+        assert_eq!(
+            snapshot.panes[1]
+                .terminal
+                .as_ref()
+                .unwrap()
+                .restore()
+                .unwrap()
+                .cwd(),
+            b"file://host/C:/shell"
+        );
+    }
 }

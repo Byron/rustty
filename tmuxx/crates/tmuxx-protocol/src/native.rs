@@ -200,8 +200,8 @@ pub enum ServerMessage {
     Changed {
         sequence: u64,
     },
-    /// Authoritative active IDs and pane appearance; contains no terminal contents.
-    /// Sent only after selection_updates negotiation, following the command reply.
+    /// Authoritative active IDs, pane appearance and metadata, without terminal contents.
+    /// Requires selection_updates; command-caused selection changes follow their reply.
     Selection {
         sequence: u64,
         state: serde_json::Value,
