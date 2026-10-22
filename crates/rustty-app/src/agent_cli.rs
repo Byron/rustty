@@ -32,6 +32,8 @@ Revealing a finished command clears its tile; revealing running work keeps it.
    ⇄   Move          Purple arrows/outline; select the swap destination
 
 A small mint line at the top marks the focused pane, independently of status.
+A small arrow in the upper-right marks reports from tmux-backed panes, including
+local tmuxx sessions and SSH connections. Icons and labels keep their usual size.
 Unseen important states flash until their pane is revealed/focused. Initial Idle
 and Working stay quiet; later Idle transitions flash too. Flashing sends no input.
 

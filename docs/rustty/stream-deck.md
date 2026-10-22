@@ -69,6 +69,10 @@ small counts, brightness percentage and page indicator. An agent's remaining
 space holds a short task slug with margins; long names wrap and shorten by
 grapheme rather than shrinking the font.
 
+A small arrow in the upper-right marks reports from tmux-backed panes, including
+local tmuxx sessions and SSH connections. It uses the empty corner without moving
+or resizing the status icon, focus stripe, or task label.
+
 Names come from the pane's directory, independently of pane/tab titles, reporter
 prose or opaque thread IDs. A terminal title that exactly names a directory in
 the pane's path can identify the worktree above a nested working directory;
