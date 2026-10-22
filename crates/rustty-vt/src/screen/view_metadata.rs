@@ -23,6 +23,13 @@ pub struct ViewMetadata {
     cell_runs: Vec<(usize, usize, usize, u8, i8)>,
 }
 
+impl ViewMetadata {
+    /// History policy needed before loading checkpoint history pages.
+    pub fn tmux_history(&self) -> Option<TmuxHistory> {
+        self.tmux_history
+    }
+}
+
 impl Screen {
     pub fn view_metadata(&self) -> ViewMetadata {
         let mut cell_runs = Vec::new();

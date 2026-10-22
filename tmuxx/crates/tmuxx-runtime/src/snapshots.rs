@@ -133,6 +133,57 @@ fn process_directory_changes_send_only_negotiated_light_metadata_updates() {
 }
 
 #[test]
+fn failed_split_then_narrow_split_keeps_snapshots_reconnectable() {
+    let (mut host, rx) = host();
+    let mut context = ClientContext::default();
+    let parse = |source| tmuxx_command::parse(source).unwrap().remove(0);
+    host.execute(&parse(b"new-session -d -x 80 -y 24 ''"), &mut context)
+        .unwrap();
+    for _ in 0..1500 {
+        host.engine.feed(
+            0,
+            b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\r\n",
+        );
+    }
+    let before = host.engine.panes[&0]
+        .terminal
+        .capture_lines(Some(i32::MIN), None, false);
+    assert!(
+        host.execute(
+            &parse(b"split-window -h /tmuxx-nonexistent-executable argument"),
+            &mut context,
+        )
+        .is_err()
+    );
+    assert_eq!(host.engine.panes.len(), 1);
+    assert_eq!(
+        host.engine.panes[&0]
+            .terminal
+            .capture_lines(Some(i32::MIN), None, false),
+        before
+    );
+    host.execute(&parse(b"split-window -h ''"), &mut context)
+        .unwrap();
+    assert!(host.engine.panes[&0].terminal.history_len() > 2000);
+    for _ in 0..2 {
+        host.snapshots_pending.clear();
+        host.snapshot(1);
+        let ServerMessage::Snapshot { state, .. } = rx.recv().unwrap() else {
+            panic!("missing reconnect snapshot");
+        };
+        for pane in &state.panes {
+            let restored = pane.terminal.as_ref().unwrap().restore().unwrap();
+            let owner = &host.engine.panes[&pane.id].terminal;
+            assert_eq!(restored.history_len(), owner.history_len());
+            assert_eq!(
+                restored.capture_lines(Some(i32::MIN), None, false),
+                owner.capture_lines(Some(i32::MIN), None, false)
+            );
+        }
+    }
+}
+
+#[test]
 fn checkpoint_snapshots_keep_log_history_and_agent_state_without_duplicate_cells() {
     let (mut host, rx) = host();
     let command = tmuxx_command::parse(b"new-session -d -s logs ''")
