@@ -1056,6 +1056,37 @@ impl Connection {
     pub fn server_status(&self) -> Option<ServerStatus> {
         self.shared.model.lock().ok()?.server_status.clone()
     }
+    /// Reload the native owner's startup configuration files in their original order.
+    pub fn reload_configuration(&self) -> io::Result<u64> {
+        let files = self
+            .server_status()
+            .and_then(|status| status.config_files)
+            .ok_or_else(|| err("The tmuxx server's configuration files are unavailable"))?;
+        if files.is_empty() {
+            return Err(err("The tmuxx server started without configuration files"));
+        }
+        if self.is_closed() {
+            return Err(err("tmuxx connection is closed"));
+        }
+        let request_id = self.shared.next.fetch_add(1, Ordering::Relaxed);
+        self.shared
+            .requests
+            .try_send(Request {
+                request_id,
+                argv: tmuxx_runtime::command_argv(&[tmuxx_command::Command::new(
+                    [b"source-file".to_vec(), b"--".to_vec()]
+                        .into_iter()
+                        .chain(files.into_iter().map(String::into_bytes))
+                        .collect(),
+                )]),
+                stdin: None,
+                subscribe: self.shared.subscribe,
+                // Native diagnostics must reach Reply even for a management observer.
+                control: false,
+            })
+            .map_err(err)?;
+        Ok(request_id)
+    }
     /// Live transports used by this view, including its separate sizing clients.
     pub fn view_connection_count(&self) -> Option<usize> {
         let instance = self.shared.model.lock().ok()?.instance.clone();
@@ -1753,15 +1784,20 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
             model.request_refresh(shared)?;
         }
         ServerMessage::Reply(reply) => {
-            model.focus_reply(reply.request_id, reply.error.is_some());
+            let error = reply.error.or_else(|| {
+                reply.status.filter(|status| *status != 0).map(|status| {
+                    if reply.output.is_empty() {
+                        format!("tmuxx command failed with status {status}")
+                    } else {
+                        String::from_utf8_lossy(&reply.output).into_owned()
+                    }
+                })
+            });
+            model.focus_reply(reply.request_id, error.is_some());
             if let Some(receiver) = model.pending_replies.remove(&reply.request_id) {
-                let _ = receiver.send(
-                    reply
-                        .error
-                        .map_or(Ok(reply.output), |error| Err(err(error))),
-                );
+                let _ = receiver.send(error.map_or(Ok(reply.output), |error| Err(err(error))));
                 (shared.wake)();
-            } else if let Some(error) = reply.error {
+            } else if let Some(error) = error {
                 model.errors.push(error);
                 (shared.wake)();
             }
@@ -2304,6 +2340,70 @@ mod focus_tests {
     }
 
     #[test]
+    fn reload_configuration_preserves_paths_and_reports_errors() {
+        let (connection, requests) = Connection::base(Arc::new(|| {}), false);
+        assert!(connection.reload_configuration().is_err());
+        for config_files in [None, Some(vec![])] {
+            apply(
+                &connection.shared,
+                ServerMessage::ServerStatus(ServerStatus {
+                    instance_id: "owner".into(),
+                    connections: 1,
+                    config_files,
+                }),
+            )
+            .unwrap();
+            assert!(connection.reload_configuration().is_err());
+            assert!(requests.try_recv().is_err());
+        }
+        let files = vec![
+            "C:/config, first.conf".into(),
+            "C:/配置;second.conf;".into(),
+        ];
+        apply(
+            &connection.shared,
+            ServerMessage::ServerStatus(ServerStatus {
+                instance_id: "owner".into(),
+                connections: 1,
+                config_files: Some(files.clone()),
+            }),
+        )
+        .unwrap();
+        let id = connection.reload_configuration().unwrap();
+        let request = requests.try_recv().unwrap();
+        assert_eq!(request.request_id, id);
+        assert!(!request.control && !request.subscribe);
+        assert_eq!(
+            tmuxx_command::parse_argv(&request.argv).unwrap(),
+            vec![tmuxx_command::Command::new(
+                ["source-file".to_owned(), "--".to_owned()]
+                    .into_iter()
+                    .chain(files)
+                    .map(String::into_bytes)
+                    .collect()
+            )]
+        );
+        reply(&connection, id, Some("cannot read configuration"));
+        assert_eq!(connection.errors(), ["cannot read configuration"]);
+        let id = connection.reload_configuration().unwrap();
+        requests.try_recv().unwrap();
+        apply(
+            &connection.shared,
+            ServerMessage::Reply(tmuxx_protocol::native::Response {
+                request_id: id,
+                status: Some(1),
+                output: b"config.conf:1: unterminated quote".to_vec(),
+                error: None,
+            }),
+        )
+        .unwrap();
+        assert_eq!(connection.errors(), ["config.conf:1: unterminated quote"]);
+        fail(&connection.shared, "disconnected");
+        assert!(connection.reload_configuration().is_err());
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
     fn server_watch_keeps_only_status_and_consumes_its_optional_reply() {
         let (connection, requests) = Connection::base(Arc::new(|| {}), false);
         for error in [Some("unknown command: tmuxx-server-status"), None] {
@@ -2327,6 +2427,7 @@ mod focus_tests {
             let status = ServerStatus {
                 instance_id: "owner".into(),
                 connections,
+                config_files: None,
             };
             apply(
                 &connection.shared,
@@ -2347,7 +2448,8 @@ mod focus_tests {
                     &connection.shared,
                     ServerMessage::ServerStatus(ServerStatus {
                         instance_id: instance_id.into(),
-                        connections: 1
+                        connections: 1,
+                        config_files: None,
                     }),
                 )
                 .is_err()
@@ -2364,6 +2466,7 @@ mod focus_tests {
             ServerMessage::ServerStatus(ServerStatus {
                 instance_id: "owner".into(),
                 connections: 9,
+                config_files: None,
             }),
         )
         .unwrap();
