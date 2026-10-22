@@ -1144,9 +1144,23 @@ mod tests {
     use super::*;
     use std::time::{Duration, Instant};
 
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     #[test]
+    #[cfg_attr(
+        windows,
+        ignore = "requires TMUXX_CONPTY_RESOURCES from a verified bundle; run with --ignored"
+    )]
     fn restored_visuals_precede_the_first_child_output() {
+        #[cfg(windows)]
+        {
+            let resources = std::env::var_os("TMUXX_CONPTY_RESOURCES")
+                .expect("TMUXX_CONPTY_RESOURCES must name the verified shipped resources");
+            crate::tmuxx::initialize_conpty(Path::new(&resources)).unwrap();
+        }
+        #[cfg(unix)]
+        let command = vec!["/bin/sh", "-c", "printf 'fresh child output'"];
+        #[cfg(windows)]
+        let command = vec!["cmd.exe", "/d", "/q", "/c", "echo fresh child output"];
         let mut terminal = Terminal::new(100, 4, 20);
         terminal.feed(b"original transcript\x1b[?1049hactive TUI\x1b[?2004h");
         let bytes =
@@ -1158,11 +1172,9 @@ mod tests {
             SessionOptions {
                 cols: 100,
                 rows: 4,
-                command: Some(Command::Direct(vec![
-                    "/bin/sh".into(),
-                    "-c".into(),
-                    "printf 'fresh child output'".into(),
-                ])),
+                command: Some(Command::Direct(
+                    command.into_iter().map(Into::into).collect(),
+                )),
                 ..SessionOptions::default()
             },
             Arc::new(|| {}),
@@ -1176,7 +1188,9 @@ mod tests {
             formatter.options.unwrap = true;
             let text = String::from_utf8(formatter.format().unwrap()).unwrap();
             if let Some(fresh) = text.find("fresh child output") {
-                let marker = text.find(rustty_vt::visual::RESTORED_MARKER).unwrap();
+                let marker = text
+                    .find(rustty_vt::visual::RESTORED_MARKER)
+                    .unwrap_or_else(|| panic!("missing restored marker: {text:?}"));
                 assert!(text.find("original transcript").unwrap() < marker);
                 assert!(text.find("active TUI").unwrap() < marker);
                 assert!(marker < fresh);

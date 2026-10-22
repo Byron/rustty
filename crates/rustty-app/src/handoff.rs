@@ -1,25 +1,27 @@
-//! Opt-in visual-state copying between macOS instances, using signals and private files.
+//! Opt-in visual-state copying between instances, using native notifications and private files.
 
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
-    fs::{self, File, OpenOptions},
+    fs,
     io::{self, Read, Write},
-    os::{
-        fd::{AsRawFd, FromRawFd, OwnedFd},
-        unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
-    },
     path::{Path, PathBuf},
-    sync::{
-        Arc, OnceLock,
-        atomic::{AtomicBool, Ordering},
-    },
-    thread::JoinHandle,
+    sync::Arc,
     time::Duration,
 };
 
+#[cfg(target_os = "macos")]
+#[path = "handoff/macos.rs"]
+mod platform;
+#[cfg(target_os = "windows")]
+#[path = "handoff/windows.rs"]
+mod platform;
+use platform::{
+    Watcher, check_private_directory, open_private_file, private_directory, process_identity,
+    protect_file, unique_id, user_temporary_directory,
+};
+
 const PROTOCOL: u32 = 1;
-const SIGNAL: libc::c_int = libc::SIGURG;
 const MAX_METADATA: u64 = 64 * 1024;
 pub const MAX_DUMP_BYTES: u64 = 512 * 1024 * 1024;
 const DUMP_EXTENSION: &str = "rustty-state.lz4";
@@ -74,7 +76,7 @@ pub struct Registry {
     directory: PathBuf,
     instance: Instance,
     prompted: HashSet<String>,
-    _watcher: Option<SignalWatcher>,
+    _watcher: Option<Watcher>,
 }
 
 impl Registry {
@@ -98,8 +100,8 @@ impl Registry {
         wake: Arc<dyn Fn() + Send + Sync>,
     ) -> io::Result<Self> {
         private_directory(&directory)?;
-        // Publish support only after a native signal listener is ready.
-        let watcher = SignalWatcher::new(wake)?;
+        // Publish support only after a native notification listener is ready.
+        let watcher = Watcher::new(wake)?;
         let registry = Self::register_in(directory, label, Some(watcher))?;
         registry.clean_stale()?;
         Ok(registry)
@@ -108,7 +110,7 @@ impl Registry {
     fn register_in(
         directory: PathBuf,
         label: String,
-        watcher: Option<SignalWatcher>,
+        watcher: Option<Watcher>,
     ) -> io::Result<Self> {
         private_directory(&directory)?;
         let pid = std::process::id();
@@ -152,7 +154,7 @@ impl Registry {
             0,
         )
         .map_err(io::Error::other)?;
-        output.with_mut(|file| file.set_permissions(fs::Permissions::from_mode(0o600)))?;
+        output.with_mut(|file| protect_file(file))?;
         serde_json::to_writer(&mut output, &self.instance.id).map_err(io::Error::other)?;
         output.commit().map_err(io::Error::other)?;
         Ok(())
@@ -368,51 +370,101 @@ impl Registry {
 
     pub fn cancel(&self, request: &Request) -> io::Result<()> {
         self.check_requester(request)?;
-        let _lifecycle = self.lifecycle_lock(request)?;
-        remove_if_present(&self.request_path(request))?;
-        remove_if_present(&self.dump_path(request))?;
+        self.cancel_id(&request.id)?;
         let _ = self.notify(&request.source);
+        Ok(())
+    }
+
+    fn cancel_id(&self, id: &str) -> io::Result<()> {
+        let directory = self.request_directory(&self.instance);
+        let _lifecycle = match lock_lifecycle(&directory, id) {
+            Ok(lock) => lock,
+            Err(error) => {
+                // A crashed source can leave a gix marker behind. Only recover
+                // it when the recorded process is gone, including PID reuse.
+                let source_exited = read_json::<RequestFile>(
+                    &directory.join(format!("{id}.request")),
+                )
+                .is_ok_and(|file| {
+                    let request = file.request;
+                    valid_request(&request)
+                        && request.id == id
+                        && request.requester.id == self.instance.id
+                        && match process_identity(request.source.pid) {
+                            Ok(identity) => {
+                                identity
+                                    != (request.source.started_at, request.source.started_micros)
+                            }
+                            Err(error) => error.kind() == io::ErrorKind::NotFound,
+                        }
+                });
+                if !source_exited {
+                    return Err(error);
+                }
+                remove_if_present(&directory.join(format!("{id}.lifecycle.lock")))?;
+                lock_lifecycle(&directory, id)?
+            }
+        };
+        // A responder either commits before this lock (and we remove its dump),
+        // or sees the missing request afterwards and abandons its staged export.
+        // Remove open staging files directly: Windows cannot rename their parent.
+        for suffix in [
+            "request",
+            DUMP_EXTENSION,
+            "request.lock",
+            "rustty-state.lz4.lock",
+        ] {
+            remove_if_present(&directory.join(format!("{id}.{suffix}")))?;
+        }
         Ok(())
     }
 
     pub fn cancel_all(&self) -> io::Result<()> {
         let directory = self.request_directory(&self.instance);
-        let sources: Vec<_> = fs::read_dir(&directory)
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let mut ids = HashSet::new();
+        let mut sources = Vec::new();
+        for entry in entries {
+            let path = entry?.path();
+            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let Some(id) = [
+                ".request",
+                ".rustty-state.lz4",
+                ".request.lock",
+                ".rustty-state.lz4.lock",
+            ]
             .into_iter()
-            .flatten()
-            .filter_map(Result::ok)
-            .filter(|entry| {
-                entry
-                    .path()
-                    .extension()
-                    .is_some_and(|extension| extension == "request")
-            })
-            .filter_map(|entry| read_json::<RequestFile>(&entry.path()).ok())
-            .filter(|file| {
-                valid_request(&file.request) && file.request.requester.id == self.instance.id
-            })
-            .map(|file| file.request.source)
-            .collect();
-        // Renaming invalidates even a writer holding an open staging file. Its final
-        // request check/commit uses the old paths, so a cancelled dump cannot reappear.
-        let cancelled =
-            self.directory
-                .join(format!("{}-{}.cancelled", self.instance.id, unique_id()));
-        match fs::rename(&directory, &cancelled) {
-            Ok(()) => {
-                private_directory(&directory)?;
-                fs::remove_dir_all(cancelled)?;
-                let mut notified = HashSet::new();
-                for source in sources {
-                    if notified.insert(source.id.clone()) {
-                        let _ = self.notify(&source);
-                    }
-                }
-                Ok(())
+            .find_map(|suffix| name.strip_suffix(suffix))
+            .filter(|id| valid_id(id)) else {
+                continue;
+            };
+            ids.insert(id.to_owned());
+            if path
+                .extension()
+                .is_some_and(|extension| extension == "request")
+                && let Ok(file) = read_json::<RequestFile>(&path)
+                && valid_request(&file.request)
+                && file.request.requester.id == self.instance.id
+            {
+                sources.push(file.request.source);
             }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(error),
         }
+        for id in ids {
+            self.cancel_id(&id)?;
+        }
+        let mut notified = HashSet::new();
+        for source in sources {
+            if notified.insert(source.id.clone()) {
+                let _ = self.notify(&source);
+            }
+        }
+        Ok(())
     }
 
     pub fn dump_path(&self, request: &Request) -> PathBuf {
@@ -434,16 +486,7 @@ impl Registry {
     }
 
     fn lifecycle_lock(&self, request: &Request) -> io::Result<gix_lock::Marker> {
-        let directory = self.request_directory(&request.requester);
-        check_private_directory(&directory)?;
-        let path = directory.join(format!("{}.lifecycle", request.id));
-        gix_lock::Marker::acquire_to_hold_resource(
-            path,
-            gix_lock::acquire::Fail::AfterDurationWithBackoff(Duration::from_secs(1)),
-            None,
-            0,
-        )
-        .map_err(io::Error::other)
+        lock_lifecycle(&self.request_directory(&request.requester), &request.id)
     }
 
     fn check_source(&self, request: &Request) -> io::Result<()> {
@@ -517,12 +560,7 @@ impl Registry {
         if self._watcher.is_none() {
             return Ok(());
         }
-        // SIGURG is ignored by default: the unavoidable PID-check/kill race must
-        // never terminate an unrelated process that happens to reuse the PID.
-        if unsafe { libc::kill(instance.pid as libc::pid_t, SIGNAL) } != 0 {
-            return Err(io::Error::last_os_error());
-        }
-        Ok(())
+        platform::notify(instance.pid)
     }
 
     fn clean_stale(&self) -> io::Result<()> {
@@ -604,112 +642,6 @@ fn valid_request(request: &Request) -> bool {
     valid_id(&request.id) && valid_instance(&request.source) && valid_instance(&request.requester)
 }
 
-fn unique_id() -> String {
-    let mut bytes = [0u8; 16];
-    unsafe { libc::arc4random_buf(bytes.as_mut_ptr().cast(), bytes.len()) };
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
-fn user_temporary_directory() -> io::Result<PathBuf> {
-    use std::{ffi::OsString, os::unix::ffi::OsStringExt};
-    let size = unsafe { libc::confstr(libc::_CS_DARWIN_USER_TEMP_DIR, std::ptr::null_mut(), 0) };
-    if size == 0 || size > 1024 * 1024 {
-        return Err(io::Error::other(
-            "Cannot locate the macOS user temporary directory",
-        ));
-    }
-    let mut bytes = vec![0; size];
-    if unsafe {
-        libc::confstr(
-            libc::_CS_DARWIN_USER_TEMP_DIR,
-            bytes.as_mut_ptr().cast(),
-            size,
-        )
-    } != size
-    {
-        return Err(io::Error::other(
-            "The macOS user temporary directory changed",
-        ));
-    }
-    bytes.pop();
-    Ok(PathBuf::from(OsString::from_vec(bytes)))
-}
-
-fn process_identity(pid: u32) -> io::Result<(u64, u64)> {
-    if pid <= 1 || pid > i32::MAX as u32 {
-        return Err(io::Error::other("Invalid Rustty process identifier"));
-    }
-    let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::zeroed();
-    let size = std::mem::size_of_val(&info) as i32;
-    let read = unsafe {
-        libc::proc_pidinfo(
-            pid as libc::pid_t,
-            libc::PROC_PIDTBSDINFO,
-            0,
-            info.as_mut_ptr().cast(),
-            size,
-        )
-    };
-    if read != size {
-        return Err(io::Error::last_os_error());
-    }
-    let info = unsafe { info.assume_init() };
-    if info.pbi_uid != unsafe { libc::geteuid() } {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "Rustty belongs to another user",
-        ));
-    }
-    Ok((info.pbi_start_tvsec, info.pbi_start_tvusec))
-}
-
-fn private_directory(path: &Path) -> io::Result<()> {
-    match fs::DirBuilder::new().mode(0o700).create(path) {
-        Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
-        Err(error) => return Err(error),
-    }
-    check_private_directory(path)
-}
-
-fn check_private_directory(path: &Path) -> io::Result<()> {
-    let metadata = fs::symlink_metadata(path)?;
-    if !metadata.is_dir()
-        || metadata.uid() != unsafe { libc::geteuid() }
-        || metadata.mode() & 0o077 != 0
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "Unsafe visual-state directory",
-        ));
-    }
-    Ok(())
-}
-
-fn open_private_file(path: &Path, limit: u64) -> io::Result<File> {
-    check_private_directory(
-        path.parent()
-            .ok_or_else(|| io::Error::other("Missing parent"))?,
-    )?;
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK)
-        .open(path)?;
-    let metadata = file.metadata()?;
-    if !metadata.is_file()
-        || metadata.uid() != unsafe { libc::geteuid() }
-        || metadata.mode() & 0o077 != 0
-        || metadata.nlink() != 1
-        || metadata.len() > limit
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Unsafe or oversized visual-state file",
-        ));
-    }
-    Ok(file)
-}
-
 fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> io::Result<T> {
     let file = open_private_file(path, MAX_METADATA)?;
     serde_json::from_reader(file.take(MAX_METADATA + 1)).map_err(io::Error::other)
@@ -727,7 +659,7 @@ fn lock_file(path: &Path) -> io::Result<gix_lock::File> {
         0,
     )
     .map_err(io::Error::other)?;
-    output.with_mut(|file| file.set_permissions(fs::Permissions::from_mode(0o600)))?;
+    output.with_mut(|file| protect_file(file))?;
     Ok(output)
 }
 
@@ -736,6 +668,17 @@ fn write_json(path: &Path, value: &impl Serialize) -> io::Result<()> {
     serde_json::to_writer(&mut output, value).map_err(io::Error::other)?;
     output.commit().map_err(io::Error::other)?;
     Ok(())
+}
+
+fn lock_lifecycle(directory: &Path, id: &str) -> io::Result<gix_lock::Marker> {
+    check_private_directory(directory)?;
+    gix_lock::Marker::acquire_to_hold_resource(
+        directory.join(format!("{id}.lifecycle")),
+        gix_lock::acquire::Fail::AfterDurationWithBackoff(Duration::from_secs(1)),
+        None,
+        0,
+    )
+    .map_err(io::Error::other)
 }
 
 fn remove_if_present(path: &Path) -> io::Result<()> {
@@ -763,128 +706,6 @@ fn decode_dump_with_limit(input: impl Read, limit: u64) -> io::Result<Vec<u8>> {
     Ok(output)
 }
 
-struct SignalWatcher {
-    queue: Arc<OwnedFd>,
-    stop: Arc<AtomicBool>,
-    thread: Option<JoinHandle<()>>,
-}
-
-impl SignalWatcher {
-    fn new(wake: Arc<dyn Fn() + Send + Sync>) -> io::Result<Self> {
-        static SIGNAL_INSTALLED: OnceLock<Result<(), String>> = OnceLock::new();
-        let installed = SIGNAL_INSTALLED.get_or_init(|| {
-            let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
-            action.sa_sigaction = signal_handler as *const () as usize;
-            action.sa_flags = libc::SA_RESTART;
-            unsafe { libc::sigemptyset(&mut action.sa_mask) };
-            if unsafe { libc::sigaction(SIGNAL, &action, std::ptr::null_mut()) } != 0 {
-                Err(io::Error::last_os_error().to_string())
-            } else {
-                Ok(())
-            }
-        });
-        if let Err(error) = installed {
-            return Err(io::Error::other(error.clone()));
-        }
-        let raw = unsafe { libc::kqueue() };
-        if raw < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        let queue = Arc::new(unsafe { OwnedFd::from_raw_fd(raw) });
-        let changes = [
-            event(
-                SIGNAL as usize,
-                libc::EVFILT_SIGNAL,
-                libc::EV_ADD | libc::EV_CLEAR,
-                0,
-            ),
-            event(1, libc::EVFILT_USER, libc::EV_ADD | libc::EV_CLEAR, 0),
-        ];
-        if unsafe {
-            libc::kevent(
-                raw,
-                changes.as_ptr(),
-                changes.len() as i32,
-                std::ptr::null_mut(),
-                0,
-                std::ptr::null(),
-            )
-        } < 0
-        {
-            return Err(io::Error::last_os_error());
-        }
-        let stop = Arc::new(AtomicBool::new(false));
-        let thread_queue = Arc::clone(&queue);
-        let thread_stop = Arc::clone(&stop);
-        let thread = std::thread::Builder::new()
-            .name("rustty-handoff-signal".into())
-            .spawn(move || {
-                while !thread_stop.load(Ordering::Acquire) {
-                    let mut received = event(0, 0, 0, 0);
-                    let count = unsafe {
-                        libc::kevent(
-                            thread_queue.as_raw_fd(),
-                            std::ptr::null(),
-                            0,
-                            &mut received,
-                            1,
-                            std::ptr::null(),
-                        )
-                    };
-                    if count < 0 {
-                        if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
-                            continue;
-                        }
-                        break;
-                    }
-                    if !thread_stop.load(Ordering::Acquire)
-                        && received.filter == libc::EVFILT_SIGNAL
-                    {
-                        wake();
-                    }
-                }
-            })?;
-        Ok(Self {
-            queue,
-            stop,
-            thread: Some(thread),
-        })
-    }
-}
-
-impl Drop for SignalWatcher {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Release);
-        let trigger = event(1, libc::EVFILT_USER, 0, libc::NOTE_TRIGGER);
-        unsafe {
-            libc::kevent(
-                self.queue.as_raw_fd(),
-                &trigger,
-                1,
-                std::ptr::null_mut(),
-                0,
-                std::ptr::null(),
-            );
-        }
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
-    }
-}
-
-extern "C" fn signal_handler(_: libc::c_int) {}
-
-fn event(ident: usize, filter: i16, flags: u16, fflags: u32) -> libc::kevent {
-    libc::kevent {
-        ident,
-        filter,
-        flags,
-        fflags,
-        data: 0,
-        udata: std::ptr::null_mut(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -910,7 +731,7 @@ mod tests {
     }
 
     fn request(source: &Registry, requester: &Registry) -> Request {
-        // Test file lifecycle without sending any process a signal.
+        // Test file lifecycle without notifying another process.
         let request = Request {
             id: unique_id(),
             requester: requester.instance.clone(),
@@ -976,6 +797,31 @@ mod tests {
     }
 
     #[test]
+    fn cancellation_recovers_a_crashed_sources_lifecycle_marker() {
+        let directory = TestDirectory::new();
+        let source = directory.registry("source");
+        let requester = directory.registry("requester");
+        let mut request = request(&source, &requester);
+        // A reused PID belongs to another process, never the recorded source.
+        request.source.started_at -= 1;
+        write_json(
+            &requester.request_path(&request),
+            &RequestFile {
+                request: request.clone(),
+                reply: Reply::Waiting,
+            },
+        )
+        .unwrap();
+        let marker = requester
+            .request_directory(requester.instance())
+            .join(format!("{}.lifecycle.lock", request.id));
+        fs::write(&marker, []).unwrap();
+        requester.cancel_all().unwrap();
+        assert!(!marker.exists());
+        assert!(!requester.request_path(&request).exists());
+    }
+
+    #[test]
     fn source_can_ignore_pending_and_future_requests() {
         let directory = TestDirectory::new();
         let mut source = directory.registry("source");
@@ -1027,14 +873,14 @@ mod tests {
     }
 
     #[test]
-    fn native_signal_wakes_and_stops_the_kqueue_worker() {
+    fn native_notification_wakes_and_stops_worker() {
         let (send, receive) = std::sync::mpsc::channel();
-        let watcher = SignalWatcher::new(Arc::new(move || {
+        let watcher = Watcher::new(Arc::new(move || {
             let _ = send.send(());
         }))
         .unwrap();
-        // This disposable test process is the only signal target.
-        assert_eq!(unsafe { libc::kill(std::process::id() as i32, SIGNAL) }, 0);
+        // This disposable test process is the only notification target.
+        platform::notify(std::process::id()).unwrap();
         receive.recv_timeout(Duration::from_secs(2)).unwrap();
         drop(watcher);
     }
@@ -1100,8 +946,10 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
-    fn rejects_symlinks_and_non_private_files_and_bounds_decompression() {
+    fn rejects_symlinks_and_non_private_files() {
+        use std::os::unix::fs::PermissionsExt;
         let directory = TestDirectory::new();
         let path = directory.0.join("payload");
         fs::write(&path, b"secret").unwrap();
@@ -1111,6 +959,10 @@ mod tests {
         let link = directory.0.join("link");
         std::os::unix::fs::symlink(&path, &link).unwrap();
         assert!(open_private_file(&link, 100).is_err());
+    }
+
+    #[test]
+    fn bounds_decompression_and_rejects_corruption() {
         let mut encoder = lz4_flex::frame::FrameEncoder::new(Vec::new());
         encoder.write_all(&[0; 1024]).unwrap();
         let compressed = encoder.finish().unwrap();
