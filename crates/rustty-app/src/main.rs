@@ -101,7 +101,10 @@ fn show_startup_error(message: &str) {
     };
     // Automated checks and terminal launches already have stderr. Explorer
     // launches need a visible explanation when startup fails before a window.
-    if unsafe { GetConsoleWindow() }.0.is_null() && std::env::var_os("RUSTTY_SMOKE_DIR").is_none() {
+    if unsafe { GetConsoleWindow() }.0.is_null()
+        && std::env::var_os("RUSTTY_SMOKE_DIR").is_none()
+        && std::env::var_os("RUSTTY_HANDOFF_SMOKE_DIR").is_none()
+    {
         let text: Vec<u16> = message.encode_utf16().chain(Some(0)).collect();
         unsafe {
             MessageBoxW(

@@ -61,10 +61,6 @@ unicode-segmentation = "1.12"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
-gix-lock = "26.0.0"
-lz4_flex.workspace = true
-rmp-serde.workspace = true
-serde_bytes.workspace = true
 objc2.workspace = true
 objc2-foundation.workspace = true
 objc2-app-kit.workspace = true
@@ -74,6 +70,10 @@ objc2-core-graphics.workspace = true
 block2 = "0.6"
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+gix-lock = "26.0.0"
+lz4_flex.workspace = true
+rmp-serde.workspace = true
+serde_bytes.workspace = true
 muda = "0.19"
 elgato-streamdeck = { git = "https://github.com/OpenActionAPI/rust-elgato-streamdeck", rev = "c8b9f85467be437f783ac8bb569a2dc63fca6374" }
 image = { version = "0.25", default-features = false, features = ["png"] }
@@ -86,6 +86,8 @@ windows-core = "0.62.2"
 windows = { version = "0.62.2", features = [
     "Data_Xml_Dom", "Foundation", "UI_Notifications", "UI_ViewManagement",
     "Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Graphics_Dxgi",
+    "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_SystemServices",
+    "Win32_System_RemoteDesktop",
     "Win32_Security_Cryptography", "Win32_System_Com", "Win32_System_Console", "Win32_System_DataExchange",
     "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Ole",
     "Win32_System_Registry", "Win32_System_Threading", "Win32_System_WinRT", "Win32_System_ProcessStatus",
