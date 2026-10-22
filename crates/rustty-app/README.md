@@ -244,6 +244,14 @@ codesign --verify --deep --strict target/release/Rustty.app
 codesign -dr - target/release/Rustty.app
 ```
 
+To build and install the signed release bundle on macOS, run
+`just rustty-install-macos`. Bare `just` only lists recipes. The installer stages
+and verifies the complete bundle under `/Applications`, renames an existing
+`Rustty.app` to `Rustty.previous.<timestamp>-<pid>.app`, then installs the new copy.
+If the final move fails, it restores the previous app. It leaves running instances
+open; keep their previous bundles until they exit. The recipe does not launch the
+new app or grant permissions.
+
 The designated requirement should include `app.rustty.Rustty` and a certificate
 requirement, rather than only an executable `cdhash`. Keep the same certificate and
 private key; recreating the certificate creates a different identity. If Keychain
