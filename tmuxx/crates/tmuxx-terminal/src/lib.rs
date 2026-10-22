@@ -159,7 +159,7 @@ impl Snapshot {
     }
     /// Reject oversized image state before replacing the receiving terminal.
     pub fn restore_with_image_limit(&self, max_image_bytes: usize) -> io::Result<Terminal> {
-        self.restore_with_metadata(1, max_image_bytes, |terminal| {
+        self.restore_with_metadata(1, max_image_bytes, self.primary.tmux_history, |terminal| {
             terminal.restore_view_row_identity(&self.primary, self.alternate.as_ref())?;
             terminal.restore_tmux_capture_metadata(&self.primary, self.alternate.as_ref())
         })
@@ -171,9 +171,12 @@ impl CheckpointSnapshot {
         self.restore_with_image_limit(1024 * 1024 * 1024)
     }
     pub fn restore_with_image_limit(&self, max_image_bytes: usize) -> io::Result<Terminal> {
-        self.restore_with_metadata(2, max_image_bytes, |terminal| {
-            terminal.restore_view_metadata(&self.primary, self.alternate.as_ref())
-        })
+        self.restore_with_metadata(
+            2,
+            max_image_bytes,
+            self.primary.tmux_history(),
+            |terminal| terminal.restore_view_metadata(&self.primary, self.alternate.as_ref()),
+        )
     }
 }
 
@@ -182,6 +185,7 @@ impl<S> Snapshot<S> {
         &self,
         version: u32,
         max_image_bytes: usize,
+        history: Option<rustty_vt::screen::TmuxHistory>,
         restore_metadata: impl FnOnce(&mut rustty_vt::Terminal) -> Result<(), &'static str>,
     ) -> io::Result<Terminal> {
         if self.version != version {
@@ -194,13 +198,26 @@ impl<S> Snapshot<S> {
                     .unwrap_or("missing terminal checkpoint"),
             )
         })?;
-        let mut inner = rustty_vt::snapshot::decode_exact(
-            bytes.as_slice(),
+        let mut source = bytes.as_slice();
+        let mut decoder = rustty_vt::snapshot::Decoder::new(
+            &mut source,
             rustty_vt::snapshot::DecodeOptions {
                 tmux_strings: true,
                 ..Default::default()
             },
-        )?;
+        );
+        let mut inner = decoder.ready()?;
+        // Reflow can retain more rows than tmux's live line limit until new output.
+        if let Some(history) = history {
+            inner.set_tmux_history_limit(history.limit);
+        }
+        while decoder.next_history(&mut inner)?.is_some() {}
+        if !source.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "trailing snapshot data",
+            ));
+        }
         if (inner.cols, inner.rows, inner.is_alternate_screen())
             != (self.cols, self.rows, self.alternate_active)
         {
@@ -774,6 +791,50 @@ impl Terminal {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn snapshots_restore_reflowed_history_beyond_the_live_limit() {
+        let mut terminal = Terminal::new(80, 4, 2000);
+        for _ in 0..1500 {
+            terminal.feed(b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\r\n");
+        }
+        terminal.resize(8, 4);
+        assert!(terminal.history_len() > 2000);
+        let mut trailing = terminal.checkpoint_snapshot();
+        trailing.checkpoint.as_mut().unwrap().push(0);
+        assert_eq!(
+            trailing.restore().unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        for mut restored in [
+            terminal.snapshot().restore().unwrap(),
+            terminal.checkpoint_snapshot().restore().unwrap(),
+        ] {
+            assert_eq!(restored.history_len(), terminal.history_len());
+            assert!(
+                serde_json::to_value(restored.checkpoint_snapshot()).unwrap()
+                    == serde_json::to_value(terminal.checkpoint_snapshot()).unwrap()
+            );
+            restored.feed(b"continued\r\n");
+            let mut owner = terminal.clone();
+            owner.feed(b"continued\r\n");
+            let capture = CaptureOptions {
+                start: Some(i32::MIN),
+                escape_sequences: true,
+                ..Default::default()
+            };
+            assert_eq!(
+                restored.capture_with(capture).unwrap(),
+                owner.capture_with(capture).unwrap()
+            );
+            assert!(
+                serde_json::to_value(restored.inner.primary_screen().view_metadata()).unwrap()
+                    == serde_json::to_value(owner.inner.primary_screen().view_metadata()).unwrap()
+            );
+            assert_eq!(restored.history_len(), owner.history_len());
+            restored.checkpoint_snapshot().restore().unwrap();
+        }
+    }
+
     #[test]
     fn compact_snapshot_preserves_terminal_state_and_continuation() {
         let mut terminal = Terminal::new(80, 4, 100);
