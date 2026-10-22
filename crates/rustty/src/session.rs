@@ -151,6 +151,39 @@ impl Session {
         options: SessionOptions,
         wake: Arc<dyn Fn() + Send + Sync>,
     ) -> io::Result<Self> {
+        Self::spawn_with_visual(config, options, wake, None)
+    }
+
+    /// Start a fresh child beneath imported display history, without replaying output.
+    pub fn spawn_restored(
+        config: &Config,
+        options: SessionOptions,
+        wake: Arc<dyn Fn() + Send + Sync>,
+        bytes: &[u8],
+    ) -> io::Result<Self> {
+        let visual = serde_json::from_slice(bytes).map_err(error)?;
+        Self::spawn_with_visual(config, options, wake, Some(visual))
+    }
+
+    /// Capture local or attached pane display without affecting its child or input.
+    pub fn capture_visual_state(&self) -> io::Result<Vec<u8>> {
+        let visual = rustty_vt::visual::VisualSnapshot::capture(&*self.terminal()?)?;
+        serde_json::to_vec(&visual).map_err(error)
+    }
+
+    /// Validate a display before the application changes its current workspace.
+    pub fn validate_visual_state(bytes: &[u8]) -> io::Result<()> {
+        let visual: rustty_vt::visual::VisualSnapshot =
+            serde_json::from_slice(bytes).map_err(error)?;
+        visual.validate()
+    }
+
+    fn spawn_with_visual(
+        config: &Config,
+        options: SessionOptions,
+        wake: Arc<dyn Fn() + Send + Sync>,
+        visual: Option<rustty_vt::visual::VisualSnapshot>,
+    ) -> io::Result<Self> {
         let cols = options.cols.max(1);
         let rows = options.rows.max(1);
         let pair = native_pty_system()
@@ -202,6 +235,9 @@ impl Session {
                 },
                 |path| path.to_string_lossy().into_owned(),
             );
+        if let Some(visual) = visual {
+            visual.restore_into(&mut terminal)?;
+        }
         let terminal = Arc::new(Mutex::new(terminal));
         let (input, input_rx) = mpsc::channel();
         let (events_tx, events) = mpsc::sync_channel(256);
@@ -1107,6 +1143,52 @@ fn inject_bash(cmd: &mut CommandBuilder, shell: &ShellInfo, scripts: &Path) -> i
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    #[cfg(unix)]
+    #[test]
+    fn restored_visuals_precede_the_first_child_output() {
+        let mut terminal = Terminal::new(100, 4, 20);
+        terminal.feed(b"original transcript\x1b[?1049hactive TUI\x1b[?2004h");
+        let bytes =
+            serde_json::to_vec(&rustty_vt::visual::VisualSnapshot::capture(&terminal).unwrap())
+                .unwrap();
+        Session::validate_visual_state(&bytes).unwrap();
+        let session = Session::spawn_restored(
+            &Config::default(),
+            SessionOptions {
+                cols: 100,
+                rows: 4,
+                command: Some(Command::Direct(vec![
+                    "/bin/sh".into(),
+                    "-c".into(),
+                    "printf 'fresh child output'".into(),
+                ])),
+                ..SessionOptions::default()
+            },
+            Arc::new(|| {}),
+            &bytes,
+        )
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let terminal = session.terminal().unwrap();
+            let mut formatter = terminal.formatter(rustty_vt::formatter::Format::Plain);
+            formatter.options.unwrap = true;
+            let text = String::from_utf8(formatter.format().unwrap()).unwrap();
+            if let Some(fresh) = text.find("fresh child output") {
+                let marker = text.find(rustty_vt::visual::RESTORED_MARKER).unwrap();
+                assert!(text.find("original transcript").unwrap() < marker);
+                assert!(text.find("active TUI").unwrap() < marker);
+                assert!(marker < fresh);
+                assert!(!terminal.is_alternate_screen());
+                assert!(!terminal.modes.dec(2004));
+                break;
+            }
+            assert!(Instant::now() < deadline, "missing child output: {text:?}");
+            drop(terminal);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
 
     #[test]
     fn bash_bootstrap_preserves_login_flags_environment_and_history() {

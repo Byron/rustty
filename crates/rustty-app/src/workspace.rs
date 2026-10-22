@@ -794,7 +794,9 @@ impl Tab {
         })
     }
     pub fn split(&mut self, new_pane: Id, split_id: Id, direction: Direction, directory: PathBuf) {
-        self.root.split(self.focused, new_pane, split_id, direction);
+        if !self.root.split(self.focused, new_pane, split_id, direction) {
+            return;
+        }
         self.panes.insert(
             new_pane,
             SavedPane {
@@ -829,11 +831,23 @@ impl Tab {
             .and_then(|node| node.clone().remove(pane))
             .filter(|node| matches!(node.kind, Node::Split { .. }))
             .map(|node| node.id);
-        let Some(root) = self.root.clone().remove(pane) else {
+        self.overlays.retain(|overlay| overlay.pane != pane);
+        let Some(root) = self
+            .root
+            .clone()
+            .remove(pane)
+            .or_else(|| (!self.overlays.is_empty()).then(|| Tree::empty(self.root.id)))
+        else {
             return false;
         };
         self.root = root;
         self.panes.remove(&pane);
+        if let Some(view) = &mut self.server_view {
+            view.retain(|rect| rect.pane != pane);
+            if view.is_empty() {
+                self.server_view = None;
+            }
+        }
         self.remembered.retain(|node, pane| {
             self.root
                 .node(*node)
@@ -843,12 +857,21 @@ impl Tab {
             quadrant_zoom
         } else {
             self.zoom
-                .filter(|id| self.root.node(*id).is_some())
+                .filter(|id| self.root.node(*id).is_some() || self.contains(*id))
                 .or(quadrant_zoom)
         };
         self.quadrant_zoom = quadrant_zoom;
         if self.focused == pane {
-            self.focused = next.unwrap_or_else(|| self.root.panes()[0]);
+            self.focused = next
+                .or_else(|| self.modal_pane())
+                .or_else(|| self.root.panes().first().copied())
+                .or_else(|| {
+                    self.overlays
+                        .iter()
+                        .min_by_key(|overlay| overlay.z)
+                        .map(|overlay| overlay.pane)
+                })
+                .expect("a surviving root or overlay has a pane");
         }
         true
     }
@@ -1212,7 +1235,8 @@ impl Workspace {
         }
         result
     }
-    pub(crate) fn validate(&self) -> io::Result<()> {
+    /// Check persisted or imported workspace metadata before creating windows.
+    pub fn validate(&self) -> io::Result<()> {
         if self.version != 1
             || self.next_id == 0
             || self.windows.len() > 64
@@ -1729,6 +1753,102 @@ mod tests {
         assert!(workspace.windows.is_empty());
         assert!(!workspace.close_pane(7));
     }
+
+    fn workspace_with_overlays() -> Workspace {
+        let mut tab = Tab::new(1, 2, PathBuf::from("/tmp"));
+        tab.server_size = Some([100, 50]);
+        for pane in [3, 4] {
+            tab.panes.insert(pane, SavedPane::default());
+            tab.overlays.push(Overlay {
+                pane,
+                x: 5,
+                y: 7,
+                cols: 30,
+                rows: 10,
+                z: pane as u32,
+                modal: false,
+                capture_keys: false,
+                close_click: false,
+                close_cancel: false,
+            });
+        }
+        Workspace {
+            next_id: 20,
+            windows: vec![WindowState {
+                id: 10,
+                tabs: vec![tab],
+                active_tab: 0,
+                frame: [0.0, 0.0, 800.0, 600.0],
+                quick: false,
+            }],
+            ..Workspace::default()
+        }
+    }
+
+    #[test]
+    fn imported_overlays_reject_splits_and_close_without_dangling_state() {
+        let mut workspace = workspace_with_overlays();
+        let tab = &mut workspace.windows[0].tabs[0];
+        tab.focused = 3;
+        tab.zoom = Some(3);
+        let before = serde_json::to_vec(tab).unwrap();
+        tab.split(5, 6, Direction::Down, PathBuf::from("/tmp"));
+        assert_eq!(serde_json::to_vec(tab).unwrap(), before);
+        assert!(workspace.close_pane(3));
+        workspace.validate().unwrap();
+        let tab = &workspace.windows[0].tabs[0];
+        assert_eq!(tab.focused, 2);
+        assert_eq!(tab.zoom, None);
+        assert!(!tab.panes.contains_key(&3));
+        assert_eq!(tab.overlays.len(), 1);
+        assert_eq!(tab.overlays[0].pane, 4);
+        assert_eq!(tab.pane_ids(), [2, 4]);
+    }
+
+    #[test]
+    fn closing_last_tiled_pane_retains_floating_geometry_and_focus() {
+        let mut workspace = workspace_with_overlays();
+        let original = workspace.windows[0].tabs[0].layout(
+            Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 1000.0,
+                height: 500.0,
+            },
+            false,
+            10.0,
+        );
+        assert!(workspace.close_pane(2));
+        workspace.validate().unwrap();
+        let tab = &workspace.windows[0].tabs[0];
+        assert!(matches!(tab.root.kind, Node::Empty));
+        assert_eq!(tab.focused, 3);
+        assert_eq!(tab.pane_ids(), [3, 4]);
+        let floating = tab.layout(
+            Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 1000.0,
+                height: 500.0,
+            },
+            false,
+            10.0,
+        );
+        assert_eq!(
+            floating,
+            original
+                .into_iter()
+                .filter(|(pane, _)| *pane != 2)
+                .collect::<Vec<_>>()
+        );
+        assert!(workspace.close_pane(3));
+        workspace.validate().unwrap();
+        assert_eq!(workspace.windows[0].tabs[0].focused, 4);
+        assert!(workspace.close_pane(4));
+        workspace.validate().unwrap();
+        assert!(workspace.windows.is_empty());
+    }
+
     #[test]
     fn serialized_workspace_preserves_layout_focus_and_directories() {
         let state = Workspace {
