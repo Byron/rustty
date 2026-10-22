@@ -4,6 +4,7 @@
 def main [
     --release # Build an optimized executable (debug is the default).
     --offline # Use only dependencies already present in Cargo's cache.
+    --sign: string = '-' # Keychain signing identity; '-' signs ad hoc.
 ] {
     if $nu.os-info.name != "macos" {
         error make {msg: "This bundle script currently targets macOS."}
@@ -65,8 +66,8 @@ def main [
     }
     do --capture-errors { ^iconutil -c icns $iconset -o ($resources | path join Rustty.icns) }
     do --capture-errors { ^plutil -lint ($contents | path join Info.plist) }
-    do --capture-errors { ^codesign --force --sign - ($contents | path join MacOS tmuxx) }
-    do --capture-errors { ^codesign --force --sign - $app }
+    do --capture-errors { ^codesign --force --sign $sign ($contents | path join MacOS tmuxx) }
+    do --capture-errors { ^codesign --force --sign $sign $app }
     do --capture-errors { ^codesign --verify --strict $app }
 
     let bundle = ($output | path join Rustty.app)
