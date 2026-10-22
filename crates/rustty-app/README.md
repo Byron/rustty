@@ -306,6 +306,24 @@ cargo +1.95.0 run --release --offline -p rustty-vt --example parity-runner
 RUSTTY_SMOKE_DIR=/tmp/rustty-native-smoke RUSTTY_SMOKE_OFFSCREEN=1 target/debug/Rustty.app/Contents/MacOS/rustty
 ```
 
+The macOS handover regression runs two hidden debug instances with isolated
+configuration, shells, and state. Each `*-result.json` must report `"passed": true`;
+`selector.png` captures the chooser.
+
+```sh
+cargo build -p rustty-app --bin rustty --offline
+handoff_dir=$(mktemp -d /tmp/rustty-handoff.XXXXXX)
+printf 'command = /bin/sh\nshell-integration = none\nstream-deck = false\nworking-directory = %s\n' "$handoff_dir" > "$handoff_dir/config"
+RUSTTY_HANDOFF_SMOKE_DIR="$handoff_dir" RUSTTY_HANDOFF_SMOKE_ROLE=source \
+  target/debug/rustty --config-default-files=false --config-file="$handoff_dir/config" \
+  > "$handoff_dir/source.log" 2>&1 &
+RUSTTY_HANDOFF_SMOKE_DIR="$handoff_dir" RUSTTY_HANDOFF_SMOKE_ROLE=requester \
+  target/debug/rustty --import-state --config-default-files=false --config-file="$handoff_dir/config" \
+  > "$handoff_dir/requester.log" 2>&1 &
+wait
+cat "$handoff_dir"/*-result.json
+```
+
 The windowless hotkey regression runs explicitly on a macOS desktop with
 `cargo test -p rustty-app --test native_global_hotkeys --offline -- --ignored`.
 It checks registration conflicts, reloads, stale events, layout notifications and
@@ -348,6 +366,49 @@ unchanged cursor events, actual pointer movement and egui repaint requests.
 Set `RUSTTY_SMOKE_HOVER=1` in a foreground run to require a stationary pointer over a shell pane
 during the idle interval. Move the pointer into a test pane before the 45-second
 timeout; leaving the pane or moving the pointer restarts the interval.
+
+### Copying visual state during an upgrade
+
+On macOS, start a separate instance directly in **Import Terminal State** with:
+
+```sh
+open -n /Applications/Rustty.app --args --import-state
+```
+
+`-n` tells macOS to start the specified bundle even when another Rustty is already
+running. An ordinary Finder or Dock launch usually activates the existing process,
+including after its bundle was renamed. `--import-state` opens only the selector;
+it does not restore a workspace or start shells until an import succeeds.
+
+To replace a running installation:
+
+1. Rename `/Applications/Rustty.app`, for example to `Rustty.previous.app`, and
+   leave it running.
+2. Copy the new bundle to `/Applications/Rustty.app`, complete any macOS security
+   approval, then run the command above to start that copy's selector.
+3. Select a running instance owned by the same user and click **Ask**. In the
+   original instance, approve **Export Terminal State?** with **Export**. It can
+   also **Decline**, or **Ignore further requests for this session**.
+4. The selector shows the completed dump beside its source. Select it and click
+   **Import**. Several instances can be asked independently.
+
+Import copies the window/tab/panel layout, scrollback, and displayed contents,
+including alternate-screen applications. Each panel starts a fresh local shell,
+including panels copied from tmuxx, with this boundary above new output:
+
+> [Restored Rustty display. A new shell starts below; the original session remains open.]
+
+Running jobs, shell variables, and PTYs stay with the original instance. It keeps
+running for the user to close when ready. Earlier instances save separate layout
+backups, so closing one later cannot overwrite the imported workspace.
+
+Exports use private, atomically published `.rustty-state.lz4` temporary files.
+Large exports can pause the source UI while they are written.
+Successful import removes the selector's requested dumps; **Cancel**, Escape, or
+closing the selector also removes them and exits that new instance. A failed
+import keeps its dump available for retry. Compressed files and decoded state are
+each limited to 512 MiB. A build predating this feature cannot export its state;
+older running app bundles appear as unavailable in the selector.
 
 ### tmuxx windows
 

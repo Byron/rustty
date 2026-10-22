@@ -2,6 +2,9 @@
 mod command_palette;
 #[path = "deck_host.rs"]
 mod deck_host;
+#[cfg(target_os = "macos")]
+#[path = "handoff_ui.rs"]
+mod handoff_ui;
 #[path = "outliner_host.rs"]
 mod outliner_host;
 #[path = "desktop_painter.rs"]
@@ -64,6 +67,8 @@ const MIN_WINDOW_SIZE: LogicalSize<f64> = LogicalSize::new(240.0, 120.0);
 
 #[derive(Debug)]
 enum Event {
+    #[cfg(target_os = "macos")]
+    Handoff,
     DeckWake,
     Tmuxx,
     TmuxxCopied(
@@ -528,6 +533,8 @@ struct Host {
     layout_picker: Option<LayoutPicker>,
     palette: CommandPalette,
     confirm: Option<Confirmation>,
+    #[cfg(target_os = "macos")]
+    handoff_prompt: Option<handoff_ui::Prompt>,
     tmuxx_connect: Option<String>,
     clipboard_request: VecDeque<(Id, vt::Effect)>,
     capture: bool,
@@ -566,6 +573,10 @@ impl Host {
             || self.messages_open && self.messages_focused
     }
     fn modal_input(&self) -> bool {
+        #[cfg(target_os = "macos")]
+        if self.handoff_prompt.is_some() {
+            return true;
+        }
         self.palette.open
             || self.popup_open
             || self.layout_picker.is_some()
@@ -750,6 +761,9 @@ struct ThemePreview {
 }
 
 struct App {
+    #[cfg(target_os = "macos")]
+    handoff: Option<handoff_ui::State>,
+    import_selector: bool,
     deck: deck_host::Connection,
     tmuxx: Vec<tmuxx_host::Attachment>,
     tmuxx_smoke: Option<PathBuf>,
@@ -788,10 +802,18 @@ struct App {
 
 pub fn run() -> Result<()> {
     let mut args = std::env::args().skip(1).collect::<Vec<_>>();
+    #[cfg(target_os = "macos")]
+    let import_requested = handoff_ui::import_requested(&mut args);
+    #[cfg(not(target_os = "macos"))]
+    let import_requested = false;
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!(
             "Rustty — native Rust terminal\n\nUsage: rustty [--config-file=PATH] [--key=value] [-e COMMAND ...]\n       rustty --tmuxx=embedded|persistent|{}|ssh:HOST|system-ssh:HOST\n       rustty tmux [tmuxx options and commands]\n       rustty --config-info\n\nRustty settings override Ghostty settings. See crates/rustty-app/README.md.",
             tmuxx_host::LOCAL_TARGET_HINT
+        );
+        #[cfg(target_os = "macos")]
+        println!(
+            "\nUse --import-state to open only the instance selector. To start a second app:\n  open -n /Applications/Rustty.app --args --import-state"
         );
         return Ok(());
     }
@@ -806,6 +828,8 @@ pub fn run() -> Result<()> {
     let background_smoke = tmuxx_smoke.is_some()
         || (std::env::var_os("RUSTTY_SMOKE_DIR").is_some()
             && std::env::var_os("RUSTTY_SMOKE_OFFSCREEN").is_some());
+    #[cfg(target_os = "macos")]
+    let background_smoke = background_smoke || handoff_ui::smoke_directory().is_some();
     let mut builder = EventLoop::<Event>::with_user_event();
     #[cfg(target_os = "macos")]
     if background_smoke {
@@ -869,7 +893,11 @@ pub fn run() -> Result<()> {
     } else if let Some(directory) = &tmuxx_smoke {
         state_path = directory.join("workspace.json");
     }
-    let mut workspace = if smoke.is_some() {
+    #[cfg(target_os = "macos")]
+    if let Some(directory) = handoff_ui::smoke_directory() {
+        state_path = directory.join("workspace.json");
+    }
+    let mut workspace = if smoke.is_some() || import_requested {
         Workspace::default()
     } else if loaded.config.window_save_state != config::WindowSaveState::Never {
         match Workspace::load(&state_path) {
@@ -883,7 +911,10 @@ pub fn run() -> Result<()> {
         Workspace::default()
     };
     let proxy = event_loop.create_proxy();
-    let tmuxx = if let Some(mode) = tmuxx_mode.as_deref().filter(|mode| *mode != "persistent") {
+    let tmuxx = if let Some(mode) = tmuxx_mode
+        .as_deref()
+        .filter(|mode| *mode != "persistent" && !import_requested)
+    {
         let wake_proxy = proxy.clone();
         let wake = Arc::new(move || {
             let _ = wake_proxy.send_event(Event::Tmuxx);
@@ -1059,7 +1090,30 @@ pub fn run() -> Result<()> {
         .and_then(|s| s.parse::<u64>().ok())
         .map(|s| now + Duration::from_secs(s))
         .or_else(|| tmuxx_smoke.as_ref().map(|_| now + Duration::from_secs(5)));
+    #[cfg(target_os = "macos")]
+    let handoff = if background_smoke && handoff_ui::smoke_directory().is_none() {
+        None
+    } else {
+        match handoff_ui::State::new(proxy.clone()) {
+            Ok(state) => Some(state),
+            Err(error) => {
+                errors.push(format!("State import is unavailable: {error}"));
+                None
+            }
+        }
+    };
+    #[cfg(target_os = "macos")]
+    if !import_requested
+        && loaded.config.window_save_state != config::WindowSaveState::Never
+        && let Some(state) = &handoff
+        && let Err(error) = state.registry.claim_workspace(&state_path)
+    {
+        errors.push(format!("Could not claim workspace saving: {error}"));
+    }
     let mut app = App {
+        #[cfg(target_os = "macos")]
+        handoff,
+        import_selector: import_requested,
         deck: deck_host::Connection::default(),
         tmuxx_smoke: tmuxx_smoke.clone(),
         tmuxx,
@@ -1096,8 +1150,10 @@ pub fn run() -> Result<()> {
         startup_error: None,
     };
     app.reload_tmuxx_themes();
-    app.restore_tmuxx();
-    if tmuxx_mode.as_deref() == Some("persistent") {
+    if !import_requested {
+        app.restore_tmuxx();
+    }
+    if tmuxx_mode.as_deref() == Some("persistent") && !import_requested {
         app.start_tmuxx(false)?;
     }
     let result = event_loop.run_app(&mut app);
@@ -1366,6 +1422,16 @@ impl App {
         host: Option<&Host>,
         background: Option<[u8; 3]>,
     ) -> Result<()> {
+        self.spawn_pane_with_visual(id, directory, host, background, None)
+    }
+    fn spawn_pane_with_visual(
+        &mut self,
+        id: Id,
+        directory: PathBuf,
+        host: Option<&Host>,
+        background: Option<[u8; 3]>,
+        visual: Option<&[u8]>,
+    ) -> Result<()> {
         if self.panes.contains_key(&id) || self.failed_panes.contains_key(&id) {
             return Ok(());
         }
@@ -1434,20 +1500,21 @@ impl App {
                 wake,
             )
         } else {
-            Session::spawn(
-                self.config(),
-                SessionOptions {
-                    working_directory: Some(directory.clone()),
-                    command,
-                    resources: self.resources.clone(),
-                    color_scheme: Some(host_state.2),
-                    background,
-                    visible: host_state.0,
-                    focused: host_state.1,
-                    ..Default::default()
-                },
-                wake,
-            )
+            let options = SessionOptions {
+                working_directory: Some(directory.clone()),
+                command,
+                resources: self.resources.clone(),
+                color_scheme: Some(host_state.2),
+                background,
+                visible: host_state.0,
+                focused: host_state.1,
+                ..Default::default()
+            };
+            if let Some(visual) = visual {
+                Session::spawn_restored(self.config(), options, wake, visual)
+            } else {
+                Session::spawn(self.config(), options, wake)
+            }
         };
         let session = match created {
             Ok(session) => session,
@@ -1518,6 +1585,10 @@ impl App {
             return Ok(());
         }
         let state = self.workspace.windows[self.index(id).ok_or("missing window")?].clone();
+        self.open_host(event_loop, state)
+    }
+    fn open_host(&mut self, event_loop: &ActiveEventLoop, state: WindowState) -> Result<()> {
+        let id = state.id;
         let config = self.window_config(id).clone();
         let quick = state.quick;
         let mut frame = state.frame;
@@ -1629,6 +1700,8 @@ impl App {
             layout_picker: None,
             palette: CommandPalette::default(),
             confirm: None,
+            #[cfg(target_os = "macos")]
+            handoff_prompt: None,
             tmuxx_connect: None,
             clipboard_request: VecDeque::new(),
             capture: false,
@@ -1694,9 +1767,22 @@ impl App {
 
     fn save(&mut self) {
         self.save_at = None;
-        if self.config().window_save_state != config::WindowSaveState::Never
-            && let Err(error) = self.saved_workspace().save(&self.state_path)
-        {
+        if self.import_selector {
+            return;
+        }
+        if self.config().window_save_state == config::WindowSaveState::Never {
+            return;
+        }
+        let workspace = self.saved_workspace();
+        #[cfg(target_os = "macos")]
+        let result = if let Some(state) = &self.handoff {
+            state.registry.save_workspace(&self.state_path, &workspace)
+        } else {
+            workspace.save(&self.state_path)
+        };
+        #[cfg(not(target_os = "macos"))]
+        let result = workspace.save(&self.state_path);
+        if let Err(error) = result {
             self.errors.push(format!("Could not save windows: {error}"));
         }
     }
@@ -2966,6 +3052,14 @@ impl App {
                 }
             }
             Action::NewSplit(direction) => {
+                if self
+                    .tab(host.id)
+                    .is_some_and(|tab| !tab.root.contains(tab.focused))
+                {
+                    self.errors
+                        .push("Choose a tiled panel before creating a split.".into());
+                    return false;
+                }
                 let directory = self.directory(host.id);
                 let background = focused.and_then(|id| self.panes.get(&id)).and_then(|pane| {
                     pane.session
@@ -3727,6 +3821,9 @@ impl App {
         true
     }
     fn reconcile(&mut self, event_loop: &ActiveEventLoop) {
+        if self.import_selector {
+            return;
+        }
         if self.workspace.reconcile_pinned_panes() {
             self.changed();
         }
@@ -3750,6 +3847,12 @@ impl App {
             .collect::<Vec<_>>();
         for id in removed {
             if let Some(host) = self.windows.remove(&id) {
+                #[cfg(target_os = "macos")]
+                if let Some(prompt) = host.handoff_prompt
+                    && let Some(state) = &mut self.handoff
+                {
+                    state.requeue(prompt);
+                }
                 if let Some(platform) = &self.platform {
                     platform.forget_window(&host.window);
                 }
@@ -3952,6 +4055,16 @@ impl App {
     }
 
     fn platform_action(&mut self, event_loop: &ActiveEventLoop, action: Action, all: bool) -> bool {
+        if self.import_selector {
+            if matches!(
+                action,
+                Action::Quit | Action::CloseWindow | Action::CloseSurface
+            ) {
+                event_loop.exit();
+                return true;
+            }
+            return false;
+        }
         if self
             .outliner
             .as_ref()
@@ -5364,6 +5477,8 @@ impl App {
             if let Some(picker) = &mut host.layout_picker {
                 layout_command = show_layout_picker(ctx, picker).or(layout_command.take());
             }
+            #[cfg(target_os = "macos")]
+            self.show_handoff_prompt(host, ctx);
             let _ = show_messages(ctx, &mut self.errors, messages_keyboard_input);
             host.messages_open = !self.errors.is_empty();
             host.messages_focused = host.messages_open && messages_input(ctx);
@@ -6247,15 +6362,29 @@ impl ApplicationHandler<Event> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.platform.is_none() {
             let proxy = self.proxy.clone();
+            let mut platform_config = self.config().clone();
+            if self.import_selector {
+                platform_config
+                    .keybinds
+                    .retain(|binding| !binding.flags.global);
+            }
             match Platform::new(
                 Arc::new(move |event| {
                     let _ = proxy.send_event(Event::Platform(event));
                 }),
-                self.config(),
+                &platform_config,
             ) {
                 Ok(platform) => self.platform = Some(platform),
                 Err(error) => self.errors.push(error),
             }
+        }
+        #[cfg(target_os = "macos")]
+        if self.import_selector {
+            if let Err(error) = self.open_import_selector(event_loop) {
+                self.startup_error = Some(error.to_string());
+                event_loop.exit();
+            }
+            return;
         }
         self.retry_tmuxx(Instant::now());
         if self.workspace.windows.iter().all(|w| w.quick)
@@ -6280,7 +6409,13 @@ impl ApplicationHandler<Event> for App {
     }
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
         match event {
-            Event::Tmuxx => self.refresh_tmuxx(event_loop),
+            #[cfg(target_os = "macos")]
+            Event::Handoff => self.poll_handoff(),
+            Event::Tmuxx => {
+                if !self.import_selector {
+                    self.refresh_tmuxx(event_loop);
+                }
+            }
             Event::TmuxxCopied(target, name, result) => {
                 self.finish_tmuxx_copy(target, name, result);
                 self.refresh_tmuxx(event_loop);
@@ -6352,7 +6487,11 @@ impl ApplicationHandler<Event> for App {
                     PlatformEvent::NotificationClicked(pane) => {
                         self.reveal_pane(pane);
                     }
-                    PlatformEvent::Tmuxx(command) => self.native_tmuxx_command(event_loop, command),
+                    PlatformEvent::Tmuxx(command) => {
+                        if !self.import_selector {
+                            self.native_tmuxx_command(event_loop, command);
+                        }
+                    }
                     PlatformEvent::Action(action) => {
                         self.platform_action(event_loop, action, false);
                     }
@@ -6483,6 +6622,11 @@ impl ApplicationHandler<Event> for App {
         }
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, window: WindowId, event: WindowEvent) {
+        #[cfg(target_os = "macos")]
+        if self.import_selector {
+            self.import_window_event(event_loop, window, event);
+            return;
+        }
         if let WindowEvent::KeyboardInput {
             event,
             is_synthetic: false,
@@ -6857,6 +7001,12 @@ impl ApplicationHandler<Event> for App {
         self.reconcile(event_loop);
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_os = "macos")]
+        self.present_handoff_prompt();
+        #[cfg(target_os = "macos")]
+        self.tick_import_selector();
+        #[cfg(all(target_os = "macos", debug_assertions))]
+        self.tick_handoff_smoke(event_loop);
         if let Some(smoke) = &mut self.smoke {
             smoke.record("about-to-wait");
         }
@@ -6870,7 +7020,9 @@ impl ApplicationHandler<Event> for App {
             pane.deck_progress.expire(now);
         }
         self.update_deck_commands();
-        self.tick_deck();
+        if !self.import_selector {
+            self.tick_deck();
+        }
         #[cfg(target_os = "windows")]
         if let Some(platform) = &self.platform {
             platform.tick();
@@ -6981,6 +7133,14 @@ impl ApplicationHandler<Event> for App {
         if let Some(deadline) = self.platform.as_ref().and_then(Platform::next_deadline) {
             next = Some(next.map_or(deadline, |old| old.min(deadline)));
         }
+        #[cfg(target_os = "macos")]
+        if let Some(deadline) = self.import_refresh_deadline() {
+            next = Some(next.map_or(deadline, |old| old.min(deadline)));
+        }
+        #[cfg(all(target_os = "macos", debug_assertions))]
+        if let Some(deadline) = self.handoff_smoke_deadline() {
+            next = Some(next.map_or(deadline, |old| old.min(deadline)));
+        }
         for host in self.windows.values_mut() {
             if let Some(deadline) = host
                 .selection_drag
@@ -7012,6 +7172,10 @@ impl ApplicationHandler<Event> for App {
         event_loop.set_control_flow(next.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
     fn exiting(&mut self, _: &ActiveEventLoop) {
+        #[cfg(target_os = "macos")]
+        if let Some(handoff) = &self.handoff {
+            let _ = handoff.registry.cancel_all();
+        }
         self.deck.stop();
         if self.startup_error.is_none() {
             self.save();

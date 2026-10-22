@@ -31,6 +31,7 @@ mod terminfo;
 pub mod tmux_shell;
 pub mod tmux_state;
 pub mod unicode;
+pub mod visual;
 
 pub use color::TmuxPaneStyle;
 pub use color::parse as parse_color;
