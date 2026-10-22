@@ -451,8 +451,8 @@ impl Mapping {
     }
 }
 
-/// Compute the server grid from actual leaf content areas, including per-pane
-/// padding/headers and the server's one-cell split borders.
+/// Compute the server grid from split topology, per-pane padding/headers,
+/// and the server's one-cell borders, independently of divider positions.
 // shortcut: A shared grid can clip asymmetric panes after padding; exact per-pane fit must also update layout and divider placement.
 pub fn grid_size(
     tab: &Tab,
@@ -461,37 +461,20 @@ pub fn grid_size(
     cell: [f32; 2],
     padding: [f32; 2],
 ) -> (u16, u16) {
-    fn inner(
-        tree: &Tree,
-        width: f32,
-        height: f32,
-        cell: [f32; 2],
-        padding: [f32; 2],
-    ) -> (u32, u32) {
+    fn spans(tree: &Tree) -> [u32; 2] {
         match &tree.kind {
-            Node::Empty | Node::Pane(_) => (
-                ((width - padding[0]) / cell[0]).floor().max(1.0) as u32,
-                ((height - padding[1]) / cell[1]).floor().max(1.0) as u32,
-            ),
+            Node::Empty | Node::Pane(_) => [1, 1],
             Node::Split {
                 axis,
-                ratio,
                 first,
                 second,
+                ..
             } => {
-                let ((aw, ah), (bw, bh)) = match axis {
-                    Axis::Horizontal => (
-                        inner(first, width * ratio, height, cell, padding),
-                        inner(second, width * (1.0 - ratio), height, cell, padding),
-                    ),
-                    Axis::Vertical => (
-                        inner(first, width, height * ratio, cell, padding),
-                        inner(second, width, height * (1.0 - ratio), cell, padding),
-                    ),
-                };
+                let [aw, ah] = spans(first);
+                let [bw, bh] = spans(second);
                 match axis {
-                    Axis::Horizontal => (aw + 1 + bw, ah.min(bh)),
-                    Axis::Vertical => (aw.min(bw), ah + 1 + bh),
+                    Axis::Horizontal => [aw + bw, ah.max(bh)],
+                    Axis::Vertical => [aw.max(bw), ah + bh],
                 }
             }
         }
@@ -507,8 +490,15 @@ pub fn grid_size(
     } else {
         tab.visible_tree(peek)
     };
-    let (cols, rows) = inner(tree, bounds.width, bounds.height, cell, padding);
-    (cols.clamp(1, 10000) as u16, rows.clamp(1, 10000) as u16)
+    let spans = spans(tree);
+    // Flooring each pane separately feeds server layout rounding back into sizing.
+    let [cols, rows] = std::array::from_fn(|axis| {
+        let panes = spans[axis];
+        let pixels = [bounds.width, bounds.height][axis] - panes as f32 * padding[axis];
+        let content = (pixels / cell[axis]).floor().max(panes as f32) as u32;
+        (content + panes - 1).clamp(1, 10000) as u16
+    });
+    (cols, rows)
 }
 
 #[cfg(test)]
@@ -807,6 +797,51 @@ mod tests {
     }
 
     #[test]
+    fn asymmetric_split_grid_is_stable_after_server_resize() {
+        for axis in [
+            rustty::tmuxx::Axis::Horizontal,
+            rustty::tmuxx::Axis::Vertical,
+        ] {
+            for first in [1, 10, 15, 20, 29] {
+                let horizontal = axis == rustty::tmuxx::Axis::Horizontal;
+                let mut layout = if horizontal {
+                    Layout::pane(7, 31, 80)
+                } else {
+                    Layout::pane(7, 80, 31)
+                };
+                layout
+                    .split_sized(7, 8, axis, Some(30 - first), false)
+                    .unwrap();
+                let bounds = crate::workspace::Rect {
+                    width: if horizontal { 354.3 } else { 640.0 },
+                    height: if horizontal { 640.0 } else { 354.3 },
+                    ..crate::workspace::Rect::UNIT
+                };
+                let mut mapping = Mapping::default();
+                let mut workspace = Workspace::default();
+                let mut sizes = Vec::new();
+                for _ in 0..4 {
+                    mapping
+                        .apply(
+                            &mut workspace,
+                            &tiled_graph(&layout.to_json_v2().unwrap()),
+                            &[0].into(),
+                        )
+                        .unwrap();
+                    let tab = &workspace.windows[0].tabs[0];
+                    let size = grid_size(tab, bounds, false, [10.0, 10.0], [20.0, 20.0]);
+                    sizes.push(size);
+                    layout.resize(u32::from(size.0), u32::from(size.1)).unwrap();
+                }
+                assert!(
+                    sizes.iter().all(|size| *size == sizes[0]),
+                    "{axis:?}, first pane {first}: server resize oscillates through {sizes:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn view_grid_and_status_rows_fit_real_cells_after_headers_padding_and_frames() {
         let cell = [8.0, 10.0];
         // Horizontal padding 12; vertical padding 8 + header 20; frame 2 on both axes.
@@ -881,7 +916,7 @@ mod tests {
         );
         assert_eq!(
             grid_size(tab, bounds, true, [8.0, 10.0], [14.0, 30.0]),
-            (79, 21)
+            (79, 22)
         );
         let visible = tab.layout(bounds, false, 10.0);
         assert_eq!(visible.len(), 1);
