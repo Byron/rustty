@@ -609,12 +609,6 @@ impl Attachment {
                         MenuCommand::Fit(target.clone(), session.id),
                     ));
                 }
-                items.extend(
-                    session
-                        .windows
-                        .into_iter()
-                        .map(|name| Entry::label(format!("Tab: {name}"))),
-                );
                 items.push(Entry::command(
                     "Terminate Session…",
                     MenuCommand::Kill(target.clone(), session.id),
