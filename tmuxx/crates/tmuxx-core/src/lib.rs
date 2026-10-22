@@ -2843,7 +2843,7 @@ impl Engine {
         serde_json::json!({
             "sessions": self.sessions.values().map(|s| serde_json::json!({"id":s.id,"active":s.active})).collect::<Vec<_>>(),
             "windows": self.windows.values().map(|w| serde_json::json!({"id":w.id,"active":w.active})).collect::<Vec<_>>(),
-            "panes": self.panes.values().map(|p| serde_json::json!({"id":p.id,"style":self.pane_style(p.id),"control_colors":p.terminal.control_colors(),"host_dark":p.terminal.host_dark()})).collect::<Vec<_>>()
+            "panes": self.panes.values().map(|p| serde_json::json!({"id":p.id,"style":self.pane_style(p.id),"control_colors":p.terminal.control_colors(),"host_dark":p.terminal.host_dark(),"current_path":p.current_path.as_ref().or(p.cwd.as_ref())})).collect::<Vec<_>>()
         })
     }
 
@@ -2897,6 +2897,7 @@ impl Engine {
                     cols: pane.cols,
                     rows: pane.rows,
                     pid: pane.pid,
+                    current_path: pane.current_path.as_ref().or(pane.cwd.as_ref()).cloned(),
                     status: pane.status,
                     persistent: pane.persistent,
                     modal: self.windows[&pane.window].modal == Some(pane.id),

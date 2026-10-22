@@ -554,6 +554,7 @@ mod tests {
                 status: None,
                 persistent: true,
                 pid: None,
+                current_path: None,
                 modal: false,
                 modal_capture_keys: false,
                 modal_close_click: false,

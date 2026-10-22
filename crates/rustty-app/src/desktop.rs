@@ -2312,8 +2312,9 @@ impl App {
         };
         // Git/MSYS path conversion may invoke cygpath. Never hold the terminal
         // mutex during that call, and only convert reports that actually change.
+        // Without a shell report, attached process metadata can change independently.
         if let Some(report) = directory_report
-            && report != pane.last_directory_report
+            && (report != pane.last_directory_report || tmuxx && report.is_empty())
         {
             if let Some(directory) = pane.session.directory_from_report(&report) {
                 content_changed |= pane.cwd != directory;
