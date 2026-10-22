@@ -256,7 +256,10 @@ impl App {
                         && (pane.agent.is_registered() || pane.deck_command.is_registered())
                 })?;
                 let label = task_label(&pane.title, &pane.cwd);
-                pane.deck_view(id, &label).map(|view| (id, view))
+                pane.deck_view(id, &label).map(|mut view| {
+                    view.remote = self.tmuxx_pane(id).is_some();
+                    (id, view)
+                })
             })
             .collect();
         let progress = self
@@ -616,6 +619,35 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
     }
     app.sync_deck();
     assert_eq!(app.deck.dashboard.board.counts[0], 3);
+    let tile = |app: &App, pane| {
+        app.deck
+            .dashboard
+            .board
+            .tiles
+            .iter()
+            .find(|tile| tile.capture.assignment == Some(pane))
+            .unwrap()
+            .clone()
+    };
+    let local = tile(app, hidden);
+    assert!(!local.remote);
+    for source in [
+        tmuxx_host::Source::Local("unused.native".into()),
+        tmuxx_host::Source::Ssh("unused".into()),
+    ] {
+        let mut entry = tmuxx_host::Attachment::new(source, None, false);
+        entry.mapping.panes.insert(hidden, 7);
+        app.tmuxx.push(entry);
+        app.sync_deck();
+        let mut marked = tile(app, hidden);
+        assert!(marked.remote);
+        assert!(!tile(app, first).remote);
+        marked.remote = false;
+        assert_eq!(marked, local);
+        app.tmuxx.pop();
+    }
+    app.sync_deck();
+    assert_eq!(tile(app, hidden), local);
     let target = app
         .deck
         .dashboard
