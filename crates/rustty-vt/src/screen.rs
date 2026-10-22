@@ -11,6 +11,7 @@ mod history;
 mod resize;
 mod tabs;
 mod view_metadata;
+mod visual;
 pub use history::TmuxHistory;
 pub use view_metadata::ViewMetadata;
 #[path = "screen/serde.rs"]

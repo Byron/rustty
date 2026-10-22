@@ -61,6 +61,10 @@ unicode-segmentation = "1.12"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
+gix-lock = "26.0.0"
+lz4_flex.workspace = true
+rmp-serde.workspace = true
+serde_bytes.workspace = true
 objc2.workspace = true
 objc2-foundation.workspace = true
 objc2-app-kit.workspace = true

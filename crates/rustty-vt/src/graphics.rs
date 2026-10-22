@@ -448,6 +448,20 @@ impl Graphics {
             self.generation = self.generation.wrapping_add(1);
         }
     }
+    /// Retain the displayed frame, without unfinished uploads or animation timers.
+    pub(crate) fn visual_snapshot(&self) -> ViewSnapshot {
+        let mut snapshot = self.view_snapshot();
+        snapshot.loading = None;
+        for image in &mut snapshot.images {
+            image.pixels = image.displayed_pixels();
+            image.frames.clear();
+            image.current_frame = 0;
+            image.animation_state = 0;
+            image.frame_shown_at_ms = None;
+        }
+        snapshot
+    }
+
     pub fn view_snapshot(&self) -> ViewSnapshot {
         let mut images: Vec<_> = self.images.values().cloned().collect();
         images.sort_by_key(|image| image.id);
