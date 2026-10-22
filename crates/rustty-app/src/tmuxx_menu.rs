@@ -49,6 +49,7 @@ pub enum Command {
     Fit(Target, u64),
     Kill(Target, u64),
     Execute(Target, Vec<String>),
+    OpenConfig(Target),
     ReloadConfig(Target),
     Disconnect(Target),
     Reconnect(Target),
@@ -249,6 +250,8 @@ mod tests {
         assert!(Command::Execute(target.clone(), vec!["kill-pane".into()]).requires_confirmation());
         assert!(!Command::Open(target.clone(), 7).requires_confirmation());
         assert!(!Command::Fit(target.clone(), 7).requires_confirmation());
+        assert!(!Command::OpenConfig(target.clone()).requires_confirmation());
+        assert!(!Command::ReloadConfig(target.clone()).requires_confirmation());
         assert!(!Command::Disconnect(target).requires_confirmation());
         assert!(!Command::Connect("ssh:build-host".into()).requires_confirmation());
         assert!(!Command::CopyAddress("local:work".into()).requires_confirmation());
