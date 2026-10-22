@@ -147,6 +147,9 @@ AccessKit/UI Automation use Windows services. The quick terminal is a tool windo
 `quick-terminal-space-behavior = move` moves it to the foreground desktop when
 revealed. Selection clipboard storage is shared within one process. The saved-layout
 picker accepts Rustty JSON; Ghostty's macOS archived-state format requires macOS.
+To copy the layout and displayed contents from another running Rustty, launch with
+`--import-state`, or hold Alt while a new process starts. See
+[copying visual state during an upgrade](#copying-visual-state-during-an-upgrade).
 
 Windows validation:
 
@@ -175,6 +178,35 @@ every byte boundary retains synchronization until text and cursor restoration
 are complete. Set `RUSTTY_CONPTY_RESOURCES` to test another bundle's resources
 directory (for example, `target/release/Rustty/resources`). The shared PTY backend
 requires the pinned bundle; the former `--system` option is no longer supported.
+
+The handover regression runs two hidden debug instances, with isolated state and
+disposable `cmd.exe /d /q` shells. Build the debug bundle first, then run:
+
+```powershell
+$handoffDir = Join-Path $env:TEMP ('rustty-handoff-' + [guid]::NewGuid())
+New-Item -ItemType Directory -Path $handoffDir | Out-Null
+$handoffExe = (Resolve-Path target/debug/Rustty/rustty.exe).Path
+$env:RUSTTY_HANDOFF_SMOKE_DIR = $handoffDir
+try {
+    $env:RUSTTY_HANDOFF_SMOKE_ROLE = 'source'
+    $source = Start-Process -FilePath $handoffExe -WindowStyle Hidden -PassThru `
+        -ArgumentList '--config-default-files=false', '--renderer=software' `
+        -RedirectStandardOutput "$handoffDir/source.log" -RedirectStandardError "$handoffDir/source.err"
+    $env:RUSTTY_HANDOFF_SMOKE_ROLE = 'requester'
+    $requester = Start-Process -FilePath $handoffExe -WindowStyle Hidden -PassThru `
+        -ArgumentList '--import-state', '--config-default-files=false', '--renderer=software' `
+        -RedirectStandardOutput "$handoffDir/requester.log" -RedirectStandardError "$handoffDir/requester.err"
+    $source, $requester | Wait-Process -Timeout 45
+    Get-Content "$handoffDir/*-result.json"
+} finally {
+    Remove-Item Env:RUSTTY_HANDOFF_SMOKE_DIR, Env:RUSTTY_HANDOFF_SMOKE_ROLE -ErrorAction SilentlyContinue
+}
+```
+
+Both `*-result.json` files must report `"passed": true`; `selector.png` captures
+the chooser. The check covers discovery, native notification, approval, cancellation,
+import cleanup, styled history and alternate-screen contents, and output from a new
+ConPTY shell below the restoration marker. Use `--renderer=gpu` to check GPU rendering.
 
 ## macOS
 
@@ -307,7 +339,7 @@ RUSTTY_SMOKE_DIR=/tmp/rustty-native-smoke RUSTTY_SMOKE_OFFSCREEN=1 target/debug/
 ```
 
 The macOS handover regression runs two hidden debug instances with isolated
-configuration, shells, and state. Each `*-result.json` must report `"passed": true`;
+configuration, disposable `/bin/sh` shells, and state. Each `*-result.json` must report `"passed": true`;
 `selector.png` captures the chooser.
 
 ```sh
@@ -369,6 +401,19 @@ timeout; leaving the pane or moving the pointer restarts the interval.
 
 ### Copying visual state during an upgrade
 
+On Windows, leave the old installation running and extract the **complete** new
+application folder into a separate location, such as `C:\Apps\Rustty-new`.
+Windows locks running executables and DLLs, so replace the old folder after closing
+that instance. Start the new copy's **Import Terminal State** selector with:
+
+```powershell
+& 'C:\Apps\Rustty-new\rustty.exe' --import-state
+```
+
+Alternatively, hold **Alt** while launching a new Rustty process. The key is sampled
+at startup; Ctrl+Alt and AltGr do not enable import mode. Use the command if your
+launcher assigns another action to Alt, or only activates the existing process.
+
 On macOS, start a separate instance directly in **Import Terminal State** with:
 
 ```sh
@@ -377,19 +422,19 @@ open -n /Applications/Rustty.app --args --import-state
 
 `-n` tells macOS to start the specified bundle even when another Rustty is already
 running. An ordinary Finder or Dock launch usually activates the existing process,
-including after its bundle was renamed. `--import-state` opens only the selector;
-it does not restore a workspace or start shells until an import succeeds.
+including after its bundle was renamed. To replace a running macOS installation,
+rename `/Applications/Rustty.app`, for example to `Rustty.previous.app`, and leave
+it running. Copy the new bundle to `/Applications/Rustty.app`, complete any macOS
+security approval, then run the command above to start that copy's selector.
 
-To replace a running installation:
+On both platforms, import mode opens only the selector; it does not restore a
+workspace or start shells until an import succeeds. Windows discovery is limited
+to the same user and Windows sign-in session.
 
-1. Rename `/Applications/Rustty.app`, for example to `Rustty.previous.app`, and
-   leave it running.
-2. Copy the new bundle to `/Applications/Rustty.app`, complete any macOS security
-   approval, then run the command above to start that copy's selector.
-3. Select a running instance owned by the same user and click **Ask**. In the
+1. Select a running instance owned by the same user and click **Ask**. In the
    original instance, approve **Export Terminal State?** with **Export**. It can
    also **Decline**, or **Ignore further requests for this session**.
-4. The selector shows the completed dump beside its source. Select it and click
+2. The selector shows the completed dump beside its source. Select it and click
    **Import**. Several instances can be asked independently.
 
 Import copies the window/tab/panel layout, scrollback, and displayed contents,
@@ -408,7 +453,8 @@ Successful import removes the selector's requested dumps; **Cancel**, Escape, or
 closing the selector also removes them and exits that new instance. A failed
 import keeps its dump available for retry. Compressed files and decoded state are
 each limited to 512 MiB. A build predating this feature cannot export its state;
-older running app bundles appear as unavailable in the selector.
+older running app bundles appear as unavailable on macOS. Windows lists only
+instances that advertise support for exporting terminal state.
 
 ### tmuxx windows
 

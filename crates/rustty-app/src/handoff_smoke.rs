@@ -6,6 +6,51 @@ const SOURCE_PROMPT: &str = "HANDOFF SOURCE PROMPT>";
 const FRESH_OUTPUT: &str = "HANDOFF FRESH SHELL OUTPUT";
 const ALT_OUTPUT: &str = "HANDOFF ALTERNATE DISPLAY";
 
+pub(super) fn configure(loaded: &mut LoadedConfig, directory: PathBuf) {
+    #[cfg(target_os = "windows")]
+    let command = vec!["cmd.exe".into(), "/d".into(), "/q".into()];
+    #[cfg(not(target_os = "windows"))]
+    let command = vec!["/bin/sh".into(), "-i".into()];
+    let command = config::Command::Direct(command);
+    loaded.config.command = Some(command.clone());
+    loaded.config.initial_command = Some(command);
+    loaded.config.shell_integration = config::ShellIntegration::None;
+    loaded.config.working_directory = Some(directory);
+    loaded.config.stream_deck = false;
+    loaded.config.window_save_state = config::WindowSaveState::Always;
+    loaded
+        .config
+        .keybinds
+        .retain(|binding| !binding.flags.global);
+}
+
+pub(super) fn save_software_capture(painter: &mut painter::Painter, path: &Path) -> Result<()> {
+    let mut events = Vec::new();
+    painter.handle_screenshots(&mut events);
+    let image = events
+        .into_iter()
+        .find_map(|event| match event {
+            egui::Event::Screenshot { image, .. } => Some(image),
+            _ => None,
+        })
+        .ok_or("missing software selector screenshot")?;
+    let mut encoder = png::Encoder::new(
+        fs::File::create(path)?,
+        image.width() as u32,
+        image.height() as u32,
+    );
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    encoder.write_header()?.write_image_data(
+        &image
+            .pixels
+            .iter()
+            .flat_map(|color| color.to_array())
+            .collect::<Vec<_>>(),
+    )?;
+    Ok(())
+}
+
 pub(super) struct Smoke {
     directory: PathBuf,
     role: String,
@@ -23,7 +68,7 @@ impl Smoke {
             directory: PathBuf::from(std::env::var_os("RUSTTY_HANDOFF_SMOKE_DIR")?),
             role: std::env::var("RUSTTY_HANDOFF_SMOKE_ROLE").unwrap_or_default(),
             stage: 0,
-            deadline: Instant::now() + Duration::from_secs(20),
+            deadline: Instant::now() + Duration::from_secs(30),
             pane: None,
             request: None,
             cancelled: None,
@@ -69,6 +114,9 @@ impl Smoke {
                 }
                 ensure(app.panes.len() == 1, "source fixture needs one fresh shell")?;
                 let (&id, pane) = app.panes.iter().next().unwrap();
+                #[cfg(target_os = "windows")]
+                pane.session.write(b"prompt HANDOFF SOURCE PROMPT$G\r")?;
+                #[cfg(not(target_os = "windows"))]
                 pane.session.write(b"stty -echo; PS1='HANDOFF SOURCE PROMPT> '; printf '\\nHANDOFF SOURCE READY\\n'\n")?;
                 self.pane = Some(id);
                 self.stage = 1;
@@ -132,12 +180,17 @@ impl Smoke {
                     )?;
                     self.report(serde_json::json!({
                         "passed": true,
-                        "checks": ["native-signal-request", "source-confirmation", "two-independent-exports", "source-shell-alive", "source-alternate-display-unchanged", "ignore-further-requests"],
+                        "renderer": app.painter.description(),
+                        "checks": ["native-notification-request", "source-confirmation", "two-independent-exports", "source-shell-alive", "source-alternate-display-unchanged", "ignore-further-requests"],
                         "exports": self.exports,
                     }))?;
-                    return Ok(true);
+                    // All checks above observe the live source. Shut down only
+                    // this disposable fixture shell before closing its ConPTY.
+                    self.source_pane(app)?.session.write(b"exit\r")?;
+                    self.stage = 3;
                 }
             }
+            3 => return Ok(self.shell_exited(app)),
             _ => unreachable!(),
         }
         Ok(false)
@@ -211,6 +264,18 @@ impl Smoke {
                     }),
                     "source selector row did not change to Import",
                 )?;
+                // Hidden Windows windows need not receive WM_PAINT. Render the
+                // real selector directly before import removes its viewport.
+                let key = app
+                    .windows
+                    .iter()
+                    .find(|(_, host)| host.id == SELECTOR_WINDOW)
+                    .map(|(key, _)| *key)
+                    .ok_or("missing selector window")?;
+                let mut host = app.windows.remove(&key).unwrap();
+                let drawn = app.draw_import_selector(event_loop, &mut host);
+                app.windows.insert(key, host);
+                drawn?;
                 app.import_handoff(event_loop, &request.source.id)?;
                 ensure(
                     !app.import_selector && app.panes.len() == 1,
@@ -222,6 +287,10 @@ impl Smoke {
                 )?;
                 let (&id, pane) = app.panes.iter().next().unwrap();
                 ensure(!pane.session.has_exited(), "new local shell exited")?;
+                #[cfg(target_os = "windows")]
+                // Escape one letter so a command-line echo cannot pass the output check.
+                pane.session.write(b"echo HANDOFF FRESH SHELL OUT^PUT\r")?;
+                #[cfg(not(target_os = "windows"))]
                 pane.session
                     .write(b"printf '\\nHANDOFF FRESH SHELL OUTPUT\\n'\n")?;
                 self.pane = Some(id);
@@ -306,17 +375,24 @@ impl Smoke {
                     state.requests.is_empty(),
                     "completed requests remain selected",
                 )?;
+                ensure(
+                    self.directory.join("selector.png").is_file(),
+                    "selector rendering did not produce its capture",
+                )?;
                 self.report(serde_json::json!({
                     "passed": true,
+                    "renderer": app.painter.description(),
                     "source_pid": source.pid,
                     "cancelled_request": self.cancelled,
                     "imported_request": request.id,
                     "history_rows": history_rows,
-                    "checks": ["import-flag-starts-empty", "same-user-discovery", "ask-confirm-ready", "lz4-dump", "cancel-removes-dump", "selector-import-state", "workspace-import", "primary-history", "alternate-display", "styles-and-hyperlinks", "fresh-shell-after-marker", "clean-terminal-modes", "import-removes-dump", "source-process-alive", "ignore-further-requests"],
+                    "checks": ["import-flag-starts-empty", "same-user-discovery", "ask-confirm-ready", "lz4-dump", "cancel-removes-dump", "selector-import-state", "selector-capture", "workspace-import", "primary-history", "alternate-display", "styles-and-hyperlinks", "fresh-shell-after-marker", "clean-terminal-modes", "import-removes-dump", "source-process-alive", "ignore-further-requests"],
                 }))?;
                 fs::write(self.directory.join("requester-done"), [])?;
-                return Ok(true);
+                app.panes[&self.pane.unwrap()].session.write(b"exit\r")?;
+                self.stage = 4;
             }
+            4 => return Ok(self.shell_exited(app)),
             _ => unreachable!(),
         }
         Ok(false)
@@ -332,7 +408,8 @@ impl Smoke {
 
     fn waiting(&self, state: &State, request: &Request) -> Result<bool> {
         match state.registry.status(request)? {
-            RequestStatus::Waiting => Ok(false),
+            // The export can finish between the caller's check and this read.
+            RequestStatus::Waiting | RequestStatus::Ready { .. } => Ok(false),
             other => Err(format!("unexpected export status: {other:?}").into()),
         }
     }
@@ -341,6 +418,12 @@ impl Smoke {
         app.panes
             .get(&self.pane.ok_or("source panel not initialized")?)
             .ok_or_else(|| "source panel disappeared".into())
+    }
+
+    fn shell_exited(&self, app: &App) -> bool {
+        self.pane
+            .and_then(|id| app.panes.get(&id))
+            .is_none_or(|pane| pane.session.has_exited())
     }
 
     fn verify_source(&self, app: &App) -> Result<()> {

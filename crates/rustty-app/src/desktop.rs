@@ -2,7 +2,7 @@
 mod command_palette;
 #[path = "deck_host.rs"]
 mod deck_host;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[path = "handoff_ui.rs"]
 mod handoff_ui;
 #[path = "outliner_host.rs"]
@@ -67,7 +67,7 @@ const MIN_WINDOW_SIZE: LogicalSize<f64> = LogicalSize::new(240.0, 120.0);
 
 #[derive(Debug)]
 enum Event {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     Handoff,
     DeckWake,
     Tmuxx,
@@ -533,7 +533,7 @@ struct Host {
     layout_picker: Option<LayoutPicker>,
     palette: CommandPalette,
     confirm: Option<Confirmation>,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     handoff_prompt: Option<handoff_ui::Prompt>,
     tmuxx_connect: Option<String>,
     clipboard_request: VecDeque<(Id, vt::Effect)>,
@@ -573,7 +573,7 @@ impl Host {
             || self.messages_open && self.messages_focused
     }
     fn modal_input(&self) -> bool {
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         if self.handoff_prompt.is_some() {
             return true;
         }
@@ -761,7 +761,7 @@ struct ThemePreview {
 }
 
 struct App {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     handoff: Option<handoff_ui::State>,
     import_selector: bool,
     deck: deck_host::Connection,
@@ -802,9 +802,11 @@ struct App {
 
 pub fn run() -> Result<()> {
     let mut args = std::env::args().skip(1).collect::<Vec<_>>();
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     let import_requested = handoff_ui::import_requested(&mut args);
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    let import_requested = import_requested || handoff_ui::launch_alt_pressed();
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let import_requested = false;
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!(
@@ -814,6 +816,10 @@ pub fn run() -> Result<()> {
         #[cfg(target_os = "macos")]
         println!(
             "\nUse --import-state to open only the instance selector. To start a second app:\n  open -n /Applications/Rustty.app --args --import-state"
+        );
+        #[cfg(target_os = "windows")]
+        println!(
+            "\nUse --import-state, or hold Alt while launching Rustty, to open only the instance selector. Ctrl+Alt/AltGr does not enable import mode."
         );
         return Ok(());
     }
@@ -828,7 +834,7 @@ pub fn run() -> Result<()> {
     let background_smoke = tmuxx_smoke.is_some()
         || (std::env::var_os("RUSTTY_SMOKE_DIR").is_some()
             && std::env::var_os("RUSTTY_SMOKE_OFFSCREEN").is_some());
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     let background_smoke = background_smoke || handoff_ui::smoke_directory().is_some();
     let mut builder = EventLoop::<Event>::with_user_event();
     #[cfg(target_os = "macos")]
@@ -882,6 +888,8 @@ pub fn run() -> Result<()> {
         )?)?;
     }
     let smoke = smoke::Smoke::from_env(&mut loaded)?;
+    #[cfg(debug_assertions)]
+    handoff_ui::configure_smoke(&mut loaded);
     let mut state_path = app_paths::data_dir()?.join("workspace.json");
     let mut errors = loaded
         .diagnostics
@@ -893,7 +901,7 @@ pub fn run() -> Result<()> {
     } else if let Some(directory) = &tmuxx_smoke {
         state_path = directory.join("workspace.json");
     }
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     if let Some(directory) = handoff_ui::smoke_directory() {
         state_path = directory.join("workspace.json");
     }
@@ -1090,7 +1098,7 @@ pub fn run() -> Result<()> {
         .and_then(|s| s.parse::<u64>().ok())
         .map(|s| now + Duration::from_secs(s))
         .or_else(|| tmuxx_smoke.as_ref().map(|_| now + Duration::from_secs(5)));
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     let handoff = if background_smoke && handoff_ui::smoke_directory().is_none() {
         None
     } else {
@@ -1102,7 +1110,7 @@ pub fn run() -> Result<()> {
             }
         }
     };
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     if !import_requested
         && loaded.config.window_save_state != config::WindowSaveState::Never
         && let Some(state) = &handoff
@@ -1111,7 +1119,7 @@ pub fn run() -> Result<()> {
         errors.push(format!("Could not claim workspace saving: {error}"));
     }
     let mut app = App {
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         handoff,
         import_selector: import_requested,
         deck: deck_host::Connection::default(),
@@ -1700,7 +1708,7 @@ impl App {
             layout_picker: None,
             palette: CommandPalette::default(),
             confirm: None,
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             handoff_prompt: None,
             tmuxx_connect: None,
             clipboard_request: VecDeque::new(),
@@ -1774,13 +1782,13 @@ impl App {
             return;
         }
         let workspace = self.saved_workspace();
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         let result = if let Some(state) = &self.handoff {
             state.registry.save_workspace(&self.state_path, &workspace)
         } else {
             workspace.save(&self.state_path)
         };
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let result = workspace.save(&self.state_path);
         if let Err(error) = result {
             self.errors.push(format!("Could not save windows: {error}"));
@@ -3613,6 +3621,8 @@ impl App {
         if self.background_smoke || self.smoke.is_some() {
             smoke::Smoke::configure(&mut self.loaded);
         }
+        #[cfg(debug_assertions)]
+        handoff_ui::configure_smoke(&mut self.loaded);
         self.errors = self
             .loaded
             .diagnostics
@@ -3847,7 +3857,7 @@ impl App {
             .collect::<Vec<_>>();
         for id in removed {
             if let Some(host) = self.windows.remove(&id) {
-                #[cfg(target_os = "macos")]
+                #[cfg(any(target_os = "macos", target_os = "windows"))]
                 if let Some(prompt) = host.handoff_prompt
                     && let Some(state) = &mut self.handoff
                 {
@@ -5477,7 +5487,7 @@ impl App {
             if let Some(picker) = &mut host.layout_picker {
                 layout_command = show_layout_picker(ctx, picker).or(layout_command.take());
             }
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             self.show_handoff_prompt(host, ctx);
             let _ = show_messages(ctx, &mut self.errors, messages_keyboard_input);
             host.messages_open = !self.errors.is_empty();
@@ -6378,7 +6388,7 @@ impl ApplicationHandler<Event> for App {
                 Err(error) => self.errors.push(error),
             }
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         if self.import_selector {
             if let Err(error) = self.open_import_selector(event_loop) {
                 self.startup_error = Some(error.to_string());
@@ -6409,7 +6419,7 @@ impl ApplicationHandler<Event> for App {
     }
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
         match event {
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             Event::Handoff => self.poll_handoff(),
             Event::Tmuxx => {
                 if !self.import_selector {
@@ -6622,7 +6632,7 @@ impl ApplicationHandler<Event> for App {
         }
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, window: WindowId, event: WindowEvent) {
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         if self.import_selector {
             self.import_window_event(event_loop, window, event);
             return;
@@ -7001,11 +7011,11 @@ impl ApplicationHandler<Event> for App {
         self.reconcile(event_loop);
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         self.present_handoff_prompt();
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         self.tick_import_selector();
-        #[cfg(all(target_os = "macos", debug_assertions))]
+        #[cfg(all(any(target_os = "macos", target_os = "windows"), debug_assertions))]
         self.tick_handoff_smoke(event_loop);
         if let Some(smoke) = &mut self.smoke {
             smoke.record("about-to-wait");
@@ -7133,11 +7143,11 @@ impl ApplicationHandler<Event> for App {
         if let Some(deadline) = self.platform.as_ref().and_then(Platform::next_deadline) {
             next = Some(next.map_or(deadline, |old| old.min(deadline)));
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         if let Some(deadline) = self.import_refresh_deadline() {
             next = Some(next.map_or(deadline, |old| old.min(deadline)));
         }
-        #[cfg(all(target_os = "macos", debug_assertions))]
+        #[cfg(all(any(target_os = "macos", target_os = "windows"), debug_assertions))]
         if let Some(deadline) = self.handoff_smoke_deadline() {
             next = Some(next.map_or(deadline, |old| old.min(deadline)));
         }
@@ -7172,7 +7182,7 @@ impl ApplicationHandler<Event> for App {
         event_loop.set_control_flow(next.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
     fn exiting(&mut self, _: &ActiveEventLoop) {
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         if let Some(handoff) = &self.handoff {
             let _ = handoff.registry.cancel_all();
         }

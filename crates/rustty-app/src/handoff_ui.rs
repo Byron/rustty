@@ -1,4 +1,4 @@
-//! macOS visual-state copying. The selector owns no terminal sessions.
+//! Shared desktop visual-state copying. The selector owns no terminal sessions.
 
 use super::*;
 use rustty_app::handoff::{Instance, Registry, Request, RequestStatus};
@@ -89,6 +89,32 @@ pub(super) fn import_requested(args: &mut Vec<String>) -> bool {
         != 0
 }
 
+#[cfg(target_os = "windows")]
+pub(super) fn launch_alt_pressed() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL, VK_MENU};
+    // Sample the current state before creating windows; the low bit reports
+    // presses since another caller's query and must not trigger import mode.
+    // AltGr is reported as Ctrl+Alt on Windows keyboard layouts that use it.
+    unsafe {
+        import_modifier(
+            GetAsyncKeyState(VK_MENU.0.into()),
+            GetAsyncKeyState(VK_CONTROL.0.into()),
+        )
+    }
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn import_modifier(alt: i16, control: i16) -> bool {
+    alt < 0 && control >= 0
+}
+
+#[cfg(debug_assertions)]
+pub(super) fn configure_smoke(loaded: &mut LoadedConfig) {
+    if let Some(directory) = smoke_directory() {
+        smoke::configure(loaded, directory);
+    }
+}
+
 pub(super) fn smoke_directory() -> Option<PathBuf> {
     #[cfg(debug_assertions)]
     return std::env::var_os("RUSTTY_HANDOFF_SMOKE_DIR").map(PathBuf::from);
@@ -147,7 +173,7 @@ impl State {
     }
 
     fn rows(&self) -> Vec<picker::Row> {
-        let mut rows: Vec<_> = self
+        let rows: Vec<_> = self
             .instances
             .iter()
             .map(|instance| {
@@ -179,34 +205,39 @@ impl State {
                 }
             })
             .collect();
-        // Older bundles can be shown, but only advertised peers may receive a signal.
-        use objc2_app_kit::NSRunningApplication;
-        use objc2_foundation::ns_string;
-        for app in NSRunningApplication::runningApplicationsWithBundleIdentifier(ns_string!(
-            "app.rustty.Rustty"
-        )) {
-            let pid = app.processIdentifier();
-            if pid <= 0
-                || pid as u32 == std::process::id()
-                || self
-                    .instances
-                    .iter()
-                    .any(|instance| instance.pid == pid as u32)
-                || !same_user(pid)
-            {
-                continue;
-            }
-            rows.push(picker::Row {
-                id: format!("unsupported-{pid}"),
-                label: format!("Rustty · PID {pid}"),
-                detail: "This version does not support exporting terminal state.".into(),
-                status: picker::Status::Unavailable,
-            });
-        }
+        #[cfg(target_os = "macos")]
+        let rows = legacy_macos_rows(rows, &self.instances);
         rows
     }
 }
 
+#[cfg(target_os = "macos")]
+fn legacy_macos_rows(mut rows: Vec<picker::Row>, instances: &[Instance]) -> Vec<picker::Row> {
+    // Older bundles can be shown, but only advertised peers may receive a notification.
+    use objc2_app_kit::NSRunningApplication;
+    use objc2_foundation::ns_string;
+    for app in NSRunningApplication::runningApplicationsWithBundleIdentifier(ns_string!(
+        "app.rustty.Rustty"
+    )) {
+        let pid = app.processIdentifier();
+        if pid <= 0
+            || pid as u32 == std::process::id()
+            || instances.iter().any(|instance| instance.pid == pid as u32)
+            || !same_user(pid)
+        {
+            continue;
+        }
+        rows.push(picker::Row {
+            id: format!("unsupported-{pid}"),
+            label: format!("Rustty · PID {pid}"),
+            detail: "This version does not support exporting terminal state.".into(),
+            status: picker::Status::Unavailable,
+        });
+    }
+    rows
+}
+
+#[cfg(target_os = "macos")]
 fn same_user(pid: libc::pid_t) -> bool {
     let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
     let size = std::mem::size_of_val(&info) as i32;
@@ -658,21 +689,24 @@ impl App {
         let primitives = self
             .context
             .tessellate(output.shapes, output.pixels_per_point);
-        if self.background_smoke {
+        let capture = self
+            .background_smoke
+            .then(smoke_directory)
+            .flatten()
+            .map(|directory| directory.join("selector.png"))
+            .filter(|path| !path.exists());
+        if self.background_smoke && !self.painter.is_software() {
             let render_state = self.painter.render_state().ok_or("GPU unavailable")?;
             #[cfg(debug_assertions)]
-            if let Some(directory) = smoke_directory() {
-                let path = directory.join("selector.png");
-                if !path.exists() {
-                    super::smoke::capture(
-                        &render_state,
-                        &primitives,
-                        &output.textures_delta,
-                        [size.width, size.height],
-                        output.pixels_per_point,
-                        &path,
-                    )?;
-                }
+            if let Some(path) = &capture {
+                super::smoke::capture(
+                    &render_state,
+                    &primitives,
+                    &output.textures_delta,
+                    [size.width, size.height],
+                    output.pixels_per_point,
+                    path,
+                )?;
             }
             super::smoke::submit_offscreen(
                 &render_state,
@@ -689,10 +723,16 @@ impl App {
                 output.pixels_per_point,
                 &primitives,
                 &mut output.textures_delta,
-                false,
+                capture.is_some(),
                 &host.window,
             )?;
+            #[cfg(debug_assertions)]
+            if let Some(path) = &capture {
+                smoke::save_software_capture(&mut self.painter, path)?;
+            }
         }
+        host.frames += 1;
+        host.last_frame_started = Some(Instant::now());
         match command {
             Some(picker::Command::Cancel) => {
                 if let Some(state) = &self.handoff {
@@ -759,6 +799,16 @@ mod tests {
             assert!(!import_requested(&mut args));
         }
         assert!(!import_requested(&mut Vec::new()));
+    }
+
+    #[test]
+    fn import_modifier_requires_held_alt_without_control() {
+        assert!(import_modifier(i16::MIN, 0));
+        assert!(import_modifier(i16::MIN | 1, 1));
+        assert!(!import_modifier(0, 0));
+        assert!(!import_modifier(1, 0));
+        assert!(!import_modifier(i16::MIN, i16::MIN));
+        assert!(!import_modifier(0, i16::MIN));
     }
 
     fn dump() -> Dump {
