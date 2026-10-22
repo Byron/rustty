@@ -9,6 +9,7 @@ use tmuxx_protocol::encode_output;
 use tmuxx_protocol::native::{Request, ServerMessage};
 #[cfg(test)]
 mod arguments_tests;
+mod completions;
 #[cfg(test)]
 mod native_endpoint_tests;
 #[cfg(windows)]
@@ -26,7 +27,8 @@ const STARTUP_BUSY_EXIT: i32 = 75;
     about = "Headless tmux-compatible command/control server",
     disable_version_flag = true,
     trailing_var_arg = true,
-    args_override_self = true
+    args_override_self = true,
+    after_help = "Generate shell completions with: tmuxx completions <SHELL>"
 )]
 struct Cli {
     /// Request a UTF-8 client (native clients always use UTF-8).
@@ -341,6 +343,13 @@ fn run(mut cli: Cli) -> io::Result<()> {
     if cli.version {
         println!("tmuxx {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
+    }
+    if cli
+        .command
+        .first()
+        .is_some_and(|command| command == "completions")
+    {
+        return completions::run(&cli.command);
     }
     if cli.login || cli.shell_command.is_some() || cli.verbose != 0 {
         return Err(io::Error::new(

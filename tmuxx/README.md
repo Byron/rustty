@@ -22,6 +22,24 @@ Rustty's macOS and Windows bundles include `tmuxx` or `tmuxx.exe` beside the GUI
 executable. Use the console `tmuxx.exe` for Windows commands and SSH access; it
 shares the bundle's ConPTY resources with Rustty.
 
+Generate shell completions with `tmuxx completions SHELL`, where `SHELL` is
+`bash`, `zsh`, `fish`, `powershell`, or `elvish`. Commands, aliases, and flags
+come from the CLI's command registry. Fish completions require fish 4.0 or
+newer; install the script with:
+
+```fish
+mkdir -p ~/.config/fish/completions
+tmuxx completions fish > ~/.config/fish/completions/tmuxx.fish
+```
+
+Fish also queries the running server for session, window, pane, client, and
+buffer targets. For example, complete `tmuxx kill-pane -t ` or
+`tmuxx -L work attach-session -t `. Queries honor the leading `-L`, `-S`,
+`--native-endpoint`, and `--imsg-schema` options and the usual connection
+environment. They use `-N`, so pressing Tab never starts a server. Session and
+window targets include readable names and stable IDs; pane IDs carry descriptions
+showing their session, window, and current command.
+
 Windows servers inherit the account's Windows Terminal default shell and its
 arguments at startup, including Git Bash's login flags. Explicit `default-shell`
 or command options override that preference for new panes.
