@@ -534,6 +534,36 @@ impl Attachment {
 }
 
 impl Attachment {
+    fn local_configuration_files(&self) -> std::result::Result<Vec<PathBuf>, String> {
+        if !matches!(self.source, Source::Embedded(_) | Source::Local(_)) {
+            return Err("Opening configuration is only available for local tmuxx servers".into());
+        }
+        let files = self
+            .connection
+            .as_ref()
+            .and_then(Connection::server_status)
+            .filter(|status| status.instance_id == self.instance)
+            .and_then(|status| status.config_files)
+            .ok_or("The tmuxx server's configuration files are unavailable")?;
+        if files.is_empty() {
+            return Err("The tmuxx server started without configuration files".into());
+        }
+        files
+            .into_iter()
+            .map(|file| {
+                let path = PathBuf::from(file);
+                if path.is_absolute() {
+                    Ok(path)
+                } else {
+                    Err(
+                        "The tmuxx server reported a configuration path that is not absolute"
+                            .into(),
+                    )
+                }
+            })
+            .collect()
+    }
+
     fn copying_session(&self, session: u64, name: &str) -> bool {
         self.copied_window
             .as_ref()
@@ -627,14 +657,30 @@ impl Attachment {
         }
         if live {
             if !matches!(self.source, Source::SystemSsh(_)) {
-                children.push(match server_status.and_then(|status| status.config_files) {
-                    Some(files) if !files.is_empty() => Entry::command(
-                        "Reload Server Configuration",
-                        MenuCommand::ReloadConfig(target.clone()),
+                let unavailable = match server_status.and_then(|status| status.config_files) {
+                    Some(files) if !files.is_empty() => None,
+                    Some(_) => Some("no files"),
+                    None => Some("unavailable"),
+                };
+                for (label, command, unavailable) in [
+                    (
+                        "Settings…",
+                        MenuCommand::OpenConfig(target.clone()),
+                        unavailable.or_else(|| {
+                            matches!(self.source, Source::Ssh(_)).then_some("remote server")
+                        }),
                     ),
-                    Some(_) => Entry::label("Reload Server Configuration (no files)"),
-                    None => Entry::label("Reload Server Configuration (unavailable)"),
-                });
+                    (
+                        "Reload Configuration",
+                        MenuCommand::ReloadConfig(target.clone()),
+                        unavailable,
+                    ),
+                ] {
+                    children.push(match unavailable {
+                        Some(reason) => Entry::label(format!("{label} ({reason})")),
+                        None => Entry::command(label, command),
+                    });
+                }
             }
             if self.monitoring {
                 children.push(match connections {
@@ -930,6 +976,7 @@ impl App {
                 MenuCommand::Connect(_)
                     | MenuCommand::Reconnect(_)
                     | MenuCommand::Fit(..)
+                    | MenuCommand::OpenConfig(_)
                     | MenuCommand::ReloadConfig(_)
             );
             let error_count = self.errors.len();
@@ -1608,6 +1655,7 @@ impl App {
             | MenuCommand::Fit(target, _)
             | MenuCommand::Kill(target, _)
             | MenuCommand::Execute(target, _)
+            | MenuCommand::OpenConfig(target)
             | MenuCommand::ReloadConfig(target)
             | MenuCommand::Disconnect(target)
             | MenuCommand::Reconnect(target)
@@ -1728,6 +1776,21 @@ impl App {
             MenuCommand::Execute(_, argv) => {
                 if let Err(error) = self.tmuxx[index].connection.as_ref().unwrap().command(argv) {
                     self.errors.push(error.to_string());
+                    return;
+                }
+            }
+            MenuCommand::OpenConfig(_) => {
+                let result = self.tmuxx[index]
+                    .local_configuration_files()
+                    .and_then(|files| {
+                        let platform = self
+                            .platform
+                            .as_ref()
+                            .ok_or("The text editor is unavailable")?;
+                        files.iter().try_for_each(|path| platform.open_config(path))
+                    });
+                if let Err(error) = result {
+                    self.errors.push(error);
                     return;
                 }
             }
@@ -1895,9 +1958,18 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn reload_menu_requires_live_owner_with_configuration_files() {
-        let (mut entry, mut peer) = monitoring_peer("reload", true);
-        for config_files in [None, Some(vec![]), Some(vec!["C:/tmuxx.conf".into()])] {
+    fn configuration_menu_preserves_local_files_and_requires_live_owner() {
+        let (mut entry, mut peer) = monitoring_peer("configuration", true);
+        let files = vec![
+            "/tmp/server configuration/tmuxx.conf".to_owned(),
+            "/tmp/server's overrides.conf".to_owned(),
+        ];
+        for (config_files, suffix) in [
+            (None, " (unavailable)"),
+            (Some(vec![]), " (no files)"),
+            (Some(vec!["relative/tmuxx.conf".into()]), ""),
+            (Some(files.clone()), ""),
+        ] {
             tmuxx_protocol::native::write_record(
                 &mut peer,
                 &tmuxx_protocol::native::ServerMessage::ServerStatus(
@@ -1924,35 +1996,68 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(2));
             }
             let menu = entry.menu_entry(None);
-            let reload = menu
-                .children
-                .iter()
-                .find(|item| item.label.starts_with("Reload Server Configuration"))
-                .unwrap();
-            assert_eq!(
-                reload.command,
-                config_files
-                    .is_some_and(|files| !files.is_empty())
-                    .then(|| MenuCommand::ReloadConfig(entry.target()))
-            );
+            for (label, command) in [
+                ("Settings…", MenuCommand::OpenConfig(entry.target())),
+                (
+                    "Reload Configuration",
+                    MenuCommand::ReloadConfig(entry.target()),
+                ),
+            ] {
+                let item = menu
+                    .children
+                    .iter()
+                    .find(|item| item.label.starts_with(label))
+                    .unwrap();
+                assert_eq!(item.label, format!("{label}{suffix}"));
+                assert_eq!(item.command, suffix.is_empty().then_some(command));
+            }
+            match config_files.filter(|paths| paths == &files) {
+                Some(paths) => assert_eq!(
+                    entry.local_configuration_files().unwrap(),
+                    paths.into_iter().map(PathBuf::from).collect::<Vec<_>>()
+                ),
+                None => assert!(entry.local_configuration_files().is_err()),
+            }
         }
+        assert!(!MenuCommand::OpenConfig(entry.target()).requires_confirmation());
         assert!(!MenuCommand::ReloadConfig(entry.target()).requires_confirmation());
-        entry.instance = "replacement".into();
-        assert!(
-            entry
-                .menu_entry(None)
-                .children
-                .iter()
-                .all(|item| !matches!(item.command, Some(MenuCommand::ReloadConfig(_))))
+        entry.source = Source::Embedded("/tmp/embedded.native".into());
+        assert_eq!(
+            entry.local_configuration_files().unwrap(),
+            files.iter().map(PathBuf::from).collect::<Vec<_>>()
         );
+        assert!(entry.menu_entry(None).children.iter().any(|item| {
+            item.label == "Settings…"
+                && item.command == Some(MenuCommand::OpenConfig(entry.target()))
+        }));
+        entry.instance = "replacement".into();
+        assert!(entry.local_configuration_files().is_err());
+        assert!(entry.menu_entry(None).children.iter().all(|item| !matches!(
+            item.command,
+            Some(MenuCommand::OpenConfig(_) | MenuCommand::ReloadConfig(_))
+        )));
         entry.instance = "owner".into();
+        entry.source = Source::Ssh("remote-tmuxx".into());
+        assert!(entry.local_configuration_files().is_err());
+        let menu = entry.menu_entry(None);
+        assert!(
+            menu.children.iter().any(|item| {
+                item.label == "Settings… (remote server)" && item.command.is_none()
+            })
+        );
+        assert!(menu.children.iter().any(|item| {
+            item.label == "Reload Configuration"
+                && item.command == Some(MenuCommand::ReloadConfig(entry.target()))
+        }));
         entry.source = Source::SystemSsh("stock-tmux".into());
+        assert!(entry.local_configuration_files().is_err());
         assert!(
             entry
                 .menu_entry(None)
                 .children
                 .iter()
-                .all(|item| !item.label.starts_with("Reload Server Configuration"))
+                .all(|item| !item.label.starts_with("Settings…")
+                    && !item.label.starts_with("Reload Configuration"))
         );
     }
 
