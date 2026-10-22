@@ -15,6 +15,7 @@ pub enum Visual {
         reserved: bool,
         moving: bool,
         flash_dim: bool,
+        remote: bool,
     },
     Function {
         value: String,
@@ -135,6 +136,7 @@ impl Renderer {
                 state,
                 reserved,
                 moving,
+                remote,
                 ..
             } => {
                 let lines = wrap_label(&mut self.label, label, 52.0 * scale)?;
@@ -165,6 +167,20 @@ impl Renderer {
                             1.0,
                             NEUTRAL,
                         );
+                    }
+                }
+                if *remote {
+                    // The upper-right corner stays clear of status, focus, and label artwork.
+                    for (from, to) in [
+                        ((55.0, 14.0), (55.0, 20.0)),
+                        ((55.0, 20.0), (61.0, 20.0)),
+                        ((61.0, 20.0), (61.0, 18.0)),
+                        ((55.0, 14.0), (57.0, 14.0)),
+                        ((58.0, 17.0), (63.0, 12.0)),
+                        ((59.0, 12.0), (63.0, 12.0)),
+                        ((63.0, 12.0), (63.0, 16.0)),
+                    ] {
+                        line(&mut image, from, to, 1.2, text);
                     }
                 }
             }
@@ -564,6 +580,7 @@ mod tests {
             reserved: false,
             moving: false,
             flash_dim: false,
+            remote: false,
         };
         assert_eq!(renderer.render(&visual).unwrap().dimensions(), (72, 72));
         let normal = renderer.render(&visual).unwrap();
@@ -584,5 +601,48 @@ mod tests {
                 })
         );
         assert!(Renderer::new((72, 80)).is_err());
+    }
+
+    #[test]
+    fn remote_badge_changes_only_the_unused_corner() {
+        for size in [32, 72, 96, 256] {
+            let mut renderer = Renderer::new((size, size)).unwrap();
+            for (label, focused, reserved, moving, flash_dim) in [
+                ("", false, false, false, false),
+                ("task", false, false, false, false),
+                ("long-worktree-task-slug ·2", true, false, false, false),
+                ("long-worktree-task-slug ·2", false, false, true, false),
+                ("long-worktree-task-slug ·2", false, false, false, true),
+                ("long-worktree-task-slug ·2", false, true, false, false),
+            ] {
+                let mut visual = Visual::Agent {
+                    label: label.into(),
+                    state: Some(State::Done),
+                    focused,
+                    reserved,
+                    moving,
+                    flash_dim,
+                    remote: false,
+                };
+                let local = renderer.render(&visual).unwrap();
+                if let Visual::Agent { remote, .. } = &mut visual {
+                    *remote = true;
+                }
+                let remote = renderer.render(&visual).unwrap();
+                let scale = size as f32 / 72.0;
+                let mut changed = 0;
+                for ((px, py, local), remote) in local.enumerate_pixels().zip(remote.pixels()) {
+                    if local == remote {
+                        continue;
+                    }
+                    changed += 1;
+                    let x = (px as f32 + 0.5) / scale;
+                    let y = (py as f32 + 0.5) / scale;
+                    // Include antialiasing at the smallest supported image size.
+                    assert!((53.0..65.0).contains(&x) && (10.0..22.0).contains(&y));
+                }
+                assert!(changed > 0, "remote badge missing at {size}px: {visual:?}");
+            }
+        }
     }
 }

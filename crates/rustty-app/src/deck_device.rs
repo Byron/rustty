@@ -263,6 +263,7 @@ fn keys(
                 reserved: tile.reserved,
                 moving: is_moving,
                 flash_dim: tile.unseen && !tile.focused && !is_moving && flash_dim(elapsed),
+                remote: tile.remote,
             },
             binding: Binding::Agent(tile.capture),
         };
@@ -810,6 +811,7 @@ pub fn preview(path: &std::path::Path) -> Result<(), String> {
             focused: slot == 0,
             reserved: slot == 7,
             unseen: slot < 7,
+            remote: slot < 7 && slot % 2 == 0,
         })
         .collect();
     let mut board = Board {
@@ -886,6 +888,7 @@ mod tests {
                     focused: false,
                     reserved: slot == 3,
                     unseen: false,
+                    remote: false,
                 })
                 .collect(),
         }
@@ -914,6 +917,23 @@ mod tests {
         gesture.buttons(&states, keys, Duration::from_millis(time), &|action| {
             actions.borrow_mut().push(action)
         })
+    }
+
+    #[test]
+    fn remote_origin_changes_artwork_without_changing_key_targets() {
+        let layout = Layout::new(Kind::Mk2Scissor).unwrap();
+        let mut board = board();
+        let local = keys(&board, layout, None, None, 100, Duration::ZERO);
+        board.tiles[0].remote = true;
+        let remote = keys(&board, layout, None, None, 100, Duration::ZERO);
+        for index in 0..15 {
+            assert_eq!(local[index].binding, remote[index].binding);
+            assert_eq!(local[index].visual == remote[index].visual, index != 0);
+        }
+        assert!(matches!(
+            remote[0].visual,
+            Visual::Agent { remote: true, .. }
+        ));
     }
 
     #[test]

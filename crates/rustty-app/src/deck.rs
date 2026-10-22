@@ -241,6 +241,7 @@ impl CommandReport {
             last_activity: self.last_activity,
             label: label.to_owned(),
             unseen: state != State::Working,
+            remote: false,
         })
     }
 }
@@ -265,6 +266,7 @@ pub struct Tile {
     pub focused: bool,
     pub reserved: bool,
     pub unseen: bool,
+    pub remote: bool,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Board {
@@ -308,6 +310,7 @@ impl Board {
             focused: false,
             reserved: false,
             unseen: false,
+            remote: false,
         })
     }
     pub fn valid(&self, capture: Capture) -> bool {
@@ -438,6 +441,7 @@ impl Report {
             last_activity: self.last_activity,
             label: task_label.to_owned(),
             unseen: attention.is_some_and(|entry| entry.unseen),
+            remote: false,
         })
     }
 }
@@ -448,6 +452,8 @@ pub struct PaneView {
     pub last_activity: Option<Instant>,
     pub label: String,
     pub unseen: bool,
+    /// The report comes from a tmux-backed pane, including local server sessions.
+    pub remote: bool,
 }
 
 #[derive(Default)]
@@ -561,6 +567,7 @@ impl Dashboard {
                     focused: id.is_some() && *id == focused,
                     reserved: id.is_some() && report.is_none(),
                     unseen: report.is_some_and(|r| r.unseen),
+                    remote: report.is_some_and(|r| r.remote),
                 }
             })
             .collect();
@@ -744,11 +751,37 @@ mod tests {
                     state: GROUPS[i % 4],
                     last_activity: None,
                     unseen: false,
+                    remote: false,
                 },
             );
         }
         (workspace, reports)
     }
+    #[test]
+    fn tmux_origin_marks_tiles_without_changing_assignments() {
+        let (mut workspace, mut reports) = setup(2);
+        let mut dashboard = Dashboard::default();
+        dashboard.update(&mut workspace, &reports, &HashMap::new(), None);
+        let local = dashboard.board.tile(0);
+        let pane = local.capture.target.unwrap().pane;
+        reports.get_mut(&pane).unwrap().remote = true;
+        assert!(!dashboard.update(&mut workspace, &reports, &HashMap::new(), None));
+        assert_eq!(
+            dashboard.board.tile(0),
+            Tile {
+                remote: true,
+                ..local
+            }
+        );
+
+        reports.remove(&pane);
+        dashboard.update(&mut workspace, &reports, &HashMap::new(), None);
+        let reserved = dashboard.board.tile(0);
+        assert!(reserved.reserved);
+        assert!(!reserved.remote);
+        assert!(!dashboard.board.tile(100).remote);
+    }
+
     fn snapshot(state: State, thread: &str, turn: Option<&str>) -> Snapshot {
         Snapshot {
             state,
