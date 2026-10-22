@@ -526,10 +526,12 @@ file (the working directory for command-line overrides); `~/` uses your home
 directory. An empty value resets the setting. Missing or unreadable files prevent
 startup. Configuration command errors are recorded in the server's `show-messages`
 log. Connecting to an existing local or remote server keeps its settings;
-reloading Rustty settings affects only future servers. Choose **Reload Server
-Configuration** in the server's tmuxx submenu to reload its startup files in
+reloading Rustty settings affects only future servers. Choose **Settings…** in a
+local server's tmuxx submenu to open all its startup configuration files in your
+text editor. Opening configuration is unavailable for SSH servers. Choose
+**Reload Configuration** in the same submenu to reload the startup files in
 order, or use `source-file` from the CLI. This applies settings without restarting
-the server or its shells. The menu action is unavailable for older owners that
+the server or its shells. These actions are unavailable for older owners that
 do not report their files and for servers started without configuration files.
 Headless servers can load the same file with
 `rustty tmux -f /path/to/tmuxx.conf ...` or `tmuxx.exe -D -f PATH`.
