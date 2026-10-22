@@ -12,7 +12,9 @@ README and is never performed by an ordinary build or launch.
 Build from the repository root with `nu crates/rustty-app/build.nu --release`.
 Omit `--release` for a debug build; add `--offline` to use cached Cargo dependencies.
 The script creates `target/release/Rustty.app` (or `target/debug/Rustty.app`)
-and signs it ad hoc for local use. It does not install the app.
+and signs it ad hoc for local use. Pass `--sign 'Rustty Local Signing'` to reuse a
+persistent keychain signing identity; see the [local signing setup](../README.md#keeping-macos-permissions-across-local-builds).
+It does not install the app.
 
 Application data lives in `Contents/Resources/rustty`: themes, shell integration,
 and the compiled terminfo database. The app passes this directory to sessions;

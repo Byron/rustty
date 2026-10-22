@@ -220,6 +220,47 @@ open target/release/Rustty.app
 The bundle includes the `tmuxx` command in `Rustty.app/Contents/MacOS`, beside
 `rustty`, with its license notice under `Contents/Resources/licenses`.
 
+### Keeping macOS permissions across local builds
+
+The bundle is signed ad hoc by default, so rebuilding changes its code-signing
+identity and can invalidate macOS privacy permissions. For personal builds, create
+one free, persistent signing certificate in **Keychain Access**:
+
+1. Choose **Keychain Access > Certificate Assistant > Create a Certificate**.
+2. Name it **Rustty Local Signing**, select **Self Signed Root** and **Code Signing**,
+   and enable **Let me override defaults**.
+3. Set the validity to **3650 days**, accept the remaining defaults, and save it in
+   the **login** keychain.
+4. Open the certificate, expand **Trust**, set **Code Signing** to **Always Trust**,
+   close the window, and authenticate.
+
+These steps follow [Apple's self-signing guide](https://developer.apple.com/library/archive/documentation/Security/Conceptual/CodeSigningGuide/Procedures/Procedures.html).
+Confirm that `security find-identity -v -p codesigning` lists the certificate, then
+use it for every build:
+
+```sh
+nu crates/rustty-app/build.nu --release --sign 'Rustty Local Signing'
+codesign --verify --deep --strict target/release/Rustty.app
+codesign -dr - target/release/Rustty.app
+```
+
+The designated requirement should include `app.rustty.Rustty` and a certificate
+requirement, rather than only an executable `cdhash`. Keep the same certificate and
+private key; recreating the certificate creates a different identity. If Keychain
+Access asks whether `codesign` may use the private key, allow it for this signing
+operation.
+
+Install the complete signed bundle using the [upgrade procedure](#copying-visual-state-during-an-upgrade).
+After switching from ad hoc signing, grant **Full Disk Access** and **Developer
+Tools** again under **System Settings > Privacy & Security** for the installed
+`/Applications/Rustty.app`. If an old entry remains enabled but access fails,
+remove and re-add it, then restart the signed instance. Subsequent builds with the
+same identity should retain these grants; verify this across a later rebuild on
+your macOS version. Self-signing does not provide Developer ID trust or notarization
+for public distribution.
+
+### Development and configuration
+
 For development, use `cargo run -p rustty-app --bin rustty`. Build the debug bundle
 first (`nu crates/rustty-app/build.nu`) to make themes, terminfo and shell integration
 available to development sessions. Ordinary Cargo builds do not require Zig.
