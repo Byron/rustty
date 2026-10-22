@@ -1039,6 +1039,7 @@ struct Host {
     processes: BTreeMap<Id, Process>,
     clients: BTreeMap<u64, Client>,
     server_watchers: BTreeMap<u64, Option<usize>>,
+    config_files: Option<Vec<String>>,
     management_clients: BTreeSet<u64>,
     file_clients: BTreeSet<u64>,
     tx: SyncSender<Event>,
@@ -1138,6 +1139,17 @@ impl Host {
             processes: BTreeMap::new(),
             clients: BTreeMap::new(),
             server_watchers: BTreeMap::new(),
+            config_files: options
+                .config
+                .iter()
+                .map(|path| {
+                    std::path::absolute(path)
+                        .ok()?
+                        .into_os_string()
+                        .into_string()
+                        .ok()
+                })
+                .collect(),
             management_clients: BTreeSet::new(),
             file_clients: BTreeSet::new(),
             tx,
