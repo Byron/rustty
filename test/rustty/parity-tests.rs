@@ -1,11 +1,16 @@
 use super::*;
+#[cfg(unix)]
 use std::{
     sync::atomic::{AtomicUsize, Ordering},
     time::Instant,
 };
 
+// The fake-oracle fixtures use POSIX shell scripts and /bin/kill. Keep their
+// subprocess checks Unix-only while testing portable transport logic everywhere.
+#[cfg(unix)]
 struct Temporary(PathBuf);
 
+#[cfg(unix)]
 impl Temporary {
     fn new() -> Self {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -34,6 +39,7 @@ impl Temporary {
     }
 }
 
+#[cfg(unix)]
 impl Drop for Temporary {
     fn drop(&mut self) {
         fs::remove_dir_all(&self.0).unwrap();
@@ -198,7 +204,7 @@ fn coverage_cannot_pass_without_capabilities_complete_status_and_passing_cases()
 }
 
 #[test]
-fn bounded_transport_rejects_truncation_oversize_invalid_json_and_oracle_death() {
+fn bounded_transport_rejects_truncation_oversize_and_invalid_json() {
     let mut buffer = Vec::new();
     for bytes in [&b"{}"[..], &b"xxxxxxxxxxxxxxxx\n"[..], &b"invalid\n"[..]] {
         assert!(read_json::<Value>(&mut &*bytes, &mut buffer, 16).is_err());
@@ -211,6 +217,11 @@ fn bounded_transport_rejects_truncation_oversize_invalid_json_and_oracle_death()
         read_json::<Value>(&mut &b""[..], &mut buffer, 3).unwrap(),
         None
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn bounded_transport_rejects_oracle_death_and_oversized_requests() {
     let temporary = Temporary::new();
     for script in ["exit 3", "printf '%s' '{\"ok\":true}'"] {
         let mut peer = temporary.peer("broken", script, Duration::from_secs(2));
@@ -226,6 +237,7 @@ fn bounded_transport_rejects_truncation_oversize_invalid_json_and_oracle_death()
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn deadlines_cover_full_input_pipes_and_cleanup_children() {
     let temporary = Temporary::new();
@@ -254,6 +266,7 @@ fn deadlines_cover_full_input_pipes_and_cleanup_children() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn delivery_failures_preserve_external_artifacts_and_do_not_grant_coverage() {
     let temporary = Temporary::new();
@@ -351,6 +364,7 @@ fn cli_rejects_invalid_deadlines_and_normalizes_integer_seeds() {
     assert_eq!(cases::seed("+0000").unwrap(), "0");
 }
 
+#[cfg(unix)]
 #[test]
 fn archives_reject_stale_inputs_probes_membership_counts_and_truncation() {
     use flate2::{Compression, write::GzEncoder};
