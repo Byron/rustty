@@ -1327,7 +1327,7 @@ fn write_record(writer: &mut impl Write, value: &impl serde::Serialize) -> io::R
 fn record(reader: &mut impl BufRead) -> io::Result<Option<Vec<u8>>> {
     tmuxx_protocol::native::read_record(reader, RECORD_LIMIT)
 }
-#[cfg(test)]
+#[cfg(all(test, unix))]
 fn request_record(reader: &mut impl BufRead) -> Request {
     let bytes = record(reader).unwrap().unwrap();
     let tmuxx_protocol::native::ClientMessage::Request(request) =
