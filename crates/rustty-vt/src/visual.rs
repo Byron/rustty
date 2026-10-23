@@ -82,6 +82,15 @@ impl VisualSnapshot {
     /// Install historical display cells into a fresh terminal before child output.
     pub fn restore_into(self, terminal: &mut Terminal) -> io::Result<()> {
         let mut restored = self.decode()?;
+        let has_display = restored.primary.all_rows().any(|row| {
+            !restored.primary.row_text(row).trim().is_empty()
+                || restored
+                    .primary
+                    .graphics
+                    .placements
+                    .iter()
+                    .any(|placement| placement.row == row.id && !placement.virtual_placement)
+        });
         restored.resize(terminal.cols, terminal.rows);
         // Keep fresh-shell defaults, parser state, modes, keyboard and host policy.
         let mut screen = Screen::new(
@@ -100,13 +109,23 @@ impl VisualSnapshot {
         let limits = terminal.primary.limits;
         let memory_limit = terminal.primary.memory_limit;
         terminal.primary = screen;
-        let padding = usize::from(terminal.cols)
-            .saturating_sub(RESTORED_MARKER.len() + 4)
-            .max(6);
-        let left = "-".repeat(padding / 2);
-        let right = "-".repeat(padding - padding / 2);
-        terminal
-            .feed(format!("\r\n\x1b[1m[{left} {RESTORED_MARKER} {right}]\x1b[0m\r\n").as_bytes());
+        if has_display {
+            let padding = usize::from(terminal.cols).saturating_sub(RESTORED_MARKER.len() + 2);
+            let banner = if padding == 0 {
+                format!("[{RESTORED_MARKER}]")
+            } else {
+                let left = padding / 2;
+                let right = padding - left;
+                let left = if left == 0 {
+                    String::new()
+                } else {
+                    format!("{} ", "-".repeat(left - 1))
+                };
+                let right = format!(" {}", "-".repeat(right - 1));
+                format!("[{left}{RESTORED_MARKER}{right}]")
+            };
+            terminal.feed(format!("\r\n\x1b[1m{banner}\x1b[0m\r\n").as_bytes());
+        }
         // Import itself must not discard the oldest restored rows. Subsequent
         // output uses the receiving session's normal scrollback policy.
         terminal.primary.limits = limits;
@@ -133,8 +152,8 @@ mod tests {
 
     #[test]
     fn restored_banner_is_prominent_and_leaves_new_output_unstyled() {
-        for cols in [1, 24, 80, 81] {
-            let mut source = Terminal::new(cols, 3, 1000);
+        for cols in [1, 24, 49, 50, 51, 52, 53, 80, 81, 120] {
+            let mut source = Terminal::new(80, 3, 1000);
             source.feed(b"old display");
             let mut destination = Terminal::new(cols, 3, 1000);
             wire(&source).restore_into(&mut destination).unwrap();
@@ -148,13 +167,25 @@ mod tests {
             assert_eq!(lines[2], "new prompt");
             let banner = lines[1];
             let message = "Restored Rustty display. A new shell starts below.";
-            assert_eq!(banner.len(), usize::from(cols).max(message.len() + 10));
+            assert_eq!(banner.len(), usize::from(cols).max(message.len() + 2));
             let (left, right) = banner.split_once(message).unwrap();
-            let left = left.strip_prefix('[').unwrap().strip_suffix(' ').unwrap();
-            let right = right.strip_prefix(' ').unwrap().strip_suffix(']').unwrap();
-            assert!(left.len() >= 3 && right.len() >= 3);
+            let left = left.strip_prefix('[').unwrap();
+            let right = right.strip_suffix(']').unwrap();
             assert!(left.len().abs_diff(right.len()) <= 1);
-            assert!(left.chars().chain(right.chars()).all(|ch| ch == '-'));
+            assert!(
+                left.chars()
+                    .chain(right.chars())
+                    .all(|ch| ch == '-' || ch == ' ')
+            );
+            if usize::from(cols) <= message.len() + 2 {
+                assert_eq!(banner, format!("[{message}]"));
+                assert!(
+                    destination
+                        .screen()
+                        .all_rows()
+                        .all(|row| row.cells().len() <= usize::from(cols))
+                );
+            }
             let mut in_banner = false;
             for row in destination.screen().all_rows() {
                 let row_text = destination.screen().row_text(row);
@@ -173,6 +204,35 @@ mod tests {
                     in_banner = false;
                 }
             }
+        }
+    }
+
+    #[test]
+    fn empty_display_omits_banner_but_scrollback_keeps_it() {
+        for (history, alternate) in [(false, false), (false, true), (true, false), (true, true)] {
+            let mut source = Terminal::new(80, 3, 1000);
+            if history {
+                source.feed(b"old history");
+            }
+            source.feed(b"\r\n\r\n\r\n\r\n\x1b[2J\x1b[H   ");
+            if alternate {
+                source.feed(b"\x1b[?1049h");
+            }
+            assert!(
+                source.screen().viewport().all(|row| source
+                    .screen()
+                    .row_text(row)
+                    .trim()
+                    .is_empty())
+            );
+            let mut destination = Terminal::new(120, 3, 1000);
+            wire(&source).restore_into(&mut destination).unwrap();
+            destination.feed(b"new prompt");
+            let displayed = text(&destination);
+            assert_eq!(displayed.contains("old history"), history);
+            assert!(displayed.contains("new prompt"));
+            assert_eq!(displayed.contains(RESTORED_MARKER), history);
+            assert_eq!(destination.screen().cursor.style, Default::default());
         }
     }
 

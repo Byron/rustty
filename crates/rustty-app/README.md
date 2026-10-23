@@ -517,7 +517,9 @@ to the same user and Windows sign-in session.
 Import copies the window/tab/panel layout, scrollback, and displayed contents,
 including alternate-screen applications. Exports omit tmuxx windows; reconnect
 to their servers to restore them. Each imported panel starts a fresh local shell
-with this bold divider above new output, padded with dashes to the terminal width:
+with this bold divider above new output, centered with dashes to the panel width.
+Narrow panels wrap the message without padding. Empty panels omit it; a blank
+visible screen with content in scrollback still gets the divider:
 
 > **[--- Restored Rustty display. A new shell starts below. ---]**
 
