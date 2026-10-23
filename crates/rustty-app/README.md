@@ -391,6 +391,10 @@ do not count as active work. Each pane can trigger a short completion flash even
 while another pane remains busy. Quadrants share one directory label when every
 pane has the same basename; differing or missing directories keep individual labels.
 
+The tab color menu offers the current theme's palette, background, and foreground,
+plus softer shades blended toward the theme background and higher-contrast shades
+blended toward its foreground. The general color picker remains available.
+
 OSC 9;4 progress reports show a thin bar at the top of their pane, with percentages,
 red errors, orange pauses and animated indeterminate progress. Reports disappear
 when removed or after 15 seconds without an update. Ghostty's `progress-style = false`
