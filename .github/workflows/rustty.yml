@@ -66,6 +66,10 @@ jobs:
       - name: Test workspace
         run: cargo test --locked --workspace --no-fail-fast
 
+      - name: Test Windows bundle installation
+        if: runner.os == 'Windows'
+        run: python test/rustty/test_windows_install.py
+
       - name: Test packaged Windows sidecar and retained sessions
         if: runner.os == 'Windows'
         run: cargo test --locked -p rustty-app --test tmux_cli_windows -- --ignored --test-threads=1

@@ -1,13 +1,19 @@
-# Build a portable Windows application. Registration is explicit and per-user.
+# Build a portable Windows application, optionally installing it on the Desktop.
+# Registration is explicit and per-user.
 [CmdletBinding()]
 param(
     [switch]$Release,
     [switch]$Offline,
     [switch]$Register,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$Install,
+    [string]$InstallDirectory
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+# Indirect launches from PowerShell 7 (for example, through just) can pass its
+# PSModulePath to Windows PowerShell 5.1. Use this host's built-in hash helper.
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility')
 
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $targetRoot = Join-Path $repository 'target'
@@ -16,33 +22,90 @@ $triple = 'x86_64-pc-windows-msvc'
 $buildOutput = Join-Path (Join-Path $targetRoot $triple) $profile
 $output = Join-Path $targetRoot $profile
 $bundle = Join-Path $output 'Rustty'
-$stage = Join-Path $output ('rustty-stage-' + [Guid]::NewGuid().ToString('N'))
-$previous = Join-Path $output ('rustty-previous-' + [Guid]::NewGuid().ToString('N'))
-
-function Assert-BuildPath([string]$Candidate) {
-    $absolute = [IO.Path]::GetFullPath($Candidate)
-    $allowed = [IO.Path]::GetFullPath($targetRoot).TrimEnd('\') + '\'
-    if (!$absolute.StartsWith($allowed, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Refusing to change a path outside the build directory: $absolute"
+if ($InstallDirectory -and !$Install) {
+    throw '-InstallDirectory requires -Install.'
+}
+if ($Install) {
+    if (!$InstallDirectory) {
+        # Honor Windows' configured Desktop location instead of assuming that
+        # it is directly under the user's profile directory.
+        $desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)
+        if (!$desktop) { throw 'Windows did not report a Desktop directory. Supply -InstallDirectory.' }
+        $InstallDirectory = Join-Path $desktop 'Rustty'
     }
-    # Do not follow a user-created directory junction out of the build tree.
+    $bundle = [IO.Path]::GetFullPath($InstallDirectory).TrimEnd('\', '/')
+    $output = [IO.Path]::GetDirectoryName($bundle)
+    if (!$output -or ![IO.Path]::GetFileName($bundle)) {
+        throw '-InstallDirectory must name an application folder, not a filesystem root.'
+    }
+}
+$bundleName = [IO.Path]::GetFileName($bundle)
+$stage = Join-Path $output ('.' + $bundleName + '-install.' + [Guid]::NewGuid().ToString('N'))
+$previous = Join-Path $output ($bundleName + '.previous.' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N'))
+
+function Assert-ManagedPath([string]$Candidate, [string]$Root) {
+    $absolute = [IO.Path]::GetFullPath($Candidate)
+    $allowed = [IO.Path]::GetFullPath($Root).TrimEnd('\') + '\'
+    if (!$absolute.StartsWith($allowed, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to change a path outside ${Root}: $absolute"
+    }
+    # Check the root's ancestors too: the explicitly selected parent must not
+    # redirect staging, publication or cleanup through a directory junction.
     $parent = $absolute
-    while ($parent -and $parent.Length -ge $targetRoot.Length) {
-        if (Test-Path -LiteralPath $parent) {
-            $item = Get-Item -LiteralPath $parent -Force
-            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
-                throw "Refusing to modify a build directory through a junction: $parent"
-            }
+    while ($parent) {
+        $item = Get-Item -LiteralPath $parent -Force -ErrorAction SilentlyContinue
+        if ($null -ne $item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw "Refusing to modify a path through a junction or symbolic link: $parent"
         }
         $parent = [IO.Path]::GetDirectoryName($parent)
     }
 }
 
-function Remove-BuildPath([string]$Candidate) {
-    Assert-BuildPath $Candidate
+function Assert-ManagedTree([string]$Candidate, [string]$Root) {
+    Assert-ManagedPath $Candidate $Root
+    # Windows PowerShell 5.1 can follow nested junctions during recursive
+    # removal. Inspect each directory ourselves without traversing any links.
+    if (Test-Path -LiteralPath $Candidate -PathType Container) {
+        $pending = [Collections.Generic.Stack[string]]::new()
+        $pending.Push($Candidate)
+        while ($pending.Count) {
+            foreach ($item in Get-ChildItem -LiteralPath $pending.Pop() -Force) {
+                if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                    throw "Refusing to modify a bundle containing a junction or symbolic link: $($item.FullName)"
+                }
+                if ($item.PSIsContainer) { $pending.Push($item.FullName) }
+            }
+        }
+    }
+}
+
+function Assert-BuildPath([string]$Candidate) {
+    Assert-ManagedPath $Candidate $targetRoot
+}
+
+function Remove-ManagedPath([string]$Candidate, [string]$Root) {
+    Assert-ManagedTree $Candidate $Root
     if (Test-Path -LiteralPath $Candidate) {
         Remove-Item -LiteralPath $Candidate -Recurse -Force
     }
+}
+
+function Move-BundleDirectory([string]$Source, [string]$Destination) {
+    Assert-ManagedTree $Source $output
+    Assert-ManagedPath $Destination $output
+    if ([IO.Path]::GetDirectoryName($Source) -ne [IO.Path]::GetDirectoryName($Destination)) {
+        throw 'Bundle publication must stay within its staging directory.'
+    }
+    # Unlike Move-Item, Rename-Item fails if the destination already exists;
+    # it cannot accidentally nest the stage inside a concurrently created app.
+    Rename-Item -LiteralPath $Source -NewName ([IO.Path]::GetFileName($Destination))
+}
+
+Assert-ManagedPath $stage $output
+Assert-ManagedTree $bundle $output
+Assert-ManagedPath $previous $output
+if (Test-Path -LiteralPath $bundle -PathType Leaf) {
+    throw "The bundle destination is a file, not a directory: $bundle"
 }
 
 # The in-box ConPTY can forward DEC 2026's end marker before its buffered
@@ -69,7 +132,7 @@ function Get-ConPtyPackage {
             }
             Move-Item -LiteralPath $download -Destination $package
         } finally {
-            Remove-BuildPath $download
+            Remove-ManagedPath $download $targetRoot
         }
     }
     if ((Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash -ne $sha256) {
@@ -79,7 +142,7 @@ function Get-ConPtyPackage {
 }
 
 function Install-ConPty([string]$Package, [string]$Destination) {
-    Assert-BuildPath $Destination
+    Assert-ManagedPath $Destination $output
     New-Item -ItemType Directory -Path $Destination -Force | Out-Null
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [IO.Compression.ZipFile]::OpenRead($Package)
@@ -126,10 +189,8 @@ foreach ($name in @('rustty', 'tmuxx')) {
         throw "Build the Windows executable first: $executable"
     }
 }
-Assert-BuildPath $stage
-Assert-BuildPath $bundle
-Assert-BuildPath $previous
 $installed = $false
+$backedUp = $false
 try {
     $resources = Join-Path $stage 'resources'
     $licenses = Join-Path $resources 'licenses'
@@ -175,27 +236,39 @@ Use --renderer=software or --renderer=gpu to force a backend, or set renderer in
 
     # Keep the last complete bundle recoverable until staging succeeds.
     if (Test-Path -LiteralPath $bundle) {
-        Move-Item -LiteralPath $bundle -Destination $previous
+        try {
+            Move-BundleDirectory $bundle $previous
+            $backedUp = $true
+        } catch {
+            throw "Could not move the existing bundle; it is unchanged at $bundle. A process may be using this folder as its working directory or holding a file open. Leave that directory or close the process and retry. $($_.Exception.Message)"
+        }
     }
     try {
-        Move-Item -LiteralPath $stage -Destination $bundle
+        Move-BundleDirectory $stage $bundle
         $installed = $true
     } catch {
-        if (Test-Path -LiteralPath $previous) {
-            Move-Item -LiteralPath $previous -Destination $bundle
+        $publishFailure = $_
+        if ($backedUp) {
+            try {
+                Move-BundleDirectory $previous $bundle
+            } catch {
+                throw "Publishing the bundle failed, and the previous bundle could not be restored. It is retained at $previous. Publish error: $publishFailure. Restore error: $_"
+            }
         }
-        throw
+        throw $publishFailure
     }
-    try {
-        Remove-BuildPath $previous
-    } catch {
-        # Windows can rename a loaded executable or DLL but cannot delete it.
-        # The new bundle is already installed; keep the old runtime for sessions
-        # that still use it instead of reporting this successful build as failed.
-        Write-Warning "Rustty was built successfully, but the previous bundle could not be removed: $previous. Close applications using it before deleting that directory. $($_.Exception.Message)"
+    if ($Install) {
+        if ($backedUp) { Write-Host "Previous bundle: $previous" }
+    } else {
+        try {
+            Remove-ManagedPath $previous $output
+        } catch {
+            # Windows can rename a loaded executable or DLL but cannot delete it.
+            Write-Warning "Rustty was built successfully, but the previous bundle could not be removed: $previous. Close applications using it before deleting that directory. $($_.Exception.Message)"
+        }
     }
 } finally {
-    Remove-BuildPath $stage
+    Remove-ManagedPath $stage $output
 }
 
 if ($Register -and $installed) {
