@@ -227,7 +227,7 @@ impl Smoke {
         app.workspace.windows.pop();
 
         let bytes = bytes?;
-        let dump = Dump::decode(&bytes)?;
+        let mut dump = Dump::decode(&bytes)?;
         ensure(
             dump.workspace.windows.len() == 1
                 && dump.workspace.windows[0].id == app.workspace.windows[0].id
@@ -240,7 +240,34 @@ impl Smoke {
             empty.is_err_and(|error| error.to_string() == "This instance has no panels to export"),
             "tmuxx-only export did not report an empty instance",
         )?;
-        Ok(bytes)
+        // Give the receiver differently sized panels without changing the source shell.
+        let narrow = dump.workspace.id();
+        let split = dump.workspace.id();
+        let blank = dump.workspace.id();
+        let second_split = dump.workspace.id();
+        let tab = &mut dump.workspace.windows[0].tabs[0];
+        tab.split(narrow, split, Direction::Down, self.directory.clone());
+        tab.split(
+            blank,
+            second_split,
+            Direction::Right,
+            self.directory.clone(),
+        );
+        if let workspace::Node::Split { second, .. } = &mut tab.root.kind
+            && let workspace::Node::Split { ratio, .. } = &mut second.kind
+        {
+            *ratio = 0.25;
+        }
+        let content = dump.panels[&self.pane.unwrap()].visual.clone();
+        dump.panels.insert(narrow, Panel { visual: content });
+        let empty = vt::Terminal::new(80, 24, 100);
+        dump.panels.insert(
+            blank,
+            Panel {
+                visual: serde_json::to_vec(&vt::visual::VisualSnapshot::capture(&empty)?)?,
+            },
+        );
+        Ok(rmp_serde::to_vec_named(&dump)?)
     }
 
     fn requester(&mut self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
@@ -325,14 +352,53 @@ impl Smoke {
                 drawn?;
                 app.import_handoff(event_loop, &request.source.id)?;
                 ensure(
-                    !app.import_selector && app.panes.len() == 1,
+                    !app.import_selector && app.panes.len() == 3,
                     "import did not open the restored workspace",
                 )?;
                 ensure(
                     !path.exists() && !request_file(&path, &request).exists(),
                     "successful import did not remove its files",
                 )?;
-                let (&id, pane) = app.panes.iter().next().unwrap();
+                let mut widths = Vec::new();
+                let mut blank_panels = 0;
+                for pane in app.panes.values() {
+                    let terminal = pane.session.terminal()?;
+                    let mut formatter = terminal.formatter(vt::formatter::Format::Plain);
+                    formatter.options.unwrap = true;
+                    let text =
+                        String::from_utf8(formatter.format().ok_or("missing restored display")?)?;
+                    if text.contains(ALT_OUTPUT) {
+                        widths.push(terminal.cols);
+                        let banner = text
+                            .lines()
+                            .find(|line| line.contains(vt::visual::RESTORED_MARKER))
+                            .ok_or("split panel lost its restored banner")?;
+                        ensure(
+                            banner.len()
+                                == usize::from(terminal.cols)
+                                    .max(vt::visual::RESTORED_MARKER.len() + 2),
+                            "split panel banner used the wrong columns",
+                        )?;
+                    } else {
+                        blank_panels += 1;
+                        ensure(
+                            !text.contains(vt::visual::RESTORED_MARKER),
+                            "blank imported panel received a banner",
+                        )?;
+                    }
+                }
+                ensure(
+                    blank_panels == 1
+                        && widths
+                            .iter()
+                            .any(|cols| usize::from(*cols) < vt::visual::RESTORED_MARKER.len() + 2)
+                        && widths
+                            .iter()
+                            .any(|cols| usize::from(*cols) > vt::visual::RESTORED_MARKER.len() + 2),
+                    "import fixture did not exercise wide, narrow, and blank panels",
+                )?;
+                let id = app.workspace.windows[0].tabs[0].root.panes()[0];
+                let pane = &app.panes[&id];
                 ensure(!pane.session.has_exited(), "new local shell exited")?;
                 #[cfg(target_os = "windows")]
                 // Escape one letter so a command-line echo cannot pass the output check.
@@ -401,6 +467,25 @@ impl Smoke {
                     "import lost its hyperlink",
                 )?;
                 let history_rows = terminal.screen().history_len();
+                let banner = terminal
+                    .screen()
+                    .all_rows()
+                    .map(|row| terminal.screen().row_text(row))
+                    .find(|text| text.contains(vt::visual::RESTORED_MARKER))
+                    .ok_or("restored banner did not fit the receiving panel")?;
+                ensure(
+                    banner.len() == usize::from(terminal.cols),
+                    format!(
+                        "restored banner width {} did not match panel columns {}",
+                        banner.len(),
+                        terminal.cols
+                    ),
+                )?;
+                let (left, right) = banner.split_once(vt::visual::RESTORED_MARKER).unwrap();
+                ensure(
+                    left.len().abs_diff(right.len()) <= 1,
+                    "restored banner was not centered",
+                )?;
                 drop(terminal);
                 let request = self.request.as_ref().unwrap();
                 let state = app.handoff.as_ref().unwrap();
@@ -433,7 +518,7 @@ impl Smoke {
                     "cancelled_request": self.cancelled,
                     "imported_request": request.id,
                     "history_rows": history_rows,
-                    "checks": ["import-flag-starts-empty", "same-user-discovery", "ask-confirm-ready", "lz4-dump", "cancel-removes-dump", "selector-import-state", "selector-capture", "workspace-import", "primary-history", "alternate-display", "styles-and-hyperlinks", "fresh-shell-after-marker", "clean-terminal-modes", "import-removes-dump", "source-process-alive", "ignore-further-requests"],
+                    "checks": ["import-flag-starts-empty", "same-user-discovery", "ask-confirm-ready", "lz4-dump", "cancel-removes-dump", "selector-import-state", "selector-capture", "workspace-import", "primary-history", "alternate-display", "styles-and-hyperlinks", "fresh-shell-after-marker", "centered-panel-width-marker", "narrow-marker-wraps-without-padding", "blank-panel-omits-marker", "clean-terminal-modes", "import-removes-dump", "source-process-alive", "ignore-further-requests"],
                 }))?;
                 fs::write(self.directory.join("requester-done"), [])?;
                 app.panes[&self.pane.unwrap()].session.write(b"exit\r")?;
