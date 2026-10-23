@@ -8709,10 +8709,21 @@ mod tests {
         for (name, size, font_size, pinned) in [
             ("gitime", Vec2::new(740.0, 330.0), 22.0 * 0.7, false),
             ("timesheets", Vec2::new(370.0, 330.0), 22.0 * 0.7, false),
-            ("gitoxide.stable-gix", Vec2::new(180.0, 200.0), 12.0, false),
+            // Exceed the available width with both Segoe UI and San Francisco.
+            (
+                "gitoxide.stable-gix-with-a-long-directory-name",
+                Vec2::new(180.0, 200.0),
+                12.0,
+                false,
+            ),
             ("gitime", Vec2::new(740.0, 38.0), 12.0, false),
             ("gitime", Vec2::new(180.0, 200.0), 22.0 * 0.7, true),
-            ("gitoxide.stable-gix", Vec2::new(180.0, 200.0), 12.0, true),
+            (
+                "gitoxide.stable-gix-with-a-long-directory-name",
+                Vec2::new(180.0, 200.0),
+                12.0,
+                true,
+            ),
         ] {
             let bounds = egui::Rect::from_min_size(Pos2::new(100.0, 50.0), size);
             let mut output = context.run_ui(
