@@ -356,6 +356,12 @@ pub struct TabAccent {
     pub foreground: [u8; 3],
 }
 impl TabAccent {
+    pub fn frame_background(self, background: [u8; 3]) -> [u8; 3] {
+        std::array::from_fn(|i| {
+            ((u16::from(background[i]) * 82 + u16::from(self.background[i]) * 18 + 50) / 100) as u8
+        })
+    }
+
     /// Unassigned tabs inherit the platform accent supplied by the host.
     pub fn new(assigned: Option<[u8; 3]>, platform_accent: [u8; 3]) -> Self {
         let background = assigned.unwrap_or(platform_accent);
@@ -705,5 +711,12 @@ mod tests {
             TabAccent::new(Some([20, 10, 90]), [255; 3]).foreground,
             [255; 3]
         );
+        let accent = TabAccent::new(Some([255, 200, 0]), [0; 3]);
+        assert_eq!(accent.frame_background([20; 3]), [62, 52, 16]);
+        assert_eq!(
+            TabAccent::new(None, [255, 200, 0]).frame_background([20; 3]),
+            [62, 52, 16]
+        );
+        assert_eq!(accent.frame_background([240; 3]), [243, 233, 197]);
     }
 }
