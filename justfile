@@ -1,6 +1,13 @@
+set windows-shell := ["powershell.exe", "-NoProfile", "-Command"]
+
 # List recipes without building or installing anything.
 default:
     @just --list
+
+# Build and install a Windows release on the Desktop, retaining previous bundles.
+[windows]
+rustty-install-windows:
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File crates/rustty-app/build.ps1 -Release -Install
 
 # Build and install a signed release bundle, retaining the previous application.
 [macos]
