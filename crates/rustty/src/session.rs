@@ -1144,6 +1144,15 @@ mod tests {
     use super::*;
     use std::time::{Duration, Instant};
 
+    fn initialize_pty() {
+        #[cfg(windows)]
+        {
+            let resources = std::env::var_os("TMUXX_CONPTY_RESOURCES")
+                .expect("TMUXX_CONPTY_RESOURCES must name the verified shipped resources");
+            crate::tmuxx::initialize_conpty(Path::new(&resources)).unwrap();
+        }
+    }
+
     #[cfg(any(unix, windows))]
     #[test]
     #[cfg_attr(
@@ -1151,12 +1160,7 @@ mod tests {
         ignore = "requires TMUXX_CONPTY_RESOURCES from a verified bundle; run with --ignored"
     )]
     fn restored_visuals_precede_the_first_child_output() {
-        #[cfg(windows)]
-        {
-            let resources = std::env::var_os("TMUXX_CONPTY_RESOURCES")
-                .expect("TMUXX_CONPTY_RESOURCES must name the verified shipped resources");
-            crate::tmuxx::initialize_conpty(Path::new(&resources)).unwrap();
-        }
+        initialize_pty();
         #[cfg(unix)]
         let command = vec!["/bin/sh", "-c", "printf 'fresh child output'"];
         #[cfg(windows)]
@@ -1639,6 +1643,7 @@ mod tests {
 
     #[test]
     fn exec_failure_is_reported_by_spawn() {
+        initialize_pty();
         let result = Session::spawn(
             &Config::default(),
             SessionOptions {
@@ -1776,6 +1781,7 @@ mod tests {
 
     #[test]
     fn configured_scrollback_memory_is_bounded_across_reload_and_reset() {
+        initialize_pty();
         let mut config = Config::default();
         config.scrollback_limit_bytes = Some(2 * 1024 * 1024);
         let session = Session::spawn(
@@ -1821,6 +1827,7 @@ mod tests {
 
     #[test]
     fn short_lived_child_is_reaped_and_final_output_drained() {
+        initialize_pty();
         let mut config = Config::default();
         config.scrollback_limit_bytes = None;
         config.scrollback_limit_lines = Some(4);
@@ -1915,6 +1922,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn windows_conpty_input_resize_exit_and_close() {
+        initialize_pty();
         let config = Config::default();
         let options = || SessionOptions {
             command: Some(Command::Direct(vec![
