@@ -2935,6 +2935,11 @@ impl App {
         if action == Action::CloseWindow
             && let Some(entry) = self.tmuxx_window(host.id)
         {
+            if entry.view_connection().is_none() {
+                host.confirm = None;
+                self.close_tmuxx_window(host.id);
+                return true;
+            }
             host.confirm = Some(Confirmation::TmuxxClose {
                 target: entry.target(),
                 session: entry.mapping.sessions[&host.id],

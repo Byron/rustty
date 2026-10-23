@@ -1594,6 +1594,7 @@ impl App {
             return;
         };
         let entry = &mut self.tmuxx[index];
+        let disconnected = entry.view_connection().is_none();
         let session = entry.mapping.sessions[&window];
         entry.selected.remove(&session);
         entry.restore.retain(|saved| saved.session_id != session);
@@ -1605,13 +1606,17 @@ impl App {
         self.workspace.windows.retain(|w| w.id != window);
         if entry.temporary() && entry.selected.is_empty() {
             self.tmuxx.remove(index);
-        } else if matches!(entry.source, Source::Local(_))
-            && entry.selected.is_empty()
-            && !entry.waiting_for_window()
-        {
-            let wake = self.tmuxx_wake();
-            if let Err(error) = self.tmuxx[index].monitor(wake) {
-                self.tmuxx[index].status = Some(error.to_string());
+        } else if entry.selected.is_empty() && !entry.waiting_for_window() {
+            if disconnected {
+                let instance = std::mem::take(&mut entry.instance);
+                *entry = Attachment::new(entry.source.clone(), None, false);
+                entry.instance = instance;
+                entry.reconnect_enabled = false;
+            } else if matches!(entry.source, Source::Local(_)) {
+                let wake = self.tmuxx_wake();
+                if let Err(error) = self.tmuxx[index].monitor(wake) {
+                    self.tmuxx[index].status = Some(error.to_string());
+                }
             }
         }
         self.changed();

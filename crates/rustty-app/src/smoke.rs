@@ -1550,6 +1550,77 @@ pub(super) fn check_tmuxx_management(
             .as_ref()
             .and_then(Connection::graph)
             .ok_or("secondary-selection smoke lost its server snapshot")?;
+        // Closing disconnected views must not offer termination or start a monitor/retry.
+        drop(app.tmuxx[0].connection.take());
+        app.tmuxx[0].retry_at = Some(Instant::now());
+        app.refresh_tmuxx(event_loop);
+        let disconnected_windows = app.tmuxx[0].mapping.sessions.clone();
+        if disconnected_windows.len() != 2 {
+            return Err("disconnected-close smoke needs both session windows".into());
+        }
+        for (window, session) in disconnected_windows {
+            let key = app
+                .windows
+                .iter()
+                .find_map(|(key, host)| (host.id == window).then_some(*key))
+                .ok_or("disconnected-close smoke lost its native window")?;
+            app.window_event(event_loop, key, WindowEvent::CloseRequested);
+            if app.windows.contains_key(&key)
+                || app.workspace.windows.iter().any(|state| state.id == window)
+                || app.tmuxx[0].selected.contains(&session)
+                || app.tmuxx[0].connection.is_some()
+                || !app.errors.is_empty()
+            {
+                return Err(format!(
+                    "disconnected close retained a window/prompt or opened a connection: {:?}",
+                    app.errors
+                )
+                .into());
+            }
+            if !app.tmuxx[0].selected.is_empty() {
+                // The last view can be closed while an automatic replacement is in flight.
+                app.retry_tmuxx(Instant::now());
+                if app.tmuxx[0].connection.is_none() || app.tmuxx[0].view_connection().is_some() {
+                    return Err(
+                        "disconnected-close smoke did not start a pending replacement".into(),
+                    );
+                }
+            }
+        }
+        app.retry_tmuxx(Instant::now() + Duration::from_secs(3));
+        app.refresh_tmuxx(event_loop);
+        if app.tmuxx[0].connection.is_some()
+            || app.tmuxx[0].deadline().is_some()
+            || app.tmuxx[0].waiting_for_window()
+            || !app.tmuxx[0].selected.is_empty()
+            || !app.saved_workspace().tmuxx.is_empty()
+        {
+            return Err("closing the last disconnected window retained automatic reconnect".into());
+        }
+        app.tmuxx_menu_command(tmuxx_host::MenuCommand::Reconnect(target.clone()));
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            app.refresh_tmuxx(event_loop);
+            if let Some(reconnected) = app.tmuxx[0].connection.as_ref().and_then(Connection::graph)
+            {
+                if !app.tmuxx[0].selected.is_empty()
+                    || app.workspace.windows.len() != workspace.windows.len()
+                    || reconnected.sessions.len() != graph.sessions.len()
+                    || !reconnected
+                        .panes
+                        .iter()
+                        .map(|pane| pane.id)
+                        .eq(graph.panes.iter().map(|pane| pane.id))
+                {
+                    return Err("disconnected close killed a session or reopened a window".into());
+                }
+                break;
+            }
+            if Instant::now() >= deadline {
+                return Err("disconnected-close smoke could not manually reconnect".into());
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
         app.tmuxx_menu_command(tmuxx_host::MenuCommand::Disconnect(target.clone()));
         let deadline = Instant::now() + Duration::from_secs(10);
         let connections = loop {
@@ -1745,6 +1816,7 @@ pub(super) fn check_tmuxx_management(
                 "remote_split_preserved_local_focus": true,
                 "disconnected_views_retain_content_without_sending_input": true,
                 "reconnect_discards_stale_input": true,
+                "disconnected_close_preserves_sessions_without_reconnecting": true,
             }))?,
         )?;
         Ok(())
