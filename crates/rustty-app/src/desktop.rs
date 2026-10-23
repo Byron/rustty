@@ -4526,6 +4526,12 @@ impl App {
                 [r, g, b]
             });
         let tab_accent = TabAccent::new(active.color, platform_accent);
+        let frame_background = tab_accent.frame_background(config.background.to_array());
+        let frame_color = Color32::from_rgb(
+            frame_background[0],
+            frame_background[1],
+            frame_background[2],
+        );
         let accent = Color32::from_rgb(
             tab_accent.background[0],
             tab_accent.background[1],
@@ -4578,7 +4584,8 @@ impl App {
             );
             root_ui.visuals_mut().hyperlink_color = accent;
             if state.tabs.len() > 1 {
-                egui::Panel::top("tabs")
+                let mut selected_tab = None;
+                let panel = egui::Panel::top("tabs")
                     .exact_size(38.0)
                     .frame(
                         egui::Frame::new()
@@ -4650,13 +4657,23 @@ impl App {
                                                     Vec2::splat(12.0),
                                                 ));
                                             }
-                                            let button = egui::Button::selectable(selected, atoms)
-                                                .fill(fill)
-                                                .atom_ui(ui);
+                                            let mut button = egui::Button::selectable(selected, atoms)
+                                                .fill(fill);
+                                            if selected {
+                                                button = button.corner_radius(egui::CornerRadius {
+                                                    sw: 0,
+                                                    se: 0,
+                                                    ..ui.visuals().widgets.inactive.corner_radius
+                                                });
+                                            }
+                                            let button = button.atom_ui(ui);
                                             if let Some(rect) = button.rect(icon_id) {
                                                 paint_zoom_icon(ui.painter(), rect, tab, foreground);
                                             }
                                             let response = button.response;
+                                            if selected {
+                                                selected_tab = Some((response.rect, ui.clip_rect()));
+                                            }
                                             if let Some(zoom) = zoom_label(tab) {
                                                 response.widget_info(|| {
                                                     egui::WidgetInfo::selected(
@@ -4714,6 +4731,11 @@ impl App {
                             });
                         });
                     });
+                if let Some((tab, mut clip)) = selected_tab {
+                    clip.min.y = panel.response.rect.top();
+                    clip.max.y = panel.response.rect.bottom();
+                    paint_tab_bleed(root_ui.painter(), tab, clip.intersect(panel.response.rect), accent, frame_color);
+                }
             }
             // Cache this viewport's popup state for native events between frames.
             host.popup_open = egui::Popup::is_any_open(ctx);
@@ -4743,7 +4765,7 @@ impl App {
                     host.pane_order = layout.iter().map(|(id, _)| *id).collect();
                     host.modal_pane = active.modal_pane();
                     host.overlay_panes = active.overlays.iter().map(|overlay| overlay.pane).collect();
-                    let [r, g, b] = config.background.to_array();
+                    let [r, g, b] = frame_background;
                     let gutter = Color32::from_rgba_unmultiplied(
                         r,
                         g,
@@ -7681,6 +7703,80 @@ fn paint_window_controls_background(
     );
 }
 
+fn paint_tab_bleed(
+    painter: &egui::Painter,
+    tab: egui::Rect,
+    mut strip: egui::Rect,
+    accent: Color32,
+    frame: Color32,
+) {
+    let rect = egui::Rect::from_min_max(tab.left_bottom(), Pos2::new(tab.right(), strip.bottom()));
+    if !rect.is_positive() {
+        return;
+    }
+    let radius = 4.0_f32.min(rect.height() * 0.5);
+    let pixels_per_point = painter.ctx().pixels_per_point();
+    let feather = painter.ctx().tessellation_options(|options| {
+        if options.feathering {
+            options.feathering_size_in_pixels * 0.5 / pixels_per_point
+        } else {
+            0.0
+        }
+    });
+    // Fully visible tabs can flare past the scroll area's edges.
+    if tab.left() >= strip.left() {
+        strip.min.x -= radius + feather;
+    }
+    if tab.right() <= strip.right() {
+        strip.max.x += radius + feather;
+    }
+    if !rect
+        .expand2(Vec2::new(radius + feather, feather))
+        .intersects(strip)
+    {
+        return;
+    }
+    let mut rows = vec![(rect.left_top(), rect.right_top(), Vec2::X)];
+    for step in 0..=4 {
+        let (sin, cos) = (std::f32::consts::FRAC_PI_2 * step as f32 / 4.0).sin_cos();
+        let inward = Vec2::new(cos, sin);
+        rows.push((
+            Pos2::new(rect.left() - radius, rect.bottom() - radius) + inward * radius,
+            Pos2::new(rect.right() + radius, rect.bottom() - radius)
+                + Vec2::new(-cos, sin) * radius,
+            inward,
+        ));
+    }
+    let mut mesh = egui::Mesh::default();
+    for (row, (left, right, inward)) in rows.into_iter().enumerate() {
+        let right_inward = Vec2::new(-inward.x, inward.y);
+        for (pos, color) in [
+            (left - inward * feather, Color32::TRANSPARENT),
+            (left + inward * feather, Color32::WHITE),
+            (right + right_inward * feather, Color32::WHITE),
+            (right - right_inward * feather, Color32::TRANSPARENT),
+        ] {
+            mesh.colored_vertex(pos, color);
+        }
+        // Bands keep triangles out of the concave corner cutouts.
+        if row > 0 {
+            let base = (row as u32 - 1) * 4;
+            for column in 0..3 {
+                let index = base + column;
+                mesh.add_triangle(index, index + 1, index + 4);
+                mesh.add_triangle(index + 4, index + 1, index + 5);
+            }
+        }
+    }
+    for vertex in &mut mesh.vertices {
+        let fade = ((vertex.pos.y - rect.top()) / rect.height()).clamp(0.0, 1.0);
+        vertex.color = accent
+            .lerp_to_gamma(frame, fade)
+            .gamma_multiply_u8(vertex.color.a());
+    }
+    painter.with_clip_rect(strip).add(mesh);
+}
+
 fn paint_pane_gutter(
     painter: &egui::Painter,
     outer: egui::Rect,
@@ -7799,6 +7895,154 @@ fn ui_theme(config: &Config) -> egui::ThemePreference {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tab_bleed_keeps_edge_flares_visible_and_clips_scrolled_tabs() {
+        let context = egui::Context::default();
+        let viewport = egui::Rect::from_min_max(Pos2::new(80.0, 0.0), Pos2::new(300.0, 38.0));
+        for (left, right, visible) in [
+            (80.0, 180.0, true),
+            (70.0, 170.0, false),
+            (200.0, 300.0, true),
+            (210.0, 310.0, false),
+        ] {
+            let tab = egui::Rect::from_min_max(Pos2::new(left, 6.0), Pos2::new(right, 28.0));
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        Pos2::ZERO,
+                        Vec2::new(400.0, 100.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    paint_tab_bleed(
+                        ui.painter(),
+                        tab,
+                        viewport,
+                        Color32::YELLOW,
+                        Color32::DARK_GRAY,
+                    );
+                },
+            );
+            output.textures_delta.clear();
+            let flare_visible = output.shapes.iter().any(|shape| {
+                let egui::Shape::Mesh(mesh) = &shape.shape else {
+                    return false;
+                };
+                mesh.vertices.iter().any(|vertex| {
+                    vertex.color.a() == 255
+                        && shape.clip_rect.contains(vertex.pos)
+                        && (vertex.pos.x < viewport.left() || vertex.pos.x > viewport.right())
+                })
+            });
+            assert_eq!(flare_visible, visible, "tab bounds {left}..{right}");
+        }
+    }
+
+    #[test]
+    fn tab_bleed_stays_below_the_selected_tab_without_allocating_space() {
+        let context = egui::Context::default();
+        let strip = egui::Rect::from_min_max(Pos2::ZERO, Pos2::new(400.0, 38.0));
+        let accent = Color32::YELLOW;
+        let frame = Color32::from_rgb(30, 30, 20);
+        for (left, right) in [
+            (80.0, 180.0),
+            (-20.0, 60.0),
+            (350.0, 430.0),
+            (450.0, 500.0),
+            (-100.0, -20.0),
+        ] {
+            let tab = egui::Rect::from_min_max(Pos2::new(left, 6.0), Pos2::new(right, 28.0));
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(strip),
+                    ..Default::default()
+                },
+                |ui| {
+                    let before = ui.available_rect_before_wrap();
+                    paint_tab_bleed(ui.painter(), tab, strip, accent, frame);
+                    assert_eq!(ui.available_rect_before_wrap(), before);
+                },
+            );
+            output.textures_delta.clear();
+            let meshes: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Mesh(mesh) => Some((shape.clip_rect, mesh)),
+                    _ => None,
+                })
+                .collect();
+            if left >= strip.right() || right <= strip.left() {
+                assert!(meshes.is_empty());
+                continue;
+            }
+            assert_eq!(meshes.len(), 1);
+            let (clip, mesh) = meshes[0];
+            assert_eq!(clip, strip);
+            let rect =
+                egui::Rect::from_min_max(tab.left_bottom(), Pos2::new(right, strip.bottom()));
+            assert!(
+                rect.expand2(Vec2::new(5.0, 1.0))
+                    .contains_rect(mesh.calc_bounds())
+            );
+            assert!(mesh.vertices.iter().any(|vertex| vertex.color.a() == 0));
+            let opaque: Vec<_> = mesh
+                .vertices
+                .iter()
+                .filter(|vertex| vertex.color.a() == 255)
+                .collect();
+            assert!(!opaque.is_empty());
+            assert!(opaque.iter().any(|vertex| vertex.pos.x < left - 2.0));
+            assert!(opaque.iter().any(|vertex| vertex.pos.x > right + 2.0));
+            let coverage = |point: Pos2| {
+                mesh.indices
+                    .chunks_exact(3)
+                    .filter(|indices| {
+                        let vertices = [indices[0], indices[1], indices[2]]
+                            .map(|index| mesh.vertices[index as usize]);
+                        if vertices.iter().any(|vertex| vertex.color.a() != 255) {
+                            return false;
+                        }
+                        let cross = |a: Pos2, b: Pos2, c: Pos2| {
+                            let [ab, ac] = [b - a, c - a];
+                            ab.x * ac.y - ab.y * ac.x
+                        };
+                        let [a, b, c] = vertices.map(|vertex| vertex.pos);
+                        let signs = [cross(a, b, point), cross(b, c, point), cross(c, a, point)];
+                        signs.iter().all(|value| *value >= 0.0)
+                            || signs.iter().all(|value| *value <= 0.0)
+                    })
+                    .count()
+            };
+            for point in [
+                Pos2::new(left - 0.5, rect.bottom() - 0.75),
+                Pos2::new(right + 0.5, rect.bottom() - 0.75),
+                Pos2::new(left + rect.width() * 0.41, rect.top() + 1.0),
+            ] {
+                assert_eq!(coverage(point), 1, "inverted corner fill at {point:?}");
+            }
+            for point in [
+                Pos2::new(left - 3.0, rect.bottom() - 2.0),
+                Pos2::new(right + 3.0, rect.bottom() - 2.0),
+            ] {
+                assert_eq!(coverage(point), 0, "concave corner cutout at {point:?}");
+            }
+            for (y, color) in [(rect.top(), accent), (rect.bottom(), frame)] {
+                let vertex = opaque
+                    .iter()
+                    .min_by(|a, b| (a.pos.y - y).abs().total_cmp(&(b.pos.y - y).abs()))
+                    .unwrap();
+                assert!(
+                    vertex.color.to_array()[..3]
+                        .iter()
+                        .zip(color.to_array())
+                        .all(|(actual, expected)| { actual.abs_diff(expected) <= 15 })
+                );
+            }
+        }
+    }
 
     #[test]
     fn server_selection_marker_is_accessible_and_leaves_room_for_labels() {

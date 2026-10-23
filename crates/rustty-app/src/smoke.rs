@@ -433,7 +433,8 @@ impl Smoke {
         let complete = done;
         if complete && self.timing.is_none() {
             let mut host = app.windows.remove(&key).unwrap();
-            let result = check_themes(app, event_loop, &mut host, &self.directory);
+            let result = check_themes(app, event_loop, &mut host, &self.directory)
+                .and_then(|_| check_tab_frame(app, event_loop, &mut host, &self.directory));
             app.windows.insert(key, host);
             result?;
             check_tmuxx_management(app, event_loop, &self.directory)?;
@@ -445,6 +446,7 @@ impl Smoke {
             let mut report = self.report.take().ok_or("missing smoke report")?;
             report["checks"].as_array_mut().unwrap().extend(
                 [
+                    "tab-color-preserves-panel-geometry",
                     "theme-preview",
                     "theme-cancel",
                     "theme-accept",
@@ -994,6 +996,58 @@ impl Smoke {
         }
         Ok(false)
     }
+}
+
+fn check_tab_frame(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    host: &mut Host,
+    directory: &Path,
+) -> Result<()> {
+    let original = app.tab(host.id).unwrap().color;
+    let result = (|| {
+        app.tab_mut(host.id).unwrap().color = None;
+        capture_window(
+            app,
+            event_loop,
+            host,
+            &directory.join("tab-frame-system-accent.png"),
+        )?;
+        let geometry = host.rects.clone();
+        let panels: BTreeMap<_, _> = host
+            .prepared
+            .iter()
+            .map(|(id, pane)| {
+                let options = &pane.key.options;
+                (*id, (options.size, options.padding, options.background))
+            })
+            .collect();
+        if panels.is_empty() {
+            return Err("tab-frame fixture has no prepared panels".into());
+        }
+        for (color, name) in [
+            ([240, 190, 20], "tab-frame-yellow.png"),
+            ([45, 125, 210], "tab-frame-blue.png"),
+        ] {
+            app.tab_mut(host.id).unwrap().color = Some(color);
+            capture_window(app, event_loop, host, &directory.join(name))?;
+            let colored: BTreeMap<_, _> = host
+                .prepared
+                .iter()
+                .map(|(id, pane)| {
+                    let options = &pane.key.options;
+                    (*id, (options.size, options.padding, options.background))
+                })
+                .collect();
+            if host.rects != geometry || colored != panels {
+                return Err("tab color changed panel geometry or terminal backgrounds".into());
+            }
+        }
+        Ok(())
+    })();
+    app.tab_mut(host.id).unwrap().color = original;
+    host.repaint();
+    result
 }
 
 fn check_themes(
