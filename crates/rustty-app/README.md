@@ -487,8 +487,9 @@ to the same user and Windows sign-in session.
    **Import**. Several instances can be asked independently.
 
 Import copies the window/tab/panel layout, scrollback, and displayed contents,
-including alternate-screen applications. Each panel starts a fresh local shell,
-including panels copied from tmuxx, with this boundary above new output:
+including alternate-screen applications. Exports omit tmuxx windows; reconnect
+to their servers to restore them. Each imported panel starts a fresh local shell
+with this boundary above new output:
 
 > [Restored Rustty display. A new shell starts below; the original session remains open.]
 

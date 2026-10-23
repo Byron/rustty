@@ -449,6 +449,9 @@ impl App {
     fn capture_handoff(&self) -> Result<Vec<u8>> {
         let mut workspace = self.workspace.clone();
         workspace.tmuxx.clear();
+        workspace
+            .windows
+            .retain(|window| self.tmuxx_window(window.id).is_none());
         let mut panels = BTreeMap::new();
         let mut bytes = 0usize;
         for window in &mut workspace.windows {
@@ -476,7 +479,7 @@ impl App {
             version: 1,
             workspace,
             panels,
-            active_window: self.active,
+            active_window: self.active.filter(|id| self.tmuxx_window(*id).is_none()),
             outliner_visible: self.outliner.as_ref().is_some_and(|host| host.visible),
         })?)
     }
