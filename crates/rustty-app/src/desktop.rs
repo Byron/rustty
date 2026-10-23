@@ -1508,7 +1508,43 @@ impl App {
                 wake,
             )
         } else {
+            let (cols, rows) = visual
+                .and(host)
+                .and_then(|host| {
+                    let tab = self
+                        .workspace
+                        .windows
+                        .iter()
+                        .flat_map(|window| &window.tabs)
+                        .find(|tab| tab.panes.contains_key(&id))?;
+                    let scale = host.window.scale_factor() as f32;
+                    let metrics = host.fonts.metrics();
+                    let rect = tab
+                        .layout(
+                            host.content,
+                            host.peek.is_some(),
+                            metrics.cell_height as f32 / scale,
+                        )
+                        .into_iter()
+                        .find(|(pane, _)| *pane == id)
+                        .or_else(|| {
+                            tab.layout(host.content, true, metrics.cell_height as f32 / scale)
+                                .into_iter()
+                                .find(|(pane, _)| *pane == id)
+                        })?
+                        .1;
+                    Some(pane_grid_size(
+                        Vec2::new(rect.width, rect.height) - Vec2::splat(2.0),
+                        scale,
+                        [metrics.cell_width, metrics.cell_height],
+                        self.window_config(host.id),
+                        if tab.panes.len() > 1 { 18.0 } else { 0.0 },
+                    ))
+                })
+                .unwrap_or((80, 24));
             let options = SessionOptions {
+                cols,
+                rows,
                 working_directory: Some(directory.clone()),
                 command,
                 resources: self.resources.clone(),
@@ -1516,7 +1552,6 @@ impl App {
                 background,
                 visible: host_state.0,
                 focused: host_state.1,
-                ..Default::default()
             };
             if let Some(visual) = visual {
                 Session::spawn_restored(self.config(), options, wake, visual)
@@ -1652,9 +1687,11 @@ impl App {
         if !self.background_smoke {
             egui.init_accesskit(event_loop, &window, self.proxy.clone());
         }
-        for tab in &state.tabs {
-            for (&pane, saved) in &tab.panes {
-                self.spawn_pane(pane, saved.working_directory.clone(), None, None)?;
+        if !self.import_selector {
+            for tab in &state.tabs {
+                for (&pane, saved) in &tab.panes {
+                    self.spawn_pane(pane, saved.working_directory.clone(), None, None)?;
+                }
             }
         }
         window.set_visible(!quick && !self.background_smoke);
@@ -4378,6 +4415,27 @@ fn selection_pointer(
     }
 }
 
+fn pane_grid_size(
+    size: Vec2,
+    scale: f32,
+    cell: [u32; 2],
+    config: &Config,
+    header_height: f32,
+) -> (u16, u16) {
+    let physical = size * scale;
+    let padding = [
+        config.window_padding_x.start + config.window_padding_x.end,
+        config.window_padding_y.start + config.window_padding_y.end + header_height,
+    ];
+    let columns = ((physical.x - padding[0] * scale).max(cell[0] as f32) / cell[0] as f32)
+        .floor()
+        .clamp(1.0, u16::MAX as f32) as u16;
+    let rows = ((physical.y - padding[1] * scale).max(cell[1] as f32) / cell[1] as f32)
+        .floor()
+        .clamp(1.0, u16::MAX as f32) as u16;
+    (columns, rows)
+}
+
 impl App {
     fn draw(&mut self, event_loop: &ActiveEventLoop, host: &mut Host) -> Result<()> {
         self.draw_frame(event_loop, host, None)
@@ -4744,24 +4802,10 @@ impl App {
                                 (config.window_padding_y.start + header_height) * scale,
                             ];
                             let metrics = host.fonts.metrics();
-                            let cols = ((physical.x
-                                - (config.window_padding_x.start + config.window_padding_x.end)
-                                    * scale)
-                                .max(metrics.cell_width as f32)
-                                / metrics.cell_width as f32)
-                                .floor()
-                                .clamp(1.0, u16::MAX as f32)
-                                as u16;
-                            let rows = ((physical.y
-                                - (config.window_padding_y.start
-                                    + config.window_padding_y.end
-                                    + header_height)
-                                    * scale)
-                                .max(metrics.cell_height as f32)
-                                / metrics.cell_height as f32)
-                                .floor()
-                                .clamp(1.0, u16::MAX as f32)
-                                as u16;
+                            let (cols, rows) = pane_grid_size(
+                                rect.size(), scale, [metrics.cell_width, metrics.cell_height],
+                                &config, header_height,
+                            );
                             // Image placement and pixel mouse input share the renderer's cell grid.
                             if let Err(error) = pane.session.resize(
                                 cols,

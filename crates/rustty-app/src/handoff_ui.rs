@@ -516,20 +516,35 @@ impl App {
             .map(|window| window.id)
             .collect();
         let created = (|| {
-            for (id, panel) in dump.panels {
-                let directory = self
-                    .workspace
-                    .windows
-                    .iter()
-                    .flat_map(|w| &w.tabs)
-                    .find_map(|tab| tab.panes.get(&id))
-                    .unwrap()
-                    .working_directory
-                    .clone();
-                self.spawn_pane_with_visual(id, directory, None, None, Some(&panel.visual))?;
-            }
+            // Measure the receiving layout before inserting history and starting shells.
             for id in &window_ids {
                 self.open_window(event_loop, *id)?;
+            }
+            for window in self.workspace.windows.clone() {
+                let key = self
+                    .windows
+                    .iter()
+                    .find_map(|(key, host)| (host.id == window.id).then_some(*key))
+                    .unwrap();
+                let mut host = self.windows.remove(&key).unwrap();
+                let spawned = (|| {
+                    self.draw(event_loop, &mut host)?;
+                    for tab in window.tabs {
+                        for (id, pane) in tab.panes {
+                            self.spawn_pane_with_visual(
+                                id,
+                                pane.working_directory,
+                                Some(&host),
+                                None,
+                                Some(&dump.panels[&id].visual),
+                            )?;
+                        }
+                    }
+                    Ok::<_, Box<dyn std::error::Error>>(())
+                })();
+                host.repaint();
+                self.windows.insert(key, host);
+                spawned?;
             }
             if self.config().window_save_state != config::WindowSaveState::Never {
                 self.handoff
