@@ -8777,7 +8777,14 @@ mod tests {
         configure_ui_fonts(&context);
         let bounds = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 240.0));
         let accent = TabAccent::new(Some([230, 185, 60]), [0; 3]);
-        for (focused, shared) in [(false, true), (true, true), (false, false)] {
+        for (selected, window_focused, shared) in [
+            (false, true, true),
+            (true, true, true),
+            (true, false, true),
+            (true, true, false),
+            (true, false, false),
+            (false, true, false),
+        ] {
             for theme in [egui::ThemePreference::Dark, egui::ThemePreference::Light] {
                 context.set_theme(theme);
                 let mut output = context.run_ui(
@@ -8786,8 +8793,13 @@ mod tests {
                         ..Default::default()
                     },
                     |ui| {
-                        let label = DirectoryLabel::new(Some("rustty".into()), focused, true, true)
-                            .unwrap();
+                        let label = DirectoryLabel::new(
+                            Some("rustty".into()),
+                            selected,
+                            window_focused,
+                            true,
+                        )
+                        .unwrap();
                         DirectoryBadge {
                             centered: label.large(true),
                             shared,
@@ -8818,19 +8830,29 @@ mod tests {
                 );
                 assert_eq!(
                     text.galley.job.sections[0].format.color,
-                    if focused || theme == egui::ThemePreference::Light {
+                    if selected && window_focused || theme == egui::ThemePreference::Light {
                         Color32::BLACK
                     } else {
                         Color32::WHITE
                     }
                 );
-                if focused {
-                    assert!(output.shapes.iter().any(|shape| {
-                        matches!(&shape.shape, egui::Shape::Rect(rect)
-                            if rect.fill == Color32::from_rgb(230, 185, 60)
-                                && rect.rect.center() == bounds.center())
-                    }));
-                }
+                let badge = output
+                    .shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Rect(rect) => Some(rect),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(badge.rect.center(), bounds.center());
+                assert_eq!(
+                    badge.fill,
+                    if selected && window_focused {
+                        Color32::from_rgb(230, 185, 60)
+                    } else {
+                        context.global_style().visuals.widgets.inactive.bg_fill
+                    }
+                );
             }
         }
     }

@@ -316,32 +316,37 @@ pub fn common_directory_name<'a>(
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DirectoryLabel {
     pub name: String,
+    pub selected: bool,
     pub focused: bool,
 }
 impl DirectoryLabel {
-    /// A focused label is normally hidden only while its window is focused.
+    /// A selected label is normally hidden only while its window is focused.
     /// `show_focused` reveals it during quadrant peek or the temporary focus hint.
     pub fn new(
         name: Option<String>,
-        focused: bool,
+        selected: bool,
         window_focused: bool,
         show_focused: bool,
     ) -> Option<Self> {
         let name = name.filter(|name| !name.is_empty())?;
-        (!(focused && window_focused && !show_focused)).then_some(Self { name, focused })
+        (!(selected && window_focused && !show_focused)).then_some(Self {
+            name,
+            selected,
+            focused: selected && window_focused,
+        })
     }
 
     pub fn large(&self, large_inactive: bool) -> bool {
-        self.focused || large_inactive
+        self.selected || large_inactive
     }
 
     pub fn shows_activity(&self, active: bool) -> bool {
-        active && !self.focused
+        active && !self.selected
     }
 
     /// Quadrant labels include the focused quadrant; individual pane labels do not.
     pub fn shows_flash(&self, stopped: bool, include_focused: bool) -> bool {
-        stopped && (include_focused || !self.focused)
+        stopped && (include_focused || !self.selected)
     }
 }
 
@@ -660,7 +665,8 @@ mod tests {
         assert!(DirectoryLabel::new(name(), true, true, false).is_none());
         for (window_focused, show_focused) in [(false, false), (true, true)] {
             let label = DirectoryLabel::new(name(), true, window_focused, show_focused).unwrap();
-            assert!(label.focused);
+            assert!(label.selected);
+            assert_eq!(label.focused, window_focused);
             assert!(label.large(true));
             assert!(label.large(false));
             assert!(!label.shows_activity(true));
