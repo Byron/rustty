@@ -3,8 +3,7 @@ use crate::{Screen, Terminal, ViewMetadata, graphics, snapshot};
 use serde::{Deserialize, Serialize};
 use std::io;
 
-pub const RESTORED_MARKER: &str =
-    "[Restored Rustty display. A new shell starts below; the original session remains open.]";
+pub const RESTORED_MARKER: &str = "Restored Rustty display. A new shell starts below.";
 
 #[derive(Serialize, Deserialize)]
 pub struct VisualSnapshot {
@@ -101,7 +100,13 @@ impl VisualSnapshot {
         let limits = terminal.primary.limits;
         let memory_limit = terminal.primary.memory_limit;
         terminal.primary = screen;
-        terminal.feed(format!("\r\n{RESTORED_MARKER}\r\n").as_bytes());
+        let padding = usize::from(terminal.cols)
+            .saturating_sub(RESTORED_MARKER.len() + 4)
+            .max(6);
+        let left = "-".repeat(padding / 2);
+        let right = "-".repeat(padding - padding / 2);
+        terminal
+            .feed(format!("\r\n\x1b[1m[{left} {RESTORED_MARKER} {right}]\x1b[0m\r\n").as_bytes());
         // Import itself must not discard the oldest restored rows. Subsequent
         // output uses the receiving session's normal scrollback policy.
         terminal.primary.limits = limits;
@@ -124,6 +129,51 @@ mod tests {
     fn wire(source: &Terminal) -> VisualSnapshot {
         let bytes = serde_json::to_vec(&VisualSnapshot::capture(source).unwrap()).unwrap();
         serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[test]
+    fn restored_banner_is_prominent_and_leaves_new_output_unstyled() {
+        for cols in [1, 24, 80, 81] {
+            let mut source = Terminal::new(cols, 3, 1000);
+            source.feed(b"old display");
+            let mut destination = Terminal::new(cols, 3, 1000);
+            wire(&source).restore_into(&mut destination).unwrap();
+            assert_eq!(destination.screen().cursor.style, Default::default());
+            destination.feed(b"new prompt");
+
+            let displayed = text(&destination);
+            let lines: Vec<_> = displayed.lines().filter(|line| !line.is_empty()).collect();
+            assert_eq!(lines.len(), 3, "unexpected display: {displayed:?}");
+            assert_eq!(lines[0], "old display");
+            assert_eq!(lines[2], "new prompt");
+            let banner = lines[1];
+            let message = "Restored Rustty display. A new shell starts below.";
+            assert_eq!(banner.len(), usize::from(cols).max(message.len() + 10));
+            let (left, right) = banner.split_once(message).unwrap();
+            let left = left.strip_prefix('[').unwrap().strip_suffix(' ').unwrap();
+            let right = right.strip_prefix(' ').unwrap().strip_suffix(']').unwrap();
+            assert!(left.len() >= 3 && right.len() >= 3);
+            assert!(left.len().abs_diff(right.len()) <= 1);
+            assert!(left.chars().chain(right.chars()).all(|ch| ch == '-'));
+            let mut in_banner = false;
+            for row in destination.screen().all_rows() {
+                let row_text = destination.screen().row_text(row);
+                if row_text.starts_with('[') {
+                    in_banner = true;
+                }
+                if in_banner {
+                    for (col, cell) in row.cells().iter().enumerate() {
+                        if !cell.is_empty() {
+                            assert!(row.style(col).bold);
+                            assert!(!row.style(col).inverse);
+                        }
+                    }
+                }
+                if row_text.ends_with(']') {
+                    in_banner = false;
+                }
+            }
+        }
     }
 
     #[test]
