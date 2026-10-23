@@ -4703,7 +4703,7 @@ impl App {
                                             let actual =
                                                 &mut self.workspace.windows[window_index].tabs[index];
                                             let (changed, close) =
-                                                show_tab_context_menu(&response, actual, platform_accent);
+                                                show_tab_context_menu(&response, actual, platform_accent, &config);
                                             presentation_changed |= changed;
                                             if close {
                                                 tab_selection = Some(index);
@@ -7442,6 +7442,7 @@ fn show_tab_context_menu(
     response: &egui::Response,
     tab: &mut Tab,
     accent: [u8; 3],
+    config: &Config,
 ) -> (bool, bool) {
     let mut changed = false;
     let mut close = false;
@@ -7459,6 +7460,79 @@ fn show_tab_context_menu(
                 changed = true;
             }
             ui.label("Tab color");
+            ui.menu_button("Theme colors", |ui| {
+                const NAMES: [&str; 18] = [
+                    "Black",
+                    "Red",
+                    "Green",
+                    "Yellow",
+                    "Blue",
+                    "Magenta",
+                    "Cyan",
+                    "White",
+                    "Bright black",
+                    "Bright red",
+                    "Bright green",
+                    "Bright yellow",
+                    "Bright blue",
+                    "Bright magenta",
+                    "Bright cyan",
+                    "Bright white",
+                    "Background",
+                    "Foreground",
+                ];
+                for (variation, target, amount) in [
+                    ("Palette", config.background, 0.0),
+                    ("Soft", config.background, 0.35),
+                    ("Contrast", config.foreground, 0.25),
+                ] {
+                    ui.label(variation);
+                    egui::Grid::new(("theme-tab-colors", variation))
+                        .spacing(Vec2::splat(4.0))
+                        .show(ui, |ui| {
+                            for (index, base) in config.palette[..16]
+                                .iter()
+                                .copied()
+                                .chain([config.background, config.foreground])
+                                .enumerate()
+                            {
+                                let color = rgb(base).lerp_to_gamma(rgb(target), amount);
+                                let value = [color.r(), color.g(), color.b()];
+                                let label = format!(
+                                    "{} · {variation} · #{:02X}{:02X}{:02X}",
+                                    NAMES[index], value[0], value[1], value[2]
+                                );
+                                let selected = tab.color == Some(value);
+                                let outline = TabAccent::new(Some(value), accent).foreground;
+                                let response = ui.add(
+                                    egui::Button::new("")
+                                        .fill(color)
+                                        .min_size(Vec2::splat(24.0))
+                                        .stroke(egui::Stroke::new(
+                                            if selected { 2.0 } else { 0.5 },
+                                            Color32::from_rgb(outline[0], outline[1], outline[2]),
+                                        )),
+                                );
+                                response.widget_info(|| {
+                                    egui::WidgetInfo::selected(
+                                        egui::WidgetType::Button,
+                                        ui.is_enabled(),
+                                        selected,
+                                        &label,
+                                    )
+                                });
+                                if response.clicked() {
+                                    tab.color = Some(value);
+                                    changed = true;
+                                }
+                                response.on_hover_text(label);
+                                if index % 6 == 5 {
+                                    ui.end_row();
+                                }
+                            }
+                        });
+                }
+            });
             ui.menu_button("Choose color", |ui| {
                 ui.spacing_mut().slider_width = 275.0;
                 let color = tab.color.unwrap_or(accent);
@@ -8135,7 +8209,11 @@ mod tests {
             let mut output = context.run_ui(raw, |root| {
                 egui::Panel::top("tabs").show(root, |ui| {
                     let response = ui.button("Terminal");
-                    assert!(!show_tab_context_menu(&response, tab, [80, 120, 160]).1);
+                    let mut config = Config::default();
+                    config.palette[1] = config::Rgb::new(180, 40, 65);
+                    config.background = config::Rgb::new(20, 25, 30);
+                    config.foreground = config::Rgb::new(230, 235, 240);
+                    assert!(!show_tab_context_menu(&response, tab, [80, 120, 160], &config).1);
                 });
                 egui::CentralPanel::default().show(root, |_| {});
             });
@@ -8206,6 +8284,38 @@ mod tests {
             vec![egui::Event::Text("work 日誌".into())],
         );
         assert_eq!(tab.title.as_deref(), Some("work 日誌"));
+        let output = frame(&context, &mut tab, vec![]);
+        click(
+            &context,
+            &mut tab,
+            point(&output, "Theme colors"),
+            egui::PointerButton::Primary,
+        );
+        let output = frame(&context, &mut tab, vec![]);
+        click(
+            &context,
+            &mut tab,
+            point(&output, "Red · Palette"),
+            egui::PointerButton::Primary,
+        );
+        assert_eq!(tab.color, Some([180, 40, 65]));
+        assert!(egui::Popup::is_any_open(&context));
+        let output = frame(&context, &mut tab, vec![]);
+        click(
+            &context,
+            &mut tab,
+            point(&output, "Red · Soft"),
+            egui::PointerButton::Primary,
+        );
+        assert_eq!(tab.color, Some([124, 35, 53]));
+        let output = frame(&context, &mut tab, vec![]);
+        click(
+            &context,
+            &mut tab,
+            point(&output, "Red · Contrast"),
+            egui::PointerButton::Primary,
+        );
+        assert_eq!(tab.color, Some([193, 89, 109]));
         let output = frame(&context, &mut tab, vec![]);
         click(
             &context,
