@@ -381,9 +381,11 @@ saved-state folder. Imported tabs and panes open in new windows with fresh shell
 in their saved directories. Existing sessions and the source files stay intact;
 the imported layout participates in Rustty's normal saving and undo history.
 
-Tab colors apply to tab controls, split focus outlines and completion flashes;
-unassigned tabs use the macOS system accent. Inactive tabs and directory labels
-underline running commands, while `▶` counts panes explicitly reporting work
+Tab colors apply to tab controls, split focus outlines and completion flashes,
+and bleed downward beneath the selected tab into a subtle tint in the existing
+thin frame and split gaps, without coloring terminal margins;
+unassigned tabs use the macOS system accent with the same bleed and frame tint.
+Inactive tabs and directory labels underline running commands, while `▶` counts panes explicitly reporting work
 through a leading activity spinner or progress report. Waiting-for-input titles
 do not count as active work. Each pane can trigger a short completion flash even
 while another pane remains busy. Quadrants share one directory label when every
