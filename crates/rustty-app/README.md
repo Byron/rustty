@@ -55,11 +55,34 @@ Install Rust 1.95 or later and the Visual Studio C++ build tools/Windows SDK.
 From PowerShell at the repository root:
 
 ```powershell
-./crates/rustty-app/build.ps1 -Release
-./target/release/Rustty/rustty.exe
+just rustty-install-windows
 ```
 
-Omit `-Release` for a debug build. The first build downloads Microsoft's pinned
+This builds a release and installs the complete portable folder as `Rustty` on
+your configured Windows Desktop. Open `Rustty/rustty.exe`
+there to launch it. The recipe uses the Windows PowerShell included with Windows;
+without `just`, run `./crates/rustty-app/build.ps1 -Release -Install` directly.
+Bare `just` only lists recipes.
+
+Installation stages the complete new bundle beside its destination, renames an
+existing bundle to `Rustty.previous.<timestamp>-<id>`, then publishes the new one.
+If publication fails, it restores the previous bundle. Keep previous bundles
+until their running instances and sessions exit, then remove them manually.
+The installer does not close or launch applications, register shortcuts, or
+replace any bundle under `target`. Windows permits renaming loaded executables,
+but Rustty also holds its verified ConPTY runtime files open without delete
+sharing. Running Rustty instances or retained tmuxx sessions using the installed
+bundle therefore prevent renaming that folder. Installation fails with the
+existing bundle intact; close those instances and sessions before retrying.
+A process using the folder as its working directory can also prevent renaming;
+leave that directory before retrying. `-InstallDirectory 'D:\Dev apps\Rustty'`
+selects another destination when used with `-Install`. Installation paths must not
+pass through junctions or symbolic links; use a regular directory if your Desktop
+is redirected that way.
+
+For a bundle under `target/release/Rustty`, run
+`./crates/rustty-app/build.ps1 -Release` without `-Install`. Omit `-Release` for a
+debug build under `target/debug/Rustty`. The first build downloads Microsoft's pinned
 ConPTY runtime and verifies its SHA-256. `-Offline` uses cached Cargo dependencies
 and the runtime package under `target/conpty`.
 The script builds for `x86_64-pc-windows-msvc` with a static C runtime; the portable
@@ -84,6 +107,11 @@ To add this location to the Start Menu and enable notification activation, run
 per-user and requires no administrator access. Run `rustty.exe --unregister` before
 moving or deleting a registered copy, then register the new location if needed.
 Normal launches do not register or install anything.
+
+The installer regression checks use fake builds and isolated temporary folders,
+including a running executable, ConPTY-style file locks, and directory locks.
+They do not touch your Desktop or launch Rustty:
+`python test/rustty/test_windows_install.py`.
 
 On Windows, closing the last regular window exits Rustty and closes its hidden
 quick terminal and shell sessions. Existing close confirmation also covers running
