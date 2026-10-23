@@ -4,6 +4,15 @@ use tmuxx_protocol::native::{
     write_snapshot,
 };
 
+fn initialize_pty() {
+    #[cfg(windows)]
+    {
+        let resources = std::env::var_os("TMUXX_CONPTY_RESOURCES")
+            .expect("TMUXX_CONPTY_RESOURCES must name the verified shipped resources");
+        initialize_conpty(Path::new(&resources)).unwrap();
+    }
+}
+
 fn host() -> (Host, Receiver<ServerMessage>) {
     let (events, _) = mpsc::sync_channel(32);
     let mut host = Host::new(events, &Options::new("/unused"), BTreeMap::new());
@@ -48,6 +57,7 @@ fn one_large_snapshot_does_not_consume_the_slow_output_budget() {
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 #[test]
 fn process_directory_changes_send_only_negotiated_light_metadata_updates() {
+    initialize_pty();
     let (mut host, received) = host();
     host.clients.get_mut(&1).unwrap().context.selection_updates = true;
     let mut muted = Vec::new();
@@ -134,6 +144,7 @@ fn process_directory_changes_send_only_negotiated_light_metadata_updates() {
 
 #[test]
 fn failed_split_then_narrow_split_keeps_snapshots_reconnectable() {
+    initialize_pty();
     let (mut host, rx) = host();
     let mut context = ClientContext::default();
     let parse = |source| tmuxx_command::parse(source).unwrap().remove(0);

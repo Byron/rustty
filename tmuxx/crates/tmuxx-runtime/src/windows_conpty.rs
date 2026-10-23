@@ -216,6 +216,22 @@ mod tests {
 
     #[test]
     fn incompatible_conpty_resources_fail_before_system_initialization() {
+        const CHILD: &str = "TMUXX_TEST_CONPTY_INCOMPATIBLE_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            // Other PTY tests initialize a valid process-wide runtime in parallel.
+            // Validate these errors in a fresh process before any initialization.
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "windows_conpty::tests::incompatible_conpty_resources_fail_before_system_initialization",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{output:?}");
+            return;
+        }
         let directory = fixture_root();
         let runtime = directory.join("conpty");
         std::fs::create_dir(&runtime).unwrap();
