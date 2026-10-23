@@ -489,9 +489,9 @@ to the same user and Windows sign-in session.
 Import copies the window/tab/panel layout, scrollback, and displayed contents,
 including alternate-screen applications. Exports omit tmuxx windows; reconnect
 to their servers to restore them. Each imported panel starts a fresh local shell
-with this boundary above new output:
+with this bold divider above new output, padded with dashes to the terminal width:
 
-> [Restored Rustty display. A new shell starts below; the original session remains open.]
+> **[--- Restored Rustty display. A new shell starts below. ---]**
 
 Running jobs, shell variables, and PTYs stay with the original instance. It keeps
 running for the user to close when ready. Earlier instances save separate layout
