@@ -151,7 +151,7 @@ impl Smoke {
                     .values_mut()
                     .find_map(|host| host.handoff_prompt.take())
                 {
-                    let bytes = app.capture_handoff()?;
+                    let bytes = self.capture_with_tmuxx_window(app)?;
                     let state = app.handoff.as_mut().ok_or("source registry missing")?;
                     state.registry.respond(&prompt.request, Some(&bytes))?;
                     self.exports += 1;
@@ -181,7 +181,7 @@ impl Smoke {
                     self.report(serde_json::json!({
                         "passed": true,
                         "renderer": app.painter.description(),
-                        "checks": ["native-notification-request", "source-confirmation", "two-independent-exports", "source-shell-alive", "source-alternate-display-unchanged", "ignore-further-requests"],
+                        "checks": ["native-notification-request", "source-confirmation", "two-independent-exports", "tmuxx-windows-excluded", "source-shell-alive", "source-alternate-display-unchanged", "ignore-further-requests"],
                         "exports": self.exports,
                     }))?;
                     // All checks above observe the live source. Shut down only
@@ -194,6 +194,53 @@ impl Smoke {
             _ => unreachable!(),
         }
         Ok(false)
+    }
+
+    fn capture_with_tmuxx_window(&self, app: &mut App) -> Result<Vec<u8>> {
+        let window = app.workspace.id();
+        let tab = app.workspace.id();
+        let pane = app.workspace.id();
+        // An offline attachment needs no server or terminal; export must skip it entirely.
+        let mut entry = tmuxx_host::Attachment::new(
+            tmuxx_host::Source::Ssh("handoff-fixture.invalid".into()),
+            None,
+            false,
+        );
+        entry.mapping.sessions.insert(window, 1);
+        app.workspace.windows.push(WindowState {
+            id: window,
+            tabs: vec![Tab::new(tab, pane, self.directory.clone())],
+            active_tab: 0,
+            frame: [0., 0., 800., 600.],
+            quick: false,
+        });
+        app.tmuxx.push(entry);
+        let active = app.active.replace(window);
+        let bytes = app.capture_handoff();
+        app.tmuxx[0]
+            .mapping
+            .sessions
+            .insert(app.workspace.windows[0].id, 2);
+        let empty = app.capture_handoff();
+        app.active = active;
+        app.tmuxx.pop();
+        app.workspace.windows.pop();
+
+        let bytes = bytes?;
+        let dump = Dump::decode(&bytes)?;
+        ensure(
+            dump.workspace.windows.len() == 1
+                && dump.workspace.windows[0].id == app.workspace.windows[0].id
+                && dump.panels.len() == 1
+                && dump.panels.contains_key(&self.pane.unwrap())
+                && dump.active_window.is_none(),
+            "export retained a tmuxx window, panel, or active-window reference",
+        )?;
+        ensure(
+            empty.is_err_and(|error| error.to_string() == "This instance has no panels to export"),
+            "tmuxx-only export did not report an empty instance",
+        )?;
+        Ok(bytes)
     }
 
     fn requester(&mut self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
