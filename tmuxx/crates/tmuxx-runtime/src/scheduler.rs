@@ -2823,10 +2823,14 @@ mod windows_job_directory_tests {
                 }
             }
             assert!(child.wait().unwrap().success());
-            let expected = expected.to_str().unwrap();
+            let output = String::from_utf8(output).unwrap();
+            let (cwd, pwd) = output.split_once("\r\n").unwrap();
+            assert_eq!(pwd, format!("{}\r\n", expected.to_str().unwrap()));
+            // Windows may expand 8.3 aliases in CurrentDirectory while PWD
+            // preserves the selected input path, including Unicode and symbols.
             assert_eq!(
-                String::from_utf8(output).unwrap(),
-                format!("{expected}\r\n{expected}\r\n")
+                Path::new(cwd).canonicalize().unwrap(),
+                expected.canonicalize().unwrap()
             );
         }
     }
