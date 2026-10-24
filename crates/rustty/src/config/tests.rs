@@ -1506,6 +1506,54 @@ fn clipboard_paste_protection_defaults_validate_and_reset() {
 }
 
 #[test]
+fn session_dump_on_quit_defaults_validates_and_resets() {
+    let home = TestHome::new();
+    assert_eq!(
+        home.loader.load().config.session_dump_on_quit,
+        SessionDumpOnQuit::Unchecked
+    );
+    for (value, expected) in [
+        ("disabled", SessionDumpOnQuit::Disabled),
+        ("unchecked", SessionDumpOnQuit::Unchecked),
+        ("checked", SessionDumpOnQuit::Checked),
+        ("", SessionDumpOnQuit::Unchecked),
+    ] {
+        home.own(&format!(
+            "session-dump-on-quit=checked\nsession-dump-on-quit={value}\n"
+        ));
+        let loaded = home.loader.load();
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        assert_eq!(loaded.config.session_dump_on_quit, expected);
+    }
+
+    home.own("session-dump-on-quit=disabled\n");
+    let overridden = home
+        .loader
+        .load_with_args(&args(&["--session-dump-on-quit=checked"]));
+    assert!(overridden.diagnostics.is_empty());
+    assert_eq!(
+        overridden.config.session_dump_on_quit,
+        SessionDumpOnQuit::Checked
+    );
+
+    let invalid = home
+        .loader
+        .load_with_args(&args(&["--session-dump-on-quit=invalid"]));
+    assert_eq!(invalid.diagnostics.len(), 1);
+    assert_eq!(
+        invalid.config.session_dump_on_quit,
+        SessionDumpOnQuit::Disabled
+    );
+    home.own("session-dump-on-quit=invalid\n");
+    let invalid = home.loader.load();
+    assert_eq!(invalid.diagnostics.len(), 1);
+    assert_eq!(
+        invalid.config.session_dump_on_quit,
+        SessionDumpOnQuit::Unchecked
+    );
+}
+
+#[test]
 fn current_local_workflow_settings_and_actions_are_supported() {
     let home = TestHome::new();
     home.local(

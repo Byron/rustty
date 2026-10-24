@@ -96,6 +96,7 @@ config_enum!(OptionAsAlt { False => "false", True => "true", Left => "left", Rig
 config_enum!(NotifyOnCommandFinish { Never => "never", Unfocused => "unfocused", Always => "always" });
 config_enum!(ClipboardAccess { Allow => "allow", Deny => "deny", Ask => "ask" });
 config_enum!(ConfirmCloseSurface { False => "false", True => "true", Always => "always" });
+config_enum!(SessionDumpOnQuit { Disabled => "disabled", Unchecked => "unchecked", Checked => "checked" });
 config_enum!(WindowTheme { Auto => "auto", System => "system", Light => "light", Dark => "dark" });
 config_enum!(Renderer { Auto => "auto", Gpu => "gpu", Software => "software" });
 config_enum!(ShellIntegration { None => "none", Detect => "detect", Bash => "bash", Zsh => "zsh", Fish => "fish", Elvish => "elvish", Nushell => "nushell" });
@@ -369,6 +370,8 @@ pub struct Config {
     pub clipboard_paste_protection: bool,
     pub clipboard_paste_bracketed_safe: bool,
     pub confirm_close_surface: ConfirmCloseSurface,
+    /// Availability and default checkbox state for saving sessions in quit dialogs.
+    pub session_dump_on_quit: SessionDumpOnQuit,
     pub wait_after_command: bool,
     pub abnormal_command_exit_runtime: u32,
     pub undo_timeout: Duration,
@@ -471,6 +474,7 @@ impl Default for Config {
             clipboard_paste_protection: true,
             clipboard_paste_bracketed_safe: true,
             confirm_close_surface: ConfirmCloseSurface::True,
+            session_dump_on_quit: SessionDumpOnQuit::Unchecked,
             wait_after_command: false,
             abnormal_command_exit_runtime: 250,
             undo_timeout: Duration::from_secs(5),
@@ -775,6 +779,9 @@ impl Config {
             }
             "confirm-close-surface" => {
                 set!(confirm_close_surface, ConfirmCloseSurface::parse(value)?)
+            }
+            "session-dump-on-quit" => {
+                set!(session_dump_on_quit, SessionDumpOnQuit::parse(value)?)
             }
             "wait-after-command" => set!(wait_after_command, parse_bool(value)?),
             "abnormal-command-exit-runtime" => set!(
