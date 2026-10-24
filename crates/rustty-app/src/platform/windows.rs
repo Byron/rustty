@@ -89,6 +89,53 @@ impl Drop for Runtime {
 }
 
 impl Platform {
+    pub fn option_pressed() -> bool {
+        use ::windows::Win32::UI::Input::KeyboardAndMouse::{
+            GetAsyncKeyState, VK_CONTROL, VK_MENU,
+        };
+        // AltGr also sets Control and must not request a session dump.
+        unsafe {
+            GetAsyncKeyState(VK_MENU.0.into()) < 0 && GetAsyncKeyState(VK_CONTROL.0.into()) >= 0
+        }
+    }
+
+    /// Used when quitting without a terminal window available to host the dialog.
+    pub fn confirm_quit_dump(checked: bool, error: Option<&str>) -> Result<Option<bool>, String> {
+        use ::windows::Win32::UI::Controls::{
+            TASKDIALOG_BUTTON, TASKDIALOG_FLAGS, TASKDIALOGCONFIG, TDCBF_CANCEL_BUTTON,
+            TDF_VERIFICATION_FLAG_CHECKED, TaskDialogIndirect,
+        };
+        let message = wide(OsStr::new(
+            error.unwrap_or("Saved sessions can be imported when Rustty starts again."),
+        ));
+        let quit = TASKDIALOG_BUTTON {
+            nButtonID: IDOK.0,
+            pszButtonText: w!("Quit"),
+        };
+        let config = TASKDIALOGCONFIG {
+            cbSize: size_of::<TASKDIALOGCONFIG>() as u32,
+            dwFlags: if checked {
+                TDF_VERIFICATION_FLAG_CHECKED
+            } else {
+                TASKDIALOG_FLAGS::default()
+            },
+            dwCommonButtons: TDCBF_CANCEL_BUTTON,
+            pszWindowTitle: w!("Rustty"),
+            pszMainInstruction: w!("Save session state before quitting?"),
+            pszContent: PCWSTR(message.as_ptr()),
+            pszVerificationText: w!("Save session state for a future Rustty instance"),
+            cButtons: 1,
+            pButtons: &quit,
+            nDefaultButton: IDOK.0,
+            ..Default::default()
+        };
+        let mut button = 0;
+        let mut checked = ::windows::core::BOOL::default();
+        unsafe { TaskDialogIndirect(&config, Some(&mut button), None, Some(&mut checked)) }
+            .map_err(err)?;
+        Ok((button == IDOK.0).then(|| checked.as_bool()))
+    }
+
     pub fn double_click_interval() -> Duration {
         Duration::from_millis(u64::from(unsafe { GetDoubleClickTime() }))
     }

@@ -1,5 +1,6 @@
-//! Opt-in, offscreen two-process handover check using only fixture-owned state.
+//! Opt-in, offscreen quit/startup import check using only fixture-owned state.
 use super::*;
+use rustty_app::handoff::SavedDump;
 use std::fs;
 
 const SOURCE_PROMPT: &str = "HANDOFF SOURCE PROMPT>";
@@ -57,9 +58,8 @@ pub(super) struct Smoke {
     stage: u8,
     deadline: Instant,
     pane: Option<Id>,
-    request: Option<Request>,
-    cancelled: Option<String>,
-    exports: usize,
+    older: Option<SavedDump>,
+    imported: Option<SavedDump>,
 }
 
 impl Smoke {
@@ -70,9 +70,8 @@ impl Smoke {
             stage: 0,
             deadline: Instant::now() + Duration::from_secs(30),
             pane: None,
-            request: None,
-            cancelled: None,
-            exports: 0,
+            older: None,
+            imported: None,
         })
     }
 
@@ -96,8 +95,9 @@ impl Smoke {
             )?;
             match self.role.as_str() {
                 "source" => self.source(app),
+                "cancel" => self.cancel(app, event_loop),
                 "requester" => self.requester(app, event_loop),
-                _ => Err("RUSTTY_HANDOFF_SMOKE_ROLE must be source or requester".into()),
+                _ => Err("RUSTTY_HANDOFF_SMOKE_ROLE must be source, cancel, or requester".into()),
             }
         })();
         if let Err(error) = &result {
@@ -137,60 +137,52 @@ impl Smoke {
                 terminal.feed(ALT_OUTPUT.as_bytes());
                 terminal.feed(b"\x1b[?25l\x1b[?2004h\x1b[?1003h");
                 drop(terminal);
-                let state = app.handoff.as_ref().ok_or("source registry missing")?;
-                fs::write(
-                    self.directory.join("source-ready.json"),
-                    serde_json::to_vec(state.registry.instance())?,
+                let older = app.dump_session_state()?;
+                let state = app.handoff.as_ref().ok_or("source dump store missing")?;
+                ensure(
+                    state.store.dumps()? == [older.clone()],
+                    "source needs an empty dump directory",
                 )?;
+                self.older = Some(older);
                 self.stage = 2;
             }
             2 => {
                 self.verify_source(app)?;
-                if let Some(prompt) = app
-                    .windows
-                    .values_mut()
-                    .find_map(|host| host.handoff_prompt.take())
-                {
-                    let bytes = self.capture_with_tmuxx_window(app)?;
-                    let state = app.handoff.as_mut().ok_or("source registry missing")?;
-                    state.registry.respond(&prompt.request, Some(&bytes))?;
-                    self.exports += 1;
-                    if self.exports == 2 {
-                        state.registry.ignore_requests(true)?;
-                    }
-                    self.verify_source(app)?;
-                    fs::write(
-                        self.directory
-                            .join(format!("source-export-{}.json", self.exports)),
-                        serde_json::to_vec(&serde_json::json!({
-                            "request": prompt.request.id, "source_alive": true, "alternate_active": true,
-                        }))?,
-                    )?;
-                }
-                if self.directory.join("requester-done").exists() {
-                    ensure(self.exports == 2, "source did not confirm both requests")?;
-                    ensure(
-                        app.handoff
-                            .as_ref()
-                            .unwrap()
-                            .registry
-                            .instance()
-                            .ignoring_requests,
-                        "source did not retain its ignore-further-requests preference",
-                    )?;
-                    self.report(serde_json::json!({
-                        "passed": true,
-                        "renderer": app.painter.description(),
-                        "checks": ["native-notification-request", "source-confirmation", "two-independent-exports", "tmuxx-windows-excluded", "source-shell-alive", "source-alternate-display-unchanged", "ignore-further-requests"],
-                        "exports": self.exports,
-                    }))?;
-                    // All checks above observe the live source. Shut down only
-                    // this disposable fixture shell before closing its ConPTY.
-                    self.source_pane(app)?.session.write(b"exit\r")?;
-                    self.stage = 3;
-                }
+                let bytes = self.capture_with_tmuxx_window(app)?;
+                let state = app.handoff.as_ref().ok_or("source dump store missing")?;
+                let latest = state.store.save_dump(&bytes)?;
+                let older = self.older.as_ref().unwrap();
+                ensure(
+                    latest.created_at > older.created_at,
+                    "fixture dumps need distinct creation times",
+                )?;
+                ensure(
+                    state.store.dumps()? == [latest.clone(), older.clone()],
+                    "saved sessions were not listed newest first",
+                )?;
+                self.verify_source(app)?;
+                app.save();
+                let workspace = Workspace::load(&app.state_path)?
+                    .ok_or("source did not save its normal workspace")?;
+                ensure(
+                    workspace.windows.len() == 1 && workspace.windows[0].tabs[0].panes.len() == 1,
+                    "source saved the dump's synthetic split layout as its normal workspace",
+                )?;
+                fs::write(
+                    self.directory.join("source-ready.json"),
+                    serde_json::to_vec(&Fixture {
+                        source_pid: std::process::id(),
+                        older: older.clone(),
+                        latest,
+                    })?,
+                )?;
+                self.report(serde_json::json!({
+                    "passed": true,
+                    "renderer": app.painter.description(),
+                    "checks": ["session-dump-hook", "compressed-saved-dumps", "newest-first", "tmuxx-windows-excluded", "source-shell-alive-until-quit", "source-alternate-display-unchanged", "normal-workspace-saved"],
+                }))?;
+                return Ok(true);
             }
-            3 => return Ok(self.shell_exited(app)),
             _ => unreachable!(),
         }
         Ok(false)
@@ -245,14 +237,13 @@ impl Smoke {
         let split = dump.workspace.id();
         let blank = dump.workspace.id();
         let second_split = dump.workspace.id();
+        let narrow_directory = self.directory.join("narrow");
+        let blank_directory = self.directory.join("empty");
+        fs::create_dir_all(&narrow_directory)?;
+        fs::create_dir_all(&blank_directory)?;
         let tab = &mut dump.workspace.windows[0].tabs[0];
-        tab.split(narrow, split, Direction::Down, self.directory.clone());
-        tab.split(
-            blank,
-            second_split,
-            Direction::Right,
-            self.directory.clone(),
-        );
+        tab.split(narrow, split, Direction::Down, narrow_directory);
+        tab.split(blank, second_split, Direction::Right, blank_directory);
         if let workspace::Node::Split { second, .. } = &mut tab.root.kind
             && let workspace::Node::Split { ratio, .. } = &mut second.kind
         {
@@ -270,74 +261,78 @@ impl Smoke {
         Ok(rmp_serde::to_vec_named(&dump)?)
     }
 
+    fn cancel(&mut self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
+        self.check_selector(app)?;
+        let before = app.handoff.as_ref().unwrap().store.dumps()?;
+        let workspace =
+            Workspace::load(&app.state_path)?.ok_or("cancel fixture has no prior workspace")?;
+        app.cancel_import_selector(event_loop);
+        ensure(
+            !app.import_selector
+                && app.workspace.windows.len() == 1
+                && app.workspace.windows[0].id == workspace.windows[0].id
+                && app.panes.len() == 1,
+            "cancel did not open the previous window configuration",
+        )?;
+        ensure(
+            app.handoff.as_ref().unwrap().store.dumps()? == before,
+            "cancel consumed saved sessions",
+        )?;
+        self.check_directories(app)?;
+        self.report(serde_json::json!({
+            "passed": true,
+            "renderer": app.painter.description(),
+            "checks": ["startup-selector-without-terminals", "cancel-restores-prior-workspace", "cancel-keeps-all-dumps", "restored-working-directory"],
+        }))?;
+        Ok(true)
+    }
+
     fn requester(&mut self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
         match self.stage {
             0 => {
-                ensure(
-                    app.import_selector,
-                    "requester did not open its import selector",
-                )?;
-                ensure(
-                    app.workspace.windows.is_empty()
-                        && app.workspace.tmuxx.is_empty()
-                        && app.panes.is_empty(),
-                    "requester spawned terminals or loaded an existing workspace before import",
-                )?;
-                let path = self.directory.join("source-ready.json");
-                if !path.exists() {
-                    return Ok(false);
-                }
-                let advertised: Instance = serde_json::from_slice(&fs::read(path)?)?;
-                let state = app.handoff.as_mut().ok_or("requester registry missing")?;
+                self.check_selector(app)?;
+                let state = app.handoff.as_mut().unwrap();
+                let invalid = state.store.save_dump(b"invalid fixture session")?;
                 state.refresh();
-                let source = state
-                    .instances
-                    .iter()
-                    .find(|instance| instance.id == advertised.id)
-                    .ok_or("source was not discovered in the isolated registry")?
-                    .clone();
-                self.ask(state, &source)?;
+                ensure(
+                    app.import_handoff(event_loop, &invalid.id).is_err(),
+                    "malformed saved session imported successfully",
+                )?;
+                let state = app.handoff.as_mut().unwrap();
+                ensure(
+                    state.store.read_dump(&invalid)? == b"invalid fixture session",
+                    "failed import consumed its dump",
+                )?;
+                state.store.remove_dump(&invalid)?;
+                state.refresh();
+                self.check_selector(app)?;
+                let fixture = self.fixture()?;
+                let previous_workspace = serde_json::to_vec(&app.workspace)?;
+                let missing_command = config::Command::Direct(vec![
+                    self.directory
+                        .join("missing-shell")
+                        .to_string_lossy()
+                        .into_owned(),
+                ]);
+                let command = app.loaded.config.command.replace(missing_command.clone());
+                let initial_command = app.loaded.config.initial_command.replace(missing_command);
+                let failed = app.import_handoff(event_loop, &fixture.latest.id);
+                app.loaded.config.command = command;
+                app.loaded.config.initial_command = initial_command;
+                ensure(failed.is_err(), "import accepted a missing shell")?;
+                ensure(
+                    serde_json::to_vec(&app.workspace)? == previous_workspace
+                        && app.failed_panes.is_empty()
+                        && app.windows.len() == 1
+                        && app.windows.values().all(|host| host.id == SELECTOR_WINDOW),
+                    "failed shell startup left imported windows or lost the previous workspace",
+                )?;
+                self.check_selector(app)?;
+                self.older = Some(fixture.older);
+                self.imported = Some(fixture.latest);
                 self.stage = 1;
             }
             1 => {
-                let request = self.request.as_ref().unwrap();
-                let state = app.handoff.as_mut().unwrap();
-                let RequestStatus::Ready { path, bytes } = state.registry.status(request)? else {
-                    return self.waiting(state, request);
-                };
-                ensure(
-                    bytes > 0 && path.to_string_lossy().ends_with(".rustty-state.lz4"),
-                    "export was not a compressed ready file",
-                )?;
-                Dump::decode(&state.registry.read_dump(request)?)?;
-                let source = request.source.clone();
-                self.cancelled = Some(request.id.clone());
-                state.registry.cancel_all()?;
-                ensure(
-                    !path.exists() && !request_file(&path, request).exists(),
-                    "cancelled request left a dump or request behind",
-                )?;
-                ensure(
-                    app.panes.is_empty() && app.workspace.windows.is_empty(),
-                    "cancelled import created a workspace",
-                )?;
-                state.requests.clear();
-                self.ask(state, &source)?;
-                self.stage = 2;
-            }
-            2 => {
-                let request = self.request.as_ref().unwrap().clone();
-                let state = app.handoff.as_ref().unwrap();
-                let RequestStatus::Ready { path, .. } = state.registry.status(&request)? else {
-                    return self.waiting(state, &request);
-                };
-                ensure(
-                    state.rows().iter().any(|row| {
-                        row.id == request.source.id
-                            && matches!(row.status, picker::Status::Ready { .. })
-                    }),
-                    "source selector row did not change to Import",
-                )?;
                 // Hidden Windows windows need not receive WM_PAINT. Render the
                 // real selector directly before import removes its viewport.
                 let key = app
@@ -350,15 +345,19 @@ impl Smoke {
                 let drawn = app.draw_import_selector(event_loop, &mut host);
                 app.windows.insert(key, host);
                 drawn?;
-                app.import_handoff(event_loop, &request.source.id)?;
+                let imported = self.imported.as_ref().unwrap();
+                app.import_handoff(event_loop, &imported.id)?;
                 ensure(
                     !app.import_selector && app.panes.len() == 3,
                     "import did not open the restored workspace",
                 )?;
+                let state = app.handoff.as_ref().unwrap();
                 ensure(
-                    !path.exists() && !request_file(&path, &request).exists(),
-                    "successful import did not remove its files",
+                    state.store.read_dump(imported).is_err()
+                        && state.store.dumps()? == [self.older.as_ref().unwrap().clone()],
+                    "successful import did not consume only the selected dump",
                 )?;
+                self.check_directories(app)?;
                 let mut widths = Vec::new();
                 let mut blank_panels = 0;
                 for pane in app.panes.values() {
@@ -407,9 +406,9 @@ impl Smoke {
                 pane.session
                     .write(b"printf '\\nHANDOFF FRESH SHELL OUTPUT\\n'\n")?;
                 self.pane = Some(id);
-                self.stage = 3;
+                self.stage = 2;
             }
-            3 => {
+            2 => {
                 let pane = app
                     .panes
                     .get(&self.pane.unwrap())
@@ -425,6 +424,12 @@ impl Smoke {
                 ensure(
                     !terminal.modes.dec(2004) && terminal.mouse_mode == 0,
                     "imported shell retained old keyboard or mouse modes",
+                )?;
+                ensure(
+                    terminal.screen().cursor.visible
+                        && terminal.screen().cursor.style == Default::default()
+                        && terminal.screen().cursor.hyperlink.is_none(),
+                    "imported shell retained old cursor or styling state",
                 )?;
                 let mut formatter = terminal.formatter(vt::formatter::Format::Plain);
                 formatter.options.unwrap = true;
@@ -487,26 +492,6 @@ impl Smoke {
                     "restored banner was not centered",
                 )?;
                 drop(terminal);
-                let request = self.request.as_ref().unwrap();
-                let state = app.handoff.as_ref().unwrap();
-                let source = state
-                    .registry
-                    .instances()?
-                    .into_iter()
-                    .find(|instance| instance.id == request.source.id)
-                    .ok_or("source process was closed by import")?;
-                // The second approval also checked Ignore further requests.
-                if !source.ignoring_requests {
-                    return Ok(false);
-                }
-                ensure(
-                    state.registry.ask(&source).is_err(),
-                    "source accepted a request after choosing Ignore",
-                )?;
-                ensure(
-                    state.requests.is_empty(),
-                    "completed requests remain selected",
-                )?;
                 ensure(
                     self.directory.join("selector.png").is_file(),
                     "selector rendering did not produce its capture",
@@ -514,48 +499,70 @@ impl Smoke {
                 self.report(serde_json::json!({
                     "passed": true,
                     "renderer": app.painter.description(),
-                    "source_pid": source.pid,
-                    "cancelled_request": self.cancelled,
-                    "imported_request": request.id,
+                    "source_pid": self.fixture()?.source_pid,
+                    "imported_dump": self.imported.as_ref().unwrap().id,
                     "history_rows": history_rows,
-                    "checks": ["import-flag-starts-empty", "same-user-discovery", "ask-confirm-ready", "lz4-dump", "cancel-removes-dump", "selector-import-state", "selector-capture", "workspace-import", "primary-history", "alternate-display", "styles-and-hyperlinks", "fresh-shell-after-marker", "centered-panel-width-marker", "narrow-marker-wraps-without-padding", "blank-panel-omits-marker", "clean-terminal-modes", "import-removes-dump", "source-process-alive", "ignore-further-requests"],
+                    "checks": ["automatic-startup-selector", "startup-without-terminals", "newest-first", "failed-import-keeps-dump", "failed-shell-startup-restores-selector", "lz4-dump", "selector-capture", "workspace-import", "working-directories", "primary-history", "alternate-display", "styles-and-hyperlinks", "fresh-shell-after-marker", "centered-panel-width-marker", "narrow-marker-wraps-without-padding", "blank-panel-omits-marker", "clean-terminal-modes", "import-consumes-only-selected-dump"],
                 }))?;
-                fs::write(self.directory.join("requester-done"), [])?;
-                app.panes[&self.pane.unwrap()].session.write(b"exit\r")?;
-                self.stage = 4;
+                return Ok(true);
             }
-            4 => return Ok(self.shell_exited(app)),
             _ => unreachable!(),
         }
         Ok(false)
     }
 
-    fn ask(&mut self, state: &mut State, source: &Instance) -> Result<()> {
-        let request = state.registry.ask(source)?;
-        state.selected = Some(source.id.clone());
-        state.requests.insert(source.id.clone(), request.clone());
-        self.request = Some(request);
+    fn fixture(&self) -> Result<Fixture> {
+        Ok(serde_json::from_slice(&fs::read(
+            self.directory.join("source-ready.json"),
+        )?)?)
+    }
+
+    fn check_selector(&self, app: &App) -> Result<()> {
+        ensure(
+            app.import_selector,
+            "startup did not automatically open the import selector",
+        )?;
+        ensure(
+            app.panes.is_empty()
+                && app.windows.len() == 1
+                && app.windows.values().all(|host| host.id == SELECTOR_WINDOW),
+            "startup opened terminal windows before import",
+        )?;
+        let fixture = self.fixture()?;
+        let state = app.handoff.as_ref().ok_or("dump store missing")?;
+        ensure(
+            state.dumps == [fixture.latest.clone(), fixture.older],
+            "selector did not offer persisted sessions newest first",
+        )?;
+        ensure(
+            fixture.latest.bytes > 0,
+            "saved session has no compressed content",
+        )?;
+        Dump::decode(&state.store.read_dump(&fixture.latest)?)?;
         Ok(())
     }
 
-    fn waiting(&self, state: &State, request: &Request) -> Result<bool> {
-        match state.registry.status(request)? {
-            // The export can finish between the caller's check and this read.
-            RequestStatus::Waiting | RequestStatus::Ready { .. } => Ok(false),
-            other => Err(format!("unexpected export status: {other:?}").into()),
+    fn check_directories(&self, app: &App) -> Result<()> {
+        let directory = fs::canonicalize(&self.directory)?;
+        for window in &app.workspace.windows {
+            for tab in &window.tabs {
+                for (id, saved) in &tab.panes {
+                    let saved_directory = fs::canonicalize(&saved.working_directory)?;
+                    ensure(
+                        saved_directory.starts_with(&directory)
+                            && fs::canonicalize(&app.panes[id].cwd)? == saved_directory,
+                        "restoration lost a panel's working directory",
+                    )?;
+                }
+            }
         }
+        Ok(())
     }
 
     fn source_pane<'a>(&self, app: &'a App) -> Result<&'a Pane> {
         app.panes
             .get(&self.pane.ok_or("source panel not initialized")?)
             .ok_or_else(|| "source panel disappeared".into())
-    }
-
-    fn shell_exited(&self, app: &App) -> bool {
-        self.pane
-            .and_then(|id| app.panes.get(&id))
-            .is_none_or(|pane| pane.session.has_exited())
     }
 
     fn verify_source(&self, app: &App) -> Result<()> {
@@ -598,8 +605,11 @@ fn has_line(terminal: &vt::Terminal, expected: &str) -> bool {
         .any(|row| terminal.screen().row_text(row).trim_end() == expected)
 }
 
-fn request_file(dump: &Path, request: &Request) -> PathBuf {
-    dump.with_file_name(format!("{}.request", request.id))
+#[derive(Serialize, Deserialize)]
+struct Fixture {
+    source_pid: u32,
+    older: SavedDump,
+    latest: SavedDump,
 }
 
 fn ensure(condition: bool, message: impl Into<String>) -> Result<()> {

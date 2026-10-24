@@ -175,8 +175,9 @@ AccessKit/UI Automation use Windows services. The quick terminal is a tool windo
 `quick-terminal-space-behavior = move` moves it to the foreground desktop when
 revealed. Selection clipboard storage is shared within one process. The saved-layout
 picker accepts Rustty JSON; Ghostty's macOS archived-state format requires macOS.
-To copy the layout and displayed contents from another running Rustty, launch with
-`--import-state`, or hold Alt while a new process starts. See
+To save the layout and displayed contents for another Rustty instance, hold **Alt**
+while choosing **Quit** and enable saving session state. The next process offers
+saved sessions automatically. See
 [copying visual state during an upgrade](#copying-visual-state-during-an-upgrade).
 
 Windows validation:
@@ -207,8 +208,9 @@ are complete. Set `RUSTTY_CONPTY_RESOURCES` to test another bundle's resources
 directory (for example, `target/release/Rustty/resources`). The shared PTY backend
 requires the pinned bundle; the former `--system` option is no longer supported.
 
-The handover regression runs two hidden debug instances, with isolated state and
-disposable `cmd.exe /d /q` shells. Build the debug bundle first, then run:
+The session import regression runs three hidden debug instances in sequence, with
+isolated state and disposable `cmd.exe /d /q` shells. Build the debug bundle first,
+then run:
 
 ```powershell
 $handoffDir = Join-Path $env:TEMP ('rustty-handoff-' + [guid]::NewGuid())
@@ -216,23 +218,21 @@ New-Item -ItemType Directory -Path $handoffDir | Out-Null
 $handoffExe = (Resolve-Path target/debug/Rustty/rustty.exe).Path
 $env:RUSTTY_HANDOFF_SMOKE_DIR = $handoffDir
 try {
-    $env:RUSTTY_HANDOFF_SMOKE_ROLE = 'source'
-    $source = Start-Process -FilePath $handoffExe -WindowStyle Hidden -PassThru `
-        -ArgumentList '--config-default-files=false', '--renderer=software' `
-        -RedirectStandardOutput "$handoffDir/source.log" -RedirectStandardError "$handoffDir/source.err"
-    $env:RUSTTY_HANDOFF_SMOKE_ROLE = 'requester'
-    $requester = Start-Process -FilePath $handoffExe -WindowStyle Hidden -PassThru `
-        -ArgumentList '--import-state', '--config-default-files=false', '--renderer=software' `
-        -RedirectStandardOutput "$handoffDir/requester.log" -RedirectStandardError "$handoffDir/requester.err"
-    $source, $requester | Wait-Process -Timeout 45
+    foreach ($role in 'source', 'cancel', 'requester') {
+        $env:RUSTTY_HANDOFF_SMOKE_ROLE = $role
+        $process = Start-Process -FilePath $handoffExe -WindowStyle Hidden -PassThru `
+            -ArgumentList '--config-default-files=false', '--renderer=software' `
+            -RedirectStandardOutput "$handoffDir/$role.log" -RedirectStandardError "$handoffDir/$role.err"
+        $process | Wait-Process -Timeout 45
+    }
     Get-Content "$handoffDir/*-result.json"
 } finally {
     Remove-Item Env:RUSTTY_HANDOFF_SMOKE_DIR, Env:RUSTTY_HANDOFF_SMOKE_ROLE -ErrorAction SilentlyContinue
 }
 ```
 
-Both `*-result.json` files must report `"passed": true`; `selector.png` captures
-the chooser. The check covers discovery, native notification, approval, cancellation,
+All three `*-result.json` files must report `"passed": true`; `selector.png` captures
+the chooser. The check covers saving on quit, startup selection, cancellation,
 import cleanup, styled history and alternate-screen contents, and output from a new
 ConPTY shell below the restoration marker. Use `--renderer=gpu` to check GPU rendering.
 
@@ -421,21 +421,19 @@ cargo +1.95.0 run --release --offline -p rustty-vt --example parity-runner
 RUSTTY_SMOKE_DIR=/tmp/rustty-native-smoke RUSTTY_SMOKE_OFFSCREEN=1 target/debug/Rustty.app/Contents/MacOS/rustty
 ```
 
-The macOS handover regression runs two hidden debug instances with isolated
-configuration, disposable `/bin/sh` shells, and state. Each `*-result.json` must report `"passed": true`;
-`selector.png` captures the chooser.
+The macOS session import regression runs three hidden debug instances in sequence
+with isolated configuration, disposable `/bin/sh` shells, and state. Each
+`*-result.json` must report `"passed": true`; `selector.png` captures the chooser.
 
 ```sh
 cargo build -p rustty-app --bin rustty --offline
 handoff_dir=$(mktemp -d /tmp/rustty-handoff.XXXXXX)
 printf 'command = /bin/sh\nshell-integration = none\nstream-deck = false\nworking-directory = %s\n' "$handoff_dir" > "$handoff_dir/config"
-RUSTTY_HANDOFF_SMOKE_DIR="$handoff_dir" RUSTTY_HANDOFF_SMOKE_ROLE=source \
-  target/debug/rustty --config-default-files=false --config-file="$handoff_dir/config" \
-  > "$handoff_dir/source.log" 2>&1 &
-RUSTTY_HANDOFF_SMOKE_DIR="$handoff_dir" RUSTTY_HANDOFF_SMOKE_ROLE=requester \
-  target/debug/rustty --import-state --config-default-files=false --config-file="$handoff_dir/config" \
-  > "$handoff_dir/requester.log" 2>&1 &
-wait
+for role in source cancel requester; do
+  RUSTTY_HANDOFF_SMOKE_DIR="$handoff_dir" RUSTTY_HANDOFF_SMOKE_ROLE="$role" \
+    target/debug/rustty --config-default-files=false --config-file="$handoff_dir/config" \
+    > "$handoff_dir/$role.log" 2>&1 || break
+done
 cat "$handoff_dir"/*-result.json
 ```
 
@@ -484,63 +482,60 @@ timeout; leaving the pane or moving the pointer restarts the interval.
 
 ### Copying visual state during an upgrade
 
-On Windows, leave the old installation running and extract the **complete** new
-application folder into a separate location, such as `C:\Apps\Rustty-new`.
-Windows locks running executables and DLLs, so replace the old folder after closing
-that instance. Start the new copy's **Import Terminal State** selector with:
+Hold **Option** on macOS or **Alt** on Windows while choosing **Quit** to open a
+confirmation that offers to save session state for a future Rustty instance.
+Enable the checkbox to save before quitting. An ordinary quit adds the same
+checkbox when Rustty already needs confirmation, such as when commands are
+running; it does not introduce an extra prompt by itself.
 
-```powershell
-& 'C:\Apps\Rustty-new\rustty.exe' --import-state
+Configure the checkbox with:
+
+```ini
+session-dump-on-quit = unchecked
 ```
 
-Alternatively, hold **Alt** while launching a new Rustty process. The key is sampled
-at startup; Ctrl+Alt and AltGr do not enable import mode. Use the command if your
-launcher assigns another action to Alt, or only activates the existing process.
+- `unchecked` is the default: offer saving with the checkbox initially off.
+- `checked` offers saving with the checkbox initially on.
+- `disabled` removes the checkbox and disables the Option/Alt quit prompt entirely.
 
-On macOS, start a separate instance directly in **Import Terminal State** with:
+After the old instance quits, replace its application bundle or the complete
+Windows application folder and launch Rustty normally. Every new process checks
+for saved sessions and opens **Import Saved Session State** when any are available,
+with the most recent first. It does not open terminal windows or start shells
+while the chooser is open. Select a saved session and click **Import**.
+
+On macOS, use this command when another Rustty process is still running and you
+want a separate instance:
 
 ```sh
-open -n /Applications/Rustty.app --args --import-state
+open -n /Applications/Rustty.app
 ```
 
-`-n` tells macOS to start the specified bundle even when another Rustty is already
-running. An ordinary Finder or Dock launch usually activates the existing process,
-including after its bundle was renamed. To replace a running macOS installation,
-rename `/Applications/Rustty.app`, for example to `Rustty.previous.app`, and leave
-it running. Copy the new bundle to `/Applications/Rustty.app`, complete any macOS
-security approval, then run the command above to start that copy's selector.
+An ordinary Finder or Dock launch may activate the existing process instead.
+**Cancel**, Escape, or closing the chooser starts Rustty with the usual window
+configuration. Canceling or a failed import preserves all saved sessions for
+retry. A successful import removes only the selected saved session.
 
-On both platforms, import mode opens only the selector; it does not restore a
-workspace or start shells until an import succeeds. Windows discovery is limited
-to the same user and Windows sign-in session.
-
-1. Select a running instance owned by the same user and click **Ask**. In the
-   original instance, approve **Export Terminal State?** with **Export**. It can
-   also **Decline**, or **Ignore further requests for this session**.
-2. The selector shows the completed dump beside its source. Select it and click
-   **Import**. Several instances can be asked independently.
-
-Import copies the window/tab/panel layout, scrollback, and displayed contents,
-including alternate-screen applications. Exports omit tmuxx windows; reconnect
-to their servers to restore them. Each imported panel starts a fresh local shell
+Import restores local window/tab/panel layouts, scrollback, and displayed contents,
+including alternate-screen applications. Dumps omit tmuxx windows; reconnect to
+their servers to restore them. Each imported panel starts a fresh local shell
 with this bold divider above new output, centered with dashes to the panel width.
 Narrow panels wrap the message without padding. Empty panels omit it; a blank
 visible screen with content in scrollback still gets the divider:
 
 > **[--- Restored Rustty display. A new shell starts below. ---]**
 
-Running jobs, shell variables, and PTYs stay with the original instance. It keeps
-running for the user to close when ready. Earlier instances save separate layout
-backups, so closing one later cannot overwrite the imported workspace.
+Running jobs, shell variables, and PTYs are not saved. Earlier instances save
+separate layout backups, so closing one later cannot overwrite the imported
+workspace.
 
-Exports use private, atomically published `.rustty-state.lz4` temporary files.
-Large exports can pause the source UI while they are written.
-Successful import removes the selector's requested dumps; **Cancel**, Escape, or
-closing the selector also removes them and exits that new instance. A failed
-import keeps its dump available for retry. Compressed files and decoded state are
-each limited to 512 MiB. A build predating this feature cannot export its state;
-older running app bundles appear as unavailable on macOS. Windows lists only
-instances that advertise support for exporting terminal state.
+Dumps use private, atomically published `.rustty-state.lz4` files and metadata in
+`rustty-session-dumps` inside the current user's system temporary directory
+(normally `$TMPDIR` on macOS and `%LOCALAPPDATA%\Temp` on Windows). They survive
+Rustty exiting, but system temporary-file cleanup can remove them. Large dumps
+can pause the quitting instance while they are written. Compressed files and
+decoded state are each limited to 512 MiB. If saving fails, Rustty stays open so
+the user can retry or quit without saving.
 
 ### tmuxx windows
 

@@ -67,8 +67,6 @@ const MIN_WINDOW_SIZE: LogicalSize<f64> = LogicalSize::new(240.0, 120.0);
 
 #[derive(Debug)]
 enum Event {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    Handoff,
     DeckWake,
     Tmuxx,
     TmuxxCopied(
@@ -279,6 +277,11 @@ struct PendingPaste {
 }
 
 enum Confirmation {
+    Quit {
+        confirmation: Box<Confirmation>,
+        save_dump: bool,
+        error: Option<String>,
+    },
     Close(Action),
     TmuxxClose {
         target: tmuxx_host::Target,
@@ -291,6 +294,30 @@ enum Confirmation {
         cwd: PathBuf,
         handler: String,
     },
+}
+
+impl Confirmation {
+    fn for_quit(
+        confirmation: Option<Self>,
+        action: Action,
+        setting: config::SessionDumpOnQuit,
+        quitting: bool,
+        option: bool,
+    ) -> Option<Self> {
+        if !quitting || setting == config::SessionDumpOnQuit::Disabled {
+            return confirmation;
+        }
+        let confirmation = confirmation.or_else(|| option.then_some(Self::Close(action)))?;
+        Some(Self::Quit {
+            confirmation: Box::new(confirmation),
+            save_dump: setting == config::SessionDumpOnQuit::Checked,
+            error: None,
+        })
+    }
+}
+
+fn quit_option_modifier(modifiers: winit::keyboard::ModifiersState) -> bool {
+    modifiers.alt_key() && (!cfg!(target_os = "windows") || !modifiers.control_key())
 }
 
 struct LayoutPicker {
@@ -533,8 +560,6 @@ struct Host {
     layout_picker: Option<LayoutPicker>,
     palette: CommandPalette,
     confirm: Option<Confirmation>,
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    handoff_prompt: Option<handoff_ui::Prompt>,
     tmuxx_connect: Option<String>,
     clipboard_request: VecDeque<(Id, vt::Effect)>,
     capture: bool,
@@ -573,10 +598,6 @@ impl Host {
             || self.messages_open && self.messages_focused
     }
     fn modal_input(&self) -> bool {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        if self.handoff_prompt.is_some() {
-            return true;
-        }
         self.palette.open
             || self.popup_open
             || self.layout_picker.is_some()
@@ -764,6 +785,7 @@ struct App {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     handoff: Option<handoff_ui::State>,
     import_selector: bool,
+    startup_tmuxx: Option<String>,
     deck: deck_host::Connection,
     tmuxx: Vec<tmuxx_host::Attachment>,
     tmuxx_smoke: Option<PathBuf>,
@@ -802,24 +824,13 @@ struct App {
 
 pub fn run() -> Result<()> {
     let mut args = std::env::args().skip(1).collect::<Vec<_>>();
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    let import_requested = handoff_ui::import_requested(&mut args);
-    #[cfg(target_os = "windows")]
-    let import_requested = import_requested || handoff_ui::launch_alt_pressed();
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let import_requested = false;
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!(
             "Rustty — native Rust terminal\n\nUsage: rustty [--config-file=PATH] [--key=value] [-e COMMAND ...]\n       rustty --tmuxx=embedded|persistent|{}|ssh:HOST|system-ssh:HOST\n       rustty tmux [tmuxx options and commands]\n       rustty --config-info\n\nRustty settings override Ghostty settings. See crates/rustty-app/README.md.",
             tmuxx_host::LOCAL_TARGET_HINT
         );
-        #[cfg(target_os = "macos")]
         println!(
-            "\nUse --import-state to open only the instance selector. To start a second app:\n  open -n /Applications/Rustty.app --args --import-state"
-        );
-        #[cfg(target_os = "windows")]
-        println!(
-            "\nUse --import-state, or hold Alt while launching Rustty, to open only the instance selector. Ctrl+Alt/AltGr does not enable import mode."
+            "\nSaved session dumps are offered automatically at startup. Hold Option (Alt on Windows) while quitting to save one.\nConfigure session-dump-on-quit = disabled|unchecked|checked (default: unchecked)."
         );
         return Ok(());
     }
@@ -905,7 +916,33 @@ pub fn run() -> Result<()> {
     if let Some(directory) = handoff_ui::smoke_directory() {
         state_path = directory.join("workspace.json");
     }
-    let mut workspace = if smoke.is_some() || import_requested {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    let handoff = if background_smoke && handoff_ui::smoke_directory().is_none() {
+        None
+    } else {
+        match handoff_ui::State::new() {
+            Ok(state) => Some(state),
+            Err(error) => {
+                errors.push(format!("State import is unavailable: {error}"));
+                None
+            }
+        }
+    };
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    let import_requested = handoff
+        .as_ref()
+        .is_some_and(|state| !state.dumps.is_empty());
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let import_requested = false;
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    if !import_requested
+        && loaded.config.window_save_state != config::WindowSaveState::Never
+        && let Some(state) = &handoff
+        && let Err(error) = state.store.claim_workspace(&state_path)
+    {
+        errors.push(format!("Could not claim workspace saving: {error}"));
+    }
+    let workspace = if smoke.is_some() {
         Workspace::default()
     } else if loaded.config.window_save_state != config::WindowSaveState::Never {
         match Workspace::load(&state_path) {
@@ -919,134 +956,6 @@ pub fn run() -> Result<()> {
         Workspace::default()
     };
     let proxy = event_loop.create_proxy();
-    let tmuxx = if let Some(mode) = tmuxx_mode
-        .as_deref()
-        .filter(|mode| *mode != "persistent" && !import_requested)
-    {
-        let wake_proxy = proxy.clone();
-        let wake = Arc::new(move || {
-            let _ = wake_proxy.send_event(Event::Tmuxx);
-        });
-        let (source, connection) = if mode == "embedded" {
-            let endpoint = match std::env::var_os("TMUXX_ENDPOINT") {
-                Some(endpoint) => PathBuf::from(endpoint),
-                None => tmuxx_host::temporary_endpoint(&format!(
-                    "rustty-{}-startup",
-                    std::process::id()
-                ))?,
-            };
-            let initial = if tmuxx_smoke.is_some() {
-                vec![b"/bin/sh".to_vec()]
-            } else {
-                match loaded
-                    .config
-                    .initial_command
-                    .as_ref()
-                    .or(loaded.config.command.as_ref())
-                {
-                    Some(config::Command::Shell(command)) => vec![command.as_bytes().to_vec()],
-                    Some(config::Command::Direct(argv)) => {
-                        argv.iter().map(|arg| arg.as_bytes().to_vec()).collect()
-                    }
-                    None => Vec::new(),
-                }
-            };
-            let connection = rustty::tmuxx::Connection::embedded_with_options(
-                tmuxx_host::server_options(&loaded.config, &endpoint)?,
-                wake,
-                initial,
-            )?;
-            (tmuxx_host::Source::Embedded(endpoint), connection)
-        } else if let Some(host) = mode.strip_prefix("system-ssh:") {
-            (
-                tmuxx_host::Source::SystemSsh(host.into()),
-                rustty::tmuxx::Connection::system_ssh_with_env(host, &loaded.config.env, wake)?,
-            )
-        } else if let Some(host) = mode.strip_prefix("ssh:") {
-            (
-                tmuxx_host::Source::Ssh(host.into()),
-                rustty::tmuxx::Connection::ssh_command_with_env(
-                    host,
-                    loaded.config.tmuxx_ssh_command_for(host),
-                    &loaded.config.env,
-                    wake,
-                )?,
-            )
-        } else {
-            let endpoint = tmuxx_host::local_endpoint(mode)?;
-            let connection = rustty::tmuxx::Connection::native(&endpoint, wake)?;
-            (tmuxx_host::Source::Local(endpoint), connection)
-        };
-        let deadline = Instant::now() + tmuxx_host::connection_timeout(&source);
-        while connection.graph().is_none() {
-            if Instant::now() > deadline {
-                return Err("timed out waiting for tmuxx snapshot".into());
-            }
-            let errors = connection.errors();
-            if !errors.is_empty() {
-                return Err(errors.join("; ").into());
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        if let Some(directory) = &tmuxx_smoke {
-            std::fs::create_dir_all(directory)?;
-            connection.command([
-                "split-window",
-                "-h",
-                "/bin/sh",
-                "-c",
-                r"printf '\033[2J\033[HNative tmuxx pane B\n'; sleep 30",
-            ])?;
-            let deadline = Instant::now() + Duration::from_secs(5);
-            while connection.graph().is_none_or(|graph| graph.panes.len() < 2) {
-                if Instant::now() > deadline {
-                    return Err("tmuxx smoke split did not appear".into());
-                }
-                std::thread::sleep(Duration::from_millis(10));
-            }
-            if std::env::var_os("RUSTTY_TMUXX_SMOKE_FLOATING").is_some() {
-                connection.command([
-                    "break-pane",
-                    "-W",
-                    "-s",
-                    "%1",
-                    "-x",
-                    "42",
-                    "-y",
-                    "10",
-                    "-X",
-                    "-2",
-                    "-Y",
-                    "4",
-                ])?;
-                while connection.graph().is_none_or(|graph| {
-                    !graph
-                        .windows
-                        .iter()
-                        .any(|window| window.layout.contains("\"z\""))
-                }) {
-                    if Instant::now() > deadline {
-                        return Err("tmuxx smoke floating pane did not appear".into());
-                    }
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-            }
-        }
-        if tmuxx_smoke.is_some() {
-            workspace = Workspace::default();
-        }
-        let mut attachment = tmuxx_host::Attachment::new(source, Some(connection), false);
-        let graph = attachment.connection.as_ref().unwrap().graph().unwrap();
-        attachment
-            .selected
-            .extend(graph.sessions.iter().map(|s| s.id));
-        attachment
-            .mapping
-            .apply(&mut workspace, &graph, &attachment.selected)?;
-        vec![attachment]
-    } else {
-        Vec::new()
-    };
     let context = egui::Context::default();
     context.set_theme(ui_theme(&loaded.config));
     configure_ui_fonts(&context);
@@ -1098,33 +1007,14 @@ pub fn run() -> Result<()> {
         .and_then(|s| s.parse::<u64>().ok())
         .map(|s| now + Duration::from_secs(s))
         .or_else(|| tmuxx_smoke.as_ref().map(|_| now + Duration::from_secs(5)));
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    let handoff = if background_smoke && handoff_ui::smoke_directory().is_none() {
-        None
-    } else {
-        match handoff_ui::State::new(proxy.clone()) {
-            Ok(state) => Some(state),
-            Err(error) => {
-                errors.push(format!("State import is unavailable: {error}"));
-                None
-            }
-        }
-    };
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    if !import_requested
-        && loaded.config.window_save_state != config::WindowSaveState::Never
-        && let Some(state) = &handoff
-        && let Err(error) = state.registry.claim_workspace(&state_path)
-    {
-        errors.push(format!("Could not claim workspace saving: {error}"));
-    }
     let mut app = App {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         handoff,
         import_selector: import_requested,
+        startup_tmuxx: tmuxx_mode,
         deck: deck_host::Connection::default(),
         tmuxx_smoke: tmuxx_smoke.clone(),
-        tmuxx,
+        tmuxx: Vec::new(),
         loaded,
         config_loader,
         config_args: args,
@@ -1159,10 +1049,7 @@ pub fn run() -> Result<()> {
     };
     app.reload_tmuxx_themes();
     if !import_requested {
-        app.restore_tmuxx();
-    }
-    if tmuxx_mode.as_deref() == Some("persistent") && !import_requested {
-        app.start_tmuxx(false)?;
+        app.start_sessions()?;
     }
     let result = event_loop.run_app(&mut app);
     app.shutdown();
@@ -1281,6 +1168,147 @@ fn font_config(config: &Config, scale: f32) -> FontConfig {
 }
 
 impl App {
+    fn start_sessions(&mut self) -> Result<()> {
+        let tmuxx_mode = self.startup_tmuxx.take();
+        let loaded = &self.loaded;
+        let proxy = &self.proxy;
+        let tmuxx_smoke = &self.tmuxx_smoke;
+        let workspace = &mut self.workspace;
+        self.tmuxx = if let Some(mode) = tmuxx_mode.as_deref().filter(|mode| *mode != "persistent")
+        {
+            let wake_proxy = proxy.clone();
+            let wake = Arc::new(move || {
+                let _ = wake_proxy.send_event(Event::Tmuxx);
+            });
+            let (source, connection) = if mode == "embedded" {
+                let endpoint = match std::env::var_os("TMUXX_ENDPOINT") {
+                    Some(endpoint) => PathBuf::from(endpoint),
+                    None => tmuxx_host::temporary_endpoint(&format!(
+                        "rustty-{}-startup",
+                        std::process::id()
+                    ))?,
+                };
+                let initial = if tmuxx_smoke.is_some() {
+                    vec![b"/bin/sh".to_vec()]
+                } else {
+                    match loaded
+                        .config
+                        .initial_command
+                        .as_ref()
+                        .or(loaded.config.command.as_ref())
+                    {
+                        Some(config::Command::Shell(command)) => vec![command.as_bytes().to_vec()],
+                        Some(config::Command::Direct(argv)) => {
+                            argv.iter().map(|arg| arg.as_bytes().to_vec()).collect()
+                        }
+                        None => Vec::new(),
+                    }
+                };
+                let connection = rustty::tmuxx::Connection::embedded_with_options(
+                    tmuxx_host::server_options(&loaded.config, &endpoint)?,
+                    wake,
+                    initial,
+                )?;
+                (tmuxx_host::Source::Embedded(endpoint), connection)
+            } else if let Some(host) = mode.strip_prefix("system-ssh:") {
+                (
+                    tmuxx_host::Source::SystemSsh(host.into()),
+                    rustty::tmuxx::Connection::system_ssh_with_env(host, &loaded.config.env, wake)?,
+                )
+            } else if let Some(host) = mode.strip_prefix("ssh:") {
+                (
+                    tmuxx_host::Source::Ssh(host.into()),
+                    rustty::tmuxx::Connection::ssh_command_with_env(
+                        host,
+                        loaded.config.tmuxx_ssh_command_for(host),
+                        &loaded.config.env,
+                        wake,
+                    )?,
+                )
+            } else {
+                let endpoint = tmuxx_host::local_endpoint(mode)?;
+                let connection = rustty::tmuxx::Connection::native(&endpoint, wake)?;
+                (tmuxx_host::Source::Local(endpoint), connection)
+            };
+            let deadline = Instant::now() + tmuxx_host::connection_timeout(&source);
+            while connection.graph().is_none() {
+                if Instant::now() > deadline {
+                    return Err("timed out waiting for tmuxx snapshot".into());
+                }
+                let errors = connection.errors();
+                if !errors.is_empty() {
+                    return Err(errors.join("; ").into());
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            if let Some(directory) = &tmuxx_smoke {
+                std::fs::create_dir_all(directory)?;
+                connection.command([
+                    "split-window",
+                    "-h",
+                    "/bin/sh",
+                    "-c",
+                    r"printf '\033[2J\033[HNative tmuxx pane B\n'; sleep 30",
+                ])?;
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while connection.graph().is_none_or(|graph| graph.panes.len() < 2) {
+                    if Instant::now() > deadline {
+                        return Err("tmuxx smoke split did not appear".into());
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                if std::env::var_os("RUSTTY_TMUXX_SMOKE_FLOATING").is_some() {
+                    connection.command([
+                        "break-pane",
+                        "-W",
+                        "-s",
+                        "%1",
+                        "-x",
+                        "42",
+                        "-y",
+                        "10",
+                        "-X",
+                        "-2",
+                        "-Y",
+                        "4",
+                    ])?;
+                    while connection.graph().is_none_or(|graph| {
+                        !graph
+                            .windows
+                            .iter()
+                            .any(|window| window.layout.contains("\"z\""))
+                    }) {
+                        if Instant::now() > deadline {
+                            return Err("tmuxx smoke floating pane did not appear".into());
+                        }
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                }
+            }
+            if tmuxx_smoke.is_some() {
+                *workspace = Workspace::default();
+            }
+            let mut attachment = tmuxx_host::Attachment::new(source, Some(connection), false);
+            let graph = attachment.connection.as_ref().unwrap().graph().unwrap();
+            attachment
+                .selected
+                .extend(graph.sessions.iter().map(|s| s.id));
+            attachment
+                .mapping
+                .apply(workspace, &graph, &attachment.selected)?;
+            vec![attachment]
+        } else {
+            Vec::new()
+        };
+        if handoff_ui::smoke_directory().is_none() {
+            self.restore_tmuxx();
+        }
+        if tmuxx_mode.as_deref() == Some("persistent") {
+            self.start_tmuxx(false)?;
+        }
+        Ok(())
+    }
+
     fn config(&self) -> &Config {
         &self.loaded.config
     }
@@ -1745,8 +1773,6 @@ impl App {
             layout_picker: None,
             palette: CommandPalette::default(),
             confirm: None,
-            #[cfg(any(target_os = "macos", target_os = "windows"))]
-            handoff_prompt: None,
             tmuxx_connect: None,
             clipboard_request: VecDeque::new(),
             capture: false,
@@ -1821,7 +1847,7 @@ impl App {
         let workspace = self.saved_workspace();
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         let result = if let Some(state) = &self.handoff {
-            state.registry.save_workspace(&self.state_path, &workspace)
+            state.store.save_workspace(&self.state_path, &workspace)
         } else {
             workspace.save(&self.state_path)
         };
@@ -2969,23 +2995,41 @@ impl App {
             return true;
         }
         let focused = self.focused(host.id);
+        let exits_app = self.config().quit_after_last_window_closed
+            && (closes_last_window(&self.workspace, host.id, &action)
+                || action == Action::CloseAllWindows);
+        let quitting = action == Action::Quit || exits_app;
+        let option = quit_option_modifier(host.modifiers.state()) || Platform::option_pressed();
+        let dump_setting = self.config().session_dump_on_quit;
         if action == Action::CloseWindow
             && let Some(entry) = self.tmuxx_window(host.id)
         {
             if entry.view_connection().is_none() {
+                if !approved
+                    && let Some(confirmation) =
+                        Confirmation::for_quit(None, action.clone(), dump_setting, quitting, option)
+                {
+                    host.confirm = Some(confirmation);
+                    host.repaint();
+                    return true;
+                }
                 host.confirm = None;
                 self.close_tmuxx_window(host.id);
                 return true;
             }
-            host.confirm = Some(Confirmation::TmuxxClose {
-                target: entry.target(),
-                session: entry.mapping.sessions[&host.id],
-            });
+            host.confirm = Confirmation::for_quit(
+                Some(Confirmation::TmuxxClose {
+                    target: entry.target(),
+                    session: entry.mapping.sessions[&host.id],
+                }),
+                action,
+                dump_setting,
+                quitting,
+                option,
+            );
             host.repaint();
             return true;
         }
-        let exits_app = self.config().quit_after_last_window_closed
-            && closes_last_window(&self.workspace, host.id, &action);
         if !approved
             && matches!(
                 action,
@@ -3037,8 +3081,8 @@ impl App {
                                         == config::ShellIntegration::None))
                 })
             });
-            if needs_confirmation {
-                host.confirm = if matches!(action, Action::CloseSurface | Action::CloseTab)
+            let confirmation = if needs_confirmation {
+                if matches!(action, Action::CloseSurface | Action::CloseTab)
                     && let Some(entry) = self.tmuxx_window(host.id)
                     && let Some(Ok(argv)) = entry.mapping.action(&self.workspace, host.id, &action)
                 {
@@ -3046,8 +3090,15 @@ impl App {
                         tmuxx_host::MenuCommand::Execute(entry.target(), argv),
                     ))
                 } else {
-                    Some(Confirmation::Close(action))
-                };
+                    Some(Confirmation::Close(action.clone()))
+                }
+            } else {
+                None
+            };
+            if let Some(confirmation) =
+                Confirmation::for_quit(confirmation, action.clone(), dump_setting, quitting, option)
+            {
+                host.confirm = Some(confirmation);
                 host.repaint();
                 return true;
             }
@@ -3899,12 +3950,6 @@ impl App {
             .collect::<Vec<_>>();
         for id in removed {
             if let Some(host) = self.windows.remove(&id) {
-                #[cfg(any(target_os = "macos", target_os = "windows"))]
-                if let Some(prompt) = host.handoff_prompt
-                    && let Some(state) = &mut self.handoff
-                {
-                    state.requeue(prompt);
-                }
                 if let Some(platform) = &self.platform {
                     platform.forget_window(&host.window);
                 }
@@ -4108,12 +4153,16 @@ impl App {
 
     fn platform_action(&mut self, event_loop: &ActiveEventLoop, action: Action, all: bool) -> bool {
         if self.import_selector {
-            if matches!(
-                action,
-                Action::Quit | Action::CloseWindow | Action::CloseSurface
-            ) {
-                event_loop.exit();
-                return true;
+            match action {
+                Action::CloseWindow | Action::CloseSurface => {
+                    self.cancel_import_selector(event_loop);
+                    return true;
+                }
+                Action::Quit => {
+                    event_loop.exit();
+                    return true;
+                }
+                _ => {}
             }
             return false;
         }
@@ -4201,6 +4250,30 @@ impl App {
             self.reconcile(event_loop);
             true
         } else if action == Action::Quit {
+            if self.config().session_dump_on_quit != config::SessionDumpOnQuit::Disabled
+                && Platform::option_pressed()
+            {
+                let mut checked =
+                    self.config().session_dump_on_quit == config::SessionDumpOnQuit::Checked;
+                let mut error = None;
+                loop {
+                    match Platform::confirm_quit_dump(checked, error.as_deref()) {
+                        Ok(Some(false)) => break,
+                        Ok(Some(true)) => match self.dump_session_state() {
+                            Ok(_) => break,
+                            Err(failure) => {
+                                checked = true;
+                                error = Some(format!("Could not save session state: {failure}"));
+                            }
+                        },
+                        Ok(None) => return true,
+                        Err(error) => {
+                            self.errors.push(error);
+                            return true;
+                        }
+                    }
+                }
+            }
             self.save();
             event_loop.exit();
             true
@@ -4250,7 +4323,7 @@ impl App {
             } else {
                 host.sequence.clone()
             };
-            let matched = candidates
+            let mut matched = candidates
                 .into_iter()
                 .filter(|&index| {
                     let binding = &self.config().keybinds[index];
@@ -4264,6 +4337,22 @@ impl App {
                             })
                 })
                 .collect::<Vec<_>>();
+            // An explicit Option binding wins; otherwise Option augments the configured quit key.
+            if matched.is_empty()
+                && host.sequence_len == 0
+                && quit_option_modifier(host.modifiers.state())
+            {
+                let without_option = host.modifiers.state() & !winit::keyboard::ModifiersState::ALT;
+                matched.extend(self.config().keybinds.iter().enumerate().filter_map(
+                    |(index, binding)| {
+                        (binding.table.is_none()
+                            && binding.actions == [Action::Quit]
+                            && binding.trigger.len() == 1
+                            && input::matches(&binding.trigger[0], key, without_option))
+                        .then_some(index)
+                    },
+                ));
+            }
             let complete = matched
                 .iter()
                 .rev()
@@ -5393,8 +5482,15 @@ impl App {
             }
             let mut detached = false;
             let mut confirmed = None;
-            if let Some(confirmation) = &host.confirm {
+            if let Some(confirmation) = &mut host.confirm {
+                let (confirmation, save_dump, error) = match confirmation {
+                    Confirmation::Quit { confirmation, save_dump, error } => {
+                        (&**confirmation, Some(save_dump), error.as_deref())
+                    }
+                    confirmation => (&*confirmation, None, None),
+                };
                 let (title, button) = match confirmation {
+                    Confirmation::Close(_) if save_dump.is_some() => ("Save session state before quitting?", "Quit"),
                     Confirmation::Close(_) => ("Close running commands?", "Close"),
                     Confirmation::TmuxxClose { .. } => ("Close tmuxx window?", "Terminate session"),
                     Confirmation::TmuxxTerminate(tmuxx_host::MenuCommand::Shutdown(_) | tmuxx_host::MenuCommand::ShutdownIdle(_)) => ("Stop tmuxx server?", "Stop Server"),
@@ -5403,6 +5499,7 @@ impl App {
                     Confirmation::OpenUrl { .. } => {
                         ("Open link from terminal output?", "Open Link")
                     }
+                    Confirmation::Quit { .. } => unreachable!("nested quit confirmation"),
                 };
                 egui::Window::new(title)
                     .collapsible(false)
@@ -5426,6 +5523,9 @@ impl App {
                             }
                             Confirmation::TmuxxTerminate(_) => {
                                 ui.label("This stops the selected server programs, including work in other clients.");
+                            }
+                            Confirmation::Close(_) if save_dump.is_some() => {
+                                ui.label("Quitting closes local terminals. Persistent tmuxx sessions keep running.");
                             }
                             Confirmation::Close(_) => {
                                 ui.label("Closing this terminal will stop its running commands.");
@@ -5469,6 +5569,13 @@ impl App {
                                         );
                                     });
                             }
+                            Confirmation::Quit { .. } => unreachable!("nested quit confirmation"),
+                        }
+                        if let Some(save_dump) = save_dump {
+                            ui.checkbox(save_dump, "Save session state for a future Rustty instance");
+                        }
+                        if let Some(error) = error {
+                            ui.colored_label(ui.visuals().error_fg_color, error);
                         }
                         ui.horizontal(|ui| {
                             if ui.button("Cancel").clicked()
@@ -5486,14 +5593,25 @@ impl App {
                         });
                     });
             }
-            if detached {
-                host.confirm = None;
-                self.close_tmuxx_window(host.id);
-            }
+            if detached { confirmed = Some(true); }
             if let Some(approved) = confirmed
-                && let Some(confirmation) = host.confirm.take()
+                && let Some(mut confirmation) = host.confirm.take()
                 && approved
             {
+                if let Confirmation::Quit { save_dump, error, .. } = &mut confirmation {
+                    if *save_dump && let Err(failure) = self.dump_session_state() {
+                        *error = Some(format!("Could not save session state: {failure}"));
+                        host.confirm = Some(confirmation);
+                        host.repaint();
+                        return;
+                    }
+                    let Confirmation::Quit { confirmation: close, .. } = confirmation else { unreachable!() };
+                    confirmation = *close;
+                }
+                if detached {
+                    self.close_tmuxx_window(host.id);
+                    return;
+                }
                 match confirmation {
                     Confirmation::TmuxxClose { target, session } => self.tmuxx_menu_command(
                         tmuxx_host::MenuCommand::Kill(target, session)
@@ -5504,6 +5622,7 @@ impl App {
                     }
                     Confirmation::Paste(paste) => self.paste(host, paste, true),
                     Confirmation::OpenUrl { uri, cwd, .. } => self.open_url(host, uri, cwd, true),
+                    Confirmation::Quit { .. } => unreachable!("nested quit confirmation"),
                 }
             }
             if let Some((pane, request)) = host.clipboard_request.front() {
@@ -5558,8 +5677,6 @@ impl App {
             if let Some(picker) = &mut host.layout_picker {
                 layout_command = show_layout_picker(ctx, picker).or(layout_command.take());
             }
-            #[cfg(any(target_os = "macos", target_os = "windows"))]
-            self.show_handoff_prompt(host, ctx);
             let _ = show_messages(ctx, &mut self.errors, messages_keyboard_input);
             host.messages_open = !self.errors.is_empty();
             host.messages_focused = host.messages_open && messages_input(ctx);
@@ -6490,8 +6607,6 @@ impl ApplicationHandler<Event> for App {
     }
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
         match event {
-            #[cfg(any(target_os = "macos", target_os = "windows"))]
-            Event::Handoff => self.poll_handoff(),
             Event::Tmuxx => {
                 if !self.import_selector {
                     self.refresh_tmuxx(event_loop);
@@ -7083,8 +7198,6 @@ impl ApplicationHandler<Event> for App {
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
-        self.present_handoff_prompt();
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
         self.tick_import_selector();
         #[cfg(all(any(target_os = "macos", target_os = "windows"), debug_assertions))]
         self.tick_handoff_smoke(event_loop);
@@ -7253,10 +7366,6 @@ impl ApplicationHandler<Event> for App {
         event_loop.set_control_flow(next.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
     fn exiting(&mut self, _: &ActiveEventLoop) {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        if let Some(handoff) = &self.handoff {
-            let _ = handoff.registry.cancel_all();
-        }
         self.deck.stop();
         if self.startup_error.is_none() {
             self.save();
@@ -7969,6 +8078,50 @@ fn ui_theme(config: &Config) -> egui::ThemePreference {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quit_dump_policy_forces_option_only_when_enabled_and_preserves_normal_close() {
+        use config::SessionDumpOnQuit::{Checked, Disabled, Unchecked};
+        use winit::keyboard::ModifiersState;
+        assert!(quit_option_modifier(ModifiersState::ALT));
+        assert!(!quit_option_modifier(ModifiersState::CONTROL));
+        assert_eq!(
+            quit_option_modifier(ModifiersState::ALT | ModifiersState::CONTROL),
+            !cfg!(target_os = "windows")
+        );
+        for setting in [Disabled, Unchecked, Checked] {
+            assert!(Confirmation::for_quit(None, Action::Quit, setting, true, false).is_none());
+            let forced = Confirmation::for_quit(None, Action::Quit, setting, true, true);
+            let natural = Confirmation::for_quit(
+                Some(Confirmation::Close(Action::Quit)),
+                Action::Quit,
+                setting,
+                true,
+                false,
+            );
+            if setting == Disabled {
+                assert!(forced.is_none());
+                assert!(matches!(natural, Some(Confirmation::Close(Action::Quit))));
+            } else {
+                for modal in [forced, natural] {
+                    assert!(
+                        matches!(modal, Some(Confirmation::Quit { save_dump, error: None, .. }) if save_dump == (setting == Checked))
+                    );
+                }
+            }
+            assert!(matches!(
+                Confirmation::for_quit(
+                    Some(Confirmation::Close(Action::CloseTab)),
+                    Action::CloseTab,
+                    setting,
+                    false,
+                    true,
+                ),
+                Some(Confirmation::Close(Action::CloseTab))
+            ));
+            assert!(Confirmation::for_quit(None, Action::CloseTab, setting, false, true).is_none());
+        }
+    }
 
     #[test]
     fn tab_bleed_keeps_edge_flares_visible_and_clips_scrolled_tabs() {

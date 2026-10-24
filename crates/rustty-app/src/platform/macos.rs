@@ -97,6 +97,32 @@ pub struct Platform {
 }
 
 impl Platform {
+    pub fn option_pressed() -> bool {
+        NSEvent::modifierFlags_class().contains(NSEventModifierFlags::Option)
+    }
+
+    /// Used when quitting without a terminal window available to host the dialog.
+    pub fn confirm_quit_dump(checked: bool, error: Option<&str>) -> Result<Option<bool>, String> {
+        use objc2_app_kit::{NSAlert, NSAlertFirstButtonReturn};
+        let mtm = MainThreadMarker::new().ok_or("Quit confirmation requires the main thread")?;
+        let alert = NSAlert::new(mtm);
+        alert.setMessageText(&NSString::from_str("Save session state before quitting?"));
+        alert.setInformativeText(&NSString::from_str(
+            error.unwrap_or("Saved sessions can be imported when Rustty starts again."),
+        ));
+        alert.addButtonWithTitle(&NSString::from_str("Quit"));
+        alert.addButtonWithTitle(&NSString::from_str("Cancel"));
+        alert.setShowsSuppressionButton(true);
+        let checkbox = alert
+            .suppressionButton()
+            .ok_or("Could not create session checkbox")?;
+        checkbox.setTitle(&NSString::from_str(
+            "Save session state for a future Rustty instance",
+        ));
+        checkbox.setState(if checked { 1 } else { 0 });
+        Ok((alert.runModal() == NSAlertFirstButtonReturn).then(|| checkbox.state() == 1))
+    }
+
     pub fn double_click_interval() -> Duration {
         Duration::from_secs_f64(NSEvent::doubleClickInterval())
     }

@@ -1,7 +1,7 @@
 //! Shared desktop visual-state copying. The selector owns no terminal sessions.
 
 use super::*;
-use rustty_app::handoff::{Instance, Registry, Request, RequestStatus};
+use rustty_app::handoff::{SavedDump, Store};
 use serde::{Deserialize, Serialize};
 
 const SELECTOR_WINDOW: Id = 0;
@@ -13,20 +13,13 @@ mod picker;
 mod smoke;
 
 pub(super) struct State {
-    pub registry: Registry,
-    instances: Vec<Instance>,
-    requests: BTreeMap<String, Request>,
+    pub store: Store,
+    pub dumps: Vec<SavedDump>,
     selected: Option<String>,
-    incoming: VecDeque<Request>,
     error: Option<String>,
     next_refresh: Instant,
     #[cfg(debug_assertions)]
     smoke: Option<smoke::Smoke>,
-}
-
-pub(super) struct Prompt {
-    request: Request,
-    ignore_further: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -79,35 +72,6 @@ impl Dump {
     }
 }
 
-pub(super) fn import_requested(args: &mut Vec<String>) -> bool {
-    let command = args
-        .iter()
-        .position(|arg| arg == "-e" || arg == "--")
-        .unwrap_or(args.len());
-    args.extract_if(..command, |arg| arg == "--import-state")
-        .count()
-        != 0
-}
-
-#[cfg(target_os = "windows")]
-pub(super) fn launch_alt_pressed() -> bool {
-    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL, VK_MENU};
-    // Sample the current state before creating windows; the low bit reports
-    // presses since another caller's query and must not trigger import mode.
-    // AltGr is reported as Ctrl+Alt on Windows keyboard layouts that use it.
-    unsafe {
-        import_modifier(
-            GetAsyncKeyState(VK_MENU.0.into()),
-            GetAsyncKeyState(VK_CONTROL.0.into()),
-        )
-    }
-}
-
-#[cfg(any(target_os = "windows", test))]
-fn import_modifier(alt: i16, control: i16) -> bool {
-    alt < 0 && control >= 0
-}
-
 #[cfg(debug_assertions)]
 pub(super) fn configure_smoke(loaded: &mut LoadedConfig) {
     if let Some(directory) = smoke_directory() {
@@ -123,26 +87,21 @@ pub(super) fn smoke_directory() -> Option<PathBuf> {
 }
 
 impl State {
-    pub fn new(proxy: EventLoopProxy<Event>) -> std::io::Result<Self> {
+    pub fn new() -> std::io::Result<Self> {
         let label = format!("Rustty {}", env!("CARGO_PKG_VERSION"));
-        let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-            let _ = proxy.send_event(Event::Handoff);
-        });
         #[cfg(debug_assertions)]
-        let registry = if let Some(directory) = smoke_directory() {
-            Registry::register_isolated(directory.join("registry"), label, wake)?
+        let store = if let Some(directory) = smoke_directory() {
+            Store::open_isolated(directory.join("dumps"), label)?
         } else {
-            Registry::register(label, wake)?
+            Store::open(label)?
         };
         #[cfg(not(debug_assertions))]
-        let registry = Registry::register(label, wake)?;
-        let instances = registry.instances()?;
+        let store = Store::open(label)?;
+        let dumps = store.dumps()?;
         Ok(Self {
-            registry,
-            instances,
-            requests: BTreeMap::new(),
-            selected: None,
-            incoming: VecDeque::new(),
+            selected: dumps.first().map(|dump| dump.id.clone()),
+            store,
+            dumps,
             error: None,
             next_refresh: Instant::now(),
             #[cfg(debug_assertions)]
@@ -152,105 +111,34 @@ impl State {
 
     fn refresh(&mut self) {
         self.next_refresh = Instant::now() + Duration::from_secs(1);
-        match self.registry.instances() {
-            Ok(mut instances) => {
-                for request in self.requests.values() {
-                    if !instances
-                        .iter()
-                        .any(|instance| instance.id == request.source.id)
-                    {
-                        instances.push(request.source.clone());
-                    }
-                }
-                self.instances = instances;
-            }
+        match self.store.dumps() {
+            Ok(dumps) => self.dumps = dumps,
             Err(error) => self.error = Some(error.to_string()),
         }
     }
 
-    pub(super) fn requeue(&mut self, prompt: Prompt) {
-        self.incoming.push_front(prompt.request);
-    }
-
     fn rows(&self) -> Vec<picker::Row> {
-        let rows: Vec<_> = self
-            .instances
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        self.dumps
             .iter()
-            .map(|instance| {
-                let status = if let Some(request) = self.requests.get(&instance.id) {
-                    match self.registry.status(request) {
-                        Ok(RequestStatus::Waiting) => picker::Status::Waiting,
-                        Ok(RequestStatus::Ready { path, bytes }) => picker::Status::Ready {
-                            file: path
-                                .file_name()
-                                .unwrap_or_default()
-                                .to_string_lossy()
-                                .into(),
-                            bytes,
-                        },
-                        Ok(RequestStatus::Declined) => picker::Status::Declined,
-                        Ok(RequestStatus::Ignored) => picker::Status::Ignored,
-                        Ok(RequestStatus::Unavailable) | Err(_) => picker::Status::Unavailable,
-                    }
-                } else if instance.ignoring_requests {
-                    picker::Status::Ignored
-                } else {
-                    picker::Status::Available
+            .map(|dump| {
+                let seconds = now.saturating_sub(dump.created_at.into()) / 1000;
+                let age = match seconds {
+                    0..60 => format!("{seconds}s"),
+                    60..3600 => format!("{}m", seconds / 60),
+                    3600..86400 => format!("{}h", seconds / 3600),
+                    _ => format!("{}d", seconds / 86400),
                 };
                 picker::Row {
-                    id: instance.id.clone(),
-                    label: format!("{} · PID {}", instance.label, instance.pid),
-                    detail: instance.executable.display().to_string(),
-                    status,
+                    id: dump.id.clone(),
+                    label: format!("{} · saved {age} ago", dump.label),
+                    detail: format!("{} KiB", dump.bytes.div_ceil(1024)),
                 }
             })
-            .collect();
-        #[cfg(target_os = "macos")]
-        let rows = legacy_macos_rows(rows, &self.instances);
-        rows
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn legacy_macos_rows(mut rows: Vec<picker::Row>, instances: &[Instance]) -> Vec<picker::Row> {
-    // Older bundles can be shown, but only advertised peers may receive a notification.
-    use objc2_app_kit::NSRunningApplication;
-    use objc2_foundation::ns_string;
-    for app in NSRunningApplication::runningApplicationsWithBundleIdentifier(ns_string!(
-        "app.rustty.Rustty"
-    )) {
-        let pid = app.processIdentifier();
-        if pid <= 0
-            || pid as u32 == std::process::id()
-            || instances.iter().any(|instance| instance.pid == pid as u32)
-            || !same_user(pid)
-        {
-            continue;
-        }
-        rows.push(picker::Row {
-            id: format!("unsupported-{pid}"),
-            label: format!("Rustty · PID {pid}"),
-            detail: "This version does not support exporting terminal state.".into(),
-            status: picker::Status::Unavailable,
-        });
-    }
-    rows
-}
-
-#[cfg(target_os = "macos")]
-fn same_user(pid: libc::pid_t) -> bool {
-    let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
-    let size = std::mem::size_of_val(&info) as i32;
-    // A PID from AppKit is only displayed when libproc confirms its owner.
-    unsafe {
-        libc::proc_pidinfo(
-            pid,
-            libc::PROC_PIDTBSDINFO,
-            0,
-            (&mut info as *mut libc::proc_bsdinfo).cast(),
-            size,
-        ) == size
-            && info.pbi_uid == libc::geteuid()
+            .collect()
     }
 }
 
@@ -317,133 +205,37 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn poll_handoff(&mut self) {
-        if let Some(state) = &mut self.handoff {
-            state.refresh();
-            match state.registry.incoming() {
-                Ok(requests) => state.incoming.extend(requests),
-                Err(error) => self
-                    .errors
-                    .push(format!("Could not read state requests: {error}")),
-            }
-            for host in self.windows.values_mut() {
-                if host.handoff_prompt.as_ref().is_some_and(|prompt| {
-                    !state.registry.is_pending(&prompt.request).unwrap_or(false)
-                }) {
-                    host.handoff_prompt = None;
-                }
-                host.repaint();
-            }
-        }
-        self.present_handoff_prompt();
-    }
-
-    pub(super) fn present_handoff_prompt(&mut self) {
-        if self.import_selector
-            || self
-                .windows
-                .values()
-                .any(|host| host.handoff_prompt.is_some())
-        {
-            return;
-        }
-        let Some(state) = &mut self.handoff else {
-            return;
-        };
-        while state
-            .incoming
-            .front()
-            .is_some_and(|request| !state.registry.is_pending(request).unwrap_or(false))
-        {
-            state.incoming.pop_front();
-        }
-        if state.incoming.is_empty() {
-            return;
-        }
-        if self.workspace.windows.is_empty() {
-            while let Some(request) = state.incoming.pop_front() {
-                if let Err(error) = state.registry.respond(&request, None) {
-                    self.errors
-                        .push(format!("Could not decline an empty export: {error}"));
-                }
-            }
-            return;
-        }
-        let target = self
-            .windows
-            .iter()
-            .find(|(_, host)| !host.modal_input() && Some(host.id) == self.active)
-            .or_else(|| self.windows.iter().find(|(_, host)| !host.modal_input()))
-            .map(|(id, _)| *id);
-        if let Some(key) = target {
-            let request = self.handoff.as_mut().unwrap().incoming.pop_front().unwrap();
-            let host = self.windows.get_mut(&key).unwrap();
-            host.handoff_prompt = Some(Prompt {
-                request,
-                ignore_further: false,
-            });
-            host.visible = true;
-            if !self.background_smoke {
-                host.window.set_visible(true);
-                host.window.set_minimized(false);
-                host.window.focus_window();
-            }
-            host.repaint();
-        }
-    }
-
-    pub(super) fn show_handoff_prompt(&mut self, host: &mut Host, ctx: &egui::Context) {
-        let Some(prompt) = &mut host.handoff_prompt else {
-            return;
-        };
-        let requester = format!(
-            "{} (PID {})",
-            prompt.request.requester.label, prompt.request.requester.pid
-        );
-        let Some(approval) = picker::show_approval(ctx, &requester, &mut prompt.ignore_further)
-        else {
-            return;
-        };
-        let request = host.handoff_prompt.take().unwrap().request;
-        let result = if approval.export {
-            // shortcut: export runs on the UI thread; use a worker if large histories stall interaction.
-            self.capture_handoff().and_then(|bytes| {
-                self.handoff
-                    .as_ref()
-                    .ok_or("State export is unavailable")?
-                    .registry
-                    .respond(&request, Some(&bytes))?;
-                Ok(())
-            })
-        } else {
-            self.handoff
-                .as_ref()
-                .unwrap()
-                .registry
-                .respond(&request, None)
-                .map_err(Into::into)
-        };
-        if let Err(error) = result {
+    pub(super) fn cancel_import_selector(&mut self, event_loop: &ActiveEventLoop) {
+        self.import_selector = false;
+        if let Err(error) = self.start_sessions() {
             self.errors
-                .push(format!("Could not export terminal state: {error}"));
-            let _ = self
-                .handoff
-                .as_ref()
-                .unwrap()
-                .registry
-                .respond(&request, None);
+                .push(format!("Could not start sessions: {error}"));
         }
-        if approval.ignore_further
-            && let Err(error) = self
-                .handoff
-                .as_mut()
-                .unwrap()
-                .registry
-                .ignore_requests(true)
+        if self.config().window_save_state != config::WindowSaveState::Never
+            && let Some(state) = &self.handoff
+            && let Err(error) = state.store.claim_workspace(&self.state_path)
         {
-            self.errors.push(error.to_string());
+            self.errors
+                .push(format!("Could not claim workspace saving: {error}"));
         }
-        host.repaint();
+        let config = self.config().clone();
+        if let Some(platform) = &mut self.platform
+            && let Err(error) = platform.update_config(&config)
+        {
+            self.errors.push(error);
+        }
+        self.resumed(event_loop);
+    }
+
+    pub(super) fn dump_session_state(&self) -> Result<SavedDump> {
+        // shortcut: capture/compression runs on the UI thread; use a worker if large histories stall quitting.
+        let bytes = self.capture_handoff()?;
+        Ok(self
+            .handoff
+            .as_ref()
+            .ok_or("Session dumping is unavailable")?
+            .store
+            .save_dump(&bytes)?)
     }
 
     fn capture_handoff(&self) -> Result<Vec<u8>> {
@@ -486,15 +278,16 @@ impl App {
 
     fn import_handoff(&mut self, event_loop: &ActiveEventLoop, source: &str) -> Result<()> {
         if !self.import_selector {
-            return Err("Open the instance selector before importing terminal state".into());
+            return Err("Open the saved-session selector before importing terminal state".into());
         }
         let state = self.handoff.as_ref().ok_or("State import is unavailable")?;
-        let request = state
-            .requests
-            .get(source)
-            .ok_or("No export was requested from this instance")?
+        let saved = state
+            .dumps
+            .iter()
+            .find(|dump| dump.id == source)
+            .ok_or("The selected session dump is no longer available")?
             .clone();
-        let bytes = state.registry.read_dump(&request)?;
+        let bytes = state.store.read_dump(&saved)?;
         let mut dump = Dump::decode(&bytes)?;
         // The source server's input and dismissal rules do not apply to fresh local shells.
         for window in &mut dump.workspace.windows {
@@ -508,7 +301,7 @@ impl App {
                 }
             }
         }
-        self.workspace = dump.workspace;
+        let previous_workspace = std::mem::replace(&mut self.workspace, dump.workspace);
         let window_ids: Vec<_> = self
             .workspace
             .windows
@@ -550,7 +343,7 @@ impl App {
                 self.handoff
                     .as_ref()
                     .unwrap()
-                    .registry
+                    .store
                     .claim_workspace(&self.state_path)?;
             }
             Ok::<_, Box<dyn std::error::Error>>(())
@@ -577,22 +370,21 @@ impl App {
             }
             self.panes.clear();
             self.failed_panes.clear();
-            self.workspace = Workspace::default();
+            self.workspace = previous_workspace;
             self.active = None;
             self.initial_command_pane = None;
             return Err(error);
         }
         self.import_selector = false;
         self.active = dump.active_window;
-        if let Some(state) = &self.handoff
-            && let Err(error) = state.registry.cancel_all()
-        {
-            self.errors.push(format!(
-                "Imported state, but could not remove temporary files: {error}"
-            ));
-        }
+        self.startup_tmuxx = None;
         if let Some(state) = &mut self.handoff {
-            state.requests.clear();
+            if let Err(error) = state.store.remove_dump(&saved) {
+                self.errors.push(format!(
+                    "Imported state, but could not remove its saved dump: {error}"
+                ));
+            }
+            state.refresh();
             state.selected = None;
         }
         self.reconcile(event_loop);
@@ -631,7 +423,7 @@ impl App {
             host.repaint();
         }
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => self.cancel_import_selector(event_loop),
             WindowEvent::RedrawRequested => {
                 if let Err(error) = self.draw_import_selector(event_loop, &mut host)
                     && let Some(state) = &mut self.handoff
@@ -752,31 +544,11 @@ impl App {
         host.frames += 1;
         host.last_frame_started = Some(Instant::now());
         match command {
-            Some(picker::Command::Cancel) => {
-                if let Some(state) = &self.handoff {
-                    state.registry.cancel_all()?;
-                }
-                event_loop.exit();
-            }
+            Some(picker::Command::Cancel) => self.cancel_import_selector(event_loop),
             Some(picker::Command::Refresh) => {
                 if let Some(state) = &mut self.handoff {
                     state.refresh();
                 }
-                host.repaint();
-            }
-            Some(picker::Command::Ask(id)) => {
-                let state = self.handoff.as_mut().ok_or("State import is unavailable")?;
-                let instance = state
-                    .instances
-                    .iter()
-                    .find(|instance| instance.id == id)
-                    .ok_or("The selected instance is no longer available")?;
-                if let Some(request) = state.requests.remove(&id) {
-                    state.registry.cancel(&request)?;
-                }
-                let request = state.registry.ask(instance)?;
-                state.requests.insert(id, request);
-                state.error = None;
                 host.repaint();
             }
             Some(picker::Command::Import(id)) => self.import_handoff(event_loop, &id)?,
@@ -789,45 +561,6 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn import_flag_is_removed_without_changing_child_arguments() {
-        for separator in ["-e", "--"] {
-            let mut args: Vec<String> = [
-                "--import-state",
-                "--config-default-files=false",
-                "--import-state",
-                separator,
-                "echo",
-                "--import-state",
-            ]
-            .into_iter()
-            .map(str::to_owned)
-            .collect();
-            assert!(import_requested(&mut args));
-            assert_eq!(
-                args,
-                [
-                    "--config-default-files=false",
-                    separator,
-                    "echo",
-                    "--import-state"
-                ]
-            );
-            assert!(!import_requested(&mut args));
-        }
-        assert!(!import_requested(&mut Vec::new()));
-    }
-
-    #[test]
-    fn import_modifier_requires_held_alt_without_control() {
-        assert!(import_modifier(i16::MIN, 0));
-        assert!(import_modifier(i16::MIN | 1, 1));
-        assert!(!import_modifier(0, 0));
-        assert!(!import_modifier(1, 0));
-        assert!(!import_modifier(i16::MIN, i16::MIN));
-        assert!(!import_modifier(0, i16::MIN));
-    }
 
     fn dump() -> Dump {
         let mut workspace = Workspace::default();
