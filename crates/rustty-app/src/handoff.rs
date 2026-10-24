@@ -1,13 +1,11 @@
-//! Opt-in visual-state copying between instances, using native notifications and private files.
+//! Persistent session dumps in the current user's private temporary directory.
 
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
     fs,
     io::{self, Read, Write},
     path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 #[cfg(target_os = "macos")]
@@ -17,130 +15,57 @@ mod platform;
 #[path = "handoff/windows.rs"]
 mod platform;
 use platform::{
-    Watcher, check_private_directory, open_private_file, private_directory, process_identity,
-    protect_file, unique_id, user_temporary_directory,
+    check_private_directory, open_private_file, private_directory, protect_file, unique_id,
+    user_temporary_directory,
 };
 
-const PROTOCOL: u32 = 1;
 const MAX_METADATA: u64 = 64 * 1024;
 pub const MAX_DUMP_BYTES: u64 = 512 * 1024 * 1024;
 const DUMP_EXTENSION: &str = "rustty-state.lz4";
+const METADATA_EXTENSION: &str = "session.json";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Instance {
+pub struct SavedDump {
     pub id: String,
-    pub pid: u32,
     pub label: String,
-    pub executable: PathBuf,
-    pub started_at: u64,
-    started_micros: u64,
-    protocol: u32,
-    #[serde(default)]
-    pub ignoring_requests: bool,
+    /// Creation time in milliseconds since the Unix epoch.
+    pub created_at: u64,
+    /// Compressed size on disk.
+    pub bytes: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Request {
-    pub id: String,
-    pub requester: Instance,
-    pub source: Instance,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum RequestStatus {
-    Waiting,
-    Ready { path: PathBuf, bytes: u64 },
-    Declined,
-    Ignored,
-    Unavailable,
-}
-
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum Reply {
-    #[default]
-    Waiting,
-    Declined,
-    Ignored,
-}
-
-#[derive(Serialize, Deserialize)]
-struct RequestFile {
-    #[serde(flatten)]
-    request: Request,
-    #[serde(default)]
-    reply: Reply,
-}
-
-pub struct Registry {
+pub struct Store {
     directory: PathBuf,
-    instance: Instance,
-    prompted: HashSet<String>,
-    _watcher: Option<Watcher>,
+    instance_id: String,
+    label: String,
 }
 
-impl Registry {
-    pub fn register(label: String, wake: Arc<dyn Fn() + Send + Sync>) -> io::Result<Self> {
-        let directory = user_temporary_directory()?.join("rustty-handoff");
-        Self::register_with_watcher(directory, label, wake)
+impl Store {
+    pub fn open(label: String) -> io::Result<Self> {
+        Self::open_in(
+            user_temporary_directory()?.join("rustty-session-dumps"),
+            label,
+        )
     }
 
     #[cfg(debug_assertions)]
-    pub fn register_isolated(
-        directory: PathBuf,
-        label: String,
-        wake: Arc<dyn Fn() + Send + Sync>,
-    ) -> io::Result<Self> {
-        Self::register_with_watcher(directory, label, wake)
+    pub fn open_isolated(directory: PathBuf, label: String) -> io::Result<Self> {
+        Self::open_in(directory, label)
     }
 
-    fn register_with_watcher(
-        directory: PathBuf,
-        label: String,
-        wake: Arc<dyn Fn() + Send + Sync>,
-    ) -> io::Result<Self> {
+    fn open_in(directory: PathBuf, label: String) -> io::Result<Self> {
+        if label.len() > 4096 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Session label is too long",
+            ));
+        }
         private_directory(&directory)?;
-        // Publish support only after a native notification listener is ready.
-        let watcher = Watcher::new(wake)?;
-        let registry = Self::register_in(directory, label, Some(watcher))?;
-        registry.clean_stale()?;
-        Ok(registry)
-    }
-
-    fn register_in(
-        directory: PathBuf,
-        label: String,
-        watcher: Option<Watcher>,
-    ) -> io::Result<Self> {
-        private_directory(&directory)?;
-        let pid = std::process::id();
-        let (started_at, started_micros) = process_identity(pid)?;
-        let instance = Instance {
-            id: format!("{pid}-{started_at}-{started_micros}-{}", unique_id()),
-            pid,
-            label,
-            executable: std::env::current_exe()?,
-            started_at,
-            started_micros,
-            protocol: PROTOCOL,
-            ignoring_requests: false,
-        };
-        let registry = Self {
+        Ok(Self {
             directory,
-            instance,
-            prompted: HashSet::new(),
-            _watcher: watcher,
-        };
-        private_directory(&registry.request_directory(&registry.instance))?;
-        write_json(
-            &registry.instance_path(&registry.instance),
-            &registry.instance,
-        )?;
-        Ok(registry)
-    }
-
-    pub fn instance(&self) -> &Instance {
-        &self.instance
+            instance_id: unique_id(),
+            label,
+        })
     }
 
     /// Normal launches and successful imports explicitly select the canonical saver.
@@ -155,7 +80,7 @@ impl Registry {
         )
         .map_err(io::Error::other)?;
         output.with_mut(|file| protect_file(file))?;
-        serde_json::to_writer(&mut output, &self.instance.id).map_err(io::Error::other)?;
+        serde_json::to_writer(&mut output, &self.instance_id).map_err(io::Error::other)?;
         output.commit().map_err(io::Error::other)?;
         Ok(())
     }
@@ -174,7 +99,7 @@ impl Registry {
         )
         .map_err(io::Error::other)?;
         let owns_workspace = match read_json::<String>(&owner) {
-            Ok(id) => id == self.instance.id,
+            Ok(id) => id == self.instance_id,
             Err(error) if error.kind() == io::ErrorKind::NotFound => false,
             Err(error) => return Err(error),
         };
@@ -182,439 +107,135 @@ impl Registry {
             workspace.save(canonical)
         } else {
             workspace
-                .save(&canonical.with_file_name(format!("workspace-{}.json", self.instance.id)))
+                .save(&canonical.with_file_name(format!("workspace-{}.json", self.instance_id)))
         }
     }
 
-    pub fn instances(&self) -> io::Result<Vec<Instance>> {
-        let mut instances = Vec::new();
+    /// Only complete, private dumps are offered, with the newest first.
+    pub fn dumps(&self) -> io::Result<Vec<SavedDump>> {
+        check_private_directory(&self.directory)?;
+        let mut dumps = Vec::new();
         for entry in fs::read_dir(&self.directory)? {
             let path = entry?.path();
             if path
-                .extension()
-                .is_some_and(|extension| extension == "instance")
-                && let Ok(instance) = read_json::<Instance>(&path)
-                && instance.id != self.instance.id
-                && path == self.instance_path(&instance)
-                && self.is_live(&instance)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.ends_with(".session.json"))
+                && let Ok(dump) = read_json::<SavedDump>(&path)
+                && valid_dump(&dump)
+                && path == self.metadata_path(&dump)
+                && self.open_dump(&dump).is_ok()
             {
-                instances.push(instance);
+                dumps.push(dump);
             }
         }
-        instances.sort_by_key(|instance| (instance.started_at, instance.pid));
-        Ok(instances)
+        dumps.sort_by(|a, b| {
+            b.created_at
+                .cmp(&a.created_at)
+                .then_with(|| b.id.cmp(&a.id))
+        });
+        Ok(dumps)
     }
 
-    pub fn ask(&self, source: &Instance) -> io::Result<Request> {
-        if !self.is_live(source) || source.id == self.instance.id {
-            return Err(io::Error::other(
-                "This Rustty instance is no longer available",
-            ));
-        }
-        if source.ignoring_requests {
-            return Err(io::Error::other(
-                "This Rustty instance is ignoring requests",
-            ));
-        }
-        let request = Request {
-            id: unique_id(),
-            requester: self.instance.clone(),
-            source: source.clone(),
-        };
-        write_json(
-            &self.request_path(&request),
-            &RequestFile {
-                request: request.clone(),
-                reply: Reply::Waiting,
-            },
-        )?;
-        if let Err(error) = self.notify(source) {
-            let _ = self.cancel(&request);
-            return Err(error);
-        }
-        Ok(request)
-    }
-
-    /// Returns each pending confirmation once; cancelled or dead requesters are skipped.
-    pub fn incoming(&mut self) -> io::Result<Vec<Request>> {
-        let mut incoming = Vec::new();
-        for requester in self.instances()? {
-            let directory = self.request_directory(&requester);
-            if check_private_directory(&directory).is_err() {
-                continue;
-            }
-            for entry in fs::read_dir(directory)? {
-                let path = entry?.path();
-                if path
-                    .extension()
-                    .is_none_or(|extension| extension != "request")
-                {
-                    continue;
-                }
-                let Ok(file) = read_json::<RequestFile>(&path) else {
-                    continue;
-                };
-                let request = file.request;
-                if !valid_request(&request)
-                    || request.source.id != self.instance.id
-                    || request.requester.id != requester.id
-                    || path != self.request_path(&request)
-                    || !matches!(file.reply, Reply::Waiting)
-                    || self.dump_path(&request).exists()
-                {
-                    continue;
-                }
-                if self.instance.ignoring_requests {
-                    self.reply(&request, Reply::Ignored)?;
-                } else if self
-                    .prompted
-                    .insert(format!("{}/{}", requester.id, request.id))
-                {
-                    incoming.push(request);
-                }
-            }
-        }
-        Ok(incoming)
-    }
-
-    pub fn ignore_requests(&mut self, ignore: bool) -> io::Result<()> {
-        self.instance.ignoring_requests = ignore;
-        write_json(&self.instance_path(&self.instance), &self.instance)?;
-        if ignore {
-            self.incoming()?;
-        }
-        Ok(())
-    }
-
-    /// Called only after the source user approves; None records a declined request.
-    pub fn respond(&self, request: &Request, payload: Option<&[u8]>) -> io::Result<()> {
-        self.check_source(request)?;
-        let Some(payload) = payload else {
-            return self.reply(request, Reply::Declined);
-        };
+    pub fn save_dump(&self, payload: &[u8]) -> io::Result<SavedDump> {
         if payload.len() as u64 > MAX_DUMP_BYTES {
             return Err(io::Error::other(
-                "Visual state exceeds the 512 MiB export limit",
+                "Session state exceeds the 512 MiB export limit",
             ));
         }
-        if self.pending_file(request)?.is_none() {
-            return Ok(());
-        }
-        // Compress outside the short lifecycle lock so cancellation remains responsive.
-        let mut output = lock_file(&self.dump_path(request))?;
+        let mut dump = SavedDump {
+            id: unique_id(),
+            label: self.label.clone(),
+            created_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(io::Error::other)?
+                .as_millis()
+                .try_into()
+                .map_err(io::Error::other)?,
+            bytes: 0,
+        };
+        let path = self.dump_path(&dump);
+        let mut output = lock_file(&path)?;
         {
             let mut encoder = lz4_flex::frame::FrameEncoder::new(&mut output);
             encoder.write_all(payload)?;
             encoder.finish().map_err(io::Error::other)?;
         }
         output.with_mut(|file| file.sync_all())?;
-        if fs::metadata(output.lock_path())?.len() > MAX_DUMP_BYTES {
+        dump.bytes = fs::metadata(output.lock_path())?.len();
+        if dump.bytes > MAX_DUMP_BYTES {
             return Err(io::Error::other(
-                "Compressed visual state exceeds the export limit",
+                "Compressed session state exceeds the export limit",
             ));
-        }
-        let _lifecycle = self.lifecycle_lock(request)?;
-        if self.pending_file(request)?.is_none() {
-            return Ok(());
         }
         output.commit().map_err(io::Error::other)?;
-        let _ = self.notify(&request.requester);
-        Ok(())
-    }
-
-    pub fn is_pending(&self, request: &Request) -> io::Result<bool> {
-        self.check_source(request)?;
-        Ok(self.pending_file(request)?.is_some() && !self.dump_path(request).exists())
-    }
-
-    pub fn status(&self, request: &Request) -> io::Result<RequestStatus> {
-        self.check_requester(request)?;
-        let file = match read_json::<RequestFile>(&self.request_path(request)) {
-            Ok(file) if file.request == *request => file,
-            Ok(_) => return Err(io::Error::other("Visual-state request identity changed")),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                return Ok(RequestStatus::Unavailable);
-            }
-            Err(error) => return Err(error),
-        };
-        let path = self.dump_path(request);
-        match open_private_file(&path, MAX_DUMP_BYTES) {
-            Ok(file) => {
-                return Ok(RequestStatus::Ready {
-                    path,
-                    bytes: file.metadata()?.len(),
-                });
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error),
+        // Publish metadata last so interrupted writes never appear as importable sessions.
+        if let Err(error) = write_json(&self.metadata_path(&dump), &dump) {
+            let _ = remove_if_present(&path);
+            return Err(error);
         }
-        Ok(match file.reply {
-            Reply::Declined => RequestStatus::Declined,
-            Reply::Ignored => RequestStatus::Ignored,
-            Reply::Waiting if self.is_live(&request.source) => RequestStatus::Waiting,
-            Reply::Waiting => RequestStatus::Unavailable,
-        })
+        Ok(dump)
     }
 
-    /// Leaves files intact until the caller has successfully imported the decoded state.
-    pub fn read_dump(&self, request: &Request) -> io::Result<Vec<u8>> {
-        self.check_requester(request)?;
-        let _lifecycle = self.lifecycle_lock(request)?;
-        let file = read_json::<RequestFile>(&self.request_path(request))?;
-        if file.request != *request {
-            return Err(io::Error::other("Visual-state request identity changed"));
+    /// Reading never consumes the saved state, including when decoding fails.
+    pub fn read_dump(&self, dump: &SavedDump) -> io::Result<Vec<u8>> {
+        self.check_dump(dump)?;
+        decode_dump(self.open_dump(dump)?.take(MAX_DUMP_BYTES + 1))
+    }
+
+    pub fn remove_dump(&self, dump: &SavedDump) -> io::Result<()> {
+        self.check_dump(dump)?;
+        remove_if_present(&self.metadata_path(dump))?;
+        remove_if_present(&self.dump_path(dump))
+    }
+
+    fn check_dump(&self, dump: &SavedDump) -> io::Result<()> {
+        if !valid_dump(dump) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid saved session",
+            ));
         }
-        let input = open_private_file(&self.dump_path(request), MAX_DUMP_BYTES)?;
-        decode_dump(input)
-    }
-
-    pub fn cancel(&self, request: &Request) -> io::Result<()> {
-        self.check_requester(request)?;
-        self.cancel_id(&request.id)?;
-        let _ = self.notify(&request.source);
-        Ok(())
-    }
-
-    fn cancel_id(&self, id: &str) -> io::Result<()> {
-        let directory = self.request_directory(&self.instance);
-        let _lifecycle = match lock_lifecycle(&directory, id) {
-            Ok(lock) => lock,
-            Err(error) => {
-                // A crashed source can leave a gix marker behind. Only recover
-                // it when the recorded process is gone, including PID reuse.
-                let source_exited = read_json::<RequestFile>(
-                    &directory.join(format!("{id}.request")),
-                )
-                .is_ok_and(|file| {
-                    let request = file.request;
-                    valid_request(&request)
-                        && request.id == id
-                        && request.requester.id == self.instance.id
-                        && match process_identity(request.source.pid) {
-                            Ok(identity) => {
-                                identity
-                                    != (request.source.started_at, request.source.started_micros)
-                            }
-                            Err(error) => error.kind() == io::ErrorKind::NotFound,
-                        }
-                });
-                if !source_exited {
-                    return Err(error);
-                }
-                remove_if_present(&directory.join(format!("{id}.lifecycle.lock")))?;
-                lock_lifecycle(&directory, id)?
-            }
-        };
-        // A responder either commits before this lock (and we remove its dump),
-        // or sees the missing request afterwards and abandons its staged export.
-        // Remove open staging files directly: Windows cannot rename their parent.
-        for suffix in [
-            "request",
-            DUMP_EXTENSION,
-            "request.lock",
-            "rustty-state.lz4.lock",
-        ] {
-            remove_if_present(&directory.join(format!("{id}.{suffix}")))?;
-        }
-        Ok(())
-    }
-
-    pub fn cancel_all(&self) -> io::Result<()> {
-        let directory = self.request_directory(&self.instance);
-        let entries = match fs::read_dir(&directory) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error),
-        };
-        let mut ids = HashSet::new();
-        let mut sources = Vec::new();
-        for entry in entries {
-            let path = entry?.path();
-            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-                continue;
-            };
-            let Some(id) = [
-                ".request",
-                ".rustty-state.lz4",
-                ".request.lock",
-                ".rustty-state.lz4.lock",
-            ]
-            .into_iter()
-            .find_map(|suffix| name.strip_suffix(suffix))
-            .filter(|id| valid_id(id)) else {
-                continue;
-            };
-            ids.insert(id.to_owned());
-            if path
-                .extension()
-                .is_some_and(|extension| extension == "request")
-                && let Ok(file) = read_json::<RequestFile>(&path)
-                && valid_request(&file.request)
-                && file.request.requester.id == self.instance.id
-            {
-                sources.push(file.request.source);
-            }
-        }
-        for id in ids {
-            self.cancel_id(&id)?;
-        }
-        let mut notified = HashSet::new();
-        for source in sources {
-            if notified.insert(source.id.clone()) {
-                let _ = self.notify(&source);
-            }
-        }
-        Ok(())
-    }
-
-    pub fn dump_path(&self, request: &Request) -> PathBuf {
-        self.request_directory(&request.requester)
-            .join(format!("{}.{}", request.id, DUMP_EXTENSION))
-    }
-
-    fn request_path(&self, request: &Request) -> PathBuf {
-        self.request_directory(&request.requester)
-            .join(format!("{}.request", request.id))
-    }
-
-    fn request_directory(&self, instance: &Instance) -> PathBuf {
-        self.directory.join(format!("{}.requests", instance.id))
-    }
-
-    fn instance_path(&self, instance: &Instance) -> PathBuf {
-        self.directory.join(format!("{}.instance", instance.id))
-    }
-
-    fn lifecycle_lock(&self, request: &Request) -> io::Result<gix_lock::Marker> {
-        lock_lifecycle(&self.request_directory(&request.requester), &request.id)
-    }
-
-    fn check_source(&self, request: &Request) -> io::Result<()> {
-        if !valid_request(request) || request.source.id != self.instance.id {
-            return Err(io::Error::other(
-                "This visual-state request belongs to another source",
+        if read_json::<SavedDump>(&self.metadata_path(dump))? != *dump {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Saved session identity changed",
             ));
         }
         Ok(())
     }
 
-    fn check_requester(&self, request: &Request) -> io::Result<()> {
-        if !valid_request(request) || request.requester.id != self.instance.id {
-            return Err(io::Error::other(
-                "This visual-state request belongs to another requester",
+    fn open_dump(&self, dump: &SavedDump) -> io::Result<fs::File> {
+        let file = open_private_file(&self.dump_path(dump), MAX_DUMP_BYTES)?;
+        if file.metadata()?.len() != dump.bytes {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Saved session size changed",
             ));
         }
-        Ok(())
+        Ok(file)
     }
 
-    fn pending_file(&self, request: &Request) -> io::Result<Option<RequestFile>> {
-        if !self.is_live(&request.requester) {
-            return Ok(None);
-        }
-        match read_json::<RequestFile>(&self.request_path(request)) {
-            Ok(file) if file.request == *request && matches!(file.reply, Reply::Waiting) => {
-                Ok(Some(file))
-            }
-            Ok(_) => Ok(None),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(error),
-        }
+    fn dump_path(&self, dump: &SavedDump) -> PathBuf {
+        self.directory
+            .join(format!("{}.{}", dump.id, DUMP_EXTENSION))
     }
 
-    fn reply(&self, request: &Request, reply: Reply) -> io::Result<()> {
-        self.check_source(request)?;
-        if let Some(mut file) = self.pending_file(request)? {
-            file.reply = reply;
-            let mut output = lock_file(&self.request_path(request))?;
-            serde_json::to_writer(&mut output, &file).map_err(io::Error::other)?;
-            let _lifecycle = self.lifecycle_lock(request)?;
-            if self.pending_file(request)?.is_none() {
-                return Ok(());
-            }
-            output.commit().map_err(io::Error::other)?;
-            let _ = self.notify(&request.requester);
-        }
-        Ok(())
-    }
-
-    fn is_live(&self, instance: &Instance) -> bool {
-        valid_instance(instance)
-            && process_identity(instance.pid)
-                .is_ok_and(|identity| identity == (instance.started_at, instance.started_micros))
-            && read_json::<Instance>(&self.instance_path(instance)).is_ok_and(|current| {
-                current.id == instance.id
-                    && current.pid == instance.pid
-                    && current.protocol == PROTOCOL
-                    && current.started_at == instance.started_at
-                    && current.started_micros == instance.started_micros
-            })
-    }
-
-    fn notify(&self, instance: &Instance) -> io::Result<()> {
-        if !self.is_live(instance) {
-            return Err(io::Error::other(
-                "This Rustty instance is no longer available",
-            ));
-        }
-        #[cfg(test)]
-        if self._watcher.is_none() {
-            return Ok(());
-        }
-        platform::notify(instance.pid)
-    }
-
-    fn clean_stale(&self) -> io::Result<()> {
-        for entry in fs::read_dir(&self.directory)? {
-            let path = entry?.path();
-            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-                continue;
-            };
-            let Some(id) = [".instance", ".instance.lock", ".requests", ".cancelled"]
-                .into_iter()
-                .find_map(|suffix| name.strip_suffix(suffix))
-            else {
-                continue;
-            };
-            if !valid_id(id) {
-                continue;
-            }
-            let mut components = id.splitn(4, '-');
-            let identity = components.next().and_then(|pid| pid.parse().ok()).zip(
-                components
-                    .next()
-                    .and_then(|seconds| seconds.parse().ok())
-                    .zip(components.next().and_then(|micros| micros.parse().ok())),
-            );
-            let Some((pid, identity)) = identity else {
-                continue;
-            };
-            if process_identity(pid).is_ok_and(|current| current == identity) {
-                continue;
-            }
-            if check_private_directory(&path).is_ok() {
-                fs::remove_dir_all(path)?;
-            } else {
-                remove_if_present(&path)?;
-            }
-        }
-        Ok(())
+    fn metadata_path(&self, dump: &SavedDump) -> PathBuf {
+        self.directory
+            .join(format!("{}.{}", dump.id, METADATA_EXTENSION))
     }
 }
 
-impl Drop for Registry {
-    fn drop(&mut self) {
-        let _ = self.cancel_all();
-        let _ = fs::remove_dir(self.request_directory(&self.instance));
-        let _ = remove_if_present(&self.instance_path(&self.instance));
-    }
-}
-
-fn valid_id(id: &str) -> bool {
-    !id.is_empty()
-        && id.len() <= 128
-        && id
+fn valid_dump(dump: &SavedDump) -> bool {
+    !dump.id.is_empty()
+        && dump.id.len() <= 128
+        && dump
+            .id
             .bytes()
             .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
+        && dump.label.len() <= 4096
+        && dump.bytes <= MAX_DUMP_BYTES
 }
 
 fn workspace_owner_path(canonical: &Path) -> io::Result<PathBuf> {
@@ -628,18 +249,6 @@ fn workspace_owner_path(canonical: &Path) -> io::Result<PathBuf> {
     let directory = parent.join(".workspace-owner");
     private_directory(&directory)?;
     Ok(directory.join(name))
-}
-
-fn valid_instance(instance: &Instance) -> bool {
-    valid_id(&instance.id)
-        && instance.pid > 1
-        && instance.pid <= i32::MAX as u32
-        && instance.protocol == PROTOCOL
-        && instance.label.len() <= 4096
-}
-
-fn valid_request(request: &Request) -> bool {
-    valid_id(&request.id) && valid_instance(&request.source) && valid_instance(&request.requester)
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> io::Result<T> {
@@ -666,19 +275,9 @@ fn lock_file(path: &Path) -> io::Result<gix_lock::File> {
 fn write_json(path: &Path, value: &impl Serialize) -> io::Result<()> {
     let mut output = lock_file(path)?;
     serde_json::to_writer(&mut output, value).map_err(io::Error::other)?;
+    output.with_mut(|file| file.sync_all())?;
     output.commit().map_err(io::Error::other)?;
     Ok(())
-}
-
-fn lock_lifecycle(directory: &Path, id: &str) -> io::Result<gix_lock::Marker> {
-    check_private_directory(directory)?;
-    gix_lock::Marker::acquire_to_hold_resource(
-        directory.join(format!("{id}.lifecycle")),
-        gix_lock::acquire::Fail::AfterDurationWithBackoff(Duration::from_secs(1)),
-        None,
-        0,
-    )
-    .map_err(io::Error::other)
 }
 
 fn remove_if_present(path: &Path) -> io::Result<()> {
@@ -714,13 +313,14 @@ mod tests {
 
     impl TestDirectory {
         fn new() -> Self {
-            let path = std::env::temp_dir().join(format!("rustty-handoff-test-{}", unique_id()));
+            let path =
+                std::env::temp_dir().join(format!("rustty-session-dumps-test-{}", unique_id()));
             private_directory(&path).unwrap();
             Self(path)
         }
 
-        fn registry(&self, label: &str) -> Registry {
-            Registry::register_in(self.0.clone(), label.into(), None).unwrap()
+        fn store(&self, label: &str) -> Store {
+            Store::open_in(self.0.clone(), label.into()).unwrap()
         }
     }
 
@@ -730,159 +330,69 @@ mod tests {
         }
     }
 
-    fn request(source: &Registry, requester: &Registry) -> Request {
-        // Test file lifecycle without notifying another process.
-        let request = Request {
-            id: unique_id(),
-            requester: requester.instance.clone(),
-            source: source.instance.clone(),
-        };
-        write_json(
-            &requester.request_path(&request),
-            &RequestFile {
-                request: request.clone(),
-                reply: Reply::Waiting,
-            },
-        )
-        .unwrap();
-        request
-    }
-
     #[test]
-    fn compressed_export_retains_data_until_import_finishes() {
+    fn saved_sessions_survive_exit_and_reads_until_explicit_removal() {
         let directory = TestDirectory::new();
-        let source = directory.registry("source");
-        let requester = directory.registry("requester");
-        let request = request(&source, &requester);
+        let source = directory.store("source");
         let state = "scrollback and alternate screen\n".repeat(1000);
-        source.respond(&request, Some(state.as_bytes())).unwrap();
-        assert!(
-            matches!(requester.status(&request).unwrap(), RequestStatus::Ready { bytes, .. } if bytes < state.len() as u64)
-        );
-        assert_eq!(requester.read_dump(&request).unwrap(), state.as_bytes());
-        assert!(requester.dump_path(&request).exists());
-        requester.cancel_all().unwrap();
-        assert!(!requester.dump_path(&request).exists());
-        assert!(!requester.request_path(&request).exists());
+        let dump = source.save_dump(state.as_bytes()).unwrap();
+        assert_eq!(dump.label, "source");
+        assert!(dump.created_at > 1_700_000_000_000);
+        assert!(dump.bytes < state.len() as u64);
+        drop(source);
+
+        let importer = directory.store("importer");
+        assert_eq!(importer.dumps().unwrap(), std::slice::from_ref(&dump));
+        assert_eq!(importer.read_dump(&dump).unwrap(), state.as_bytes());
+        assert_eq!(importer.dumps().unwrap(), std::slice::from_ref(&dump));
+        importer.remove_dump(&dump).unwrap();
+        assert!(importer.dumps().unwrap().is_empty());
+        assert!(!importer.dump_path(&dump).exists());
     }
 
     #[test]
-    fn cancellation_prevents_late_response_and_does_not_touch_other_requesters() {
+    fn discovery_sorts_newest_first_and_skips_incomplete_or_invalid_dumps() {
         let directory = TestDirectory::new();
-        let source = directory.registry("source");
-        let requester = directory.registry("requester");
-        let other = directory.registry("other");
-        let cancelled = request(&source, &requester);
-        let retained = request(&source, &other);
-        requester.cancel(&cancelled).unwrap();
-        source.respond(&cancelled, Some(b"late")).unwrap();
-        assert!(!requester.dump_path(&cancelled).exists());
-        source.respond(&retained, Some(b"keep")).unwrap();
-        requester.cancel_all().unwrap();
-        assert_eq!(other.read_dump(&retained).unwrap(), b"keep");
-    }
-
-    #[test]
-    fn cancelling_all_invalidates_an_already_open_staging_file() {
-        let directory = TestDirectory::new();
-        let source = directory.registry("source");
-        let requester = directory.registry("requester");
-        let request = request(&source, &requester);
-        let mut output = lock_file(&source.dump_path(&request)).unwrap();
-        output.write_all(b"still writing").unwrap();
-        requester.cancel_all().unwrap();
-        assert!(source.pending_file(&request).unwrap().is_none());
-        assert!(output.commit().is_err());
-        assert!(!requester.dump_path(&request).exists());
-    }
-
-    #[test]
-    fn cancellation_recovers_a_crashed_sources_lifecycle_marker() {
-        let directory = TestDirectory::new();
-        let source = directory.registry("source");
-        let requester = directory.registry("requester");
-        let mut request = request(&source, &requester);
-        // A reused PID belongs to another process, never the recorded source.
-        request.source.started_at -= 1;
+        let store = directory.store("source");
+        let mut earlier = store.save_dump(b"earlier").unwrap();
+        let later = store.save_dump(b"later").unwrap();
+        earlier.created_at = later.created_at - 1;
+        write_json(&store.metadata_path(&earlier), &earlier).unwrap();
+        let incomplete = store.save_dump(b"incomplete").unwrap();
+        fs::remove_file(store.dump_path(&incomplete)).unwrap();
+        let oversized = store.save_dump(b"oversized").unwrap();
+        fs::OpenOptions::new()
+            .write(true)
+            .open(store.dump_path(&oversized))
+            .unwrap()
+            .set_len(MAX_DUMP_BYTES + 1)
+            .unwrap();
         write_json(
-            &requester.request_path(&request),
-            &RequestFile {
-                request: request.clone(),
-                reply: Reply::Waiting,
-            },
+            &directory.0.join("invalid.session.json"),
+            &serde_json::json!({}),
         )
         .unwrap();
-        let marker = requester
-            .request_directory(requester.instance())
-            .join(format!("{}.lifecycle.lock", request.id));
-        fs::write(&marker, []).unwrap();
-        requester.cancel_all().unwrap();
-        assert!(!marker.exists());
-        assert!(!requester.request_path(&request).exists());
+        let staged = lock_file(&directory.0.join("staged.session.json")).unwrap();
+        assert_eq!(store.dumps().unwrap(), [later, earlier]);
+        drop(staged);
     }
 
     #[test]
-    fn source_can_ignore_pending_and_future_requests() {
+    fn changed_metadata_and_path_traversal_cannot_read_or_remove_other_files() {
         let directory = TestDirectory::new();
-        let mut source = directory.registry("source");
-        let requester = directory.registry("requester");
-        let first = request(&source, &requester);
-        assert_eq!(source.incoming().unwrap(), vec![first.clone()]);
-        assert!(source.incoming().unwrap().is_empty());
-        source.ignore_requests(true).unwrap();
-        assert_eq!(requester.status(&first).unwrap(), RequestStatus::Ignored);
-        let second = request(&source, &requester);
-        assert!(source.incoming().unwrap().is_empty());
-        assert_eq!(requester.status(&second).unwrap(), RequestStatus::Ignored);
-    }
-
-    #[test]
-    fn discovery_rejects_pid_reuse_and_unsupported_protocols() {
-        let directory = TestDirectory::new();
-        let source = directory.registry("source");
-        let requester = directory.registry("requester");
-        assert_eq!(requester.instances().unwrap().len(), 1);
-        let mut stale = source.instance.clone();
-        stale.started_micros += 1;
-        write_json(&source.instance_path(&stale), &stale).unwrap();
-        assert!(requester.instances().unwrap().is_empty());
-        stale = source.instance.clone();
-        stale.protocol += 1;
-        write_json(&source.instance_path(&stale), &stale).unwrap();
-        requester.clean_stale().unwrap();
-        assert!(source.instance_path(&stale).exists());
-        assert!(requester.instances().unwrap().is_empty());
-    }
-
-    #[test]
-    fn stale_requester_files_are_removed_on_cleanup() {
-        let directory = TestDirectory::new();
-        let source = directory.registry("source");
-        let requester = directory.registry("requester");
-        let mut stale = requester.instance.clone();
-        stale.started_at = 0;
-        stale.started_micros = 0;
-        stale.id = format!("{}-0-0-{}", stale.pid, unique_id());
-        write_json(&source.instance_path(&stale), &stale).unwrap();
-        private_directory(&source.request_directory(&stale)).unwrap();
-        fs::write(source.request_directory(&stale).join("dump"), b"old state").unwrap();
-        source.clean_stale().unwrap();
-        assert!(!source.instance_path(&stale).exists());
-        assert!(!source.request_directory(&stale).exists());
-        assert!(source.instance_path(requester.instance()).exists());
-    }
-
-    #[test]
-    fn native_notification_wakes_and_stops_worker() {
-        let (send, receive) = std::sync::mpsc::channel();
-        let watcher = Watcher::new(Arc::new(move || {
-            let _ = send.send(());
-        }))
-        .unwrap();
-        // This disposable test process is the only notification target.
-        platform::notify(std::process::id()).unwrap();
-        receive.recv_timeout(Duration::from_secs(2)).unwrap();
-        drop(watcher);
+        let store = directory.store("source");
+        let dump = store.save_dump(b"saved state").unwrap();
+        let mut changed = dump.clone();
+        changed.label = "another session".into();
+        assert!(store.read_dump(&changed).is_err());
+        assert!(store.remove_dump(&changed).is_err());
+        changed = dump.clone();
+        changed.id = "../outside".into();
+        assert!(store.read_dump(&changed).is_err());
+        assert!(store.remove_dump(&changed).is_err());
+        write_json(&directory.0.join("aliased.session.json"), &changed).unwrap();
+        assert_eq!(store.dumps().unwrap(), std::slice::from_ref(&dump));
+        assert_eq!(store.read_dump(&dump).unwrap(), b"saved state");
     }
 
     #[test]
@@ -905,10 +415,10 @@ mod tests {
         }
 
         let directory = TestDirectory::new();
-        let source = directory.registry("source");
-        let recipient = directory.registry("recipient");
+        let source = directory.store("source");
+        let recipient = directory.store("recipient");
         let canonical = directory.0.join("data/workspace.json");
-        let backup = canonical.with_file_name(format!("workspace-{}.json", source.instance.id));
+        let backup = canonical.with_file_name(format!("workspace-{}.json", source.instance_id));
 
         source.save_workspace(&canonical, &workspace(100.)).unwrap();
         assert!(!canonical.exists());
@@ -948,25 +458,48 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn rejects_symlinks_and_non_private_files() {
-        use std::os::unix::fs::PermissionsExt;
+    fn discovery_and_import_reject_symlinks_hard_links_and_non_private_files() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
         let directory = TestDirectory::new();
-        let path = directory.0.join("payload");
-        fs::write(&path, b"secret").unwrap();
+        let store = directory.store("source");
+        let dump = store.save_dump(b"secret").unwrap();
+        let path = store.dump_path(&dump);
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
-        assert!(open_private_file(&path, 100).is_err());
+        assert!(store.read_dump(&dump).is_err());
+        assert!(store.dumps().unwrap().is_empty());
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
-        let link = directory.0.join("link");
-        std::os::unix::fs::symlink(&path, &link).unwrap();
-        assert!(open_private_file(&link, 100).is_err());
+        let linked = directory.0.join("linked");
+        fs::hard_link(&path, &linked).unwrap();
+        assert!(store.read_dump(&dump).is_err());
+        fs::remove_file(&linked).unwrap();
+        fs::rename(&path, &linked).unwrap();
+        symlink(&linked, &path).unwrap();
+        assert!(store.read_dump(&dump).is_err());
+        assert!(store.dumps().unwrap().is_empty());
+
+        let public = directory.0.join("public");
+        private_directory(&public).unwrap();
+        fs::set_permissions(&public, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(Store::open_in(public, "source".into()).is_err());
+        let directory_link = directory.0.join("directory-link");
+        symlink(&directory.0, &directory_link).unwrap();
+        assert!(Store::open_in(directory_link, "source".into()).is_err());
     }
 
     #[test]
-    fn bounds_decompression_and_rejects_corruption() {
+    fn bounds_decompression_and_rejects_corruption_without_consuming_saved_state() {
         let mut encoder = lz4_flex::frame::FrameEncoder::new(Vec::new());
         encoder.write_all(&[0; 1024]).unwrap();
         let compressed = encoder.finish().unwrap();
         assert!(decode_dump_with_limit(compressed.as_slice(), 100).is_err());
-        assert!(decode_dump(b"corrupt data".as_slice()).is_err());
+
+        let directory = TestDirectory::new();
+        let store = directory.store("source");
+        let mut dump = store.save_dump(b"saved state").unwrap();
+        fs::write(store.dump_path(&dump), b"corrupt data").unwrap();
+        dump.bytes = 12;
+        write_json(&store.metadata_path(&dump), &dump).unwrap();
+        assert!(store.read_dump(&dump).is_err());
+        assert_eq!(store.dumps().unwrap(), [dump]);
     }
 }

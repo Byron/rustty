@@ -1,11 +1,8 @@
-//! Private handoff files and per-process wake events on Windows.
+//! Private session dump files on Windows.
 
 use ::windows::{
     Win32::{
-        Foundation::{
-            ERROR_ALREADY_EXISTS, FILETIME, GetLastError, HANDLE, HLOCAL, LocalFree, WAIT_OBJECT_0,
-            WAIT_TIMEOUT,
-        },
+        Foundation::{HANDLE, HLOCAL, LocalFree},
         Security::{
             ACCESS_ALLOWED_ACE, ACL, Authorization::*, Cryptography::*, DACL_SECURITY_INFORMATION,
             EqualSid, GetAce, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
@@ -15,8 +12,9 @@ use ::windows::{
         },
         Storage::FileSystem::*,
         System::{
-            Com::CoTaskMemFree, RemoteDesktop::ProcessIdToSessionId,
-            SystemServices::ACCESS_ALLOWED_ACE_TYPE, Threading::*,
+            Com::CoTaskMemFree,
+            SystemServices::ACCESS_ALLOWED_ACE_TYPE,
+            Threading::{GetCurrentProcess, OpenProcessToken},
         },
         UI::Shell::{FOLDERID_LocalAppData, KF_FLAG_DEFAULT, SHGetKnownFolderPath},
     },
@@ -31,11 +29,6 @@ use std::{
         io::{AsRawHandle, FromRawHandle, OwnedHandle},
     },
     path::{Path, PathBuf},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    thread::JoinHandle,
 };
 
 fn win_error(error: ::windows::core::Error) -> io::Error {
@@ -74,18 +67,12 @@ pub(super) fn unique_id() -> String {
 
 pub(super) fn user_temporary_directory() -> io::Result<PathBuf> {
     // Do not depend on a launching shell's TEMP override: all instances of this
-    // account must discover the same registry.
+    // account must discover the same saved sessions.
     let path = unsafe { SHGetKnownFolderPath(&FOLDERID_LocalAppData, KF_FLAG_DEFAULT, None) }
         .map_err(win_error)?;
     let directory = PathBuf::from(OsString::from_wide(unsafe { path.as_wide() })).join("Temp");
     unsafe { CoTaskMemFree(Some(path.0.cast())) };
     fs::create_dir_all(&directory)?;
-    // Local named events belong to one Windows logon session. Separate their
-    // registries too, including concurrent sessions of the same account.
-    let mut session = 0;
-    unsafe { ProcessIdToSessionId(std::process::id(), &mut session) }.map_err(win_error)?;
-    let directory = directory.join(format!("rustty-session-{session}"));
-    private_directory(&directory)?;
     Ok(directory)
 }
 
@@ -131,58 +118,6 @@ impl UserToken {
         unsafe { LocalFree(Some(HLOCAL(value.0.cast()))) };
         string
     }
-}
-
-pub(super) fn process_identity(pid: u32) -> io::Result<(u64, u64)> {
-    if pid <= 1 {
-        return Err(io::Error::other("Invalid Rustty process identifier"));
-    }
-    let process = owned(
-        unsafe {
-            OpenProcess(
-                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
-                false,
-                pid,
-            )
-        }
-        .map_err(|error| {
-            let error = win_error(error);
-            // OpenProcess reports ERROR_INVALID_PARAMETER for an exited PID.
-            if error.raw_os_error() == Some(87) {
-                io::Error::new(io::ErrorKind::NotFound, error)
-            } else {
-                error
-            }
-        })?,
-    );
-    let user = UserToken::for_process(raw(&process))?;
-    let current = UserToken::current()?;
-    if unsafe { EqualSid(user.sid(), current.sid()) }.is_err() {
-        return Err(denied("Rustty belongs to another user"));
-    }
-    if unsafe { WaitForSingleObject(raw(&process), 0) } != WAIT_TIMEOUT {
-        return Err(io::Error::new(io::ErrorKind::NotFound, "Rustty has exited"));
-    }
-    let mut created = FILETIME::default();
-    let mut exited = FILETIME::default();
-    let mut kernel = FILETIME::default();
-    let mut user = FILETIME::default();
-    unsafe {
-        GetProcessTimes(
-            raw(&process),
-            &mut created,
-            &mut exited,
-            &mut kernel,
-            &mut user,
-        )
-    }
-    .map_err(win_error)?;
-    let ticks = (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime);
-    let unix_ticks = ticks
-        .checked_sub(116_444_736_000_000_000)
-        .ok_or_else(|| io::Error::other("Invalid Windows process creation time"))?;
-    // Preserve the native 100 ns remainder in the opaque identity component.
-    Ok((unix_ticks / 10_000_000, unix_ticks % 10_000_000))
 }
 
 struct Descriptor(PSECURITY_DESCRIPTOR);
@@ -410,87 +345,6 @@ pub(super) fn open_private_file(path: &Path, limit: u64) -> io::Result<File> {
     Ok(File::from(handle))
 }
 
-fn event_name(pid: u32) -> io::Result<Vec<u16>> {
-    let (seconds, ticks) = process_identity(pid)?;
-    let sid = UserToken::current()?.sid_string()?;
-    Ok(wide(format!(
-        "Local\\Rustty.Handoff.{sid}.{pid}.{seconds}.{ticks}"
-    )))
-}
-
-pub(super) fn notify(pid: u32) -> io::Result<()> {
-    let name = event_name(pid)?;
-    let event = owned(
-        unsafe {
-            OpenEventW(
-                EVENT_MODIFY_STATE | SYNCHRONIZATION_READ_CONTROL,
-                false,
-                PCWSTR(name.as_ptr()),
-            )
-        }
-        .map_err(win_error)?,
-    );
-    check_security(raw(&event), SE_KERNEL_OBJECT)?;
-    unsafe { SetEvent(raw(&event)) }.map_err(win_error)
-}
-
-pub(super) struct Watcher {
-    event: Arc<OwnedHandle>,
-    stop: Arc<AtomicBool>,
-    thread: Option<JoinHandle<()>>,
-}
-
-impl Watcher {
-    pub(super) fn new(wake: Arc<dyn Fn() + Send + Sync>) -> io::Result<Self> {
-        let name = event_name(std::process::id())?;
-        let descriptor = Descriptor::private(false)?;
-        let attributes = descriptor.attributes();
-        let event = owned(
-            unsafe { CreateEventW(Some(&attributes), false, false, PCWSTR(name.as_ptr())) }
-                .map_err(win_error)?,
-        );
-        if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                "Rustty handoff listener already exists",
-            ));
-        }
-        check_security(raw(&event), SE_KERNEL_OBJECT)?;
-        let event = Arc::new(event);
-        let stop = Arc::new(AtomicBool::new(false));
-        let thread_event = Arc::clone(&event);
-        let thread_stop = Arc::clone(&stop);
-        let thread = std::thread::Builder::new()
-            .name("rustty-handoff-event".into())
-            .spawn(move || {
-                loop {
-                    if unsafe { WaitForSingleObject(raw(thread_event.as_ref()), INFINITE) }
-                        != WAIT_OBJECT_0
-                        || thread_stop.load(Ordering::Acquire)
-                    {
-                        break;
-                    }
-                    wake();
-                }
-            })?;
-        Ok(Self {
-            event,
-            stop,
-            thread: Some(thread),
-        })
-    }
-}
-
-impl Drop for Watcher {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Release);
-        let _ = unsafe { SetEvent(raw(self.event.as_ref())) };
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -596,20 +450,5 @@ mod tests {
             Err(error) if error.raw_os_error() == Some(1314) => {}
             Err(error) => panic!("create test symlink: {error}"),
         }
-    }
-
-    #[test]
-    fn process_identity_is_stable_and_rejects_exited_processes() {
-        let identity = process_identity(std::process::id()).unwrap();
-        assert!(identity.0 > 1_700_000_000);
-        assert_eq!(process_identity(std::process::id()).unwrap(), identity);
-        assert!(process_identity(0).is_err());
-        let mut child = std::process::Command::new("cmd.exe")
-            .args(["/c", "exit", "0"])
-            .spawn()
-            .unwrap();
-        let pid = child.id();
-        child.wait().unwrap();
-        assert!(process_identity(pid).is_err());
     }
 }
