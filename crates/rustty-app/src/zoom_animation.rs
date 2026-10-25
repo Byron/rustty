@@ -62,7 +62,6 @@ impl Snapshot {
     fn compatible(&self, next: &Self) -> bool {
         self.tab == next.tab
             && self.content == next.content
-            && self.topology == next.topology
             && self.cell_height == next.cell_height
             && self.scale == next.scale
     }
@@ -265,7 +264,8 @@ impl State {
         if !enabled
             || previous.as_ref().is_none_or(|old| {
                 !old.compatible(&next)
-                    || old.view.mode() == next.view.mode() && old.view.panes != next.view.panes
+                    || old.view.mode() == next.view.mode()
+                        && (old.topology != next.topology || old.view.panes != next.view.panes)
             })
         {
             self.finish();
@@ -316,7 +316,10 @@ impl State {
                     )
                 };
                 self.transition = Some(Transition {
-                    source,
+                    source: source
+                        .into_iter()
+                        .filter(|pane| tab.contains(pane.id))
+                        .collect(),
                     source_view,
                     source_mode,
                     target: next.view.clone(),
@@ -769,6 +772,130 @@ mod tests {
         assert!(!state.is_running());
         assert_eq!(end.len(), 1);
         assert_eq!(end[0].id, 5);
+    }
+
+    #[test]
+    fn closing_a_quad_pane_animates_automatic_unzoom() {
+        for closed in [2, 9] {
+            let now = Instant::now();
+            let mut tab = quadrants();
+            tab.toggle_quadrant_zoom();
+            let mut state = State::default();
+            let source = update(&mut state, &tab, false, now);
+            assert!(tab.close(closed));
+            assert_eq!((tab.zoom, tab.quadrant_zoom), (None, None));
+            let survivor = if closed == 2 { 9 } else { 2 };
+            let start = update(&mut state, &tab, false, now);
+            assert!(state.is_running());
+            assert!(start.iter().all(|pane| pane.id != closed));
+            assert_eq!(pane(&start, survivor).rect, pane(&source, survivor).rect);
+            assert_eq!(
+                pane(&start, survivor).layout,
+                pane(&source, survivor).layout
+            );
+            let middle = update(&mut state, &tab, false, now + ZOOM_DURATION / 2);
+            assert!(middle.iter().all(|pane| pane.id != closed));
+            assert_eq!(pane(&middle, survivor).opacity, 0.0);
+            assert_ne!(pane(&middle, survivor).rect, pane(&start, survivor).rect);
+            let end = update(&mut state, &tab, false, now + ZOOM_DURATION);
+            assert!(!state.is_running());
+            assert_eq!(pane(&middle, survivor).layout, pane(&end, survivor).layout);
+            assert_eq!(end.len(), tab.pane_ids().len());
+            assert!(
+                end.iter()
+                    .all(|pane| pane.rect == pane.layout && pane.opacity == 1.0)
+            );
+        }
+    }
+
+    #[test]
+    fn closing_a_zoomed_pane_animates_restoring_its_neighbors() {
+        for (nested, extra) in [(false, false), (true, false), (true, true)] {
+            let now = Instant::now();
+            let mut tab = quadrants();
+            if extra {
+                tab.split(11, 12, Direction::Down, PathBuf::from("/tmp"));
+            }
+            tab.focus(2);
+            if nested {
+                tab.toggle_quadrant_zoom();
+            }
+            tab.toggle_zoom();
+            let mut state = State::default();
+            update(&mut state, &tab, false, now);
+            assert!(tab.close(2));
+            update(&mut state, &tab, false, now);
+            assert!(state.is_running());
+            let middle = update(&mut state, &tab, false, now + ZOOM_DURATION / 2);
+            assert!(
+                middle
+                    .iter()
+                    .all(|pane| pane.id != 2 && pane.opacity == 0.0)
+            );
+            let end = update(&mut state, &tab, false, now + ZOOM_DURATION);
+            assert!(!state.is_running());
+            assert_eq!(end.len(), tab.visible_panes(false).len());
+            assert!(
+                end.iter()
+                    .all(|pane| pane.rect == pane.layout && pane.opacity == 1.0)
+            );
+        }
+    }
+
+    #[test]
+    fn closing_during_quad_zoom_keeps_surviving_panes_in_place() {
+        let now = Instant::now();
+        let mut tab = quadrants();
+        let mut state = State::default();
+        update(&mut state, &tab, false, now);
+        tab.toggle_quadrant_zoom();
+        update(&mut state, &tab, false, now);
+        let interrupted = now + Duration::from_millis(70);
+        let before = update(&mut state, &tab, false, interrupted);
+        assert!(tab.close(9));
+        let after = update(&mut state, &tab, false, interrupted);
+        assert!(state.is_running());
+        assert!(after.iter().all(|pane| pane.id != 9));
+        for old in before.iter().filter(|pane| pane.id != 9) {
+            let next = pane(&after, old.id);
+            assert_eq!(next.rect, old.rect);
+            assert_eq!(next.layout, old.layout);
+            assert_eq!(next.opacity, old.opacity);
+            assert_eq!(next.background_opacity, old.background_opacity);
+        }
+        let end = update(&mut state, &tab, false, interrupted + ZOOM_DURATION);
+        assert!(!state.is_running());
+        assert_eq!(end.len(), tab.pane_ids().len());
+    }
+
+    #[test]
+    fn splitting_or_resizing_out_of_zoom_animates_the_new_layout() {
+        for split in [false, true] {
+            let now = Instant::now();
+            let mut tab = quadrants();
+            tab.focus(2);
+            tab.toggle_zoom();
+            let mut state = State::default();
+            let source = update(&mut state, &tab, false, now);
+            if split {
+                tab.split(11, 12, Direction::Down, PathBuf::from("/tmp"));
+            } else {
+                assert!(
+                    tab.root
+                        .resize(tab.focused, Direction::Right, 20.0, CONTENT)
+                );
+                tab.zoom = None;
+                tab.quadrant_zoom = None;
+            }
+            assert_eq!(tab.zoom, None);
+            let start = update(&mut state, &tab, false, now);
+            assert!(state.is_running());
+            assert_eq!(pane(&start, 2).rect, pane(&source, 2).rect);
+            let end = update(&mut state, &tab, false, now + ZOOM_DURATION);
+            assert!(!state.is_running());
+            assert_eq!(end.len(), tab.pane_ids().len());
+            assert_ne!(pane(&start, 2).layout, pane(&end, 2).layout);
+        }
     }
 
     #[test]

@@ -353,6 +353,8 @@ are saved separately under `com.rustty.app`.
 Pane and quadrant zoom transitions slide into place in 250 ms by default; Quad
 Peek takes 100 ms. Text fades to the pane background at the midpoint, then reappears at
 its final size, without resizing terminals at intermediate animation steps.
+Automatic unzoom after a pane closes or exits uses the same animation, as do
+splitting or resizing panes when those actions leave zoom mode.
 Surrounding panes remain visible throughout the slide, blending halfway toward
 the window frame color around the tabs as the enlarged pane or quadrant slides
 over them. The background mix reaches its configured strength by the midpoint
