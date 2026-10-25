@@ -340,6 +340,10 @@ impl DirectoryLabel {
         self.selected || large_inactive
     }
 
+    pub fn centered_in_pane(&self, tab: &Tab, pane: Id, quadrant: Option<Id>) -> bool {
+        self.large(quadrant.is_some() && tab.root.quadrant(pane) == quadrant)
+    }
+
     pub fn shows_activity(&self, active: bool) -> bool {
         active && !self.selected
     }
@@ -684,6 +688,33 @@ mod tests {
         assert!(label.shows_activity(true));
         assert!(!label.shows_activity(false));
         assert!(label.shows_flash(true, false));
+    }
+
+    #[test]
+    fn pane_labels_only_center_within_their_endpoint_quadrant() {
+        use rustty::config::Direction;
+        let mut tab = Tab::new(1, 2, "/tmp".into());
+        tab.split(3, 4, Direction::Right, "/tmp".into());
+        tab.split(5, 6, Direction::Down, "/tmp".into());
+        tab.focus(2);
+        tab.split(7, 8, Direction::Down, "/tmp".into());
+        tab.focus(2);
+        tab.split(9, 10, Direction::Right, "/tmp".into());
+        let label = DirectoryLabel::new(Some("project".into()), false, true, false).unwrap();
+        for quadrant in [None, Some(10), None] {
+            for pane in [3, 5, 7] {
+                assert!(!label.centered_in_pane(&tab, pane, quadrant), "pane {pane}");
+            }
+            for pane in [2, 9] {
+                assert_eq!(
+                    label.centered_in_pane(&tab, pane, quadrant),
+                    quadrant.is_some()
+                );
+            }
+        }
+        let selected = DirectoryLabel::new(Some("project".into()), true, true, true).unwrap();
+        assert!(selected.centered_in_pane(&tab, tab.focused, None));
+        assert!(selected.centered_in_pane(&tab, tab.focused, Some(10)));
     }
 
     #[test]

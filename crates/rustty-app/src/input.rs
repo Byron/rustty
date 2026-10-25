@@ -274,12 +274,12 @@ pub fn consume_shortcut_key(
     global: &mut HashSet<PhysicalKey>,
     key: PhysicalKey,
     pin_navigation: bool,
-    ui_input: bool,
+    until_release: bool,
 ) {
     if pin_navigation {
         local.remove(&key);
         global.insert(key);
-    } else if ui_input {
+    } else if until_release {
         local.insert(key);
     }
 }
@@ -1501,6 +1501,64 @@ mod tests {
                 false,
             ));
         }
+    }
+
+    #[test]
+    fn consumed_zoom_key_waits_for_release_without_consuming_other_terminal_keys() {
+        let zoom = PhysicalKey::Code(KeyCode::KeyF);
+        let terminal_key = PhysicalKey::Code(KeyCode::KeyA);
+        let mut local = HashSet::new();
+        let mut global = HashSet::new();
+        for _ in 0..2 {
+            assert!(!key_is_consumed(
+                &mut local,
+                zoom,
+                ElementState::Pressed,
+                false
+            ));
+            consume_shortcut_key(&mut local, &mut global, zoom, false, true);
+            for _ in 0..3 {
+                assert!(key_is_consumed(
+                    &mut local,
+                    zoom,
+                    ElementState::Pressed,
+                    false
+                ));
+                assert!(!key_is_consumed(
+                    &mut local,
+                    terminal_key,
+                    ElementState::Pressed,
+                    false
+                ));
+            }
+            assert!(!key_is_consumed(
+                &mut local,
+                terminal_key,
+                ElementState::Released,
+                false
+            ));
+            assert!(key_is_consumed(
+                &mut local,
+                zoom,
+                ElementState::Released,
+                false
+            ));
+            assert!(local.is_empty());
+            assert!(global.is_empty());
+        }
+        consume_shortcut_key(&mut local, &mut global, zoom, false, false);
+        assert!(!key_is_consumed(
+            &mut local,
+            zoom,
+            ElementState::Pressed,
+            false
+        ));
+        assert!(!key_is_consumed(
+            &mut local,
+            zoom,
+            ElementState::Released,
+            false
+        ));
     }
 
     #[test]

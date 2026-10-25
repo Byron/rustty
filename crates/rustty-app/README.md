@@ -350,6 +350,40 @@ Tabs, splits, zoom, quadrant navigation, clipboard and
 search use the configured Ghostty keybindings. Window layouts and pane directories
 are saved separately under `com.rustty.app`.
 
+Pane and quadrant zoom transitions slide into place in 250 ms by default; Quad
+Peek takes 100 ms. Text fades to the pane background at the midpoint, then reappears at
+its final size, without resizing terminals at intermediate animation steps.
+Surrounding panes remain visible throughout the slide, blending halfway toward
+the window frame color around the tabs as the enlarged pane or quadrant slides
+over them. The background mix reaches its configured strength by the midpoint
+and stays there through the rest of the slide; zooming out reverses this fade.
+Consumed pane and quadrant zoom shortcuts toggle once per key press, so holding
+the shortcut does not repeatedly reverse the animation.
+Animations follow macOS **Reduce Motion** by default. On other platforms they
+default to enabled with GPU rendering and disabled with software rendering.
+Set `window-animations = false` to disable these transitions, or `true` to enable
+them explicitly. An empty value restores the platform default. This setting
+takes effect when configuration is reloaded.
+
+The following duration keys apply in both directions. `zoom-animation-duration`
+controls pane zoom from the normal layout; `zoom-from-quad-animation-duration`
+controls pane zoom from a zoomed quadrant. Values use time units and may exceed
+the defaults; `0` disables that transition and an empty value restores its
+default. Changes take effect when configuration is reloaded.
+
+```ini
+quad-zoom-animation-duration = 250ms
+quad-peek-animation-duration = 100ms
+zoom-animation-duration = 250ms
+zoom-from-quad-animation-duration = 250ms
+zoom-animation-background-mix = 50%
+```
+
+`zoom-animation-background-mix` accepts percentages from `0%` (original pane
+colors) to `100%` (the full window frame color). The `%` suffix is optional;
+`50` also means 50%. An empty value restores the 50% default. Changes take
+effect when configuration is reloaded.
+
 Global shortcuts such as `keybind = global:ctrl+super+backquote=toggle_quick_terminal`
 use native macOS hotkey registration without Accessibility or Input Monitoring
 permission. Registered shortcuts take priority over local bindings in both the
@@ -462,6 +496,10 @@ the overlays and their transparency.
 Zoom checks capture `zoom.png`, `quad-zoom.png` and `nested-zoom.png`, with
 distinct labels in the panel header, tab label and window title. Toggling
 quadrant zoom from nested pane zoom returns to the quadrant before unzooming.
+Animation checks cover both directions of pane, quadrant, nested zoom and Quad
+Peek, asserting endpoint-only terminal grids and cached terminal content between
+frames. `animation-*.png` captures show each transition at one quarter, midpoint
+and three quarters, including distinct panel labels during nested zooms.
 Theme checks capture `theme-picker.png` and verify preview, cancellation,
 acceptance, reload and unchanged configuration files using isolated themes.
 
