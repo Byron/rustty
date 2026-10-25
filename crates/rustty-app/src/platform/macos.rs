@@ -101,6 +101,10 @@ impl Platform {
         NSEvent::modifierFlags_class().contains(NSEventModifierFlags::Option)
     }
 
+    pub fn reduce_motion() -> bool {
+        NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion()
+    }
+
     /// Used when quitting without a terminal window available to host the dialog.
     pub fn confirm_quit_dump(checked: bool, error: Option<&str>) -> Result<Option<bool>, String> {
         use objc2_app_kit::{NSAlert, NSAlertFirstButtonReturn};
@@ -279,6 +283,11 @@ impl Platform {
                 .and_then(|id| id.parse::<usize>().ok())
                 && let Some(action) = actions.get(index)
             {
+                let event = MainThreadMarker::new()
+                    .and_then(|mtm| NSApplication::sharedApplication(mtm).currentEvent());
+                if repeated_zoom_menu_action(action, event.as_deref()) {
+                    return;
+                }
                 sink(PlatformEvent::Action(action.clone()));
             } else if let Some(command) = tmuxx_routes
                 .lock()
@@ -378,6 +387,11 @@ impl Platform {
                     binding.table.is_none()
                         && !binding.flags.performable
                         && !binding.flags.all
+                        && (binding.flags.consumed
+                            || !matches!(
+                                action,
+                                Action::ToggleSplitZoom | Action::ToggleQuadrantZoom
+                            ))
                         && binding.trigger.len() == 1
                         && binding.actions == [action.clone()]
                 })
@@ -1665,6 +1679,11 @@ fn make_menu(
     Ok((menu, stream_deck))
 }
 
+fn repeated_zoom_menu_action(action: &Action, event: Option<&NSEvent>) -> bool {
+    matches!(action, Action::ToggleSplitZoom | Action::ToggleQuadrantZoom)
+        && event.is_some_and(|event| event.r#type() == NSEventType::KeyDown && event.isARepeat())
+}
+
 fn append_action(
     menu: &Submenu,
     actions: &mut Vec<(MenuItem, Action)>,
@@ -2620,6 +2639,36 @@ mod tests {
             let hidden = quick_hidden_frame(frame, screen, position);
             assert_eq!(hidden.origin, origin);
             assert_eq!(hidden.size, frame.size);
+        }
+    }
+
+    #[test]
+    fn native_zoom_accelerators_ignore_repeats_but_keep_fresh_presses_and_menu_clicks() {
+        let text = NSString::from_str("f");
+        for (kind, repeat, suppressed) in [
+            (NSEventType::KeyDown, false, false),
+            (NSEventType::KeyDown, true, true),
+            (NSEventType::KeyUp, false, false),
+        ] {
+            let event = NSEvent::keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode(
+                kind, NSPoint::ZERO, NSEventModifierFlags::Command, 0.0, 0, None,
+                &text, &text, repeat, 3,
+            ).unwrap();
+            for action in [Action::ToggleSplitZoom, Action::ToggleQuadrantZoom] {
+                assert_eq!(repeated_zoom_menu_action(&action, Some(&event)), suppressed);
+            }
+            assert!(!repeated_zoom_menu_action(
+                &Action::IncreaseFontSize(1.0),
+                Some(&event)
+            ));
+        }
+        let click = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+            NSEventType::LeftMouseUp, NSPoint::ZERO, NSEventModifierFlags::empty(),
+            0.0, 0, None, 0, 1, 0.0,
+        ).unwrap();
+        for action in [Action::ToggleSplitZoom, Action::ToggleQuadrantZoom] {
+            assert!(!repeated_zoom_menu_action(&action, Some(&click)));
+            assert!(!repeated_zoom_menu_action(&action, None));
         }
     }
 

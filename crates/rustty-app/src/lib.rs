@@ -17,6 +17,7 @@ pub mod search;
 #[cfg(target_os = "windows")]
 pub mod software_surface;
 pub mod workspace;
+pub mod zoom_animation;
 
 pub mod tmuxx_copy;
 pub mod tmuxx_menu;

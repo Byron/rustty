@@ -191,6 +191,7 @@ impl Search {
             .enabled(root.is_enabled())
             .fade_in(false)
             .show(root.ctx(), |ui| {
+                ui.multiply_opacity(root.opacity());
                 if selected
                     && ui.is_enabled()
                     && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::Escape))

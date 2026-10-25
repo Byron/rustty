@@ -43,6 +43,7 @@ fn hover_measurement_restarts_for_motion_and_leaving_but_not_duplicate_events() 
         closed: None,
         idle_frames: 0,
         progress_pane: None,
+        progress_refreshed: false,
         progress_started: now,
         progress_frames: 0,
         progress_seconds: 0.0,
@@ -82,6 +83,7 @@ pub(super) struct Smoke {
     closed: Option<(Id, Instant)>,
     idle_frames: u64,
     progress_pane: Option<Id>,
+    progress_refreshed: bool,
     progress_started: Instant,
     progress_frames: u64,
     progress_seconds: f64,
@@ -156,6 +158,7 @@ impl Smoke {
             closed: None,
             idle_frames: 0,
             progress_pane: None,
+            progress_refreshed: false,
             progress_started: Instant::now(),
             progress_frames: 0,
             progress_seconds: 0.0,
@@ -227,6 +230,7 @@ impl Smoke {
         loaded.config.initial_command = Some(command);
         loaded.config.working_directory = Some(fixture_directory());
         loaded.config.window_save_state = config::WindowSaveState::Always;
+        loaded.config.window_animations = Some(false);
         loaded.config.cursor_style_blink = Some(false);
         loaded.config.grapheme_width_method = config::GraphemeWidthMethod::Unicode;
         loaded.config.mouse_shift_capture = config::MouseShiftCapture::False;
@@ -536,6 +540,9 @@ impl Smoke {
                     return Err("split creation lost a pane".into());
                 }
                 app.action(event_loop, host, Action::NewSplit(Direction::Right), true);
+                let animation_checks_started = Instant::now();
+                check_zoom_animations(app, event_loop, host, &self.directory)?;
+                self.deadline += animation_checks_started.elapsed();
                 for (action, label, capture) in [
                     (Action::ToggleSplitZoom, "Zoom", "zoom.png"),
                     (Action::ToggleQuadrantZoom, "Quad-zoom", "quad-zoom.png"),
@@ -628,6 +635,14 @@ impl Smoke {
                 }
                 if app.panes.values().any(|p| p.cwd != fixture_directory()) {
                     return Err("OSC directory was not decoded before restoration".into());
+                }
+                if !self.progress_refreshed {
+                    // Captures may outlive the startup report; exercise a fresh PTY report.
+                    for id in app.panes.keys().copied().collect::<Vec<_>>() {
+                        app.write(id, b"printf '\\033]9;4;1;65\\007'\r".to_vec());
+                    }
+                    self.progress_refreshed = true;
+                    return Ok(false);
                 }
                 if app.panes.values().any(|p| {
                     p.activity.progress()
@@ -768,7 +783,7 @@ impl Smoke {
                     .current_monitor()
                     .and_then(|monitor| monitor.refresh_rate_millihertz())
                     .map(|rate| f64::from(rate) / 1000.0);
-                let report = serde_json::json!({"passed":true,"renderer":app.painter.description(),"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","native-rendered-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","drag-selection-scrolling","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
+                let report = serde_json::json!({"passed":true,"renderer":app.painter.description(),"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","native-rendered-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","zoom-animation-endpoint-grids","zoom-animation-disable","quad-peek-animation","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","drag-selection-scrolling","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
                 self.report = Some(report);
                 return Ok(true);
             }
@@ -996,6 +1011,419 @@ impl Smoke {
         }
         Ok(false)
     }
+}
+
+fn check_zoom_animations(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    host: &mut Host,
+    directory: &Path,
+) -> Result<()> {
+    let original = app.tab(host.id).unwrap().clone();
+    let animations = app.loaded.config.window_animations;
+    let background = app.loaded.config.background;
+    let background_mix = app.loaded.config.zoom_animation_background_mix;
+    let durations = (
+        app.loaded.config.quad_zoom_animation_duration,
+        app.loaded.config.quad_peek_animation_duration,
+        app.loaded.config.zoom_animation_duration,
+        app.loaded.config.zoom_from_quad_animation_duration,
+    );
+    app.draw(event_loop, host)?;
+    let mut saved = Vec::new();
+    for id in original.pane_ids() {
+        let mut terminal = app.panes[&id].session.terminal()?;
+        let mut fixture = vt::Terminal::new(terminal.cols, terminal.rows, 64);
+        fixture.background = [4, 12, 20];
+        fixture.screen_mut().cursor.visible = false;
+        fixture.feed(
+            format!("\x1b[1;36mPane {id} zoom animation\x1b[0m\r\nStable terminal grid; sliding pane bounds.\r\n")
+                .repeat(usize::from(terminal.rows) / 2)
+                .as_bytes(),
+        );
+        saved.push((
+            id,
+            std::mem::replace(&mut *terminal, fixture),
+            app.panes[&id].cwd.clone(),
+        ));
+        host.prepared.remove(&id);
+    }
+    let result = (|| -> Result<()> {
+        app.loaded.config.background = config::Rgb::new(20, 30, 40);
+        app.loaded.config.zoom_animation_background_mix = 0.5;
+        app.tab_mut(host.id).unwrap().color = Some([210, 90, 230]);
+        app.draw(event_loop, host)?;
+        app.loaded.config.window_animations = Some(true);
+        app.loaded.config.quad_zoom_animation_duration = Duration::from_millis(600);
+        app.loaded.config.quad_peek_animation_duration = Duration::from_millis(320);
+        app.loaded.config.zoom_animation_duration = Duration::from_millis(800);
+        app.loaded.config.zoom_from_quad_animation_duration = Duration::from_millis(1000);
+        for (name, action, duration) in [
+            (
+                "quad-in",
+                Action::ToggleQuadrantZoom,
+                app.loaded.config.quad_zoom_animation_duration,
+            ),
+            (
+                "nested-in",
+                Action::ToggleSplitZoom,
+                app.loaded.config.zoom_from_quad_animation_duration,
+            ),
+            (
+                "nested-out",
+                Action::ToggleSplitZoom,
+                app.loaded.config.zoom_from_quad_animation_duration,
+            ),
+            (
+                "quad-out",
+                Action::ToggleQuadrantZoom,
+                app.loaded.config.quad_zoom_animation_duration,
+            ),
+            (
+                "pane-in",
+                Action::ToggleSplitZoom,
+                app.loaded.config.zoom_animation_duration,
+            ),
+            (
+                "pane-out",
+                Action::ToggleSplitZoom,
+                app.loaded.config.zoom_animation_duration,
+            ),
+        ] {
+            check_zoom_transition(
+                app,
+                event_loop,
+                host,
+                directory,
+                (name, duration),
+                |app, event_loop, host| {
+                    app.action(event_loop, host, action, true);
+                    Ok(())
+                },
+            )?;
+        }
+        app.loaded.config.window_animations = Some(false);
+        app.action(event_loop, host, Action::ToggleQuadrantZoom, true);
+        app.draw(event_loop, host)?;
+        if host.zoom_animation.is_running() {
+            return Err("window-animations=false left a zoom animation running".into());
+        }
+        app.loaded.config.window_animations = Some(true);
+        for (id, _, _) in &saved {
+            app.panes.get_mut(id).unwrap().cwd =
+                fixture_directory().join(format!("zoom-panel-{id}"));
+        }
+        app.draw(event_loop, host)?;
+        for name in ["nested-labels-in", "nested-labels-out"] {
+            check_zoom_transition(
+                app,
+                event_loop,
+                host,
+                directory,
+                (name, app.loaded.config.zoom_from_quad_animation_duration),
+                |app, event_loop, host| {
+                    app.action(event_loop, host, Action::ToggleSplitZoom, true);
+                    Ok(())
+                },
+            )?;
+        }
+        for (id, _, cwd) in &saved {
+            app.panes.get_mut(id).unwrap().cwd = cwd.clone();
+        }
+        app.draw(event_loop, host)?;
+        for enter in [true, false] {
+            check_zoom_transition(
+                app,
+                event_loop,
+                host,
+                directory,
+                (
+                    if enter { "peek-in" } else { "peek-out" },
+                    app.loaded.config.quad_peek_animation_duration,
+                ),
+                |app, _, host| {
+                    if enter {
+                        host.peek = app.tab_mut(host.id).unwrap().begin_peek(config::Modifiers {
+                            control: true,
+                            super_key: true,
+                            ..Default::default()
+                        });
+                        if host.peek.is_none() {
+                            return Err("animation fixture could not enter Quad Peek".into());
+                        }
+                    } else {
+                        let peek = host.peek.take().ok_or("animation fixture lost Quad Peek")?;
+                        let target = app.tab_mut(host.id).unwrap().finish_peek(peek);
+                        app.focus_pane(host.id, target);
+                    }
+                    Ok(())
+                },
+            )?;
+        }
+        Ok(())
+    })();
+    app.loaded.config.window_animations = animations;
+    app.loaded.config.background = background;
+    app.loaded.config.zoom_animation_background_mix = background_mix;
+    (
+        app.loaded.config.quad_zoom_animation_duration,
+        app.loaded.config.quad_peek_animation_duration,
+        app.loaded.config.zoom_animation_duration,
+        app.loaded.config.zoom_from_quad_animation_duration,
+    ) = durations;
+    *app.tab_mut(host.id).unwrap() = original;
+    host.peek = None;
+    host.zoom_animation.finish();
+    for (id, terminal, cwd) in saved {
+        let pane = app.panes.get_mut(&id).unwrap();
+        pane.cwd = cwd;
+        *pane.session.terminal()? = terminal;
+        host.prepared.remove(&id);
+    }
+    app.draw(event_loop, host)?;
+    result?;
+    eprintln!(
+        "Native smoke: configured pane, quad, nested zoom and Quad Peek animations kept endpoint grids and partially visible neighbors throughout the slide; quarter/midpoint/three-quarter captures saved"
+    );
+    Ok(())
+}
+
+fn check_zoom_transition(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    host: &mut Host,
+    directory: &Path,
+    (name, duration): (&str, Duration),
+    trigger: impl FnOnce(&mut App, &ActiveEventLoop, &mut Host) -> Result<()>,
+) -> Result<()> {
+    let ids = app.tab(host.id).unwrap().pane_ids();
+    let source = host.rects.keys().copied().collect::<HashSet<_>>();
+    let sizes = |app: &App| -> Result<BTreeMap<Id, (u16, u16)>> {
+        ids.iter()
+            .map(|id| {
+                let terminal = app.panes[id].session.terminal()?;
+                Ok((*id, (terminal.cols, terminal.rows)))
+            })
+            .collect()
+    };
+    let before = sizes(app)?;
+    trigger(app, event_loop, host)?;
+    app.draw(event_loop, host)?;
+    if !host.zoom_animation.is_running() {
+        return Err(format!("{name} did not start its animation").into());
+    }
+    let target = host.rects.keys().copied().collect::<HashSet<_>>();
+    let mut initial = before.clone();
+    let mut after = before.clone();
+    let tab = app.tab(host.id).unwrap();
+    let scale = host.window.scale_factor() as f32;
+    let metrics = host.fonts.metrics();
+    for (id, rect) in tab.layout(
+        host.content,
+        host.peek.is_some(),
+        metrics.cell_height as f32 / scale,
+    ) {
+        let size = pane_grid_size(
+            Vec2::new(rect.width - 2.0, rect.height - 2.0),
+            scale,
+            [metrics.cell_width, metrics.cell_height],
+            app.window_config(host.id),
+            if tab.panes.len() > 1 { 18.0 } else { 0.0 },
+        );
+        after.insert(id, size);
+        if !source.contains(&id) {
+            initial.insert(id, size);
+        }
+    }
+    if sizes(app)? != initial {
+        return Err(format!("{name} resized moving terminals before its midpoint").into());
+    }
+    if before == after {
+        return Err(format!("{name} fixture did not change any terminal dimensions").into());
+    }
+    let stationary = source
+        .symmetric_difference(&target)
+        .copied()
+        .collect::<HashSet<_>>();
+    let mut overview = app.tab(host.id).unwrap().clone();
+    overview.zoom = None;
+    overview.quadrant_zoom = None;
+    let mut retained_labels = BTreeMap::new();
+    if !name.starts_with("peek-") {
+        for id in &stationary {
+            let Some(quadrant) = overview.root.quadrant(*id) else {
+                continue;
+            };
+            if overview
+                .root
+                .node(quadrant)
+                .unwrap()
+                .panes()
+                .iter()
+                .all(|id| stationary.contains(id))
+                && let Some(label) = app.quadrant_label(&overview, host, quadrant, None, false)
+            {
+                retained_labels.insert(quadrant, label);
+            }
+        }
+    }
+    if matches!(name, "quad-in" | "quad-out") && retained_labels.is_empty() {
+        return Err(format!("{name} fixture has no stationary shared quadrant labels").into());
+    }
+    for (part, elapsed) in [
+        ("quarter", duration / 4),
+        ("midpoint", duration / 2),
+        ("threequarter", duration * 3 / 4),
+    ] {
+        host.zoom_animation.started = Some(Instant::now() - elapsed);
+        capture_window(
+            app,
+            event_loop,
+            host,
+            &directory.join(format!("animation-{name}-{part}.png")),
+        )?;
+        let expected = if part == "quarter" { &initial } else { &after };
+        let actual = sizes(app)?;
+        if &actual != expected {
+            return Err(format!(
+                "{name} {part} used intermediate or mistimed terminal dimensions: {actual:?}, expected {expected:?}"
+            )
+            .into());
+        }
+        let composed = host.composed.as_ref().ok_or("missing zoom composition")?;
+        if composed.panes.len() != source.union(&target).count() {
+            return Err(format!("{name} {part} dropped panels during the slide").into());
+        }
+        let config = app.window_config(host.id);
+        let window_frame = rustty_render::Color::rgb(config.background.to_array());
+        let retained = 1.0 - config.zoom_animation_background_mix;
+        let mut neighbors = 0;
+        for pane in &composed.panes {
+            let paint = pane.transition.ok_or("missing zoom paint")?;
+            if paint.frame_background != window_frame {
+                return Err(format!("{name} {part} faded toward the tab accent").into());
+            }
+            if paint.moving {
+                if part == "midpoint" && paint.opacity > 0.02 {
+                    return Err(format!("{name} left moving text visible at its midpoint").into());
+                }
+            } else {
+                neighbors += 1;
+                if !(retained..1.0).contains(&paint.opacity)
+                    || !(retained..1.0).contains(&paint.background_opacity)
+                {
+                    return Err(format!(
+                        "{name} {part} did not keep neighboring text and backgrounds partially visible"
+                    )
+                    .into());
+                }
+                if part == "midpoint"
+                    && ((paint.opacity - retained).abs() > 0.02
+                        || (paint.background_opacity - retained).abs() > 0.02)
+                {
+                    return Err(
+                        format!("{name} did not reach its background mix by midpoint").into(),
+                    );
+                }
+            }
+        }
+        if neighbors == 0 || neighbors != source.symmetric_difference(&target).count() {
+            return Err(format!("{name} {part} did not retain its stationary neighbors").into());
+        }
+        let mut displayed = app.tab(host.id).unwrap().clone();
+        if let Some((zoom, quadrant, _)) = host.zoom_animation.display_zoom() {
+            displayed.zoom = zoom;
+            displayed.quadrant_zoom = quadrant;
+        }
+        for (quadrant, expected) in &retained_labels {
+            if app
+                .quadrant_label(&displayed, host, *quadrant, None, true)
+                .as_ref()
+                != Some(expected)
+            {
+                return Err(
+                    format!("{name} {part} changed a stationary shared quadrant label").into(),
+                );
+            }
+        }
+        if matches!(name, "nested-in" | "nested-out")
+            && let Some(quadrant) = displayed.quadrant_zoom
+            && displayed.zoom != Some(quadrant)
+        {
+            let members = displayed.root.node(quadrant).unwrap().panes();
+            displayed.focused = ids
+                .iter()
+                .copied()
+                .find(|id| !members.contains(id))
+                .ok_or("nested zoom fixture has no pane outside its quadrant")?;
+            // Make the label eligible so focus hiding cannot mask lost zoom suppression.
+            if app
+                .quadrant_label(&displayed, host, quadrant, None, true)
+                .is_none()
+            {
+                return Err("nested zoom fixture has no shared quadrant label".into());
+            }
+            if app
+                .quadrant_label(&displayed, host, quadrant, None, false)
+                .is_some()
+            {
+                return Err(format!(
+                    "{name} {part} showed the fullscreen pane's shared quadrant label"
+                )
+                .into());
+            }
+        }
+        if name.starts_with("nested-labels-") {
+            let tab = app.tab(host.id).unwrap();
+            let config = app.window_config(host.id);
+            // Reuse the drawn frame's time so this probe cannot cross the midpoint.
+            let visuals = host.zoom_animation.update(
+                tab,
+                host.peek.is_some(),
+                host.content,
+                metrics.cell_height as f32 / scale,
+                scale,
+                config,
+                true,
+                host.last_frame_started.ok_or("missing zoom frame time")?,
+            );
+            let mut labels = 0;
+            for visual in visuals.iter().filter(|pane| !pane.moving) {
+                let label = DirectoryLabel::new(
+                    directory_name(&app.panes[&visual.id].cwd),
+                    false,
+                    host.focused,
+                    false,
+                )
+                .ok_or("missing distinct zoom panel label")?;
+                if !label.centered_in_pane(tab, visual.id, visual.label_quadrant) {
+                    return Err(format!(
+                        "{name} {part} moved neighboring panel {} label out of the center",
+                        visual.id
+                    )
+                    .into());
+                }
+                labels += 1;
+            }
+            if labels == 0 {
+                return Err("nested label fixture has no stationary neighbor".into());
+            }
+        }
+        if part != "midpoint" {
+            let prepared = host.pane_prepares;
+            host.zoom_animation.started = Some(Instant::now() - elapsed - duration / 20);
+            app.draw(event_loop, host)?;
+            if host.pane_prepares != prepared {
+                return Err(format!("{name} {part} rebuilt unchanged terminal content").into());
+            }
+        }
+    }
+    host.zoom_animation.finish();
+    app.draw(event_loop, host)?;
+    if sizes(app)? != after || host.zoom_animation.is_running() {
+        return Err(format!("{name} did not settle at its final dimensions").into());
+    }
+    Ok(())
 }
 
 fn check_tab_frame(
@@ -2763,6 +3191,8 @@ fn check_terminal_frames(
     let blink_started = host.cursor_blink_started;
     let focus_hint = host.focus_hint;
     let navigation_warning = host.navigation_warning.take();
+    // A preceding progress timeout can leave a badge flash with its own redraw timer.
+    let activity_flashes = std::mem::take(&mut app.activity_flashes);
     let accesskit_active = std::mem::replace(&mut host.accesskit_active, false);
     host.focus_hint.dismiss();
     let result = (|| -> Result<()> {
@@ -2968,6 +3398,7 @@ fn check_terminal_frames(
     host.cursor_blink_started = blink_started;
     host.focus_hint = focus_hint;
     host.navigation_warning = navigation_warning;
+    app.activity_flashes = activity_flashes;
     host.accesskit_active = accesskit_active;
     host.repaint();
     result?;

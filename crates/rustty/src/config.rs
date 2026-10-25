@@ -345,6 +345,14 @@ pub struct Config {
     pub window_height: u32,
     pub window_theme: WindowTheme,
     pub window_save_state: WindowSaveState,
+    /// `None` follows macOS Reduce Motion, or enables animations on other GPU backends.
+    pub window_animations: Option<bool>,
+    pub quad_zoom_animation_duration: Duration,
+    pub quad_peek_animation_duration: Duration,
+    pub zoom_animation_duration: Duration,
+    pub zoom_from_quad_animation_duration: Duration,
+    /// Fraction of the window frame color blended into surrounding panes during zoom.
+    pub zoom_animation_background_mix: f32,
     /// Own one Stream Deck dashboard while a supported USB device is present.
     pub stream_deck: bool,
     pub stream_deck_serial: Option<String>,
@@ -456,6 +464,12 @@ impl Default for Config {
             window_height: 0,
             window_theme: WindowTheme::Auto,
             window_save_state: WindowSaveState::Default,
+            window_animations: None,
+            quad_zoom_animation_duration: Duration::from_millis(250),
+            quad_peek_animation_duration: Duration::from_millis(100),
+            zoom_animation_duration: Duration::from_millis(250),
+            zoom_from_quad_animation_duration: Duration::from_millis(250),
+            zoom_animation_background_mix: 0.5,
             stream_deck: false,
             stream_deck_serial: None,
             tmuxx_config_file: None,
@@ -653,6 +667,25 @@ impl Config {
             ),
             "window-theme" => set!(window_theme, WindowTheme::parse(value)?),
             "window-save-state" => set!(window_save_state, WindowSaveState::parse(value)?),
+            "window-animations" => set!(window_animations, Some(parse_bool(value)?)),
+            "quad-zoom-animation-duration" => {
+                set!(quad_zoom_animation_duration, parse_duration(value)?)
+            }
+            "quad-peek-animation-duration" => {
+                set!(quad_peek_animation_duration, parse_duration(value)?)
+            }
+            "zoom-animation-duration" => set!(zoom_animation_duration, parse_duration(value)?),
+            "zoom-from-quad-animation-duration" => {
+                set!(zoom_from_quad_animation_duration, parse_duration(value)?)
+            }
+            "zoom-animation-background-mix" => set!(zoom_animation_background_mix, {
+                let percentage =
+                    parse_nonnegative(value.strip_suffix('%').unwrap_or(value).trim())?;
+                if percentage > 100.0 {
+                    return Err("zoom animation background mix must be between 0% and 100%");
+                }
+                percentage / 100.0
+            }),
             "stream-deck" => set!(stream_deck, parse_bool(value)?),
             "stream-deck-serial" => set!(stream_deck_serial, Some(value.to_owned())),
             "tmuxx-config-file" => set!(tmuxx_config_file, {

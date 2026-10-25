@@ -100,6 +100,7 @@ windows = { version = "0.62.2", features = [
 embed-resource = "3"
 
 [dev-dependencies]
+rustty-render-software.workspace = true
 tmuxx-protocol.workspace = true
 
 [target.'cfg(windows)'.dev-dependencies]

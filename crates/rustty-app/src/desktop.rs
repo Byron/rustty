@@ -35,6 +35,7 @@ use rustty_app::{
     },
     search::{self, Search},
     workspace::{self, Axis, Id, Peek, Rect, SavedPane, Tab, WindowState, Workspace},
+    zoom_animation,
 };
 use rustty_font::{FontConfig, FontFeature};
 use rustty_render::{Frame, RenderOptions};
@@ -466,11 +467,21 @@ impl PreparedPane {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+struct ZoomPaint {
+    background: rustty_render::Color,
+    frame_background: rustty_render::Color,
+    opacity: f32,
+    background_opacity: f32,
+    moving: bool,
+}
+
 struct ComposedPane {
     frame: Arc<Frame>,
     rect: [f32; 4],
     clip: [f32; 4],
     dim: Option<rustty_render::Color>,
+    transition: Option<ZoomPaint>,
 }
 
 struct ComposedFrame {
@@ -487,6 +498,7 @@ impl ComposedFrame {
                     && old.rect == new.rect
                     && old.clip == new.clip
                     && old.dim == new.dim
+                    && old.transition == new.transition
             })
     }
 
@@ -495,12 +507,55 @@ impl ComposedFrame {
         panes: Vec<ComposedPane>,
     ) -> std::result::Result<Self, rustty_render::ComposeError> {
         let mut frame = Frame::empty(size);
-        for pane in &panes {
-            frame.append_clipped(&pane.frame, [pane.rect[0], pane.rect[1]], pane.clip)?;
-            if let Some(color) = pane.dim {
-                frame
-                    .quads
-                    .push(rustty_render::Quad::solid(pane.clip, color));
+        for (index, pane) in panes.iter().enumerate() {
+            let rect = |[x, y, w, h]: [f32; 4]| {
+                egui::Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h))
+            };
+            let mut clips = vec![rect(pane.clip)];
+            for above in panes[index + 1..]
+                .iter()
+                .filter(|pane| pane.transition.is_some_and(|paint| paint.moving))
+            {
+                clips = clips
+                    .into_iter()
+                    .flat_map(|clip| uncovered_rects(clip, rect(above.clip)))
+                    .collect();
+            }
+            for clip in clips {
+                let clip = [clip.left(), clip.top(), clip.width(), clip.height()];
+                let start = frame.quads.len();
+                frame.append_clipped(&pane.frame, [pane.rect[0], pane.rect[1]], clip)?;
+                if let Some(transition) = pane.transition {
+                    // Prepared terminals start with their full background; stretch only that quad.
+                    let background = rustty_render::Quad::solid(clip, transition.background);
+                    if let Some(first) = frame.quads.get_mut(start) {
+                        *first = background;
+                    } else {
+                        frame.quads.push(background);
+                    }
+                }
+                if let Some(color) = pane.dim {
+                    frame.quads.push(rustty_render::Quad::solid(clip, color));
+                }
+                if let Some(transition) = pane.transition {
+                    // Apply the background mix once to all content, including colored glyphs.
+                    let opacity = if transition.background_opacity > 0.0 {
+                        transition.opacity / transition.background_opacity
+                    } else {
+                        0.0
+                    };
+                    for quad in &mut frame.quads[start + 1..] {
+                        quad.color = quad.color.opacity(opacity);
+                    }
+                    if transition.background_opacity < 1.0 {
+                        frame.quads.push(rustty_render::Quad::solid(
+                            clip,
+                            transition
+                                .frame_background
+                                .opacity(1.0 - transition.background_opacity),
+                        ));
+                    }
+                }
             }
         }
         Ok(Self {
@@ -524,6 +579,7 @@ struct Host {
     overlay_panes: std::collections::BTreeSet<Id>,
     prepared: BTreeMap<Id, PreparedPane>,
     composed: Option<ComposedFrame>,
+    zoom_animation: zoom_animation::State,
     pane_prepares: u64,
     content: Rect,
     divider_drag: Option<(Id, Axis, Rect)>,
@@ -535,6 +591,7 @@ struct Host {
     preedit: String,
     preedit_selection: Option<(usize, usize)>,
     peek: Option<Peek>,
+    presented_peek: Option<Peek>,
     navigation_warning: Option<(Id, Instant)>,
     mouse: Pos2,
     deferred_pointer: Option<Pos2>,
@@ -585,12 +642,6 @@ impl Host {
             position,
             self.modal_pane,
         )
-    }
-    fn ordered_rects(&self) -> Vec<(Id, egui::Rect)> {
-        self.pane_order
-            .iter()
-            .filter_map(|id| Some((*id, *self.rects.get(id)?)))
-            .collect()
     }
     fn ui_input(&self) -> bool {
         self.search_focus.is_some()
@@ -1737,6 +1788,7 @@ impl App {
             overlay_panes: std::collections::BTreeSet::new(),
             prepared: BTreeMap::new(),
             composed: None,
+            zoom_animation: zoom_animation::State::default(),
             pane_prepares: 0,
             content: Rect::UNIT,
             divider_drag: None,
@@ -1748,6 +1800,7 @@ impl App {
             preedit: String::new(),
             preedit_selection: None,
             peek: None,
+            presented_peek: None,
             navigation_warning: None,
             mouse: Pos2::ZERO,
             deferred_pointer: None,
@@ -2821,7 +2874,9 @@ impl App {
                 }
                 if let Some(quadrant) = tab.root.quadrant(pane)
                     && let Some(host) = self.windows.values().find(|host| host.id == window.id)
-                    && self.quadrant_label(tab, host, quadrant).is_some()
+                    && self
+                        .quadrant_label(tab, host, quadrant, host.peek, false)
+                        .is_some()
                 {
                     self.activity_flashes
                         .entry(quadrant)
@@ -2832,21 +2887,28 @@ impl App {
         }
     }
 
-    fn quadrant_label(&self, tab: &Tab, host: &Host, quadrant: Id) -> Option<DirectoryLabel> {
+    fn quadrant_label(
+        &self,
+        tab: &Tab,
+        host: &Host,
+        quadrant: Id,
+        peek: Option<Peek>,
+        retained: bool,
+    ) -> Option<DirectoryLabel> {
         // A full-pane zoom does not display its containing quadrant's label.
-        let node = tab.visible_tree(host.peek.is_some()).node(quadrant)?;
+        let tree = if retained {
+            &tab.root
+        } else {
+            tab.visible_tree(peek.is_some())
+        };
+        let node = tree.node(quadrant)?;
         let name = common_directory_name(
             node.panes()
                 .iter()
                 .map(|id| self.panes.get(id).map(|pane| pane.cwd.as_path())),
         );
-        let focused = host.peek.map_or(tab.focused, |peek| peek.target);
-        DirectoryLabel::new(
-            name,
-            node.contains(focused),
-            host.focused,
-            host.peek.is_some(),
-        )
+        let focused = peek.map_or(tab.focused, |peek| peek.target);
+        DirectoryLabel::new(name, node.contains(focused), host.focused, peek.is_some())
     }
 
     fn flash_opacity(&self, id: Id, now: Instant, deadline: &mut Option<Instant>) -> f32 {
@@ -4363,6 +4425,17 @@ impl App {
                 host.sequence_len = 0;
                 let binding = self.config().keybinds[index].clone();
                 let flags = binding.flags;
+                let zoom_toggle = binding.actions.iter().any(|action| {
+                    matches!(action, Action::ToggleSplitZoom | Action::ToggleQuadrantZoom)
+                });
+                // Find permits repeats through its UI key tracking, but zoom still fires once.
+                if flags.consumed
+                    && zoom_toggle
+                    && key.repeat
+                    && host.consumed_keys.contains(&key.physical_key)
+                {
+                    return true;
+                }
                 let pin_navigation = binding
                     .actions
                     .iter()
@@ -4375,7 +4448,7 @@ impl App {
                         &mut self.consumed_global_keys,
                         key.physical_key,
                         pin_navigation,
-                        ui_input,
+                        ui_input || zoom_toggle,
                     );
                     return true;
                 }
@@ -4601,6 +4674,21 @@ impl App {
             raw.events.push(egui::Event::PointerMoved(position));
         }
         input::filter_egui_events(&mut raw, host.ui_input());
+        if host.zoom_animation.is_running()
+            && !host.modal_input()
+            && host.content.contains([host.mouse.x, host.mouse.y])
+        {
+            raw.events.retain(|event| {
+                !matches!(
+                    event,
+                    egui::Event::PointerMoved(_)
+                        | egui::Event::PointerButton { .. }
+                        | egui::Event::MouseWheel { .. }
+                        | egui::Event::Touch { .. }
+                )
+            });
+            raw.events.push(egui::Event::PointerGone);
+        }
         let context = self.context.clone();
         let now = Instant::now();
         // Popups also use the shared context; restore its theme after this window's pass.
@@ -4639,6 +4727,17 @@ impl App {
         let (blink_on, blink_deadline) = cursor_blink_phase(host.cursor_blink_started, now);
         let mut needs_blink = false;
         let mut animation_deadline: Option<Instant> = None;
+        let animations_enabled = config.window_animations.unwrap_or_else(|| {
+            #[cfg(target_os = "macos")]
+            {
+                !Platform::reduce_motion()
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                !self.painter.is_software()
+            }
+        });
+        let mut zoom_panes = Vec::new();
         if host
             .navigation_warning
             .is_some_and(|(_, until)| until <= Instant::now())
@@ -4850,7 +4949,15 @@ impl App {
                         width: content.width(),
                         height: content.height(),
                     };
-                    let layout = active.layout(host.content, host.peek.is_some(), host.fonts.metrics().cell_height as f32 / scale);
+                    let cell_height = host.fonts.metrics().cell_height as f32 / scale;
+                    let layout = active.layout(host.content, host.peek.is_some(), cell_height);
+                    zoom_panes = host.zoom_animation.update(active, host.peek.is_some(), host.content, cell_height, scale, &config, animations_enabled, now);
+                    if host.zoom_animation.is_running() {
+                        ui.ctx().request_repaint();
+                        self.cancel_selection_drag(host);
+                        host.divider_drag = None;
+                        host.hovered_link = None;
+                    }
                     host.pane_order = layout.iter().map(|(id, _)| *id).collect();
                     host.modal_pane = active.modal_pane();
                     host.overlay_panes = active.overlays.iter().map(|overlay| overlay.pane).collect();
@@ -4861,11 +4968,17 @@ impl App {
                         b,
                         (config.background_opacity * 255.0).round() as u8,
                     );
-                    for (_, rect) in &layout {
-                        let outer = egui::Rect::from_min_size(
-                            Pos2::new(rect.x, rect.y),
-                            Vec2::new(rect.width, rect.height),
-                        );
+                    if host.zoom_animation.is_running() {
+                        let mut uncovered = vec![content];
+                        for pane in &zoom_panes {
+                            uncovered = uncovered.into_iter().flat_map(|rect| uncovered_rects(rect, pane.rect.expand(1.0))).collect();
+                        }
+                        for rect in uncovered {
+                            ui.painter().rect_filled(rect, 0.0, gutter);
+                        }
+                    }
+                    for pane in &zoom_panes {
+                        let outer = pane.rect.expand(1.0);
                         paint_pane_gutter(ui.painter(), outer, outer.shrink(1.0), gutter);
                     }
                     host.rects = layout
@@ -4881,7 +4994,7 @@ impl App {
                             )
                         })
                         .collect();
-                    host.prepared.retain(|id, _| host.rects.contains_key(id));
+                    host.prepared.retain(|id, _| zoom_panes.iter().any(|pane| pane.id == *id));
                     let mut composed = None;
                     let mut accessible = Vec::new();
                     if let Some(entry) = self.tmuxx_window(host.id)
@@ -4903,7 +5016,8 @@ impl App {
                     for attempt in 0..2 {
                         let mut composition = Vec::with_capacity(host.rects.len());
                         accessible.clear();
-                        for (id, rect) in host.ordered_rects() {
+                        for visual in &zoom_panes {
+                            let (id, rect) = (visual.id, visual.layout);
                             let Some(pane) = self.panes.get_mut(&id) else {
                                 continue;
                             };
@@ -5071,15 +5185,22 @@ impl App {
                                 && !pane.exited
                                 && prepared.frame.blinking_text;
                             composition.push(ComposedPane {
+                                transition: host.zoom_animation.is_running().then(|| ZoomPaint {
+                                    background: rustty_render::Color::rgb(prepared.key.options.background).opacity(config.background_opacity),
+                                    frame_background: rustty_render::Color::rgb(config.background.to_array()),
+                                    opacity: visual.opacity,
+                                    background_opacity: visual.background_opacity,
+                                    moving: visual.moving,
+                                }),
                                 frame: Arc::clone(&prepared.frame),
                                 rect: [
-                                    rect.left() * scale,
-                                    rect.top() * scale,
+                                    visual.rect.left() * scale,
+                                    visual.rect.top() * scale,
                                     physical.x,
                                     physical.y,
                                 ],
                                 clip: {
-                                    let clip = rect.intersect(content);
+                                    let clip = visual.rect.intersect(content);
                                     [clip.left() * scale, clip.top() * scale, clip.width().max(0.0) * scale, clip.height().max(0.0) * scale]
                                 },
                                 dim: (id != focused && config.unfocused_split_opacity < 1.0).then(
@@ -5092,9 +5213,9 @@ impl App {
                                     },
                                 ),
                             });
-                            accessible.push((id, rect.intersect(content)));
+                            accessible.push((id, visual.rect.intersect(content)));
                             if id == focused && accepts_input {
-                                terminal_ime_rect = Some(prepared.ime_rect);
+                                terminal_ime_rect = Some(prepared.ime_rect.translate(visual.rect.min - rect.min));
                             }
                         }
                         host.fonts.retain_images(
@@ -5135,6 +5256,21 @@ impl App {
                             }),
                         ),
                     );
+                    let displayed = host.zoom_animation.is_running().then(|| {
+                        let mut displayed = active.clone();
+                        if let Some((zoom, quadrant, _)) = host.zoom_animation.display_zoom() {
+                            displayed.zoom = zoom;
+                            displayed.quadrant_zoom = quadrant;
+                        }
+                        displayed
+                    });
+                    let active = displayed.as_ref().unwrap_or(active);
+                    let peek = if host.zoom_animation.display_zoom().is_some_and(|mode| mode.2) {
+                        host.peek.or(host.presented_peek)
+                    } else {
+                        None
+                    };
+                    host.presented_peek = host.peek.or(peek);
                     for (id, rect) in accessible {
                         let response = ui.interact(
                             rect,
@@ -5159,79 +5295,83 @@ impl App {
                         if id == focused && host.focused {
                             input::terminal_input(&response, terminal_ime_rect, host.ui_input());
                         }
-                        if host.navigation_warning.is_some_and(|(pane, _)| pane == id) {
-                            ui.painter().rect_stroke(
-                                rect.shrink(2.0),
-                                0.0,
-                                egui::Stroke::new(3.0, Color32::from_rgb(230, 125, 65)),
-                                egui::StrokeKind::Inside,
-                            );
-                        }
-                        if active.pane_ids().len() > 1 {
-                            let selected = host
-                                .peek
-                                .map(|peek| peek.target == id)
-                                .unwrap_or(id == focused);
-                            let color = if selected {
-                                accent
-                            } else {
-                                config
-                                    .split_divider_color
-                                    .map(rgb)
-                                    .unwrap_or(Color32::from_gray(65))
-                            };
-                            paint_pane_frame(ui.painter(), rect, color);
-                        }
-                        if config.progress_style
-                            && let Some(pane) = self.panes.get_mut(&id)
-                            && let Some(progress) = pane.activity.progress()
-                            && !paint_progress(
-                                ui,
-                                id,
-                                rect,
-                                progress,
-                                accent,
-                                pane.activity.progress_offset(now),
-                            )
-                        {
-                            pane.activity.reset_progress_animation();
-                        }
+                        zoom_chrome(ui, &zoom_panes, id, rect, rgb(config.background), |ui| {
+                            if host.navigation_warning.is_some_and(|(pane, _)| pane == id) {
+                                ui.painter().rect_stroke(
+                                    rect.shrink(2.0),
+                                    0.0,
+                                    egui::Stroke::new(3.0, Color32::from_rgb(230, 125, 65)),
+                                    egui::StrokeKind::Inside,
+                                );
+                            }
+                            if active.pane_ids().len() > 1 {
+                                let selected = peek
+                                    .map(|peek| peek.target == id)
+                                    .unwrap_or(id == focused);
+                                let color = if selected {
+                                    accent
+                                } else {
+                                    config
+                                        .split_divider_color
+                                        .map(rgb)
+                                        .unwrap_or(Color32::from_gray(65))
+                                };
+                                paint_pane_frame(ui.painter(), rect, color);
+                            }
+                            if config.progress_style
+                                && let Some(pane) = self.panes.get_mut(&id)
+                                && let Some(progress) = pane.activity.progress()
+                                && !paint_progress(
+                                    ui,
+                                    id,
+                                    rect,
+                                    progress,
+                                    accent,
+                                    pane.activity.progress_offset(now),
+                                )
+                            {
+                                pane.activity.reset_progress_animation();
+                            }
+                        });
                     }
-                    for (id, rect) in host.ordered_rects() {
-                        if let Some(error) = self.failed_panes.get(&id) {
-                            ui.scope_builder(
-                                egui::UiBuilder::new().max_rect(rect.shrink(20.0)),
-                                |ui| {
-                                    ui.label(format!("Could not start terminal: {error}"));
-                                    if ui.button("Retry").clicked() {
-                                        retry_pane = Some(id);
-                                    }
-                                },
-                            );
-                        } else if let Some(message) = self
-                            .panes
-                            .get(&id)
-                            .and_then(|pane| pane.exit_message.as_ref())
-                        {
-                            let galley = ui.painter().layout_no_wrap(
-                                message.clone(),
-                                egui::FontId::proportional(13.0),
-                                Color32::WHITE,
-                            );
-                            let bounds = egui::Rect::from_center_size(
-                                rect.center_bottom() - Vec2::new(0.0, 20.0),
-                                galley.size(),
-                            );
-                            ui.painter().rect_filled(
-                                bounds.expand(5.0),
-                                3.0,
-                                Color32::from_black_alpha(230),
-                            );
-                            ui.painter().galley(bounds.min, galley, Color32::WHITE);
-                        }
+                    for visual in &zoom_panes {
+                        let (id, rect) = (visual.id, visual.rect);
+                        zoom_chrome(ui, &zoom_panes, id, rect, rgb(config.background), |ui| {
+                            if let Some(error) = self.failed_panes.get(&id) {
+                                ui.scope_builder(
+                                    egui::UiBuilder::new().max_rect(rect.shrink(20.0)),
+                                    |ui| {
+                                        ui.label(format!("Could not start terminal: {error}"));
+                                        if ui.button("Retry").clicked() {
+                                            retry_pane = Some(id);
+                                        }
+                                    },
+                                );
+                            } else if let Some(message) = self
+                                .panes
+                                .get(&id)
+                                .and_then(|pane| pane.exit_message.as_ref())
+                            {
+                                let galley = ui.painter().layout_no_wrap(
+                                    message.clone(),
+                                    egui::FontId::proportional(13.0),
+                                    Color32::WHITE,
+                                );
+                                let bounds = egui::Rect::from_center_size(
+                                    rect.center_bottom() - Vec2::new(0.0, 20.0),
+                                    galley.size(),
+                                );
+                                ui.painter().rect_filled(
+                                    bounds.expand(5.0),
+                                    3.0,
+                                    Color32::from_black_alpha(230),
+                                );
+                                ui.painter().galley(bounds.min, galley, Color32::WHITE);
+                            }
+                        });
                     }
                     if let Some(zoom) = zoom_label(active)
-                        && host.peek.is_none()
+                        && peek.is_none()
                         && active.panes.len() > 1
                         && state.tabs.len() == 1
                     {
@@ -5239,11 +5379,15 @@ impl App {
                             Pos2::new(content.center().x, content.top() + 10.0),
                             Vec2::splat(12.0),
                         );
-                        paint_zoom_icon(ui.painter(), bounds, active, rgb(config.foreground));
+                        zoom_chrome(ui, &zoom_panes, focused, content, rgb(config.background), |ui| {
+                                paint_zoom_icon(ui.painter(), bounds, active, rgb(config.foreground));
+                        });
                         ui.interact(bounds, egui::Id::new(("window-zoom", host.id)), Sense::hover())
                             .on_hover_text(zoom);
                     }
-                    self.update_hover_link(host);
+                    if !host.zoom_animation.is_running() {
+                        self.update_hover_link(host);
+                    }
                     if let Some(link) = &host.hovered_link
                         && let Some(prepared) = host.prepared.get(&link.pane)
                     {
@@ -5263,7 +5407,8 @@ impl App {
                         }
                     }
                     let mut quadrants = BTreeMap::<Id, egui::Rect>::new();
-                    for (pane, rect) in host.ordered_rects() {
+                    for visual in &zoom_panes {
+                        let (pane, rect) = (visual.id, visual.rect);
                         if let Some(quadrant) = active.root.quadrant(pane) {
                             quadrants
                                 .entry(quadrant)
@@ -5274,91 +5419,96 @@ impl App {
                     let mut shared_labels = HashSet::new();
                     for (id, bounds) in quadrants {
                         let members = active.root.node(id).unwrap().panes();
+                        let retained = host.zoom_animation.is_running()
+                            && members.iter().all(|id| zoom_panes.iter().any(|pane| pane.id == *id && !pane.moving));
                         let attention = members
                             .iter()
                             .any(|id| self.panes.get(id).is_some_and(|pane| pane.unseen));
-                        if let Some(peek) = host.peek {
-                            let selected = active.root.quadrant(peek.target);
-                            if !peek.navigation_used && Some(id) != selected {
-                                ui.painter().rect_filled(
+                        let representative = members.iter().find(|id| zoom_panes.iter().any(|pane| pane.id == **id)).copied().unwrap_or(id);
+                        zoom_chrome(ui, &zoom_panes, representative, bounds, rgb(config.background), |ui| {
+                            if let Some(peek) = peek {
+                                let selected = active.root.quadrant(peek.target);
+                                if !peek.navigation_used && Some(id) != selected {
+                                    ui.painter().rect_filled(
+                                        bounds,
+                                        0.0,
+                                        if attention {
+                                            accent
+                                        } else {
+                                            config
+                                                .unfocused_split_fill
+                                                .map(rgb)
+                                                .unwrap_or(Color32::BLACK)
+                                        }
+                                        .gamma_multiply(config.quadrant_peek_opacity),
+                                    );
+                                }
+                                if Some(id) == selected {
+                                    paint_pane_frame(ui.painter(), bounds, accent);
+                                }
+                            }
+                            if let Some(label) = self.quadrant_label(active, host, id, peek, retained) {
+                                shared_labels.extend(members.iter().copied());
+                                DirectoryBadge {
+                                    label,
                                     bounds,
-                                    0.0,
-                                    if attention {
-                                        accent
-                                    } else {
-                                        config
-                                            .unfocused_split_fill
-                                            .map(rgb)
-                                            .unwrap_or(Color32::BLACK)
-                                    }
-                                    .gamma_multiply(config.quadrant_peek_opacity),
-                                );
+                                    centered: true,
+                                    shared: true,
+                                    pinned: false,
+                                    attention,
+                                    accent: tab_accent,
+                                    active: members.iter().any(|id| {
+                                        self.panes
+                                            .get(id)
+                                            .is_some_and(|pane| pane.activity.is_active())
+                                    }),
+                                    flash: self.flash_opacity(id, now, &mut animation_deadline),
+                                }
+                                .paint(ui);
                             }
-                            if Some(id) == selected {
-                                paint_pane_frame(ui.painter(), bounds, accent);
-                            }
-                        }
-                        if let Some(label) = self.quadrant_label(active, host, id) {
-                            shared_labels.extend(members.iter().copied());
-                            DirectoryBadge {
-                                label,
-                                bounds,
-                                centered: true,
-                                shared: true,
-                                pinned: false,
-                                attention,
-                                accent: tab_accent,
-                                active: members.iter().any(|id| {
-                                    self.panes
-                                        .get(id)
-                                        .is_some_and(|pane| pane.activity.is_active())
-                                }),
-                                flash: self.flash_opacity(id, now, &mut animation_deadline),
-                            }
-                            .paint(ui);
-                        }
+                        });
                     }
-                    for (id, bounds) in host.ordered_rects() {
+                    for visual in &zoom_panes {
+                        let (id, bounds) = (visual.id, visual.rect);
                         let Some(pane) = self.panes.get(&id) else {
                             continue;
                         };
-                        let pinned = self.workspace.pinned_panes.contains(&id);
-                        let selected = host.peek.map_or(focused, |peek| peek.target) == id;
-                        let server_selected = id != focused && self.tmuxx_window(host.id)
-                            .is_some_and(|entry| entry.mapping.server_focused.contains(&id));
-                        if let Some(label) = DirectoryLabel::new(
-                            directory_name(&pane.cwd),
-                            selected,
-                            host.focused,
-                            host.focus_hint.visible(id, now),
-                        ).filter(|_| !shared_labels.contains(&id)) {
-                            let centered = label.large(
-                                active.quadrant_zoom.is_some()
-                                    && (host.peek.is_some() || active.zoom == active.quadrant_zoom),
-                            );
-                            let flash = if label.shows_flash(true, false) {
-                                self.flash_opacity(id, now, &mut animation_deadline)
-                            } else {
-                                0.0
-                            };
-                            DirectoryBadge {
-                                label,
-                                bounds,
-                                centered,
-                                shared: false,
-                                pinned,
-                                flash,
-                                accent: tab_accent,
-                                active: pane.activity.is_active(),
-                                attention: pane.unseen,
+                        zoom_chrome(ui, &zoom_panes, id, bounds, rgb(config.background), |ui| {
+                            let pinned = self.workspace.pinned_panes.contains(&id);
+                            let selected = peek.map_or(focused, |peek| peek.target) == id;
+                            let server_selected = id != focused && self.tmuxx_window(host.id)
+                                .is_some_and(|entry| entry.mapping.server_focused.contains(&id));
+                            if let Some(label) = DirectoryLabel::new(
+                                directory_name(&pane.cwd),
+                                selected,
+                                host.focused,
+                                host.focus_hint.visible(id, now),
+                            ).filter(|_| !shared_labels.contains(&id)) {
+                                let centered = label.centered_in_pane(active, id, visual.label_quadrant);
+                                let flash = if label.shows_flash(true, false) {
+                                    self.flash_opacity(id, now, &mut animation_deadline)
+                                } else {
+                                    0.0
+                                };
+                                DirectoryBadge {
+                                    label,
+                                    bounds,
+                                    centered,
+                                    shared: false,
+                                    pinned,
+                                    flash,
+                                    accent: tab_accent,
+                                    active: pane.activity.is_active(),
+                                    attention: pane.unseen,
+                                }
+                                .paint(ui);
+                            } else if pinned {
+                                paint_panel_pin(ui, id, bounds);
                             }
-                            .paint(ui);
-                        } else if pinned {
-                            paint_panel_pin(ui, id, bounds);
-                        }
-                        if server_selected {
-                            paint_server_selection(ui, id, bounds, accent);
-                        }
+                            if server_selected {
+                                paint_server_selection(ui, id, bounds, accent);
+                            }
+                        });
                     }
                 });
             if state.tabs.len() == 1 && let Some((label, tooltip)) = &tmuxx_tag {
@@ -5400,7 +5550,8 @@ impl App {
                         }
                     });
                 }
-                for (id, bounds) in host.ordered_rects() {
+                for visual in &zoom_panes {
+                    let (id, bounds) = (visual.id, visual.rect);
                     let Some(pane) = self.panes.get_mut(&id) else {
                         continue;
                     };
@@ -5410,11 +5561,14 @@ impl App {
                     let mut focus =
                         !modal_input && host.search_focus == Some(id) && host.focus_text_input;
                     let requested = focus;
-                    let response = search.show(
+                    let response = zoom_chrome(ui, &zoom_panes, id, bounds, rgb(config.background), |ui| search.show(
                         ui, id, bounds,
                         id == focused && !messages_keyboard_input && !messages_input(ctx),
                         &mut focus, &config,
-                    );
+                    ));
+                    if response.response.layer_id != ui.layer_id() {
+                        clip_zoom_chrome(ctx, response.response.layer_id, egui::layers::ShapeIdx(0), &zoom_panes, id, rgb(config.background));
+                    }
                     if requested && !focus {
                         host.focus_text_input = false;
                     }
@@ -5982,6 +6136,7 @@ impl App {
     fn scroll(&mut self, host: &mut Host, delta: MouseScrollDelta) {
         self.refresh_selection(host, Instant::now(), false);
         if host.modal_input()
+            || host.zoom_animation.is_running()
             || host.peek.is_some()
             || host.divider_drag.is_some()
             || host.selection_drag.is_none() && host.ui_areas.contains(host.mouse)
@@ -6214,6 +6369,12 @@ impl App {
     }
 
     fn mouse(&mut self, host: &mut Host, action: vt::MouseAction, button: Option<vt::MouseButton>) {
+        if host.zoom_animation.is_running()
+            && host.peek.is_none()
+            && action != vt::MouseAction::Release
+        {
+            return;
+        }
         if host.selection_drag.is_some() && action != vt::MouseAction::Press {
             self.refresh_selection(host, Instant::now(), false);
             let text = if action == vt::MouseAction::Release
@@ -7984,6 +8145,102 @@ fn paint_pane_gutter(
     }
 }
 
+fn uncovered_rects(clip: egui::Rect, cover: egui::Rect) -> Vec<egui::Rect> {
+    let cover = clip.intersect(cover);
+    if !cover.is_positive() {
+        return vec![clip];
+    }
+    [
+        egui::Rect::from_min_max(clip.min, Pos2::new(cover.left(), clip.bottom())),
+        egui::Rect::from_min_max(Pos2::new(cover.right(), clip.top()), clip.max),
+        egui::Rect::from_min_max(Pos2::new(cover.left(), clip.top()), cover.right_top()),
+        egui::Rect::from_min_max(cover.left_bottom(), Pos2::new(cover.right(), clip.bottom())),
+    ]
+    .into_iter()
+    .filter(egui::Rect::is_positive)
+    .collect()
+}
+
+fn clip_zoom_chrome(
+    ctx: &egui::Context,
+    layer: egui::LayerId,
+    start: egui::layers::ShapeIdx,
+    panes: &[zoom_animation::Pane],
+    id: Id,
+    frame_color: Color32,
+) {
+    let Some(visual) = panes.iter().find(|pane| pane.id == id) else {
+        return;
+    };
+    let clip = !visual.moving && panes.iter().any(|pane| pane.moving);
+    if visual.background_opacity == 1.0 && !clip {
+        return;
+    }
+    ctx.graphics_mut(|graphics| {
+        let list = graphics.entry(layer);
+        if visual.background_opacity < 1.0 {
+            let mix = 1.0 - visual.background_opacity;
+            for index in start.0..list.next_idx().0 {
+                list.mutate_shape(egui::layers::ShapeIdx(index), |shape| {
+                    // The backdrop is already mixed; tint chrome without fading it twice.
+                    egui::epaint::shape_transform::adjust_colors(&mut shape.shape, move |color| {
+                        if *color != Color32::PLACEHOLDER {
+                            *color =
+                                color.lerp_to_gamma(frame_color.gamma_multiply_u8(color.a()), mix);
+                        }
+                    });
+                });
+            }
+        }
+        if clip {
+            // Background labels must stay behind the enlarging pane, too.
+            let shapes: Vec<_> = list.all_entries().skip(start.0).cloned().collect();
+            for (offset, clipped) in shapes.into_iter().enumerate() {
+                list.reset_shape(egui::layers::ShapeIdx(start.0 + offset));
+                let mut clips = vec![clipped.clip_rect];
+                for pane in panes.iter().filter(|pane| pane.moving) {
+                    clips = clips
+                        .into_iter()
+                        .flat_map(|clip| uncovered_rects(clip, pane.rect.expand(1.0)))
+                        .collect();
+                }
+                for rect in clips {
+                    list.add(rect, clipped.shape.clone());
+                }
+            }
+        }
+    });
+}
+
+fn zoom_chrome<T>(
+    ui: &mut egui::Ui,
+    panes: &[zoom_animation::Pane],
+    id: Id,
+    bounds: egui::Rect,
+    frame_color: Color32,
+    paint: impl FnOnce(&mut egui::Ui) -> T,
+) -> T {
+    if panes.iter().all(|pane| !pane.moving && pane.opacity == 1.0) {
+        return paint(ui);
+    }
+    let mut child = ui.new_child(egui::UiBuilder::new().id(ui.id()));
+    child.set_clip_rect(ui.clip_rect().intersect(bounds));
+    let visual = panes.iter().find(|pane| pane.id == id);
+    if let Some(visual) = visual {
+        child.multiply_opacity(if visual.background_opacity > 0.0 {
+            visual.opacity / visual.background_opacity
+        } else {
+            0.0
+        });
+    }
+    let start = child
+        .ctx()
+        .graphics_mut(|graphics| graphics.entry(child.layer_id()).next_idx());
+    let result = paint(&mut child);
+    clip_zoom_chrome(child.ctx(), child.layer_id(), start, panes, id, frame_color);
+    result
+}
+
 fn paint_pane_frame(painter: &egui::Painter, bounds: egui::Rect, color: Color32) {
     painter.rect_stroke(
         bounds,
@@ -8644,6 +8901,7 @@ mod tests {
         let composed = ComposedFrame::new(
             [100, 110],
             vec![ComposedPane {
+                transition: None,
                 frame: Arc::new(frame),
                 rect: [-5.0, 5.0, 30.0, 30.0],
                 clip: [0.0, 10.0, 25.0, 25.0],
@@ -8746,6 +9004,336 @@ mod tests {
     }
 
     #[test]
+    fn zoom_composition_moves_and_fades_glyphs_without_scaling_them() {
+        use rustty_render::{Color, Paint, Quad};
+        let background = Color::rgb([0; 3]).opacity(0.8);
+        let frame_background = Color::rgb([255; 3]);
+        let mut frame = Frame::empty([100, 80]);
+        frame
+            .quads
+            .push(Quad::solid([0.0, 0.0, 100.0, 80.0], background));
+        let mut glyph = Quad::solid([10.0, 20.0, 8.0, 16.0], Color::rgb([255; 3]));
+        glyph.paint = Paint::Color;
+        glyph.uv = [0.1, 0.2, 0.3, 0.4];
+        frame.quads.push(glyph.clone());
+        for opacity in [1.0, 0.5, 0.0] {
+            let pane = ComposedPane {
+                frame: Arc::new(frame.clone()),
+                rect: [25.0, 30.0, 100.0, 80.0],
+                clip: [25.0, 30.0, 200.0, 160.0],
+                dim: None,
+                transition: Some(ZoomPaint {
+                    background,
+                    frame_background,
+                    opacity,
+                    background_opacity: 1.0,
+                    moving: true,
+                }),
+            };
+            let composed = ComposedFrame::new([300, 240], vec![pane]).unwrap();
+            let quads = &composed.frame.quads;
+            assert_eq!(
+                quads.len(),
+                2,
+                "replace the background instead of doubling its opacity"
+            );
+            assert_eq!(quads[0].rect, [25.0, 30.0, 200.0, 160.0]);
+            assert_eq!(quads[0].color, background);
+            assert_eq!(quads[1].rect, [35.0, 50.0, 8.0, 16.0]);
+            assert_eq!(quads[1].uv, glyph.uv);
+            assert_eq!(quads[1].color.0[3], opacity);
+        }
+    }
+
+    #[test]
+    fn zoom_background_mix_applies_uniformly_to_content_and_background() {
+        use rustty_render::{Color, Quad};
+        let bounds = [0.0, 0.0, 2.0, 1.0];
+        let background = Color::rgb([0; 3]).opacity(0.8);
+        let mut frame = Frame::empty([2, 1]);
+        frame.quads.push(Quad::solid(bounds, background));
+        frame
+            .quads
+            .push(Quad::solid([0.0, 0.0, 1.0, 1.0], Color::rgb([255, 0, 0])));
+        for (retained, expected) in [
+            (1.0, [255, 0, 0, 255, 0, 0, 0, 204]),
+            (0.5, [128, 0, 128, 255, 0, 0, 128, 230]),
+            (0.0, [0, 0, 255, 255, 0, 0, 255, 255]),
+        ] {
+            let composed = ComposedFrame::new(
+                [2, 1],
+                vec![ComposedPane {
+                    frame: Arc::new(frame.clone()),
+                    rect: bounds,
+                    clip: bounds,
+                    dim: None,
+                    transition: Some(ZoomPaint {
+                        background,
+                        frame_background: Color::rgb([0, 0, 255]),
+                        opacity: retained,
+                        background_opacity: retained,
+                        moving: false,
+                    }),
+                }],
+            )
+            .unwrap();
+            let rect = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(2.0, 1.0));
+            let primitives = [egui::ClippedPrimitive {
+                clip_rect: rect,
+                primitive: egui::epaint::Primitive::Callback(egui::PaintCallback {
+                    rect,
+                    callback: Arc::new(rustty_render_software::TerminalPaint {
+                        window: 1,
+                        frame: composed.frame,
+                    }),
+                }),
+            }];
+            let mut renderer = rustty_render_software::Renderer::default();
+            let pixels = renderer
+                .render([2, 1], 1.0, &primitives, &egui::TexturesDelta::default())
+                .unwrap();
+            for (actual, expected) in pixels.iter().zip(expected) {
+                assert!(actual.abs_diff(expected) <= 1, "{retained}: {pixels:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn zoom_slides_over_translucent_neighbors_without_stacking_their_backgrounds() {
+        let background = rustty_render::Color::rgb([20, 30, 40]).opacity(0.5);
+        let mut frame = Frame::empty([100, 80]);
+        frame.quads.push(rustty_render::Quad::solid(
+            [0.0, 0.0, 100.0, 80.0],
+            background,
+        ));
+        let frame = Arc::new(frame);
+        let pane = |x, moving| ComposedPane {
+            frame: Arc::clone(&frame),
+            rect: [x, 0.0, 100.0, 80.0],
+            clip: [x, 0.0, 100.0, 80.0],
+            dim: None,
+            transition: Some(ZoomPaint {
+                background,
+                frame_background: background,
+                opacity: 0.5,
+                background_opacity: 1.0,
+                moving,
+            }),
+        };
+        let composed =
+            ComposedFrame::new([150, 80], vec![pane(0.0, false), pane(50.0, true)]).unwrap();
+        let quads = &composed.frame.quads;
+        assert_eq!(quads.len(), 2);
+        assert_eq!(quads[0].rect, [0.0, 0.0, 50.0, 80.0]);
+        assert_eq!(quads[1].rect, [50.0, 0.0, 100.0, 80.0]);
+        assert!(quads.iter().all(|quad| quad.color.0[3] == 0.5));
+    }
+
+    #[test]
+    fn zoom_chrome_mixes_once_on_parent_and_search_layers_preserving_alpha() {
+        let bounds = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(100.0, 80.0));
+        for separate_layer in [false, true] {
+            for (opacity, background_opacity, moving, expected_opacity, expected) in [
+                (1.0, 1.0, false, 1.0, [128, 0, 0, 128]),
+                (0.5, 0.5, false, 1.0, [64, 0, 64, 128]),
+                (0.0, 0.0, false, 0.0, [0, 0, 0, 0]),
+                (0.5, 1.0, true, 0.5, [64, 0, 0, 64]),
+                (0.25, 0.5, true, 0.5, [32, 0, 32, 64]),
+            ] {
+                let context = egui::Context::default();
+                let panes = [zoom_animation::Pane {
+                    id: 1,
+                    layout: bounds,
+                    label_quadrant: None,
+                    rect: bounds,
+                    opacity,
+                    background_opacity,
+                    moving,
+                }];
+                let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                    let layer = if separate_layer {
+                        egui::LayerId::new(egui::Order::Middle, egui::Id::new("search-overlay"))
+                    } else {
+                        ui.layer_id()
+                    };
+                    zoom_chrome(ui, &panes, 1, bounds, Color32::BLUE, |ui| {
+                        assert_eq!(ui.opacity(), expected_opacity);
+                        let painter = ui.painter().clone().with_layer_id(layer);
+                        painter.rect_filled(
+                            bounds,
+                            0.0,
+                            Color32::from_rgba_premultiplied(128, 0, 0, 128),
+                        );
+                        painter.rect_filled(bounds, 0.0, Color32::PLACEHOLDER);
+                    });
+                    if layer != ui.layer_id() {
+                        clip_zoom_chrome(
+                            &context,
+                            layer,
+                            egui::layers::ShapeIdx(0),
+                            &panes,
+                            1,
+                            Color32::BLUE,
+                        );
+                    }
+                    context.graphics_mut(|graphics| {
+                        let colors = graphics
+                            .entry(layer)
+                            .all_entries()
+                            .filter_map(|shape| match &shape.shape {
+                                egui::Shape::Rect(rect) => Some(rect.fill),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>();
+                        if expected_opacity == 0.0 {
+                            assert!(colors.is_empty());
+                        } else {
+                            assert_eq!(
+                                colors,
+                                [
+                                    Color32::from_rgba_premultiplied(
+                                        expected[0],
+                                        expected[1],
+                                        expected[2],
+                                        expected[3],
+                                    ),
+                                    Color32::PLACEHOLDER,
+                                ],
+                                "layer={separate_layer}, b={background_opacity}"
+                            );
+                        }
+                    });
+                });
+                output.textures_delta.clear();
+            }
+        }
+    }
+
+    #[test]
+    fn rendered_directory_badges_mix_text_and_fill_uniformly() {
+        let context = egui::Context::default();
+        configure_ui_fonts(&context);
+        let size = [320, 160];
+        let bounds = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(320.0, 160.0));
+        let background = Color32::from_rgb(12, 20, 28);
+        let frame_color = Color32::from_rgb(20, 80, 140);
+        let mut renderer = rustty_render_software::Renderer::default();
+        let mut baseline = Vec::new();
+        let mut probes = Vec::new();
+        for retained in [1.0, 0.5, 0.0, 1.0] {
+            let panes = [zoom_animation::Pane {
+                id: 1,
+                layout: bounds,
+                label_quadrant: None,
+                rect: bounds,
+                opacity: retained,
+                background_opacity: retained,
+                moving: false,
+            }];
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(bounds),
+                    ..Default::default()
+                },
+                |ui| {
+                    ui.visuals_mut().override_text_color = Some(Color32::WHITE);
+                    ui.painter().rect_filled(
+                        bounds,
+                        0.0,
+                        background.lerp_to_gamma(frame_color, 1.0 - retained),
+                    );
+                    zoom_chrome(ui, &panes, 1, bounds, frame_color, |ui| {
+                        DirectoryBadge {
+                            label: DirectoryLabel::new(
+                                Some("Background".into()),
+                                false,
+                                true,
+                                false,
+                            )
+                            .unwrap(),
+                            bounds,
+                            centered: true,
+                            shared: false,
+                            active: false,
+                            attention: false,
+                            pinned: false,
+                            flash: 0.0,
+                            accent: TabAccent::new(None, [200, 80, 20]),
+                        }
+                        .paint(ui);
+                    });
+                },
+            );
+            let badge = output.shapes.iter().find_map(|shape| match &shape.shape {
+                egui::Shape::Rect(rect) if rect.rect != bounds && rect.fill.a() == 255 => {
+                    Some(rect.rect)
+                }
+                _ => None,
+            });
+            let primitives = context.tessellate(output.shapes, output.pixels_per_point);
+            let pixels = renderer
+                .render(
+                    size,
+                    output.pixels_per_point,
+                    &primitives,
+                    &output.textures_delta,
+                )
+                .unwrap();
+            output.textures_delta.clear();
+            if baseline.is_empty() {
+                let glyph = pixels
+                    .chunks_exact(4)
+                    .position(|pixel| pixel == [255; 4])
+                    .expect("native badge font must cover at least one glyph pixel fully");
+                let badge = badge.expect("missing badge fill");
+                let badge_fill =
+                    (badge.center().y as usize * size[0] as usize) + (badge.left() + 4.0) as usize;
+                probes = vec![glyph, badge_fill, 10 * size[0] as usize + 10];
+                baseline = pixels.to_vec();
+                assert_ne!(
+                    &baseline[badge_fill * 4..badge_fill * 4 + 4],
+                    &background.to_array()
+                );
+            }
+            for index in &probes {
+                let start = index * 4;
+                for (channel, frame) in frame_color.to_array().into_iter().enumerate() {
+                    let expected = (f32::from(baseline[start + channel]) * retained
+                        + f32::from(frame) * (1.0 - retained))
+                        .round() as u8;
+                    assert!(
+                        pixels[start + channel].abs_diff(expected) <= 2,
+                        "retained={retained}, pixel={index}, channel={channel}: got {}, expected {expected}",
+                        pixels[start + channel]
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn zoom_background_chrome_is_clipped_around_the_moving_panel() {
+        let bounds = egui::Rect::from_min_max(Pos2::ZERO, Pos2::new(100.0, 80.0));
+        let cover = egui::Rect::from_min_max(Pos2::new(20.0, 15.0), Pos2::new(75.0, 60.0));
+        let uncovered = uncovered_rects(bounds, cover);
+        assert_eq!(
+            uncovered.iter().map(egui::Rect::area).sum::<f32>() + cover.area(),
+            bounds.area()
+        );
+        for (i, rect) in uncovered.iter().enumerate() {
+            assert!(!rect.intersect(cover).is_positive());
+            for other in &uncovered[i + 1..] {
+                assert!(!rect.intersect(*other).is_positive());
+            }
+        }
+        assert!(uncovered_rects(bounds, bounds.expand(10.0)).is_empty());
+        assert_eq!(
+            uncovered_rects(bounds, bounds.translate(Vec2::new(200.0, 0.0))),
+            [bounds]
+        );
+    }
+
+    #[test]
     fn retained_window_frames_follow_panes_geometry_and_split_dimming() {
         let mut frame = Frame::empty([20, 20]);
         frame.quads.push(rustty_render::Quad::solid(
@@ -8754,6 +9342,7 @@ mod tests {
         ));
         let frame = Arc::new(frame);
         let pane = || ComposedPane {
+            transition: None,
             frame: Arc::clone(&frame),
             rect: [10.0, 15.0, 20.0, 20.0],
             clip: [10.0, 15.0, 20.0, 20.0],

@@ -144,6 +144,104 @@ fn args(values: &[&str]) -> Vec<String> {
 }
 
 #[test]
+fn window_animations_default_to_platform_policy_and_support_overrides() {
+    let home = TestHome::new();
+    assert_eq!(home.loader.load().config.window_animations, None);
+    home.own("window-animations=false\n");
+    for (value, expected) in [("false", Some(false)), ("true", Some(true)), ("", None)] {
+        let loaded = home
+            .loader
+            .load_with_args(&args(&[&format!("--window-animations={value}")]));
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        assert_eq!(loaded.config.window_animations, expected);
+    }
+    let invalid = home
+        .loader
+        .load_with_args(&args(&["--window-animations=invalid"]));
+    assert_eq!(invalid.diagnostics.len(), 1);
+    assert_eq!(invalid.config.window_animations, Some(false));
+}
+
+#[test]
+fn zoom_animation_durations_support_independent_overrides_zero_and_reset() {
+    let home = TestHome::new();
+    let durations = |config: &Config| {
+        [
+            config.quad_zoom_animation_duration,
+            config.quad_peek_animation_duration,
+            config.zoom_animation_duration,
+            config.zoom_from_quad_animation_duration,
+        ]
+    };
+    let keys = [
+        "quad-zoom-animation-duration",
+        "quad-peek-animation-duration",
+        "zoom-animation-duration",
+        "zoom-from-quad-animation-duration",
+    ];
+    let defaults = [250, 100, 250, 250].map(Duration::from_millis);
+    assert_eq!(durations(&home.loader.load().config), defaults);
+    home.own(
+        "quad-zoom-animation-duration=125ms\n\
+         quad-peek-animation-duration=50ms\n\
+         zoom-animation-duration=200ms\n\
+         zoom-from-quad-animation-duration=1s 25ms\n",
+    );
+    let overrides = [125, 50, 200, 1_025].map(Duration::from_millis);
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(durations(&loaded.config), overrides);
+    for (value, expected, diagnostic_count) in [
+        ("0", [Duration::ZERO; 4], 0),
+        ("", defaults, 0),
+        ("250", overrides, 4),
+        ("-1ms", overrides, 4),
+        ("1.5ms", overrides, 4),
+    ] {
+        let args = keys.map(|key| format!("--{key}={value}"));
+        let loaded = home.loader.load_with_args(&args);
+        assert_eq!(loaded.diagnostics.len(), diagnostic_count, "{value}");
+        assert_eq!(durations(&loaded.config), expected, "{value}");
+    }
+}
+
+#[test]
+fn zoom_animation_background_mix_defaults_validates_and_resets() {
+    let home = TestHome::new();
+    assert_eq!(home.loader.load().config.zoom_animation_background_mix, 0.5);
+    home.own("zoom-animation-background-mix=25%\n");
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(loaded.config.zoom_animation_background_mix, 0.25);
+    for (value, expected) in [
+        ("0", 0.0),
+        ("0%", 0.0),
+        ("50", 0.5),
+        ("50%", 0.5),
+        ("100", 1.0),
+        ("100%", 1.0),
+        ("37.5%", 0.375),
+        ("", 0.5),
+    ] {
+        let loaded = home.loader.load_with_args(&args(&[&format!(
+            "--zoom-animation-background-mix={value}"
+        )]));
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        assert_eq!(
+            loaded.config.zoom_animation_background_mix, expected,
+            "{value}"
+        );
+    }
+    for value in ["-1%", "101", "100.1%", "NaN", "inf%", "-inf", "50%%", "%"] {
+        let loaded = home.loader.load_with_args(&args(&[&format!(
+            "--zoom-animation-background-mix={value}"
+        )]));
+        assert_eq!(loaded.diagnostics.len(), 1, "{value}");
+        assert_eq!(loaded.config.zoom_animation_background_mix, 0.25, "{value}");
+    }
+}
+
+#[test]
 fn tmuxx_config_file_resolves_paths_without_requiring_the_file() {
     let home = TestHome::new();
     assert_eq!(home.loader.load().config.tmuxx_config_file, None);
