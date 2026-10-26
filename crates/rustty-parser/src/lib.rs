@@ -318,6 +318,7 @@ impl Parser {
 
     /// Return the canonical unfinished input tail used by GHOSTSNP version 1.
     /// Controls whose effects already committed inside a sequence are omitted.
+    /// C1 sequence restarts use their equivalent 7-bit ESC introducers.
     pub fn continuation(&self) -> Result<Vec<u8>, ContinuationError> {
         if self.continuation_broken {
             return Err(ContinuationError::LimitExceeded);
@@ -327,6 +328,12 @@ impl Parser {
         for &byte in &self.continuation {
             let state = (scanner.state, scanner.utf8.state);
             let committed = scanner.scan_byte(byte);
+            if let Some(final_byte) = scanner.c1_restart(state.0, byte) {
+                // At ground raw C1 is UTF-8 input, so replay needs the ESC form.
+                result.clear();
+                result.extend_from_slice(&[0x1b, final_byte]);
+                continue;
+            }
             if committed && state == (scanner.state, scanner.utf8.state) && !scanner.is_ground() {
                 continue;
             }
@@ -404,19 +411,35 @@ impl Parser {
         let mut scanner = Self::new();
         scanner.tmux_strings = tmux_strings;
         let mut committed = false;
+        let mut c1_restart = false;
         for &byte in bytes {
+            let previous = scanner.state;
             committed |= scanner.scan_byte(byte);
+            c1_restart |= scanner.c1_restart(previous, byte).is_some();
         }
         if scanner.is_ground() {
             return Err(ContinuationError::NoPendingState);
         }
-        if scanner.replay_start(bytes) != Some(0) {
+        if c1_restart || scanner.replay_start(bytes) != Some(0) {
             return Err(ContinuationError::NonCanonical);
         }
         if committed {
             return Err(ContinuationError::ReplayWouldCommit);
         }
         Ok(())
+    }
+
+    fn c1_restart(&self, previous: State, byte: u8) -> Option<u8> {
+        let (state, final_byte) = match byte {
+            0x90 => (State::DcsEntry, b'P'),
+            0x98 => (State::SosPmApcString, b'X'),
+            0x9b => (State::CsiEntry, b'['),
+            0x9d => (State::OscString, b']'),
+            0x9e => (State::SosPmApcString, b'^'),
+            0x9f => (State::SosPmApcString, b'_'),
+            _ => return None,
+        };
+        (previous != state && self.state == state).then_some(final_byte)
     }
 
     fn scan_byte(&mut self, byte: u8) -> bool {

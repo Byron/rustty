@@ -80,3 +80,49 @@ fn overflow_recovers_only_with_a_fresh_start_or_ground() {
     parser.advance(b"m", |_| {});
     assert!(parser.continuation().unwrap().is_empty());
 }
+
+#[test]
+fn c1_restarts_export_canonical_escape_forms_at_every_feed_boundary() {
+    for (input, expected) in [
+        (b"\x1b_hello\x9b".as_slice(), b"\x1b[".as_slice()),
+        (b"\x1b_hello\x9b1;2", b"\x1b[1;2"),
+        (b"\x1b_hello\x90q", b"\x1bPq"),
+        (b"\x1b_hello\x9d2;t", b"\x1b]2;t"),
+        (b"\x1b[1\x9fx", b"\x1b_x"),
+        (b"\x1b[1\x9b2", b"\x1b[2"),
+        (b"\x1b\x98", b"\x1bX"),
+        (b"\x1b[1\x9e", b"\x1b^"),
+        (b"\x1b_hello\x9b1\x90q", b"\x1bPq"),
+    ] {
+        for split in 0..=input.len() {
+            let mut parser = Parser::new();
+            parser.advance(&input[..split], |_| {});
+            parser.advance(&input[split..], |_| {});
+            let continuation = parser.continuation().unwrap();
+            assert_eq!(continuation, expected, "{input:?}, split {split}");
+            Parser::validate_continuation(&continuation).unwrap();
+            let mut restored = Parser::new();
+            restored.advance(&continuation, |_| {});
+            assert_eq!(restored.continuation().unwrap(), continuation);
+        }
+        assert_eq!(
+            Parser::validate_continuation(input),
+            Err(ContinuationError::NonCanonical),
+        );
+    }
+}
+
+#[test]
+fn c1_payload_and_same_state_introducers_do_not_restart_continuations() {
+    for input in [
+        b"\x1b]2;\x9btitle".as_slice(),
+        b"\x1bPq\x9b",
+        b"\x1b_hello\x9f",
+        b"\x1b[\x9b",
+    ] {
+        let mut parser = Parser::new();
+        parser.advance(input, |_| {});
+        assert_eq!(parser.continuation().unwrap(), input);
+        Parser::validate_continuation(input).unwrap();
+    }
+}
