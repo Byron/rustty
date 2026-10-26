@@ -558,11 +558,13 @@ retry. A successful import removes only the selected saved session.
 
 Import restores local window/tab/panel layouts, scrollback, and displayed contents,
 including alternate-screen applications. Dumps omit tmuxx windows; reconnect to
-their servers to restore them. Each imported panel starts a fresh local shell
-with this bold message above new output, centered in a band of solid Unicode
-blocks alternating between two subtle shades of the panel's background color.
-Narrow panels wrap the message without padding. Empty panels omit it; a blank
-visible screen with content in scrollback still gets the divider:
+their servers to restore them. Rustty compares each fresh shell's rendered startup
+output with the saved tail. Matching output replaces that tail without a divider
+or duplicate prompt. Different output gets this bold message above it, centered
+in a band of solid Unicode blocks alternating between two subtle shades of the
+panel's background color. Narrow panels wrap the message without padding. Empty
+panels omit it. Shell integration marks prompt completion; other commands are
+compared after 100 ms without output, or after one second of continuous output:
 
 > ███ **Restored Rustty display. A new shell starts below.** ███
 

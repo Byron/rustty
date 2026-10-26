@@ -80,6 +80,49 @@ impl Screen {
         Ok(result)
     }
 
+    /// Prepend imported cells while retaining live row IDs, parser anchors and cursor resources.
+    pub(crate) fn prepend_visual(&mut self, mut history: Self, keep: usize) -> io::Result<()> {
+        let cursor = self.history_len() + self.cursor.row;
+        let end = self
+            .all_rows()
+            .enumerate()
+            .filter_map(|(index, row)| {
+                let has_image = self.graphics.placements.iter().any(|p| p.row == row.id);
+                (index <= cursor || !self.row_text(row).trim().is_empty() || has_image)
+                    .then_some(index + 1)
+            })
+            .next_back()
+            .unwrap_or(cursor + 1);
+        let shift = self.pages.total_rows() - end;
+        let removed = self.all_rows().skip(end).map(|row| row.id).collect();
+        self.pages.truncate(end);
+        self.discard_ids(removed);
+        let removed = history.all_rows().skip(keep).map(|row| row.id).collect();
+        if keep == 0 {
+            history.pages = Default::default();
+        } else {
+            history.pages.truncate(keep);
+        }
+        history.discard_ids(removed);
+        let padding = self.height.saturating_sub(keep + end);
+        if padding > 0 {
+            let mut blank = Self::new(self.columns, padding, Default::default());
+            blank.append_visual(history)?;
+            history = blank;
+        }
+        let added = history.pages.total_rows();
+        // append_visual remaps only imported identities; rotating pages keeps live anchors valid.
+        let pages = self.pages.pages.len();
+        self.append_visual(history)?;
+        self.pages.pages.rotate_left(pages);
+        self.cursor.row = cursor + added - self.history_len();
+        if let Some(saved) = &mut self.saved_cursor {
+            saved.cursor.row = (saved.cursor.row + shift).min(self.height - 1);
+        }
+        self.sync_cursor_resources();
+        Ok(())
+    }
+
     /// Append another screen without interpreting its cells as terminal input.
     pub(crate) fn append_visual(&mut self, mut source: Self) -> io::Result<()> {
         let mut image_ids = HashMap::new();
@@ -139,7 +182,6 @@ impl Screen {
             self.graphics.placements.insert(placement);
         }
         self.graphics.generation = self.graphics.generation.wrapping_add(1);
-        self.sync_cursor_resources();
         Ok(())
     }
 }
