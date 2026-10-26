@@ -544,6 +544,13 @@ session-dump-on-quit = unchecked
 - `checked` offers saving with the checkbox initially on.
 - `disabled` removes the checkbox and disables the Option/Alt quit prompt entirely.
 
+Use **File → Dump All Sessions…** to save without quitting. Confirm the warning
+that screen contents, scrollback, and working directories may contain personally
+identifiable information (PII) and secrets. The dump includes all local sessions
+in the current instance; tmuxx sessions are excluded. Canceling writes nothing.
+The saved data stays on disk until another Rustty instance successfully imports
+it; opening Rustty and canceling the import does not remove it.
+
 After the old instance quits, replace its application bundle or the complete
 Windows application folder and launch Rustty normally. Every new process checks
 for saved sessions and opens **Import Saved Session State** when any are available,
@@ -584,7 +591,7 @@ Dumps use private, atomically published `.rustty-state.lz4` files and metadata i
 `rustty-session-dumps` inside the current user's system temporary directory
 (normally `$TMPDIR` on macOS and `%LOCALAPPDATA%\Temp` on Windows). They survive
 Rustty exiting, but system temporary-file cleanup can remove them. Large dumps
-can pause the quitting instance while they are written. Compressed files and
+can pause the saving instance while they are written. Compressed files and
 decoded state are each limited to 512 MiB. If saving fails, Rustty stays open so
 the user can retry or quit without saving.
 
