@@ -85,6 +85,52 @@ fn frame(records: &[(u16, Vec<u8>)]) -> Vec<u8> {
 }
 
 #[test]
+fn snapshot_skips_unknown_records_at_every_boundary() {
+    let original = records(&fixture());
+    let expected =
+        encode_to_vec(&decode(fixture().as_slice(), DecodeOptions::default()).unwrap()).unwrap();
+    for index in 0..original.len() {
+        let mut stream = original.clone();
+        stream.splice(index..index, [(0x4000, vec![42; 9000]), (u16::MAX, vec![])]);
+        let restored = decode(frame(&stream).as_slice(), DecodeOptions::default()).unwrap();
+        assert_eq!(
+            encode_to_vec(&restored).unwrap(),
+            expected,
+            "record {index}"
+        );
+    }
+}
+
+#[test]
+fn skipped_snapshot_records_still_validate_lengths_checksums_and_known_order() {
+    let original = records(&fixture());
+    let mut stream = original.clone();
+    stream.insert(0, (0x4000, vec![42; 9000]));
+    let bytes = frame(&stream);
+    for end in [10, 19, 20, 8192, 9019] {
+        assert!(decode(&bytes[..end], DecodeOptions::default()).is_err());
+    }
+    let mut corrupt = bytes.clone();
+    corrupt[20] ^= 1;
+    assert!(decode(corrupt.as_slice(), DecodeOptions::default()).is_err());
+    assert!(
+        decode(
+            bytes.as_slice(),
+            DecodeOptions {
+                max_record_bytes: 8999,
+                ..DecodeOptions::default()
+            },
+        )
+        .is_err()
+    );
+    for tag in 1..=7 {
+        let mut stream = original.clone();
+        stream.insert(0, (tag, vec![]));
+        assert!(decode(frame(&stream).as_slice(), DecodeOptions::default()).is_err());
+    }
+}
+
+#[test]
 fn default_right_charset_is_preserved_by_cursor_and_screen_lifecycles() {
     for (input, expected) in [
         (b"".as_slice(), 2),
