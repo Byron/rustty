@@ -7,6 +7,8 @@ The [CSI/OSC implementation inventory](SEQUENCES.md) traces recognized commands
 through the VT, PTY, renderer, and macOS app, including intentional no-ops and
 features that currently exist only in the library.
 
+The reference tools require Zig 0.17, matching upstream.
+
 This directory compares the Rust implementation with the current Ghostty Zig
 terminal in separate processes. Rustty's application and libraries never link
 the Zig oracle. Both adapters accept one JSON request per line and return one
@@ -33,7 +35,7 @@ establish full libghostty-vt compatibility.
 When the shell sandbox requires builds to run separately:
 
 ```sh
-zig build vt-oracle -Demit-lib-vt=true -Demit-macos-app=false -Doptimize=ReleaseSafe
+zig build vt-oracle -Demit-lib-vt=true -Demit-macos-app=false -Doptimize=safe
 cargo +1.95.0 build --release --offline -p rustty-vt --example parity --example parity-runner
 target/release/examples/parity-runner --no-build
 ```
@@ -374,7 +376,7 @@ next page's match. All 237 page-search comparisons pass without normalization.
 Run the page suite independently with:
 
 ```sh
-zig build vt-oracle -Demit-lib-vt=true -Demit-macos-app=false -Doptimize=ReleaseSafe
+zig build vt-oracle -Demit-lib-vt=true -Demit-macos-app=false -Doptimize=safe
 python3 test/rustty/search_pages.py > target/search-pages.json
 target/release/examples/parity-runner --no-build --fixtures target/search-pages.json --max-failures 10000
 ```
@@ -467,10 +469,10 @@ Large storage cases use `kind=input` to avoid serializing unrelated cells.
 Boundaries and allocation metadata are compared without regrouping rows or
 normalizing values. The retained cases exercise growth, limits, clearing,
 resize and snapshot admission; resource-driven page splitting remains partial.
-The harness builds the native core in ReleaseSafe for `--pages` and `--thorough`:
+The harness builds the native core in safe for `--pages` and `--thorough`:
 runtime safety remains enabled, while debug-only full-page integrity scans on
 every edit would make large boundary cases quadratic. When reusing binaries with
-`--no-build`, build the oracle with `-Doptimize=ReleaseSafe` for these cases.
+`--no-build`, build the oracle with `-Doptimize=safe` for these cases.
 
 `--pages --case pages/wide-cut/` retains 48 cases (144 comparisons) for
 non-reflow shrinking through a wide character on either screen, active or
@@ -854,7 +856,7 @@ without requiring the full compatibility gate. The 3,295 fixtures passed 9,885
 whole-buffer, scalar and varied-delivery comparisons. Their first byte is the
 original delivery selector, so it is removed from terminal input. `--case`
 filters corpus and generated cases as well as the other suites. Corpus builds
-use ReleaseSafe, retaining runtime checks without per-edit debug integrity scans.
+use safe, retaining runtime checks without per-edit debug integrity scans.
 
 `--thorough` additionally exercises Unicode, input, parser, protocol and both snapshot suites, all split points
 for short writes, the inherited stream corpus and generated operations.

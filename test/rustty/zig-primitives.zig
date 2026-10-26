@@ -143,9 +143,9 @@ fn feedContent(alloc: std.mem.Allocator, stream: *vt.TerminalStream, config: Con
     const linked_end = record.items.len / config.pattern.repeats() * config.link_repeats;
     var buffer: [128]u8 = undefined;
     for (0..config.records) |i| {
-        if (config.styled) stream.nextSlice(try std.fmt.bufPrint(&buffer, "\x1b[{};{}m", .{ @as(u8, if (i % 2 == 0) 1 else 22), 31 + i % 4 }));
+        if (config.styled) stream.nextSlice(try std.mem.print(&buffer, "\x1b[{};{}m", .{ @as(u8, if (i % 2 == 0) 1 else 22), 31 + i % 4 }));
         if (config.link_repeats != 0) {
-            stream.nextSlice(try std.fmt.bufPrint(&buffer, "\x1b]8;id={};https://example.test/reflow/{}\x1b\\", .{ i, i }));
+            stream.nextSlice(try std.mem.print(&buffer, "\x1b]8;id={};https://example.test/reflow/{}\x1b\\", .{ i, i }));
             stream.nextSlice(record.items[0..linked_end]);
             stream.nextSlice("\x1b]8;;\x1b\\");
         }
@@ -191,8 +191,8 @@ fn checkContent(terminal: *const vt.Terminal, config: ContentConfig, layout: []c
         }
         var id_buffer: [24]u8 = undefined;
         var uri_buffer: [80]u8 = undefined;
-        const id = try std.fmt.bufPrint(&id_buffer, "{}", .{record});
-        const uri = try std.fmt.bufPrint(&uri_buffer, "https://example.test/reflow/{}", .{record});
+        const id = try std.mem.print(&id_buffer, "{}", .{record});
+        const uri = try std.mem.print(&uri_buffer, "https://example.test/reflow/{}", .{record});
         const actual = pin.cells(.all);
         if (actual.len != columns) return error.InvalidHistory;
         for (actual, 0..) |*cell, col| {

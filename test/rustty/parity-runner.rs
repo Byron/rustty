@@ -861,7 +861,7 @@ fn run(options: Options) -> Result<bool> {
             "-Demit-macos-app=false",
         ]);
         if options.selected("pages") || options.selected("corpus") || options.selected("osc") {
-            zig.arg("-Doptimize=ReleaseSafe");
+            zig.arg("-Doptimize=safe");
         }
         if !zig.status()?.success()
             || !Command::new("cargo")

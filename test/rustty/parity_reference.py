@@ -661,7 +661,7 @@ def main():
     if not args.no_build:
         zig_build = ["zig", "build", "vt-oracle", "-Demit-lib-vt=true", "-Demit-macos-app=false"]
         if args.pages or args.corpus or args.osc or args.thorough:
-            zig_build.append("-Doptimize=ReleaseSafe")
+            zig_build.append("-Doptimize=safe")
         subprocess.run(zig_build, cwd=ROOT, check=True)
         subprocess.run(["cargo", "build", "--offline", "-p", "rustty-vt", "--example", "parity"], cwd=ROOT, check=True)
     peers = []

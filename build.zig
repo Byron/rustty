@@ -86,7 +86,7 @@ pub fn build(b: *std.Build) !void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("test/rustty/zig-oracle.zig"),
             .target = config.target,
-            .optimize = .Debug,
+            .optimize = .debug,
             .imports = &.{.{ .name = "ghostty-vt", .module = mod.vt }},
         }),
     });

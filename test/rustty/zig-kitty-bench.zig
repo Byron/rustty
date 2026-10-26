@@ -39,7 +39,7 @@ fn checkCells(terminal: *vt.Terminal, lanes: usize, image_count: usize, phase: u
     const screen = terminal.screens.active;
     const graphics = &screen.kitty_images;
     if (graphics.images.count() != image_count or graphics.placements.count() != 80 * lanes) return error.InvalidCount;
-    var numbers = [_]bool{false} ** 1024;
+    var numbers = @as([1024]bool, @splat(false));
     var images = graphics.images.valueIterator();
     while (images.next()) |image| {
         const number = image.number;
@@ -52,7 +52,7 @@ fn checkCells(terminal: *vt.Terminal, lanes: usize, image_count: usize, phase: u
             if (byte != color[i % 4]) return error.InvalidPixels;
         }
     }
-    var ids = [_]bool{false} ** (80 * 128);
+    var ids = @as([80 * 128]bool, @splat(false));
     var checksum: u64 = 0;
     var placements = graphics.placements.iterator();
     while (placements.next()) |entry| {
