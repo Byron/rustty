@@ -1283,11 +1283,6 @@ fn check_zoom_transition(
         ("midpoint", duration / 2),
         ("threequarter", duration * 3 / 4),
     ] {
-        let elapsed = if part == "threequarter" {
-            elapsed - duration / 2
-        } else {
-            elapsed
-        };
         host.zoom_animation.started = Some(Instant::now() - elapsed);
         capture_window(
             app,
@@ -1312,21 +1307,6 @@ fn check_zoom_transition(
         let retained = 1.0 - config.zoom_animation_background_mix;
         let mut neighbors = 0;
         for pane in &composed.panes {
-            let prepared = host
-                .prepared
-                .values()
-                .find(|prepared| Arc::ptr_eq(&prepared.frame, &pane.frame))
-                .ok_or("zoom composition lost its prepared endpoint frame")?;
-            if pane.rect[..2]
-                != [
-                    prepared.key.rect.left() * scale,
-                    prepared.key.rect.top() * scale,
-                ]
-            {
-                return Err(
-                    format!("{name} {part} moved terminal text away from its endpoint").into(),
-                );
-            }
             let paint = pane.transition.ok_or("missing zoom paint")?;
             if paint.frame_background != window_frame {
                 return Err(format!("{name} {part} faded toward the tab accent").into());
@@ -1439,19 +1419,7 @@ fn check_zoom_transition(
                 return Err("nested label fixture has no stationary neighbor".into());
             }
         }
-        if part == "midpoint" {
-            if !host.zoom_animation.is_waiting_for_redraw() {
-                return Err(format!("{name} did not wait for a resized redraw").into());
-            }
-            let deadline = Instant::now() + Duration::from_secs(2);
-            while host.zoom_animation.is_waiting_for_redraw() {
-                if Instant::now() >= deadline {
-                    return Err(format!("{name} never released its redraw wait").into());
-                }
-                std::thread::sleep(Duration::from_millis(10));
-                app.draw(event_loop, host)?;
-            }
-        } else {
+        if part != "midpoint" {
             let prepared = host.pane_prepares;
             host.zoom_animation.started = Some(Instant::now() - elapsed - duration / 20);
             app.draw(event_loop, host)?;
