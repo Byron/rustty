@@ -1,7 +1,7 @@
 //! Display-only terminal handover. No parser input or live process state is restored.
 use crate::{Screen, Terminal, ViewMetadata, graphics, snapshot};
 use serde::{Deserialize, Serialize};
-use std::io;
+use std::{fmt::Write as _, io};
 
 pub const RESTORED_MARKER: &str = "Restored Rustty display. A new shell starts below.";
 
@@ -110,21 +110,40 @@ impl VisualSnapshot {
         let memory_limit = terminal.primary.memory_limit;
         terminal.primary = screen;
         if has_display {
-            let padding = usize::from(terminal.cols).saturating_sub(RESTORED_MARKER.len() + 2);
-            let banner = if padding == 0 {
-                format!("[{RESTORED_MARKER}]")
-            } else {
-                let left = padding / 2;
-                let right = padding - left;
-                let left = if left == 0 {
-                    String::new()
-                } else {
-                    format!("{} ", "-".repeat(left - 1))
-                };
-                let right = format!(" {}", "-".repeat(right - 1));
-                format!("[{left}{RESTORED_MARKER}{right}]")
+            let padding = usize::from(terminal.cols).saturating_sub(RESTORED_MARKER.len());
+            let dark = terminal.background.map(u16::from).iter().sum::<u16>() < 3 * 128;
+            let colors = [12, 20].map(|offset| {
+                terminal.background.map(|channel| {
+                    if dark {
+                        channel.saturating_add(offset)
+                    } else {
+                        channel.saturating_sub(offset)
+                    }
+                })
+            });
+            let blocks = |count: usize| {
+                let mut blocks = String::new();
+                for col in 0..count {
+                    let [r, g, b] = colors[col % 2];
+                    write!(blocks, "\x1b[38;2;{r};{g};{b}m█").unwrap();
+                }
+                blocks
             };
-            terminal.feed(format!("\r\n\x1b[1m{banner}\x1b[0m\r\n").as_bytes());
+            let left = padding / 2;
+            let right = padding - left;
+            let left = if left > 1 {
+                format!("{} ", blocks(left - 1))
+            } else {
+                blocks(left)
+            };
+            let right = if right > 1 {
+                format!(" {}", blocks(right - 1))
+            } else {
+                blocks(right)
+            };
+            terminal.feed(
+                format!("\r\n\x1b[1m{left}\x1b[39m{RESTORED_MARKER}{right}\x1b[0m\r\n").as_bytes(),
+            );
         }
         // Import itself must not discard the oldest restored rows. Subsequent
         // output uses the receiving session's normal scrollback policy.
@@ -151,8 +170,8 @@ mod tests {
     }
 
     #[test]
-    fn restored_banner_is_prominent_and_leaves_new_output_unstyled() {
-        for cols in [1, 24, 49, 50, 51, 52, 53, 80, 81, 120] {
+    fn restored_band_is_centered_and_leaves_new_output_unstyled() {
+        for cols in [1, 24, 47, 48, 49, 50, 51, 52, 53, 80, 81, 120] {
             let mut source = Terminal::new(80, 3, 1000);
             source.feed(b"old display");
             let mut destination = Terminal::new(cols, 3, 1000);
@@ -166,19 +185,19 @@ mod tests {
             assert_eq!(lines[0], "old display");
             assert_eq!(lines[2], "new prompt");
             let banner = lines[1];
-            let message = "Restored Rustty display. A new shell starts below.";
-            assert_eq!(banner.len(), usize::from(cols).max(message.len() + 2));
-            let (left, right) = banner.split_once(message).unwrap();
-            let left = left.strip_prefix('[').unwrap();
-            let right = right.strip_suffix(']').unwrap();
-            assert!(left.len().abs_diff(right.len()) <= 1);
+            assert_eq!(
+                banner.chars().count(),
+                usize::from(cols).max(RESTORED_MARKER.len())
+            );
+            let (left, right) = banner.split_once(RESTORED_MARKER).unwrap();
+            assert!(left.chars().count().abs_diff(right.chars().count()) <= 1);
             assert!(
                 left.chars()
                     .chain(right.chars())
-                    .all(|ch| ch == '-' || ch == ' ')
+                    .all(|ch| ch == '█' || ch == ' ')
             );
-            if usize::from(cols) <= message.len() + 2 {
-                assert_eq!(banner, format!("[{message}]"));
+            if usize::from(cols) <= RESTORED_MARKER.len() {
+                assert_eq!(banner, RESTORED_MARKER);
                 assert!(
                     destination
                         .screen()
@@ -186,24 +205,63 @@ mod tests {
                         .all(|row| row.cells().len() <= usize::from(cols))
                 );
             }
-            let mut in_banner = false;
-            for row in destination.screen().all_rows() {
-                let row_text = destination.screen().row_text(row);
-                if row_text.starts_with('[') {
-                    in_banner = true;
-                }
-                if in_banner {
-                    for (col, cell) in row.cells().iter().enumerate() {
-                        if !cell.is_empty() {
-                            assert!(row.style(col).bold);
-                            assert!(!row.style(col).inverse);
-                        }
-                    }
-                }
-                if row_text.ends_with(']') {
-                    in_banner = false;
+            let cells: Vec<_> = destination
+                .screen()
+                .all_rows()
+                .flat_map(|row| {
+                    row.cells()
+                        .iter()
+                        .enumerate()
+                        .filter_map(move |(col, cell)| {
+                            cell.codepoint().map(|ch| (ch, row.style(col)))
+                        })
+                })
+                .collect();
+            for (ch, style) in &cells["old display".len()..][..banner.chars().count()] {
+                assert!(style.bold);
+                assert!(!style.inverse);
+                if *ch != '█' && *ch != ' ' {
+                    assert_eq!(style.foreground, Color::Default);
                 }
             }
+            for (_, style) in &cells["old display".len() + banner.chars().count()..] {
+                assert_eq!(*style, Default::default());
+            }
+        }
+    }
+
+    #[test]
+    fn restored_band_alternates_subtle_shades_of_the_receiving_background() {
+        for (background, colors) in [
+            ([0; 3], [[12; 3], [20; 3]]),
+            ([24, 32, 40], [[36, 44, 52], [44, 52, 60]]),
+            ([255; 3], [[243; 3], [235; 3]]),
+            ([232, 240, 248], [[220, 228, 236], [212, 220, 228]]),
+            ([255, 0, 128], [[255, 12, 140], [255, 20, 148]]),
+        ] {
+            let mut source = Terminal::new(80, 3, 1000);
+            source.set_default_colors(None, Some([100; 3]), None, &[]);
+            source.feed(b"old display");
+            let mut destination = Terminal::new(80, 3, 1000);
+            destination.set_default_colors(None, Some(background), None, &[]);
+            wire(&source).restore_into(&mut destination).unwrap();
+            let row = destination
+                .screen()
+                .all_rows()
+                .find(|row| destination.screen().row_text(row).contains(RESTORED_MARKER))
+                .unwrap();
+            let mut block = 0;
+            for (col, cell) in row.cells().iter().enumerate() {
+                if cell.codepoint() == Some('█') {
+                    let [r, g, b] = colors[block % 2];
+                    assert_eq!(row.style(col).foreground, Color::Rgb(r, g, b));
+                    assert_eq!(row.style(col).background, Color::Default);
+                    block += 1;
+                } else {
+                    block = 0;
+                }
+            }
+            assert!(block > 1);
         }
     }
 

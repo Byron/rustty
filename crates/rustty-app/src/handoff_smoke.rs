@@ -373,9 +373,9 @@ impl Smoke {
                             .find(|line| line.contains(vt::visual::RESTORED_MARKER))
                             .ok_or("split panel lost its restored banner")?;
                         ensure(
-                            banner.len()
+                            banner.chars().count()
                                 == usize::from(terminal.cols)
-                                    .max(vt::visual::RESTORED_MARKER.len() + 2),
+                                    .max(vt::visual::RESTORED_MARKER.len()),
                             "split panel banner used the wrong columns",
                         )?;
                     } else {
@@ -390,10 +390,10 @@ impl Smoke {
                     blank_panels == 1
                         && widths
                             .iter()
-                            .any(|cols| usize::from(*cols) < vt::visual::RESTORED_MARKER.len() + 2)
+                            .any(|cols| usize::from(*cols) < vt::visual::RESTORED_MARKER.len())
                         && widths
                             .iter()
-                            .any(|cols| usize::from(*cols) > vt::visual::RESTORED_MARKER.len() + 2),
+                            .any(|cols| usize::from(*cols) > vt::visual::RESTORED_MARKER.len()),
                     "import fixture did not exercise wide, narrow, and blank panels",
                 )?;
                 let id = app.workspace.windows[0].tabs[0].root.panes()[0];
@@ -479,16 +479,16 @@ impl Smoke {
                     .find(|text| text.contains(vt::visual::RESTORED_MARKER))
                     .ok_or("restored banner did not fit the receiving panel")?;
                 ensure(
-                    banner.len() == usize::from(terminal.cols),
+                    banner.chars().count() == usize::from(terminal.cols),
                     format!(
                         "restored banner width {} did not match panel columns {}",
-                        banner.len(),
+                        banner.chars().count(),
                         terminal.cols
                     ),
                 )?;
                 let (left, right) = banner.split_once(vt::visual::RESTORED_MARKER).unwrap();
                 ensure(
-                    left.len().abs_diff(right.len()) <= 1,
+                    left.chars().count().abs_diff(right.chars().count()) <= 1,
                     "restored banner was not centered",
                 )?;
                 drop(terminal);
