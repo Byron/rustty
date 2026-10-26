@@ -4,7 +4,7 @@ use crate::query::{self, Query};
 use crate::screen::*;
 use crate::unicode::{self, properties};
 use crate::{clipboard, dnd};
-use rustty_parser::{BatchEvent, Event, MAX_OSC_BYTES, Parser};
+use rustty_parser::{BatchEvent, Boundaries, BoundaryStop, Event, MAX_OSC_BYTES, Parser};
 
 /// Host actions are returned in input order. The terminal never accesses the OS.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -478,10 +478,21 @@ impl Terminal {
     /// DND effects carry event tags; use `feed_with_handler` to observe the state
     /// at each event instead of the final state after the complete input batch.
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<Effect> {
+        self.feed_until(bytes, Boundaries::NONE).1
+    }
+
+    /// Feed through the first requested parser boundary and return effects in order.
+    /// Ground stops consume nothing when already at ground. End stops at ESC
+    /// leave the backslash of ST for the next call. See [`Parser::advance_until`].
+    pub fn feed_until(
+        &mut self,
+        bytes: &[u8],
+        boundaries: Boundaries,
+    ) -> (BoundaryStop, Vec<Effect>) {
         let mut effects = Vec::new();
         let mut pending = Vec::new();
         let mut parser = std::mem::take(&mut self.parser);
-        parser.advance_batched(bytes, |event| {
+        let stop = parser.advance_batched_until(bytes, boundaries, |event| {
             let event = match event {
                 BatchEvent::PrintAscii(bytes) => {
                     self.print_ascii(bytes);
@@ -516,18 +527,28 @@ impl Terminal {
             }
         });
         self.parser = parser;
-        effects
+        (stop, effects)
     }
 
     /// Feed bytes while servicing host queries, clipboard requests, and DND
     /// state callbacks before the next parser event. Replies go to `handler.effect`.
     /// Hosts that need deferred consent can use `feed` and `Read::reply` instead.
     pub fn feed_with_handler(&mut self, bytes: &[u8], handler: &mut impl EffectHandler) {
+        self.feed_until_with_handler(bytes, Boundaries::NONE, handler);
+    }
+
+    /// Like [`Self::feed_until`], servicing synchronous host callbacks before stopping.
+    pub fn feed_until_with_handler(
+        &mut self,
+        bytes: &[u8],
+        boundaries: Boundaries,
+        handler: &mut impl EffectHandler,
+    ) -> BoundaryStop {
         let mut effects = Vec::new();
         let mut parser = std::mem::take(&mut self.parser);
         let read_enabled = handler.clipboard_read_enabled();
         let write_enabled = handler.clipboard_write_enabled();
-        parser.advance_batched(bytes, |event| {
+        let stop = parser.advance_batched_until(bytes, boundaries, |event| {
             let event = match event {
                 BatchEvent::PrintAscii(bytes) => {
                     self.print_ascii(bytes);
@@ -547,6 +568,7 @@ impl Terminal {
             self.dispatch_effects(effects.drain(..), handler, write_enabled, read_enabled);
         });
         self.parser = parser;
+        stop
     }
 
     /// Dispatch one complete OSC payload, including its numeric prefix, without
