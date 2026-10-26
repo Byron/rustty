@@ -28,6 +28,7 @@ pub enum Replacement<'a> {
 pub struct Options<'a> {
     pub emit: Format,
     pub unwrap: bool,
+    /// VT output preserves trailing blank rows when trimming is disabled.
     pub trim: bool,
     pub background: Option<[u8; 3]>,
     pub foreground: Option<[u8; 3]>,
@@ -510,6 +511,36 @@ impl Screen {
             offset += count;
             if offset > end.0 {
                 break;
+            }
+        }
+        if options.emit == Format::Vt && !options.trim {
+            let count = trailing.0.saturating_sub(1);
+            let (mut page, mut row) = self.pages.locate(end.0 - count);
+            let previous = out
+                .map
+                .as_ref()
+                .and_then(|map| map.get(map.len().saturating_sub(1)));
+            for index in 0..count {
+                out.bytes.extend_from_slice(b"\r\n");
+                if let Some(map) = &mut out.map {
+                    let position = PagePosition {
+                        page,
+                        x: 0,
+                        y: row as u32,
+                    };
+                    let position = if index == 0 {
+                        previous.unwrap_or(position)
+                    } else {
+                        position
+                    };
+                    map.current_page = position.page;
+                    map.fill(out.bytes.len(), [position.x, position.y]);
+                }
+                row += 1;
+                if row == usize::from(self.pages.pages[page].rows) {
+                    page += 1;
+                    row = 0;
+                }
             }
         }
         Some(())

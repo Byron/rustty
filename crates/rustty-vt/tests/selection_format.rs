@@ -426,6 +426,66 @@ fn vt_unwrap_writes_carried_blanks_without_previous_style_or_hyperlink() {
 }
 
 #[test]
+fn untrimmed_vt_keeps_trailing_blank_rows_and_maps_each_newline() {
+    let mut terminal = Terminal::new(10, 6, 0);
+    terminal.feed(b"one\r\ntwo");
+    let screen = terminal.screen();
+    let mut formatter = screen.formatter(Format::Vt);
+    formatter.options.trim = false;
+    let (output, map) = formatter.format_with_map().unwrap();
+    assert_eq!(output, b"one\r\ntwo\r\n\r\n\r\n\r\n");
+    assert_eq!(output.len(), map.len());
+    for index in 0..4 {
+        let point = screen.point(1 + index, if index == 0 { 2 } else { 0 });
+        assert_eq!(map.point(8 + index * 2), point);
+        assert_eq!(map.point(9 + index * 2), point);
+    }
+    formatter.content = Content::Selection(Selection {
+        start: screen.point(1, 0).unwrap(),
+        end: screen.point(3, 5).unwrap(),
+        rectangular: false,
+    });
+    assert_eq!(formatter.format().unwrap(), b"two\r\n\r\n");
+    formatter.options.trim = true;
+    assert_eq!(formatter.format().unwrap(), b"two");
+    formatter.content = Content::All;
+    formatter.options.emit = Format::Plain;
+    formatter.options.trim = false;
+    assert_eq!(formatter.format().unwrap(), b"one\ntwo");
+}
+
+#[test]
+fn untrimmed_vt_keeps_empty_screens_and_blank_tails_across_pages() {
+    let blank = Terminal::new(10, 4, 0);
+    let mut formatter = blank.screen().formatter(Format::Vt);
+    formatter.options.trim = false;
+    let (output, map) = formatter.format_with_map().unwrap();
+    assert_eq!(output, b"\r\n\r\n\r\n");
+    assert_eq!(map.len(), output.len());
+    for index in 0..3 {
+        assert_eq!(map.point(index * 2), blank.screen().point(index, 0));
+    }
+
+    let mut terminal = Terminal::new(1024, 3, 100);
+    terminal.feed(&b"x\r\n".repeat(80));
+    terminal.feed(b"\r\n\r\n");
+    let screen = terminal.screen();
+    assert!(screen.page_allocations().count() > 1);
+    let mut formatter = screen.formatter(Format::Vt);
+    formatter.options.trim = false;
+    let (output, map) = formatter.format_with_map().unwrap();
+    assert_eq!(output, [&b"x\r\n".repeat(80)[..], b"\r\n\r\n"].concat());
+    assert_eq!(map.len(), output.len());
+    assert_eq!(map.point(output.len() - 1), screen.point(81, 0));
+    let mut restored = Terminal::new(1024, 3, 100);
+    restored.feed(&output);
+    assert_eq!(restored.screen().history_len(), screen.history_len());
+    for (source, target) in screen.all_rows().zip(restored.screen().all_rows()) {
+        assert_eq!(screen.row_text(source), restored.screen().row_text(target));
+    }
+}
+
+#[test]
 fn vt_hyperlinks_survive_physical_page_boundaries_without_leaking() {
     let mut terminal = Terminal::new(1024, 3, 100);
     terminal.feed(b"\x1b]8;id=history;https://example.org\x1b\\");
