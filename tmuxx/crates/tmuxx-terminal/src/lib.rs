@@ -724,10 +724,11 @@ impl Terminal {
         let terminal = &self.inner;
         let continuation = terminal.parser().continuation();
         let capture_pending = terminal.parser().pending_input();
-        let (checkpoint, checkpoint_error) = match rustty_vt::snapshot::encode_to_vec(terminal) {
-            Ok(bytes) => (Some(bytes), None),
-            Err(error) => (None, Some(error.to_string())),
-        };
+        let (checkpoint, checkpoint_error) =
+            match rustty_vt::snapshot::encode_without_graphics_to_vec(terminal) {
+                Ok(bytes) => (Some(bytes), None),
+                Err(error) => (None, Some(error.to_string())),
+            };
         Snapshot {
             agent_status: self.agent_status.clone(),
             version: 1,

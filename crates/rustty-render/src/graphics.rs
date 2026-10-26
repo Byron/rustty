@@ -85,6 +85,9 @@ impl Renderer {
             let Some(image) = screen.graphics.images.get(&placement.image) else {
                 continue;
             };
+            if image.display_pixels().is_empty() {
+                continue;
+            }
             if !clip_image(&mut placement.source, &mut placement.rect, clip) {
                 continue;
             }
@@ -323,7 +326,8 @@ fn valid_image(image: &Image) -> bool {
         && image.width <= 10000
         && image.height <= 10000
         && image.current_frame <= image.frames.len()
-        && image.display_pixels().len() == image.width as usize * image.height as usize * 4
+        && (image.display_pixels().is_empty()
+            || image.display_pixels().len() == image.width as usize * image.height as usize * 4)
 }
 
 fn clipped_source(p: &Placement, image: &Image) -> [f32; 4] {
@@ -1076,6 +1080,42 @@ mod tests {
             uploads
         );
         assert!(Arc::ptr_eq(&pixels, &terminal.graphics().images[&1].pixels));
+    }
+
+    #[test]
+    fn pending_virtual_parent_keeps_the_completed_child_positioned() {
+        let mut terminal = Terminal::new(10, 3, 100);
+        transmit(&mut terminal, 1, "U=1,c=1,r=1");
+        transmit(&mut terminal, 2, "P=1,Q=1,H=2,c=1,r=1");
+        terminal.feed(format!("\x1b[38;5;1m{PLACEHOLDER}").as_bytes());
+        let bytes = rustty_vt::snapshot::encode_to_vec(&terminal).unwrap();
+        let mut decoder = rustty_vt::snapshot::Decoder::new(
+            bytes.as_slice(),
+            rustty_vt::snapshot::DecodeOptions::default(),
+        );
+        let mut restored = decoder.ready().unwrap();
+        restored
+            .screen_mut()
+            .graphics
+            .images
+            .get_mut(&2)
+            .unwrap()
+            .pixels = Arc::new(vec![0, 255, 0, 255]);
+        let (mut renderer, options) = renderer();
+        let expected = geometry(restored.screen(), renderer.metrics(), &options);
+        assert_eq!(expected.len(), 2);
+        let child = expected
+            .iter()
+            .find(|placement| placement.image == 2)
+            .unwrap();
+        let frame = renderer.prepare(restored.screen(), &options).unwrap();
+        let images: Vec<_> = frame
+            .quads
+            .iter()
+            .filter(|quad| quad.paint == Paint::Color)
+            .collect();
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].rect, child.rect);
     }
 
     #[test]

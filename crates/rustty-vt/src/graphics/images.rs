@@ -130,12 +130,18 @@ impl DerefMut for Images {
 }
 
 // Updating a cache must not add overflow panics to public map mutations.
-fn checked_bytes(image: &Image) -> Option<usize> {
-    image
-        .frames
-        .iter()
-        .try_fold(image.pixels.len(), |used, frame| {
-            used.checked_add(frame.pixels.len())
+pub(super) fn checked_bytes(image: &Image) -> Option<usize> {
+    let pending = (image.width as usize)
+        .checked_mul(image.height as usize)
+        .and_then(|length| length.checked_mul(4));
+    std::iter::once(&image.pixels)
+        .chain(image.frames.iter().map(|frame| &frame.pixels))
+        .try_fold(0usize, |used, pixels| {
+            used.checked_add(if pixels.is_empty() {
+                pending?
+            } else {
+                pixels.len()
+            })
         })
 }
 

@@ -32,7 +32,7 @@ impl VisualSnapshot {
         }
         Ok(Self {
             version: 1,
-            checkpoint: snapshot::encode_to_vec(&terminal)?,
+            checkpoint: snapshot::encode_without_graphics_to_vec(&terminal)?,
             screen: terminal.primary.view_metadata(),
             graphics: terminal.primary.graphics.visual_snapshot(),
         })
