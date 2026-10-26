@@ -5144,13 +5144,11 @@ impl App {
                         if let Err(error) = connection.view_size(*session, cols, rows, metrics.cell_width.min(u16::MAX.into()) as u16, metrics.cell_height.min(u16::MAX.into()) as u16) { render_error = Some(error.to_string()); }
                     }
                     let mut terminal_ime_rect = None;
-                    let mut zoom_redraw = Vec::new();
                     // An atlas eviction can happen halfway through a multi-pane frame.
                     // Rebuild against its new generation before handing a frame to WGPU.
                     for attempt in 0..2 {
                         let mut composition = Vec::with_capacity(host.rects.len());
                         accessible.clear();
-                        zoom_redraw.clear();
                         for visual in &zoom_panes {
                             let (id, rect) = (visual.id, visual.layout);
                             let Some(pane) = self.panes.get_mut(&id) else {
@@ -5198,12 +5196,6 @@ impl App {
                             }
                             let synchronized =
                                 pane.sync_output.update(&mut terminal, now).is_some();
-                            let redraw = zoom_animation::Redraw {
-                                id,
-                                generation: terminal.generation,
-                                synchronized_output_generation: terminal.synchronized_output_generation,
-                                synchronized,
-                            };
                             if !synchronized && let Some(search) = &mut pane.search {
                                 search.refresh(&mut terminal);
                             }
@@ -5328,9 +5320,6 @@ impl App {
                             let Some(prepared) = host.prepared.get(&id) else {
                                 continue;
                             };
-                            if visual.moving {
-                                zoom_redraw.push(redraw);
-                            }
                             needs_blink |= !synchronized
                                 && is_focused
                                 && !pane.exited
@@ -5345,8 +5334,8 @@ impl App {
                                 }),
                                 frame: Arc::clone(&prepared.frame),
                                 rect: [
-                                    rect.left() * scale,
-                                    rect.top() * scale,
+                                    visual.rect.left() * scale,
+                                    visual.rect.top() * scale,
                                     physical.x,
                                     physical.y,
                                 ],
@@ -5366,7 +5355,7 @@ impl App {
                             });
                             accessible.push((id, visual.rect.intersect(content)));
                             if id == focused && accepts_input {
-                                terminal_ime_rect = Some(prepared.ime_rect);
+                                terminal_ime_rect = Some(prepared.ime_rect.translate(visual.rect.min - rect.min));
                             }
                         }
                         host.fonts.retain_images(
@@ -5395,7 +5384,6 @@ impl App {
                             }
                         }
                     }
-                    host.zoom_animation.observe_redraw(zoom_redraw, Instant::now());
                     ui.painter().add(
                         self.painter.terminal_callback(
                             egui::Rect::from_min_size(
@@ -9242,52 +9230,44 @@ mod tests {
     }
 
     #[test]
-    fn zoom_composition_keeps_bottom_rows_at_both_endpoint_positions() {
+    fn zoom_composition_moves_and_fades_glyphs_without_scaling_them() {
         use rustty_render::{Color, Paint, Quad};
         let background = Color::rgb([0; 3]).opacity(0.8);
         let frame_background = Color::rgb([255; 3]);
-        for (origin, height) in [(400.0, 400), (0.0, 800)] {
-            let mut frame = Frame::empty([1000, height]);
-            frame
-                .quads
-                .push(Quad::solid([0.0, 0.0, 1000.0, height as f32], background));
-            let mut glyph = Quad::solid(
-                [10.0, height as f32 - 16.0, 8.0, 16.0],
-                Color::rgb([255; 3]),
+        let mut frame = Frame::empty([100, 80]);
+        frame
+            .quads
+            .push(Quad::solid([0.0, 0.0, 100.0, 80.0], background));
+        let mut glyph = Quad::solid([10.0, 20.0, 8.0, 16.0], Color::rgb([255; 3]));
+        glyph.paint = Paint::Color;
+        glyph.uv = [0.1, 0.2, 0.3, 0.4];
+        frame.quads.push(glyph.clone());
+        for opacity in [1.0, 0.5, 0.0] {
+            let pane = ComposedPane {
+                frame: Arc::new(frame.clone()),
+                rect: [25.0, 30.0, 100.0, 80.0],
+                clip: [25.0, 30.0, 200.0, 160.0],
+                dim: None,
+                transition: Some(ZoomPaint {
+                    background,
+                    frame_background,
+                    opacity,
+                    background_opacity: 1.0,
+                    moving: true,
+                }),
+            };
+            let composed = ComposedFrame::new([300, 240], vec![pane]).unwrap();
+            let quads = &composed.frame.quads;
+            assert_eq!(
+                quads.len(),
+                2,
+                "replace the background instead of doubling its opacity"
             );
-            glyph.paint = Paint::Color;
-            glyph.uv = [0.1, 0.2, 0.3, 0.4];
-            frame.quads.push(glyph.clone());
-            for (top, opacity) in [
-                (400.0, 1.0),
-                (300.0, 0.5),
-                (200.0, 0.0),
-                (100.0, 0.5),
-                (0.0, 1.0),
-            ] {
-                let clip = [0.0, top, 1000.0, 800.0 - top];
-                let pane = ComposedPane {
-                    frame: Arc::new(frame.clone()),
-                    rect: [0.0, origin, 1000.0, height as f32],
-                    clip,
-                    dim: None,
-                    transition: Some(ZoomPaint {
-                        background,
-                        frame_background,
-                        opacity,
-                        background_opacity: 1.0,
-                        moving: true,
-                    }),
-                };
-                let composed = ComposedFrame::new([1000, 800], vec![pane]).unwrap();
-                let quads = &composed.frame.quads;
-                assert_eq!(quads.len(), 2, "replace rather than double the background");
-                assert_eq!(quads[0].rect, clip);
-                assert_eq!(quads[0].color, background);
-                assert_eq!(quads[1].rect, [10.0, 784.0, 8.0, 16.0]);
-                assert_eq!(quads[1].uv, glyph.uv);
-                assert_eq!(quads[1].color.0[3], opacity);
-            }
+            assert_eq!(quads[0].rect, [25.0, 30.0, 200.0, 160.0]);
+            assert_eq!(quads[0].color, background);
+            assert_eq!(quads[1].rect, [35.0, 50.0, 8.0, 16.0]);
+            assert_eq!(quads[1].uv, glyph.uv);
+            assert_eq!(quads[1].color.0[3], opacity);
         }
     }
 

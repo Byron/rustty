@@ -15,30 +15,6 @@ pub struct Pane {
     pub moving: bool,
 }
 
-#[derive(Clone, Copy)]
-pub struct Redraw {
-    pub id: Id,
-    pub generation: u64,
-    pub synchronized_output_generation: u64,
-    pub synchronized: bool,
-}
-
-struct PendingRedraw {
-    id: Id,
-    frame: Option<Redraw>,
-    changed: Option<Instant>,
-    completed_batch: bool,
-}
-
-enum RedrawGate {
-    Armed,
-    Waiting {
-        started: Option<Instant>,
-        panes: Vec<PendingRedraw>,
-    },
-    Ready,
-}
-
 #[derive(Clone, Debug, PartialEq)]
 struct View {
     zoom: Option<Id>,
@@ -102,16 +78,11 @@ struct Transition {
     direction: f32,
     duration: Duration,
     background_mix: f32,
-    redraw: Option<RedrawGate>,
 }
 
 impl Transition {
-    fn source_endpoint(&self, phase: f32) -> bool {
-        phase < 0.5 || phase == 0.5 && self.direction < 0.0 && self.redraw.is_some()
-    }
-
     fn display_zoom(&self, phase: f32) -> (Option<Id>, Option<Id>, bool) {
-        if self.source_endpoint(phase) {
+        if phase < 0.5 {
             self.source_mode
         } else {
             self.target.mode()
@@ -119,22 +90,10 @@ impl Transition {
     }
 
     fn phase(&self, started: Instant, now: Instant) -> f32 {
-        if matches!(self.redraw, Some(RedrawGate::Waiting { .. })) {
-            return 0.5;
-        }
-        let phase = (self.phase
+        (self.phase
             + self.direction * now.saturating_duration_since(started).as_secs_f32()
                 / self.duration.as_secs_f32())
-        .clamp(0.0, 1.0);
-        if matches!(self.redraw, Some(RedrawGate::Armed)) {
-            if self.direction > 0.0 {
-                phase.min(0.5)
-            } else {
-                phase.max(0.5)
-            }
-        } else {
-            phase
-        }
+        .clamp(0.0, 1.0)
     }
 
     fn finished(&self, phase: f32) -> bool {
@@ -146,7 +105,6 @@ impl Transition {
     }
 
     fn panes(&self, phase: f32) -> Vec<Pane> {
-        let source_endpoint = self.source_endpoint(phase);
         let position = smoothstep(phase);
         // Reach the background mix while neighbors are still exposed by the slide.
         let background_fade = smoothstep((phase * 2.0).min(1.0));
@@ -166,12 +124,8 @@ impl Transition {
                 let target = self.target.panes.iter().find(|(id, _)| *id == source.id);
                 match target {
                     Some((_, layout)) => Some(Pane {
-                        layout: if source_endpoint {
-                            source.layout
-                        } else {
-                            *layout
-                        },
-                        label_quadrant: if source_endpoint {
+                        layout: if phase < 0.5 { source.layout } else { *layout },
+                        label_quadrant: if phase < 0.5 {
                             source.label_quadrant
                         } else {
                             self.target.label_quadrant()
@@ -250,68 +204,6 @@ impl State {
 
     pub fn display_zoom(&self) -> Option<(Option<Id>, Option<Id>, bool)> {
         self.display_zoom
-    }
-
-    pub fn is_waiting_for_redraw(&self) -> bool {
-        self.transition
-            .as_ref()
-            .is_some_and(|transition| matches!(transition.redraw, Some(RedrawGate::Waiting { .. })))
-    }
-
-    /// Observe moving panes only, after their resized frames have been prepared.
-    pub fn observe_redraw(&mut self, frames: Vec<Redraw>, now: Instant) {
-        let Some(transition) = &mut self.transition else {
-            return;
-        };
-        let Some(gate) = &mut transition.redraw else {
-            if transition
-                .source
-                .iter()
-                .any(|pane| transition.target.panes.iter().any(|(id, _)| *id == pane.id))
-            {
-                transition.redraw = Some(RedrawGate::Armed);
-            }
-            return;
-        };
-        let RedrawGate::Waiting { started, panes } = gate else {
-            return;
-        };
-        let elapsed = now.saturating_duration_since(*started.get_or_insert(now));
-        let mut ready = true;
-        for pane in panes.iter_mut() {
-            let Some(frame) = frames.iter().find(|frame| frame.id == pane.id).copied() else {
-                ready &= elapsed >= Duration::from_millis(250);
-                continue;
-            };
-            if let Some(previous) = pane.frame {
-                if previous.generation != frame.generation {
-                    pane.changed = Some(now);
-                    pane.completed_batch = false;
-                }
-                if previous.synchronized
-                    || previous.synchronized_output_generation
-                        != frame.synchronized_output_generation
-                {
-                    pane.completed_batch = true;
-                }
-            }
-            pane.frame = Some(frame);
-            // shortcut: local generation changes approximate output; add IO tracking only if redraw settling proves insufficient.
-            let settled = pane
-                .changed
-                .map_or(elapsed >= Duration::from_millis(100), |changed| {
-                    now.saturating_duration_since(changed) >= Duration::from_millis(40)
-                });
-            // A continually restarted batch falls back to the compositor's retained frame.
-            ready &= elapsed >= Duration::from_secs(1)
-                || !frame.synchronized
-                    && (pane.completed_batch || settled || elapsed >= Duration::from_millis(250));
-        }
-        if ready {
-            transition.redraw = Some(RedrawGate::Ready);
-            transition.phase = 0.5;
-            self.started = Some(now);
-        }
     }
 
     pub fn finish(&mut self) {
@@ -411,13 +303,6 @@ impl State {
                 transition.phase = phase.unwrap();
                 transition.direction = direction;
                 transition.duration = duration;
-                if transition.redraw.is_some() {
-                    transition.redraw = Some(if (transition.phase - 0.5) * direction <= 0.0 {
-                        RedrawGate::Armed
-                    } else {
-                        RedrawGate::Ready
-                    });
-                }
                 self.started = Some(now);
             } else if self.transition.is_some() || previous.view.panes != next.view.panes {
                 let (source, source_view, source_mode) = if let Some(transition) = &self.transition
@@ -446,29 +331,9 @@ impl State {
                     direction: 1.0,
                     duration,
                     background_mix: config.zoom_animation_background_mix,
-                    redraw: None,
                 });
                 self.started = Some(now);
             }
-        }
-        if let Some(transition) = &mut self.transition
-            && transition.phase(self.started.unwrap(), now) == 0.5
-            && matches!(transition.redraw, Some(RedrawGate::Armed))
-        {
-            transition.redraw = Some(RedrawGate::Waiting {
-                started: None,
-                panes: transition
-                    .source
-                    .iter()
-                    .filter(|pane| transition.target.panes.iter().any(|(id, _)| *id == pane.id))
-                    .map(|pane| PendingRedraw {
-                        id: pane.id,
-                        frame: None,
-                        changed: None,
-                        completed_batch: false,
-                    })
-                    .collect(),
-            });
         }
         let panes = self.transition.as_ref().map_or_else(
             || next.view.panes(),
@@ -538,283 +403,6 @@ mod tests {
 
     fn pane(panes: &[Pane], id: Id) -> Pane {
         *panes.iter().find(|pane| pane.id == id).unwrap()
-    }
-
-    fn redraw(
-        id: Id,
-        generation: u64,
-        synchronized_output_generation: u64,
-        synchronized: bool,
-    ) -> Redraw {
-        Redraw {
-            id,
-            generation,
-            synchronized_output_generation,
-            synchronized,
-        }
-    }
-
-    fn wait_at_midpoint(now: Instant, quadrant: bool) -> (State, Tab) {
-        let mut state = State::default();
-        let mut tab = quadrants();
-        tab.focus(2);
-        update(&mut state, &tab, false, now);
-        if quadrant {
-            tab.toggle_quadrant_zoom();
-        } else {
-            tab.toggle_zoom();
-        }
-        update(&mut state, &tab, false, now);
-        state.observe_redraw(vec![redraw(2, 1, 0, false), redraw(9, 1, 0, false)], now);
-        update(&mut state, &tab, false, now + ZOOM_DURATION / 2);
-        assert!(state.is_waiting_for_redraw());
-        (state, tab)
-    }
-
-    #[test]
-    fn redraw_wait_starts_after_preparation_and_preserves_the_remaining_fade() {
-        let now = Instant::now();
-        let mut state = State::default();
-        let mut tab = quadrants();
-        tab.focus(2);
-        update(&mut state, &tab, false, now);
-        tab.toggle_zoom();
-        update(&mut state, &tab, false, now);
-        state.observe_redraw(
-            vec![redraw(2, 1, 0, false)],
-            now + Duration::from_millis(500),
-        );
-        let midpoint = update(&mut state, &tab, false, now + Duration::from_millis(600));
-        assert!(state.is_waiting_for_redraw());
-        assert_eq!(pane(&midpoint, 2).opacity, 0.0);
-        let prepared = now + Duration::from_millis(700);
-        state.observe_redraw(vec![redraw(2, 2, 0, false)], prepared);
-        for millis in [0, 99] {
-            let sample = prepared + Duration::from_millis(millis);
-            state.observe_redraw(vec![redraw(2, 2, 0, false)], sample);
-            assert!(state.is_waiting_for_redraw());
-            assert_eq!(update(&mut state, &tab, false, sample), midpoint);
-        }
-        let ready = prepared + Duration::from_millis(100);
-        state.observe_redraw(vec![redraw(2, 2, 0, false)], ready);
-        assert!(!state.is_waiting_for_redraw());
-        assert_eq!(update(&mut state, &tab, false, ready), midpoint);
-        let fading = update(&mut state, &tab, false, ready + ZOOM_DURATION / 4);
-        assert_eq!(pane(&fading, 2).opacity, 0.5);
-        update(&mut state, &tab, false, ready + ZOOM_DURATION / 2);
-        assert!(!state.is_running());
-    }
-
-    #[test]
-    fn markerless_redraw_waits_for_quiet_but_bounds_continuous_output() {
-        let now = Instant::now();
-        for continuous in [false, true] {
-            let (mut state, _) = wait_at_midpoint(now, false);
-            let prepared = now + ZOOM_DURATION / 2;
-            state.observe_redraw(vec![redraw(2, 2, 0, false)], prepared);
-            if continuous {
-                for millis in (10..=250).step_by(10) {
-                    state.observe_redraw(
-                        vec![redraw(2, millis, 0, false)],
-                        prepared + Duration::from_millis(millis),
-                    );
-                    assert_eq!(state.is_waiting_for_redraw(), millis < 250);
-                }
-            } else {
-                for (millis, generation, waiting) in
-                    [(10, 3, true), (35, 4, true), (74, 4, true), (75, 4, false)]
-                {
-                    state.observe_redraw(
-                        vec![redraw(2, generation, 0, false)],
-                        prepared + Duration::from_millis(millis),
-                    );
-                    assert_eq!(state.is_waiting_for_redraw(), waiting);
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn synchronized_redraw_requires_every_pane_and_waits_for_an_active_batch() {
-        let now = Instant::now();
-        let (mut state, _) = wait_at_midpoint(now, true);
-        let prepared = now + ZOOM_DURATION / 2;
-        state.observe_redraw(
-            vec![redraw(2, 2, 0, false), redraw(9, 2, 1, true)],
-            prepared,
-        );
-        // Pane 2 completes its entire batch between observations; pane 9 is still drawing.
-        state.observe_redraw(
-            vec![redraw(2, 3, 1, false), redraw(9, 3, 1, true)],
-            prepared + Duration::from_millis(20),
-        );
-        assert!(state.is_waiting_for_redraw());
-        state.observe_redraw(
-            vec![redraw(2, 3, 1, false), redraw(9, 4, 1, true)],
-            prepared + Duration::from_millis(300),
-        );
-        assert!(state.is_waiting_for_redraw());
-        state.observe_redraw(
-            vec![redraw(2, 3, 1, false), redraw(9, 4, 1, false)],
-            prepared + Duration::from_millis(310),
-        );
-        assert!(!state.is_waiting_for_redraw());
-    }
-
-    #[test]
-    fn missing_redraw_observations_have_a_bounded_wait() {
-        let now = Instant::now();
-        let (mut state, _) = wait_at_midpoint(now, true);
-        let prepared = now + ZOOM_DURATION / 2;
-        state.observe_redraw(vec![redraw(2, 2, 0, false)], prepared);
-        state.observe_redraw(
-            vec![redraw(2, 3, 1, false)],
-            prepared + Duration::from_millis(20),
-        );
-        assert!(state.is_waiting_for_redraw());
-        state.observe_redraw(
-            vec![redraw(2, 3, 1, false)],
-            prepared + Duration::from_millis(250),
-        );
-        assert!(!state.is_waiting_for_redraw());
-    }
-
-    #[test]
-    fn continually_restarted_synchronized_output_cannot_hold_the_animation_forever() {
-        let now = Instant::now();
-        let (mut state, _) = wait_at_midpoint(now, false);
-        let prepared = now + ZOOM_DURATION / 2;
-        state.observe_redraw(vec![redraw(2, 2, 1, true)], prepared);
-        for millis in (100..=1000).step_by(100) {
-            state.observe_redraw(
-                vec![redraw(2, millis, millis, true)],
-                prepared + Duration::from_millis(millis),
-            );
-            assert_eq!(state.is_waiting_for_redraw(), millis < 1000);
-        }
-    }
-
-    #[test]
-    fn reversing_a_redraw_wait_resizes_to_the_return_endpoint_before_fading() {
-        let now = Instant::now();
-        let (mut state, mut tab) = wait_at_midpoint(now, false);
-        let prepared = now + ZOOM_DURATION / 2;
-        state.observe_redraw(vec![redraw(2, 2, 0, false)], prepared);
-        tab.toggle_zoom();
-        let reversed = update(
-            &mut state,
-            &tab,
-            false,
-            prepared + Duration::from_millis(10),
-        );
-        assert!(state.is_waiting_for_redraw());
-        assert_eq!(pane(&reversed, 2).opacity, 0.0);
-        let source = update(&mut State::default(), &tab, false, now);
-        assert_eq!(pane(&reversed, 2).layout, pane(&source, 2).layout);
-        assert_eq!(state.display_zoom(), Some((None, None, false)));
-        let ready = prepared + Duration::from_millis(110);
-        state.observe_redraw(vec![redraw(2, 3, 0, false)], ready);
-        assert!(state.is_waiting_for_redraw());
-        state.observe_redraw(
-            vec![redraw(2, 4, 1, false)],
-            ready + Duration::from_millis(10),
-        );
-        assert!(!state.is_waiting_for_redraw());
-        assert_eq!(
-            update(&mut state, &tab, false, ready + Duration::from_millis(10)),
-            reversed
-        );
-        let end = update(
-            &mut state,
-            &tab,
-            false,
-            ready + Duration::from_millis(10) + ZOOM_DURATION / 2,
-        );
-        assert_eq!(end, source);
-        assert!(!state.is_running());
-    }
-
-    #[test]
-    fn reversal_before_midpoint_and_disabled_animation_skip_redraw_waits() {
-        let now = Instant::now();
-        let mut state = State::default();
-        let mut tab = quadrants();
-        tab.focus(2);
-        let source = update(&mut state, &tab, false, now);
-        tab.toggle_zoom();
-        update(&mut state, &tab, false, now);
-        state.observe_redraw(vec![redraw(2, 1, 0, false)], now);
-        tab.toggle_zoom();
-        update(&mut state, &tab, false, now + Duration::from_millis(50));
-        assert_eq!(
-            update(&mut state, &tab, false, now + Duration::from_millis(100)),
-            source
-        );
-        assert!(!state.is_running());
-        let (mut state, tab) = wait_at_midpoint(now, false);
-        state.update(
-            &tab,
-            false,
-            CONTENT,
-            16.0,
-            [0.0; 2],
-            1.0,
-            &Config::default(),
-            false,
-            now + ZOOM_DURATION,
-        );
-        assert!(!state.is_running());
-        assert!(!state.is_waiting_for_redraw());
-        state.observe_redraw(vec![redraw(2, 1, 0, true)], now + ZOOM_DURATION);
-        assert!(!state.is_running());
-    }
-
-    #[test]
-    fn reversal_after_fade_in_rearms_the_return_resize() {
-        let now = Instant::now();
-        let (mut state, mut tab) = wait_at_midpoint(now, false);
-        let prepared = now + ZOOM_DURATION / 2;
-        state.observe_redraw(vec![redraw(2, 2, 0, false)], prepared);
-        let ready = prepared + Duration::from_millis(100);
-        state.observe_redraw(vec![redraw(2, 2, 0, false)], ready);
-        let reverse_at = ready + ZOOM_DURATION / 4;
-        let forward = update(&mut state, &tab, false, reverse_at);
-        tab.toggle_zoom();
-        assert_eq!(update(&mut state, &tab, false, reverse_at), forward);
-        assert!(!state.is_waiting_for_redraw());
-        let returning = reverse_at + ZOOM_DURATION / 4;
-        let midpoint = update(&mut state, &tab, false, returning);
-        assert!(state.is_waiting_for_redraw());
-        assert_eq!(pane(&midpoint, 2).opacity, 0.0);
-        state.observe_redraw(vec![redraw(2, 3, 0, false)], returning);
-        assert!(state.is_waiting_for_redraw());
-        state.observe_redraw(
-            vec![redraw(2, 4, 1, false)],
-            returning + Duration::from_millis(10),
-        );
-        assert!(!state.is_waiting_for_redraw());
-    }
-
-    #[test]
-    fn changing_target_discards_the_previous_redraw_wait() {
-        let now = Instant::now();
-        let (mut state, mut tab) = wait_at_midpoint(now, false);
-        let prepared = now + ZOOM_DURATION / 2;
-        state.observe_redraw(vec![redraw(2, 2, 1, true)], prepared);
-        tab.zoom = Some(5);
-        let changed = prepared + Duration::from_millis(10);
-        update(&mut state, &tab, false, changed);
-        assert!(!state.is_waiting_for_redraw());
-        state.observe_redraw(vec![redraw(5, 1, 0, false)], changed);
-        let midpoint = changed + ZOOM_DURATION / 2;
-        update(&mut state, &tab, false, midpoint);
-        assert!(state.is_waiting_for_redraw());
-        state.observe_redraw(vec![redraw(5, 2, 0, false)], midpoint);
-        let ready = midpoint + Duration::from_millis(10);
-        state.observe_redraw(vec![redraw(5, 3, 1, false)], ready);
-        assert!(!state.is_waiting_for_redraw());
-        update(&mut state, &tab, false, ready + ZOOM_DURATION / 2);
-        assert!(!state.is_running());
     }
 
     #[test]
