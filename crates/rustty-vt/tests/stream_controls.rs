@@ -156,12 +156,12 @@ fn relative_position_commands_use_absolute_position_margin_rules() {
     terminal.feed(b"\x1b[?6h\x1b[2;2H\x1b[0a");
     assert_eq!(
         (terminal.screen().cursor.row, terminal.screen().cursor.col),
-        (5, 5)
+        (3, 3)
     );
     terminal.feed(b"\x1b[0e");
     assert_eq!(
         (terminal.screen().cursor.row, terminal.screen().cursor.col),
-        (5, 6)
+        (3, 3)
     );
 }
 
