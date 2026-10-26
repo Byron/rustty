@@ -30,8 +30,8 @@ use rustty_app::{
     input, outliner, outliner_ui,
     platform::{Platform, PlatformEvent},
     presentation::{
-        Activity, CompletionFlash, DirectoryLabel, FocusHint, Progress, TabAccent,
-        common_directory_name, cursor_blink_phase, directory_name, paint_zoom_icon, zoom_label,
+        Activity, CompletionFlash, DirectoryLabel, FocusHint, Progress, TabAccent, common_label,
+        cursor_blink_phase, directory_labels, paint_zoom_icon, zoom_label,
     },
     search::{self, Search},
     workspace::{self, Axis, Id, Peek, Rect, SavedPane, Tab, WindowState, Workspace},
@@ -871,6 +871,8 @@ struct App {
     state_path: PathBuf,
     resources: Option<PathBuf>,
     panes: HashMap<Id, Pane>,
+    directory_label_paths: HashMap<Id, PathBuf>,
+    directory_labels: HashMap<Id, String>,
     pending_visuals: BTreeMap<Id, Vec<u8>>,
     failed_panes: BTreeMap<Id, String>,
     activity_flashes: HashMap<Id, CompletionFlash>,
@@ -1098,6 +1100,8 @@ pub fn run() -> Result<()> {
         state_path,
         resources,
         panes: HashMap::new(),
+        directory_label_paths: HashMap::new(),
+        directory_labels: HashMap::new(),
         pending_visuals: BTreeMap::new(),
         failed_panes: BTreeMap::new(),
         activity_flashes: HashMap::new(),
@@ -2218,17 +2222,43 @@ impl App {
         }
         host.repaint();
     }
-    fn outline_rows(&self) -> Vec<outliner::Row> {
-        let labels = self
-            .panes
+    fn refresh_directory_labels(&mut self) {
+        let paths = self
+            .workspace
+            .windows
             .iter()
-            .map(|(&id, pane)| {
+            .flat_map(|window| &window.tabs)
+            .flat_map(|tab| &tab.panes)
+            .map(|(&id, saved)| {
                 (
                     id,
-                    directory_name(&pane.cwd).unwrap_or_else(|| "Terminal".into()),
+                    self.panes
+                        .get(&id)
+                        .map_or(saved.working_directory.as_path(), |pane| pane.cwd.as_path()),
                 )
+            });
+        if paths.clone().count() == self.directory_label_paths.len()
+            && paths.clone().all(|(id, path)| {
+                self.directory_label_paths
+                    .get(&id)
+                    .is_some_and(|previous| previous == path)
             })
-            .collect();
+        {
+            return;
+        }
+        let paths: HashMap<_, _> = paths.map(|(id, path)| (id, path.to_owned())).collect();
+        let labels = directory_labels(paths.iter().map(|(&id, path)| (id, path.as_path())));
+        self.directory_label_paths = paths;
+        if self.directory_labels != labels {
+            self.directory_labels = labels;
+            for host in self.windows.values() {
+                host.repaint();
+            }
+            self.repaint_outliner();
+        }
+    }
+
+    fn outline_rows(&self) -> Vec<outliner::Row> {
         let tab_labels = self
             .workspace
             .windows
@@ -2245,7 +2275,7 @@ impl App {
         outliner::workspace_rows(
             &self.workspace,
             self.active,
-            &labels,
+            &self.directory_labels,
             &tab_labels,
             &quick_used,
             &self
@@ -2546,10 +2576,7 @@ impl App {
     fn drain(&mut self, event_loop: &ActiveEventLoop, id: Id) {
         let previous_tab_label = self.pane_tab_label(id);
         let tmuxx = self.tmuxx_pane(id).is_some();
-        let previous_directory = self
-            .panes
-            .get(&id)
-            .and_then(|pane| directory_name(&pane.cwd));
+        let previous_directory = self.panes.get(&id).map(|pane| pane.cwd.clone());
         let live = previous_tab_label.is_some();
         let previous_errors = self.errors.len();
         let mut content_changed = false;
@@ -2775,11 +2802,11 @@ impl App {
         // Only a change in the rendered tab label/underline warrants a hidden-tab
         // repaint. Raw titles can be masked by a custom title or another pane.
         let indicators_changed = stopped || previous_tab_label != self.pane_tab_label(id);
-        let directory_changed = previous_directory
-            != self
-                .panes
-                .get(&id)
-                .and_then(|pane| directory_name(&pane.cwd));
+        let directory_changed =
+            previous_directory.as_ref() != self.panes.get(&id).map(|pane| &pane.cwd);
+        if directory_changed {
+            self.refresh_directory_labels();
+        }
         if directory_changed || title_changed {
             self.repaint_outliner();
         }
@@ -2965,10 +2992,10 @@ impl App {
             tab.visible_tree(peek.is_some())
         };
         let node = tree.node(quadrant)?;
-        let name = common_directory_name(
+        let name = common_label(
             node.panes()
                 .iter()
-                .map(|id| self.panes.get(id).map(|pane| pane.cwd.as_path())),
+                .map(|id| self.directory_labels.get(id).map(String::as_str)),
         );
         let focused = peek.map_or(tab.focused, |peek| peek.target);
         // Eligibility does not depend on whether focus hides the aggregate.
@@ -4158,6 +4185,7 @@ impl App {
         if metadata_changed {
             self.changed();
         }
+        self.refresh_directory_labels();
         for id in self
             .workspace
             .windows
@@ -4731,25 +4759,11 @@ impl App {
         }
         let active = &state.tabs[state.active_tab];
         let focused = active.focused;
-        let pane_labels = state
-            .tabs
-            .iter()
-            .filter(|tab| state.tabs.len() > 1 && tab.id == active.id)
-            .flat_map(|tab| tab.pane_ids())
-            .map(|id| {
-                let label = self
-                    .panes
-                    .get(&id)
-                    .and_then(|pane| directory_name(&pane.cwd))
-                    .unwrap_or_else(|| "Terminal".into());
-                (id, label)
-            })
-            .collect();
         let tmuxx_tag = self
             .tmuxx_window(host.id)
             .map(|entry| entry.window_tag(host.id, &self.config().tmuxx_connections));
         let breadcrumb = if state.tabs.len() > 1 {
-            outliner::breadcrumb(active, &pane_labels)
+            outliner::breadcrumb(active, &self.directory_labels)
         } else {
             Vec::new()
         };
@@ -5619,7 +5633,7 @@ impl App {
                             let server_selected = id != focused && self.tmuxx_window(host.id)
                                 .is_some_and(|entry| entry.mapping.server_focused.contains(&id));
                             if let Some(label) = DirectoryLabel::new(
-                                directory_name(&pane.cwd),
+                                self.directory_labels.get(&id).cloned(),
                                 selected,
                                 host.focused,
                                 host.focus_hint.visible(id, now),

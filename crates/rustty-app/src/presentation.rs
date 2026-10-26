@@ -1,6 +1,7 @@
 //! Shared tab, pane, and quadrant presentation rules from Ghostty Local.
 use crate::workspace::{Id, Tab};
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 pub const PROGRESS_TIMEOUT: Duration = Duration::from_secs(15);
@@ -299,18 +300,50 @@ pub fn directory_name(path: &Path) -> Option<String> {
     (!name.is_empty()).then(|| name.to_string_lossy().into_owned())
 }
 
-/// Ghostty compares displayed basenames, not full paths or a common ancestor.
-/// A missing directory prevents a shared label rather than hiding that pane.
-pub fn common_directory_name<'a>(
-    directories: impl IntoIterator<Item = Option<&'a Path>>,
-) -> Option<String> {
-    let mut names = directories
-        .into_iter()
-        .map(|path| path.and_then(directory_name));
-    let first = names.next()??;
-    names
-        .all(|name| name.as_ref() == Some(&first))
-        .then_some(first)
+/// Add parent components only when distinct directories have the same basename.
+pub fn directory_labels<'a>(
+    directories: impl IntoIterator<Item = (Id, &'a Path)>,
+) -> HashMap<Id, String> {
+    let mut groups = HashMap::<String, HashMap<&Path, Vec<Id>>>::new();
+    for (id, path) in directories {
+        if let Some(name) = directory_name(path) {
+            groups
+                .entry(name)
+                .or_default()
+                .entry(path)
+                .or_default()
+                .push(id);
+        }
+    }
+    let mut labels = HashMap::new();
+    for (name, paths) in groups {
+        for (&path, ids) in &paths {
+            let label = if paths.len() == 1 {
+                name.clone()
+            } else {
+                let components: Vec<_> = path.components().collect();
+                let suffix = (0..components.len())
+                    .rev()
+                    .map(|start| components[start..].iter().collect::<PathBuf>())
+                    .find(|suffix| {
+                        paths
+                            .keys()
+                            .all(|other| *other == path || !other.ends_with(suffix))
+                    })
+                    .unwrap_or_else(|| components.iter().collect());
+                suffix.to_string_lossy().into_owned()
+            };
+            labels.extend(ids.iter().map(|&id| (id, label.clone())));
+        }
+    }
+    labels
+}
+
+/// A missing label prevents a shared badge rather than hiding that pane.
+pub fn common_label<'a>(labels: impl IntoIterator<Item = Option<&'a str>>) -> Option<String> {
+    let mut labels = labels.into_iter();
+    let first = labels.next()??;
+    (!first.is_empty() && labels.all(|label| label == Some(first))).then(|| first.to_owned())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -658,6 +691,107 @@ mod tests {
     }
 
     #[test]
+    fn directory_labels_disambiguate_paths_without_changing_shared_or_unique_names() {
+        let cases: &[(&[&str], &[Option<&str>])] = &[
+            (
+                &["/one/project", "/two/other"],
+                &[Some("project"), Some("other")],
+            ),
+            (
+                &["/one/project", "/two/project", "/one/./project/"],
+                &[
+                    Some("one/project"),
+                    Some("two/project"),
+                    Some("one/project"),
+                ],
+            ),
+            (
+                &[
+                    "/one/common/project",
+                    "/two/common/project",
+                    "/other/project",
+                ],
+                &[
+                    Some("one/common/project"),
+                    Some("two/common/project"),
+                    Some("other/project"),
+                ],
+            ),
+            (
+                &["/project", "/nested/project"],
+                &[Some("/project"), Some("nested/project")],
+            ),
+            (
+                &["project", "nested/project"],
+                &[Some("project"), Some("nested/project")],
+            ),
+            (
+                &["/one/project", "one/project"],
+                &[Some("/one/project"), Some("one/project")],
+            ),
+            (
+                &["/one/../project", "/two/project"],
+                &[Some("../project"), Some("two/project")],
+            ),
+            (
+                &["/工作/项目", "/研究/项目"],
+                &[Some("工作/项目"), Some("研究/项目")],
+            ),
+            (
+                &["/one/project", "/one/./project/"],
+                &[Some("project"), Some("project")],
+            ),
+            (&["/", "", "."], &[Some("/"), None, Some(".")]),
+        ];
+        for &(paths, expected) in cases {
+            let entries: Vec<_> = paths
+                .iter()
+                .enumerate()
+                .map(|(id, path)| (id as Id, Path::new(path)))
+                .collect();
+            let labels = directory_labels(entries.iter().copied());
+            assert_eq!(
+                labels,
+                directory_labels(entries.iter().rev().copied()),
+                "{paths:?}"
+            );
+            for (id, expected) in expected.iter().enumerate() {
+                assert_eq!(
+                    labels
+                        .get(&(id as Id))
+                        .map(|label| label.replace(std::path::MAIN_SEPARATOR, "/"))
+                        .as_deref(),
+                    *expected,
+                    "{paths:?}, pane {id}",
+                );
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn directory_labels_preserve_windows_drive_and_unc_prefixes() {
+        let paths = [
+            r"C:\one\project",
+            r"D:\one\project",
+            r"\\server\share\project",
+            r"\\other\share\project",
+        ];
+        let labels = directory_labels(
+            paths
+                .iter()
+                .enumerate()
+                .map(|(id, path)| (id as Id, Path::new(path))),
+        );
+        for (id, path) in paths.iter().enumerate() {
+            assert_eq!(labels[&(id as Id)], *path);
+        }
+        let roots = directory_labels([(1, Path::new(r"C:\")), (2, Path::new(r"D:\"))]);
+        assert_eq!(roots[&1], r"C:\");
+        assert_eq!(roots[&2], r"D:\");
+    }
+
+    #[test]
     fn shared_directory_labels_follow_names_missing_values_and_focus() {
         assert_eq!(
             directory_name(Path::new("/one/project/")),
@@ -665,17 +799,19 @@ mod tests {
         );
         assert_eq!(directory_name(Path::new("/")), Some("/".into()));
         assert_eq!(directory_name(Path::new("")), None);
-        let common =
-            |paths: &[Option<&str>]| common_directory_name(paths.iter().map(|p| p.map(Path::new)));
         assert_eq!(
-            common(&[Some("/one/project"), Some("/two/project")]),
+            common_label([Some("project"), Some("project")]),
             Some("project".into())
         );
-        assert_eq!(common(&[Some("/one"), Some("/two")]), None);
-        assert_eq!(common(&[Some("/project"), None]), None);
-        assert_eq!(common(&[Some("/project"), Some("")]), None);
-        assert_eq!(common(&[Some("/project")]), Some("project".into()));
-        assert_eq!(common(&[]), None);
+        assert_eq!(
+            common_label([Some("one/project"), Some("two/project")]),
+            None
+        );
+        assert_eq!(common_label([Some("project"), None]), None);
+        assert_eq!(common_label([Some("project"), Some("")]), None);
+        assert_eq!(common_label([Some("project")]), Some("project".into()));
+        assert_eq!(common_label([Some("")]), None);
+        assert_eq!(common_label([]), None);
         let name = || Some("project".into());
         assert!(DirectoryLabel::new(name(), true, true, false).is_none());
         for (window_focused, show_focused) in [(false, false), (true, true)] {
