@@ -3,7 +3,7 @@ use super::{CachedGlyph, Color, Quad, RenderError, RenderOptions, Renderer};
 use crate::Paint;
 use rustty_font::FontMetrics;
 use rustty_vt::{
-    Screen,
+    Row, Screen,
     graphics::{Image, Placement, PlacementId, unicode},
 };
 use std::{
@@ -22,6 +22,33 @@ pub(super) struct CachedTile {
     glyph: CachedGlyph,
 }
 
+#[derive(Default)]
+pub(super) struct PlaceholderCache {
+    rows: HashMap<(u64, usize), Box<[unicode::Placement]>>,
+    runs: usize,
+}
+
+impl PlaceholderCache {
+    fn row(&mut self, screen: &Screen, row: Row<'_>) -> &[unicode::Placement] {
+        let Some(revision) = row.placeholder_revision() else {
+            return &[];
+        };
+        let key = (revision, row.cells.len());
+        if !self.rows.contains_key(&key) {
+            let runs = unicode::placements(screen, row).collect::<Box<[_]>>();
+            // Bound retained rows across edits and panes, like the shaped-text cache.
+            if self.rows.len() >= 4096 || self.runs + runs.len() > 65536 {
+                self.rows.clear();
+                self.runs = 0;
+            }
+            self.runs += runs.len();
+            self.rows.insert(key, runs);
+        }
+        &self.rows[&key]
+    }
+}
+
+#[derive(Debug, PartialEq)]
 struct Geometry {
     image: u32,
     placement: PlacementId,
@@ -71,7 +98,7 @@ impl Renderer {
             return Ok(layers);
         }
         let metrics = self.metrics();
-        let mut placements = geometry(screen, metrics, options);
+        let mut placements = geometry(screen, metrics, options, &mut self.placeholders);
         placements.sort_by_key(|p| (p.z, p.order, p.placement));
         let clip = [
             options.padding[0],
@@ -218,7 +245,12 @@ fn image_sources<'a>(images: impl IntoIterator<Item = &'a Image>) -> HashSet<usi
         .collect()
 }
 
-fn geometry(screen: &Screen, metrics: FontMetrics, options: &RenderOptions) -> Vec<Geometry> {
+fn geometry(
+    screen: &Screen,
+    metrics: FontMetrics,
+    options: &RenderOptions,
+    placeholders: &mut PlaceholderCache,
+) -> Vec<Geometry> {
     let cell = [metrics.cell_width as f32, metrics.cell_height as f32];
     let mut result = Vec::new();
     let mut virtual_origins: HashMap<(u32, PlacementId), [i64; 2]> = HashMap::new();
@@ -231,7 +263,7 @@ fn geometry(screen: &Screen, metrics: FontMetrics, options: &RenderOptions) -> V
         .any(|p| p.virtual_placement)
     {
         for (row_index, row) in screen.viewport().enumerate() {
-            for run in unicode::placements(screen, row) {
+            for &run in placeholders.row(screen, row) {
                 virtual_geometry(
                     run,
                     row_index,
@@ -458,6 +490,170 @@ mod tests {
         assert!(t.screen().graphics.images.contains_key(&id));
     }
 
+    fn placeholders() -> Terminal {
+        let mut terminal = Terminal::new(12, 4, 100);
+        transmit(&mut terminal, 1, "U=1,c=4,r=4");
+        transmit(&mut terminal, 2, "U=1,c=4,r=4");
+        transmit(&mut terminal, 3, "c=1,r=1,P=1,Q=1,H=4,V=0");
+        for row in 0..3 {
+            terminal.feed(
+                format!(
+                    "\x1b[{};1H\x1b[38;5;1m{PLACEHOLDER}\u{305}\u{305}{PLACEHOLDER}",
+                    row + 1
+                )
+                .as_bytes(),
+            );
+        }
+        terminal
+    }
+
+    fn assert_cached_geometry(
+        cache: &mut PlaceholderCache,
+        screen: &Screen,
+        metrics: FontMetrics,
+        options: &RenderOptions,
+    ) {
+        for row in screen.viewport() {
+            assert_eq!(
+                cache.row(screen, row),
+                unicode::placements(screen, row).collect::<Vec<_>>(),
+            );
+        }
+        assert_eq!(
+            geometry(screen, metrics, options, cache),
+            geometry(screen, metrics, options, &mut PlaceholderCache::default()),
+        );
+    }
+
+    #[test]
+    fn placeholder_cache_reparses_only_edited_rows_across_viewport_snapshots() {
+        let mut terminal = placeholders();
+        let (renderer, options) = renderer();
+        let metrics = renderer.metrics();
+        let mut cache = PlaceholderCache::default();
+        assert_cached_geometry(&mut cache, terminal.screen(), metrics, &options);
+        assert_eq!(cache.rows.len(), 3);
+        assert_cached_geometry(
+            &mut cache,
+            &terminal.screen().snapshot_viewport(),
+            metrics,
+            &options,
+        );
+        assert_eq!(cache.rows.len(), 3);
+
+        terminal.feed(b"\x1b[4;1Hplain text");
+        assert_cached_geometry(
+            &mut cache,
+            &terminal.screen().snapshot_viewport(),
+            metrics,
+            &options,
+        );
+        assert_eq!(cache.rows.len(), 3);
+
+        terminal
+            .screen_mut()
+            .set_cell_text(1, 0, &format!("{PLACEHOLDER}\u{30d}\u{305}"));
+        assert_cached_geometry(
+            &mut cache,
+            &terminal.screen().snapshot_viewport(),
+            metrics,
+            &options,
+        );
+        assert_eq!(cache.rows.len(), 4);
+
+        let mut clone = terminal.clone();
+        clone.screen_mut().set_cell_text(1, 0, "");
+        assert_cached_geometry(&mut cache, clone.screen(), metrics, &options);
+        assert_cached_geometry(&mut cache, terminal.screen(), metrics, &options);
+        assert_eq!(cache.rows.len(), 5);
+
+        let mut larger = metrics;
+        larger.cell_width += 3;
+        larger.cell_height += 5;
+        let mut padded = options.clone();
+        padded.padding = [13.0, 7.0];
+        assert_cached_geometry(&mut cache, terminal.screen(), larger, &padded);
+        assert_eq!(cache.rows.len(), 5);
+    }
+
+    #[test]
+    fn placeholder_cache_matches_fresh_geometry_through_edits_moves_and_restores() {
+        let (renderer, options) = renderer();
+        let metrics = renderer.metrics();
+        let mut cache = PlaceholderCache::default();
+        let mut terminal = placeholders();
+        assert_cached_geometry(&mut cache, terminal.screen(), metrics, &options);
+        for input in [
+            "\x1b[1;1H\x1b[2X",
+            "\x1b[2;1H\x1b[@",
+            "\x1b[2;1H\x1b[P",
+            "\x1b[1;4r\x1b[1;1H\x1b[M",
+            "\x1b[1;1H\x1b[L",
+            "\x1b[?69h\x1b[2;8s\x1b[2;2H\x1b[M",
+            "\x1b[?69l\x1b[r\x1b[4;1H\r\n\r\n",
+        ] {
+            terminal.feed(input.as_bytes());
+            assert_cached_geometry(&mut cache, terminal.screen(), metrics, &options);
+        }
+        terminal.screen_mut().scroll_viewport(2);
+        assert_cached_geometry(&mut cache, terminal.screen(), metrics, &options);
+        terminal.resize(7, 5);
+        assert_cached_geometry(&mut cache, terminal.screen(), metrics, &options);
+        terminal.resize(16, 3);
+        assert_cached_geometry(&mut cache, terminal.screen(), metrics, &options);
+
+        terminal = placeholders();
+        terminal.feed(format!("\x1b[4;1Hleft{PLACEHOLDER}right").as_bytes());
+        assert_cached_geometry(&mut cache, terminal.screen(), metrics, &options);
+        terminal.resize(7, 5);
+        assert_cached_geometry(&mut cache, terminal.screen(), metrics, &options);
+        terminal.resize(16, 3);
+        assert_cached_geometry(&mut cache, terminal.screen(), metrics, &options);
+
+        // Separate panes and fresh decodes can reuse all native row/style/image IDs.
+        let mut other = placeholders();
+        let mut style = other.screen().row(0).style(0);
+        style.foreground = TerminalColor::Indexed(2);
+        style.underline_color = TerminalColor::Indexed(2);
+        other.screen_mut().set_cell_style(0, 0, style);
+        assert_cached_geometry(&mut cache, other.screen(), metrics, &options);
+        let bytes = rustty_vt::snapshot::encode_to_vec(&other).unwrap();
+        let restored = rustty_vt::snapshot::decode(bytes.as_slice(), Default::default()).unwrap();
+        assert_cached_geometry(&mut cache, restored.screen(), metrics, &options);
+        assert_cached_geometry(&mut cache, terminal.screen(), metrics, &options);
+
+        other.feed(b"\x1b_Ga=p,i=2,p=2,U=1,c=2,r=2\x1b\\");
+        assert_cached_geometry(&mut cache, other.screen(), metrics, &options);
+        other
+            .screen_mut()
+            .graphics
+            .images
+            .get_mut(&2)
+            .unwrap()
+            .width = 0;
+        assert_cached_geometry(&mut cache, other.screen(), metrics, &options);
+        other.feed(b"\x1b_Ga=d,d=a\x1b\\");
+        assert_cached_geometry(&mut cache, other.screen(), metrics, &options);
+    }
+
+    #[test]
+    fn placeholder_cache_is_bounded_over_edits() {
+        let mut terminal = placeholders();
+        let mut cache = PlaceholderCache::default();
+        for i in 0..5000 {
+            terminal
+                .screen_mut()
+                .set_cell_text(0, 1, if i % 2 == 0 { "" } else { "x" });
+            let row = terminal.screen().row(0);
+            assert_eq!(
+                cache.row(terminal.screen(), row),
+                unicode::placements(terminal.screen(), row).collect::<Vec<_>>()
+            );
+            assert!(cache.rows.len() <= 4096);
+            assert!(cache.runs <= 65536);
+        }
+    }
+
     #[test]
     fn tmux_sixel_overlap_renders_in_owner_creation_order() {
         let mut terminal = Terminal::new(20, 4, 100);
@@ -494,13 +690,24 @@ mod tests {
         }
         let (renderer, options) = renderer();
         assert_eq!(
-            geometry(terminal.screen(), renderer.metrics(), &options).len(),
+            geometry(
+                terminal.screen(),
+                renderer.metrics(),
+                &options,
+                &mut PlaceholderCache::default()
+            )
+            .len(),
             9
         );
         terminal.feed(b"\x1b_Ga=p,i=1,p=20,C=1,c=1,r=1\x1b\\");
         terminal.feed(b"\x1b_Ga=p,i=1,p=1,P=1,Q=20,c=1,r=1\x1b\\");
         assert_eq!(terminal.graphics().placements.len(), 10);
-        let rendered = geometry(terminal.screen(), renderer.metrics(), &options);
+        let rendered = geometry(
+            terminal.screen(),
+            renderer.metrics(),
+            &options,
+            &mut PlaceholderCache::default(),
+        );
         assert_eq!(rendered.len(), 9);
         assert!(
             !rendered
@@ -1102,7 +1309,12 @@ mod tests {
             .unwrap()
             .pixels = Arc::new(vec![0, 255, 0, 255]);
         let (mut renderer, options) = renderer();
-        let expected = geometry(restored.screen(), renderer.metrics(), &options);
+        let expected = geometry(
+            restored.screen(),
+            renderer.metrics(),
+            &options,
+            &mut PlaceholderCache::default(),
+        );
         assert_eq!(expected.len(), 2);
         let child = expected
             .iter()
@@ -1216,7 +1428,12 @@ mod tests {
                 );
             }
         }
-        let rendered = geometry(terminal.screen(), metrics, &options);
+        let rendered = geometry(
+            terminal.screen(),
+            metrics,
+            &options,
+            &mut PlaceholderCache::default(),
+        );
         assert_eq!(rendered.len(), 2);
         assert_eq!(rendered[0].source, [0.0, 0.0, 500.0, 153.0]);
         assert_eq!(rendered[1].source, [0.0, 153.0, 500.0, 153.0]);
@@ -1260,7 +1477,12 @@ mod tests {
                 );
             }
         }
-        let expected = geometry(terminal.screen(), renderer.metrics(), &options);
+        let expected = geometry(
+            terminal.screen(),
+            renderer.metrics(),
+            &options,
+            &mut PlaceholderCache::default(),
+        );
         assert_eq!(expected.len(), 4);
         let frame = renderer.prepare(terminal.screen(), &options).unwrap();
         let quads: Vec<_> = frame
@@ -1299,7 +1521,12 @@ mod tests {
                 ..rustty_vt::Style::default()
             },
         );
-        let expected = geometry(terminal.screen(), renderer.metrics(), &options);
+        let expected = geometry(
+            terminal.screen(),
+            renderer.metrics(),
+            &options,
+            &mut PlaceholderCache::default(),
+        );
         assert_eq!(expected.len(), 1);
         assert_eq!(expected[0].source, [3.0, 3.0, 3.0, 3.0]);
         let frame = renderer.prepare(terminal.screen(), &options).unwrap();
@@ -1332,7 +1559,12 @@ mod tests {
         transmit(&mut terminal, 2, "c=1,r=1,P=1,Q=3,H=1,V=1");
         terminal
             .feed(format!("\x1b[38;5;1m\x1b[2;5H{PLACEHOLDER}\x1b[4;2H{PLACEHOLDER}").as_bytes());
-        let rendered = geometry(terminal.screen(), metrics, &options);
+        let rendered = geometry(
+            terminal.screen(),
+            metrics,
+            &options,
+            &mut PlaceholderCache::default(),
+        );
         assert_eq!(rendered.len(), 3);
         assert_eq!(
             rendered
@@ -1352,10 +1584,15 @@ mod tests {
         terminal.feed(b"\x1b_Ga=p,i=1,p=5,C=1,c=1,r=1\x1b\\");
         terminal.feed(format!("\x1b[H\x1b[58;5;5m{PLACEHOLDER}").as_bytes());
         let count = |terminal: &Terminal| {
-            geometry(terminal.screen(), metrics, &options)
-                .iter()
-                .filter(|p| p.image == 1 && p.placement == PlacementId::External(5))
-                .count()
+            geometry(
+                terminal.screen(),
+                metrics,
+                &options,
+                &mut PlaceholderCache::default(),
+            )
+            .iter()
+            .filter(|p| p.image == 1 && p.placement == PlacementId::External(5))
+            .count()
         };
         assert_eq!(count(&terminal), 2); // Ordinary placement plus its explicit placeholder.
         terminal.feed(b"\x1b_Ga=d,d=i,i=1,p=3\x1b\\\x1b_Ga=d,d=i,i=1,p=9\x1b\\");
