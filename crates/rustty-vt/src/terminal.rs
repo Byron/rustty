@@ -1788,6 +1788,20 @@ impl Terminal {
         self.changed();
     }
 
+    // Convert the absolute cursor into the coordinates cursor_position accepts.
+    fn cursor_position_for_set(&self) -> (usize, usize) {
+        let cursor = &self.screen().cursor;
+        let (top, left) = if self.modes.dec(6) {
+            (self.margins.top, self.margins.left)
+        } else {
+            (0, 0)
+        };
+        (
+            cursor.row.saturating_sub(top) + 1,
+            cursor.col.saturating_sub(left) + 1,
+        )
+    }
+
     fn cursor_vertical(&mut self, amount: usize, down: bool) {
         let y = self.screen().cursor.row;
         let target = if down {
@@ -2767,16 +2781,16 @@ impl Terminal {
                 self.cursor_vertical(count, byte == b'E');
                 self.carriage_return();
             }
-            ([], b'G' | b'`') => self.cursor_position(self.screen().cursor.row + 1, count),
-            ([], b'd') => self.cursor_position(count, self.screen().cursor.col + 1),
+            ([], b'G' | b'`') => self.cursor_position(self.cursor_position_for_set().0, count),
+            ([], b'd') => self.cursor_position(count, self.cursor_position_for_set().1),
             ([], b'a' | b'e') => {
                 // HPR/VPR retain an explicit zero and apply the same origin
                 // offsets and bounds as absolute cursor positioning.
                 let amount = usize::from(p.first().copied().unwrap_or(1));
-                let cursor = &self.screen().cursor;
+                let (row, col) = self.cursor_position_for_set();
                 self.cursor_position(
-                    cursor.row + 1 + if byte == b'e' { amount } else { 0 },
-                    cursor.col + 1 + if byte == b'a' { amount } else { 0 },
+                    row.saturating_add(if byte == b'e' { amount } else { 0 }),
+                    col.saturating_add(if byte == b'a' { amount } else { 0 }),
                 );
             }
             ([], b'H' | b'f') => self.cursor_position(count, second.max(1).into()),

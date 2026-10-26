@@ -48,3 +48,25 @@ fn backward_moves_stop_at_left_margin_unless_already_left_of_it() {
     terminal.feed(b"\x1b[?69h\x1b[3;7s\x1b[1;6H\x1b[99D");
     assert_eq!(terminal.screen().cursor.col, 2);
 }
+
+#[test]
+fn single_axis_cursor_positions_apply_origin_offsets_once() {
+    for (sequence, expected) in [
+        (b"\x1b[1G".as_slice(), (3, 3)),
+        (b"\x1b[1`", (3, 3)),
+        (b"\x1b[1d", (2, 4)),
+        (b"\x1b[2a", (3, 6)),
+        (b"\x1b[2e", (5, 4)),
+        (b"\x1b[99a", (3, 8)),
+        (b"\x1b[99e", (7, 4)),
+    ] {
+        let mut terminal = Terminal::new(10, 10, 0);
+        terminal.feed(b"\x1b[?69h\x1b[4;9s\x1b[3;8r\x1b[?6h\x1b[2;2H");
+        terminal.feed(sequence);
+        assert_eq!(
+            (terminal.screen().cursor.row, terminal.screen().cursor.col),
+            expected,
+            "{sequence:?}",
+        );
+    }
+}
