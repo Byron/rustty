@@ -278,6 +278,9 @@ struct PendingPaste {
 }
 
 enum Confirmation {
+    DumpSessions {
+        error: Option<String>,
+    },
     Quit {
         confirmation: Box<Confirmation>,
         save_dump: bool,
@@ -5757,9 +5760,16 @@ impl App {
                     Confirmation::Quit { confirmation, save_dump, error } => {
                         (&**confirmation, Some(save_dump), error.as_deref())
                     }
-                    confirmation => (&*confirmation, None, None),
+                    confirmation => {
+                        let error = match &*confirmation {
+                            Confirmation::DumpSessions { error } => error.as_deref(),
+                            _ => None,
+                        };
+                        (&*confirmation, None, error)
+                    }
                 };
                 let (title, button) = match confirmation {
+                    Confirmation::DumpSessions { .. } => ("Dump all sessions?", "Dump Sessions"),
                     Confirmation::Close(_) if save_dump.is_some() => ("Save session state before quitting?", "Quit"),
                     Confirmation::Close(_) => ("Close running commands?", "Close"),
                     Confirmation::TmuxxClose { .. } => ("Close tmuxx window?", "Terminate session"),
@@ -5777,6 +5787,12 @@ impl App {
                     .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                     .show(ctx, |ui| {
                         match confirmation {
+                            Confirmation::DumpSessions { .. } => {
+                                ui.set_max_width(440.0);
+                                ui.label("Save screen contents, scrollback, and working directories from all local sessions in this instance? tmuxx sessions are excluded.");
+                                ui.label("This may include personally identifiable information (PII), secrets, and other sensitive data.");
+                                ui.label("The dump remains on disk until another Rustty instance successfully imports it. Opening Rustty without importing does not remove it.");
+                            }
                             Confirmation::TmuxxClose { .. } => {
                                 if self.tmuxx_window(host.id).is_some_and(|entry| entry.temporary()) {
                                     ui.label("This temporary session ends when its window closes.");
@@ -5883,6 +5899,14 @@ impl App {
                     return;
                 }
                 match confirmation {
+                    Confirmation::DumpSessions { .. } => {
+                        if let Err(error) = self.dump_session_state() {
+                            host.confirm = Some(Confirmation::DumpSessions {
+                                error: Some(format!("Could not save session state: {error}")),
+                            });
+                            host.repaint();
+                        }
+                    }
                     Confirmation::TmuxxClose { target, session } => self.tmuxx_menu_command(
                         tmuxx_host::MenuCommand::Kill(target, session)
                     ),
@@ -6978,6 +7002,7 @@ impl ApplicationHandler<Event> for App {
                             self.native_tmuxx_command(event_loop, command);
                         }
                     }
+                    PlatformEvent::DumpSessions => self.request_session_dump(),
                     PlatformEvent::Action(action) => {
                         self.platform_action(event_loop, action, false);
                     }

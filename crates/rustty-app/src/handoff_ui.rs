@@ -227,8 +227,27 @@ impl App {
         self.resumed(event_loop);
     }
 
+    pub(super) fn request_session_dump(&mut self) {
+        if self.import_selector {
+            return;
+        }
+        if let Some((key, mut host)) = self.take_active_host() {
+            if host.confirm.is_none() {
+                host.confirm = Some(Confirmation::DumpSessions { error: None });
+            }
+            if !host.visible {
+                self.quick_visible(&mut host, true, false);
+            }
+            if !self.background_smoke {
+                host.window.focus_window();
+            }
+            host.repaint();
+            self.windows.insert(key, host);
+        }
+    }
+
     pub(super) fn dump_session_state(&self) -> Result<SavedDump> {
-        // shortcut: capture/compression runs on the UI thread; use a worker if large histories stall quitting.
+        // shortcut: capture/compression runs on the UI thread; use a worker if large histories stall saving.
         let bytes = self.capture_handoff()?;
         Ok(self
             .handoff

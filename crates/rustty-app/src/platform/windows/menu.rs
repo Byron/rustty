@@ -43,6 +43,17 @@ impl NativeMenu {
             ("Close Surface", Action::CloseSurface),
             ("Close Tab", Action::CloseTab),
             ("Close Window", Action::CloseWindow),
+        ] {
+            append(&file, &mut actions, name, action)?;
+        }
+        file.append(&MenuItem::with_id(
+            "rustty-dump-sessions",
+            "Dump All Sessions…",
+            true,
+            None,
+        ))
+        .map_err(err)?;
+        for (name, action) in [
             ("Settings…", Action::OpenConfig),
             ("Reload Configuration", Action::ReloadConfig),
             ("Exit", Action::Quit),
@@ -133,6 +144,8 @@ impl NativeMenu {
                 .and_then(|i| routed.get(i))
             {
                 callback(PlatformEvent::Action(action.clone()));
+            } else if event.id.0 == "rustty-dump-sessions" {
+                callback(PlatformEvent::DumpSessions);
             } else if let Some(command) = tmuxx_routes
                 .lock()
                 .ok()
@@ -326,11 +339,13 @@ mod tests {
     fn native_menu_labels_do_not_intercept_host_shortcuts() {
         let events = Arc::new(Mutex::new(Vec::new()));
         let sink = events.clone();
+        let dump_requested = Arc::new(Mutex::new(false));
+        let dump_sink = dump_requested.clone();
         let mut fixture = Fixture {
-            menu: NativeMenu::new(Arc::new(move |event| {
-                if let PlatformEvent::Action(action) = event {
-                    sink.lock().unwrap().push(action);
-                }
+            menu: NativeMenu::new(Arc::new(move |event| match event {
+                PlatformEvent::Action(action) => sink.lock().unwrap().push(action),
+                PlatformEvent::DumpSessions => *dump_sink.lock().unwrap() = true,
+                _ => {}
             }))
             .unwrap(),
             normal: HiddenWindow::new(WS_OVERLAPPEDWINDOW),
@@ -422,6 +437,26 @@ mod tests {
             [Action::NewWindow],
             "native menu clicks still dispatch actions"
         );
+        assert!(!*dump_requested.lock().unwrap());
+        let length = unsafe { GetMenuStringW(file, 8, Some(&mut text), MF_BYPOSITION) };
+        assert_eq!(
+            String::from_utf16(&text[..length as usize]).unwrap(),
+            "Dump All Sessions…"
+        );
+        let command = unsafe { GetMenuItemID(file, 8) };
+        unsafe {
+            SendMessageW(
+                fixture.normal.0,
+                WM_COMMAND,
+                Some(WPARAM(command as usize)),
+                Some(LPARAM(0)),
+            );
+        }
+        assert!(
+            *dump_requested.lock().unwrap(),
+            "dump menu click must request confirmation"
+        );
+        assert_eq!(*events.lock().unwrap(), [Action::NewWindow]);
 
         let root = unsafe { GetMenu(fixture.normal.0) };
         assert_eq!(unsafe { GetMenuItemCount(Some(root)) }, 6);

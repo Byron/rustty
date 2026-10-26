@@ -94,7 +94,7 @@ impl Smoke {
                 "fixture must not connect to a tmuxx server",
             )?;
             match self.role.as_str() {
-                "source" => self.source(app),
+                "source" => self.source(app, event_loop),
                 "cancel" => self.cancel(app, event_loop),
                 "requester" => self.requester(app, event_loop),
                 _ => Err("RUSTTY_HANDOFF_SMOKE_ROLE must be source, cancel, or requester".into()),
@@ -106,7 +106,7 @@ impl Smoke {
         result
     }
 
-    fn source(&mut self, app: &mut App) -> Result<bool> {
+    fn source(&mut self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
         match self.stage {
             0 => {
                 if app.panes.is_empty() {
@@ -137,7 +137,13 @@ impl Smoke {
                 terminal.feed(ALT_OUTPUT.as_bytes());
                 terminal.feed(b"\x1b[?25l\x1b[?2004h\x1b[?1003h");
                 drop(terminal);
-                let older = app.dump_session_state()?;
+                // egui records widget labels only while its interaction debugger is enabled.
+                app.context
+                    .all_styles_mut(|style| style.debug.show_interactive_widgets = true);
+                let dumped = self.dump_with_consent(app, event_loop);
+                app.context
+                    .all_styles_mut(|style| style.debug.show_interactive_widgets = false);
+                let older = dumped?;
                 let state = app.handoff.as_ref().ok_or("source dump store missing")?;
                 ensure(
                     state.store.dumps()? == [older.clone()],
@@ -179,13 +185,113 @@ impl Smoke {
                 self.report(serde_json::json!({
                     "passed": true,
                     "renderer": app.painter.description(),
-                    "checks": ["session-dump-hook", "compressed-saved-dumps", "newest-first", "tmuxx-windows-excluded", "source-shell-alive-until-quit", "source-alternate-display-unchanged", "normal-workspace-saved"],
+                    "checks": ["session-dump-menu-consent", "dump-cancel-and-escape-save-nothing", "dump-failure-keeps-confirmation", "dump-retry-saves-once", "compressed-saved-dumps", "newest-first", "tmuxx-windows-excluded", "source-shell-alive-until-quit", "source-alternate-display-unchanged", "normal-workspace-saved"],
                 }))?;
                 return Ok(true);
             }
             _ => unreachable!(),
         }
         Ok(false)
+    }
+
+    fn dump_with_consent(&self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<SavedDump> {
+        for choice in ["Cancel", "Escape", "Dump Sessions"] {
+            app.user_event(event_loop, Event::Platform(PlatformEvent::DumpSessions));
+            ensure(
+                app.handoff.as_ref().unwrap().store.dumps()?.is_empty(),
+                "requesting a session dump saved before confirmation",
+            )?;
+            let (key, mut host) = app.take_active_host().ok_or("missing dump dialog host")?;
+            let result = (|| {
+                ensure(
+                    matches!(
+                        host.confirm,
+                        Some(Confirmation::DumpSessions { error: None })
+                    ),
+                    "session dump menu did not request confirmation",
+                )?;
+                host.focused = true;
+                host.egui.egui_input_mut().focused = true;
+                for _ in 0..2 {
+                    app.draw(event_loop, &mut host)?;
+                }
+                for text in [
+                    "personally identifiable information (PII)",
+                    "remains on disk until another Rustty instance successfully imports it",
+                    "Opening Rustty without importing does not remove it",
+                ] {
+                    let displayed = app.context.viewport_for(host.viewport, |state| {
+                        let widgets = &state.prev_pass.widgets;
+                        widgets
+                            .get_layer(egui::LayerId::new(
+                                egui::Order::Middle,
+                                egui::Id::new(Some("Dump all sessions?")),
+                            ))
+                            .any(|widget| {
+                                widgets.info(widget.id).is_some_and(|info| {
+                                    info.label
+                                        .as_ref()
+                                        .is_some_and(|label| label.contains(text))
+                                })
+                            })
+                    });
+                    ensure(
+                        displayed,
+                        format!("session dump confirmation omitted {text}"),
+                    )?;
+                }
+                if choice == "Escape" {
+                    for pressed in [true, false] {
+                        host.egui.egui_input_mut().events.push(egui::Event::Key {
+                            key: egui::Key::Escape,
+                            physical_key: None,
+                            pressed,
+                            repeat: false,
+                            modifiers: egui::Modifiers::NONE,
+                        });
+                    }
+                    app.draw(event_loop, &mut host)?;
+                } else {
+                    if choice == "Dump Sessions" {
+                        let state = app.handoff.take();
+                        let clicked = click_dump_button(app, event_loop, &mut host, choice);
+                        app.handoff = state;
+                        clicked?;
+                        ensure(
+                            matches!(&host.confirm, Some(Confirmation::DumpSessions { error: Some(error) }) if !error.is_empty()),
+                            "failed session dump dismissed its confirmation or lost its error",
+                        )?;
+                        ensure(
+                            app.handoff.as_ref().unwrap().store.dumps()?.is_empty(),
+                            "failed session dump created saved state",
+                        )?;
+                        for _ in 0..2 {
+                            app.draw(event_loop, &mut host)?;
+                        }
+                    }
+                    click_dump_button(app, event_loop, &mut host, choice)?;
+                }
+                ensure(
+                    host.confirm.is_none(),
+                    "session dump confirmation stayed open",
+                )?;
+                ensure(
+                    app.handoff.as_ref().unwrap().store.dumps()?.len()
+                        == usize::from(choice == "Dump Sessions"),
+                    "session dump confirmation saved without consent or saved more than once",
+                )
+            })();
+            app.windows.insert(key, host);
+            result?;
+            self.verify_source(app)?;
+        }
+        app.handoff
+            .as_ref()
+            .unwrap()
+            .store
+            .dumps()?
+            .pop()
+            .ok_or_else(|| "confirmed session dump was not saved".into())
     }
 
     fn capture_with_tmuxx_window(&self, app: &mut App) -> Result<Vec<u8>> {
@@ -716,6 +822,50 @@ fn has_line(terminal: &vt::Terminal, expected: &str) -> bool {
         .screen()
         .all_rows()
         .any(|row| terminal.screen().row_text(row).trim_end() == expected)
+}
+
+fn click_dump_button(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    host: &mut Host,
+    label: &str,
+) -> Result<()> {
+    let point = app
+        .context
+        .viewport_for(host.viewport, |state| {
+            let widgets = &state.prev_pass.widgets;
+            widgets
+                .get_layer(egui::LayerId::new(
+                    egui::Order::Middle,
+                    egui::Id::new(Some("Dump all sessions?")),
+                ))
+                .find(|widget| {
+                    widgets.info(widget.id).is_some_and(|info| {
+                        info.typ == egui::WidgetType::Button && info.label.as_deref() == Some(label)
+                    })
+                })
+                .map(|widget| widget.interact_rect.center())
+        })
+        .ok_or_else(|| format!("session dump confirmation has no {label} button"))?;
+    for event in [
+        egui::Event::PointerMoved(point),
+        egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        },
+        egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        },
+    ] {
+        host.egui.egui_input_mut().events.push(event);
+        app.draw(event_loop, host)?;
+    }
+    Ok(())
 }
 
 #[derive(Serialize, Deserialize)]

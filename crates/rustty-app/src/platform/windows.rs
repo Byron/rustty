@@ -48,6 +48,7 @@ pub const TOAST_ACTIVATOR_CLSID: &str = "{9CB270BB-CC8F-4C71-ACF2-4D632A9A7E26}"
 #[derive(Clone, Debug)]
 pub enum PlatformEvent {
     Action(Action),
+    DumpSessions,
     Tmuxx(crate::tmuxx_menu::Command),
     GlobalHotkey(KeyBinding),
     NotificationClicked(u64),

@@ -68,6 +68,7 @@ use winit::{
 #[derive(Clone, Debug)]
 pub enum PlatformEvent {
     Action(Action),
+    DumpSessions,
     Tmuxx(crate::tmuxx_menu::Command),
     NotificationClicked(u64),
     ScreensAwake(bool),
@@ -289,6 +290,8 @@ impl Platform {
                     return;
                 }
                 sink(PlatformEvent::Action(action.clone()));
+            } else if event.id.0 == "rustty-dump-sessions" {
+                sink(PlatformEvent::DumpSessions);
             } else if let Some(command) = tmuxx_routes
                 .lock()
                 .ok()
@@ -1613,6 +1616,13 @@ fn make_menu(
     ] {
         append_action(&file, actions, name, action)?;
     }
+    file.append(&MenuItem::with_id(
+        "rustty-dump-sessions",
+        "Dump All Sessions…",
+        true,
+        None,
+    ))
+    .map_err(|e| e.to_string())?;
     let edit = Submenu::new("Edit", true);
     for (name, action) in [
         ("Undo", Action::Undo),
