@@ -250,12 +250,52 @@ fn shared_memory_uses_pixel_decoders_and_ignores_the_chunk_flag() {
         [7, 8, 9, 255]
     );
     terminal.feed(b"\x1b_Gi=6,f=32,s=1,v=1,m=1;AQI=\x1b\\");
-    assert_eq!(
-        terminal.feed(b"\x1b_Gt=s,m=1;L3g=\x1b\\"),
-        [Effect::Write(b"\x1b_Gi=6;OK\x1b\\".to_vec())]
-    );
-    assert_eq!(
-        terminal.graphics().images[&6].pixels.as_slice(),
-        [1, 2, b'/', b'x']
-    );
+    assert!(terminal.feed(b"\x1b_Gt=s,m=1;L3g=\x1b\\").is_empty());
+    assert!(!terminal.graphics().images.contains_key(&6));
+}
+
+#[test]
+fn non_direct_transmissions_abandon_image_and_frame_chunks() {
+    for action in ["t", "f"] {
+        let mut terminal = Terminal::new(10, 3, 10);
+        terminal.feed(b"\x1b_Gi=1,f=24,s=1,v=1;AAAA\x1b\\");
+        terminal.feed(format!("\x1b_Ga={action},i=1,f=24,s=1,v=1,m=1,q=2;AQ==\x1b\\").as_bytes());
+        let shm = SharedMemory::new(&[4, 5, 6]);
+        assert_eq!(
+            terminal.feed(&shm.command(&format!("a={action},i=1,f=24,s=1,v=1"))),
+            [Effect::Write(if action == "f" {
+                b"\x1b_Gi=1,r=2;OK\x1b\\".to_vec()
+            } else {
+                b"\x1b_Gi=1;OK\x1b\\".to_vec()
+            })]
+        );
+        shm.assert_consumed();
+        let image = &terminal.graphics().images[&1];
+        let pixels = if action == "f" {
+            &image.frames[0].pixels
+        } else {
+            &image.pixels
+        };
+        assert_eq!(pixels.as_slice(), [4, 5, 6, 255]);
+    }
+}
+
+#[test]
+fn failed_non_direct_transmission_cannot_resume_an_old_chunk() {
+    for medium in ["f", "t", "s"] {
+        let mut terminal = Terminal::new(10, 3, 10);
+        terminal.feed(b"\x1b_Gi=1,f=24,s=1,v=1,m=1,q=2;AQ==\x1b\\");
+        assert!(
+            !terminal
+                .feed(format!("\x1b_Gt={medium},i=2,f=24,s=1,v=1;L3g=\x1b\\").as_bytes())
+                .is_empty()
+        );
+        terminal.feed(b"\x1b_Gi=3,f=24,s=1,v=1;BwgJ\x1b\\");
+        assert!(!terminal.graphics().images.contains_key(&1));
+        assert!(!terminal.graphics().images.contains_key(&2));
+        assert_eq!(
+            terminal.graphics().images[&3].pixels.as_slice(),
+            [7, 8, 9, 255]
+        );
+    }
 }

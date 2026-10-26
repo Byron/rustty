@@ -1087,6 +1087,14 @@ impl Terminal {
         ) {
             return;
         }
+        let medium = command
+            .values
+            .get(&b't')
+            .copied()
+            .unwrap_or(i64::from(b'd')) as u8;
+        if matches!(action, b't' | b'T' | b'f') && medium != b'd' {
+            self.screen_mut().graphics.loading = None;
+        }
         if self.tmux_graphics
             && matches!(action, b't' | b'T')
             && self
@@ -1205,11 +1213,6 @@ impl Terminal {
             command.reply(id, 0, "EINVAL: invalid data", effects);
             return;
         };
-        let medium = command
-            .values
-            .get(&b't')
-            .copied()
-            .unwrap_or(i64::from(b'd')) as u8;
         if medium != b'd' && medium != b's' {
             command.reply(id, 0, "EINVAL: unsupported medium", effects);
             return;
