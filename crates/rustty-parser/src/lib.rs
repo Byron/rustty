@@ -183,7 +183,10 @@ pub enum Event<'a> {
     DcsUnhook,
     ApcStart,
     ApcPut(u8),
+    /// A string terminator completed the APC command.
     ApcEnd,
+    /// CAN, SUB, or an aborting C1 control discarded the APC command.
+    ApcCancel,
     /// tmux distinguishes rename, APC-title and ignored strings.
     TmuxStringStart(u8),
     TmuxStringEnd,
@@ -663,7 +666,11 @@ impl Parser {
                 }
                 State::DcsPassthrough => handler(Event::DcsUnhook),
                 State::SosPmApcString if self.tmux_strings => handler(Event::TmuxStringEnd),
-                State::SosPmApcString => handler(Event::ApcEnd),
+                State::SosPmApcString => handler(if matches!(byte, 0x1b | 0x9c) {
+                    Event::ApcEnd
+                } else {
+                    Event::ApcCancel
+                }),
                 _ => {}
             }
         }

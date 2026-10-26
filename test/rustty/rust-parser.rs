@@ -93,6 +93,7 @@ fn observe(event: Event<'_>) -> Value {
         Event::DcsUnhook => "dcs_unhook",
         Event::ApcStart => "apc_start",
         Event::ApcEnd => "apc_end",
+        Event::ApcCancel => "apc_cancel",
         Event::TmuxStringStart(byte) => {
             value["byte"] = json!(byte);
             "tmux_string_start"
@@ -115,6 +116,24 @@ fn observe(event: Event<'_>) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apc_observations_distinguish_completion_from_cancellation() {
+        for (ending, expected) in [
+            (0x1b, "apc_end"),
+            (0x9c, "apc_end"),
+            (0x18, "apc_cancel"),
+            (0x1a, "apc_cancel"),
+            (0x9b, "apc_cancel"),
+        ] {
+            let mut parser = Parser::new();
+            let mut events = Vec::new();
+            parser.advance(&[0x1b, b'_', b'x', ending], |event| {
+                events.push(observe(event));
+            });
+            assert_eq!(events[2]["kind"], expected);
+        }
+    }
 
     #[test]
     fn tmux_string_observations_preserve_kind_and_boundaries() {
