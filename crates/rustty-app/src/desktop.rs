@@ -5224,9 +5224,16 @@ impl App {
                                     .prepared
                                     .get_mut(&id)
                                     .is_some_and(|pane| pane.matches(&key, &host.fonts)))
-                            .then(|| terminal.screen().snapshot_viewport());
+                            .then(|| pane.session.display_screen(&terminal));
                             drop(terminal);
                             if let Some(snapshot) = snapshot {
+                                let snapshot = match snapshot {
+                                    Ok(snapshot) => snapshot,
+                                    Err(error) => {
+                                        render_error = Some(error.to_string());
+                                        continue;
+                                    }
+                                };
                                 match PreparedPane::new(key, snapshot, &mut host.fonts) {
                                     Ok(prepared) => {
                                         host.prepared.insert(id, prepared);

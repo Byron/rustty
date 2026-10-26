@@ -357,6 +357,21 @@ impl Smoke {
                         && state.store.dumps()? == [self.older.as_ref().unwrap().clone()],
                     "successful import did not consume only the selected dump",
                 )?;
+                self.stage = 2;
+            }
+            2 => {
+                // Startup comparison must settle before inspecting the merged display.
+                for pane in app.panes.values() {
+                    if pane.cwd != self.directory.join("empty")
+                        && !pane
+                            .session
+                            .terminal()?
+                            .plain_text()
+                            .contains(vt::visual::RESTORED_MARKER)
+                    {
+                        return Ok(false);
+                    }
+                }
                 self.check_directories(app)?;
                 let mut widths = Vec::new();
                 let mut blank_panels = 0;
@@ -406,9 +421,9 @@ impl Smoke {
                 pane.session
                     .write(b"printf '\\nHANDOFF FRESH SHELL OUTPUT\\n'\n")?;
                 self.pane = Some(id);
-                self.stage = 2;
+                self.stage = 3;
             }
-            2 => {
+            3 => {
                 let pane = app
                     .panes
                     .get(&self.pane.unwrap())

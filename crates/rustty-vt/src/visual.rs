@@ -82,15 +82,6 @@ impl VisualSnapshot {
     /// Install historical display cells into a fresh terminal before child output.
     pub fn restore_into(self, terminal: &mut Terminal) -> io::Result<()> {
         let mut restored = self.decode()?;
-        let has_display = restored.primary.all_rows().any(|row| {
-            !restored.primary.row_text(row).trim().is_empty()
-                || restored
-                    .primary
-                    .graphics
-                    .placements
-                    .iter()
-                    .any(|placement| placement.row == row.id && !placement.virtual_placement)
-        });
         restored.resize(terminal.cols, terminal.rows);
         // Keep fresh-shell defaults, parser state, modes, keyboard and host policy.
         let mut screen = Screen::new(
@@ -109,48 +100,114 @@ impl VisualSnapshot {
         let limits = terminal.primary.limits;
         let memory_limit = terminal.primary.memory_limit;
         terminal.primary = screen;
-        if has_display {
-            let padding = usize::from(terminal.cols).saturating_sub(RESTORED_MARKER.len());
-            let dark = terminal.background.map(u16::from).iter().sum::<u16>() < 3 * 128;
-            let colors = [12, 20].map(|offset| {
-                terminal.background.map(|channel| {
-                    if dark {
-                        channel.saturating_add(offset)
-                    } else {
-                        channel.saturating_sub(offset)
-                    }
-                })
-            });
-            let blocks = |count: usize| {
-                let mut blocks = String::new();
-                for col in 0..count {
-                    let [r, g, b] = colors[col % 2];
-                    write!(blocks, "\x1b[38;2;{r};{g};{b}m█").unwrap();
-                }
-                blocks
-            };
-            let left = padding / 2;
-            let right = padding - left;
-            let left = if left > 1 {
-                format!("{} ", blocks(left - 1))
-            } else {
-                blocks(left)
-            };
-            let right = if right > 1 {
-                format!(" {}", blocks(right - 1))
-            } else {
-                blocks(right)
-            };
-            terminal.feed(
-                format!("\r\n\x1b[1m{left}\x1b[39m{RESTORED_MARKER}{right}\x1b[0m\r\n").as_bytes(),
-            );
-        }
         // Import itself must not discard the oldest restored rows. Subsequent
         // output uses the receiving session's normal scrollback policy.
         terminal.primary.limits = limits;
         terminal.primary.memory_limit = memory_limit;
         Ok(())
     }
+}
+
+/// Join saved history to a live shell after its initial output has settled.
+/// Matching rendered rows replace the saved tail; differing output gets a band.
+pub fn finish_restore(history: &mut Terminal, terminal: &mut Terminal) -> io::Result<()> {
+    history.resize(terminal.cols, terminal.rows);
+    history.background = terminal.background;
+    history.primary.limits = Default::default();
+    history.primary.memory_limit = None;
+    let displayed_rows = |screen: &Screen| {
+        screen
+            .all_rows()
+            .enumerate()
+            .filter_map(|(index, row)| {
+                let has_image = screen
+                    .graphics
+                    .placements
+                    .iter()
+                    .any(|placement| placement.row == row.id && !placement.virtual_placement);
+                (!screen.row_text(row).trim().is_empty() || has_image).then_some(index + 1)
+            })
+            .next_back()
+            .unwrap_or(0)
+    };
+    let old_end = displayed_rows(&history.primary);
+    let new_end = displayed_rows(&terminal.primary);
+    let matches = !terminal.alternate_active
+        && new_end > 0
+        && new_end <= old_end
+        && terminal.primary.graphics.placements.is_empty()
+        && history
+            .primary
+            .all_rows()
+            .skip(old_end - new_end)
+            .take(new_end)
+            .zip(terminal.primary.all_rows().take(new_end))
+            .all(|(old, new)| {
+                history.primary.row_text(old) == terminal.primary.row_text(new)
+                    && !history
+                        .primary
+                        .graphics
+                        .placements
+                        .iter()
+                        .any(|p| p.row == old.id)
+            });
+    if old_end > 0 && !matches && (new_end > 0 || terminal.alternate_active) {
+        insert_restored_marker(history);
+    }
+    let keep = if matches {
+        old_end - new_end
+    } else {
+        displayed_rows(&history.primary)
+    };
+    terminal.primary.prepend_visual(
+        std::mem::replace(
+            &mut history.primary,
+            Screen::new(
+                usize::from(terminal.cols),
+                usize::from(terminal.rows),
+                Default::default(),
+            ),
+        ),
+        keep,
+    )?;
+    terminal.generation = terminal.generation.wrapping_add(1);
+    Ok(())
+}
+
+fn insert_restored_marker(terminal: &mut Terminal) {
+    let padding = usize::from(terminal.cols).saturating_sub(RESTORED_MARKER.len());
+    let dark = terminal.background.map(u16::from).iter().sum::<u16>() < 3 * 128;
+    let colors = [12, 20].map(|offset| {
+        terminal.background.map(|channel| {
+            if dark {
+                channel.saturating_add(offset)
+            } else {
+                channel.saturating_sub(offset)
+            }
+        })
+    });
+    let blocks = |count: usize| {
+        let mut blocks = String::new();
+        for col in 0..count {
+            let [r, g, b] = colors[col % 2];
+            write!(blocks, "\x1b[38;2;{r};{g};{b}m█").unwrap();
+        }
+        blocks
+    };
+    let left = padding / 2;
+    let right = padding - left;
+    let left = if left > 1 {
+        format!("{} ", blocks(left - 1))
+    } else {
+        blocks(left)
+    };
+    let right = if right > 1 {
+        format!(" {}", blocks(right - 1))
+    } else {
+        blocks(right)
+    };
+    terminal
+        .feed(format!("\r\n\x1b[1m{left}\x1b[39m{RESTORED_MARKER}{right}\x1b[0m\r\n").as_bytes());
 }
 
 #[cfg(test)]
@@ -170,12 +227,94 @@ mod tests {
     }
 
     #[test]
+    fn matching_shell_output_replaces_the_tail_across_repeated_restores() {
+        for (cols, rows, prompt) in [
+            (80, 4, "user@host> "),
+            (7, 3, "directory\r\nwide 界 prompt> "),
+        ] {
+            let mut source = Terminal::new(cols, rows, 1000);
+            source.feed(b"old transcript\r\n");
+            source.feed(prompt.as_bytes());
+            for _ in 0..3 {
+                let before = text(&source);
+                let mut history = Terminal::new(cols, rows, 1000);
+                wire(&source).restore_into(&mut history).unwrap();
+                assert!(!text(&history).contains(RESTORED_MARKER));
+                let mut shell = Terminal::new(cols, rows, 1000);
+                shell.shell_command_events = true;
+                shell.feed(b"\x1b]133;A\x07\x1b[32m");
+                for byte in prompt.as_bytes() {
+                    shell.feed(&[*byte]);
+                }
+                shell.feed(b"\x1b[0m\x1b]133;B\x07\x1b[?2004h");
+                let point = shell.primary.track(crate::GridPoint {
+                    row: shell.primary.row(shell.primary.cursor.row).id,
+                    col: shell.primary.cursor.col,
+                });
+                finish_restore(&mut history, &mut shell).unwrap();
+                assert_eq!(text(&shell).trim(), before.trim());
+                assert!(!text(&shell).contains(RESTORED_MARKER));
+                assert!(shell.modes.dec(2004));
+                assert_eq!(
+                    shell.primary.resolve(point).unwrap().row,
+                    shell.primary.row(shell.primary.cursor.row).id
+                );
+                source = shell.clone();
+                let effects = shell.feed(b"typed command\x1b]133;C\x07");
+                assert!(effects.iter().any(|effect| matches!(effect,
+                    crate::Effect::CommandStart { command_line } if command_line.as_deref() == Some(b"typed command"))));
+                assert!(text(&shell).contains("typed command"));
+            }
+        }
+    }
+
+    #[test]
+    fn silent_children_and_resized_matching_prompts_do_not_add_a_band() {
+        let mut source = Terminal::new(80, 4, 1000);
+        source.feed(b"previous command\r\nlong directory prompt> ");
+        for output in [b"".as_slice(), b"long directory prompt> "] {
+            let mut history = Terminal::new(7, 4, 1000);
+            wire(&source).restore_into(&mut history).unwrap();
+            let mut shell = Terminal::new(7, 4, 1000);
+            shell.feed(output);
+            finish_restore(&mut history, &mut shell).unwrap();
+            let display = text(&shell);
+            assert!(!display.contains(RESTORED_MARKER), "{display:?}");
+            assert_eq!(display.matches("long directory prompt>").count(), 1);
+            assert!(display.contains("previous command"));
+        }
+    }
+
+    #[test]
+    fn different_startup_output_keeps_history_and_live_parser_state() {
+        for cols in [7, 80] {
+            let mut source = Terminal::new(cols, 4, 1000);
+            source.feed(b"old transcript\r\nold prompt> ");
+            let mut history = Terminal::new(cols, 4, 1000);
+            wire(&source).restore_into(&mut history).unwrap();
+            let mut shell = Terminal::new(cols, 4, 1000);
+            shell.feed(b"new prompt> \x1b[31m\x1b]8;;https://example.org\x07\x1b[");
+            let link = shell.primary.cursor.hyperlink.clone();
+            finish_restore(&mut history, &mut shell).unwrap();
+            shell.feed(b"1mbold");
+            let output = text(&shell);
+            assert!(output.find("old transcript").unwrap() < output.find(RESTORED_MARKER).unwrap());
+            assert!(output.find(RESTORED_MARKER).unwrap() < output.find("new prompt").unwrap());
+            assert_eq!(shell.primary.cursor.style.foreground, Color::Indexed(1));
+            assert!(shell.primary.cursor.style.bold);
+            assert!(shell.primary.cursor.hyperlink.is_some());
+            assert_eq!(shell.primary.cursor.hyperlink, link);
+        }
+    }
+
+    #[test]
     fn restored_band_is_centered_and_leaves_new_output_unstyled() {
         for cols in [1, 24, 47, 48, 49, 50, 51, 52, 53, 80, 81, 120] {
             let mut source = Terminal::new(80, 3, 1000);
             source.feed(b"old display");
             let mut destination = Terminal::new(cols, 3, 1000);
             wire(&source).restore_into(&mut destination).unwrap();
+            insert_restored_marker(&mut destination);
             assert_eq!(destination.screen().cursor.style, Default::default());
             destination.feed(b"new prompt");
 
@@ -245,6 +384,7 @@ mod tests {
             let mut destination = Terminal::new(80, 3, 1000);
             destination.set_default_colors(None, Some(background), None, &[]);
             wire(&source).restore_into(&mut destination).unwrap();
+            insert_restored_marker(&mut destination);
             let row = destination
                 .screen()
                 .all_rows()
@@ -285,7 +425,10 @@ mod tests {
             );
             let mut destination = Terminal::new(120, 3, 1000);
             wire(&source).restore_into(&mut destination).unwrap();
-            destination.feed(b"new prompt");
+            let mut fresh = Terminal::new(120, 3, 1000);
+            fresh.feed(b"new prompt");
+            finish_restore(&mut destination, &mut fresh).unwrap();
+            destination = fresh;
             let displayed = text(&destination);
             assert_eq!(displayed.contains("old history"), history);
             assert!(displayed.contains("new prompt"));
@@ -314,7 +457,10 @@ mod tests {
         assert_eq!(destination.screen().cursor.shape, CursorShape::Bar);
         assert!(destination.screen().cursor.hyperlink.is_none());
         assert_eq!(destination.screen().cursor.style, Default::default());
-        assert!(destination.feed(b"new prompt").is_empty());
+        let mut fresh = Terminal::new(100, 3, 100);
+        fresh.feed(b"new prompt");
+        finish_restore(&mut destination, &mut fresh).unwrap();
+        destination = fresh;
         let displayed = text(&destination);
         let expected = [
             "oldest",

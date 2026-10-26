@@ -134,11 +134,29 @@ pub struct Session {
     input: mpsc::Sender<IoCommand>,
     events: mpsc::Receiver<SessionEvent>,
     pending_input: Arc<PendingInput>,
+    restored: Arc<Mutex<Option<RestoredOutput>>>,
     exited: Arc<AtomicBool>,
     #[cfg(target_os = "macos")]
     close_child: Option<std::os::unix::net::UnixStream>,
     #[cfg(not(target_os = "macos"))]
     close_child: Option<mpsc::Sender<()>>,
+}
+
+struct RestoredOutput {
+    history: Terminal,
+    first_output: Option<Instant>,
+    last_output: Option<Instant>,
+}
+
+fn finish_restored_output(
+    terminal: &mut Terminal,
+    restored: &mut Option<RestoredOutput>,
+) -> io::Result<bool> {
+    let Some(mut output) = restored.take() else {
+        return Ok(false);
+    };
+    rustty_vt::visual::finish_restore(&mut output.history, terminal)?;
+    Ok(true)
 }
 
 fn error(error: impl std::fmt::Display) -> io::Error {
@@ -167,7 +185,19 @@ impl Session {
 
     /// Capture local or attached pane display without affecting its child or input.
     pub fn capture_visual_state(&self) -> io::Result<Vec<u8>> {
-        let visual = rustty_vt::visual::VisualSnapshot::capture(&*self.terminal()?)?;
+        let mut terminal = self.terminal()?;
+        let mut restored = self.restored.lock().map_err(error)?;
+        if restored
+            .as_ref()
+            .is_some_and(|output| output.first_output.is_some())
+        {
+            finish_restored_output(&mut terminal, &mut restored)?;
+        }
+        let visual = rustty_vt::visual::VisualSnapshot::capture(
+            restored
+                .as_ref()
+                .map_or(&*terminal, |output| &output.history),
+        )?;
         serde_json::to_vec(&visual).map_err(error)
     }
 
@@ -235,9 +265,17 @@ impl Session {
                 },
                 |path| path.to_string_lossy().into_owned(),
             );
-        if let Some(visual) = visual {
-            visual.restore_into(&mut terminal)?;
-        }
+        let restored = Arc::new(Mutex::new(if let Some(visual) = visual {
+            let mut history = terminal.clone();
+            visual.restore_into(&mut history)?;
+            Some(RestoredOutput {
+                history,
+                first_output: None,
+                last_output: None,
+            })
+        } else {
+            None
+        }));
         let terminal = Arc::new(Mutex::new(terminal));
         let (input, input_rx) = mpsc::channel();
         let (events_tx, events) = mpsc::sync_channel(256);
@@ -252,12 +290,54 @@ impl Session {
         let writer_events = events_tx.clone();
         let writer_wake = wake.clone();
         let writer_pending = pending_input.clone();
+        let writer_terminal = terminal.clone();
+        let writer_restored = restored.clone();
         thread::Builder::new()
             .name("rustty-pty-write".into())
             .spawn(move || {
                 let master = pair.master;
                 let mut linefeed = false;
-                while let Ok(command) = input_rx.recv() {
+                loop {
+                    let comparing = writer_restored.lock().is_ok_and(|output| output.is_some());
+                    let command = if comparing {
+                        match input_rx.recv_timeout(Duration::from_millis(100)) {
+                            Ok(command) => command,
+                            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                            Err(mpsc::RecvTimeoutError::Timeout) => {
+                                let result = (|| {
+                                    let mut terminal = writer_terminal.lock().map_err(error)?;
+                                    let mut restored = writer_restored.lock().map_err(error)?;
+                                    // shortcut: shells without prompt markers settle after 100 ms idle;
+                                    // use explicit prompt completion if slow startup redraws need it.
+                                    let ready = restored.as_ref().is_some_and(|output| {
+                                        output.last_output.is_some_and(|time| {
+                                            time.elapsed() >= Duration::from_millis(100)
+                                        }) || output.first_output.is_some_and(|time| {
+                                            time.elapsed() >= Duration::from_secs(1)
+                                        })
+                                    });
+                                    if ready {
+                                        finish_restored_output(&mut terminal, &mut restored)
+                                    } else {
+                                        Ok(false)
+                                    }
+                                })();
+                                match result {
+                                    Ok(true) => writer_wake(),
+                                    Ok(false) => {}
+                                    Err(e) => {
+                                        let _ =
+                                            writer_events.send(SessionEvent::Error(e.to_string()));
+                                        writer_wake();
+                                    }
+                                }
+                                continue;
+                            }
+                        }
+                    } else {
+                        let Ok(command) = input_rx.recv() else { break };
+                        command
+                    };
                     let result = match command {
                         IoCommand::Write(bytes) => {
                             let result = write_pty(&mut writer, &bytes, linefeed);
@@ -291,6 +371,7 @@ impl Session {
         let read_events = events_tx.clone();
         let read_pending = pending_input.clone();
         let read_wake = wake.clone();
+        let read_restored = restored.clone();
         thread::Builder::new()
             .name("rustty-pty-read".into())
             .spawn(move || {
@@ -307,7 +388,25 @@ impl Session {
                         }
                     };
                     let effects = match read_terminal.lock() {
-                        Ok(mut terminal) => feed_output(&mut terminal, &buffer[..length]),
+                        Ok(mut terminal) => {
+                            let effects = feed_output(&mut terminal, &buffer[..length]);
+                            if let Ok(mut restored) = read_restored.lock()
+                                && let Some(output) = restored.as_mut()
+                            {
+                                let now = Instant::now();
+                                let first = *output.first_output.get_or_insert(now);
+                                output.last_output = Some(now);
+                                if (terminal.screen().cursor.semantic
+                                    == rustty_vt::SemanticContent::Input
+                                    || first.elapsed() >= Duration::from_secs(1))
+                                    && let Err(e) =
+                                        finish_restored_output(&mut terminal, &mut restored)
+                                {
+                                    let _ = read_events.send(SessionEvent::Error(e.to_string()));
+                                }
+                            }
+                            effects
+                        }
                         Err(_) => break,
                     };
                     for effect in effects {
@@ -337,6 +436,12 @@ impl Session {
                         }
                     }
                     read_wake();
+                }
+                if let (Ok(mut terminal), Ok(mut restored)) =
+                    (read_terminal.lock(), read_restored.lock())
+                    && let Err(e) = finish_restored_output(&mut terminal, &mut restored)
+                {
+                    let _ = read_events.send(SessionEvent::Error(e.to_string()));
                 }
                 read_wake();
                 let _ = read_events.send(SessionEvent::OutputClosed);
@@ -400,6 +505,7 @@ impl Session {
             input,
             events,
             pending_input,
+            restored,
             exited,
             close_child: Some(close_child),
         })
@@ -419,6 +525,7 @@ impl Session {
             input,
             events: attached.events,
             pending_input: Arc::new(PendingInput::default()),
+            restored: Arc::new(Mutex::new(None)),
             exited: attached.exited,
             close_child: None,
         })
@@ -451,6 +558,7 @@ impl Session {
             return Err(error("reset belongs to the tmuxx pane owner"));
         }
         let mut terminal = self.terminal()?;
+        *self.restored.lock().map_err(error)? = None;
         terminal.reset_from_host();
         self.input
             .send(IoCommand::Linefeed(terminal.modes.get(false, 20)))
@@ -470,6 +578,11 @@ impl Session {
             && let Input::Mouse(data) | Input::Reply(data) = input
         {
             return attached.write_direct(data);
+        }
+        if let Input::Reply(data) = input
+            && self.attached.is_none()
+        {
+            return enqueue(&self.input, &self.pending_input, data.clone(), false);
         }
         if let Input::Text(data) | Input::Mouse(data) | Input::Reply(data) = input {
             return self.write(data);
@@ -491,6 +604,16 @@ impl Session {
                 io::ErrorKind::InvalidInput,
                 "input exceeds the terminal queue budget",
             ));
+        }
+        {
+            let mut terminal = self.terminal()?;
+            let mut restored = self.restored.lock().map_err(error)?;
+            if restored
+                .as_ref()
+                .is_some_and(|output| output.first_output.is_some())
+            {
+                finish_restored_output(&mut terminal, &mut restored)?;
+            }
         }
         enqueue(&self.input, &self.pending_input, bytes.to_owned(), false)
     }
@@ -628,10 +751,22 @@ impl Session {
         }
     }
 
+    /// Snapshot the saved display while the fresh shell's startup is being compared.
+    pub fn display_screen(&self, terminal: &Terminal) -> io::Result<Screen> {
+        let mut restored = self.restored.lock().map_err(error)?;
+        let display = if let Some(output) = restored.as_mut() {
+            output.history.resize(terminal.cols, terminal.rows);
+            &output.history
+        } else {
+            terminal
+        };
+        Ok(display.screen().snapshot_viewport())
+    }
+
     pub fn snapshot(&self) -> io::Result<Snapshot> {
         let terminal = self.terminal()?;
         Ok(Snapshot {
-            screen: terminal.screen().snapshot_viewport(),
+            screen: self.display_screen(&terminal)?,
             cols: terminal.cols,
             rows: terminal.rows,
             generation: terminal.generation,
@@ -1176,7 +1311,7 @@ mod tests {
     fn restored_visuals_precede_the_first_child_output() {
         initialize_pty();
         #[cfg(unix)]
-        let command = vec!["/bin/sh", "-c", "printf 'fresh child output'"];
+        let command = vec!["/bin/sh", "-c", "sleep 0.05; printf 'fresh child output'"];
         #[cfg(windows)]
         let command = vec!["cmd.exe", "/d", "/q", "/c", "echo fresh child output"];
         let mut terminal = Terminal::new(100, 4, 20);
@@ -1199,13 +1334,17 @@ mod tests {
             &bytes,
         )
         .unwrap();
+        #[cfg(unix)]
+        session.write(b"\n").unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             let terminal = session.terminal().unwrap();
             let mut formatter = terminal.formatter(rustty_vt::formatter::Format::Plain);
             formatter.options.unwrap = true;
             let text = String::from_utf8(formatter.format().unwrap()).unwrap();
-            if let Some(fresh) = text.find("fresh child output") {
+            if let Some(fresh) = text.find("fresh child output")
+                && text.contains(rustty_vt::visual::RESTORED_MARKER)
+            {
                 let marker = text
                     .find(rustty_vt::visual::RESTORED_MARKER)
                     .unwrap_or_else(|| panic!("missing restored marker: {text:?}"));
@@ -1219,6 +1358,109 @@ mod tests {
             assert!(Instant::now() < deadline, "missing child output: {text:?}");
             drop(terminal);
             std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn protocol_replies_do_not_finish_startup_comparison() {
+        let mut terminal = Terminal::new(80, 4, 1000);
+        terminal.feed(b"partial prompt");
+        let mut history = Terminal::new(80, 4, 1000);
+        history.feed(b"saved prompt");
+        let (input, received) = mpsc::channel();
+        let (_, events) = mpsc::channel();
+        let session = Session {
+            shell: ShellInfo::new(vec!["test-shell".into()], "test".into()),
+            attached: None,
+            terminal: Arc::new(Mutex::new(terminal)),
+            input,
+            events,
+            pending_input: Arc::new(PendingInput::default()),
+            restored: Arc::new(Mutex::new(Some(RestoredOutput {
+                history,
+                first_output: Some(Instant::now()),
+                last_output: Some(Instant::now()),
+            }))),
+            exited: Arc::new(AtomicBool::new(false)),
+            close_child: None,
+        };
+        session
+            .write_input(&Input::Reply(b"reply".to_vec()))
+            .unwrap();
+        assert!(
+            matches!(received.try_recv().unwrap(), IoCommand::Write(bytes) if bytes == b"reply")
+        );
+        assert!(session.restored.lock().unwrap().is_some());
+        session
+            .write_input(&Input::Text(b"input".to_vec()))
+            .unwrap();
+        assert!(session.restored.lock().unwrap().is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restored_shell_compares_chunked_startup_before_accepting_input() {
+        for integrated in [false, true] {
+            let mut source = Terminal::new(80, 4, 1000);
+            source.feed(b"previous command\r\nuser@host> ");
+            let bytes =
+                serde_json::to_vec(&rustty_vt::visual::VisualSnapshot::capture(&source).unwrap())
+                    .unwrap();
+            let prefix = if integrated {
+                r"printf '\033]133;A\007'; "
+            } else {
+                ""
+            };
+            let suffix = if integrated {
+                r"printf '\033]133;B\007'; "
+            } else {
+                ""
+            };
+            let command = format!(
+                r#"{prefix}printf '\033[32muser'; sleep 0.02; printf '@host> \033[0m'; {suffix}IFS= read -r line; printf '\nexecuted: %s\n' "$line""#
+            );
+            let mut config = Config::default();
+            config.shell_integration = ShellIntegration::None;
+            let session = Session::spawn_restored(
+                &config,
+                SessionOptions {
+                    cols: 80,
+                    rows: 4,
+                    command: Some(Command::Direct(vec![
+                        "/bin/sh".into(),
+                        "-c".into(),
+                        command,
+                    ])),
+                    ..SessionOptions::default()
+                },
+                Arc::new(|| {}),
+                &bytes,
+            )
+            .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while session.restored.lock().unwrap().is_some() {
+                assert!(
+                    Instant::now() < deadline,
+                    "startup comparison never settled"
+                );
+                thread::sleep(Duration::from_millis(10));
+            }
+            let text = session.terminal().unwrap().plain_text();
+            assert!(
+                !text.contains(rustty_vt::visual::RESTORED_MARKER),
+                "{text:?}"
+            );
+            assert_eq!(text.matches("user@host>").count(), 1, "{text:?}");
+            assert!(text.contains("previous command"), "{text:?}");
+            session.write(b"hello\n").unwrap();
+            loop {
+                let text = session.terminal().unwrap().plain_text();
+                if text.contains("executed: hello") {
+                    break;
+                }
+                assert!(Instant::now() < deadline, "shell input failed: {text:?}");
+                thread::sleep(Duration::from_millis(10));
+            }
         }
     }
 
