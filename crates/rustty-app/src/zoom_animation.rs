@@ -54,6 +54,7 @@ struct Snapshot {
     content: Rect,
     topology: Vec<(Id, Rect)>,
     cell_height: f32,
+    minimum: [f32; 2],
     scale: f32,
     view: View,
 }
@@ -63,6 +64,7 @@ impl Snapshot {
         self.tab == next.tab
             && self.content == next.content
             && self.cell_height == next.cell_height
+            && self.minimum == next.minimum
             && self.scale == next.scale
     }
 }
@@ -216,6 +218,7 @@ impl State {
         peek: bool,
         content: Rect,
         cell_height: f32,
+        minimum: [f32; 2],
         scale: f32,
         config: &Config,
         enabled: bool,
@@ -226,13 +229,14 @@ impl State {
             content,
             topology: tab.root.layout(content),
             cell_height,
+            minimum,
             scale,
             view: View {
                 zoom: tab.zoom,
                 quadrant: tab.quadrant_zoom,
                 peek,
                 panes: tab
-                    .layout(content, peek, cell_height)
+                    .layout_with_minimum(content, peek, cell_height, minimum)
                     .into_iter()
                     .map(|(id, rect)| {
                         (
@@ -384,7 +388,17 @@ mod tests {
     }
 
     fn update(state: &mut State, tab: &Tab, peek: bool, now: Instant) -> Vec<Pane> {
-        state.update(tab, peek, CONTENT, 16.0, 1.0, &Config::default(), true, now)
+        state.update(
+            tab,
+            peek,
+            CONTENT,
+            16.0,
+            [0.0; 2],
+            1.0,
+            &Config::default(),
+            true,
+            now,
+        )
     }
 
     fn pane(panes: &[Pane], id: Id) -> Pane {
@@ -526,11 +540,15 @@ mod tests {
                 let mut config = Config::default();
                 config.zoom_animation_background_mix = mix;
                 let mut entering = State::default();
-                entering.update(from, false, CONTENT, 16.0, 1.0, &config, true, now);
-                entering.update(to, false, CONTENT, 16.0, 1.0, &config, true, now);
+                entering.update(
+                    from, false, CONTENT, 16.0, [0.0; 2], 1.0, &config, true, now,
+                );
+                entering.update(to, false, CONTENT, 16.0, [0.0; 2], 1.0, &config, true, now);
                 let mut leaving = State::default();
-                leaving.update(to, false, CONTENT, 16.0, 1.0, &config, true, now);
-                leaving.update(from, false, CONTENT, 16.0, 1.0, &config, true, now);
+                leaving.update(to, false, CONTENT, 16.0, [0.0; 2], 1.0, &config, true, now);
+                leaving.update(
+                    from, false, CONTENT, 16.0, [0.0; 2], 1.0, &config, true, now,
+                );
                 let entering = entering.transition.as_ref().unwrap();
                 let leaving = leaving.transition.as_ref().unwrap();
                 for phase in [0.0, 0.25, 0.5, 0.75, 1.0] {
@@ -615,7 +633,7 @@ mod tests {
         config.zoom_animation_duration = Duration::from_millis(800);
         config.zoom_from_quad_animation_duration = Duration::from_millis(1000);
         let update = |state: &mut State, tab: &Tab, peek, now| {
-            state.update(tab, peek, CONTENT, 16.0, 1.0, &config, true, now)
+            state.update(tab, peek, CONTENT, 16.0, [0.0; 2], 1.0, &config, true, now)
         };
         let overview = quadrants();
         let mut quad = overview.clone();
@@ -693,11 +711,15 @@ mod tests {
         tab.toggle_zoom();
         let mut config = Config::default();
         config.zoom_animation_duration = Duration::ZERO;
-        let reversed = state.update(&tab, false, CONTENT, 16.0, 1.0, &config, true, now);
+        let reversed = state.update(
+            &tab, false, CONTENT, 16.0, [0.0; 2], 1.0, &config, true, now,
+        );
         assert_eq!(reversed, original);
         assert!(!state.is_running());
         tab.toggle_zoom();
-        let zoomed = state.update(&tab, false, CONTENT, 16.0, 1.0, &config, true, now);
+        let zoomed = state.update(
+            &tab, false, CONTENT, 16.0, [0.0; 2], 1.0, &config, true, now,
+        );
         assert!(!state.is_running());
         assert_eq!(zoomed.len(), 1);
         assert_eq!(zoomed[0].rect, zoomed[0].layout);
@@ -710,7 +732,7 @@ mod tests {
         let mut config = Config::default();
         config.zoom_animation_duration = Duration::from_millis(600);
         let update = |state: &mut State, tab: &Tab, peek, now| {
-            state.update(tab, peek, CONTENT, 16.0, 1.0, &config, true, now)
+            state.update(tab, peek, CONTENT, 16.0, [0.0; 2], 1.0, &config, true, now)
         };
         for elapsed in [Duration::from_millis(180), Duration::from_millis(420)] {
             let mut tab = quadrants();
@@ -899,6 +921,38 @@ mod tests {
     }
 
     #[test]
+    fn changed_minimum_cancels_zoom_and_keeps_cells_visible() {
+        let now = Instant::now();
+        let mut tab = quadrants();
+        let mut state = State::default();
+        update(&mut state, &tab, false, now);
+        tab.toggle_zoom();
+        update(&mut state, &tab, false, now);
+        assert!(state.is_running());
+        tab.zoom = None;
+        let minimum = [CONTENT.width / 4.0, CONTENT.height / 2.0];
+        let panes = state.update(
+            &tab,
+            false,
+            CONTENT,
+            16.0,
+            minimum,
+            1.0,
+            &Config::default(),
+            true,
+            now,
+        );
+        assert!(!state.is_running());
+        assert_eq!(panes.len(), 5);
+        assert!(
+            panes
+                .iter()
+                .all(|pane| pane.layout.width() + 2.0 >= minimum[0]
+                    && pane.layout.height() + 2.0 >= minimum[1])
+        );
+    }
+
+    #[test]
     fn changed_geometry_disabled_animation_and_finish_cancel_running_state() {
         let now = Instant::now();
         for changed in 0..6 {
@@ -926,6 +980,7 @@ mod tests {
                 false,
                 content,
                 16.0,
+                [0.0; 2],
                 scale,
                 &Config::default(),
                 enabled,

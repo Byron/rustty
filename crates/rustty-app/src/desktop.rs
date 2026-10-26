@@ -582,6 +582,7 @@ struct Host {
     zoom_animation: zoom_animation::State,
     pane_prepares: u64,
     content: Rect,
+    min_inner_size: LogicalSize<f64>,
     divider_drag: Option<(Id, Axis, Rect)>,
     modifiers: Modifiers,
     consumed_keys: HashSet<PhysicalKey>,
@@ -1598,18 +1599,30 @@ impl App {
                         .find(|tab| tab.panes.contains_key(&id))?;
                     let scale = host.window.scale_factor() as f32;
                     let metrics = host.fonts.metrics();
+                    let minimum = pane_minimum_size(
+                        [metrics.cell_width, metrics.cell_height],
+                        scale,
+                        self.window_config(host.id),
+                        tab.panes.len() > 1,
+                    );
                     let rect = tab
-                        .layout(
+                        .layout_with_minimum(
                             host.content,
                             host.peek.is_some(),
                             metrics.cell_height as f32 / scale,
+                            minimum,
                         )
                         .into_iter()
                         .find(|(pane, _)| *pane == id)
                         .or_else(|| {
-                            tab.layout(host.content, true, metrics.cell_height as f32 / scale)
-                                .into_iter()
-                                .find(|(pane, _)| *pane == id)
+                            tab.layout_with_minimum(
+                                host.content,
+                                true,
+                                metrics.cell_height as f32 / scale,
+                                minimum,
+                            )
+                            .into_iter()
+                            .find(|(pane, _)| *pane == id)
                         })?
                         .1;
                     Some(pane_grid_size(
@@ -1791,6 +1804,7 @@ impl App {
             zoom_animation: zoom_animation::State::default(),
             pane_prepares: 0,
             content: Rect::UNIT,
+            min_inner_size: MIN_WINDOW_SIZE,
             divider_drag: None,
             modifiers: Modifiers::default(),
             consumed_keys: HashSet::new(),
@@ -3312,11 +3326,16 @@ impl App {
                 }
             }
             Action::ResizeSplit { direction, amount } => {
+                let minimum = self.split_minimum(host);
                 self.remember();
                 if let Some(tab) = self.tab_mut(host.id)
-                    && tab
-                        .root
-                        .resize(tab.focused, direction, f32::from(amount), host.content)
+                    && tab.root.resize_with_minimum(
+                        tab.focused,
+                        direction,
+                        f32::from(amount),
+                        host.content,
+                        minimum,
+                    )
                 {
                     tab.zoom = None;
                     tab.quadrant_zoom = None;
@@ -4577,6 +4596,22 @@ fn selection_pointer(
     }
 }
 
+fn pane_minimum_size(cell: [u32; 2], scale: f32, config: &Config, split: bool) -> [f32; 2] {
+    [
+        (cell[0] as f32 / scale
+            + config.window_padding_x.start
+            + config.window_padding_x.end
+            + 2.0)
+            .ceil(),
+        (cell[1] as f32 / scale
+            + config.window_padding_y.start
+            + config.window_padding_y.end
+            + if split { 18.0 } else { 0.0 }
+            + 2.0)
+            .ceil(),
+    ]
+}
+
 fn pane_grid_size(
     size: Vec2,
     scale: f32,
@@ -4599,6 +4634,19 @@ fn pane_grid_size(
 }
 
 impl App {
+    fn split_minimum(&self, host: &Host) -> [f32; 2] {
+        if self.tmuxx_window(host.id).is_some() {
+            return [0.0; 2];
+        }
+        let metrics = host.fonts.metrics();
+        pane_minimum_size(
+            [metrics.cell_width, metrics.cell_height],
+            host.window.scale_factor() as f32,
+            self.window_config(host.id),
+            self.tab(host.id).is_some_and(|tab| tab.panes.len() > 1),
+        )
+    }
+
     fn draw(&mut self, event_loop: &ActiveEventLoop, host: &mut Host) -> Result<()> {
         self.draw_frame(event_loop, host, None)
     }
@@ -4950,8 +4998,22 @@ impl App {
                         height: content.height(),
                     };
                     let cell_height = host.fonts.metrics().cell_height as f32 / scale;
-                    let layout = active.layout(host.content, host.peek.is_some(), cell_height);
-                    zoom_panes = host.zoom_animation.update(active, host.peek.is_some(), host.content, cell_height, scale, &config, animations_enabled, now);
+                    let minimum = self.split_minimum(host);
+                    let required = active.visible_tree(host.peek.is_some()).minimum_size(minimum);
+                    let min_inner_size = LogicalSize::new(
+                        MIN_WINDOW_SIZE.width.max(f64::from(required[0] + size.width as f32 / scale - content.width())),
+                        MIN_WINDOW_SIZE.height.max(f64::from(required[1] + size.height as f32 / scale - content.height())),
+                    );
+                    if host.min_inner_size != min_inner_size {
+                        host.min_inner_size = min_inner_size;
+                        host.window.set_min_inner_size(Some(min_inner_size));
+                        let current = size.to_logical::<f64>(f64::from(scale));
+                        if current.width < min_inner_size.width || current.height < min_inner_size.height {
+                            let _ = host.window.request_inner_size(LogicalSize::new(current.width.max(min_inner_size.width), current.height.max(min_inner_size.height)));
+                        }
+                    }
+                    let layout = active.layout_with_minimum(host.content, host.peek.is_some(), cell_height, minimum);
+                    zoom_panes = host.zoom_animation.update(active, host.peek.is_some(), host.content, cell_height, minimum, scale, &config, animations_enabled, now);
                     if host.zoom_animation.is_running() {
                         ui.ctx().request_repaint();
                         self.cancel_selection_drag(host);
@@ -6236,7 +6298,12 @@ impl App {
             let tab = self.tab(host.id)?;
             if tab
                 .visible_tree(false)
-                .divider_at(host.content, [host.mouse.x, host.mouse.y], 3.0)
+                .divider_at_with_minimum(
+                    host.content,
+                    [host.mouse.x, host.mouse.y],
+                    3.0,
+                    self.split_minimum(host),
+                )
                 .is_some()
             {
                 return None;
@@ -6337,11 +6404,14 @@ impl App {
             {
                 return None;
             }
-            self.tab(host.id)?.visible_tree(false).divider_at(
-                host.content,
-                [host.mouse.x, host.mouse.y],
-                3.0,
-            )
+            self.tab(host.id)?
+                .visible_tree(false)
+                .divider_at_with_minimum(
+                    host.content,
+                    [host.mouse.x, host.mouse.y],
+                    3.0,
+                    self.split_minimum(host),
+                )
         });
         if let Some((_, axis, _)) = divider
             && self
@@ -6452,6 +6522,7 @@ impl App {
             if action == vt::MouseAction::Release {
                 host.divider_drag = None;
             } else if action == vt::MouseAction::Move {
+                let minimum = self.split_minimum(host);
                 let ratio = match axis {
                     Axis::Horizontal => (host.mouse.x - bounds.x) / bounds.width,
                     Axis::Vertical => (host.mouse.y - bounds.y) / bounds.height,
@@ -6477,7 +6548,7 @@ impl App {
                         }
                     }
                 } else if let Some(tab) = self.tab_mut(host.id) {
-                    tab.root.set_ratio(id, ratio);
+                    tab.root.set_ratio_with_minimum(id, ratio, bounds, minimum);
                 }
                 self.changed();
             }
@@ -6517,8 +6588,12 @@ impl App {
                 .is_some_and(|id| host.overlay_panes.contains(&id))
         {
             let divider = self.tab(host.id).and_then(|tab| {
-                tab.visible_tree(false)
-                    .divider_at(host.content, [host.mouse.x, host.mouse.y], 3.0)
+                tab.visible_tree(false).divider_at_with_minimum(
+                    host.content,
+                    [host.mouse.x, host.mouse.y],
+                    3.0,
+                    self.split_minimum(host),
+                )
             });
             if let Some(divider) = divider {
                 if action == vt::MouseAction::Press
@@ -8335,6 +8410,38 @@ fn ui_theme(config: &Config) -> egui::ThemePreference {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn split_minimum_includes_scaled_cells_padding_and_header() {
+        let mut config = Config::default();
+        config.window_padding_x = config::Padding {
+            start: 3.25,
+            end: 4.5,
+        };
+        config.window_padding_y = config::Padding {
+            start: 1.0,
+            end: 2.0,
+        };
+        let minimum = pane_minimum_size([15, 31], 1.5, &config, true);
+        assert_eq!(minimum, [20.0, 44.0]);
+        assert_eq!(
+            pane_grid_size(
+                Vec2::new(minimum[0] - 2.0, minimum[1] - 2.0),
+                1.5,
+                [15, 31],
+                &config,
+                18.0
+            ),
+            (1, 1)
+        );
+        config.window_padding_x.end += 10.0;
+        assert_eq!(pane_minimum_size([15, 31], 1.5, &config, true)[0], 30.0);
+        assert_eq!(
+            pane_minimum_size([30, 62], 1.5, &config, true),
+            [40.0, 65.0]
+        );
+        assert_eq!(pane_minimum_size([15, 31], 1.5, &config, false)[1], 26.0);
+    }
 
     #[test]
     fn quit_dump_policy_forces_option_only_when_enabled_and_preserves_normal_close() {
