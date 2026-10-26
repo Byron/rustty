@@ -8,6 +8,7 @@ use std::{
 #[derive(Debug, Default)]
 pub struct Images {
     entries: HashMap<u32, Image>,
+    pub(super) mutation_epoch: u64,
     // shortcut: duplicate numbers scan images; index them if profiles justify it.
     numbers: Option<HashMap<u32, Option<u32>>>,
     lowest_free: u32,
@@ -30,6 +31,7 @@ impl Images {
     }
 
     pub fn insert(&mut self, key: u32, image: Image) -> Option<Image> {
+        self.mutation_epoch = super::next_mutation_epoch();
         let number = image.number;
         let added_bytes = self.cached_bytes.and_then(|_| checked_bytes(&image));
         let previous = self.entries.insert(key, image);
@@ -53,6 +55,7 @@ impl Images {
 
     pub fn remove(&mut self, key: &u32) -> Option<Image> {
         let image = self.entries.remove(key)?;
+        self.mutation_epoch = super::next_mutation_epoch();
         self.cached_bytes = self
             .cached_bytes
             .and_then(|used| used.checked_sub(checked_bytes(&image)?));
@@ -104,6 +107,7 @@ impl Clone for Images {
     fn clone(&self) -> Self {
         Self {
             entries: self.entries.clone(),
+            mutation_epoch: self.mutation_epoch,
             // Render snapshots do not need the lookup cache.
             numbers: None,
             lowest_free: self.lowest_free,
@@ -122,6 +126,7 @@ impl Deref for Images {
 
 impl DerefMut for Images {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        self.mutation_epoch = super::next_mutation_epoch();
         self.numbers = None;
         self.lowest_free = 0;
         self.cached_bytes = None;

@@ -9,6 +9,7 @@ use std::{
 #[derive(Debug, Default)]
 pub struct Placements {
     entries: Vec<Placement>,
+    pub(super) mutation_epoch: u64,
     index: HashMap<(u32, PlacementId), usize>,
     by_image: Option<HashMap<u32, HashSet<PlacementId>>>,
     relatives: usize,
@@ -20,6 +21,7 @@ impl Placements {
     }
 
     pub fn insert(&mut self, placement: Placement) -> Option<Placement> {
+        self.mutation_epoch = super::next_mutation_epoch();
         let key = (placement.image_id, placement.placement_id);
         self.relatives += usize::from(placement.parent.is_some());
         if let Some(&index) = self.index.get(&key) {
@@ -38,6 +40,7 @@ impl Placements {
 
     pub(super) fn remove(&mut self, key: (u32, PlacementId)) -> Option<Placement> {
         let index = self.index.remove(&key)?;
+        self.mutation_epoch = super::next_mutation_epoch();
         let removed = self.entries.swap_remove(index);
         self.relatives -= usize::from(removed.parent.is_some());
         if let Some(images) = &mut self.by_image
@@ -101,6 +104,7 @@ impl Placements {
     }
 
     pub(super) fn retain_mut(&mut self, keep: impl FnMut(&mut Placement) -> bool) {
+        self.mutation_epoch = super::next_mutation_epoch();
         self.entries.retain_mut(keep);
         self.reindex();
     }
@@ -117,6 +121,7 @@ impl Placements {
     }
 
     pub(super) fn project_rows(&mut self, offsets: &HashMap<u64, i64>) {
+        self.mutation_epoch = super::next_mutation_epoch();
         for placement in &mut self.entries {
             placement.viewport_row = Some(offsets.get(&placement.row).copied().unwrap_or(i64::MIN));
         }
@@ -127,6 +132,7 @@ impl Clone for Placements {
     fn clone(&self) -> Self {
         Self {
             entries: self.entries.clone(),
+            mutation_epoch: self.mutation_epoch,
             index: self.index.clone(),
             // Render snapshots do not need image-removal lookups.
             by_image: None,
