@@ -237,9 +237,16 @@ impl Line {
 
 impl Link {
     pub fn contains(&self, screen: &Screen, point: GridPoint) -> bool {
+        self.contains_in(screen.all_rows(), point)
+    }
+
+    fn contains_in<'a>(
+        &self,
+        rows: impl Iterator<Item = Row<'a>> + Clone,
+        point: GridPoint,
+    ) -> bool {
         let position = |point: GridPoint| {
-            screen
-                .all_rows()
+            rows.clone()
                 .position(|row| row.id == point.row)
                 .map(|row| (row, point.col))
         };
@@ -250,13 +257,13 @@ impl Link {
     }
 }
 
-fn logical_lines(screen: &Screen) -> Vec<Line> {
+fn logical_lines<'a>(rows: impl Iterator<Item = Row<'a>>) -> Vec<Line> {
     let mut lines = Vec::new();
     let mut line = Line {
         text: String::new(),
         offsets: Vec::new(),
     };
-    for row in screen.all_rows() {
+    for row in rows {
         let used = if row.wrapped {
             row.cells.len()
         } else {
@@ -270,7 +277,7 @@ fn logical_lines(screen: &Screen) -> Vec<Line> {
             if cell.codepoint().is_none() {
                 line.text.push(' ');
             } else {
-                line.text.push_str(&screen.cell_text(row, col));
+                line.text.push_str(&row.text(col));
             }
             line.offsets
                 .push((start, line.text.len(), GridPoint { row: row.id, col }));
@@ -374,7 +381,7 @@ fn literal_text(screen: &Screen, rows: &[Row<'_>]) -> Line {
 impl Screen {
     /// Matches in terminal search order, from newest (bottom/right) to oldest.
     pub fn search(&self, regex: &Regex) -> Vec<Match> {
-        let mut matches: Vec<_> = logical_lines(self)
+        let mut matches: Vec<_> = logical_lines(self.all_rows())
             .into_iter()
             .flat_map(|line| line.matches(regex))
             .collect();
@@ -479,9 +486,33 @@ impl LinkMatcher {
         })
     }
     pub fn links(&mut self, screen: &Screen) -> Vec<Link> {
+        self.links_in_rows(screen.all_rows())
+    }
+
+    /// Match only the clicked logical line, including wraps beyond the viewport.
+    pub fn link_at(&mut self, screen: &Screen, point: GridPoint) -> Option<Link> {
+        let clicked = screen
+            .all_rows()
+            .rposition(|row| row.id == point.row && point.col < row.cells.len())?;
+        let mut start = clicked;
+        while start > 0 && screen.physical_row(start - 1).wrapped {
+            start -= 1;
+        }
+        let mut end = clicked + 1;
+        let total = screen.history_len() + screen.height();
+        while end < total && screen.physical_row(end - 1).wrapped {
+            end += 1;
+        }
+        let rows: Vec<_> = (start..end).map(|y| screen.physical_row(y)).collect();
+        self.links_in_rows(rows.iter().copied())
+            .into_iter()
+            .find(|link| link.contains_in(rows.iter().copied(), point))
+    }
+
+    fn links_in_rows<'a>(&mut self, rows: impl Iterator<Item = Row<'a>> + Clone) -> Vec<Link> {
         let mut result = Vec::new();
         let mut present = HashSet::new();
-        for line in logical_lines(screen) {
+        for line in logical_lines(rows.clone()) {
             let Some(&(_, _, first)) = line.offsets.first() else {
                 continue;
             };
@@ -516,12 +547,12 @@ impl LinkMatcher {
         }
         self.cache.retain(|id, _| present.contains(id));
         // Explicit OSC 8 links take precedence over regex matches on those cells.
-        let row_indices: HashMap<_, _> = screen
-            .all_rows()
+        let row_indices: HashMap<_, _> = rows
+            .clone()
             .enumerate()
             .map(|(index, row)| (row.id, index))
             .collect();
-        for row in screen.all_rows() {
+        for row in rows {
             let mut col = 0;
             while col < row.cells.len() {
                 let Some(link) = row.hyperlink(col) else {
@@ -686,6 +717,83 @@ mod tests {
         assert_eq!(links.len(), 1);
         assert_eq!(links[0].uri, "https://actual");
         assert!(links[0].contains(terminal.screen(), links[0].end));
+    }
+
+    #[test]
+    fn point_links_match_exhaustive_links_across_wraps_edits_and_explicit_spans() {
+        let mut terminal = Terminal::new(12, 2, 100);
+        terminal.feed(
+            concat!(
+                "unrelated /other/path\r\n",
+                "界 https://example.org/a?q=one#part tail\r\n",
+                "see /tmp/long/directory/file.rs now\r\n",
+                "https://x.\x1b]8;;https://actual\x07org\x1b]8;;\x07\r\n",
+                "\x1b]8;id=one;https://same\x07A",
+                "\x1b]8;id=two;https://same\x07B你\x1b]8;;\x07 tail",
+            )
+            .as_bytes(),
+        );
+        let mut matcher = LinkMatcher::default();
+        let check = |matcher: &mut LinkMatcher, screen: &Screen| {
+            let expected = LinkMatcher::default().links(screen);
+            for row in screen.all_rows() {
+                for col in 0..row.cells.len() {
+                    let point = GridPoint { row: row.id, col };
+                    assert_eq!(
+                        matcher.link_at(screen, point).as_ref(),
+                        expected.iter().find(|link| link.contains(screen, point)),
+                        "at {point:?}",
+                    );
+                }
+            }
+            assert!(
+                matcher
+                    .link_at(
+                        screen,
+                        GridPoint {
+                            row: u64::MAX,
+                            col: 0
+                        }
+                    )
+                    .is_none()
+            );
+            assert!(
+                matcher
+                    .link_at(
+                        screen,
+                        GridPoint {
+                            row: screen.row(0).id,
+                            col: usize::MAX
+                        }
+                    )
+                    .is_none()
+            );
+        };
+        check(&mut matcher, terminal.screen());
+        terminal.resize(9, 3);
+        check(&mut matcher, terminal.screen());
+        terminal.feed(b"\r\nupdated /new/path\r\nhttps://updated.example");
+        check(&mut matcher, terminal.screen());
+    }
+
+    #[test]
+    fn point_links_only_cache_the_clicked_logical_line_with_large_history() {
+        let mut terminal = Terminal::new(40, 2, 11_000);
+        terminal.feed("old /unrelated/path\r\n".repeat(10_000).as_bytes());
+        let path = "/tmp/a-directory/another-directory/third-directory/file.rs";
+        terminal.feed(format!("see {path} now\r\nnext row").as_bytes());
+        let screen = terminal.screen();
+        assert!(screen.history_len() > 9_000);
+        let point = GridPoint {
+            row: screen.row(0).id,
+            col: 5,
+        };
+        let mut matcher = LinkMatcher::default();
+        let link = matcher.link_at(screen, point).unwrap();
+        assert_eq!(link.uri, path);
+        assert_ne!(link.start.row, point.row, "path starts above the viewport");
+        assert_eq!(matcher.cache.len(), 1);
+        assert_eq!(matcher.cache[&link.start.row].0, format!("see {path} now"));
     }
 
     #[test]
