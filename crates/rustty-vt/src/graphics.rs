@@ -24,6 +24,13 @@ const MAX_DATA: usize = 400 * 1024 * 1024;
 const MAX_DIMENSION: u32 = 10000;
 const PARENT_CHAIN_LIMIT: usize = 8;
 
+fn next_mutation_epoch() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    // Global stamps also detect public container replacement by a different clone.
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Image {
     pub id: u32,
@@ -270,6 +277,7 @@ pub struct Graphics {
     pub images: Images,
     pub placements: Placements,
     pub generation: u64,
+    animation_idle_generation: Option<(u64, u64, u64)>,
     pub limit: usize,
     loading: Option<Loading>,
     next_image: u32,
@@ -289,6 +297,7 @@ impl Default for Graphics {
             images: Images::default(),
             placements: Placements::default(),
             generation: 0,
+            animation_idle_generation: None,
             limit: 320_000_000,
             loading: None,
             next_image: 2147483647,
@@ -664,6 +673,7 @@ impl Graphics {
             quota_placements: self.quota_placements.clone(),
             placements,
             generation: self.generation,
+            animation_idle_generation: None,
             limit: self.limit,
             loading: None,
             next_image: self.next_image,
@@ -806,6 +816,15 @@ impl Graphics {
     }
     /// Advance animations against the host's monotonic clock; return next deadline.
     pub fn tick(&mut self, now_ms: u64) -> Option<u64> {
+        if self.animation_idle_generation
+            == Some((
+                self.generation,
+                self.images.mutation_epoch,
+                self.placements.mutation_epoch,
+            ))
+        {
+            return None;
+        }
         let mut next = None;
         for image in self.images.values_mut() {
             if image.animation_state < 2
@@ -855,6 +874,11 @@ impl Graphics {
                 next = Some(next.map_or(deadline, |n: u64| n.min(deadline)));
             }
         }
+        self.animation_idle_generation = next.is_none().then_some((
+            self.generation,
+            self.images.mutation_epoch,
+            self.placements.mutation_epoch,
+        ));
         next
     }
 }
@@ -2610,6 +2634,108 @@ mod tests {
         t.set_graphics_limit(4);
         assert_eq!(t.graphics().bytes_used(), 0);
     }
+
+    fn stopped_animation() -> Terminal {
+        let mut terminal = Terminal::new(10, 3, 0);
+        terminal.feed(b"\x1b_Ga=T,i=1,s=1,v=1,f=32,C=1;/wAA/w==\x1b\\");
+        terminal.feed(b"\x1b_Ga=f,i=1,s=1,v=1,f=32,z=50;AP8A/w==\x1b\\");
+        terminal.feed(b"\x1b_Ga=a,i=1,r=1,z=50\x1b\\");
+        terminal
+    }
+
+    #[test]
+    fn animation_idle_cache_skips_unchanged_images() {
+        let mut terminal = stopped_animation();
+        let graphics = &mut terminal.screen_mut().graphics;
+        assert_eq!(graphics.tick(0), None);
+        let idle_epoch = graphics.images.mutation_epoch;
+        assert!(graphics.animation_idle_generation.is_some());
+        assert_eq!(graphics.tick(10), None);
+        // Walking values_mut would change the epoch even without playing a frame.
+        assert_eq!(graphics.images.mutation_epoch, idle_epoch);
+
+        graphics.generation = graphics.generation.wrapping_add(1);
+        assert_eq!(graphics.tick(20), None);
+        assert_ne!(graphics.images.mutation_epoch, idle_epoch);
+        graphics.images.get_mut(&1).unwrap().animation_state = 3;
+        assert_eq!(graphics.tick(30), Some(80));
+        assert!(graphics.animation_idle_generation.is_none());
+    }
+
+    #[test]
+    fn animation_idle_cache_tracks_clones_and_public_container_replacement() {
+        let mut graphics = stopped_animation().graphics().clone();
+        assert_eq!(graphics.tick(0), None);
+        let mut copy = graphics.clone();
+        copy.images.get_mut(&1).unwrap().animation_state = 3;
+        assert_eq!(copy.tick(10), Some(60));
+        graphics.images.get_mut(&1).unwrap().animation_state = 1;
+        assert_eq!(graphics.tick(10), None);
+        // Both clones took the same number of mutations, but contain different state.
+        graphics.images = copy.images.clone();
+        assert_eq!(graphics.tick(20), Some(60));
+
+        let placement = graphics.placements[0].clone();
+        let mut unrelated = placement.clone();
+        unrelated.image_id = 2;
+        graphics.placements = [unrelated].into_iter().collect();
+        assert_eq!(graphics.tick(30), None);
+        graphics.placements = [placement.clone()].into_iter().collect();
+        assert_eq!(graphics.tick(40), Some(60));
+        graphics.placements.remove_image(1);
+        assert_eq!(graphics.tick(45), None);
+        graphics.placements.insert(placement);
+        assert_eq!(graphics.tick(50), Some(60));
+    }
+
+    #[test]
+    fn animation_idle_cache_tracks_public_frames_pixels_and_image_replacement() {
+        let mut graphics = stopped_animation().graphics().clone();
+        let frame = graphics.images[&1].frames[0].clone();
+        let root = graphics.images[&1].pixels.clone();
+        let image = graphics.images.get_mut(&1).unwrap();
+        image.animation_state = 3;
+        image.frames.clear();
+        assert_eq!(graphics.tick(0), None);
+        graphics
+            .images
+            .get_mut(&1)
+            .unwrap()
+            .frames
+            .push(frame.clone());
+        assert_eq!(graphics.tick(10), Some(60));
+
+        graphics.images.get_mut(&1).unwrap().frames[0].pixels = Arc::default();
+        assert_eq!(graphics.tick(20), None);
+        graphics.images.get_mut(&1).unwrap().frames[0].pixels = frame.pixels;
+        assert_eq!(graphics.tick(30), Some(60));
+        graphics.images.get_mut(&1).unwrap().pixels = Arc::default();
+        assert_eq!(graphics.tick(40), None);
+        graphics.images.get_mut(&1).unwrap().pixels = root;
+        assert_eq!(graphics.tick(45), Some(60));
+
+        let mut image = graphics.images[&1].clone();
+        image.animation_state = 1;
+        graphics.images.insert(1, image.clone());
+        assert_eq!(graphics.tick(50), None);
+        image.animation_state = 3;
+        graphics.images.insert(1, image);
+        assert_eq!(graphics.tick(55), Some(60));
+    }
+
+    #[test]
+    fn animation_idle_cache_wakes_parked_loading_animations_for_new_frames() {
+        let mut terminal = stopped_animation();
+        terminal.feed(b"\x1b_Ga=a,i=1,s=2\x1b\\");
+        assert_eq!(terminal.tick_graphics(0), Some(50));
+        assert_eq!(terminal.tick_graphics(50), Some(100));
+        assert_eq!(terminal.tick_graphics(100), None);
+        assert_eq!(terminal.tick_graphics(200), None);
+        terminal.feed(b"\x1b_Ga=f,i=1,s=1,v=1,f=32,z=25;AAD//w==\x1b\\");
+        assert_eq!(terminal.tick_graphics(200), Some(225));
+        assert_eq!(terminal.graphics().images[&1].current_frame, 2);
+    }
+
     #[test]
     fn invalid_dimensions_and_mutually_exclusive_ids_do_not_store() {
         let mut t = Terminal::new(10, 3, 10);
