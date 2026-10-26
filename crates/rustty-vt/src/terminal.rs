@@ -1230,6 +1230,11 @@ impl Terminal {
                 };
             }
             Event::ApcPut(byte) => self.apc_put(&[byte]),
+            Event::ApcCancel => {
+                self.apc.clear();
+                self.apc_glyph_limit = None;
+                self.string_overflow = false;
+            }
             Event::ApcEnd | Event::TmuxStringEnd => {
                 let mut apc = std::mem::take(&mut self.apc);
                 if !self.string_overflow {

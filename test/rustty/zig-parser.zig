@@ -77,7 +77,7 @@ pub fn run(alloc: Allocator, operations: anytype) !Result {
                         .dcs_unhook => .{ .kind = "dcs_unhook" },
                         .apc_start => .{ .kind = "apc_start" },
                         .apc_put => |b| .{ .kind = "apc_put", .byte = b },
-                        .apc_end => .{ .kind = "apc_end" },
+                        .apc_end => .{ .kind = if (byte == 0x1b or byte == 0x9c) "apc_end" else "apc_cancel" },
                         // Validated OSC commands are a different interface.
                         .osc_dispatch => continue,
                     };
