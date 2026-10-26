@@ -305,7 +305,7 @@ fn vt_hyperlink_transitions_preserve_ids_and_map_escapes_to_the_linked_cells() {
 }
 
 #[test]
-fn vt_hyperlinks_close_before_skipped_cells_and_follow_hard_and_soft_wraps() {
+fn vt_hyperlinks_span_skipped_cells_and_follow_hard_and_soft_wraps() {
     let open = "\x1b]8;;https://example.org\x1b\\";
     let close = "\x1b]8;;\x1b\\";
     for (columns, unwrap, body, expected) in [
@@ -313,7 +313,7 @@ fn vt_hyperlinks_close_before_skipped_cells_and_follow_hard_and_soft_wraps() {
             8,
             false,
             "ab\x1b[5Gcd".to_owned(),
-            format!("{open}ab{close}  {open}cd{close}"),
+            format!("{open}ab\x1b[2Ccd{close}"),
         ),
         (
             8,
@@ -338,7 +338,7 @@ fn vt_hyperlinks_close_before_skipped_cells_and_follow_hard_and_soft_wraps() {
             4,
             true,
             "ab\x1b[4Gde".to_owned(),
-            format!("{open}ab{close} {open}de{close}"),
+            format!("{open}ab\x1b[1Cde{close}"),
         ),
     ] {
         let mut terminal = Terminal::new(columns, 3, 0);
@@ -361,6 +361,68 @@ fn vt_hyperlinks_close_before_skipped_cells_and_follow_hard_and_soft_wraps() {
             }
         }
     }
+}
+
+#[test]
+fn vt_replay_preserves_null_cells_and_erased_backgrounds() {
+    let mut terminal = Terminal::new(20, 4, 0);
+    terminal.feed(
+        b"\x1b[41mred\x1b[0m\x1b[10Gplain\r\n\
+          \x1b[44m\x1b[K\x1b[0m\r\n\
+          CPU:\x1b[42m\x1b[K\x1b[48;2;1;2;3m\x1b[15G\x1b[3X\x1b[0m\x1b[19Gx\r\n\
+            spaces  \x1b[1mbold\x1b[0m",
+    );
+    let screen = terminal.screen();
+    let (output, map) = screen.formatter(Format::Vt).format_with_map().unwrap();
+    assert_eq!(output.len(), map.len());
+    let mut restored = Terminal::new(20, 4, 0);
+    restored.feed(&output);
+    for (source, target) in screen.rows().zip(restored.screen().rows()) {
+        for col in 0..source.cells.len() {
+            assert_eq!(source.cells[col].codepoint(), target.cells[col].codepoint());
+            assert_eq!(
+                source.cells[col].background(),
+                target.cells[col].background()
+            );
+            assert_eq!(source.style(col), target.style(col));
+        }
+    }
+}
+
+#[test]
+fn vt_blank_steps_and_background_runs_map_to_the_first_cell() {
+    for (input, sequence, column) in [
+        (b"\x1b[4GX".as_slice(), b"\x1b[3C".as_slice(), 0),
+        (b"\x1b[41mred\x1b[0m\x1b[10GX", b"\x1b[6C", 3),
+        (b"CPU:\x1b[41m\x1b[K", b"\x1b[16X\x1b[16C", 4),
+    ] {
+        let mut terminal = Terminal::new(20, 2, 0);
+        terminal.feed(input);
+        let screen = terminal.screen();
+        let (output, map) = screen.formatter(Format::Vt).format_with_map().unwrap();
+        let start = output
+            .windows(sequence.len())
+            .position(|bytes| bytes == sequence)
+            .unwrap();
+        assert_eq!(output.len(), map.len());
+        for offset in start..start + sequence.len() {
+            assert_eq!(map.point(offset), screen.point(0, column));
+        }
+    }
+}
+
+#[test]
+fn vt_unwrap_writes_carried_blanks_without_previous_style_or_hyperlink() {
+    let mut terminal = Terminal::new(10, 3, 0);
+    terminal.feed(
+        "\x1b]8;;https://example.org\x1b\\\x1b[41mabc\x1b[0m\x1b[10G中\x1b]8;;\x1b\\".as_bytes(),
+    );
+    let mut formatter = terminal.screen().formatter(Format::Vt);
+    formatter.options.unwrap = true;
+    assert_eq!(
+        formatter.format().unwrap(),
+        "\x1b[0m\x1b[48;5;1m\x1b]8;;https://example.org\x1b\\abc\x1b[0m\x1b]8;;\x1b\\      \x1b]8;;https://example.org\x1b\\中\x1b]8;;\x1b\\".as_bytes(),
+    );
 }
 
 #[test]

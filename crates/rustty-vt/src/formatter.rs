@@ -677,7 +677,10 @@ fn format_page(
             }
         }
         let cells = &row.cells[left..right];
-        if cells.iter().all(|cell| cell.codepoint().is_none()) {
+        if cells.iter().all(|cell| {
+            cell.codepoint().is_none()
+                && (options.emit != Format::Vt || cell.background().is_none())
+        }) {
             blank_rows += 1;
             continue;
         }
@@ -714,7 +717,8 @@ fn format_page(
         if !row.wrap_continuation || !options.unwrap {
             blank_cells = 0;
         }
-        for (index, cell) in cells.iter().enumerate() {
+        let mut cells = cells.iter().enumerate().peekable();
+        while let Some((index, cell)) = cells.next() {
             let point = [(left + index) as u32, y as u32];
             if cell.width() == 0 || cell.spacer_head() {
                 continue;
@@ -729,6 +733,19 @@ fn format_page(
             if blank {
                 blank_cells += 1;
                 continue;
+            }
+            if blank_cells > 0 && options.emit == Format::Vt {
+                if blank_cells <= index {
+                    out.bytes
+                        .extend_from_slice(format!("\x1b[{blank_cells}C").as_bytes());
+                    out.map_to([point[0] - blank_cells as u32, point[1]]);
+                    blank_cells = 0;
+                } else if style != Style::default() {
+                    // CUF cannot cross a wrap, so carried blanks need unstyled spaces.
+                    style_close(&mut out.bytes, options.emit);
+                    out.map_last();
+                    style = Style::default();
+                }
             }
             if blank_cells > 0 && options.emit == Format::Vt && hyperlink.take().is_some() {
                 // Skipped cells carry no link, even when linked text surrounds them.
@@ -780,7 +797,20 @@ fn format_page(
                     }
                 }
             }
-            if cell.codepoint().is_none() {
+            if options.emit == Format::Vt
+                && let Some(background) = cell.background()
+            {
+                let mut run = 1;
+                while cells
+                    .peek()
+                    .is_some_and(|(_, next)| next.background() == Some(background))
+                {
+                    cells.next();
+                    run += 1;
+                }
+                out.bytes
+                    .extend_from_slice(format!("\x1b[{run}X\x1b[{run}C").as_bytes());
+            } else if cell.codepoint().is_none() {
                 out.bytes.push(b' ');
             } else if !options.codepoint_map.is_empty() || options.emit == Format::Html {
                 for cp in screen.cell_text(row, left + index).chars() {
