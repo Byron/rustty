@@ -31,3 +31,20 @@ fn backward_aliases_reject_extra_parameters() {
     terminal.feed(b"\x1b[1;2j\x1b[1;2k\x1b[1:2j\x1b[1:2k");
     assert_eq!(terminal.screen().cursor, cursor);
 }
+
+#[test]
+fn backward_moves_stop_at_left_margin_unless_already_left_of_it() {
+    for sequence in [b"\x1b[99D".as_slice(), b"\x1b[99j", b"\x08"] {
+        for (column, expected) in [(3, 2), (2, 0)] {
+            let mut terminal = Terminal::new(8, 3, 0);
+            terminal.feed(b"\x1b[?69h\x1b[3;7s");
+            terminal.cursor_position(1, column);
+            terminal.feed(sequence);
+            assert_eq!(terminal.screen().cursor.col, expected, "{sequence:?}");
+            assert!(!terminal.screen().cursor.pending_wrap);
+        }
+    }
+    let mut terminal = Terminal::new(8, 3, 0);
+    terminal.feed(b"\x1b[?69h\x1b[3;7s\x1b[1;6H\x1b[99D");
+    assert_eq!(terminal.screen().cursor.col, 2);
+}

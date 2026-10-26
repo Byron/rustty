@@ -23,7 +23,7 @@ fn tabs_use_direction_and_origin_specific_margin_bounds() {
     terminal.feed(b"\x1b[?6h\x1b[1;2H\x1b[Z");
     assert_eq!(terminal.screen().cursor.col, 5);
     terminal.feed(b"\x1b[100D\x1b[Z");
-    assert_eq!(terminal.screen().cursor.col, 0);
+    assert_eq!(terminal.screen().cursor.col, 5);
 }
 
 #[test]

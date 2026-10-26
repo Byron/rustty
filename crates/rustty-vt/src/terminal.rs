@@ -1834,14 +1834,15 @@ impl Terminal {
             remaining -= 1;
         }
         self.screen_mut().cursor.pending_wrap = false;
-        if !reverse {
-            self.screen_mut().cursor.col = self.screen().cursor.col.saturating_sub(remaining);
+        let left = if self.screen().cursor.col < self.margins.left {
+            0
         } else {
-            let left = if self.screen().cursor.col < self.margins.left {
-                0
-            } else {
-                self.margins.left
-            };
+            self.margins.left
+        };
+        if !reverse {
+            self.screen_mut().cursor.col =
+                self.screen().cursor.col.saturating_sub(remaining).max(left);
+        } else {
             while remaining > 0 {
                 let current = self.screen().cursor.clone();
                 let n = remaining.min(current.col.saturating_sub(left));
