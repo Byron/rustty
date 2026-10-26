@@ -104,11 +104,20 @@ impl App {
             {
                 continue;
             }
-            let config = self
-                .pane_window(id)
+            let window = self.pane_window(id);
+            let config = window
                 .and_then(|window| configs.get(&window))
                 .unwrap_or_else(|| self.config());
-            if let Err(error) = apply(&pane.session, config) {
+            let scheme = window.map_or(color_scheme(self.config_loader.dark_mode), |window| {
+                self.window_color_scheme(window)
+            });
+            // The reload report must use the newly resolved theme, before host-state sync.
+            let result = pane
+                .session
+                .terminal()
+                .map(|mut terminal| terminal.query_defaults.color_scheme = Some(scheme))
+                .and_then(|()| apply(&pane.session, config));
+            if let Err(error) = result {
                 self.errors.push(error.to_string());
             }
         }

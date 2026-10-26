@@ -685,7 +685,7 @@ impl Session {
         terminal.set_limits(scrollback_limits(config));
         terminal.set_scrollback_memory_limit(config.scrollback_limit_bytes);
         apply_appearance(&mut terminal, config);
-        Ok(())
+        self.report_config_color_scheme(terminal)
     }
 
     /// Update appearance without changing terminal history limits.
@@ -695,6 +695,20 @@ impl Session {
             attached.set_appearance(config)?;
         }
         apply_appearance(&mut terminal, config);
+        self.report_config_color_scheme(terminal)
+    }
+
+    fn report_config_color_scheme(&self, terminal: MutexGuard<'_, Terminal>) -> io::Result<()> {
+        // Attached views leave terminal replies to their elected owner.
+        let scheme = (self.attached.is_none() && terminal.modes.dec(2031))
+            .then_some(terminal.query_defaults.color_scheme)
+            .flatten();
+        drop(terminal);
+        if let Some(scheme) = scheme {
+            self.input
+                .send(IoCommand::HostReport(scheme.encode()))
+                .map_err(error)?;
+        }
         Ok(())
     }
 }
@@ -1445,6 +1459,66 @@ mod tests {
                 .unwrap()
                 .plain_text()
                 .contains("610d620d")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn config_reload_reports_current_scheme_without_input_budget_or_duplicates() {
+        let mut config = Config::default();
+        let session = Session::spawn(
+            &config,
+            SessionOptions {
+                color_scheme: Some(query::ColorScheme::Light),
+                command: Some(Command::Direct(vec![
+                    "/bin/sh".into(), "-c".into(),
+                    r"stty raw -echo; printf 'reload-ready\r\n'; dd bs=1 count=18 2>/dev/null | od -An -tx1 | tr -d ' \n'; stty min 0 time 1; dd bs=64 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n'; printf '\r\nreload-done\r\n'".into(),
+                ])),
+                ..SessionOptions::default()
+            },
+            Arc::new(|| {}),
+        ).unwrap();
+        let wait_for = |marker: &str| {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let text = session.terminal().unwrap().plain_text();
+                if text.contains(marker) {
+                    return text;
+                }
+                assert!(Instant::now() < deadline, "missing {marker}: {text:?}");
+                thread::sleep(Duration::from_millis(5));
+            }
+        };
+        wait_for("reload-ready");
+        session.terminal().unwrap().modes.set(true, 2031, true);
+        *session.pending_input.used.lock().unwrap() = Some(MAX_PENDING_INPUT);
+        config.background = crate::config::Rgb::new(1, 2, 3);
+        session.apply_config(&config).unwrap();
+
+        // The host resolves the new scheme before applying its changed theme.
+        session.terminal().unwrap().query_defaults.color_scheme = Some(query::ColorScheme::Dark);
+        session.apply_appearance(&config).unwrap();
+        session
+            .set_host_state(true, false, query::ColorScheme::Dark)
+            .unwrap();
+        session.terminal().unwrap().modes.set(true, 2031, false);
+        session.apply_config(&config).unwrap();
+        {
+            let mut terminal = session.terminal().unwrap();
+            terminal.query_defaults.color_scheme = None;
+            terminal.modes.set(true, 2031, true);
+        }
+        session.apply_appearance(&config).unwrap();
+
+        let text = wait_for("reload-done");
+        assert!(
+            text.contains("1b5b3f3939373b326e1b5b3f3939373b316e"),
+            "{text:?}"
+        );
+        assert_eq!(text.matches("1b5b3f393937").count(), 2, "{text:?}");
+        assert_eq!(
+            *session.pending_input.used.lock().unwrap(),
+            Some(MAX_PENDING_INPUT)
         );
     }
 
