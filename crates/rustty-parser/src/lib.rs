@@ -8,6 +8,8 @@
 
 #[rustfmt::skip]
 mod table;
+mod boundary;
+pub use boundary::{Boundaries, BoundaryStop, StringEnd, StringIntroducer, StringKind};
 
 pub const MAX_PARAMS: usize = 24;
 pub const MAX_INTERMEDIATES: usize = 4;
