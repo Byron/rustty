@@ -172,12 +172,7 @@ impl Placeholder {
         }
         let text = screen.cell_text(row, col);
         let mut chars = text.chars().skip(1);
-        let mut next = || {
-            chars
-                .next()
-                .and_then(|cp| DIACRITICS.binary_search(&(cp as u32)).ok())
-                .map(|i| i as u32)
-        };
+        let mut next = || chars.next().and_then(|cp| diacritic_index(cp as u32));
         Some(Self {
             low: color_id(row.style(col).foreground),
             placement: color_id(row.style(col).underline_color),
@@ -196,3 +191,54 @@ fn color_id(c: TerminalColor) -> u32 {
 }
 
 include!("diacritics.rs");
+
+const DENSE_START: u32 = DIACRITICS[0];
+const DENSE_END: u32 = 0x2e00;
+const SPARSE_START: usize = {
+    let mut index = 0;
+    while index < DIACRITICS.len() && DIACRITICS[index] < DENSE_END {
+        index += 1;
+    }
+    index
+};
+// Most placeholder indices fit in this 11 KB byte table; higher codepoints stay sparse.
+static DENSE_INDEX: [u8; (DENSE_END - DENSE_START) as usize] = {
+    assert!(SPARSE_START < u8::MAX as usize);
+    let mut table = [u8::MAX; (DENSE_END - DENSE_START) as usize];
+    let mut index = 0;
+    while index < SPARSE_START {
+        table[(DIACRITICS[index] - DENSE_START) as usize] = index as u8;
+        index += 1;
+    }
+    table
+};
+
+fn diacritic_index(cp: u32) -> Option<u32> {
+    if cp < DENSE_END {
+        let index = DENSE_INDEX[cp.checked_sub(DENSE_START)? as usize];
+        (index != u8::MAX).then_some(u32::from(index))
+    } else {
+        DIACRITICS[SPARSE_START..]
+            .binary_search(&cp)
+            .ok()
+            .map(|index| (SPARSE_START + index) as u32)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diacritic_lookup_matches_the_full_table_for_every_codepoint() {
+        assert!(DIACRITICS.windows(2).all(|pair| pair[0] < pair[1]));
+        for cp in 0..=char::MAX as u32 {
+            assert_eq!(
+                diacritic_index(cp),
+                DIACRITICS.binary_search(&cp).ok().map(|index| index as u32),
+                "U+{cp:04X}",
+            );
+        }
+        assert_eq!(diacritic_index(u32::MAX), None);
+    }
+}
