@@ -171,10 +171,10 @@ const DecodedHost = struct {
     fn init(alloc: Allocator, options: HostOptions) !DecodedHost {
         const attributes: ?DeviceAttributes = if (options.device_attributes) |value| attrs: {
             const features = try alloc.alloc(@FieldType(DeviceAttributes, "primary").Feature, value.features.len);
-            for (value.features, features) |source, *destination| destination.* = @enumFromInt(source);
+            for (value.features, features) |source, *destination| destination.* = @fromBackingInt(source);
             break :attrs .{
-                .primary = .{ .conformance_level = @enumFromInt(value.conformance_level), .features = features },
-                .secondary = .{ .device_type = @enumFromInt(value.device_type), .firmware_version = value.firmware_version, .rom_cartridge = value.rom_cartridge },
+                .primary = .{ .conformance_level = @fromBackingInt(value.conformance_level), .features = features },
+                .secondary = .{ .device_type = @fromBackingInt(value.device_type), .firmware_version = value.firmware_version, .rom_cartridge = value.rom_cartridge },
                 .tertiary = .{ .unit_id = value.unit_id },
             };
         } else null;
@@ -365,7 +365,7 @@ const Context = struct {
         record(.{ .kind = "notification", .notification = .{ .title = encoded(value.title), .body = encoded(value.body) } });
     }
     fn progress(_: *vt.TerminalStream.Handler, value: vt.osc.Command.ProgressReport) void {
-        record(.{ .kind = "progress", .progress = .{ .state = @intCast(@intFromEnum(value.state)), .value = value.progress } });
+        record(.{ .kind = "progress", .progress = .{ .state = @intCast(@backingInt(value.state)), .value = value.progress } });
     }
     fn colorScheme(_: *vt.TerminalStream.Handler) ?vt.device_status.ColorScheme {
         append("query_color_scheme", "");
@@ -739,11 +739,19 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
             });
         } else if (std.mem.eql(u8, op.op, "restore_next")) {
             const decoder = if (snapshot_decoder) |*value| value else return error.MissingSnapshotDecoder;
-            const progress = decoder.next(alloc, &t) catch return error.InvalidSnapshot;
+            const progress: ?vt.snapshot.Decoder.Progress.Page = progress: {
+                while (decoder.next(alloc, &t) catch return error.InvalidSnapshot) |value| {
+                    switch (value) {
+                        .page => |page| break :progress page,
+                        .image => {},
+                    }
+                }
+                break :progress null;
+            };
             try snapshot_progress.append(alloc, if (progress) |value| .{
                 .stage = "history",
                 .offset = snapshot_source.seek,
-                .screen = @intCast(@intFromEnum(value.key)),
+                .screen = @intCast(@backingInt(value.key)),
                 .rows = value.rows,
                 .remaining = value.remaining,
             } else .{ .stage = "finish", .offset = snapshot_source.seek });
@@ -824,7 +832,7 @@ fn observe(alloc: Allocator, t: *vt.Terminal, request: Request) !Observation {
             .current = if (mode) |value| t.modes.get(value) else null,
             .saved = if (mode) |value| saved.get(value) else null,
             .default = if (mode) |value| defaults.get(value) else null,
-            .report = @intFromEnum(t.modes.getReport(.{ .value = @truncate(tag.number), .ansi = !tag.private }).state),
+            .report = @backingInt(t.modes.getReport(.{ .value = @truncate(tag.number), .ansi = !tag.private }).state),
             .default_configurable = if (mode) |value| vt.modes.defaultConfigurable(value) else false,
         };
     }

@@ -24,7 +24,7 @@ const Context = struct {
     fn random(buffer: []u8) vt.sys.RandomSecureError!void {
         const self = active.?;
         var size: [32]u8 = undefined;
-        self.emit("paste_entropy", std.fmt.bufPrint(&size, "{d}", .{buffer.len}) catch unreachable);
+        self.emit("paste_entropy", std.mem.print(&size, "{d}", .{buffer.len}) catch unreachable);
         if (self.options.entropy_error) return error.EntropyUnavailable;
         for (buffer) |*byte| {
             byte.* = self.entropy[self.entropy_offset % self.entropy.len];

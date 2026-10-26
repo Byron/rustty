@@ -101,5 +101,5 @@ fn decode(alloc: Allocator, text: []const u8) ![]const u8 {
 }
 
 fn encode(alloc: Allocator, bytes: []const u8) ![]const u8 {
-    return std.fmt.allocPrint(alloc, "{x}", .{bytes});
+    return alloc.print("{x}", .{bytes});
 }

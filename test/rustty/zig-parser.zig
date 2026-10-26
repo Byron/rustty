@@ -50,7 +50,7 @@ pub fn run(alloc: Allocator, operations: anytype) !Result {
                     }
                     continue;
                 }
-                const transition = vt.parse_table.table[byte][@intFromEnum(parser.state)];
+                const transition = vt.parse_table.table[byte][@backingInt(parser.state)];
                 // CAN/SUB cancel raw OSC capture too, including overflow.
                 if (parser.state == .osc_string and
                     transition.state != .osc_string and

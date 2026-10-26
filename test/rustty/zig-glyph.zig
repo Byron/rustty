@@ -39,7 +39,7 @@ pub fn observe(alloc: std.mem.Allocator, stream: *vt.TerminalStream) !State {
                 .points = try alloc.dupe(Outline.Point, outline.points),
             },
             .design = entry.design,
-            .width = @intFromEnum(entry.width),
+            .width = @backingInt(entry.width),
             .constraint = .{
                 .size = @tagName(entry.constraint.size),
                 .align_horizontal = @tagName(entry.constraint.align_horizontal),

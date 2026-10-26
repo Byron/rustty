@@ -77,35 +77,57 @@ pub fn observePlacements(alloc: Allocator, t: *vt.Terminal) !Placements {
 
 fn placeholders(alloc: Allocator, t: *vt.Terminal, owner: *vt.Screen) ![]Placeholder {
     var result: std.ArrayList(Placeholder) = .empty;
-    var it = vt.kitty.graphics.unicode.placementIterator(owner.pages.getTopLeft(.viewport), owner.pages.getBottomRight(.viewport));
-    while (it.next()) |p| {
-        const target = owner.kitty_images.placeholderTarget(p.image_id, p.placement_id);
-        var geometry_error: ?[]const u8 = null;
-        const geometry: ?PlaceholderGeometry = geometry: {
-            const image = owner.kitty_images.imageById(p.image_id) orelse {
-                geometry_error = "MissingImage";
-                break :geometry null;
+    var observed = t.*;
+    observed.screens.active = owner;
+    observed.screens.active_key = if (owner == t.screens.all.get(.primary).?) .primary else .alternate;
+    var state: vt.RenderState = .empty;
+    defer state.deinit(alloc);
+    try state.update(alloc, &observed);
+    for (state.row_data.items(.placeholders), state.row_data.items(.pin)) |runs, row_pin| {
+        for (runs.items) |run| {
+            var pin = row_pin;
+            pin.x = run.x;
+            const p: vt.kitty.graphics.unicode.Placement = .{
+                .pin = pin,
+                .image_id = run.image_id,
+                .placement_id = run.placement_id,
+                .col = run.col,
+                .row = run.row,
+                .width = run.width,
+                .height = 1,
             };
-            const rendered = p.renderPlacement(&owner.kitty_images, &image, t.width_px / t.cols, t.height_px / t.rows) catch |err| {
-                geometry_error = @errorName(err);
-                break :geometry null;
+            const target = owner.kitty_images.placeholderTarget(p.image_id, p.placement_id);
+            var geometry_error: ?[]const u8 = null;
+            const geometry: ?PlaceholderGeometry = geometry: {
+                const image = owner.kitty_images.imageById(p.image_id) orelse {
+                    geometry_error = "MissingImage";
+                    break :geometry null;
+                };
+                const placement = target orelse {
+                    geometry_error = "PlacementMissingPlacement";
+                    break :geometry null;
+                };
+                const rendered = p.renderPlacement(&placement.placement, &image, t.width_px / t.cols, t.height_px / t.rows) catch |err| {
+                    geometry_error = @errorName(err);
+                    break :geometry null;
+                };
+                break :geometry .{
+                    .offset = .{ rendered.offset_x, rendered.offset_y },
+                    .source = .{ rendered.source_x, rendered.source_y, rendered.source_width, rendered.source_height },
+                    .pixels = .{ rendered.dest_width, rendered.dest_height },
+                };
             };
-            break :geometry .{
-                .offset = .{ rendered.offset_x, rendered.offset_y },
-                .source = .{ rendered.source_x, rendered.source_y, rendered.source_width, rendered.source_height },
-                .pixels = .{ rendered.dest_width, rendered.dest_height },
-            };
-        };
-        try result.append(alloc, .{
-            .image_id = p.image_id,
-            .placement_id = p.placement_id,
-            .anchor = location(owner, p.pin),
-            .fragment = .{ p.col, p.row },
-            .size = .{ p.width, p.height },
-            .target = if (target) |v| .{ .internal = v.key.placement_id.tag == .internal, .id = v.key.placement_id.id } else null,
-            .geometry = geometry,
-            .geometry_error = geometry_error,
-        });
+            try result.append(alloc, .{
+                .image_id = p.image_id,
+                .placement_id = p.placement_id,
+                .anchor = location(owner, p.pin),
+                .fragment = .{ p.col, p.row },
+                .size = .{ p.width, p.height },
+                .target = if (target) |v| .{ .internal = v.key.placement_id.tag == .internal, .id = v.key.placement_id.id } else null,
+                .geometry = geometry,
+                .geometry_error = geometry_error,
+            });
+        }
     }
     return result.toOwnedSlice(alloc);
 }
@@ -208,7 +230,7 @@ fn screen(alloc: Allocator, value: *vt.Screen) ![]Image {
     while (it.next()) |image| : (i += 1) {
         const data = switch (image.data) {
             .complete => |bytes| bytes,
-            .pending => return error.UnsupportedPendingImage,
+            .pending => &.{},
         };
         // Rust's render storage is RGBA. Convert native RGB only at this
         // observation boundary; protocol replies and dimensions remain exact.
@@ -231,7 +253,7 @@ fn screen(alloc: Allocator, value: *vt.Screen) ![]Image {
             .width = image.width,
             .height = image.height,
             .pixels = try hex(alloc, rgba),
-            .displayed_pixels = try hex(alloc, if (anim.current_index == 0) rgba else image.renderData().bytes().?),
+            .displayed_pixels = try hex(alloc, if (anim.current_index == 0) rgba else image.renderData().bytes() orelse &.{}),
             .frames = frames,
             .current_frame = anim.current_index,
             .root_gap_ms = anim.root_gap_ms,

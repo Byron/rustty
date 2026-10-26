@@ -415,6 +415,12 @@ impl Host {
                 self.events.push(observed);
                 return Ok(());
             }
+            Effect::ProgressReset => {
+                return self.record(Effect::Progress {
+                    state: 0,
+                    value: None,
+                });
+            }
             // Unknown-sequence diagnostics are not an external terminal effect.
             Effect::UnknownSequence(_) => return Ok(()),
             _ => return Err("UnsupportedEffect"),
