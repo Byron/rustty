@@ -340,6 +340,7 @@ impl App {
             for id in &window_ids {
                 self.open_window(event_loop, *id)?;
             }
+            self.refresh_directory_labels();
             for window in self.workspace.windows.clone() {
                 let key = self
                     .windows

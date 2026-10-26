@@ -430,8 +430,13 @@ unassigned tabs use the macOS system accent with the same bleed and frame tint.
 Inactive tabs and directory labels underline running commands, while `▶` counts panes explicitly reporting work
 through a leading activity spinner or progress report. Waiting-for-input titles
 do not count as active work. Each pane can trigger a short completion flash even
-while another pane remains busy. Quadrants share one directory label when every
-pane has the same basename; differing or missing directories keep individual labels.
+while another pane remains busy. Directory labels normally use the basename.
+When different paths share that basename, labels include the shortest parent suffix
+that distinguishes them, such as `work/project` and `fork/project`. Names are shared
+across terminal badges, the outliner, breadcrumbs, pins, and panel search, with
+unopened tabs included. Paths are compared lexically, without filesystem lookups.
+Quadrants share one label when all their panels have the same resolved directory
+name; differing or missing directories keep individual labels.
 Focusing a shared-name quad keeps sibling names hidden; small activity, attention,
 and completion badges remain visible. Single-panel quads keep the same label size
 when focused. Labels participate in the content fade during zoom transitions.

@@ -441,6 +441,7 @@ impl Smoke {
                 .and_then(|_| check_tab_frame(app, event_loop, &mut host, &self.directory));
             app.windows.insert(key, host);
             result?;
+            check_directory_labels(app, event_loop, &self.directory)?;
             check_tmuxx_management(app, event_loop, &self.directory)?;
             if std::env::var_os("RUSTTY_SMOKE_DECK").is_some() {
                 super::deck_host::check_native_deck(app, event_loop)?;
@@ -461,6 +462,7 @@ impl Smoke {
                     "tmuxx-fit-window",
                     "tmuxx-secondary-selection",
                     "tmuxx-disconnected-input",
+                    "workspace-directory-labels",
                 ]
                 .map(serde_json::Value::from),
             );
@@ -1029,6 +1031,8 @@ fn check_zoom_animations(
         app.loaded.config.zoom_animation_duration,
         app.loaded.config.zoom_from_quad_animation_duration,
     );
+    // The fixture's split actions bypass the normal event/reconcile boundary.
+    app.refresh_directory_labels();
     app.draw(event_loop, host)?;
     let mut saved = Vec::new();
     for id in original.pane_ids() {
@@ -1113,6 +1117,7 @@ fn check_zoom_animations(
             app.panes.get_mut(id).unwrap().cwd =
                 fixture_directory().join(format!("zoom-panel-{id}"));
         }
+        app.refresh_directory_labels();
         app.draw(event_loop, host)?;
         for name in ["nested-labels-in", "nested-labels-out"] {
             check_zoom_transition(
@@ -1130,6 +1135,7 @@ fn check_zoom_animations(
         for (id, _, cwd) in &saved {
             app.panes.get_mut(id).unwrap().cwd = cwd.clone();
         }
+        app.refresh_directory_labels();
         app.draw(event_loop, host)?;
         for enter in [true, false] {
             check_zoom_transition(
@@ -1180,6 +1186,7 @@ fn check_zoom_animations(
         *pane.session.terminal()? = terminal;
         host.prepared.remove(&id);
     }
+    app.refresh_directory_labels();
     app.draw(event_loop, host)?;
     result?;
     eprintln!(
@@ -1413,7 +1420,7 @@ fn check_zoom_transition(
             let mut labels = 0;
             for visual in visuals.iter().filter(|pane| !pane.moving) {
                 let label = DirectoryLabel::new(
-                    directory_name(&app.panes[&visual.id].cwd),
+                    app.directory_labels.get(&visual.id).cloned(),
                     false,
                     host.focused,
                     false,
@@ -1459,6 +1466,169 @@ fn check_zoom_transition(
         return Err(format!("{name} did not settle at its final dimensions").into());
     }
     Ok(())
+}
+
+fn check_directory_labels(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    directory: &Path,
+) -> Result<()> {
+    let first = app
+        .workspace
+        .windows
+        .iter()
+        .filter(|window| !window.quick)
+        .flat_map(|window| &window.tabs)
+        .flat_map(|tab| tab.panes.keys())
+        .copied()
+        .find(|id| app.panes.get(id).is_some_and(|pane| !pane.exited))
+        .ok_or("directory label fixture has no live pane")?;
+    let original_active = app.active;
+    let original_directory = app.panes[&first].cwd.clone();
+    let original_report = app.panes[&first].last_directory_report.clone();
+    let original_terminal_directory = app.panes[&first]
+        .session
+        .terminal()?
+        .working_directory
+        .clone();
+    let other = app.add_window(false);
+    app.reconcile(event_loop);
+    let second = app
+        .focused(other)
+        .ok_or("directory label fixture has no second pane")?;
+    let unopened = app.workspace.id();
+    let unopened_tab = app.workspace.id();
+    let left = directory.join("directory-labels/left/project");
+    let right = directory.join("directory-labels/right/project");
+    app.panes.get_mut(&first).unwrap().cwd = left.clone();
+    app.panes.get_mut(&second).unwrap().cwd = directory.join("directory-labels/unique");
+    app.workspace
+        .windows
+        .iter_mut()
+        .find(|window| window.id == other)
+        .unwrap()
+        .tabs
+        .push(Tab::new(unopened_tab, unopened, right.clone()));
+    let check = |app: &App, id, expected: &str| -> Result<()> {
+        if app.directory_labels.get(&id).map(String::as_str) != Some(expected) {
+            return Err(format!(
+                "pane {id} label was {:?}, expected {expected}",
+                app.directory_labels.get(&id)
+            )
+            .into());
+        }
+        let target = outliner::Target::Pane {
+            tab: app
+                .workspace
+                .windows
+                .iter()
+                .flat_map(|window| &window.tabs)
+                .find(|tab| tab.panes.contains_key(&id))
+                .unwrap()
+                .id,
+            pane: id,
+        };
+        if !app
+            .outline_rows()
+            .iter()
+            .any(|row| row.target == target && row.label == expected)
+        {
+            return Err("Outliner did not use the workspace directory label".into());
+        }
+        let window = app
+            .workspace
+            .windows
+            .iter()
+            .find(|window| window.tabs.iter().any(|tab| tab.panes.contains_key(&id)))
+            .unwrap();
+        let tab = window
+            .tabs
+            .iter()
+            .find(|tab| tab.panes.contains_key(&id))
+            .unwrap();
+        let mut selected = tab.clone();
+        selected.focused = id;
+        if !outliner::breadcrumb(&selected, &app.directory_labels)
+            .iter()
+            .any(|row| row.target == target && row.label == expected)
+        {
+            return Err("breadcrumb did not use the workspace directory label".into());
+        }
+        if tab.root.quadrant(id) == Some(id) {
+            let host = app
+                .windows
+                .values()
+                .find(|host| host.id == window.id)
+                .unwrap();
+            if app
+                .quadrant_label(tab, host, id, None, true)
+                .map(|label| label.name)
+                .as_deref()
+                != Some(expected)
+            {
+                return Err("quad badge did not use the workspace directory label".into());
+            }
+        }
+        Ok(())
+    };
+    let result = (|| -> Result<()> {
+        app.reconcile(event_loop);
+        if app.panes.contains_key(&unopened) {
+            return Err("resolving directory labels started an unopened tab".into());
+        }
+        let left_name = Path::new("left")
+            .join("project")
+            .to_string_lossy()
+            .into_owned();
+        let right_name = Path::new("right")
+            .join("project")
+            .to_string_lossy()
+            .into_owned();
+        check(app, first, &left_name)?;
+        check(app, unopened, &right_name)?;
+        let retained_name = app.directory_labels[&first].as_ptr();
+        app.refresh_directory_labels();
+        if app.directory_labels[&first].as_ptr() != retained_name {
+            return Err("unchanged directory labels replaced their cached names".into());
+        }
+        app.workspace
+            .windows
+            .iter_mut()
+            .find(|window| window.id == other)
+            .unwrap()
+            .tabs
+            .retain(|tab| tab.id != unopened_tab);
+        app.reconcile(event_loop);
+        check(app, first, "project")?;
+        app.panes.get_mut(&second).unwrap().cwd = right.clone();
+        app.refresh_directory_labels();
+        check(app, first, &left_name)?;
+        check(app, second, &right_name)?;
+        for (path, first_name, second_name) in [
+            (&right, "project", "project"),
+            (&left, left_name.as_str(), right_name.as_str()),
+        ] {
+            app.panes[&first]
+                .session
+                .terminal()?
+                .feed(format!("\x1b]7;{}\x07", path.display()).as_bytes());
+            app.drain(event_loop, first);
+            if app.panes[&first].cwd != *path {
+                return Err("same-basename CWD report did not reach the pane".into());
+            }
+            check(app, first, first_name)?;
+            check(app, second, second_name)?;
+        }
+        Ok(())
+    })();
+    let pane = app.panes.get_mut(&first).unwrap();
+    pane.cwd = original_directory;
+    pane.last_directory_report = original_report;
+    pane.session.terminal()?.working_directory = original_terminal_directory;
+    app.workspace.windows.retain(|window| window.id != other);
+    app.active = original_active;
+    app.reconcile(event_loop);
+    result
 }
 
 fn check_tab_frame(
@@ -4939,6 +5109,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
                 .as_bytes(),
         );
     }
+    app.refresh_directory_labels();
     app.windows.insert(key, host);
     let action = |app: &mut App, action| {
         let mut host = app.windows.remove(&key).unwrap();
@@ -5620,6 +5791,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     let point = Pos2::new(40.0, 80.0);
     app.windows.insert(other_key, other_host);
     app.panes.get_mut(&other_pane).unwrap().cwd = fixture_directory().join("remote-search-target");
+    app.refresh_directory_labels();
     app.select_outline_target(Target::Window(window));
     if !app.background_smoke {
         app.windows[&other_key].window.set_minimized(true);
@@ -5793,6 +5965,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     }
     let quick_pane = app.focused(quick).unwrap();
     app.panes.get_mut(&quick_pane).unwrap().cwd = fixture_directory().join("quick-search-target");
+    app.refresh_directory_labels();
     begin_search(app)?;
     type_query(app, "quick-search")?;
     navigate_search(app)?;
