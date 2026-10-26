@@ -850,6 +850,7 @@ struct App {
     state_path: PathBuf,
     resources: Option<PathBuf>,
     panes: HashMap<Id, Pane>,
+    pending_visuals: BTreeMap<Id, Vec<u8>>,
     failed_panes: BTreeMap<Id, String>,
     activity_flashes: HashMap<Id, CompletionFlash>,
     closing: Vec<Session>,
@@ -1076,6 +1077,7 @@ pub fn run() -> Result<()> {
         state_path,
         resources,
         panes: HashMap::new(),
+        pending_visuals: BTreeMap::new(),
         failed_panes: BTreeMap::new(),
         activity_flashes: HashMap::new(),
         closing: Vec::new(),
@@ -1510,7 +1512,18 @@ impl App {
         host: Option<&Host>,
         background: Option<[u8; 3]>,
     ) -> Result<()> {
-        self.spawn_pane_with_visual(id, directory, host, background, None)
+        if self.panes.contains_key(&id) || self.failed_panes.contains_key(&id) {
+            return Ok(());
+        }
+        let visual = self.pending_visuals.remove(&id);
+        let result =
+            self.spawn_pane_with_visual(id, directory, host, background, visual.as_deref());
+        if result.is_err()
+            && let Some(visual) = visual
+        {
+            self.pending_visuals.insert(id, visual);
+        }
+        result
     }
     fn spawn_pane_with_visual(
         &mut self,
@@ -1520,9 +1533,6 @@ impl App {
         background: Option<[u8; 3]>,
         visual: Option<&[u8]>,
     ) -> Result<()> {
-        if self.panes.contains_key(&id) || self.failed_panes.contains_key(&id) {
-            return Ok(());
-        }
         let directory = if self.tmuxx_pane(id).is_some() {
             PathBuf::new()
         } else {
@@ -1588,6 +1598,11 @@ impl App {
                 wake,
             )
         } else {
+            let host = host.or_else(|| {
+                self.windows
+                    .values()
+                    .find(|host| Some(host.id) == pane_window)
+            });
             let (cols, rows) = visual
                 .and(host)
                 .and_then(|host| {
@@ -1780,10 +1795,8 @@ impl App {
             egui.init_accesskit(event_loop, &window, self.proxy.clone());
         }
         if !self.import_selector {
-            for tab in &state.tabs {
-                for (&pane, saved) in &tab.panes {
-                    self.spawn_pane(pane, saved.working_directory.clone(), None, None)?;
-                }
+            for (pane, directory) in startup_panes(&state, self.tmuxx_window(state.id).is_some()) {
+                self.spawn_pane(pane, directory, None, None)?;
             }
         }
         window.set_visible(!quick && !self.background_smoke);
@@ -1925,6 +1938,21 @@ impl App {
         }
     }
     fn write(&mut self, pane: Id, bytes: Vec<u8>) {
+        if !self.panes.contains_key(&pane)
+            && let Some(directory) = self
+                .workspace
+                .windows
+                .iter()
+                .flat_map(|w| &w.tabs)
+                .find_map(|tab| {
+                    tab.panes
+                        .get(&pane)
+                        .map(|saved| saved.working_directory.clone())
+                })
+            && let Err(error) = self.spawn_pane(pane, directory, None, None)
+        {
+            self.errors.push(error.to_string());
+        }
         if let Some(pane) = self.panes.get_mut(&pane)
             && let Err(error) = pane.write(bytes)
         {
@@ -4083,7 +4111,14 @@ impl App {
         }
         self.closing.retain(|session| !session.has_exited());
         self.failed_panes.retain(|id, _| retained.contains(id));
-        for (id, directory) in required {
+        self.pending_visuals.retain(|id, _| retained.contains(id));
+        let startup = self
+            .workspace
+            .windows
+            .iter()
+            .flat_map(|window| startup_panes(window, self.tmuxx_window(window.id).is_some()))
+            .collect::<Vec<_>>();
+        for (id, directory) in startup {
             if let Err(error) = self.spawn_pane(id, directory, None, None) {
                 self.errors.push(error.to_string());
             }
@@ -8083,6 +8118,17 @@ fn window_visible_panes(
         .map_or_else(Vec::new, |tab| tab.visible_panes(peek))
 }
 
+fn startup_panes(window: &WindowState, tmuxx: bool) -> BTreeMap<Id, PathBuf> {
+    window
+        .tabs
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| tmuxx || *index == window.active_tab)
+        .flat_map(|(_, tab)| tab.panes.iter())
+        .map(|(&id, pane)| (id, pane.working_directory.clone()))
+        .collect()
+}
+
 fn initial_visible_panes(window: &WindowState, native: Option<(bool, bool, bool)>) -> Vec<Id> {
     // Normal windows are shown during creation; quick windows start hidden.
     let (visible, occluded, peek) = native.unwrap_or((!window.quick, false, false));
@@ -10485,6 +10531,41 @@ mod tests {
         assert_eq!(
             closes_last_window(&workspace, 100, &Action::CloseWindow),
             quits_with_quick
+        );
+    }
+
+    #[test]
+    fn local_tabs_start_lazily_but_tmuxx_attaches_every_pane() {
+        let mut first = Tab::new(10, 1, PathBuf::from("/tmp"));
+        first.split(2, 3, Direction::Right, PathBuf::from("/tmp"));
+        let mut window = WindowState {
+            id: 100,
+            tabs: vec![first, Tab::new(20, 4, PathBuf::from("/tmp"))],
+            active_tab: 0,
+            frame: [0.0, 0.0, 800.0, 600.0],
+            quick: false,
+        };
+        assert_eq!(
+            startup_panes(&window, false)
+                .keys()
+                .copied()
+                .collect::<Vec<_>>(),
+            [1, 2]
+        );
+        assert_eq!(
+            startup_panes(&window, true)
+                .keys()
+                .copied()
+                .collect::<Vec<_>>(),
+            [1, 2, 4]
+        );
+        window.active_tab = 1;
+        assert_eq!(
+            startup_panes(&window, false)
+                .keys()
+                .copied()
+                .collect::<Vec<_>>(),
+            [4]
         );
     }
 

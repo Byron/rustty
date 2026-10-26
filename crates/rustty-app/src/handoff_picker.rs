@@ -34,7 +34,7 @@ pub(super) fn show(
         ui.heading("Import Saved Session State");
         ui.label("Choose saved session state to restore its windows and terminal contents.");
         ui.label(
-            "Imported panels restore the saved display and scrollback, then start fresh shells.",
+            "Imported panels restore display and scrollback. Local shells start when their tab is opened.",
         );
         ui.add_space(12.0);
         egui::ScrollArea::vertical()
