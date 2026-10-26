@@ -249,12 +249,15 @@ impl App {
         for window in &mut workspace.windows {
             for tab in &mut window.tabs {
                 for (id, saved) in &mut tab.panes {
-                    let pane = self
-                        .panes
-                        .get(id)
-                        .ok_or("A panel has no terminal state to export")?;
-                    pane.update_saved(saved);
-                    let visual = pane.session.capture_visual_state()?;
+                    let visual = if let Some(pane) = self.panes.get(id) {
+                        pane.update_saved(saved);
+                        pane.session.capture_visual_state()?
+                    } else if let Some(visual) = self.pending_visuals.get(id) {
+                        visual.clone()
+                    } else {
+                        let empty = vt::Terminal::new(80, 24, 0);
+                        serde_json::to_vec(&vt::visual::VisualSnapshot::capture(&empty)?)?
+                    };
                     bytes = bytes.saturating_add(visual.len());
                     if bytes > rustty_app::handoff::MAX_DUMP_BYTES as usize {
                         return Err("The exported terminal state exceeds 512 MiB".into());
@@ -302,6 +305,11 @@ impl App {
             }
         }
         let previous_workspace = std::mem::replace(&mut self.workspace, dump.workspace);
+        self.pending_visuals = dump
+            .panels
+            .into_iter()
+            .map(|(id, panel)| (id, panel.visual))
+            .collect();
         let window_ids: Vec<_> = self
             .workspace
             .windows
@@ -322,16 +330,8 @@ impl App {
                 let mut host = self.windows.remove(&key).unwrap();
                 let spawned = (|| {
                     self.draw(event_loop, &mut host)?;
-                    for tab in window.tabs {
-                        for (id, pane) in tab.panes {
-                            self.spawn_pane_with_visual(
-                                id,
-                                pane.working_directory,
-                                Some(&host),
-                                None,
-                                Some(&dump.panels[&id].visual),
-                            )?;
-                        }
+                    for (id, directory) in startup_panes(&window, false) {
+                        self.spawn_pane(id, directory, Some(&host), None)?;
                     }
                     Ok::<_, Box<dyn std::error::Error>>(())
                 })();
@@ -369,6 +369,7 @@ impl App {
                     .remove_window(ViewportId::from_hash_of(id), id, &retained);
             }
             self.panes.clear();
+            self.pending_visuals.clear();
             self.failed_panes.clear();
             self.workspace = previous_workspace;
             self.active = None;

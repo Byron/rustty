@@ -208,6 +208,13 @@ impl Smoke {
         });
         app.tmuxx.push(entry);
         let active = app.active.replace(window);
+        let cold_tab = app.workspace.id();
+        let cold_pane = app.workspace.id();
+        let cold_directory = self.directory.join("unopened-empty");
+        fs::create_dir_all(&cold_directory)?;
+        app.workspace.windows[0]
+            .tabs
+            .push(Tab::new(cold_tab, cold_pane, cold_directory));
         let bytes = app.capture_handoff();
         app.tmuxx[0]
             .mapping
@@ -217,14 +224,16 @@ impl Smoke {
         app.active = active;
         app.tmuxx.pop();
         app.workspace.windows.pop();
+        app.workspace.windows[0].tabs.pop();
 
         let bytes = bytes?;
         let mut dump = Dump::decode(&bytes)?;
         ensure(
             dump.workspace.windows.len() == 1
                 && dump.workspace.windows[0].id == app.workspace.windows[0].id
-                && dump.panels.len() == 1
+                && dump.panels.len() == 2
                 && dump.panels.contains_key(&self.pane.unwrap())
+                && dump.panels.contains_key(&cold_pane)
                 && dump.active_window.is_none(),
             "export retained a tmuxx window, panel, or active-window reference",
         )?;
@@ -258,6 +267,28 @@ impl Smoke {
                 visual: serde_json::to_vec(&vt::visual::VisualSnapshot::capture(&empty)?)?,
             },
         );
+        let dormant_tab = dump.workspace.id();
+        let dormant_pane = dump.workspace.id();
+        let dormant_split = dump.workspace.id();
+        let dormant_second = dump.workspace.id();
+        let dormant_directory = self.directory.join("unopened");
+        fs::create_dir_all(&dormant_directory)?;
+        let mut tab = Tab::new(dormant_tab, dormant_pane, dormant_directory.clone());
+        tab.split(
+            dormant_second,
+            dormant_split,
+            Direction::Right,
+            dormant_directory,
+        );
+        dump.workspace.windows[0].tabs.insert(1, tab);
+        for id in [dormant_pane, dormant_second] {
+            dump.panels.insert(
+                id,
+                Panel {
+                    visual: dump.panels[&self.pane.unwrap()].visual.clone(),
+                },
+            );
+        }
         Ok(rmp_serde::to_vec_named(&dump)?)
     }
 
@@ -348,7 +379,7 @@ impl Smoke {
                 let imported = self.imported.as_ref().unwrap();
                 app.import_handoff(event_loop, &imported.id)?;
                 ensure(
-                    !app.import_selector && app.panes.len() == 3,
+                    !app.import_selector && app.panes.len() == 3 && app.pending_visuals.len() == 3,
                     "import did not open the restored workspace",
                 )?;
                 let state = app.handoff.as_ref().unwrap();
@@ -371,6 +402,28 @@ impl Smoke {
                     {
                         return Ok(false);
                     }
+                }
+                let untouched = app.pending_visuals.clone();
+                for _ in 0..2 {
+                    let exported = Dump::decode(&app.capture_handoff()?)?;
+                    for (id, visual) in &untouched {
+                        ensure(
+                            exported.panels[id].visual == *visual,
+                            "export changed an unopened panel's saved contents",
+                        )?;
+                        let mut display = vt::Terminal::new(80, 24, 1000);
+                        let snapshot: vt::visual::VisualSnapshot = serde_json::from_slice(visual)?;
+                        snapshot.restore_into(&mut display)?;
+                        ensure(
+                            !display.plain_text().contains(vt::visual::RESTORED_MARKER),
+                            "unopened panel accumulated a separator",
+                        )?;
+                    }
+                    app.reconcile(event_loop);
+                    ensure(
+                        app.panes.len() == 3 && app.pending_visuals == untouched,
+                        "export or reconciliation started an inactive tab",
+                    )?;
                 }
                 self.check_directories(app)?;
                 let mut widths = Vec::new();
@@ -486,7 +539,6 @@ impl Smoke {
                         .is_some_and(|link| link.uri == "https://example.org/rustty-handoff"),
                     "import lost its hyperlink",
                 )?;
-                let history_rows = terminal.screen().history_len();
                 let banner = terminal
                     .screen()
                     .all_rows()
@@ -511,13 +563,55 @@ impl Smoke {
                     self.directory.join("selector.png").is_file(),
                     "selector rendering did not produce its capture",
                 )?;
+                app.workspace.windows[0].active_tab = 1;
+                app.reconcile(event_loop);
+                ensure(
+                    app.panes.len() == 5 && app.pending_visuals.len() == 1,
+                    "opening an inactive split tab did not start only its shells",
+                )?;
+                self.stage = 4;
+            }
+            4 => {
+                let tab = &app.workspace.windows[0].tabs[1];
+                for id in tab.panes.keys() {
+                    let terminal = app.panes[id].session.terminal()?;
+                    if !terminal.plain_text().contains(vt::visual::RESTORED_MARKER) {
+                        return Ok(false);
+                    }
+                    ensure(
+                        has_line(&terminal, ALT_OUTPUT),
+                        "lazy startup lost saved display",
+                    )?;
+                }
+                let id = app.workspace.windows[0].tabs[2].focused;
+                #[cfg(target_os = "windows")]
+                app.write(id, b"echo HANDOFF LAZY IN^PUT\r".to_vec());
+                #[cfg(not(target_os = "windows"))]
+                app.write(id, b"printf '\\nHANDOFF LAZY INPUT\\n'\n".to_vec());
+                ensure(
+                    app.panes.len() == 6 && app.pending_visuals.is_empty(),
+                    "explicit input did not start its unopened destination",
+                )?;
+                self.stage = 5;
+            }
+            5 => {
+                let id = app.workspace.windows[0].tabs[2].focused;
+                if !has_line(&*app.panes[&id].session.terminal()?, "HANDOFF LAZY INPUT") {
+                    return Ok(false);
+                }
+                self.check_directories(app)?;
+                let history_rows = app.panes[&self.pane.unwrap()]
+                    .session
+                    .terminal()?
+                    .screen()
+                    .history_len();
                 self.report(serde_json::json!({
                     "passed": true,
                     "renderer": app.painter.description(),
                     "source_pid": self.fixture()?.source_pid,
                     "imported_dump": self.imported.as_ref().unwrap().id,
                     "history_rows": history_rows,
-                    "checks": ["automatic-startup-selector", "startup-without-terminals", "newest-first", "failed-import-keeps-dump", "failed-shell-startup-restores-selector", "lz4-dump", "selector-capture", "workspace-import", "working-directories", "primary-history", "alternate-display", "styles-and-hyperlinks", "fresh-shell-after-marker", "centered-panel-width-marker", "narrow-marker-wraps-without-padding", "blank-panel-omits-marker", "clean-terminal-modes", "import-consumes-only-selected-dump"],
+                    "checks": ["automatic-startup-selector", "startup-without-terminals", "newest-first", "failed-import-keeps-dump", "failed-shell-startup-restores-selector", "lz4-dump", "selector-capture", "workspace-import", "working-directories", "primary-history", "alternate-display", "styles-and-hyperlinks", "fresh-shell-after-marker", "centered-panel-width-marker", "narrow-marker-wraps-without-padding", "blank-panel-omits-marker", "clean-terminal-modes", "import-consumes-only-selected-dump", "unopened-tabs-without-shells", "unchanged-unopened-panel-export", "lazy-tab-activation", "explicit-input-starts-unopened-pane"],
                 }))?;
                 return Ok(true);
             }
@@ -565,7 +659,11 @@ impl Smoke {
                     let saved_directory = fs::canonicalize(&saved.working_directory)?;
                     ensure(
                         saved_directory.starts_with(&directory)
-                            && fs::canonicalize(&app.panes[id].cwd)? == saved_directory,
+                            && if let Some(pane) = app.panes.get(id) {
+                                fs::canonicalize(&pane.cwd)? == saved_directory
+                            } else {
+                                app.pending_visuals.contains_key(id)
+                            },
                         "restoration lost a panel's working directory",
                     )?;
                 }

@@ -558,7 +558,9 @@ retry. A successful import removes only the selected saved session.
 
 Import restores local window/tab/panel layouts, scrollback, and displayed contents,
 including alternate-screen applications. Dumps omit tmuxx windows; reconnect to
-their servers to restore them. Rustty compares each fresh shell's rendered startup
+their servers to restore them. Local tabs start their shells when first selected or explicitly sent input;
+unopened tabs keep their saved displays unchanged, including across another dump.
+Rustty compares each fresh shell's rendered startup
 output with the saved tail. Matching output replaces that tail without a divider
 or duplicate prompt. Different output gets this bold message above it, centered
 in a band of solid Unicode blocks alternating between two subtle shades of the
