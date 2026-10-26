@@ -199,10 +199,7 @@ pub fn selection_press(
     let point = press.point;
     let selection = gesture.press(terminal, press);
     if gesture.click_count() == 2
-        && let Some(link) = links
-            .links(terminal.screen())
-            .into_iter()
-            .find(|link| link.contains(terminal.screen(), point))
+        && let Some(link) = links.link_at(terminal.screen(), point)
     {
         return Some(vt::Selection {
             start: link.start,

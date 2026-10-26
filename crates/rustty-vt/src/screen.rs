@@ -371,6 +371,7 @@ mod tmux_capture_map {
     }
 }
 
+#[derive(Clone)]
 pub struct Rows<'a> {
     pages: &'a PageList,
     front: (usize, usize),
