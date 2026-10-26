@@ -160,49 +160,114 @@ impl Tree {
         }
     }
     pub fn layout(&self, rect: Rect) -> Vec<(Id, Rect)> {
+        self.layout_with_minimum(rect, [0.0; 2])
+    }
+    pub fn layout_with_minimum(&self, rect: Rect, minimum: [f32; 2]) -> Vec<(Id, Rect)> {
         let mut out = Vec::new();
-        self.layout_into(rect, &mut out, false);
+        self.layout_into(rect, &mut out, false, minimum);
         out
     }
-    fn layout_into(&self, rect: Rect, out: &mut Vec<(Id, Rect)>, include_splits: bool) {
+    pub fn minimum_size(&self, pane: [f32; 2]) -> [f32; 2] {
+        match &self.kind {
+            Node::Empty => [0.0; 2],
+            Node::Pane(_) => pane,
+            Node::Split {
+                axis,
+                first,
+                second,
+                ..
+            } => {
+                let a = first.minimum_size(pane);
+                let b = second.minimum_size(pane);
+                match axis {
+                    Axis::Horizontal => [a[0] + b[0], a[1].max(b[1])],
+                    Axis::Vertical => [a[0].max(b[0]), a[1] + b[1]],
+                }
+            }
+        }
+    }
+    fn split_bounds(&self, rect: Rect, minimum: [f32; 2]) -> Option<(f32, Rect, Rect)> {
+        let Node::Split {
+            axis,
+            ratio,
+            first,
+            second,
+        } = &self.kind
+        else {
+            return None;
+        };
+        let a = first.minimum_size(minimum);
+        let b = second.minimum_size(minimum);
+        let (size, first_min, second_min) = match axis {
+            Axis::Horizontal => (rect.width, a[0], b[0]),
+            Axis::Vertical => (rect.height, a[1], b[1]),
+        };
+        let desired = *ratio;
+        let ratio = constrained_ratio(desired, size, first_min, second_min);
+        let constrained = first_min > 0.0 || second_min > 0.0;
+        let fits = constrained && first_min + second_min <= size;
+        // Clamp pixel extents directly so roundoff cannot hide part of the last cell.
+        let position = if fits {
+            (size * desired).clamp(first_min, (size - second_min).max(first_min))
+        } else {
+            size * ratio
+        };
+        let remaining = if constrained {
+            (size - position).max(if fits { second_min } else { 0.0 })
+        } else {
+            size * (1.0 - ratio)
+        };
+        let (a, b) = match axis {
+            Axis::Horizontal => (
+                Rect {
+                    width: position,
+                    ..rect
+                },
+                Rect {
+                    x: rect.x + position,
+                    width: remaining,
+                    ..rect
+                },
+            ),
+            Axis::Vertical => (
+                Rect {
+                    height: position,
+                    ..rect
+                },
+                Rect {
+                    y: rect.y + position,
+                    height: remaining,
+                    ..rect
+                },
+            ),
+        };
+        Some((
+            if constrained && size > 0.0 {
+                position / size
+            } else {
+                ratio
+            },
+            a,
+            b,
+        ))
+    }
+    fn layout_into(
+        &self,
+        rect: Rect,
+        out: &mut Vec<(Id, Rect)>,
+        include_splits: bool,
+        minimum: [f32; 2],
+    ) {
         if include_splits && matches!(self.kind, Node::Split { .. }) {
             out.push((self.id, rect));
         }
         match &self.kind {
             Node::Empty => {}
             Node::Pane(pane) => out.push((*pane, rect)),
-            Node::Split {
-                axis,
-                ratio,
-                first,
-                second,
-            } => {
-                let (a, b) = match axis {
-                    Axis::Horizontal => (
-                        Rect {
-                            width: rect.width * ratio,
-                            ..rect
-                        },
-                        Rect {
-                            x: rect.x + rect.width * ratio,
-                            width: rect.width * (1.0 - ratio),
-                            ..rect
-                        },
-                    ),
-                    Axis::Vertical => (
-                        Rect {
-                            height: rect.height * ratio,
-                            ..rect
-                        },
-                        Rect {
-                            y: rect.y + rect.height * ratio,
-                            height: rect.height * (1.0 - ratio),
-                            ..rect
-                        },
-                    ),
-                };
-                first.layout_into(a, out, include_splits);
-                second.layout_into(b, out, include_splits);
+            Node::Split { first, second, .. } => {
+                let (_, a, b) = self.split_bounds(rect, minimum).unwrap();
+                first.layout_into(a, out, include_splits, minimum);
+                second.layout_into(b, out, include_splits, minimum);
             }
         }
     }
@@ -238,6 +303,7 @@ impl Tree {
             },
             &mut out,
             true,
+            [0.0; 2],
         );
         out
     }
@@ -279,6 +345,19 @@ impl Tree {
         }
     }
     pub fn resize(&mut self, pane: Id, direction: Direction, pixels: f32, bounds: Rect) -> bool {
+        self.resize_with_minimum(pane, direction, pixels, bounds, [0.0; 2])
+    }
+    pub fn resize_with_minimum(
+        &mut self,
+        pane: Id,
+        direction: Direction,
+        pixels: f32,
+        bounds: Rect,
+        minimum: [f32; 2],
+    ) -> bool {
+        let Some((displayed, a, b)) = self.split_bounds(bounds, minimum) else {
+            return false;
+        };
         let Node::Split {
             axis,
             ratio,
@@ -288,27 +367,18 @@ impl Tree {
         else {
             return false;
         };
-        let mut child_bounds = bounds;
         let in_first = first.contains(pane);
         if !in_first && !second.contains(pane) {
             return false;
         }
-        match axis {
-            Axis::Horizontal => {
-                child_bounds.width *= if in_first { *ratio } else { 1.0 - *ratio };
-                if !in_first {
-                    child_bounds.x += bounds.width * *ratio;
-                }
-            }
-            Axis::Vertical => {
-                child_bounds.height *= if in_first { *ratio } else { 1.0 - *ratio };
-                if !in_first {
-                    child_bounds.y += bounds.height * *ratio;
-                }
-            }
-        }
-        let child = if in_first { first } else { second };
-        if child.resize(pane, direction, pixels, child_bounds) {
+        let child = if in_first { &mut *first } else { &mut *second };
+        if child.resize_with_minimum(
+            pane,
+            direction,
+            pixels,
+            if in_first { a } else { b },
+            minimum,
+        ) {
             return true;
         }
         let horizontal = matches!(direction, Direction::Left | Direction::Right);
@@ -325,20 +395,54 @@ impl Tree {
         }
         let delta = pixels / size;
         let positive = matches!(direction, Direction::Right | Direction::Down);
-        *ratio = (*ratio + if positive { delta } else { -delta }).clamp(0.1, 0.9);
+        let desired = (displayed + if positive { delta } else { -delta }).clamp(0.1, 0.9);
+        let index = usize::from(!horizontal);
+        *ratio = constrained_ratio(
+            desired,
+            size,
+            first.minimum_size(minimum)[index],
+            second.minimum_size(minimum)[index],
+        )
+        .clamp(0.01, 0.99);
         true
     }
     pub fn set_ratio(&mut self, id: Id, value: f32) -> bool {
+        self.set_ratio_with_minimum(id, value, Rect::UNIT, [0.0; 2])
+    }
+    /// The bounds belong to the displayed divider, including when its subtree is zoomed.
+    pub fn set_ratio_with_minimum(
+        &mut self,
+        id: Id,
+        value: f32,
+        bounds: Rect,
+        minimum: [f32; 2],
+    ) -> bool {
         if !value.is_finite() {
             return false;
         }
         match &mut self.kind {
-            Node::Split { ratio, .. } if self.id == id => {
-                *ratio = value.clamp(0.1, 0.9);
+            Node::Split {
+                axis,
+                ratio,
+                first,
+                second,
+            } if self.id == id => {
+                let (size, index) = match axis {
+                    Axis::Horizontal => (bounds.width, 0),
+                    Axis::Vertical => (bounds.height, 1),
+                };
+                *ratio = constrained_ratio(
+                    value.clamp(0.1, 0.9),
+                    size,
+                    first.minimum_size(minimum)[index],
+                    second.minimum_size(minimum)[index],
+                )
+                .clamp(0.01, 0.99);
                 true
             }
             Node::Split { first, second, .. } => {
-                first.set_ratio(id, value) || second.set_ratio(id, value)
+                first.set_ratio_with_minimum(id, value, bounds, minimum)
+                    || second.set_ratio_with_minimum(id, value, bounds, minimum)
             }
             _ => false,
         }
@@ -350,15 +454,26 @@ impl Tree {
         point: [f32; 2],
         tolerance: f32,
     ) -> Option<(Id, Axis, Rect)> {
+        self.divider_at_with_minimum(bounds, point, tolerance, [0.0; 2])
+    }
+    pub fn divider_at_with_minimum(
+        &self,
+        bounds: Rect,
+        point: [f32; 2],
+        tolerance: f32,
+        minimum: [f32; 2],
+    ) -> Option<(Id, Axis, Rect)> {
         let mut nodes = Vec::new();
-        self.layout_into(bounds, &mut nodes, true);
+        self.layout_into(bounds, &mut nodes, true, minimum);
         nodes.into_iter().rev().find_map(|(id, rect)| {
-            let Node::Split { axis, ratio, .. } = self.node(id)?.kind else {
+            let node = self.node(id)?;
+            let Node::Split { axis, .. } = node.kind else {
                 return None;
             };
+            let (_, first, _) = node.split_bounds(rect, minimum)?;
             let near = match axis {
-                Axis::Horizontal => (point[0] - rect.x - rect.width * ratio).abs() <= tolerance,
-                Axis::Vertical => (point[1] - rect.y - rect.height * ratio).abs() <= tolerance,
+                Axis::Horizontal => (point[0] - first.x - first.width).abs() <= tolerance,
+                Axis::Vertical => (point[1] - first.y - first.height).abs() <= tolerance,
             };
             (rect.contains(point) && near).then_some((id, axis, rect))
         })
@@ -391,6 +506,16 @@ impl Tree {
         }
         find(self, pane, false, false)
     }
+}
+
+fn constrained_ratio(ratio: f32, size: f32, first: f32, second: f32) -> f32 {
+    if size <= 0.0 {
+        return ratio;
+    }
+    if first + second > size {
+        return first / (first + second);
+    }
+    ratio.clamp(first / size, (1.0 - second / size).max(first / size))
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -538,6 +663,15 @@ impl Tab {
             .collect()
     }
     pub fn layout(&self, rect: Rect, peek: bool, cell_height: f32) -> Vec<(Id, Rect)> {
+        self.layout_with_minimum(rect, peek, cell_height, [0.0; 2])
+    }
+    pub fn layout_with_minimum(
+        &self,
+        rect: Rect,
+        peek: bool,
+        cell_height: f32,
+        minimum: [f32; 2],
+    ) -> Vec<(Id, Rect)> {
         if !peek
             && let Some(view) = &self.server_view
             && let Some([cols, rows]) = self.server_size
@@ -586,7 +720,14 @@ impl Tab {
         {
             return vec![(id, rect)];
         }
-        let mut layout = self.visible_tree(peek).layout(rect);
+        let mut layout = self.visible_tree(peek).layout_with_minimum(
+            rect,
+            if self.server_size.is_some() {
+                [0.0; 2]
+            } else {
+                minimum
+            },
+        );
         if (peek || self.zoom.is_none())
             && let Some([cols, rows]) = self.server_size
         {
@@ -1636,6 +1777,135 @@ mod tests {
     }
 
     #[test]
+    fn nested_split_minima_preserve_ratios_and_follow_geometry_changes() {
+        let mut tree = Tree::leaf(1);
+        tree.split(1, 2, 3, Direction::Right);
+        tree.split(1, 4, 5, Direction::Right);
+        tree.set_ratio(3, 0.1);
+        tree.set_ratio(5, 0.1);
+        let bounds = Rect {
+            width: 300.0,
+            height: 150.0,
+            ..Rect::UNIT
+        };
+        let desired = tree.layout(bounds);
+        for minimum in [[30.0, 40.0], [45.0, 65.0], [30.0, 40.0]] {
+            let layout = tree.layout_with_minimum(bounds, minimum);
+            assert!(
+                layout
+                    .iter()
+                    .all(|(_, r)| r.width >= minimum[0] && r.height >= minimum[1]),
+                "{layout:?}"
+            );
+            assert!(
+                (layout.iter().map(|(_, r)| r.width).sum::<f32>() - bounds.width).abs() < 0.001
+            );
+            assert_eq!(tree.layout(bounds), desired);
+        }
+        let grown = Rect {
+            width: 4000.0,
+            ..bounds
+        };
+        assert_eq!(
+            tree.layout_with_minimum(grown, [30.0, 40.0]),
+            tree.layout(grown)
+        );
+        for width in [0.0, 1.0, 20.0] {
+            let tiny = Rect { width, ..bounds };
+            assert!(
+                tree.layout_with_minimum(tiny, [30.0, 40.0])
+                    .iter()
+                    .all(|(_, r)| r.width.is_finite() && r.width >= 0.0)
+            );
+        }
+    }
+
+    #[test]
+    fn constrained_dividers_and_keyboard_resizes_use_the_visible_position() {
+        let mut tree = Tree::leaf(1);
+        tree.split(1, 2, 3, Direction::Right);
+        tree.set_ratio(3, 0.1);
+        let bounds = Rect {
+            width: 100.0,
+            height: 80.0,
+            ..Rect::UNIT
+        };
+        let minimum = [30.0, 40.0];
+        assert!(
+            tree.divider_at_with_minimum(bounds, [10.0, 20.0], 1.0, minimum)
+                .is_none()
+        );
+        assert_eq!(
+            tree.divider_at_with_minimum(bounds, [30.0, 20.0], 1.0, minimum)
+                .unwrap()
+                .0,
+            3
+        );
+        assert!(tree.resize_with_minimum(1, Direction::Right, 10.0, bounds, minimum));
+        assert!((tree.layout_with_minimum(bounds, minimum)[0].1.width - 40.0).abs() < 0.001);
+        for (ratio, width) in [(-100.0, 30.0), (100.0, 70.0)] {
+            assert!(tree.set_ratio_with_minimum(3, ratio, bounds, minimum));
+            assert!((tree.layout(bounds)[0].1.width - width).abs() < 0.001);
+        }
+        assert!(tree.resize_with_minimum(1, Direction::Left, 10000.0, bounds, minimum));
+        assert!((tree.layout(bounds)[0].1.width - 30.0).abs() < 0.001);
+        let grown = Rect {
+            width: 1000.0,
+            ..bounds
+        };
+        assert!((tree.layout_with_minimum(grown, minimum)[0].1.width - 300.0).abs() < 0.001);
+        assert!(!tree.resize_with_minimum(1, Direction::Left, f32::NAN, bounds, minimum));
+        tree.set_ratio(3, 0.9);
+        let fractional = Rect {
+            width: 63.0,
+            ..bounds
+        };
+        assert_eq!(
+            tree.layout_with_minimum(fractional, minimum)[1].1.width,
+            30.0
+        );
+    }
+
+    #[test]
+    fn local_minima_do_not_change_server_owned_geometry() {
+        let mut tab = Tab::new(10, 1, PathBuf::from("/tmp"));
+        tab.split(2, 3, Direction::Right, PathBuf::from("/tmp"));
+        tab.root.set_ratio(3, 0.1);
+        tab.server_size = Some([100, 40]);
+        let bounds = Rect {
+            width: 100.0,
+            height: 80.0,
+            ..Rect::UNIT
+        };
+        assert_eq!(
+            tab.layout_with_minimum(bounds, false, 10.0, [40.0, 40.0]),
+            tab.layout(bounds, false, 10.0)
+        );
+    }
+
+    #[test]
+    fn dragging_a_zoomed_subtree_uses_its_visible_parent_bounds() {
+        let mut tree = Tree::leaf(1);
+        tree.split(1, 2, 3, Direction::Right);
+        tree.split(1, 4, 5, Direction::Right);
+        let bounds = Rect {
+            width: 300.0,
+            height: 100.0,
+            ..Rect::UNIT
+        };
+        let minimum = [100.0, 20.0];
+        let (divider, _, parent) = tree
+            .node(5)
+            .unwrap()
+            .divider_at_with_minimum(bounds, [150.0, 30.0], 1.0, minimum)
+            .unwrap();
+        assert!(tree.set_ratio_with_minimum(divider, 0.9, parent, minimum));
+        let visible = tree.node(5).unwrap().layout_with_minimum(bounds, minimum);
+        assert!((visible[0].1.width - 200.0).abs() < 0.001, "{visible:?}");
+        assert!((visible[1].1.width - 100.0).abs() < 0.001, "{visible:?}");
+    }
+
+    #[test]
     fn equalize_aligns_quadrants_independently_of_their_interiors() {
         for transpose in [false, true] {
             let (right, down) = if transpose {
@@ -1668,7 +1938,7 @@ mod tests {
                 quadrants
             );
             let mut layout = Vec::new();
-            tree.layout_into(Rect::UNIT, &mut layout, true);
+            tree.layout_into(Rect::UNIT, &mut layout, true, [0.0; 2]);
             let rects: BTreeMap<_, _> = layout.iter().copied().collect();
             let check = |id, [x, y, width, height]: [f32; 4]| {
                 let expected = if transpose {
@@ -1702,7 +1972,7 @@ mod tests {
             }
             tree.equalize();
             let mut repeated = Vec::new();
-            tree.layout_into(Rect::UNIT, &mut repeated, true);
+            tree.layout_into(Rect::UNIT, &mut repeated, true, [0.0; 2]);
             assert_eq!(layout, repeated);
         }
     }

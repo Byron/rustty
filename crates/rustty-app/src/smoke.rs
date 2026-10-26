@@ -1218,10 +1218,11 @@ fn check_zoom_transition(
     let tab = app.tab(host.id).unwrap();
     let scale = host.window.scale_factor() as f32;
     let metrics = host.fonts.metrics();
-    for (id, rect) in tab.layout(
+    for (id, rect) in tab.layout_with_minimum(
         host.content,
         host.peek.is_some(),
         metrics.cell_height as f32 / scale,
+        app.split_minimum(host),
     ) {
         let size = pane_grid_size(
             Vec2::new(rect.width - 2.0, rect.height - 2.0),
@@ -1376,12 +1377,14 @@ fn check_zoom_transition(
         if name.starts_with("nested-labels-") {
             let tab = app.tab(host.id).unwrap();
             let config = app.window_config(host.id);
+            let minimum = app.split_minimum(host);
             // Reuse the drawn frame's time so this probe cannot cross the midpoint.
             let visuals = host.zoom_animation.update(
                 tab,
                 host.peek.is_some(),
                 host.content,
                 metrics.cell_height as f32 / scale,
+                minimum,
                 scale,
                 config,
                 true,
