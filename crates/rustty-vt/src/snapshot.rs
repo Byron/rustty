@@ -3,6 +3,7 @@
 //! The encoder streams active rows before history. Decode budgets bound record
 //! sizes and the total cells restored. Native PAGE capacities bound style
 //! admission, grapheme suffix storage and live hyperlink string ownership.
+//! Unknown optional records are skipped after validating their size and CRC.
 //! Version 1 excludes graphics and selection.
 //! Physical PAGE widths are preserved on restore and during in-bounds edits.
 //! Column resizes reflow them; edits beyond a narrow row extend it safely.
@@ -765,18 +766,35 @@ impl<R: Read> Decoder<R> {
         self.source
     }
     fn record(&mut self, expected: u16) -> io::Result<Vec<u8>> {
-        let mut header = [0u8; 10];
-        self.source.read_exact(&mut header)?;
-        let tag = u16::from_le_bytes(header[..2].try_into().unwrap());
-        if tag != expected {
-            return Err(invalid("unexpected snapshot record tag"));
-        }
-        let len = u32::from_le_bytes(header[2..6].try_into().unwrap()) as usize;
-        if len > self.options.max_record_bytes
-            || tag == 7 && len > self.options.max_continuation_bytes
-        {
-            return Err(invalid("snapshot record exceeds allocation policy"));
-        }
+        let (header, len) = loop {
+            let mut header = [0u8; 10];
+            self.source.read_exact(&mut header)?;
+            let tag = u16::from_le_bytes(header[..2].try_into().unwrap());
+            let len = u32::from_le_bytes(header[2..6].try_into().unwrap()) as usize;
+            if len > self.options.max_record_bytes
+                || tag == 7 && len > self.options.max_continuation_bytes
+            {
+                return Err(invalid("snapshot record exceeds allocation policy"));
+            }
+            if (1..=7).contains(&tag) {
+                if tag != expected {
+                    return Err(invalid("unexpected snapshot record tag"));
+                }
+                break (header, len);
+            }
+            let mut remaining = len;
+            let mut buffer = [0; 8192];
+            let mut actual = crc32c::crc32c(&header[..6]);
+            while remaining > 0 {
+                let count = remaining.min(buffer.len());
+                self.source.read_exact(&mut buffer[..count])?;
+                actual = crc32c::crc32c_append(actual, &buffer[..count]);
+                remaining -= count;
+            }
+            if actual != u32::from_le_bytes(header[6..].try_into().unwrap()) {
+                return Err(invalid("snapshot checksum mismatch"));
+            }
+        };
         let mut payload = Vec::new();
         payload
             .try_reserve_exact(len)
