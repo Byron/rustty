@@ -695,6 +695,24 @@ struct DirectoryBadge {
     accent: TabAccent,
 }
 impl DirectoryBadge {
+    fn paint_status(mut self, ui: &egui::Ui) -> bool {
+        self.label.name = if self.attention {
+            "●"
+        } else if self.active {
+            "▶"
+        } else if self.flash > 0.0 {
+            "✓"
+        } else {
+            return false;
+        }
+        .into();
+        self.attention = false;
+        self.centered = false;
+        self.shared = false;
+        self.paint(ui);
+        true
+    }
+
     fn paint(self, ui: &egui::Ui) {
         let [r, g, b] = self.accent.background;
         let accent = Color32::from_rgb(r, g, b);
@@ -2921,7 +2939,7 @@ impl App {
                     && let Some(host) = self.windows.values().find(|host| host.id == window.id)
                     && self
                         .quadrant_label(tab, host, quadrant, host.peek, false)
-                        .is_some()
+                        .is_some_and(|label| !label.focused || host.peek.is_some())
                 {
                     self.activity_flashes
                         .entry(quadrant)
@@ -2953,7 +2971,8 @@ impl App {
                 .map(|id| self.panes.get(id).map(|pane| pane.cwd.as_path())),
         );
         let focused = peek.map_or(tab.focused, |peek| peek.target);
-        DirectoryLabel::new(name, node.contains(focused), host.focused, peek.is_some())
+        // Eligibility does not depend on whether focus hides the aggregate.
+        DirectoryLabel::new(name, node.contains(focused), host.focused, true)
     }
 
     fn flash_opacity(&self, id: Id, now: Instant, deadline: &mut Option<Instant>) -> f32 {
@@ -5535,7 +5554,7 @@ impl App {
                                 .or_insert(rect);
                         }
                     }
-                    let mut shared_labels = HashSet::new();
+                    let mut shared_labels = HashMap::new();
                     for (id, bounds) in quadrants {
                         let members = active.root.node(id).unwrap().panes();
                         let retained = host.zoom_animation.is_running()
@@ -5567,7 +5586,9 @@ impl App {
                                 }
                             }
                             if let Some(label) = self.quadrant_label(active, host, id, peek, retained) {
-                                shared_labels.extend(members.iter().copied());
+                                let visible = !label.focused || peek.is_some();
+                                shared_labels.extend(members.iter().copied().filter(|pane| label.suppresses_panel_name(*pane == focused, peek.is_some())).map(|pane| (pane, visible)));
+                                if !visible { return; }
                                 DirectoryBadge {
                                     label,
                                     bounds,
@@ -5602,25 +5623,31 @@ impl App {
                                 selected,
                                 host.focused,
                                 host.focus_hint.visible(id, now),
-                            ).filter(|_| !shared_labels.contains(&id)) {
+                            ).filter(|_| shared_labels.get(&id) != Some(&true)) {
                                 let centered = label.centered_in_pane(active, id, visual.label_quadrant);
                                 let flash = if label.shows_flash(true, false) {
                                     self.flash_opacity(id, now, &mut animation_deadline)
                                 } else {
                                     0.0
                                 };
-                                DirectoryBadge {
+                                let badge = DirectoryBadge {
                                     label,
                                     bounds,
                                     centered,
-                                    shared: false,
+                                    shared: active.root.quadrant(id) == Some(id),
                                     pinned,
                                     flash,
                                     accent: tab_accent,
                                     active: pane.activity.is_active(),
                                     attention: pane.unseen,
+                                };
+                                if shared_labels.contains_key(&id) {
+                                    if !badge.paint_status(ui) && pinned {
+                                        paint_panel_pin(ui, id, bounds);
+                                    }
+                                } else {
+                                    badge.paint(ui);
                                 }
-                                .paint(ui);
                             } else if pinned {
                                 paint_panel_pin(ui, id, bounds);
                             }
@@ -10213,6 +10240,151 @@ mod tests {
                     } else {
                         context.global_style().visuals.widgets.inactive.bg_fill
                     }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn singleton_directory_badges_keep_their_size_and_position_on_focus() {
+        let context = egui::Context::default();
+        configure_ui_fonts(&context);
+        let bounds = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 240.0));
+        let mut original = None;
+        for (selected, window_focused) in [(false, true), (true, true), (true, false)] {
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(bounds),
+                    ..Default::default()
+                },
+                |ui| {
+                    DirectoryBadge {
+                        label: DirectoryLabel::new(
+                            Some("rustty".into()),
+                            selected,
+                            window_focused,
+                            true,
+                        )
+                        .unwrap(),
+                        bounds,
+                        centered: true,
+                        shared: true,
+                        active: false,
+                        attention: false,
+                        pinned: false,
+                        flash: 0.0,
+                        accent: TabAccent::new(Some([230, 185, 60]), [0; 3]),
+                    }
+                    .paint(ui);
+                },
+            );
+            output.textures_delta.clear();
+            let text = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) => Some(text),
+                    _ => None,
+                })
+                .unwrap();
+            let badge = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect) => Some(rect.rect),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(text.galley.job.sections[0].format.font_id.size, 22.0);
+            assert_eq!(badge.center(), bounds.center());
+            let geometry = (badge, text.pos, text.galley.size());
+            assert_eq!(*original.get_or_insert(geometry), geometry);
+        }
+    }
+
+    #[test]
+    fn suppressed_directory_badges_preserve_status_and_pins_without_repeating_names() {
+        let context = egui::Context::default();
+        configure_ui_fonts(&context);
+        let bounds = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 240.0));
+        let accent = TabAccent::new(Some([230, 185, 60]), [0; 3]);
+        for pinned in [false, true] {
+            for (attention, active, flash, expected) in [
+                (false, false, 0.0, None),
+                (true, false, 0.0, Some("●")),
+                (false, true, 0.0, Some("▶")),
+                (false, false, 0.75, Some("✓")),
+                (true, true, 0.75, Some("●")),
+                (false, true, 0.75, Some("▶")),
+            ] {
+                let mut output = context.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(bounds),
+                        ..Default::default()
+                    },
+                    |ui| {
+                        let painted = DirectoryBadge {
+                            label: DirectoryLabel::new(
+                                Some("hidden duplicate directory name".into()),
+                                false,
+                                true,
+                                false,
+                            )
+                            .unwrap(),
+                            bounds,
+                            centered: true,
+                            shared: true,
+                            active,
+                            attention,
+                            pinned,
+                            flash,
+                            accent,
+                        }
+                        .paint_status(ui);
+                        assert_eq!(painted, expected.is_some());
+                        if !painted && pinned {
+                            paint_panel_pin(ui, 1, bounds);
+                        }
+                    },
+                );
+                output.textures_delta.clear();
+                let texts: Vec<_> = output
+                    .shapes
+                    .iter()
+                    .filter_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) => Some(text),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(texts.len(), usize::from(expected.is_some()));
+                if let Some(expected) = expected {
+                    let text = texts[0];
+                    assert_eq!(text.galley.job.text, expected);
+                    assert_eq!(
+                        text.galley.job.sections[0].format.underline.width,
+                        if active { 1.0 } else { 0.0 }
+                    );
+                    let badge = output
+                        .shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Rect(rect) => Some(rect.rect),
+                            _ => None,
+                        })
+                        .unwrap();
+                    assert_eq!(badge.right(), bounds.right() - 8.0);
+                    assert_eq!(badge.top(), bounds.top() + 8.0);
+                    if flash > 0.0 {
+                        assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
+                            egui::Shape::Rect(rect) if rect.fill == Color32::from_rgb(230, 185, 60).gamma_multiply(flash))));
+                    }
+                }
+                assert_eq!(
+                    output
+                        .shapes
+                        .iter()
+                        .any(|shape| matches!(shape.shape, egui::Shape::Path(_))),
+                    pinned
                 );
             }
         }

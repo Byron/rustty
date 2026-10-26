@@ -432,6 +432,9 @@ through a leading activity spinner or progress report. Waiting-for-input titles
 do not count as active work. Each pane can trigger a short completion flash even
 while another pane remains busy. Quadrants share one directory label when every
 pane has the same basename; differing or missing directories keep individual labels.
+Focusing a shared-name quad keeps sibling names hidden; small activity, attention,
+and completion badges remain visible. Single-panel quads keep the same label size
+when focused. Labels participate in the content fade during zoom transitions.
 
 The tab color menu offers the current theme's palette, background, and foreground,
 plus softer shades blended toward the theme background and higher-contrast shades

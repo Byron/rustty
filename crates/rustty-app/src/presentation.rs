@@ -340,6 +340,11 @@ impl DirectoryLabel {
         self.selected || large_inactive
     }
 
+    /// A hidden focused aggregate leaves room for its focused pane's hint only.
+    pub fn suppresses_panel_name(&self, panel_selected: bool, peek: bool) -> bool {
+        !self.focused || peek || !panel_selected
+    }
+
     pub fn centered_in_pane(&self, tab: &Tab, pane: Id, quadrant: Option<Id>) -> bool {
         self.large(quadrant.is_some() && tab.root.quadrant(pane) == quadrant)
     }
@@ -688,6 +693,36 @@ mod tests {
         assert!(label.shows_activity(true));
         assert!(!label.shows_activity(false));
         assert!(label.shows_flash(true, false));
+    }
+
+    #[test]
+    fn shared_directory_labels_suppress_duplicates_without_consuming_the_focus_hint() {
+        for (quad_selected, window_focused, peek, panel_selected, suppressed) in [
+            (true, true, false, false, true),
+            (true, true, false, true, false),
+            (true, true, true, false, true),
+            (true, true, true, true, true),
+            (true, false, false, false, true),
+            (true, false, false, true, true),
+            (false, true, false, false, true),
+            (false, true, false, true, true),
+            (false, false, false, true, true),
+        ] {
+            let label =
+                DirectoryLabel::new(Some("project".into()), quad_selected, window_focused, true)
+                    .unwrap();
+            assert_eq!(
+                label.suppresses_panel_name(panel_selected, peek),
+                suppressed,
+                "quad_selected={quad_selected}, window_focused={window_focused}, peek={peek}, panel_selected={panel_selected}",
+            );
+        }
+        for hint in [false, true] {
+            assert_eq!(
+                DirectoryLabel::new(Some("project".into()), true, true, hint).is_some(),
+                hint,
+            );
+        }
     }
 
     #[test]
