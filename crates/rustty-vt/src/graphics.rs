@@ -674,7 +674,14 @@ impl Graphics {
         self.images.values().map(Image::bytes).sum()
     }
     pub(crate) fn discard_row(&mut self, row: u64) {
-        self.placements.retain(|p| p.row != row);
+        let before = self.placements.len();
+        self.placements
+            .retain(|p| p.row != row || p.virtual_placement || p.parent.is_some());
+        if before != self.placements.len() {
+            self.reap_orphans();
+            self.generation = self.generation.wrapping_add(1);
+            self.sync_quota();
+        }
     }
 
     fn reap_orphans(&mut self) -> HashSet<u32> {
@@ -2449,6 +2456,30 @@ mod tests {
         assert_eq!(t.graphics().placements.len(), 2);
         t.feed(b"\x1b_Ga=t,i=1,f=32,s=1,v=1;AQID/w==\x1b\\");
         assert!(t.graphics().placements.is_empty());
+    }
+
+    #[test]
+    fn erased_history_releases_placement_quota_and_keeps_source_pixels() {
+        let mut terminal = Terminal::new(10, 3, 100);
+        let quota = quota::Quota::default();
+        terminal.set_tmux_image_quota(quota.clone());
+        for id in [1, 2] {
+            terminal.feed(format!("\x1b_Ga=t,i={id},f=32,s=1,v=1,q=2;AQID/w==\x1b\\").as_bytes());
+        }
+        terminal.feed(b"\x1b_Ga=p,i=1,p=1,c=1,r=1,C=1,q=2\x1b\\");
+        terminal.feed(b"\x1b[2;1H\x1b_Ga=p,i=2,p=1,P=1,Q=1,c=1,r=1,C=1,q=2\x1b\\");
+        let placements = terminal.graphics().quota_placements.clone();
+        let sources = terminal.graphics().quota_images.clone();
+        assert_eq!(placements.len(), 2);
+        terminal.feed(b"\x1b[3;1H\n\x1b[3J");
+        assert!(terminal.graphics().quota_placements.is_empty());
+        assert!(placements.values().all(|token| !quota.contains(*token)));
+        assert_eq!(terminal.graphics().quota_images, sources);
+        assert!(sources.values().all(|(token, _)| quota.contains(*token)));
+        assert_eq!(terminal.graphics().bytes_used(), 8);
+        let generation = terminal.graphics().generation;
+        terminal.feed(b"\x1b[3J");
+        assert_eq!(terminal.graphics().generation, generation);
     }
 
     #[test]
