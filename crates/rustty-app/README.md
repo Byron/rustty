@@ -351,8 +351,14 @@ search use the configured Ghostty keybindings. Window layouts and pane directori
 are saved separately under `com.rustty.app`.
 
 Pane and quadrant zoom transitions slide into place in 250 ms by default; Quad
-Peek takes 100 ms. Text fades to the pane background at the midpoint, then reappears at
-its final size, without resizing terminals at intermediate animation steps.
+Peek takes 100 ms. Text stays at its original position while fading out, then
+reappears at its final position and size. Terminal grids resize only at the
+midpoint. Before fading in, the transition waits for a synchronized redraw or
+briefly settled terminal content. Without synchronization markers, this wait is
+capped at 250 ms; continuously restarted synchronized batches fall back to the
+retained frame after one second. The wait is additional to the configured
+animation duration. Scrollback resizing still runs synchronously and can pause
+the UI, but its preparation time does not consume the fade-in.
 Automatic unzoom after a pane closes or exits uses the same animation, as do
 splitting or resizing panes when those actions leave zoom mode.
 Surrounding panes remain visible throughout the slide, blending halfway toward
