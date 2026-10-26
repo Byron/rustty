@@ -2602,6 +2602,8 @@ mod focus_tests {
 
         let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
         let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);
+        owner.set_host_state(false, true, Some(true), false);
+        owner.feed(b"\x1b[?2031h");
         owner.feed(b"one\r\ntwo\r\nthree\r\nfour\r\nfive");
         let refresh = |owner: &tmuxx_terminal::Terminal, sequence| {
             let mut state = state();
@@ -2616,6 +2618,11 @@ mod focus_tests {
         assert!(history > 0);
         let mut configs = [Config::default(), Config::default()];
         for (index, (view, config)) in [&first, &second].into_iter().zip(&mut configs).enumerate() {
+            assert!(view.terminal().unwrap().modes.dec(2031));
+            assert_eq!(
+                view.terminal().unwrap().query_defaults.color_scheme,
+                Some(rustty_vt::query::ColorScheme::Dark)
+            );
             config.foreground = Rgb::new(index as u8, 20, 30);
             config.background = Rgb::new(index as u8, 40, 50);
             config.palette[1] = Rgb::new(index as u8, 60, 70);
