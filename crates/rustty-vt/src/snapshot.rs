@@ -4,9 +4,10 @@
 //! sizes and the total cells restored. Native PAGE capacities bound style
 //! admission, grapheme suffix storage and live hyperlink string ownership.
 //! Unknown optional records are skipped after validating their size and CRC.
-//! Version 1 excludes graphics and selection.
+//! Kitty images and placements use optional records; selection is not persisted.
 //! Physical PAGE widths are preserved on restore and during in-bounds edits.
 //! Column resizes reflow them; edits beyond a narrow row extend it safely.
+use crate::graphics::snapshot as kitty;
 use crate::modes::Modes;
 use crate::packed::{Cell, RowHeader};
 use crate::page_layout::PageCapacity;
@@ -25,11 +26,11 @@ use std::sync::Arc;
 
 const MAGIC: &[u8; 10] = b"GHOSTSNP\x01\x00";
 
-fn invalid(message: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
+pub(crate) fn invalid(message: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
 
-fn u16_bytes(out: &mut Vec<u8>, value: usize) -> io::Result<()> {
+pub(crate) fn u16_bytes(out: &mut Vec<u8>, value: usize) -> io::Result<()> {
     out.extend_from_slice(
         &u16::try_from(value)
             .map_err(|_| invalid("snapshot u16 overflow"))?
@@ -37,7 +38,7 @@ fn u16_bytes(out: &mut Vec<u8>, value: usize) -> io::Result<()> {
     );
     Ok(())
 }
-fn u32_bytes(out: &mut Vec<u8>, value: usize) -> io::Result<()> {
+pub(crate) fn u32_bytes(out: &mut Vec<u8>, value: usize) -> io::Result<()> {
     out.extend_from_slice(
         &u32::try_from(value)
             .map_err(|_| invalid("snapshot u32 overflow"))?
@@ -50,15 +51,29 @@ fn bytes_string(out: &mut Vec<u8>, value: &[u8]) -> io::Result<()> {
     out.extend_from_slice(value);
     Ok(())
 }
-fn record(out: &mut impl Write, tag: u16, payload: &[u8]) -> io::Result<()> {
+pub(crate) fn record(out: &mut impl Write, tag: u16, payload: &[u8]) -> io::Result<()> {
+    record_parts(out, tag, &[payload])
+}
+pub(crate) fn record_parts(out: &mut impl Write, tag: u16, parts: &[&[u8]]) -> io::Result<()> {
     let mut header = [0u8; 10];
     header[..2].copy_from_slice(&tag.to_le_bytes());
-    let len = u32::try_from(payload.len()).map_err(|_| invalid("snapshot record overflow"))?;
-    header[2..6].copy_from_slice(&len.to_le_bytes());
-    let crc = crc32c::crc32c_append(crc32c::crc32c(&header[..6]), payload);
+    let length = parts
+        .iter()
+        .try_fold(0usize, |length, part| length.checked_add(part.len()))
+        .and_then(|length| u32::try_from(length).ok())
+        .ok_or_else(|| invalid("snapshot record overflow"))?;
+    header[2..6].copy_from_slice(&length.to_le_bytes());
+    let crc = parts
+        .iter()
+        .fold(crc32c::crc32c(&header[..6]), |crc, part| {
+            crc32c::crc32c_append(crc, part)
+        });
     header[6..].copy_from_slice(&crc.to_le_bytes());
     out.write_all(&header)?;
-    out.write_all(payload)
+    for part in parts {
+        out.write_all(part)?;
+    }
+    Ok(())
 }
 fn optional_bool(value: Option<bool>) -> u8 {
     value.map_or(0, |b| 1 + u8::from(b))
@@ -478,15 +493,31 @@ fn encode_page(rows: &[Row<'_>], page: &Page) -> io::Result<Vec<u8>> {
     Ok(out)
 }
 
-/// Stream one complete snapshot. Graphics and presentation state are omitted,
-/// as specified by version 1. Completed records may be written before an error.
+/// Stream a complete terminal snapshot, with Kitty pixels staged after READY.
+/// Completed records may be written before an error.
 pub fn encode(terminal: &Terminal, destination: &mut impl Write) -> io::Result<()> {
+    encode_inner(terminal, destination, true)
+}
+fn encode_inner(
+    terminal: &Terminal,
+    destination: &mut impl Write,
+    graphics: bool,
+) -> io::Result<()> {
     let continuation = terminal.parser.continuation().map_err(invalid)?;
     rustty_parser::Parser::validate_continuation_with_tmux(&continuation, terminal.tmux_strings)
         .map_err(invalid)?;
     destination.write_all(MAGIC)?;
     record(destination, 1, &encode_terminal(terminal)?)?;
     let screens = [Some(&terminal.primary), terminal.alternate.as_ref()];
+    let mut plans = screens
+        .iter()
+        .enumerate()
+        .map(|(key, screen)| {
+            screen
+                .filter(|screen| graphics && kitty::has_state(screen))
+                .map(|screen| kitty::Plan::new(screen, key))
+        })
+        .collect::<Vec<_>>();
     for (key, screen) in screens.iter().enumerate() {
         if let Some(screen) = screen {
             let rows: Vec<_> = screen.all_rows().collect();
@@ -509,10 +540,16 @@ pub fn encode(terminal: &Terminal, destination: &mut impl Write) -> io::Result<(
                 record(destination, 3, &encode_page(&rows[start..end], page)?)?;
                 start = end;
             }
+            if let Some(plan) = &plans[key] {
+                plan.storage(destination)?;
+            }
         }
     }
     record(destination, 7, &continuation)?;
     record(destination, 5, &[])?;
+    if let Some(plan) = &mut plans[usize::from(terminal.alternate_active)] {
+        plan.viewport_payloads(destination)?;
+    }
     for (key, screen) in screens.iter().enumerate() {
         if let Some(screen) = screen {
             let rows: Vec<_> = screen.all_rows().collect();
@@ -530,17 +567,28 @@ pub fn encode(terminal: &Terminal, destination: &mut impl Write) -> io::Result<(
             u16_bytes(&mut header, key)?;
             u32_bytes(&mut header, history_pages.len())?;
             record(destination, 4, &header)?;
-            for (page, start, end) in history_pages.into_iter().rev() {
+            for (index, (page, start, end)) in history_pages.into_iter().enumerate().rev() {
                 record(destination, 3, &encode_page(&rows[start..end], page)?)?;
+                if let Some(plan) = &mut plans[key] {
+                    plan.page(destination, index)?;
+                }
             }
         }
     }
+    for plan in plans.iter_mut().flatten() {
+        plan.remaining_payloads(destination)?;
+    }
     record(destination, 6, &[])
 }
-
 pub fn encode_to_vec(terminal: &Terminal) -> io::Result<Vec<u8>> {
     let mut result = Vec::new();
     encode(terminal, &mut result)?;
+    Ok(result)
+}
+/// A cell checkpoint for carriers that serialize Kitty graphics separately.
+pub fn encode_without_graphics_to_vec(terminal: &Terminal) -> io::Result<Vec<u8>> {
+    let mut result = Vec::new();
+    encode_inner(terminal, &mut result, false)?;
     Ok(result)
 }
 
@@ -553,6 +601,8 @@ pub struct DecodeOptions {
     /// Bounds incoming replay bytes; the restored parser keeps its normal limit.
     pub max_continuation_bytes: usize,
     pub max_cells: usize,
+    /// Maximum decoded RGBA image and animation storage per screen.
+    pub max_graphics_bytes: usize,
 }
 impl Default for DecodeOptions {
     fn default() -> Self {
@@ -561,19 +611,20 @@ impl Default for DecodeOptions {
             max_record_bytes: 8 * 1024 * 1024,
             max_continuation_bytes: 8 * 1024 * 1024,
             max_cells: 1024 * 1024,
+            max_graphics_bytes: 320_000_000,
         }
     }
 }
 
-struct Slice<'a> {
+pub(crate) struct Slice<'a> {
     data: &'a [u8],
     offset: usize,
 }
 impl<'a> Slice<'a> {
-    fn new(data: &'a [u8]) -> Self {
+    pub(crate) fn new(data: &'a [u8]) -> Self {
         Self { data, offset: 0 }
     }
-    fn take(&mut self, count: usize) -> io::Result<&'a [u8]> {
+    pub(crate) fn take(&mut self, count: usize) -> io::Result<&'a [u8]> {
         let end = self
             .offset
             .checked_add(count)
@@ -585,26 +636,26 @@ impl<'a> Slice<'a> {
         self.offset = end;
         Ok(result)
     }
-    fn array<const N: usize>(&mut self) -> io::Result<[u8; N]> {
+    pub(crate) fn array<const N: usize>(&mut self) -> io::Result<[u8; N]> {
         Ok(self.take(N)?.try_into().unwrap())
     }
-    fn u8(&mut self) -> io::Result<u8> {
+    pub(crate) fn u8(&mut self) -> io::Result<u8> {
         Ok(self.take(1)?[0])
     }
-    fn u16(&mut self) -> io::Result<u16> {
+    pub(crate) fn u16(&mut self) -> io::Result<u16> {
         Ok(u16::from_le_bytes(self.array()?))
     }
-    fn u32(&mut self) -> io::Result<u32> {
+    pub(crate) fn u32(&mut self) -> io::Result<u32> {
         Ok(u32::from_le_bytes(self.array()?))
     }
-    fn u64(&mut self) -> io::Result<u64> {
+    pub(crate) fn u64(&mut self) -> io::Result<u64> {
         Ok(u64::from_le_bytes(self.array()?))
     }
-    fn string(&mut self) -> io::Result<&'a [u8]> {
+    pub(crate) fn string(&mut self) -> io::Result<&'a [u8]> {
         let n = self.u32()? as usize;
         self.take(n)
     }
-    fn finish(&self) -> io::Result<()> {
+    pub(crate) fn finish(&self) -> io::Result<()> {
         if self.offset == self.data.len() {
             Ok(())
         } else {
@@ -718,6 +769,19 @@ pub struct HistoryProgress {
     pub rows: usize,
     pub remaining_pages: u32,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ImageProgress {
+    pub screen: u8,
+    pub image_id: u32,
+    pub frame: u32,
+    /// Bytes attached, or zero when live changes or a budget discarded the image.
+    pub bytes: usize,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Progress {
+    Page(HistoryProgress),
+    Image(ImageProgress),
+}
 struct Sequence {
     key: usize,
     remaining: u32,
@@ -741,6 +805,8 @@ pub struct Decoder<R> {
     history_remaining: usize,
     sequence: Option<Sequence>,
     cells: usize,
+    header: Option<([u8; 10], usize)>,
+    images: [kitty::Targets; 2],
 }
 impl<R: Read> Decoder<R> {
     pub fn new(source: R, options: DecodeOptions) -> Self {
@@ -757,6 +823,8 @@ impl<R: Read> Decoder<R> {
             history_remaining: 0,
             sequence: None,
             cells: 0,
+            header: None,
+            images: Default::default(),
         }
     }
     pub fn history_rows(&self) -> [u64; 2] {
@@ -765,22 +833,22 @@ impl<R: Read> Decoder<R> {
     pub fn into_inner(self) -> R {
         self.source
     }
-    fn record(&mut self, expected: u16) -> io::Result<Vec<u8>> {
-        let (header, len) = loop {
+    fn read_header(&mut self) -> io::Result<([u8; 10], usize)> {
+        loop {
             let mut header = [0u8; 10];
             self.source.read_exact(&mut header)?;
             let tag = u16::from_le_bytes(header[..2].try_into().unwrap());
             let len = u32::from_le_bytes(header[2..6].try_into().unwrap()) as usize;
-            if len > self.options.max_record_bytes
-                || tag == 7 && len > self.options.max_continuation_bytes
-            {
+            let limit = if tag == kitty::PAYLOAD {
+                400 * 1024 * 1024 + 18
+            } else {
+                self.options.max_record_bytes
+            };
+            if len > limit || tag == 7 && len > self.options.max_continuation_bytes {
                 return Err(invalid("snapshot record exceeds allocation policy"));
             }
-            if (1..=7).contains(&tag) {
-                if tag != expected {
-                    return Err(invalid("unexpected snapshot record tag"));
-                }
-                break (header, len);
+            if (1..=10).contains(&tag) {
+                return Ok((header, len));
             }
             let mut remaining = len;
             let mut buffer = [0; 8192];
@@ -794,7 +862,24 @@ impl<R: Read> Decoder<R> {
             if actual != u32::from_le_bytes(header[6..].try_into().unwrap()) {
                 return Err(invalid("snapshot checksum mismatch"));
             }
+        }
+    }
+    fn peek_tag(&mut self) -> io::Result<u16> {
+        if self.header.is_none() {
+            self.header = Some(self.read_header()?);
+        }
+        Ok(u16::from_le_bytes(
+            self.header.as_ref().unwrap().0[..2].try_into().unwrap(),
+        ))
+    }
+    fn record(&mut self, expected: u16) -> io::Result<Vec<u8>> {
+        let (header, len) = match self.header.take() {
+            Some(header) => header,
+            None => self.read_header()?,
         };
+        if u16::from_le_bytes(header[..2].try_into().unwrap()) != expected {
+            return Err(invalid("unexpected snapshot record tag"));
+        }
         let mut payload = Vec::new();
         payload
             .try_reserve_exact(len)
@@ -1102,6 +1187,11 @@ impl<R: Read> Decoder<R> {
         screen.cursor.col = x.min(cursor_cols - 1);
         screen.cursor.pending_wrap = flags & 1 != 0 && screen.cursor.col == cursor_cols - 1;
         screen.sync_cursor_resources();
+        if self.peek_tag()? == kitty::STORAGE {
+            let payload = self.record(kitty::STORAGE)?;
+            self.images[key] =
+                kitty::decode_storage(&payload, &mut screen, key, self.options.max_graphics_bytes)?;
+        }
         Ok((key, screen, extent))
     }
 
@@ -1291,7 +1381,8 @@ impl<R: Read> Decoder<R> {
         Ok(result)
     }
 
-    pub fn next_history(&mut self, terminal: &mut Terminal) -> io::Result<Option<HistoryProgress>> {
+    /// Apply one page or image payload while preserving newer live state.
+    pub fn next(&mut self, terminal: &mut Terminal) -> io::Result<Option<Progress>> {
         if !self.started || self.failed {
             return Err(invalid("snapshot decoder is not ready"));
         }
@@ -1302,8 +1393,32 @@ impl<R: Read> Decoder<R> {
         self.failed = result.is_err();
         result
     }
-    fn next_inner(&mut self, t: &mut Terminal) -> io::Result<Option<HistoryProgress>> {
+    /// Compatibility iterator that also restores intervening image payloads.
+    pub fn next_history(&mut self, terminal: &mut Terminal) -> io::Result<Option<HistoryProgress>> {
         loop {
+            match self.next(terminal)? {
+                Some(Progress::Page(page)) => return Ok(Some(page)),
+                Some(Progress::Image(_)) => {}
+                None => return Ok(None),
+            }
+        }
+    }
+    fn next_inner(&mut self, t: &mut Terminal) -> io::Result<Option<Progress>> {
+        loop {
+            if self.peek_tag()? == kitty::PAYLOAD {
+                let header = self.header.take().unwrap().0;
+                let progress = kitty::decode_payload(
+                    &mut self.source,
+                    header,
+                    t,
+                    &self.identities,
+                    &self.images,
+                )?;
+                if progress.bytes > 0 {
+                    t.generation = t.generation.wrapping_add(1);
+                }
+                return Ok(Some(Progress::Image(progress)));
+            }
             if let Some(mut sequence) = self.sequence.take()
                 && sequence.remaining > 0
             {
@@ -1315,6 +1430,7 @@ impl<R: Read> Decoder<R> {
                     t.alternate.as_mut()
                 };
                 let mut count = 0;
+                let mut image_page = None;
                 if sequence.apply
                     && t.cols == self.cols
                     && let Some(screen) = target
@@ -1342,10 +1458,29 @@ impl<R: Read> Decoder<R> {
                         for id in &mut page.row_ids[..count] {
                             *id = screen.next_row_id();
                         }
+                        image_page = Some((page.columns, page.row_ids[..count].to_vec()));
                         screen.pages.prepend_page(page);
                     }
                 }
 
+                if self.peek_tag()? == kitty::PAGE_PLACEMENTS {
+                    let data = self.record(kitty::PAGE_PLACEMENTS)?;
+                    let target = if sequence.key == 0 {
+                        Some(&mut t.primary)
+                    } else {
+                        t.alternate.as_mut()
+                    };
+                    kitty::decode_page(
+                        &data,
+                        sequence.key,
+                        target.filter(|_| image_page.is_some()),
+                        image_page,
+                        &self.images[sequence.key],
+                    )?;
+                    if count > 0 {
+                        t.generation = t.generation.wrapping_add(1);
+                    }
+                }
                 if count == 0 {
                     sequence.apply = false;
                 }
@@ -1355,7 +1490,7 @@ impl<R: Read> Decoder<R> {
                     remaining_pages: sequence.remaining,
                 };
                 self.sequence = Some(sequence);
-                return Ok(Some(progress));
+                return Ok(Some(Progress::Page(progress)));
             }
             if self.history_remaining == 0 {
                 self.marker(6)?;
@@ -1385,7 +1520,7 @@ impl<R: Read> Decoder<R> {
 pub fn decode(source: impl Read, options: DecodeOptions) -> io::Result<Terminal> {
     let mut decoder = Decoder::new(source, options);
     let mut terminal = decoder.ready()?;
-    while decoder.next_history(&mut terminal)?.is_some() {}
+    while decoder.next(&mut terminal)?.is_some() {}
     Ok(terminal)
 }
 

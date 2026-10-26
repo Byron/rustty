@@ -14,6 +14,7 @@ mod pixels;
 mod placements;
 pub mod quota;
 mod sixel;
+pub(crate) mod snapshot;
 pub use placements::Placements;
 #[cfg(all(unix, not(target_os = "android")))]
 mod shm;
@@ -59,6 +60,10 @@ pub struct AnimationFrame {
 }
 
 impl Image {
+    /// Empty buffers reserve their full dimensions until snapshot pixels arrive.
+    pub fn has_pending_pixels(&self) -> bool {
+        self.pixels.is_empty() || self.frames.iter().any(|frame| frame.pixels.is_empty())
+    }
     pub fn display_pixels(&self) -> &[u8] {
         if self.current_frame == 0 {
             &self.pixels
@@ -74,11 +79,12 @@ impl Image {
         }
     }
     fn frame(&self, number: usize) -> Option<&Arc<Vec<u8>>> {
-        if number == 1 {
+        let pixels = if number == 1 {
             Some(&self.pixels)
         } else {
             self.frames.get(number.checked_sub(2)?).map(|f| &f.pixels)
-        }
+        }?;
+        (!pixels.is_empty()).then_some(pixels)
     }
     fn set_frame(&mut self, number: usize, pixels: Arc<Vec<u8>>) {
         if number == 1 {
@@ -95,7 +101,7 @@ impl Image {
         }
     }
     fn bytes(&self) -> usize {
-        self.pixels.len() + self.frames.iter().map(|f| f.pixels.len()).sum::<usize>()
+        images::checked_bytes(self).unwrap_or(usize::MAX)
     }
 }
 
@@ -256,6 +262,7 @@ struct Loading {
 
 #[derive(Clone, Debug)]
 pub struct Graphics {
+    identity: u64,
     quota: Option<quota::Quota>,
     quota_owner: u64,
     quota_images: BTreeMap<u32, (u64, u64)>,
@@ -271,7 +278,10 @@ pub struct Graphics {
 
 impl Default for Graphics {
     fn default() -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(1);
         Self {
+            identity: NEXT.fetch_add(1, Ordering::Relaxed),
             quota: None,
             quota_owner: 0,
             quota_images: BTreeMap::new(),
@@ -498,7 +508,7 @@ impl Graphics {
                 || image.height == 0
                 || image.width > MAX_DIMENSION
                 || image.height > MAX_DIMENSION
-                || image.pixels.len() != length
+                || !image.pixels.is_empty() && image.pixels.len() != length
                 || image.tmux_sixel_cell.is_some_and(|cell| {
                     cell.into_iter()
                         .any(|size| size == 0 || size > MAX_DIMENSION)
@@ -506,7 +516,7 @@ impl Graphics {
                 || image
                     .frames
                     .iter()
-                    .any(|frame| frame.pixels.len() != length)
+                    .any(|frame| !frame.pixels.is_empty() && frame.pixels.len() != length)
                 || image.current_frame > image.frames.len()
             {
                 return Err("invalid graphics image");
@@ -647,6 +657,7 @@ impl Graphics {
         }
         Self {
             images: self.images.clone(),
+            identity: self.identity,
             quota: self.quota.clone(),
             quota_owner: self.quota_owner,
             quota_images: self.quota_images.clone(),
@@ -792,6 +803,7 @@ impl Graphics {
         for image in self.images.values_mut() {
             if image.animation_state < 2
                 || image.frames.is_empty()
+                || image.has_pending_pixels()
                 || image.max_loops != 0 && image.completed_loops >= image.max_loops
             {
                 continue;
@@ -1569,7 +1581,7 @@ impl Terminal {
         } else {
             cmd.n(b'r') as usize
         };
-        let bytes = image.pixels.len();
+        let bytes = image.width as usize * image.height as usize * 4;
         let new = number == count + 1;
         let mut canvas = if new {
             if cmd.n(b'c') != 0 {
@@ -1582,7 +1594,10 @@ impl Terminal {
                 background.repeat(bytes / 4)
             }
         } else {
-            image.frame(number).unwrap().to_vec()
+            image
+                .frame(number)
+                .ok_or("EINVAL: frame data incomplete")?
+                .to_vec()
         };
         let image_width = image.width;
         let image_height = image.height;
