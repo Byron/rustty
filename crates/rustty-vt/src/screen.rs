@@ -456,6 +456,18 @@ impl<'a> RowView<'a> {
     pub fn cells(self) -> &'a [Cell] {
         self.cells
     }
+    /// Transient identity of the row's Kitty placeholder text and colors.
+    /// Unedited clones keep it; edits and decoding assign fresh identities.
+    /// None means the row has no placeholders and needs no decoding.
+    #[inline]
+    pub fn placeholder_revision(self) -> Option<u64> {
+        let slot = self.offset / usize::from(self.page.capacity.cols);
+        self.page
+            .placeholder_revisions
+            .get(slot)
+            .copied()
+            .filter(|&revision| revision != 0)
+    }
     #[inline]
     pub fn text(self, col: usize) -> CellText<'a> {
         let cell = self.cells[col];
@@ -1019,7 +1031,7 @@ impl Screen {
     pub(crate) fn cell_mut(&mut self, y: usize, col: usize) -> &mut Cell {
         let (index, row) = self.locate(self.history_len() + y);
         let page = &mut self.pages.pages[index];
-        page.headers[row].set(RowHeader::DIRTY, true);
+        page.mark_row(row);
         let slot = page.slot(row, col);
         &mut page.cells[slot]
     }
@@ -1112,6 +1124,7 @@ impl Screen {
             page.graphemes.release(allocation);
             page.grapheme_map.remove(&(slot as u32));
             page.cells[slot].set_grapheme(false);
+            page.mark_row(row);
             page.refresh_charge();
         }
     }
@@ -1863,7 +1876,11 @@ impl Screen {
         } else {
             printing::store_wide(cells, &codepoints[..count], head, tail);
         }
-        page.mark_cell(row, head);
+        let mut marked = head;
+        if codepoints[..count].contains(&crate::graphics::unicode::PLACEHOLDER) {
+            marked.set_codepoint(Some(crate::graphics::unicode::PLACEHOLDER));
+        }
+        page.mark_cell(row, marked);
         self.graphics.overwrite_sixel(
             self.row(self.cursor.row).id,
             self.cursor.col,
@@ -2083,7 +2100,7 @@ impl Screen {
             for slot in dst..dst + end - start {
                 page.mark_cell(dr, page.cells[slot]);
             }
-            page.headers[sr].set(RowHeader::DIRTY, true);
+            page.mark_row(sr);
             page.repair_wide(dr, background);
             page.refresh_charge();
         } else {

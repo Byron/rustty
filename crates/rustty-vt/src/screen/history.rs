@@ -13,13 +13,15 @@ pub struct TmuxHistory {
 
 impl Screen {
     /// Native allocated row slots/bytes, cell slots/bytes, auxiliary arenas/bytes.
-    /// Row bytes include stable row IDs; auxiliary arenas include page objects,
-    /// styles, hyperlinks and graphemes. Graphics and Screen-owned maps are separate.
+    /// Row bytes include stable row IDs and placeholder revisions. Auxiliary arenas
+    /// include page objects, styles, hyperlinks and graphemes. Graphics and
+    /// Screen-owned maps are separate.
     pub fn owned_storage_parts(&self) -> [usize; 6] {
         let mut parts = [0; 6];
         for page in &self.pages.pages {
             let rows = page.headers.capacity() * size_of::<RowHeader>()
-                + page.row_ids.capacity() * size_of::<u64>();
+                + (page.row_ids.capacity() + page.placeholder_revisions.capacity())
+                    * size_of::<u64>();
             let cells = page.cells.capacity() * size_of::<Cell>();
             parts[0] += page.headers.capacity();
             parts[1] += rows;

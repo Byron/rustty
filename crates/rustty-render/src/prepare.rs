@@ -128,6 +128,7 @@ pub struct Renderer {
     shaped_bytes: usize,
     sprites: HashMap<(char, u8), CachedGlyph>,
     images: HashMap<graphics::TileKey, graphics::CachedTile>,
+    placeholders: graphics::PlaceholderCache,
     pages: BTreeMap<usize, Page>,
     uploads: Vec<AtlasUpload>,
     next_page: usize,
@@ -144,6 +145,7 @@ impl Renderer {
             shaped_bytes: 0,
             sprites: HashMap::new(),
             images: HashMap::new(),
+            placeholders: Default::default(),
             pages: BTreeMap::new(),
             uploads: Vec::new(),
             next_page: 0,
@@ -171,6 +173,7 @@ impl Renderer {
         self.shaped_bytes = 0;
         self.sprites.clear();
         self.images.clear();
+        self.placeholders = Default::default();
         self.pages.clear();
         self.uploads.clear();
         self.next_page = 0;

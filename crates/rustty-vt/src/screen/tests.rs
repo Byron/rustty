@@ -676,6 +676,67 @@ fn page_rotations_preserve_slots_and_recycling_renews_identity() {
 }
 
 #[test]
+fn placeholder_revisions_follow_content_and_stable_physical_slots() {
+    let mut terminal = Terminal::new(12, 4, 100);
+    terminal.feed(b"ordinary text\r\nmore text");
+    assert!(
+        terminal
+            .screen()
+            .pages
+            .pages
+            .iter()
+            .all(|page| page.placeholder_revisions.is_empty())
+    );
+    terminal.feed("\x1b[H\x1b[38;5;1m\u{10eeee}\u{305}\u{305}".as_bytes());
+    let original = terminal.screen().row(0).placeholder_revision().unwrap();
+    let snapshot = terminal.screen().snapshot_viewport();
+    assert_eq!(snapshot.row(0).placeholder_revision(), Some(original));
+    assert_eq!(
+        terminal.screen().clone().row(0).placeholder_revision(),
+        Some(original)
+    );
+
+    terminal.screen_mut().clear_grapheme(0, 0);
+    let cleared = terminal.screen().row(0).placeholder_revision().unwrap();
+    assert_ne!(original, cleared);
+    let mut style = terminal.screen().row(0).style(0);
+    style.underline_color = Color::Indexed(2);
+    terminal.screen_mut().set_cell_style(0, 0, style);
+    let styled = terminal.screen().row(0).placeholder_revision().unwrap();
+    assert_ne!(cleared, styled);
+
+    terminal.screen_mut().pages.pages[0].rotate_rows(0..4, true);
+    assert_eq!(
+        terminal.screen().row(3).placeholder_revision(),
+        Some(styled)
+    );
+    terminal
+        .screen_mut()
+        .copy_row_cells(3, 2, 0, 2, Color::Default);
+    assert_ne!(
+        terminal.screen().row(3).placeholder_revision(),
+        Some(styled)
+    );
+    let copied = terminal.screen().row(2).placeholder_revision().unwrap();
+    let (index, row) = terminal.screen().locate(2);
+    terminal.screen_mut().pages.pages[index].row_cells_mut(row)[0].set_codepoint(None);
+    assert_ne!(
+        terminal.screen().row(2).placeholder_revision(),
+        Some(copied)
+    );
+
+    let encoded = serde_json::to_vec(&snapshot).unwrap();
+    assert!(!String::from_utf8_lossy(&encoded).contains("placeholder_revisions"));
+    let decoded: Screen = serde_json::from_slice(&encoded).unwrap();
+    assert_ne!(decoded.row(0).placeholder_revision(), Some(original));
+    assert_eq!(
+        decoded.row_text(decoded.row(0)),
+        snapshot.row_text(snapshot.row(0))
+    );
+    assert_eq!(snapshot.row(0).placeholder_revision(), Some(original));
+}
+
+#[test]
 fn inline_text_matches_utf8_for_every_scalar() {
     let empty = CellText::scalar(None);
     assert_eq!(empty.as_str(), "");
