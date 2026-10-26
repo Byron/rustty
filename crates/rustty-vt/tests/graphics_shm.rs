@@ -13,9 +13,13 @@ struct SharedMemory(CString);
 
 impl SharedMemory {
     fn new(data: &[u8]) -> Self {
+        Self::with_prefix(data, "/rustty")
+    }
+
+    fn with_prefix(data: &[u8], prefix: &str) -> Self {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let name = CString::new(format!(
-            "/rustty-{}-{}",
+            "{prefix}-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ))
@@ -83,6 +87,34 @@ impl Drop for SharedMemory {
 }
 
 #[test]
+fn shared_memory_accepts_platform_names_without_a_leading_slash() {
+    for prefix in [
+        "rustty",
+        #[cfg(target_os = "macos")]
+        "group/rustty",
+    ] {
+        for action in ["q", "t"] {
+            let mut terminal = Terminal::new(10, 3, 10);
+            let shm = SharedMemory::with_prefix(&[1, 2, 3, 255], prefix);
+            assert_eq!(
+                terminal.feed(&shm.command(&format!("a={action},i=1,f=32,s=1,v=1"))),
+                [Effect::Write(b"\x1b_Gi=1;OK\x1b\\".to_vec())],
+                "{prefix} {action}",
+            );
+            shm.assert_consumed();
+            if action == "t" {
+                assert_eq!(
+                    terminal.graphics().images[&1].pixels.as_slice(),
+                    [1, 2, 3, 255]
+                );
+            } else {
+                assert!(terminal.graphics().images.is_empty());
+            }
+        }
+    }
+}
+
+#[test]
 fn catnip_shared_memory_upload_place_and_verify() {
     let mut terminal = Terminal::new(80, 24, 100);
     terminal.set_pixel_size(800, 480);
@@ -142,14 +174,7 @@ fn shared_memory_ranges_queries_and_errors_release_objects() {
         )]
     );
     shm.assert_consumed();
-    for name in [
-        b"".as_slice(),
-        b"/",
-        b"no-slash",
-        b"/nested/name",
-        b"/nul\0suffix",
-        &[b'x'; 256],
-    ] {
+    for name in [b"".as_slice(), b"/", b"/nul\0suffix", &[b'x'; 256]] {
         let command = format!(
             "\x1b_Ga=q,i=1,t=s,f=32,s=1,v=1;{}\x1b\\",
             STANDARD.encode(name)

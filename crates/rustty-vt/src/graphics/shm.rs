@@ -8,7 +8,7 @@ use std::{
 
 pub(super) fn read(cmd: &Command, name: &[u8]) -> Result<Vec<u8>, &'static str> {
     const INVALID: &str = "EINVAL: invalid data";
-    if name.len() < 2 || name.len() > 255 || name[0] != b'/' || name[1..].contains(&b'/') {
+    if name.is_empty() || name == b"/" || name.len() > 255 {
         return Err(INVALID);
     }
     let name = CString::new(name).map_err(|_| INVALID)?;
