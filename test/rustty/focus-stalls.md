@@ -73,20 +73,41 @@ GPU execution intervals total 8.720 ms, with no Rustty GPU work during the first
 roughly 10.8 seconds. Most GPU activity in this system trace belongs to
 WindowServer. System-wide GPU activity should not be attributed to Rustty.
 
-## Remaining hover CPU
+## Hover CPU
 
 The separate 15.015-second hover recording contains 297 running-thread samples,
 each weighted at 1 ms. Of these, 20 include dashboard synchronization, eight
 include pane draining, nine include the mouse handler, and 12 belong to the PTY
 writer. These inclusive categories overlap. Mouse stacks reach `send_input`
-and `Session::write`, demonstrating actual terminal mouse reports. A successful
-local PTY write currently wakes the UI even when no output or blocked input
-needs handling; this re-enters pane draining and marks the dashboard dirty.
+and `Session::write`, demonstrating actual terminal mouse reports. In the
+profiled implementation, a successful local PTY write wakes the UI even when no
+output or blocked input needs handling; this re-enters pane draining and marks
+the dashboard dirty.
 
 These samples are statistical CPU estimates and do not establish a constant
 5% CPU load or a before/after improvement. The first dashboard fix removed
 work from pure pointer events; successful terminal writes still take this
 separate notification path.
+
+Successful local writes now request a UI wake only when a previously blocked
+input producer needs to retry or input just finished restoring saved display
+content. The queue-budget mutex orders the backpressure flag against releases,
+and every release still notifies blocking protocol-reply producers. PTY output,
+resize, host reports, errors, and exit keep their existing notifications. This
+does not suppress the mouse reports requested by a terminal application.
+
+The real-PTY regression starts a raw, no-echo child that consumes input silently.
+After draining startup notifications, 256 mouse reports must complete without
+any UI callback; resizing must still produce a callback. The original writer
+fails this assertion, and the updated writer passes. All 22 session unit tests
+pass, including restored output, host reports, command ordering, backpressure,
+blocking replies, and child cleanup. Strict Clippy for the session crate and
+workspace formatting also pass. End-to-end foreground CPU usage has not been
+remeasured.
+
+The combined optimized app builds and passes bundle signature verification at
+`target/release/Rustty.app`. Its executable UUID is
+`AFF1E147-8426-3747-AF61-78B505347DBF` (arm64).
 
 Trace exports and parsed interval summaries are retained under
 `/tmp/rustty-background-*`, `/tmp/rustty-hover-new-*`, and
