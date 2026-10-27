@@ -414,7 +414,13 @@ impl egui_wgpu::CallbackTrait for TerminalPaint {
         {
             renderer.renderer.paint(pass);
             #[cfg(target_os = "macos")]
-            renderer.paints.fetch_add(1, Ordering::Relaxed);
+            if renderer
+                .frame
+                .as_ref()
+                .is_some_and(|frame| Arc::ptr_eq(frame, &self.frame))
+            {
+                renderer.paints.fetch_add(1, Ordering::Relaxed);
+            }
         }
     }
 }

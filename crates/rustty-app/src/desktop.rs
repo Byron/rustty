@@ -5,6 +5,9 @@ mod deck_host;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 #[path = "handoff_ui.rs"]
 mod handoff_ui;
+#[cfg(target_os = "macos")]
+#[path = "desktop_cursor.rs"]
+mod native_cursor;
 #[path = "outliner_host.rs"]
 mod outliner_host;
 #[path = "desktop_painter.rs"]
@@ -337,7 +340,7 @@ enum LayoutCommand {
 }
 
 // Host viewport and selection changes do not advance the terminal generation.
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 struct PaneRenderKey {
     generation: u64,
     viewport_offset: usize,
@@ -394,6 +397,113 @@ struct PreparedPane {
     cell: [f32; 2],
     text: Option<TerminalText>,
     ime_rect: egui::Rect,
+}
+
+#[cfg(target_os = "macos")]
+struct CursorCandidate {
+    pane: Id,
+    key: PaneRenderKey,
+    frame: Arc<Frame>,
+}
+
+#[cfg(target_os = "macos")]
+impl CursorCandidate {
+    fn matches(&self, other: &Self) -> bool {
+        let mut key = self.key.clone();
+        key.options.blink_visible = other.key.options.blink_visible;
+        self.pane == other.pane
+            && key == other.key
+            && self.frame.generation == other.frame.generation
+    }
+
+    fn patch(&self, off: &Self, pane: &ComposedPane) -> Option<([u32; 4], Frame)> {
+        if !self.matches(off) || !self.key.options.blink_visible || off.key.options.blink_visible {
+            return None;
+        }
+        let rect =
+            |[x, y, w, h]: [f32; 4]| egui::Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h));
+        let bounds = rect(self.frame.cursor_row_bounds?)
+            .union(rect(off.frame.cursor_row_bounds?))
+            .translate(Vec2::new(pane.rect[0], pane.rect[1]));
+        let bounds = egui::Rect::from_min_max(bounds.min.floor(), bounds.max.ceil())
+            .intersect(rect(pane.clip))
+            .intersect(rect(pane.rect));
+        // The retained patch must cover every changed pixel, including clipped edges.
+        let min = bounds.min.ceil();
+        let max = bounds.max.floor();
+        if min.x < 0.0 || min.y < 0.0 || min.x >= max.x || min.y >= max.y {
+            return None;
+        }
+        if min != bounds.min || max != bounds.max {
+            return None;
+        }
+        let pixels = [
+            min.x as u32,
+            min.y as u32,
+            (max.x - min.x) as u32,
+            (max.y - min.y) as u32,
+        ];
+        let mut patch = Frame::empty([pixels[2], pixels[3]]);
+        patch
+            .append_clipped(
+                &self.frame,
+                [pane.rect[0] - min.x, pane.rect[1] - min.y],
+                [0.0, 0.0, pixels[2] as f32, pixels[3] as f32],
+            )
+            .ok()?;
+        Some((pixels, patch))
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Default)]
+struct CursorState {
+    enabled: bool,
+    layer: Option<native_cursor::NativeCursorLayer>,
+    on: Option<CursorCandidate>,
+    active: bool,
+    deadline: Option<Instant>,
+    updates: u64,
+    activations: u64,
+    patch_pixels: Option<[u32; 4]>,
+}
+
+#[cfg(target_os = "macos")]
+fn cursor_patch_uncovered(
+    primitives: &[egui::ClippedPrimitive],
+    pixels: [u32; 4],
+    scale: f32,
+) -> bool {
+    let [x, y, width, height] = pixels.map(|v| v as f32 / scale);
+    let patch = egui::Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, height));
+    let mut terminal_seen = false;
+    for primitive in primitives {
+        match &primitive.primitive {
+            egui::epaint::Primitive::Callback(_) => {
+                // The terminal is currently the only callback; unknown callbacks disable the patch.
+                if terminal_seen {
+                    return false;
+                }
+                terminal_seen = true;
+            }
+            egui::epaint::Primitive::Mesh(mesh) if terminal_seen => {
+                let clip = patch.intersect(primitive.clip_rect);
+                if clip.is_positive()
+                    && mesh.indices.as_chunks::<3>().0.iter().any(|triangle| {
+                        let vertices = triangle.map(|index| mesh.vertices[index as usize]);
+                        vertices.iter().any(|v| v.color.a() != 0)
+                            && egui::Rect::from_points(&vertices.map(|v| v.pos))
+                                .intersect(clip)
+                                .is_positive()
+                    })
+                {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    terminal_seen
 }
 
 #[derive(PartialEq)]
@@ -606,6 +716,8 @@ struct Host {
     focused: bool,
     focus_hint: FocusHint,
     cursor_blink_started: Instant,
+    #[cfg(target_os = "macos")]
+    cursor: CursorState,
     visible: bool,
     quick_used: bool,
     occluded: bool,
@@ -628,6 +740,96 @@ struct Host {
     last_frame_started: Option<Instant>,
 }
 impl Host {
+    #[cfg(target_os = "macos")]
+    fn cursor_candidate(&self, focused: Id) -> Option<CursorCandidate> {
+        // shortcut: one opaque pane without images, extend after measuring this common idle case.
+        if !self.focused
+            || self.composing
+            || !self.preedit.is_empty()
+            || self.peek.is_some()
+            || self.zoom_animation.is_running()
+            || self.modal_input()
+        {
+            return None;
+        }
+        let composed = self.composed.as_ref()?;
+        let [pane] = composed.panes.as_slice() else {
+            return None;
+        };
+        let prepared = self.prepared.get(&focused)?;
+        let key = &prepared.key;
+        if !Arc::ptr_eq(&pane.frame, &prepared.frame)
+            || pane.dim.is_some()
+            || pane.transition.is_some()
+            || key.options.background_opacity != 1.0
+            || !key.options.focused
+            || !key.options.cursor_visible
+            || !key.cursor.3
+            || !key.cursor.4
+            || key.viewport_offset != 0
+            || prepared.frame.blinking_text
+            || prepared.frame.cursor_row_bounds.is_none()
+            || !prepared.screen.graphics.images.is_empty()
+        {
+            return None;
+        }
+        Some(CursorCandidate {
+            pane: focused,
+            key: key.clone(),
+            frame: Arc::clone(&prepared.frame),
+        })
+    }
+
+    #[cfg(target_os = "macos")]
+    fn update_cursor(
+        &mut self,
+        painter: &painter::Painter,
+        candidate: Option<CursorCandidate>,
+        primitives: &[egui::ClippedPrimitive],
+        deadline: Instant,
+    ) {
+        let previous = self.cursor.on.take();
+        let Some(candidate) = candidate else {
+            return;
+        };
+        if candidate.key.options.blink_visible {
+            self.cursor.on = Some(candidate);
+            return;
+        }
+        let Some(on) = previous else {
+            return;
+        };
+        let Some((pixels, patch)) = on.patch(&candidate, &self.composed.as_ref().unwrap().panes[0])
+        else {
+            return;
+        };
+        if !cursor_patch_uncovered(primitives, pixels, candidate.key.scale) {
+            return;
+        }
+        let result = (|| -> Result<()> {
+            if self.cursor.layer.is_none() {
+                self.cursor.layer = Some(native_cursor::NativeCursorLayer::new(
+                    Arc::clone(&self.window),
+                    &painter.render_state().ok_or("GPU unavailable")?,
+                )?);
+            }
+            self.cursor.layer.as_mut().unwrap().present(pixels, &patch)
+        })();
+        match result {
+            Ok(()) => {
+                self.cursor.on = Some(on);
+                self.cursor.active = true;
+                self.cursor.deadline = Some(deadline);
+                self.cursor.activations += 1;
+                self.cursor.patch_pixels = Some(pixels);
+            }
+            Err(error) => {
+                eprintln!("Rustty cursor layer: {error}");
+                self.cursor.layer = None;
+            }
+        }
+    }
+
     fn hovered_pane(&self) -> Option<Id> {
         if !self.egui.is_pointer_in_window() {
             return None;
@@ -1888,6 +2090,11 @@ impl App {
             focused: false,
             focus_hint: FocusHint::default(),
             cursor_blink_started: Instant::now(),
+            #[cfg(target_os = "macos")]
+            cursor: CursorState {
+                enabled: std::env::var("RUSTTY_CURSOR_LAYER").as_deref() != Ok("0"),
+                ..Default::default()
+            },
             visible: !quick,
             quick_used: false,
             occluded: false,
@@ -4810,6 +5017,30 @@ impl App {
         if size.width == 0 || size.height == 0 {
             return Ok(());
         }
+        #[cfg(target_os = "macos")]
+        let cursor_eligible =
+            host.cursor.enabled && offscreen.is_none() && !host.capture && !self.background_smoke;
+        #[cfg(target_os = "macos")]
+        if host.cursor.active {
+            host.cursor.deadline = None;
+            // Synchronized output must freeze the phase that was actually visible.
+            if host
+                .cursor
+                .layer
+                .as_ref()
+                .is_some_and(|layer| layer.is_visible())
+                && let Some(on) = &host.cursor.on
+                && let Some(prepared) = host.prepared.get_mut(&on.pane)
+                && on.matches(&CursorCandidate {
+                    pane: on.pane,
+                    key: prepared.key.clone(),
+                    frame: Arc::clone(&prepared.frame),
+                })
+            {
+                prepared.key = on.key.clone();
+                prepared.frame = Arc::clone(&on.frame);
+            }
+        }
         let mut raw = host.egui.take_egui_input(&host.window);
         raw.viewport_id = host.viewport;
         if !self.passive_mouse_motion(host, host.mouse)
@@ -6135,6 +6366,28 @@ impl App {
                 serde_json::to_vec_pretty(&result)?,
             )?;
         }
+        #[cfg(target_os = "macos")]
+        let paints_before = if host.cursor.enabled {
+            self.painter.terminal_paints(host.id)
+        } else {
+            0
+        };
+        #[cfg(target_os = "macos")]
+        let cursor_transaction =
+            if host.cursor.active && offscreen.is_none() && !self.background_smoke {
+                host.cursor
+                    .layer
+                    .as_ref()
+                    .and_then(|layer| match layer.begin_full_frame() {
+                        Ok(transaction) => Some(transaction),
+                        Err(error) => {
+                            eprintln!("Rustty cursor layer: {error}");
+                            None
+                        }
+                    })
+            } else {
+                None
+            };
         if offscreen.is_some() || self.background_smoke && !self.painter.is_software() {
             let state = self.painter.render_state().ok_or("GPU unavailable")?;
             smoke::submit_offscreen(
@@ -6155,6 +6408,28 @@ impl App {
                 std::mem::take(&mut host.capture),
                 &host.window,
             )?;
+        }
+        #[cfg(target_os = "macos")]
+        if host.cursor.enabled {
+            let painted = self.painter.terminal_paints(host.id) > paints_before;
+            if host.cursor.active {
+                if cursor_transaction.is_some_and(|transaction| transaction.finish(painted)) {
+                    host.cursor.active = false;
+                    host.cursor.on = None;
+                } else {
+                    // Acquisition or layer recreation can delay replacement of the retained pixels.
+                    host.repaint();
+                }
+            }
+            if !host.cursor.active {
+                let candidate = (cursor_eligible && painted && needs_blink)
+                    .then(|| host.cursor_candidate(focused))
+                    .flatten();
+                host.update_cursor(&self.painter, candidate, &primitives, blink_deadline);
+            }
+            if host.cursor.active {
+                needs_blink = false;
+            }
         }
         host.frames += 1;
         host.last_frame_started = Some(now);
@@ -7690,7 +7965,11 @@ impl ApplicationHandler<Event> for App {
                     .chain(&self.redo)
                     .map(|(expires, _)| *expires),
             )
-            .chain(self.smoke.as_ref().map(|_| now + Duration::from_millis(50)))
+            .chain(self.smoke.as_ref().map(|smoke| {
+                smoke
+                    .next_cursor_poll()
+                    .unwrap_or(now + Duration::from_millis(50))
+            }))
             .min();
         #[cfg(target_os = "windows")]
         if let Some(deadline) = self.platform.as_ref().and_then(Platform::next_deadline) {
@@ -7705,6 +7984,26 @@ impl ApplicationHandler<Event> for App {
             next = Some(next.map_or(deadline, |old| old.min(deadline)));
         }
         for host in self.windows.values_mut() {
+            #[cfg(target_os = "macos")]
+            if host.visible
+                && !host.occluded
+                && host.cursor.active
+                && let Some(mut deadline) = host.cursor.deadline
+            {
+                if deadline <= now {
+                    let (visible, next_deadline) =
+                        cursor_blink_phase(host.cursor_blink_started, now);
+                    if let Some(layer) = &host.cursor.layer
+                        && visible != layer.is_visible()
+                    {
+                        layer.set_visible(visible);
+                        host.cursor.updates += 1;
+                    }
+                    deadline = next_deadline;
+                    host.cursor.deadline = Some(deadline);
+                }
+                next = Some(next.map_or(deadline, |old| old.min(deadline)));
+            }
             if let Some(deadline) = host
                 .selection_drag
                 .as_ref()
@@ -11085,5 +11384,253 @@ mod tests {
         ] {
             assert_eq!(directory_from_osc(invalid), None);
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cursor_candidate_matches_only_ignore_the_blink_phase() {
+        let terminal = vt::Terminal::new(12, 3, 0);
+        let on = CursorCandidate {
+            pane: 1,
+            key: PaneRenderKey::new(
+                &terminal,
+                RenderOptions {
+                    size: [320, 160],
+                    ..Default::default()
+                },
+                egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(320.0, 160.0)),
+                1.0,
+            ),
+            frame: Arc::new(Frame::empty([320, 160])),
+        };
+        let off = || {
+            let mut key = on.key.clone();
+            key.options.blink_visible = false;
+            CursorCandidate {
+                pane: on.pane,
+                key,
+                frame: Arc::clone(&on.frame),
+            }
+        };
+        assert!(on.key.options.blink_visible);
+        assert!(on.matches(&off()) && off().matches(&on));
+        let mutations: &[(&str, fn(&mut CursorCandidate))] = &[
+            ("pane", |c| c.pane += 1),
+            ("terminal", |c| c.key.generation += 1),
+            ("scroll", |c| c.key.viewport_offset += 1),
+            ("cursor position", |c| c.key.cursor.0 += 1),
+            ("cursor shape", |c| {
+                c.key.cursor.2 = vt::screen::CursorShape::Bar
+            }),
+            ("cursor visibility", |c| c.key.cursor.3 = !c.key.cursor.3),
+            ("cursor blinking", |c| c.key.cursor.4 = !c.key.cursor.4),
+            ("selection", |c| {
+                let point = vt::GridPoint { row: 1, col: 0 };
+                c.key.selection = Some(vt::Selection {
+                    start: point,
+                    end: point,
+                    rectangular: false,
+                });
+            }),
+            ("geometry", |c| {
+                c.key.rect = c.key.rect.translate(Vec2::new(1.0, 0.0))
+            }),
+            ("scale", |c| c.key.scale = 2.0),
+            ("size", |c| c.key.options.size[0] += 1),
+            ("focus", |c| c.key.options.focused = !c.key.options.focused),
+            ("opacity", |c| c.key.options.background_opacity = 0.5),
+            ("palette", |c| c.key.options.palette[1][0] ^= 1),
+            ("preedit", |c| {
+                c.key.options.preedit = Some(rustty_render::Preedit {
+                    text: "x".into(),
+                    selection: None,
+                });
+            }),
+            ("atlas generation", |c| {
+                Arc::make_mut(&mut c.frame).generation += 1
+            }),
+        ];
+        for (name, mutate) in mutations {
+            let mut changed = off();
+            mutate(&mut changed);
+            assert!(
+                !on.matches(&changed),
+                "{name} must invalidate the retained cursor"
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cursor_patch_reconstructs_the_full_on_frame_over_an_off_frame() {
+        fn raster(frame: Frame) -> Vec<u8> {
+            let rect = egui::Rect::from_min_size(
+                Pos2::ZERO,
+                Vec2::new(frame.size[0] as f32, frame.size[1] as f32),
+            );
+            rustty_render_software::Renderer::default()
+                .render(
+                    frame.size,
+                    1.0,
+                    &[egui::ClippedPrimitive {
+                        clip_rect: rect,
+                        primitive: egui::epaint::Primitive::Callback(egui::PaintCallback {
+                            rect,
+                            callback: Arc::new(rustty_render_software::TerminalPaint {
+                                window: 1,
+                                frame: Arc::new(frame),
+                            }),
+                        }),
+                    }],
+                    &egui::TexturesDelta::default(),
+                )
+                .unwrap()
+                .to_vec()
+        }
+        let mut fonts = rustty_render::Renderer::new(font_config(&Config::default(), 2.0)).unwrap();
+        let mut terminal = vt::Terminal::new(12, 3, 0);
+        terminal.feed(b"top row\r\n\x1b[3moffice AV\x1b[0m\r\nbottom row\x1b[2;3H");
+        for shape in [1, 3, 5] {
+            terminal.feed(format!("\x1b[{shape} q").as_bytes());
+            let mut candidate = |blink_visible| {
+                let options = RenderOptions {
+                    size: [320, 160],
+                    padding: [6.0, 8.0],
+                    focused: true,
+                    cursor_visible: true,
+                    blink_visible,
+                    background: [20, 30, 40],
+                    cursor_color: [200, 100, 20],
+                    cursor_text: [20, 40, 60],
+                    ..Default::default()
+                };
+                CursorCandidate {
+                    pane: 1,
+                    key: PaneRenderKey::new(
+                        &terminal,
+                        options.clone(),
+                        egui::Rect::from_min_size(Pos2::new(12.0, 16.0), Vec2::new(160.0, 80.0)),
+                        2.0,
+                    ),
+                    frame: Arc::new(fonts.prepare(terminal.screen(), &options).unwrap()),
+                }
+            };
+            let on = candidate(true);
+            let off = candidate(false);
+            let pane = |frame: &Arc<Frame>| ComposedPane {
+                frame: Arc::clone(frame),
+                rect: [24.0, 32.0, 320.0, 160.0],
+                clip: [26.0, 32.0, 300.0, 160.0],
+                dim: None,
+                transition: None,
+            };
+            let (pixels, patch) = on.patch(&off, &pane(&off.frame)).unwrap();
+            assert!(pixels[0] >= 26 && pixels[1] >= 32 && pixels[3] < 160);
+            assert!(off.patch(&on, &pane(&on.frame)).is_none());
+            let mut fractional = pane(&off.frame);
+            fractional.clip[0] = pixels[0] as f32 + 0.5;
+            assert!(on.patch(&off, &fractional).is_none());
+
+            let expected = ComposedFrame::new([384, 224], vec![pane(&on.frame)]).unwrap();
+            let base = ComposedFrame::new([384, 224], vec![pane(&off.frame)]).unwrap();
+            let expected = raster((*expected.frame).clone());
+            assert!(
+                expected != raster((*base.frame).clone()),
+                "cursor must change pixels"
+            );
+            let mut restored = (*base.frame).clone();
+            restored
+                .append_clipped(
+                    &patch,
+                    [pixels[0] as f32, pixels[1] as f32],
+                    pixels.map(|v| v as f32),
+                )
+                .unwrap();
+            let restored = raster(restored);
+            assert_eq!(
+                expected.iter().zip(&restored).position(|(a, b)| a != b),
+                None,
+                "cursor style {shape}: the retained patch must reproduce every pixel",
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cursor_patch_checks_visible_triangles_after_the_terminal_callback() {
+        use egui::epaint::{Mesh, Primitive, Vertex};
+        let terminal = || egui::ClippedPrimitive {
+            clip_rect: egui::Rect::EVERYTHING,
+            primitive: Primitive::Callback(egui::PaintCallback {
+                rect: egui::Rect::EVERYTHING,
+                callback: Arc::new(()),
+            }),
+        };
+        let triangle = |color, clip_rect| egui::ClippedPrimitive {
+            clip_rect,
+            primitive: Primitive::Mesh(Mesh {
+                vertices: [
+                    Pos2::new(10.0, 20.0),
+                    Pos2::new(30.0, 20.0),
+                    Pos2::new(10.0, 30.0),
+                ]
+                .map(|pos| Vertex {
+                    pos,
+                    uv: Pos2::ZERO,
+                    color,
+                })
+                .to_vec(),
+                indices: vec![0, 1, 2],
+                ..Default::default()
+            }),
+        };
+        let patch = [20, 40, 40, 20];
+        let visible = || triangle(egui::Color32::WHITE, egui::Rect::EVERYTHING);
+        assert!(!cursor_patch_uncovered(&[], patch, 2.0));
+        assert!(cursor_patch_uncovered(&[terminal()], patch, 2.0));
+        assert!(cursor_patch_uncovered(&[visible(), terminal()], patch, 2.0));
+        assert!(!cursor_patch_uncovered(
+            &[terminal(), visible()],
+            patch,
+            2.0
+        ));
+        assert!(!cursor_patch_uncovered(
+            &[terminal(), terminal()],
+            patch,
+            2.0
+        ));
+        assert!(cursor_patch_uncovered(
+            &[
+                terminal(),
+                triangle(egui::Color32::TRANSPARENT, egui::Rect::EVERYTHING)
+            ],
+            patch,
+            2.0,
+        ));
+        assert!(cursor_patch_uncovered(
+            &[
+                terminal(),
+                triangle(
+                    egui::Color32::WHITE,
+                    egui::Rect::from_min_max(Pos2::ZERO, Pos2::new(9.0, 19.0))
+                )
+            ],
+            patch,
+            2.0,
+        ));
+        let mut outside = visible();
+        let Primitive::Mesh(mesh) = &mut outside.primitive else {
+            unreachable!()
+        };
+        for vertex in &mut mesh.vertices {
+            vertex.pos.x += 20.0;
+        }
+        // Unused vertices must not make an otherwise disjoint UI mesh cover the patch.
+        mesh.vertices.push(Vertex {
+            pos: Pos2::new(15.0, 25.0),
+            uv: Pos2::ZERO,
+            color: egui::Color32::WHITE,
+        });
+        assert!(cursor_patch_uncovered(&[terminal(), outside], patch, 2.0));
     }
 }

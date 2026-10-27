@@ -110,3 +110,90 @@ the existing nonactivating `preview_window` path (`NSWindow.orderFront`).
 The [final focus check](benchmarks/render-2026-10-27/focus.json) kept the user's
 Rustty instance frontmost throughout a 30-second cursor sample and all external
 focus polls. This instrumented check is excluded from performance comparisons.
+
+## Retained cursor layer, 2026-10-27
+
+The cursor experiment removed all main-window rendering during the idle blink
+samples. Across two 30-second samples per variant, process CPU averaged
+**0.389% → 0.036% of one core**, about **91% lower**. Main terminal render passes
+and pane preparations fell from **102 to zero**. Both orders improved, although
+baseline CPU varied by about a factor of two. The absolute CPU saving is small;
+this is an idle terminal workload.
+
+The cursor layer is enabled by default on macOS. `RUSTTY_CURSOR_LAYER=0`
+disables it for comparisons or troubleshooting. Windows' GPU and software
+renderers are unchanged.
+[Saved evidence](benchmarks/render-2026-10-27/cursor.json) contains every result,
+the binary hash, build details, and hashes of the measured source files.
+
+Rustty retains a normal cursor-on frame, then waits for a matching cursor-off
+frame. The latter becomes the window's retained base; a separate opaque
+`CAMetalLayer` holds the cursor-on patch. Blinks only change that layer's
+visibility. No extra terminal preparation is needed to activate it. The patch
+includes the cursor row's foreground to preserve ligatures and glyph overhang.
+Here it was 1097×31 pixels, 3.3% of the 1200×850 window.
+
+Ordinary redraws retire the patch with a Core Animation transaction tied to
+successful main-frame presentation. Synchronized output preserves the visible
+cursor phase. Captures use ordinary rendering. The first implementation handles
+one visible opaque pane without images or blinking text; overlapping UI, IME
+composition, transitions, and unsupported geometry use ordinary rendering.
+
+### Release comparison
+
+One frozen executable ran baseline → layer → layer → baseline, serially, on
+the same M4 Max and secondary display as the opacity experiment. Every run
+settled for three seconds, then sampled 30 seconds with unchanged terminal
+content and no native keyboard focus. Menlo 13, scale 2, position
+`[-3376, 996]`, and the Metal adapter matched across all four runs. No builds,
+other tests, or computer-use inspection ran during these measurements.
+
+| Run | Variant | App CPU %, one core | Main terminal passes | Pane prepares | Layer visibility changes |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 01-A | Baseline | 0.521 | 51 | 51 | 0 |
+| 02-B | Cursor layer | 0.036 | 0 | 0 | 51 |
+| 03-B | Cursor layer | 0.036 | 0 | 0 | 50 |
+| 04-A | Baseline | 0.256 | 51 | 51 | 0 |
+
+Each layer sample retained its initial patch without another activation.
+CPU excludes startup and the subsequent lifecycle checks. Render-pass counters
+verify actual terminal encoding, not merely redraw requests. These measurements
+establish reduced Rustty rendering work, which is the scope of this experiment.
+
+Built with Rust 1.99.1 for `aarch64-apple-darwin`, the workspace release profile
+(thin LTO, one codegen unit), and no extra Rust flags. Full logs and PNG capture
+fixtures remain under `/tmp/rustty-render-experiment/cursor-abba/`.
+
+### Validation and reproduction
+
+Three cursor integration tests and three renderer metadata tests passed,
+including pixel-identical patch reconstruction across cursor styles, glyph
+overhang, clipping, invalidation, and UI overlap. Two existing pane-cache tests,
+macOS Clippy, and a Windows ARM64 compilation check also passed.
+
+Both native layer runs passed content retirement, cursor-inclusive capture,
+capture equivalence with ordinary rendering, synchronized-output phase
+preservation, popup retirement, and synchronized-output release checks.
+Native layer pixel alignment and seamless visual handoff still need direct
+visual validation; the capture checks exercise the ordinary fallback path.
+The existing eligibility checks and ordinary-rendering fallbacks remain active.
+Native smoke checks also verified startup with the flag unset (51 layer toggles,
+zero main paints or preparations, all lifecycle checks passing) and with `0`
+(51 ordinary paints). Both runs preserved native keyboard focus.
+
+Build once, freeze the executable, leave the chosen display uncovered, and use
+an empty output directory:
+
+```sh
+cargo build -p rustty-app --bin rustty --release --offline
+cp target/release/rustty /tmp/rustty-cursor-benchmark
+python3 test/rustty/cursor_compare.py \
+  --binary /tmp/rustty-cursor-benchmark \
+  --output /tmp/rustty-cursor-comparison
+```
+
+The script verifies the binary hash before and after each run, checks matching
+display controls and focus, and saves reports, logs, and an aggregate summary.
+Baseline runs set `RUSTTY_CURSOR_LAYER=0`; layer runs use the macOS default
+with the variable unset. The saved measurements above used the earlier opt-in
+build with the same layer implementation.
