@@ -338,10 +338,11 @@ impl Session {
                         let Ok(command) = input_rx.recv() else { break };
                         command
                     };
+                    let mut notify = true;
                     let result = match command {
                         IoCommand::Write(bytes) => {
                             let result = write_pty(&mut writer, &bytes, linefeed);
-                            writer_pending.release(bytes.len());
+                            notify = writer_pending.release(bytes.len());
                             result
                         }
                         IoCommand::Linefeed(enabled) => {
@@ -361,7 +362,9 @@ impl Session {
                         writer_wake();
                         break;
                     }
-                    writer_wake();
+                    if notify {
+                        writer_wake();
+                    }
                 }
                 writer_pending.close();
             })?;
@@ -611,8 +614,11 @@ impl Session {
             if restored
                 .as_ref()
                 .is_some_and(|output| output.first_output.is_some())
+                && finish_restored_output(&mut terminal, &mut restored)?
             {
-                finish_restored_output(&mut terminal, &mut restored)?;
+                self.pending_input
+                    .wake_on_release
+                    .store(true, Ordering::Release);
             }
         }
         enqueue(&self.input, &self.pending_input, bytes.to_owned(), false)
@@ -990,12 +996,14 @@ fn wait_for_child_event(
 struct PendingInput {
     used: Mutex<Option<usize>>,
     available: Condvar,
+    wake_on_release: AtomicBool,
 }
 impl Default for PendingInput {
     fn default() -> Self {
         Self {
             used: Mutex::new(Some(0)),
             available: Condvar::new(),
+            wake_on_release: AtomicBool::new(false),
         }
     }
 }
@@ -1015,6 +1023,8 @@ impl PendingInput {
                 return Ok(());
             }
             if !wait {
+                // Arm under the budget lock so a concurrent release cannot miss the retry.
+                self.wake_on_release.store(true, Ordering::Release);
                 return Err(io::Error::new(
                     io::ErrorKind::WouldBlock,
                     "terminal input queue is full",
@@ -1023,13 +1033,16 @@ impl PendingInput {
             used = self.available.wait(used).map_err(error)?;
         }
     }
-    fn release(&self, length: usize) {
+    fn release(&self, length: usize) -> bool {
+        let mut notify = false;
         if let Ok(mut used) = self.used.lock()
             && let Some(current) = used.as_mut()
         {
             *current -= length;
+            notify = self.wake_on_release.swap(false, Ordering::AcqRel);
         }
         self.available.notify_all();
+        notify
     }
     fn close(&self) {
         if let Ok(mut used) = self.used.lock() {
@@ -1391,10 +1404,12 @@ mod tests {
             matches!(received.try_recv().unwrap(), IoCommand::Write(bytes) if bytes == b"reply")
         );
         assert!(session.restored.lock().unwrap().is_some());
+        assert!(!session.pending_input.release(b"reply".len()));
         session
             .write_input(&Input::Text(b"input".to_vec()))
             .unwrap();
         assert!(session.restored.lock().unwrap().is_none());
+        assert!(session.pending_input.release(b"input".len()));
     }
 
     #[cfg(unix)]
@@ -2303,7 +2318,7 @@ mod tests {
         let (sender, receiver) = mpsc::channel();
         let pending = PendingInput {
             used: Mutex::new(Some(MAX_PENDING_INPUT - 1)),
-            available: Condvar::new(),
+            ..PendingInput::default()
         };
         assert_eq!(
             enqueue(&sender, &pending, b"ab".to_vec(), false)
@@ -2318,17 +2333,84 @@ mod tests {
     }
 
     #[test]
+    fn input_budget_only_notifies_the_host_after_backpressure() {
+        let pending = PendingInput::default();
+        pending.reserve(1, false).unwrap();
+        assert!(!pending.release(1));
+        pending.reserve(MAX_PENDING_INPUT, false).unwrap();
+        for _ in 0..2 {
+            assert_eq!(
+                pending.reserve(1, false).unwrap_err().kind(),
+                io::ErrorKind::WouldBlock
+            );
+            assert!(pending.release(1));
+            pending.reserve(1, false).unwrap();
+        }
+        assert!(!pending.release(MAX_PENDING_INPUT));
+        pending.close();
+        assert_eq!(
+            pending.reserve(1, false).unwrap_err().kind(),
+            io::ErrorKind::BrokenPipe
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn quiet_mouse_writes_do_not_wake_the_host() {
+        let (wake, wakes) = mpsc::channel();
+        let session = Session::spawn(
+            &Config::default(),
+            SessionOptions {
+                command: Some(Command::Direct(vec![
+                    "/bin/sh".into(),
+                    "-c".into(),
+                    "stty raw -echo; printf ready; exec cat >/dev/null".into(),
+                ])),
+                ..SessionOptions::default()
+            },
+            Arc::new(move || {
+                let _ = wake.send(());
+            }),
+        )
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !session.terminal().unwrap().plain_text().contains("ready") {
+            assert!(Instant::now() < deadline, "silent PTY did not become ready");
+            wakes.recv_timeout(Duration::from_secs(1)).unwrap();
+        }
+        while wakes.recv_timeout(Duration::from_millis(20)).is_ok() {
+            assert!(Instant::now() < deadline, "silent PTY kept waking the host");
+        }
+        for _ in 0..256 {
+            session
+                .write_input(&Input::Mouse(b"\x1b[<35;1;1M".to_vec()))
+                .unwrap();
+        }
+        while *session.pending_input.used.lock().unwrap() != Some(0) {
+            assert!(Instant::now() < deadline, "mouse writes did not drain");
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(
+            wakes.recv_timeout(Duration::from_millis(50)),
+            Err(mpsc::RecvTimeoutError::Timeout),
+            "completed mouse writes woke the host without output or backpressure"
+        );
+        session.resize(81, 25, 810, 500).unwrap();
+        wakes.recv_timeout(Duration::from_secs(1)).unwrap();
+    }
+
+    #[test]
     fn protocol_reply_waits_for_budget_instead_of_being_dropped() {
         let (sender, receiver) = mpsc::channel();
         let pending = Arc::new(PendingInput {
             used: Mutex::new(Some(MAX_PENDING_INPUT)),
-            available: Condvar::new(),
+            ..PendingInput::default()
         });
         let producer_pending = pending.clone();
         let producer =
             thread::spawn(move || enqueue(&sender, &producer_pending, b"reply".to_vec(), true));
         assert!(receiver.recv_timeout(Duration::from_millis(20)).is_err());
-        pending.release(5);
+        assert!(!pending.release(5));
         assert!(
             matches!(receiver.recv_timeout(Duration::from_secs(2)), Ok(IoCommand::Write(bytes)) if bytes == b"reply")
         );
