@@ -1260,7 +1260,12 @@ pub fn run() -> Result<()> {
         }
     });
     let mut gpu_config = egui_wgpu::WgpuConfiguration {
-        surface: egui_wgpu::SurfaceConfig::LOW_LATENCY,
+        surface: egui_wgpu::SurfaceConfig {
+            // Cursor retirement transactions need a third Metal drawable for follow-up repaints.
+            #[cfg(target_os = "macos")]
+            desired_maximum_frame_latency: Some(2),
+            ..egui_wgpu::SurfaceConfig::LOW_LATENCY
+        },
         ..Default::default()
     };
     #[cfg(target_os = "windows")]

@@ -182,8 +182,12 @@ impl NativeCursorLayer {
         !self.layer.isHidden()
     }
 
+    pub fn main_layer(&self) -> Result<Retained<CAMetalLayer>> {
+        main_layer(&self.window, &self.layer)
+    }
+
     pub fn begin_full_frame(&self) -> Result<FullFrameTransaction> {
-        let main_layer = main_layer(&self.window, &self.layer)?;
+        let main_layer = self.main_layer()?;
         let previous = main_layer.presentsWithTransaction();
         let transaction = Transaction::new();
         main_layer.setPresentsWithTransaction(true);
