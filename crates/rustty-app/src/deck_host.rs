@@ -51,6 +51,7 @@ pub(super) struct Connection {
     overflow: Arc<AtomicBool>,
     next_check: Option<Instant>,
     last_check: Option<Instant>,
+    retry_delay: Duration,
     last_config: Option<(bool, Option<String>)>,
     stopping: bool,
     last_diagnostic: Option<Instant>,
@@ -68,6 +69,7 @@ impl Default for Connection {
             overflow: Arc::new(AtomicBool::new(false)),
             next_check: None,
             last_check: None,
+            retry_delay: Duration::ZERO,
             last_config: None,
             stopping: false,
             last_diagnostic: None,
@@ -95,6 +97,7 @@ impl Connection {
         self.connected = false;
         self.stopping = true;
         self.next_check = None;
+        self.retry_delay = Duration::ZERO;
         self.dashboard.gesture = None;
         self.dashboard.moving = false;
         if let Some(worker) = &self.worker {
@@ -109,6 +112,16 @@ impl Connection {
         }
         if self.discovery.as_ref().is_some_and(JoinHandle::is_finished) {
             let _ = self.discovery.take().unwrap().join();
+        }
+    }
+    fn retry_deadline(&mut self, now: Instant, failed: bool) -> Instant {
+        if failed {
+            // A device held by another controller can be discoverable but never openable.
+            self.retry_delay =
+                (self.retry_delay * 2).clamp(Duration::from_secs(1), Duration::from_secs(30));
+            now + self.retry_delay
+        } else {
+            now + Duration::from_secs(1)
         }
     }
     fn diagnostic(&mut self, message: &str) {
@@ -369,7 +382,10 @@ impl App {
             return;
         }
         match action {
-            Action::Connected => self.deck.connected = true,
+            Action::Connected => {
+                self.deck.connected = true;
+                self.deck.retry_delay = Duration::ZERO;
+            }
             Action::Gesture(source) => {
                 self.deck.dashboard.gesture = source.filter(|s| {
                     self.deck.dashboard.board.valid(*s)
@@ -495,14 +511,17 @@ impl App {
         let now = Instant::now();
         if self.deck.worker.as_ref().is_some_and(Worker::is_finished) {
             self.deck.connected = false;
-            if let Err(error) = self.deck.worker.take().unwrap().join() {
-                self.deck.diagnostic(&error);
+            let result = self.deck.worker.take().unwrap().join();
+            if let Err(error) = &result {
+                self.deck.diagnostic(error);
             }
             self.deck.actions = None;
             self.deck.dashboard.gesture = None;
             self.deck.dashboard.moving = false;
             self.deck.stopping = false;
-            self.deck.next_check = config.0.then_some(now + Duration::from_secs(1));
+            self.deck.next_check = config
+                .0
+                .then(|| self.deck.retry_deadline(now, result.is_err()));
         }
         if self
             .deck
@@ -517,9 +536,11 @@ impl App {
                 .unwrap()
                 .join()
                 .unwrap_or_else(|_| Err("discovery panicked".into()));
-            self.deck.next_check = config.0.then_some(now + Duration::from_secs(1));
             let cancelled = self.deck.stopping;
             self.deck.stopping = false;
+            self.deck.next_check = config
+                .0
+                .then(|| self.deck.retry_deadline(now, result.is_err() && !cancelled));
             match result {
                 Ok(Some(candidate)) if config.0 && !cancelled && self.deck.worker.is_none() => {
                     let (tx, rx) = mpsc::sync_channel(64);
@@ -543,7 +564,10 @@ impl App {
                             self.deck.actions = Some(rx);
                             self.deck.next_check = None;
                         }
-                        Err(error) => self.deck.diagnostic(&error.to_string()),
+                        Err(error) => {
+                            self.deck.diagnostic(&error.to_string());
+                            self.deck.next_check = Some(self.deck.retry_deadline(now, true));
+                        }
                     }
                 }
                 Err(error) if config.0 && !cancelled => self.deck.diagnostic(&error),
@@ -578,7 +602,10 @@ impl App {
                     result
                 }) {
                 Ok(discovery) => self.deck.discovery = Some(discovery),
-                Err(error) => self.deck.diagnostic(&error.to_string()),
+                Err(error) => {
+                    self.deck.diagnostic(&error.to_string());
+                    self.deck.next_check = Some(self.deck.retry_deadline(now, true));
+                }
             }
         }
     }
@@ -603,6 +630,8 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
     app.workspace.windows[one_index]
         .tabs
         .push(Tab::new(tab, hidden, std::env::temp_dir()));
+    // This fixture needs a running hidden pane; ordinary hidden tabs start lazily.
+    app.spawn_pane(hidden, std::env::temp_dir(), None, None)?;
     app.reconcile(event_loop);
     let snapshot = |state, turn| Snapshot {
         state,
@@ -745,10 +774,13 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
     use config::StreamDeckAction;
     let enabled = app.loaded.config.stream_deck;
     let stopping = app.deck.stopping;
+    let retry_delay = app.deck.retry_delay;
     app.loaded.config.stream_deck = true;
     app.deck.stopping = false;
     assert!(!app.deck_command(StreamDeckAction::PullToFirst));
+    app.deck.retry_delay = Duration::from_secs(30);
     app.deck_action(Action::Connected);
+    assert_eq!(app.deck.retry_delay, Duration::ZERO);
     for (id, state) in [(first, State::Idle), (second, State::Working)] {
         app.panes.get_mut(&id).unwrap().agent.apply(
             AgentEvent::Update(snapshot(state, None)),
@@ -1215,6 +1247,7 @@ printf '\033]133;D;0\007'; exec sleep 120"#
     assert!(!app.deck_command(StreamDeckAction::PullToFirst));
     app.loaded.config.stream_deck = enabled;
     app.deck.stopping = stopping;
+    app.deck.retry_delay = retry_delay;
     // Saving `never` leaves even already-existing workspace bytes untouched.
     let before = std::fs::read(&app.state_path).ok();
     let policy = app.loaded.config.window_save_state;
@@ -1246,6 +1279,23 @@ fn discovery_deadline(now: Instant, previous: Option<Instant>) -> Instant {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn failed_device_attempts_back_off_without_delaying_absent_device_checks() {
+        let now = Instant::now();
+        let mut connection = Connection::default();
+        let next_second = now + Duration::from_secs(1);
+        assert_eq!(connection.retry_deadline(now, false), next_second);
+        for seconds in [1, 2, 4, 8, 16, 30, 30] {
+            assert_eq!(
+                connection.retry_deadline(now, true),
+                now + Duration::from_secs(seconds)
+            );
+            // Finding a candidate must not restart backoff before opening it fails.
+            assert_eq!(connection.retry_deadline(now, false), next_second);
+        }
+        connection.stop();
+        assert_eq!(connection.retry_deadline(now, true), next_second);
+    }
     #[test]
     fn task_labels_follow_local_project_task_names() {
         use std::path::Path;

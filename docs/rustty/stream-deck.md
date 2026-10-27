@@ -53,6 +53,12 @@ Only one controller should own the selected device. Stop the standalone
 unrelated controllers. Reloading Rustty settings enables/disables discovery and
 connection ownership. Unplugging or USB errors leave terminals running.
 
+When discovery or connection fails, retries wait 1, 2, 4, 8, 16, then 30 seconds
+between attempts, staying at 30 seconds until the device connects successfully.
+Changing `stream-deck` or `stream-deck-serial` resets the delay. Checks for an
+absent device still run once a second. After repeated failures, releasing the
+device from another controller can therefore take up to 30 seconds to reconnect.
+
 For a disposable reporter, run `rustty agent-sim` inside a Rustty pane. It cycles
 all seven states every three seconds; `--state working` holds one state and
 `--interval 0.5` changes the reporting cadence. Ctrl-C unregisters it.
