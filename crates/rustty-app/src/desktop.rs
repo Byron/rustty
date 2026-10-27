@@ -52,6 +52,7 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
+        mpsc,
     },
     time::{Duration, Instant},
 };
@@ -129,6 +130,18 @@ struct Pane {
     sync_output: SynchronizedOutput,
     search: Option<Search>,
 }
+
+struct PaneStartup {
+    directory: PathBuf,
+    saved: Option<SavedPane>,
+    reload_config: bool,
+    host_state: (bool, bool, vt::query::ColorScheme),
+    wake_pending: Arc<AtomicBool>,
+    started: Instant,
+    input: VecDeque<SessionInput>,
+    input_bytes: usize,
+}
+
 impl Pane {
     fn has_deck_report(&self) -> bool {
         !self.exited
@@ -166,9 +179,6 @@ impl Pane {
         true
     }
 
-    fn write(&mut self, bytes: Vec<u8>) -> std::io::Result<()> {
-        self.send_input(SessionInput::Text(bytes))
-    }
     fn send_input(&mut self, input: SessionInput) -> std::io::Result<()> {
         QueuedInput {
             session: &self.session,
@@ -258,16 +268,28 @@ impl QueuedInput<'_> {
                 }
             }
         }
-        if self.bytes.saturating_add(size) > INPUT_BUDGET {
-            return Err(std::io::Error::other(
-                "Input queue is full. Wait for the command to read its input.",
-            ));
-        }
-        *self.bytes += size;
-        self.queue.push_back(input);
-        Ok(())
+        queue_input(self.queue, self.bytes, input)
     }
 }
+
+fn queue_input(
+    queue: &mut VecDeque<SessionInput>,
+    bytes: &mut usize,
+    input: SessionInput,
+) -> std::io::Result<()> {
+    let size = input.queue_bytes();
+    if bytes.saturating_add(size) > INPUT_BUDGET {
+        return Err(std::io::Error::other(
+            "Input queue is full. Wait for the command to read its input.",
+        ));
+    }
+    if size > 0 {
+        *bytes += size;
+        queue.push_back(input);
+    }
+    Ok(())
+}
+
 impl std::io::Write for QueuedInput<'_> {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         self.enqueue(SessionInput::Reply(bytes.to_vec()))?;
@@ -1075,7 +1097,8 @@ struct App {
     panes: HashMap<Id, Pane>,
     directory_label_paths: HashMap<Id, PathBuf>,
     directory_labels: HashMap<Id, String>,
-    pending_visuals: BTreeMap<Id, Vec<u8>>,
+    pending_visuals: BTreeMap<Id, Arc<Vec<u8>>>,
+    starting_panes: HashMap<Id, (PaneStartup, mpsc::Receiver<std::io::Result<Session>>)>,
     failed_panes: BTreeMap<Id, String>,
     activity_flashes: HashMap<Id, CompletionFlash>,
     closing: Vec<Session>,
@@ -1313,6 +1336,7 @@ pub fn run() -> Result<()> {
         directory_label_paths: HashMap::new(),
         directory_labels: HashMap::new(),
         pending_visuals: BTreeMap::new(),
+        starting_panes: HashMap::new(),
         failed_panes: BTreeMap::new(),
         activity_flashes: HashMap::new(),
         closing: Vec::new(),
@@ -1749,16 +1773,16 @@ impl App {
         host: Option<&Host>,
         background: Option<[u8; 3]>,
     ) -> Result<()> {
-        if self.panes.contains_key(&id) || self.failed_panes.contains_key(&id) {
+        if self.panes.contains_key(&id)
+            || self.failed_panes.contains_key(&id)
+            || self.starting_panes.contains_key(&id)
+        {
             return Ok(());
         }
-        let visual = self.pending_visuals.remove(&id);
-        let result =
-            self.spawn_pane_with_visual(id, directory, host, background, visual.as_deref());
-        if result.is_err()
-            && let Some(visual) = visual
-        {
-            self.pending_visuals.insert(id, visual);
+        let visual = self.pending_visuals.get(&id).cloned();
+        let result = self.spawn_pane_with_visual(id, directory, host, background, visual);
+        if let Err(error) = &result {
+            self.failed_panes.insert(id, error.to_string());
         }
         result
     }
@@ -1768,7 +1792,7 @@ impl App {
         directory: PathBuf,
         host: Option<&Host>,
         background: Option<[u8; 3]>,
-        visual: Option<&[u8]>,
+        visual: Option<Arc<Vec<u8>>>,
     ) -> Result<()> {
         let directory = if self.tmuxx_pane(id).is_some() {
             PathBuf::new()
@@ -1824,6 +1848,22 @@ impl App {
             self.window_color_scheme(window)
         });
         let host_state = (visible, focused, scheme);
+        let startup = PaneStartup {
+            directory: directory.clone(),
+            reload_config: false,
+            saved: self
+                .workspace
+                .windows
+                .iter()
+                .flat_map(|window| &window.tabs)
+                .find_map(|tab| tab.panes.get(&id))
+                .cloned(),
+            host_state,
+            wake_pending,
+            started,
+            input: VecDeque::new(),
+            input_bytes: 0,
+        };
         let tmuxx = self.tmuxx_pane(id);
         let created = if let Some(entry) = tmuxx {
             Session::attach_tmuxx(
@@ -1841,6 +1881,7 @@ impl App {
                     .find(|host| Some(host.id) == pane_window)
             });
             let (cols, rows) = visual
+                .as_ref()
                 .and(host)
                 .and_then(|host| {
                     let tab = self
@@ -1898,11 +1939,46 @@ impl App {
                 focused: host_state.1,
             };
             if let Some(visual) = visual {
-                Session::spawn_restored(self.config(), options, wake, visual)
+                // Initial import stays transactional; later tabs must not wait for history or shells.
+                if !self.import_selector {
+                    let config = self.config().clone();
+                    let proxy = self.proxy.clone();
+                    let (sender, receiver) = mpsc::channel();
+                    std::thread::Builder::new()
+                        .name("rustty-pane-restore".into())
+                        .spawn(move || {
+                            let session = Session::spawn_restored(&config, options, wake, &visual);
+                            if sender.send(session).is_ok() {
+                                // Early PTY output may already have consumed the coalesced wake.
+                                let _ = proxy.send_event(Event::Output(id));
+                            }
+                        })?;
+                    self.starting_panes.insert(id, (startup, receiver));
+                    return Ok(());
+                }
+                Session::spawn_restored(self.config(), options, wake, &visual)
             } else {
                 Session::spawn(self.config(), options, wake)
             }
         };
+        self.finish_spawn_pane(id, startup, created)
+    }
+    fn finish_spawn_pane(
+        &mut self,
+        id: Id,
+        startup: PaneStartup,
+        created: std::io::Result<Session>,
+    ) -> Result<()> {
+        let PaneStartup {
+            directory,
+            saved,
+            host_state,
+            wake_pending,
+            started,
+            input,
+            input_bytes,
+            ..
+        } = startup;
         let session = match created {
             Ok(session) => session,
             Err(error) => {
@@ -1911,7 +1987,10 @@ impl App {
             }
         };
         if self.tmuxx_pane(id).is_some() {
-            if let Some(window) = pane_window.filter(|window| self.tmuxx_theme(*window).is_some()) {
+            if let Some(window) = self
+                .pane_window(id)
+                .filter(|window| self.tmuxx_theme(*window).is_some())
+            {
                 session.apply_appearance(self.window_config(window))?;
             }
             session.set_host_state(host_state.0, host_state.1, host_state.2)?;
@@ -1926,7 +2005,8 @@ impl App {
             .windows
             .iter()
             .flat_map(|window| &window.tabs)
-            .find_map(|tab| tab.panes.get(&id));
+            .find_map(|tab| tab.panes.get(&id))
+            .or(saved.as_ref());
         let title_override = saved.and_then(|pane| pane.title_override.clone());
         let title = title_override
             .clone()
@@ -1945,8 +2025,8 @@ impl App {
                 session,
                 host_state,
                 wake_pending,
-                input: VecDeque::new(),
-                input_bytes: 0,
+                input,
+                input_bytes,
                 title,
                 title_override,
                 cwd: directory,
@@ -1965,7 +2045,36 @@ impl App {
                 search: None,
             },
         );
+        self.pending_visuals.remove(&id);
         Ok(())
+    }
+
+    fn poll_starting_pane(&mut self, id: Id) {
+        let Some((_, receiver)) = self.starting_panes.get(&id) else {
+            return;
+        };
+        let created = match receiver.try_recv() {
+            Ok(result) => result,
+            Err(mpsc::TryRecvError::Empty) => return,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                Err(std::io::Error::other("terminal startup worker stopped"))
+            }
+        };
+        let (startup, _) = self.starting_panes.remove(&id).unwrap();
+        // Config and window focus may have changed while the pane was starting.
+        let created = created.and_then(|session| {
+            if startup.reload_config {
+                session.apply_config(self.config())?;
+            } else {
+                session.apply_appearance(self.config())?;
+            }
+            Ok(session)
+        });
+        if let Err(error) = self.finish_spawn_pane(id, startup, created) {
+            self.errors.push(error.to_string());
+        }
+        self.sync_host_state();
+        self.repaint_pane(id, true);
     }
     fn open_window(&mut self, event_loop: &ActiveEventLoop, id: Id) -> Result<()> {
         if self.windows.values().any(|host| host.id == id) {
@@ -2219,16 +2328,17 @@ impl App {
         {
             self.errors.push(error.to_string());
         }
-        if let Some(pane) = self.panes.get_mut(&pane)
-            && let Err(error) = pane.write(bytes)
-        {
-            self.errors.push(error.to_string());
-        }
+        self.send_input(pane, SessionInput::Text(bytes));
     }
     fn send_input(&mut self, pane: Id, input: SessionInput) {
-        if let Some(pane) = self.panes.get_mut(&pane)
-            && let Err(error) = pane.send_input(input)
-        {
+        let result = if let Some(pane) = self.panes.get_mut(&pane) {
+            pane.send_input(input)
+        } else if let Some((startup, _)) = self.starting_panes.get_mut(&pane) {
+            queue_input(&mut startup.input, &mut startup.input_bytes, input)
+        } else {
+            return;
+        };
+        if let Err(error) = result {
             self.errors.push(error.to_string());
         }
     }
@@ -2255,28 +2365,33 @@ impl App {
     fn paste_target_exists(&self, window: Id, pane: Id) -> bool {
         self.index(window)
             .is_some_and(|index| window_contains_pane(&self.workspace.windows[index], pane))
-            && self
-                .panes
-                .get(&pane)
-                .is_some_and(|pane| !pane.exited && pane.session.accepts_input())
+            && (self.starting_panes.contains_key(&pane)
+                || self
+                    .panes
+                    .get(&pane)
+                    .is_some_and(|pane| !pane.exited && pane.session.accepts_input()))
     }
     fn paste(&mut self, host: &mut Host, paste: PendingPaste, approved: bool) {
         if paste.data.is_empty() || !self.paste_target_exists(host.id, paste.pane) {
             return;
         }
-        let Some(pane) = self.panes.get(&paste.pane) else {
+        let Ok(mut terminal) = self
+            .panes
+            .get(&paste.pane)
+            .map(|pane| pane.session.terminal())
+            .transpose()
+        else {
             return;
         };
-        let Ok(mut terminal) = pane.session.terminal() else {
-            return;
-        };
-        if !approved && paste_needs_confirmation(self.config(), &terminal, &paste.data) {
+        if !approved && paste_needs_confirmation(self.config(), terminal.as_deref(), &paste.data) {
             host.confirm = Some(Confirmation::Paste(paste));
             host.repaint();
             return;
         }
-        terminal.screen_mut().viewport_offset = 0;
-        terminal.screen_mut().selection = None;
+        if let Some(terminal) = &mut terminal {
+            terminal.screen_mut().viewport_offset = 0;
+            terminal.screen_mut().selection = None;
+        }
         drop(terminal);
         self.terminal_input(host, paste.pane);
         self.send_input(paste.pane, SessionInput::Paste(paste.data));
@@ -2301,7 +2416,10 @@ impl App {
         let Some(pane) = host.pane_at(position) else {
             return;
         };
-        let data = match self.panes[&pane].session.shell().quote_path(path) {
+        let Some(state) = self.panes.get(&pane) else {
+            return;
+        };
+        let data = match state.session.shell().quote_path(path) {
             Ok(data) => data,
             Err(error) => {
                 self.errors
@@ -2324,7 +2442,10 @@ impl App {
         let Some(platform) = &self.platform else {
             return Ok(false);
         };
-        if !self.panes[&pane]
+        let Some(state) = self.panes.get(&pane) else {
+            return Ok(false);
+        };
+        if !state
             .session
             .terminal()
             .map_err(|error| error.to_string())?
@@ -2815,6 +2936,7 @@ impl App {
     }
 
     fn drain(&mut self, event_loop: &ActiveEventLoop, id: Id) {
+        self.poll_starting_pane(id);
         self.deck.dirty = true;
         let previous_tab_label = self.pane_tab_label(id);
         let tmuxx = self.tmuxx_pane(id).is_some();
@@ -3464,6 +3586,10 @@ impl App {
                     && self.tmuxx_pane(*id).is_some_and(|e| !e.temporary())
                 {
                     return false;
+                }
+                if self.starting_panes.contains_key(id) {
+                    return self.config().confirm_close_surface
+                        != config::ConfirmCloseSurface::False;
                 }
                 self.panes.get(id).is_some_and(|p| {
                     !p.exited
@@ -4135,6 +4261,9 @@ impl App {
         }
         self.reload_tmuxx_themes();
         self.apply_pane_configs(Session::apply_config, &theme_preview::Scope::Global);
+        for (startup, _) in self.starting_panes.values_mut() {
+            startup.reload_config = true;
+        }
         for pane in self.panes.values_mut() {
             if !self.loaded.config.progress_style {
                 pane.activity.progress_reported(0, None, Instant::now());
@@ -4403,6 +4532,7 @@ impl App {
         self.closing.retain(|session| !session.has_exited());
         self.failed_panes.retain(|id, _| retained.contains(id));
         self.pending_visuals.retain(|id, _| retained.contains(id));
+        self.starting_panes.retain(|id, _| retained.contains(id));
         let startup = self
             .workspace
             .windows
@@ -4826,6 +4956,19 @@ impl App {
             self.action(event_loop, host, Action::CloseSurface, true);
             return true;
         }
+        let options = vt::KeyEncodeOptions {
+            macos_option_as_alt: input::option_as_alt(
+                self.config().macos_option_as_alt,
+                host.modifiers.lalt_state(),
+                host.modifiers.ralt_state(),
+            ),
+        };
+        if self.starting_panes.contains_key(&id) {
+            if let Some(event) = input::terminal_key(key, host.modifiers, host.composing, options) {
+                self.send_input(id, SessionInput::Key { event, options });
+            }
+            return true;
+        }
         if self
             .panes
             .get(&id)
@@ -4835,13 +4978,6 @@ impl App {
         }
         let bytes = self.panes.get(&id).and_then(|pane| {
             let mut terminal = pane.session.terminal().ok()?;
-            let options = vt::KeyEncodeOptions {
-                macos_option_as_alt: input::option_as_alt(
-                    self.config().macos_option_as_alt,
-                    host.modifiers.lalt_state(),
-                    host.modifiers.ralt_state(),
-                ),
-            };
             let event = input::terminal_key(key, host.modifiers, host.composing, options)?;
             let bytes = input::encode_terminal_key(&mut terminal, &event, options);
             Some((bytes, SessionInput::Key { event, options }))
@@ -7837,10 +7973,13 @@ impl ApplicationHandler<Event> for App {
                     .egui_input_mut()
                     .events
                     .drain(egui_event_start..egui_event_end);
-                let accepts_input = self
-                    .focused(host.id)
-                    .and_then(|id| self.panes.get(&id))
-                    .is_some_and(|pane| pane.session.accepts_input());
+                let accepts_input = self.focused(host.id).is_some_and(|id| {
+                    self.starting_panes.contains_key(&id)
+                        || self
+                            .panes
+                            .get(&id)
+                            .is_some_and(|pane| pane.session.accepts_input())
+                });
                 match ime {
                     Ime::Preedit(text, selection) if accepts_input => {
                         if !text.is_empty()
@@ -8143,6 +8282,19 @@ impl ApplicationHandler<Event> for App {
 }
 
 impl App {
+    fn close_starting_panes(&mut self) {
+        self.starting_panes
+            .retain(|_, (_, receiver)| match receiver.try_recv() {
+                Ok(Ok(session)) => {
+                    session.close();
+                    self.closing.push(session);
+                    false
+                }
+                Err(mpsc::TryRecvError::Empty) => true,
+                Ok(Err(_)) | Err(mpsc::TryRecvError::Disconnected) => false,
+            });
+    }
+
     fn shutdown(&mut self) {
         self.deck.stop();
         self.hide_outliner();
@@ -8162,6 +8314,7 @@ impl App {
         let deadline = Instant::now() + Duration::from_secs(2);
         while Instant::now() < deadline
             && (self.deck.busy()
+                || !self.starting_panes.is_empty()
                 || self
                     .panes
                     .values()
@@ -8170,6 +8323,7 @@ impl App {
                     .any(|session| !session.has_exited()))
         {
             self.deck.reap();
+            self.close_starting_panes();
             for session in self
                 .panes
                 .values()
@@ -8182,6 +8336,7 @@ impl App {
         }
         self.panes.clear();
         self.closing.clear();
+        self.starting_panes.clear();
     }
 }
 
@@ -8232,11 +8387,12 @@ fn window_contains_pane(window: &WindowState, pane: Id) -> bool {
     window.tabs.iter().any(|tab| tab.panes.contains_key(&pane))
 }
 
-fn paste_needs_confirmation(config: &Config, terminal: &vt::Terminal, data: &[u8]) -> bool {
+fn paste_needs_confirmation(config: &Config, terminal: Option<&vt::Terminal>, data: &[u8]) -> bool {
     config.clipboard_paste_protection
         && !vt::input::paste_is_safe(
             data,
-            config.clipboard_paste_bracketed_safe && terminal.modes.dec(2004),
+            config.clipboard_paste_bracketed_safe
+                && terminal.is_some_and(|terminal| terminal.modes.dec(2004)),
         )
 }
 
@@ -9019,6 +9175,39 @@ fn ui_theme(config: &Config) -> egui::ThemePreference {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn starting_pane_input_is_ordered_and_bounded() {
+        let mut queue = VecDeque::new();
+        let mut bytes = 0;
+        queue_input(
+            &mut queue,
+            &mut bytes,
+            SessionInput::Text(b"first".to_vec()),
+        )
+        .unwrap();
+        queue_input(
+            &mut queue,
+            &mut bytes,
+            SessionInput::Paste(b"second".to_vec()),
+        )
+        .unwrap();
+        queue_input(&mut queue, &mut bytes, SessionInput::Text(Vec::new())).unwrap();
+        assert_eq!(bytes, 11);
+        assert_eq!(queue.len(), 2);
+        assert!(matches!(&queue[0], SessionInput::Text(data) if data == b"first"));
+        assert!(matches!(&queue[1], SessionInput::Paste(data) if data == b"second"));
+        assert!(
+            queue_input(
+                &mut queue,
+                &mut bytes,
+                SessionInput::Text(vec![0; INPUT_BUDGET])
+            )
+            .is_err()
+        );
+        assert_eq!(bytes, 11);
+        assert_eq!(queue.len(), 2);
+    }
 
     #[test]
     fn split_minimum_includes_scaled_cells_padding_and_header() {
@@ -11443,16 +11632,18 @@ mod tests {
                     config.clipboard_paste_protection = protection;
                     config.clipboard_paste_bracketed_safe = trust_brackets;
                     for data in [b"".as_slice(), b"plain text", "日誌".as_bytes()] {
-                        assert!(!paste_needs_confirmation(&config, &terminal, data));
+                        assert!(!paste_needs_confirmation(&config, Some(&terminal), data));
+                        assert!(!paste_needs_confirmation(&config, None, data));
                     }
                     for data in [b"one\ntwo".as_slice(), b"one\rtwo", b"one\r\ntwo"] {
                         assert_eq!(
-                            paste_needs_confirmation(&config, &terminal, data),
+                            paste_needs_confirmation(&config, Some(&terminal), data),
                             protection && !(bracketed && trust_brackets)
                         );
+                        assert_eq!(paste_needs_confirmation(&config, None, data), protection);
                     }
                     assert_eq!(
-                        paste_needs_confirmation(&config, &terminal, b"one\x1b[201~two"),
+                        paste_needs_confirmation(&config, Some(&terminal), b"one\x1b[201~two"),
                         protection
                     );
                 }
