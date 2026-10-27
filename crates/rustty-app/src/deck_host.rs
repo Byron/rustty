@@ -42,6 +42,8 @@ fn task_label(terminal_title: &str, cwd: &std::path::Path) -> String {
 
 pub(super) struct Connection {
     pub report_generation: u64,
+    pub(super) dirty: bool,
+    pub(super) syncs: u64,
     connected: bool,
     dashboard: Dashboard,
     worker: Option<Worker>,
@@ -60,6 +62,8 @@ impl Default for Connection {
     fn default() -> Self {
         Self {
             report_generation: 0,
+            dirty: true,
+            syncs: 0,
             connected: false,
             dashboard: Dashboard::default(),
             worker: None,
@@ -241,6 +245,7 @@ impl App {
         self.sync_deck_with_host(None);
     }
     fn sync_deck_with_host(&mut self, host: Option<&Host>) {
+        self.deck.syncs += 1;
         self.update_deck_commands();
         let focused = host
             .filter(|host| {
@@ -482,6 +487,7 @@ impl App {
             self.config().stream_deck_serial.clone(),
         );
         if self.deck.last_config.as_ref() != Some(&config) {
+            self.deck.dirty = true;
             self.deck.stop();
             self.deck.last_config = Some(config.clone());
             if !self.deck.busy() {
@@ -505,9 +511,15 @@ impl App {
             self.deck.stop();
         }
         for action in actions {
+            self.deck.dirty = true;
             self.deck_action(action);
         }
-        self.sync_deck();
+        // Pointer motion and timer wakes do not change dashboard inputs.
+        let update = self.deck.dirty;
+        if update {
+            self.sync_deck();
+            self.deck.dirty = false;
+        }
         let now = Instant::now();
         if self.deck.worker.as_ref().is_some_and(Worker::is_finished) {
             self.deck.connected = false;
@@ -584,7 +596,7 @@ impl App {
             return;
         }
         if let Some(worker) = &self.deck.worker {
-            if !self.deck.stopping {
+            if !self.deck.stopping && update {
                 worker.submit(self.deck.dashboard.board.clone());
             }
         } else if self.deck.discovery.is_none() && self.deck.next_check.is_some_and(|at| at <= now)
