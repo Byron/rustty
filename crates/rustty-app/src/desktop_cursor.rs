@@ -94,7 +94,7 @@ impl NativeCursorLayer {
         let scale = self.window.scale_factor();
         let view = view(&self.window)?;
         let parent = view.layer().ok_or("window has no backing layer")?;
-        let main = main_layer(&self.window, &self.layer)?;
+        let main = main_layer(&self.window, Some(&self.layer))?;
         let native_rect = view.convertRectToLayer(NSRect::new(
             NSPoint::new(f64::from(x) / scale, f64::from(y) / scale),
             NSSize::new(f64::from(width) / scale, f64::from(height) / scale),
@@ -183,7 +183,7 @@ impl NativeCursorLayer {
     }
 
     pub fn main_layer(&self) -> Result<Retained<CAMetalLayer>> {
-        main_layer(&self.window, &self.layer)
+        main_layer(&self.window, Some(&self.layer))
     }
 
     pub fn begin_full_frame(&self) -> Result<FullFrameTransaction> {
@@ -222,7 +222,7 @@ impl FullFrameTransaction {
     /// A recreated main surface must first present again with transaction synchronization.
     pub fn finish(mut self, frame_painted: bool) -> bool {
         let retired = frame_painted
-            && main_layer(&self.window, &self.cursor_layer)
+            && main_layer(&self.window, Some(&self.cursor_layer))
                 .is_ok_and(|layer| ptr::eq(&*layer, &*self.main_layer));
         if retired {
             self.cursor_layer.setHidden(true);
@@ -235,6 +235,8 @@ impl FullFrameTransaction {
         if self.transaction.is_some() {
             drop(self.transaction.take());
             self.main_layer.setPresentsWithTransaction(self.previous);
+            // Release transaction-presented drawables before another frame acquires one.
+            CATransaction::flush();
         }
     }
 }
@@ -255,7 +257,10 @@ fn view(window: &Window) -> Result<&NSView> {
     Ok(unsafe { handle.ns_view.cast::<NSView>().as_ref() })
 }
 
-fn main_layer(window: &Window, cursor: &CAMetalLayer) -> Result<Retained<CAMetalLayer>> {
+pub(super) fn main_layer(
+    window: &Window,
+    cursor: Option<&CAMetalLayer>,
+) -> Result<Retained<CAMetalLayer>> {
     let root = view(window)?.layer().ok_or("window has no backing layer")?;
     if let Some(layer) = root.downcast_ref::<CAMetalLayer>() {
         return Ok(layer.retain());
@@ -265,7 +270,7 @@ fn main_layer(window: &Window, cursor: &CAMetalLayer) -> Result<Retained<CAMetal
         .into_iter()
         .flat_map(|layers| layers.into_iter())
         .filter_map(|layer| layer.downcast::<CAMetalLayer>().ok())
-        .filter(|layer| !ptr::eq(&**layer, cursor))
+        .filter(|layer| cursor.is_none_or(|cursor| !ptr::eq(&**layer, cursor)))
         // Surface recreation appends the replacement after the old layer.
         .last()
         .ok_or_else(|| "window has no Metal presentation layer".into())

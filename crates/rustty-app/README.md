@@ -497,7 +497,11 @@ four split panes, tabs, quadrant focus and zoom, URI directory reports, restorat
 progress animation across pane focus changes, hover scrolling, file-drop targeting,
 reverse video, DEC column mode, text blinking, synchronized output, hidden-tab title
 updates, independent Find overlays without terminal resizing, and idle rendering.
-The report records animation frame rate, the monitor's reported refresh rate, and
+On macOS, unobscured indefinite progress bars animate in Core Animation without
+repainting the window. Captures, zoom transitions, and overlapping UI use the
+ordinary renderer. The smoke check covers native layer timing and cleanup; its
+foreground run also checks that progress stops requesting frequent window frames.
+The report records window frame rate, the monitor's reported refresh rate, and
 window redraws and pane preparations during hidden-tab title updates. It writes
 `result.json`, `workspace.json` and a rendered `window.png` into the specified
 directory and exits. It uses the selected display configuration but does not

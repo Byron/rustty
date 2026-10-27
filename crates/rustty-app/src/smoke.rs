@@ -870,6 +870,10 @@ impl Smoke {
                 if !self.offscreen && self.progress_frames == 0 {
                     return Err("indefinite progress did not render any animation frames".into());
                 }
+                #[cfg(target_os = "macos")]
+                if !self.offscreen && (host.progress.len() == 0 || self.progress_frames > 30) {
+                    return Err(format!("progress did not settle into compositor animation: {} native bars, {} window frames", host.progress.len(), self.progress_frames).into());
+                }
                 eprintln!(
                     "Native smoke: indefinite progress rendered {} frames in {:.3}s ({:.1} FPS)",
                     self.progress_frames,
@@ -3312,6 +3316,8 @@ impl CursorBenchmark {
                         checks.extend([
                             "neighbor-content-retires-layer",
                             "focus-switch-reacquires-layer",
+                            "progress-quad-peek-retirement",
+                            "progress-quad-peek-burst-latency",
                         ]);
                     }
                     report["lifecycle_checks"] = serde_json::json!(checks);
@@ -3363,6 +3369,16 @@ fn check_cursor_lifecycle(
         let started = Instant::now();
         for _ in 0..3 {
             app.draw(event_loop, host)?;
+            if host
+                .cursor
+                .layer
+                .as_ref()
+                .ok_or("cursor retirement burst has no layer")?
+                .main_layer()?
+                .presentsWithTransaction()
+            {
+                return Err("native overlays left transaction presentation enabled".into());
+            }
         }
         let elapsed = started.elapsed();
         if elapsed >= Duration::from_millis(500) {
@@ -3516,6 +3532,60 @@ fn check_cursor_lifecycle(
                 return Err("focus switch did not move the retained cursor to the new pane".into());
             }
         }
+
+        let activity = std::mem::take(&mut app.panes.get_mut(&pane).unwrap().activity);
+        app.panes
+            .get_mut(&pane)
+            .unwrap()
+            .activity
+            .progress_reported(3, None, Instant::now());
+        app.action(event_loop, host, Action::ToggleQuadrantZoom, true);
+        activate(app, host)?;
+        if app.tab(host.id).unwrap().quadrant_zoom.is_none() || host.progress.len() != 1 {
+            return Err("progress fixture did not retain its native bar in Quad zoom".into());
+        }
+        let animations = app.loaded.config.window_animations.replace(true);
+        let duration = Duration::from_secs(1);
+        let previous_duration = std::mem::replace(
+            &mut app.loaded.config.quad_peek_animation_duration,
+            duration,
+        );
+        for enter in [true, false] {
+            if enter {
+                host.peek = app.tab_mut(host.id).unwrap().begin_peek(config::Modifiers {
+                    control: true,
+                    super_key: true,
+                    ..Default::default()
+                });
+                if host.peek.is_none() {
+                    return Err("progress fixture could not enter Quad Peek".into());
+                }
+            } else {
+                let peek = host.peek.take().ok_or("progress fixture lost Quad Peek")?;
+                let target = app.tab_mut(host.id).unwrap().finish_peek(peek);
+                app.focus_pane(host.id, target);
+            }
+            redraw_burst(app, host)?;
+            if !host.zoom_animation.is_running() || host.progress.len() != 0 || !retired(host) {
+                return Err("Quad Peek did not retire native progress and cursor layers".into());
+            }
+            host.zoom_animation.started = Some(Instant::now() - duration / 2);
+            redraw_burst(app, host)?;
+            if host.progress.len() != 0 || !retired(host) {
+                return Err("Quad Peek restored native layers during its animation".into());
+            }
+            host.zoom_animation.finish();
+            redraw_burst(app, host)?;
+            if host.zoom_animation.is_running() || host.progress.len() != 1 {
+                return Err("settled Quad Peek did not restore native progress".into());
+            }
+        }
+        activate(app, host)?;
+        app.loaded.config.window_animations = animations;
+        app.loaded.config.quad_peek_animation_duration = previous_duration;
+        app.panes.get_mut(&pane).unwrap().activity = activity;
+        app.action(event_loop, host, Action::ToggleQuadrantZoom, true);
+        redraw_burst(app, host)?;
     }
     app.action(event_loop, host, Action::NewTab, true);
     let other = app
@@ -4057,6 +4127,8 @@ fn check_terminal_frames(
         if host.deadline.is_some() {
             return Err("erasing blinking text left a redraw timer running".into());
         }
+        #[cfg(target_os = "macos")]
+        native_progress::check_lifecycle(&host.window)?;
         // Only the progress overlay changes during these frames. Keep the
         // terminal composition and GPU input alive across the animation.
         let activity = std::mem::take(&mut app.panes.get_mut(&id).unwrap().activity);

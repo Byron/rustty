@@ -8,6 +8,9 @@ mod handoff_ui;
 #[cfg(target_os = "macos")]
 #[path = "desktop_cursor.rs"]
 mod native_cursor;
+#[cfg(target_os = "macos")]
+#[path = "desktop_progress.rs"]
+mod native_progress;
 #[path = "outliner_host.rs"]
 mod outliner_host;
 #[path = "desktop_painter.rs"]
@@ -732,6 +735,8 @@ struct Host {
     cursor_blink_started: Instant,
     #[cfg(target_os = "macos")]
     cursor: CursorState,
+    #[cfg(target_os = "macos")]
+    progress: native_progress::NativeProgressLayers,
     visible: bool,
     quick_used: bool,
     occluded: bool,
@@ -2115,6 +2120,8 @@ impl App {
                 enabled: std::env::var("RUSTTY_CURSOR_LAYER").as_deref() != Ok("0"),
                 ..Default::default()
             },
+            #[cfg(target_os = "macos")]
+            progress: native_progress::NativeProgressLayers::default(),
             visible: !quick,
             quick_used: false,
             occluded: false,
@@ -4997,6 +5004,8 @@ impl App {
     ) -> Result<()> {
         host.messages_open = !self.errors.is_empty();
         if !host.visible || host.occluded {
+            #[cfg(target_os = "macos")]
+            host.progress.clear();
             self.cancel_selection_drag(host);
             return Ok(());
         }
@@ -5041,6 +5050,10 @@ impl App {
         #[cfg(target_os = "macos")]
         let cursor_eligible =
             host.cursor.enabled && offscreen.is_none() && !host.capture && !self.background_smoke;
+        let native_progress = cfg!(target_os = "macos")
+            && offscreen.is_none()
+            && !host.capture
+            && !self.background_smoke;
         #[cfg(target_os = "macos")]
         if host.cursor.active {
             host.cursor.deadline = None;
@@ -5738,16 +5751,22 @@ impl App {
                             if config.progress_style
                                 && let Some(pane) = self.panes.get_mut(&id)
                                 && let Some(progress) = pane.activity.progress()
-                                && !paint_progress(
+                            {
+                                let offset = pane.activity.progress_offset(now);
+                                let native_started = (native_progress && zoom_panes.iter().all(|pane| {
+                                    !pane.moving && pane.opacity == 1.0 && pane.background_opacity == 1.0
+                                })).then(|| pane.activity.progress_started()).flatten();
+                                if !paint_progress(
                                     ui,
                                     id,
                                     rect,
                                     progress,
                                     accent,
-                                    pane.activity.progress_offset(now),
-                                )
-                            {
-                                pane.activity.reset_progress_animation();
+                                    offset,
+                                    native_started,
+                                ) {
+                                    pane.activity.reset_progress_animation();
+                                }
                             }
                         });
                     }
@@ -6348,6 +6367,61 @@ impl App {
         {
             host.window.set_cursor(cursor);
         }
+        #[cfg(target_os = "macos")]
+        let progress_transaction = if offscreen.is_none()
+            && !self.background_smoke
+            && (host.progress.len() > 0
+                || output.shapes.iter().any(|shape| {
+                    matches!(&shape.shape,
+                egui::Shape::Callback(callback) if callback.callback.is::<ProgressOverlay>())
+                })) {
+            let main = host.cursor.layer.as_ref().map_or_else(
+                || native_cursor::main_layer(&host.window, None),
+                native_cursor::NativeCursorLayer::main_layer,
+            );
+            match main {
+                Ok(main) => Some(native_progress::begin_full_frame(main)),
+                Err(error) => {
+                    eprintln!("Rustty progress layer: {error}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        #[cfg(target_os = "macos")]
+        if resolve_progress_overlays(
+            &mut output.shapes,
+            egui::Rect::from_min_size(
+                Pos2::ZERO,
+                Vec2::new(
+                    size.width as f32 / output.pixels_per_point,
+                    size.height as f32 / output.pixels_per_point,
+                ),
+            ),
+            |bars| {
+                if !bars.is_empty() && progress_transaction.is_none() {
+                    host.progress.clear();
+                    return false;
+                }
+                let bars: Vec<_> = bars
+                    .iter()
+                    .map(|bar| native_progress::Bar {
+                        rect: bar.rect * (output.pixels_per_point / scale),
+                        ..*bar
+                    })
+                    .collect();
+                match host.progress.update(&host.window, &bars) {
+                    Ok(()) => true,
+                    Err(error) => {
+                        eprintln!("Rustty progress layer: {error}");
+                        false
+                    }
+                }
+            },
+        ) {
+            host.repaint();
+        }
         let primitives = self
             .context
             .tessellate(output.shapes, output.pixels_per_point);
@@ -6388,7 +6462,7 @@ impl App {
             )?;
         }
         #[cfg(target_os = "macos")]
-        let paints_before = if host.cursor.enabled {
+        let paints_before = if host.cursor.enabled || progress_transaction.is_some() {
             self.painter.terminal_paints(host.id)
         } else {
             0
@@ -6431,17 +6505,34 @@ impl App {
             )?;
         }
         #[cfg(target_os = "macos")]
-        if host.cursor.enabled {
-            let painted = self.painter.terminal_paints(host.id) > paints_before;
-            if host.cursor.active {
-                if cursor_transaction.is_some_and(|transaction| transaction.finish(painted)) {
-                    host.cursor.active = false;
-                    host.cursor.on = None;
-                } else {
-                    // Acquisition or layer recreation can delay replacement of the retained pixels.
-                    host.repaint();
-                }
+        let painted = self.painter.terminal_paints(host.id) > paints_before;
+        #[cfg(target_os = "macos")]
+        if host.cursor.enabled && host.cursor.active {
+            if cursor_transaction.is_some_and(|transaction| transaction.finish(painted)) {
+                host.cursor.active = false;
+                host.cursor.on = None;
+            } else {
+                // Acquisition or layer recreation can delay replacement of the retained pixels.
+                host.repaint();
             }
+        }
+        #[cfg(target_os = "macos")]
+        if let Some(transaction) = progress_transaction {
+            let current = host
+                .cursor
+                .layer
+                .as_ref()
+                .map_or_else(
+                    || native_cursor::main_layer(&host.window, None),
+                    native_cursor::NativeCursorLayer::main_layer,
+                )
+                .ok();
+            if !transaction.finish(painted, current) {
+                host.repaint();
+            }
+        }
+        #[cfg(target_os = "macos")]
+        if host.cursor.enabled {
             if !host.cursor.active {
                 let candidate = (cursor_eligible && painted && needs_blink)
                     .then(|| host.cursor_candidate(focused))
@@ -8007,6 +8098,10 @@ impl ApplicationHandler<Event> for App {
         }
         for host in self.windows.values_mut() {
             #[cfg(target_os = "macos")]
+            if !host.visible || host.occluded {
+                host.progress.clear();
+            }
+            #[cfg(target_os = "macos")]
             if host.visible
                 && !host.occluded
                 && host.cursor.active
@@ -8790,7 +8885,60 @@ fn paint_pane_frame(painter: &egui::Painter, bounds: egui::Rect, color: Color32)
     );
 }
 
-/// Returns whether a visible indeterminate bar needs another frame.
+#[cfg(target_os = "macos")]
+struct ProgressOverlay {
+    bar: native_progress::Bar,
+    fallback: egui::Shape,
+}
+
+/// Replace only unobscured bars, so native layers cannot cover later UI.
+#[cfg(target_os = "macos")]
+fn resolve_progress_overlays(
+    shapes: &mut [egui::epaint::ClippedShape],
+    viewport: egui::Rect,
+    present: impl FnOnce(&[native_progress::Bar]) -> bool,
+) -> bool {
+    let overlays: Vec<_> = shapes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, clipped)| {
+            let egui::Shape::Callback(callback) = &clipped.shape else {
+                return None;
+            };
+            let overlay = callback.callback.downcast_ref::<ProgressOverlay>()?;
+            let bounds = overlay.bar.rect;
+            let uncovered = clipped.clip_rect.contains_rect(bounds)
+                && viewport.contains_rect(bounds)
+                && shapes[index + 1..].iter().all(|later| {
+                    !later
+                        .shape
+                        .visual_bounding_rect()
+                        .intersect(later.clip_rect)
+                        .intersect(bounds)
+                        .is_positive()
+                });
+            Some((index, overlay.bar, overlay.fallback.clone(), uncovered))
+        })
+        .collect();
+    let bars: Vec<_> = overlays
+        .iter()
+        .filter(|(_, _, _, uncovered)| *uncovered)
+        .map(|(_, bar, _, _)| *bar)
+        .collect();
+    let presented = present(&bars);
+    let mut repaint = false;
+    for (index, _, fallback, uncovered) in overlays {
+        shapes[index].shape = if presented && uncovered {
+            egui::Shape::Noop
+        } else {
+            repaint = true;
+            fallback
+        };
+    }
+    repaint
+}
+
+/// Returns whether a visible indeterminate bar is animating.
 fn paint_progress(
     ui: &mut egui::Ui,
     pane: Id,
@@ -8798,6 +8946,7 @@ fn paint_progress(
     progress: Progress,
     accent: Color32,
     offset: f32,
+    native_started: Option<Instant>,
 ) -> bool {
     // Keep a static fill separate from the focused split's same-color outline.
     let bounds = bounds.shrink(2.0);
@@ -8814,14 +8963,11 @@ fn paint_progress(
     let (offset, fraction) = if let Some(value) = percentage {
         (0.0, f32::from(value) / 100.0)
     } else {
-        // GPU presentation supplies vsync backpressure; the CPU backend paces
-        // these requests in the event handler.
-        ui.ctx().request_repaint();
         ui.painter()
             .rect_filled(bar, 0.0, color.gamma_multiply(0.3));
         (offset, 0.25)
     };
-    ui.painter().add(
+    let fill = egui::Shape::from(
         egui::epaint::RectShape::filled(
             egui::Rect::from_min_size(
                 bar.min + Vec2::new(offset * bar.width(), 0.0),
@@ -8832,6 +8978,28 @@ fn paint_progress(
         )
         .with_round_to_pixels(percentage.is_some()),
     );
+    #[cfg(target_os = "macos")]
+    let fill = if let Some(started) = native_started.filter(|_| percentage.is_none()) {
+        egui::Shape::Callback(egui::epaint::PaintCallback {
+            rect: bar,
+            callback: Arc::new(ProgressOverlay {
+                bar: native_progress::Bar {
+                    pane,
+                    rect: bar,
+                    color,
+                    started,
+                },
+                fallback: fill,
+            }),
+        })
+    } else {
+        fill
+    };
+    if percentage.is_none() && (!cfg!(target_os = "macos") || native_started.is_none()) {
+        // GPU presentation supplies vsync backpressure; the CPU backend paces these requests.
+        ui.ctx().request_repaint();
+    }
+    ui.painter().add(fill);
     let response = ui.interact(
         bar,
         egui::Id::new(("terminal-progress", pane)),
@@ -10250,6 +10418,121 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
+    fn native_progress_keeps_accessibility_without_requesting_window_frames() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let bounds = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(204.0, 100.0));
+        let started = Instant::now();
+        for frame in 0..3 {
+            let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                assert!(paint_progress(
+                    ui,
+                    1,
+                    bounds,
+                    Progress {
+                        state: 3,
+                        value: None
+                    },
+                    Color32::BLUE,
+                    0.375,
+                    Some(started)
+                ));
+            });
+            assert!(!resolve_progress_overlays(
+                &mut output.shapes,
+                bounds,
+                |bars| {
+                    assert_eq!(bars.len(), 1);
+                    assert_eq!(bars[0].pane, 1);
+                    assert_eq!(bars[0].started, started);
+                    assert_eq!(bars[0].rect.size(), Vec2::new(200.0, 2.0));
+                    true
+                }
+            ));
+            assert!(
+                output
+                    .platform_output
+                    .accesskit_update
+                    .as_ref()
+                    .unwrap()
+                    .nodes
+                    .iter()
+                    .any(|(_, node)| node.role() == egui::accesskit::Role::ProgressIndicator)
+            );
+            assert!(
+                output
+                    .shapes
+                    .iter()
+                    .all(|shape| !matches!(shape.shape, egui::Shape::Callback(_)))
+            );
+            if frame == 2 {
+                assert_eq!(
+                    output.viewport_output[&ViewportId::ROOT].repaint_delay,
+                    Duration::MAX
+                );
+            }
+            output.textures_delta.clear();
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn native_progress_falls_back_when_covered_clipped_or_unavailable() {
+        let context = egui::Context::default();
+        let bounds = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(204.0, 100.0));
+        for (covered, clipped, available) in [
+            (true, false, true),
+            (false, true, true),
+            (false, false, false),
+        ] {
+            let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                if clipped {
+                    ui.set_clip_rect(bounds.shrink(3.0));
+                }
+                assert!(paint_progress(
+                    ui,
+                    1,
+                    bounds,
+                    Progress {
+                        state: 3,
+                        value: None
+                    },
+                    Color32::BLUE,
+                    0.375,
+                    Some(Instant::now())
+                ));
+                if covered {
+                    ui.painter().rect_filled(bounds, 0.0, Color32::BLACK);
+                }
+            });
+            assert!(resolve_progress_overlays(
+                &mut output.shapes,
+                bounds,
+                |bars| {
+                    assert_eq!(bars.len(), usize::from(!covered && !clipped));
+                    available
+                }
+            ));
+            assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.fill == Color32::BLUE && rect.rect.left() == 77.0 && rect.rect.width() == 50.0)));
+            assert!(
+                output
+                    .shapes
+                    .iter()
+                    .all(|shape| !matches!(shape.shape, egui::Shape::Callback(_)))
+            );
+            output.textures_delta.clear();
+        }
+        assert!(!resolve_progress_overlays(&mut [], bounds, |bars| {
+            assert!(
+                bars.is_empty(),
+                "disappearing bars must remove their native layers"
+            );
+            true
+        }));
+    }
+
+    #[test]
     fn determinate_progress_does_not_blend_into_the_focused_split_outline() {
         let context = egui::Context::default();
         let bounds = egui::Rect::from_min_size(Pos2::new(20.0, 30.0), Vec2::new(200.0, 100.0));
@@ -10266,7 +10549,8 @@ mod tests {
                         value: Some(percentage)
                     },
                     accent,
-                    0.0
+                    0.0,
+                    None,
                 ));
             });
             output.textures_delta.clear();
@@ -10323,6 +10607,7 @@ mod tests {
                     },
                     Color32::BLUE,
                     activity.progress_offset(started + Duration::from_millis(millis)),
+                    None,
                 ));
             });
             output.textures_delta.clear();
@@ -10364,6 +10649,7 @@ mod tests {
                         },
                         Color32::BLUE,
                         0.0,
+                        None,
                     ));
                 });
                 output.textures_delta.clear();
@@ -10390,7 +10676,15 @@ mod tests {
         ] {
             let mut output = context.run_ui(egui::RawInput::default(), |ui| {
                 assert_eq!(
-                    paint_progress(ui, 1, bounds, Progress { state, value }, Color32::BLUE, 0.0),
+                    paint_progress(
+                        ui,
+                        1,
+                        bounds,
+                        Progress { state, value },
+                        Color32::BLUE,
+                        0.0,
+                        None
+                    ),
                     animated,
                 );
             });
