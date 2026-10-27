@@ -1,0 +1,235 @@
+{
+  "date": "2026-10-27",
+  "platform": "macOS 27.0.1 arm64",
+  "gpu": "Apple M4 Max, Metal",
+  "measured_harness_commit": "a4da8931e",
+  "build": {
+    "profile": "release",
+    "lto": "thin",
+    "codegen_units": 1,
+    "compiler_version": null,
+    "additional_compiler_flags": null
+  },
+  "variants": {
+    "before": {
+      "name": "baseline",
+      "support_transparent_backbuffer": true,
+      "executable_sha256": "4be716797d2a847557bf25ae3faa989ee3f325c5e11d9e62faf1740453cc3dba"
+    },
+    "after": {
+      "name": "opaque",
+      "support_transparent_backbuffer": false,
+      "executable_sha256": "b7f8a6d2c327c60c3dd8d03b30be259b7ac201c233689e2c5d0eb9de0c2e35a0"
+    }
+  },
+  "workload_sha256": "d4060079454c92013d2980cb2ef16f43170ef42e652d6b375000d44af9d2c5a6",
+  "controls": {
+    "expected_monitor": "Monitor #41053",
+    "outer_position_physical": [
+      -3376,
+      996
+    ],
+    "scale_factor": 2,
+    "size_pixels": [
+      1200,
+      850
+    ],
+    "font": "Menlo",
+    "font_size_points": 13,
+    "warmup_frames_per_run": 50,
+    "sample_frames_per_run": 50,
+    "minimum_pause_ms": 50,
+    "background_opacity": 1.0,
+    "terminal_render_passes_verified": true,
+    "offscreen": false,
+    "child_command": [
+      "/bin/sleep",
+      "120"
+    ],
+    "execution_order": [
+      "forward/before",
+      "forward/after",
+      "reverse/after",
+      "reverse/before"
+    ]
+  },
+  "cpu_units": "Percent of one CPU core. App: measured frames. WindowServer: whole process including startup, one-second top samples, initial zero omitted.",
+  "raw_artifact_root": "/tmp/rustty-render-experiment/controlled",
+  "cases": [
+    {
+      "case": "cached_redraw",
+      "artifact_directory": "secondary-display-results",
+      "complete_abba": true,
+      "runs": [
+        {
+          "direction": "forward",
+          "variant": "before",
+          "wall_seconds_whole_run": 6.0366349,
+          "frame_wall_median_ms": 0.479042,
+          "frame_wall_p95_ms": 0.940708,
+          "frame_thread_cpu_median_ms": 0.4798335,
+          "app_process_cpu_percent_one_core": 3.2619601,
+          "windowserver_cpu_percent_one_core_whole_run": 33.58,
+          "windowserver_samples_percent": [
+            20.0,
+            36.4,
+            36.0,
+            31.3,
+            44.2
+          ]
+        },
+        {
+          "direction": "forward",
+          "variant": "after",
+          "wall_seconds_whole_run": 5.830553,
+          "frame_wall_median_ms": 0.742375,
+          "frame_wall_p95_ms": 0.95325,
+          "frame_thread_cpu_median_ms": 0.743229,
+          "app_process_cpu_percent_one_core": 3.5622738,
+          "windowserver_cpu_percent_one_core_whole_run": 21.62,
+          "windowserver_samples_percent": [
+            31.5,
+            21.4,
+            14.7,
+            21.1,
+            19.4
+          ]
+        },
+        {
+          "direction": "reverse",
+          "variant": "before",
+          "wall_seconds_whole_run": 5.8840781,
+          "frame_wall_median_ms": 0.777979,
+          "frame_wall_p95_ms": 1.108416,
+          "frame_thread_cpu_median_ms": 0.779125,
+          "app_process_cpu_percent_one_core": 3.4848786,
+          "windowserver_cpu_percent_one_core_whole_run": 29.56,
+          "windowserver_samples_percent": [
+            24.6,
+            45.1,
+            33.1,
+            24.5,
+            20.5
+          ]
+        },
+        {
+          "direction": "reverse",
+          "variant": "after",
+          "wall_seconds_whole_run": 5.9997302,
+          "frame_wall_median_ms": 0.6636255,
+          "frame_wall_p95_ms": 0.974875,
+          "frame_thread_cpu_median_ms": 0.6252085,
+          "app_process_cpu_percent_one_core": 3.4292212,
+          "windowserver_cpu_percent_one_core_whole_run": 31.42,
+          "windowserver_samples_percent": [
+            28.9,
+            42.9,
+            38.6,
+            22.8,
+            23.9
+          ]
+        }
+      ]
+    },
+    {
+      "case": "status_update",
+      "artifact_directory": "status-update-confirmation",
+      "complete_abba": true,
+      "runs": [
+        {
+          "direction": "forward",
+          "variant": "before",
+          "wall_seconds_whole_run": 5.838589,
+          "frame_wall_median_ms": 1.3445625,
+          "frame_wall_p95_ms": 1.782875,
+          "frame_thread_cpu_median_ms": 1.3426245,
+          "app_process_cpu_percent_one_core": 4.5454418,
+          "windowserver_cpu_percent_one_core_whole_run": 21.9,
+          "windowserver_samples_percent": [
+            28.1,
+            16.8,
+            25.8,
+            20.7,
+            18.1
+          ]
+        },
+        {
+          "direction": "forward",
+          "variant": "after",
+          "wall_seconds_whole_run": 5.8628549,
+          "frame_wall_median_ms": 1.4689585,
+          "frame_wall_p95_ms": 1.738125,
+          "frame_thread_cpu_median_ms": 1.469916,
+          "app_process_cpu_percent_one_core": 4.4485727,
+          "windowserver_cpu_percent_one_core_whole_run": 19.9,
+          "windowserver_samples_percent": [
+            30.3,
+            19.3,
+            17.3,
+            17.1,
+            15.5
+          ]
+        },
+        {
+          "direction": "reverse",
+          "variant": "before",
+          "wall_seconds_whole_run": 5.9303073,
+          "frame_wall_median_ms": 1.1358125,
+          "frame_wall_p95_ms": 1.791958,
+          "frame_thread_cpu_median_ms": 1.1078335,
+          "app_process_cpu_percent_one_core": 4.1553982,
+          "windowserver_cpu_percent_one_core_whole_run": 20.52,
+          "windowserver_samples_percent": [
+            22.3,
+            20.8,
+            27.0,
+            14.4,
+            18.1
+          ]
+        },
+        {
+          "direction": "reverse",
+          "variant": "after",
+          "wall_seconds_whole_run": 6.2763358,
+          "frame_wall_median_ms": 0.5188955,
+          "frame_wall_p95_ms": 8.186416,
+          "frame_thread_cpu_median_ms": 0.504354,
+          "app_process_cpu_percent_one_core": 5.1974326,
+          "windowserver_cpu_percent_one_core_whole_run": 15.96,
+          "windowserver_samples_percent": [
+            24.3,
+            20.8,
+            11.4,
+            13.1,
+            10.2
+          ]
+        }
+      ]
+    }
+  ],
+  "conclusion": "Inconclusive: opaque reduced WindowServer CPU in both status-update orders, but cached-redraw effects reversed; short whole-system samples include startup and unrelated desktop activity. No consistent overall benefit justifies changing production behavior from this experiment.",
+  "excluded": [
+    "secondary-display-results/status_update was incomplete: final baseline rejected a missing render pass; excluded entirely in favor of separate complete confirmation",
+    "All earlier attempts before secondary-display-results had inconsistent placement or unverified render passes; excluded."
+  ],
+  "limits": [
+    "WindowServer CPU is system-wide, sampled by top every second during whole process including startup; excludes initial zero sample but includes unrelated desktop activity.",
+    "Every sampled and warmup terminal render pass was verified; GPU completion and actual display scanout were not timed.",
+    "No comparative GPU trace or power metrics; powermetrics requires a sudo password."
+  ],
+  "later_focus_preflight": {
+    "build": "debug",
+    "terminal_frames_verified": 100,
+    "monitor": "Monitor #41053",
+    "outer_position_physical": [
+      -3376,
+      996
+    ],
+    "previous_frontmost_application": "dev.zed.Zed-Dev",
+    "frontmost_unchanged": true,
+    "poll_count": 29,
+    "approximate_poll_interval_ms": 200,
+    "performance_measurement": false,
+    "raw_artifact": "nonactivation-preflight/focus.json"
+  }
+}
