@@ -3304,6 +3304,9 @@ impl CursorBenchmark {
                         "synchronized-visible-phase",
                         "popup-retires-layer",
                         "synchronized-release",
+                        "retirement-burst-latency",
+                        "retirement-drawable-capacity",
+                        "warm-tab-switches",
                     ];
                     if self.pane_count > 1 {
                         checks.extend([
@@ -3353,6 +3356,32 @@ fn check_cursor_lifecycle(
             return Err("cursor lifecycle failed to reacquire the layer".into());
         }
         host.cursor.layer.as_ref().unwrap().set_visible(true);
+        Ok(())
+    };
+    let redraw_burst = |app: &mut App, host: &mut Host| -> Result<()> {
+        let paints = app.painter.terminal_paints(host.id);
+        let started = Instant::now();
+        for _ in 0..3 {
+            app.draw(event_loop, host)?;
+        }
+        let elapsed = started.elapsed();
+        if elapsed >= Duration::from_millis(500) {
+            return Err(format!("cursor retirement burst stalled for {elapsed:?}").into());
+        }
+        if app.painter.terminal_paints(host.id) != paints + 3 {
+            return Err("cursor retirement burst did not render all three frames".into());
+        }
+        let drawables = host
+            .cursor
+            .layer
+            .as_ref()
+            .ok_or("cursor retirement burst has no layer")?
+            .main_layer()?
+            .maximumDrawableCount();
+        if drawables < 3 {
+            return Err(format!("cursor retirement has only {drawables} main drawables").into());
+        }
+        eprintln!("Native cursor retirement: three frames in {elapsed:?}");
         Ok(())
     };
     host.cursor
@@ -3468,21 +3497,47 @@ fn check_cursor_lifecycle(
             );
         }
 
+        for target in [neighbor, pane].into_iter().cycle().take(8) {
+            activate(app, host)?;
+            app.focus_pane(host.id, target);
+            host.focus_hint.focus(Some(target), Instant::now());
+            host.focus_hint.dismiss();
+            host.cursor_blink_started = Instant::now();
+            redraw_burst(app, host)?;
+            let previous = if target == neighbor { pane } else { neighbor };
+            if !retired(host)
+                || !host.prepared[&target].key.options.focused
+                || host.prepared[&previous].key.options.focused
+            {
+                return Err("focus switch did not retire the previous pane's cursor layer".into());
+            }
+            activate(app, host)?;
+            if host.cursor.on.as_ref().map(|on| on.pane) != Some(target) {
+                return Err("focus switch did not move the retained cursor to the new pane".into());
+            }
+        }
+    }
+    app.action(event_loop, host, Action::NewTab, true);
+    let other = app
+        .focused(host.id)
+        .ok_or("cursor lifecycle has no second tab")?;
+    app.panes[&other]
+        .session
+        .terminal()?
+        .feed(b"Warm cursor tab\x1b[1 q\x1b[?25h");
+    // Warm both tab grids before measuring; no shell startup belongs in the burst.
+    for tab in [2, 1, 2] {
+        app.action(event_loop, host, Action::GotoTab(tab), true);
+        app.draw(event_loop, host)?;
+    }
+    for tab in [1, 2].into_iter().cycle().take(8) {
         activate(app, host)?;
-        app.focus_pane(host.id, neighbor);
-        host.focus_hint.focus(Some(neighbor), Instant::now());
+        app.action(event_loop, host, Action::GotoTab(tab), true);
         host.focus_hint.dismiss();
         host.cursor_blink_started = Instant::now();
-        app.draw(event_loop, host)?;
-        if !retired(host)
-            || !host.prepared[&neighbor].key.options.focused
-            || host.prepared[&pane].key.options.focused
-        {
-            return Err("focus switch did not retire the previous pane's cursor layer".into());
-        }
-        activate(app, host)?;
-        if host.cursor.on.as_ref().map(|on| on.pane) != Some(neighbor) {
-            return Err("focus switch did not move the retained cursor to the new pane".into());
+        redraw_burst(app, host)?;
+        if !retired(host) {
+            return Err("tab switch did not retire the previous cursor layer".into());
         }
     }
     Ok(())
