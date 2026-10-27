@@ -2,6 +2,8 @@
 use egui::{Context, ViewportId};
 use rustty::config::Renderer as Preference;
 use rustty_render::Frame;
+#[cfg(target_os = "macos")]
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::{collections::HashMap, num::NonZeroU32, sync::Arc};
 use winit::window::Window;
 
@@ -164,6 +166,19 @@ impl Painter {
     pub fn max_texture_side(&self) -> usize {
         self.render_state().map_or(8192, |state| {
             state.device.limits().max_texture_dimension_2d as usize
+        })
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn terminal_paints(&self, window: u64) -> u64 {
+        self.render_state().map_or(0, |state| {
+            state
+                .renderer
+                .read()
+                .callback_resources
+                .get::<GpuRenderers>()
+                .and_then(|all| all.0.get(&window))
+                .map_or(0, |renderer| renderer.paints.load(Ordering::Relaxed))
         })
     }
 
@@ -336,6 +351,8 @@ struct GpuRenderer {
     renderer: rustty_render_wgpu::Renderer,
     frame: Option<Arc<Frame>>,
     prepares: u64,
+    #[cfg(target_os = "macos")]
+    paints: AtomicU64,
 }
 struct GpuRenderers(HashMap<u64, GpuRenderer>);
 struct TerminalPaint {
@@ -364,6 +381,8 @@ impl egui_wgpu::CallbackTrait for TerminalPaint {
                 renderer: rustty_render_wgpu::Renderer::new(device, self.format),
                 frame: None,
                 prepares: 0,
+                #[cfg(target_os = "macos")]
+                paints: AtomicU64::new(0),
             });
         if !renderer
             .frame
@@ -394,6 +413,8 @@ impl egui_wgpu::CallbackTrait for TerminalPaint {
             .and_then(|all| all.0.get(&self.window))
         {
             renderer.renderer.paint(pass);
+            #[cfg(target_os = "macos")]
+            renderer.paints.fetch_add(1, Ordering::Relaxed);
         }
     }
 }

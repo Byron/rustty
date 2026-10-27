@@ -3014,6 +3014,15 @@ fn check_tmuxx_secondary_selection(
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+pub(super) fn monitor(event_loop: &ActiveEventLoop) -> Option<winit::monitor::MonitorHandle> {
+    let primary = event_loop.primary_monitor();
+    event_loop
+        .available_monitors()
+        .filter(|monitor| Some(monitor) != primary.as_ref())
+        .max_by_key(|monitor| u64::from(monitor.size().width) * u64::from(monitor.size().height))
+}
+
 struct Replay {
     case: &'static str,
     size: Option<[u16; 2]>,
@@ -3057,6 +3066,13 @@ impl Replay {
         }
         let pane = app.focused(host.id).ok_or("replay has no pane")?;
         if self.size.is_none() {
+            #[cfg(target_os = "macos")]
+            if !offscreen
+                && let Some(expected) = monitor(event_loop)
+                && host.window.current_monitor().as_ref() != Some(&expected)
+            {
+                return Err("benchmark window is not on the largest non-primary monitor".into());
+            }
             let wanted = winit::dpi::PhysicalSize::new(1200, 850);
             if host.window.inner_size() != wanted {
                 let _ = host.window.request_inner_size(wanted);
@@ -3092,11 +3108,19 @@ impl Replay {
         let cpu_start = cpu_time(CpuClock::Thread)?;
         let frame_start = Instant::now();
         let before = host.frames;
+        #[cfg(target_os = "macos")]
+        let paints_before = app.painter.terminal_paints(host.id);
         app.draw_frame(event_loop, host, self.target.as_ref())?;
         let frame_ns = frame_start.elapsed().as_nanos() as u64;
         let frame_cpu = cpu_time(CpuClock::Thread)? - cpu_start;
         if host.frames != before + 1 {
             return Err("replay did not draw a frame".into());
+        }
+        #[cfg(target_os = "macos")]
+        if app.painter.terminal_paints(host.id) != paints_before + 1 {
+            return Err(
+                "replay did not encode a terminal render pass; keep the test window visible".into(),
+            );
         }
         let interval = self
             .last_frame
@@ -3123,6 +3147,9 @@ impl Replay {
             "renderer": app.painter.description(),
             "size_pixels": [host.window.inner_size().width, host.window.inner_size().height],
             "scale_factor": host.window.scale_factor(), "terminal_size": self.size.unwrap(),
+            "monitor": host.window.current_monitor().and_then(|monitor| monitor.name()),
+            "outer_position": host.window.outer_position().ok().map(|position| [position.x, position.y]),
+            "terminal_render_passes_verified": cfg!(target_os = "macos"),
             "warmup_frames": workload::WARMUP, "sample_frames": workload::SAMPLES,
             "minimum_replay_pause_ms": 50, "offscreen": offscreen,
             "offscreen_gpu_submission": self.target.is_some(),

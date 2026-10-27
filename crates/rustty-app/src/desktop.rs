@@ -925,11 +925,14 @@ pub fn run() -> Result<()> {
     let background_smoke = background_smoke || handoff_ui::smoke_directory().is_some();
     let mut builder = EventLoop::<Event>::with_user_event();
     #[cfg(target_os = "macos")]
-    if background_smoke {
+    {
         use winit::platform::macos::{ActivationPolicy, EventLoopBuilderExtMacOS};
-        builder
-            .with_activation_policy(ActivationPolicy::Accessory)
-            .with_activate_ignoring_other_apps(false);
+        if background_smoke {
+            builder.with_activation_policy(ActivationPolicy::Accessory);
+        }
+        if background_smoke || std::env::var_os("RUSTTY_SMOKE_DIR").is_some() {
+            builder.with_activate_ignoring_other_apps(false);
+        }
     }
     #[cfg(target_os = "windows")]
     rustty_app::platform::configure_event_loop(&mut builder);
@@ -1765,6 +1768,8 @@ impl App {
     fn open_host(&mut self, event_loop: &ActiveEventLoop, state: WindowState) -> Result<()> {
         let id = state.id;
         let config = self.window_config(id).clone();
+        let activate =
+            !self.background_smoke && !(cfg!(target_os = "macos") && self.smoke.is_some());
         let quick = state.quick;
         let mut frame = state.frame;
         if quick
@@ -1776,7 +1781,7 @@ impl App {
         }
         let attributes = Window::default_attributes()
             .with_title("Rustty")
-            .with_active(!self.background_smoke)
+            .with_active(activate)
             .with_decorations(!quick)
             .with_visible(false)
             .with_inner_size(LogicalSize::new(
@@ -1797,6 +1802,15 @@ impl App {
         #[cfg(target_os = "windows")]
         let attributes = attributes.with_skip_taskbar(quick);
         let window = Arc::new(event_loop.create_window(attributes)?);
+        #[cfg(target_os = "macos")]
+        if self.smoke.is_some()
+            && !self.background_smoke
+            && let Some(monitor) = smoke::monitor(event_loop)
+        {
+            let position = monitor.position().to_logical::<f64>(monitor.scale_factor());
+            // AppKit can constrain the initial frame to the active screen.
+            window.set_outer_position(LogicalPosition::new(position.x + 40.0, position.y + 40.0));
+        }
         if let Some(platform) = &self.platform {
             platform.configure_window(&window, quick, &config)?;
         }
@@ -1824,6 +1838,17 @@ impl App {
                 self.spawn_pane(pane, directory, None, None)?;
             }
         }
+        #[cfg(target_os = "macos")]
+        if !quick && !self.background_smoke && self.smoke.is_some() {
+            // Winit's set_visible(true) makes a window key even with with_active(false).
+            self.platform
+                .as_ref()
+                .ok_or("macOS platform unavailable")?
+                .preview_window(&window, false, &config)?;
+        } else {
+            window.set_visible(!quick && !self.background_smoke);
+        }
+        #[cfg(not(target_os = "macos"))]
         window.set_visible(!quick && !self.background_smoke);
         let host = Host {
             id,
@@ -1886,7 +1911,7 @@ impl App {
         };
         self.windows.insert(window.id(), host);
         if !quick {
-            if !self.background_smoke {
+            if activate {
                 window.focus_window();
             }
             self.active = Some(id);

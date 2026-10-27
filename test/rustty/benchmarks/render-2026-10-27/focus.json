@@ -1,0 +1,17 @@
+{
+  "frontmost_before": "5720\tapp.rustty.Rustty",
+  "frontmost_after": "5720\tapp.rustty.Rustty",
+  "frontmost_unchanged": true,
+  "polls": 135,
+  "poll_interval_seconds": 0.25,
+  "test_pid": 54139,
+  "elapsed_sample_seconds": 30.000006125,
+  "native_keyboard_focus": false,
+  "monitor": "Monitor #41053",
+  "outer_position": [
+    -3376,
+    996
+  ],
+  "raw_directory": "/tmp/rustty-render-experiment/cursor-final-preflight",
+  "purpose": "Focus validation with polling; excluded from performance comparisons."
+}
