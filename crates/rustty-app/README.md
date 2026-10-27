@@ -583,6 +583,8 @@ Import restores local window/tab/panel layouts, scrollback, and displayed conten
 including alternate-screen applications. Dumps omit tmuxx windows; reconnect to
 their servers to restore them. Local tabs start their shells when first selected or explicitly sent input;
 unopened tabs keep their saved displays unchanged, including across another dump.
+Selecting an imported tab shows its layout immediately while its panes restore
+their history and start their shells in the background.
 Rustty compares each fresh shell's rendered startup
 output with the saved tail. Matching output replaces that tail without a divider
 or duplicate prompt. Different output gets this bold message above it, centered

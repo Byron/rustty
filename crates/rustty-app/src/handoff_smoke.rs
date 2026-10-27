@@ -528,7 +528,7 @@ impl Smoke {
                     let exported = Dump::decode(&app.capture_handoff()?)?;
                     for (id, visual) in &untouched {
                         ensure(
-                            exported.panels[id].visual == *visual,
+                            exported.panels[id].visual.as_slice() == visual.as_slice(),
                             "export changed an unopened panel's saved contents",
                         )?;
                         let mut display = vt::Terminal::new(80, 24, 1000);
@@ -683,18 +683,71 @@ impl Smoke {
                     self.directory.join("selector.png").is_file(),
                     "selector rendering did not produce its capture",
                 )?;
+                let untouched = app.pending_visuals.clone();
+                let window = app.workspace.windows[0].id;
+                let starting = app.workspace.windows[0].tabs[1].pane_ids();
                 app.workspace.windows[0].active_tab = 1;
                 app.reconcile(event_loop);
                 ensure(
-                    app.panes.len() == 5 && app.pending_visuals.len() == 1,
-                    "opening an inactive split tab did not start only its shells",
+                    app.panes.len() == 3
+                        && app.pending_visuals == untouched
+                        && app.starting_panes.len() == starting.len()
+                        && starting
+                            .iter()
+                            .all(|id| app.starting_panes.contains_key(id)),
+                    "opening an inactive split tab did not defer its shells",
                 )?;
+                let workers: Vec<_> = starting
+                    .iter()
+                    .map(|id| (*id, app.starting_panes[id].0.wake_pending.clone()))
+                    .collect();
+                // Stay in this callback so queued worker completions cannot install panes yet.
+                for active_tab in [1, 0, 1] {
+                    app.workspace.windows[0].active_tab = active_tab;
+                    app.reconcile(event_loop);
+                    let expected = app.workspace.windows[0].tabs[active_tab].visible_panes(false);
+                    let key = app
+                        .windows
+                        .iter()
+                        .find_map(|(key, host)| (host.id == window).then_some(*key))
+                        .ok_or("missing restored window")?;
+                    let mut host = app.windows.remove(&key).unwrap();
+                    let drawn = app.draw(event_loop, &mut host);
+                    let displayed = host.pane_order == expected;
+                    app.windows.insert(key, host);
+                    drawn?;
+                    ensure(displayed, "tab switch did not draw the selected panels")?;
+                    ensure(
+                        app.panes.len() == 3
+                            && app.starting_panes.len() == starting.len()
+                            && app.pending_visuals == untouched,
+                        "tab switching or drawing waited for pending shells",
+                    )?;
+                    ensure(
+                        workers.iter().all(|(id, wake)| {
+                            app.starting_panes.get(id).is_some_and(|(startup, _)| {
+                                Arc::ptr_eq(wake, &startup.wake_pending)
+                            })
+                        }),
+                        "reconciliation replaced a pending shell startup",
+                    )?;
+                }
+                let exported = Dump::decode(&app.capture_handoff()?)?;
+                for (id, visual) in &untouched {
+                    ensure(
+                        exported.panels[id].visual.as_slice() == visual.as_slice(),
+                        "export changed a starting panel's saved contents",
+                    )?;
+                }
                 self.stage = 4;
             }
             4 => {
                 let tab = &app.workspace.windows[0].tabs[1];
                 for id in tab.panes.keys() {
-                    let terminal = app.panes[id].session.terminal()?;
+                    let Some(pane) = app.panes.get(id) else {
+                        return Ok(false);
+                    };
+                    let terminal = pane.session.terminal()?;
                     if !terminal.plain_text().contains(vt::visual::RESTORED_MARKER) {
                         return Ok(false);
                     }
@@ -703,22 +756,71 @@ impl Smoke {
                         "lazy startup lost saved display",
                     )?;
                 }
+                ensure(
+                    app.panes.len() == 5
+                        && app.pending_visuals.len() == 1
+                        && app.starting_panes.is_empty(),
+                    "opening an inactive split tab did not start only its shells",
+                )?;
                 let id = app.workspace.windows[0].tabs[2].focused;
+                let command = app
+                    .loaded
+                    .config
+                    .command
+                    .replace(config::Command::Direct(vec![
+                        self.directory
+                            .join("missing-lazy-shell")
+                            .to_string_lossy()
+                            .into_owned(),
+                    ]));
+                app.write(id, Vec::new());
+                app.loaded.config.command = command;
+                self.stage = 5;
+            }
+            5 => {
+                let id = app.workspace.windows[0].tabs[2].focused;
+                if !app.failed_panes.contains_key(&id) {
+                    return Ok(false);
+                }
+                ensure(
+                    !app.panes.contains_key(&id)
+                        && app.starting_panes.is_empty()
+                        && app.pending_visuals.contains_key(&id),
+                    "failed background startup lost its saved display",
+                )?;
+                let exported = Dump::decode(&app.capture_handoff()?)?;
+                ensure(
+                    exported.panels[&id].visual.as_slice() == app.pending_visuals[&id].as_slice(),
+                    "export lost the failed panel's saved display",
+                )?;
+                app.failed_panes.remove(&id);
                 #[cfg(target_os = "windows")]
                 app.write(id, b"echo HANDOFF LAZY IN^PUT\r".to_vec());
                 #[cfg(not(target_os = "windows"))]
                 app.write(id, b"printf '\\nHANDOFF LAZY INPUT\\n'\n".to_vec());
                 ensure(
-                    app.panes.len() == 6 && app.pending_visuals.is_empty(),
-                    "explicit input did not start its unopened destination",
+                    app.panes.len() == 5
+                        && app.pending_visuals.len() == 1
+                        && app.starting_panes.len() == 1
+                        && app.starting_panes.contains_key(&id),
+                    "explicit input did not defer its unopened destination",
                 )?;
-                self.stage = 5;
+                self.stage = 6;
             }
-            5 => {
+            6 => {
                 let id = app.workspace.windows[0].tabs[2].focused;
-                if !has_line(&*app.panes[&id].session.terminal()?, "HANDOFF LAZY INPUT") {
+                let Some(pane) = app.panes.get(&id) else {
+                    return Ok(false);
+                };
+                if !has_line(&*pane.session.terminal()?, "HANDOFF LAZY INPUT") {
                     return Ok(false);
                 }
+                ensure(
+                    app.panes.len() == 6
+                        && app.pending_visuals.is_empty()
+                        && app.starting_panes.is_empty(),
+                    "completed lazy startup left pending panels",
+                )?;
                 self.check_directories(app)?;
                 let history_rows = app.panes[&self.pane.unwrap()]
                     .session
@@ -731,7 +833,7 @@ impl Smoke {
                     "source_pid": self.fixture()?.source_pid,
                     "imported_dump": self.imported.as_ref().unwrap().id,
                     "history_rows": history_rows,
-                    "checks": ["automatic-startup-selector", "startup-without-terminals", "newest-first", "failed-import-keeps-dump", "failed-shell-startup-restores-selector", "lz4-dump", "selector-capture", "workspace-import", "working-directories", "primary-history", "alternate-display", "styles-and-hyperlinks", "fresh-shell-after-marker", "centered-panel-width-marker", "narrow-marker-wraps-without-padding", "blank-panel-omits-marker", "clean-terminal-modes", "import-consumes-only-selected-dump", "unopened-tabs-without-shells", "unchanged-unopened-panel-export", "lazy-tab-activation", "explicit-input-starts-unopened-pane"],
+                    "checks": ["automatic-startup-selector", "startup-without-terminals", "newest-first", "failed-import-keeps-dump", "failed-shell-startup-restores-selector", "lz4-dump", "selector-capture", "workspace-import", "working-directories", "primary-history", "alternate-display", "styles-and-hyperlinks", "fresh-shell-after-marker", "centered-panel-width-marker", "narrow-marker-wraps-without-padding", "blank-panel-omits-marker", "clean-terminal-modes", "import-consumes-only-selected-dump", "unopened-tabs-without-shells", "unchanged-unopened-panel-export", "lazy-tab-activation", "tab-switch-draws-before-shells-start", "switch-away-and-back-during-startup", "reconcile-keeps-pending-startups", "unchanged-starting-panel-export", "failed-background-startup-preserves-display", "retry-background-startup", "explicit-input-queued-for-unopened-pane"],
                 }))?;
                 return Ok(true);
             }

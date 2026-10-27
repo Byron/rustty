@@ -285,7 +285,7 @@ impl App {
                         pane.update_saved(saved);
                         pane.session.capture_visual_state()?
                     } else if let Some(visual) = self.pending_visuals.get(id) {
-                        visual.clone()
+                        visual.as_ref().clone()
                     } else {
                         let empty = vt::Terminal::new(80, 24, 0);
                         serde_json::to_vec(&vt::visual::VisualSnapshot::capture(&empty)?)?
@@ -340,7 +340,7 @@ impl App {
         self.pending_visuals = dump
             .panels
             .into_iter()
-            .map(|(id, panel)| (id, panel.visual))
+            .map(|(id, panel)| (id, Arc::new(panel.visual)))
             .collect();
         let window_ids: Vec<_> = self
             .workspace
