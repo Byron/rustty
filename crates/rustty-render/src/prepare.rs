@@ -232,13 +232,15 @@ impl Renderer {
             if top >= options.size[1] as f32 {
                 break;
             }
-            let cursor = screen.cursor.visible
+            let cursor_row = screen.cursor.visible
                 && options.cursor_visible
-                && (!options.focused || !screen.cursor.blink || options.blink_visible)
                 && !(options.focused
                     && options.preedit.as_ref().is_some_and(|p| !p.text.is_empty()))
                 && screen.viewport_offset == 0
                 && screen.cursor.row == row_index;
+            let cursor =
+                cursor_row && (!options.focused || !screen.cursor.blink || options.blink_visible);
+            let foreground_start = foreground.quads.len();
             let visible_cols = ((options.size[0] as f32 - options.padding[0]).max(0.0)
                 / metrics.cell_width as f32)
                 .ceil() as usize;
@@ -384,6 +386,22 @@ impl Renderer {
                     };
                     foreground.quads.push(Quad::solid(rect, color));
                 }
+            }
+            if cursor_row {
+                let mut left =
+                    options.padding[0] + screen.cursor.col as f32 * metrics.cell_width as f32;
+                let mut upper = top;
+                let mut right = left + metrics.cell_width as f32;
+                let mut bottom = top + metrics.cell_height as f32;
+                // Cursor recoloring can reshape ligatures beyond its cell.
+                for quad in &foreground.quads[foreground_start..] {
+                    let [x, y, w, h] = quad.rect;
+                    left = left.min(x);
+                    upper = upper.min(y);
+                    right = right.max(x + w);
+                    bottom = bottom.max(y + h);
+                }
+                frame.cursor_row_bounds = Some([left, upper, right - left, bottom - upper]);
             }
         }
         frame.quads.extend(below_text);
@@ -1043,6 +1061,175 @@ mod tests {
                 renderer.prepare(terminal.screen(), &options).unwrap().quads
             );
         }
+    }
+
+    fn assert_cursor_bounds_cover_changes(shown: &Frame, hidden: &Frame) {
+        let [ax, ay, aw, ah] = shown.cursor_row_bounds.unwrap();
+        let [bx, by, bw, bh] = hidden.cursor_row_bounds.unwrap();
+        let bounds = [
+            ax.min(bx),
+            ay.min(by),
+            (ax + aw).max(bx + bw),
+            (ay + ah).max(by + bh),
+        ];
+        let contains = |quad: &Quad| {
+            let [x, y, w, h] = quad.rect;
+            assert!(
+                x >= bounds[0] - 0.001
+                    && y >= bounds[1] - 0.001
+                    && x + w <= bounds[2] + 0.001
+                    && y + h <= bounds[3] + 0.001,
+                "changed quad {quad:?} exceeds cursor bounds {bounds:?}"
+            );
+        };
+        let mut unmatched = hidden.quads.clone();
+        for quad in &shown.quads {
+            if let Some(index) = unmatched.iter().position(|other| other == quad) {
+                unmatched.swap_remove(index);
+            } else {
+                contains(quad);
+            }
+        }
+        unmatched.iter().for_each(contains);
+    }
+
+    #[test]
+    fn cursor_row_bounds_cover_both_phases_unicode_decorations_and_clipping() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let metrics = renderer.metrics();
+        for shape in [
+            CursorShape::Block,
+            CursorShape::Bar,
+            CursorShape::Underline,
+            CursorShape::HollowBlock,
+        ] {
+            for text in ["ffi", "界e\u{301}", "a\u{301}界b"] {
+                for col in [0, 1, 3] {
+                    let mut terminal = Terminal::new(12, 4, 0);
+                    terminal.feed(
+                        format!("above\x1b[2;1H\x1b[4:3;9;53m{text}\x1b[0m\x1b[3;1Hbelow")
+                            .as_bytes(),
+                    );
+                    terminal.screen_mut().cursor.row = 1;
+                    terminal.screen_mut().cursor.col = col;
+                    terminal.screen_mut().cursor.shape = shape;
+                    terminal.screen_mut().cursor.blink = true;
+                    let mut options = RenderOptions {
+                        padding: [3.5, 5.25],
+                        size: [metrics.cell_width * 3 + 4, metrics.cell_height * 2 + 2],
+                        ..Default::default()
+                    };
+                    let shown = renderer.prepare(terminal.screen(), &options).unwrap();
+                    options.blink_visible = false;
+                    let hidden = renderer.prepare(terminal.screen(), &options).unwrap();
+                    assert_cursor_bounds_cover_changes(&shown, &hidden);
+                    let [x, y, w, h] = hidden.cursor_row_bounds.unwrap();
+                    let cell = [
+                        options.padding[0] + col as f32 * metrics.cell_width as f32,
+                        options.padding[1] + metrics.cell_height as f32,
+                    ];
+                    assert!(x <= cell[0] && y <= cell[1]);
+                    assert!(x + w >= cell[0] + metrics.cell_width as f32 - 0.001);
+                    assert!(y + h >= cell[1] + metrics.cell_height as f32 - 0.001);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cursor_row_bounds_include_ligature_overhang_outside_the_cell_row() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let metrics = renderer.metrics();
+        let glyph = renderer.fonts.shape("a", FontStyle::Regular).unwrap()[0].clone();
+        // Make ligature overhang deterministic across installed fonts.
+        renderer.shaped[FontStyle::Regular as usize].insert(
+            "ffi".into(),
+            vec![ShapedGlyph {
+                cluster: 0,
+                x: 0.0,
+                y: metrics.cell_height as f32 * 2.0,
+                advance: metrics.cell_width as f32 * 3.0,
+                ..glyph
+            }]
+            .into(),
+        );
+        let mut terminal = Terminal::new(12, 4, 0);
+        terminal.feed(b"\x1b[3;1Hffi\x1b[3;2H");
+        terminal.screen_mut().cursor.blink = true;
+        let mut options = RenderOptions::default();
+        let shown = renderer.prepare(terminal.screen(), &options).unwrap();
+        options.blink_visible = false;
+        let hidden = renderer.prepare(terminal.screen(), &options).unwrap();
+        assert_cursor_bounds_cover_changes(&shown, &hidden);
+        assert!(
+            hidden.cursor_row_bounds.unwrap()[1] < options.padding[1] + metrics.cell_height as f32
+        );
+    }
+
+    #[test]
+    fn cursor_row_bounds_follow_cursor_visibility_except_blink_phase() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let mut terminal = Terminal::new(12, 3, 10);
+        terminal.feed(b"cursor\r");
+        terminal.screen_mut().cursor.blink = true;
+        let mut options = RenderOptions {
+            blink_visible: false,
+            ..Default::default()
+        };
+        assert!(
+            renderer
+                .prepare(terminal.screen(), &options)
+                .unwrap()
+                .cursor_row_bounds
+                .is_some()
+        );
+        options.cursor_visible = false;
+        assert!(
+            renderer
+                .prepare(terminal.screen(), &options)
+                .unwrap()
+                .cursor_row_bounds
+                .is_none()
+        );
+        options.cursor_visible = true;
+        terminal.screen_mut().cursor.visible = false;
+        assert!(
+            renderer
+                .prepare(terminal.screen(), &options)
+                .unwrap()
+                .cursor_row_bounds
+                .is_none()
+        );
+        terminal.screen_mut().cursor.visible = true;
+        terminal.screen_mut().viewport_offset = 1;
+        assert!(
+            renderer
+                .prepare(terminal.screen(), &options)
+                .unwrap()
+                .cursor_row_bounds
+                .is_none()
+        );
+        terminal.screen_mut().viewport_offset = 0;
+        options.preedit = Some(Preedit {
+            text: "compose".into(),
+            selection: None,
+        });
+        assert!(
+            renderer
+                .prepare(terminal.screen(), &options)
+                .unwrap()
+                .cursor_row_bounds
+                .is_none()
+        );
+        options.preedit = None;
+        options.size[1] = 1;
+        assert!(
+            renderer
+                .prepare(terminal.screen(), &options)
+                .unwrap()
+                .cursor_row_bounds
+                .is_none()
+        );
     }
 
     #[test]

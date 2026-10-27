@@ -1,0 +1,272 @@
+{
+  "conclusion": "The cursor layer eliminated main-window rendering during idle blink samples; process CPU fell in both orders. Compositor and power savings were not measured.",
+  "build": {
+    "command": "cargo build -p rustty-app --bin rustty --release --offline",
+    "toolchain": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+    "profile": {
+      "name": "release",
+      "lto": "thin",
+      "codegen_units": 1
+    },
+    "rustflags": null,
+    "encoded_rustflags": null,
+    "base_commit": "550e9e43b96545ae44b8beb9a09e8084dff3086c",
+    "source_files_sha256": {
+      "Cargo.lock": "4f7f115ed53d766e436c197915bdefa65bd85b80bf9741f520927dd9661a242f",
+      "crates/rustty-app/Cargo.toml": "429d486488e122b1a00a4b4d768daa9d8ab2c5a16541633838bbdd744b672183",
+      "crates/rustty-app/src/desktop.rs": "1a7eb74c3e8d3be637445f347ca9d8ba4a7eb0f103173678492fe953e0a01624",
+      "crates/rustty-app/src/desktop_cursor.rs": "6f4f373d77f347c5483a8dad3b6e7af6a5d3a3d45010de56fbe54ad199550637",
+      "crates/rustty-app/src/desktop_painter.rs": "8ff56ddb572f022a23cd61f91967ad1d9c90f3308c9337a066cd0b270622ff2f",
+      "crates/rustty-app/src/smoke.rs": "e6f87d6b9add413e04e8b579951a1be5c2d3fabc6caf7d48a7fda894a8f61b49",
+      "crates/rustty-render/src/lib.rs": "eed72c4a74a78eefa8ce5120760693b9d98be1fd542d4853bc421ca980b12c5c",
+      "crates/rustty-render/src/prepare.rs": "b0a45479869f5af2b94bc0822a82389b4a3853f6f9eada416f23bf3cc8a52d58"
+    },
+    "binary_sha256": "eba0da565241d50ae7e92c9df4917f773e391ec99d500c844341df56bf016f38"
+  },
+  "manifest": {
+    "case": "cursor_blink",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "binary": {
+      "path": "/private/tmp/rustty-render-experiment/cursor-release/rustty",
+      "sha256": "eba0da565241d50ae7e92c9df4917f773e391ec99d500c844341df56bf016f38",
+      "build_profile": "unknown"
+    },
+    "order": [
+      "A",
+      "B",
+      "B",
+      "A"
+    ],
+    "variants": {
+      "A": "baseline",
+      "B": "native_cursor_layer"
+    },
+    "cpu_units": "Percent of one CPU core during the app's thirty-second sample",
+    "windowserver_measured": false
+  },
+  "summary": {
+    "controls": {
+      "size_pixels": [
+        1200,
+        850
+      ],
+      "scale_factor": 2.0,
+      "monitor": "Monitor #41053",
+      "outer_position": [
+        -3376,
+        996
+      ],
+      "renderer": "gpu — Apple M4 Max (Metal, IntegratedGpu)"
+    },
+    "variants": {
+      "A": {
+        "process_cpu_seconds": 0.233155,
+        "elapsed_seconds": 60.001373917,
+        "process_cpu_percent_of_one_core": 0.38858276865880387,
+        "frames": 102,
+        "main_terminal_paints": 102,
+        "pane_prepares": 102,
+        "layer_updates": 0,
+        "layer_activations": 0
+      },
+      "B": {
+        "process_cpu_seconds": 0.021769,
+        "elapsed_seconds": 60.000252999,
+        "process_cpu_percent_of_one_core": 0.036281513680222005,
+        "frames": 0,
+        "main_terminal_paints": 0,
+        "pane_prepares": 0,
+        "layer_updates": 101,
+        "layer_activations": 0
+      }
+    }
+  },
+  "relative_cpu_reduction_percent": 90.66311823206986,
+  "runs": [
+    {
+      "run": "01-A",
+      "variant": "A",
+      "report": {
+        "case": "cursor_blink",
+        "elapsed_seconds": 30.001187375,
+        "frames": 51,
+        "gpu_completion_measured": false,
+        "internal_focus": true,
+        "layer_activations": 0,
+        "layer_activations_total": 0,
+        "layer_active": false,
+        "layer_enabled": false,
+        "layer_updates": 0,
+        "main_terminal_paints": 51,
+        "monitor": "Monitor #41053",
+        "native_keyboard_focus": false,
+        "outer_position": [
+          -3376,
+          996
+        ],
+        "pane_prepares": 51,
+        "passed": true,
+        "patch_pixels": null,
+        "prepared_panes": 1,
+        "process_cpu_percent_of_one_core": 0.5213193666139023,
+        "process_cpu_seconds": 0.156402,
+        "renderer": "gpu — Apple M4 Max (Metal, IntegratedGpu)",
+        "scale_factor": 2.0,
+        "settle_seconds": 3,
+        "size_pixels": [
+          1200,
+          850
+        ],
+        "terminal_unchanged": true,
+        "visible_presentation_measured": false
+      }
+    },
+    {
+      "run": "02-B",
+      "variant": "B",
+      "report": {
+        "case": "cursor_blink",
+        "elapsed_seconds": 30.000089541,
+        "frames": 0,
+        "gpu_completion_measured": false,
+        "internal_focus": true,
+        "layer_activations": 0,
+        "layer_activations_total": 1,
+        "layer_active": true,
+        "layer_enabled": true,
+        "layer_updates": 51,
+        "lifecycle_checks": [
+          "content-retires-layer",
+          "capture-includes-cursor",
+          "capture-matches-ordinary",
+          "synchronized-visible-phase",
+          "popup-retires-layer",
+          "synchronized-release"
+        ],
+        "main_terminal_paints": 0,
+        "monitor": "Monitor #41053",
+        "native_keyboard_focus": false,
+        "outer_position": [
+          -3376,
+          996
+        ],
+        "pane_prepares": 0,
+        "passed": true,
+        "patch_pixels": [
+          8,
+          254,
+          1097,
+          31
+        ],
+        "prepared_panes": 1,
+        "process_cpu_percent_of_one_core": 0.036213225247719937,
+        "process_cpu_seconds": 0.010864,
+        "renderer": "gpu — Apple M4 Max (Metal, IntegratedGpu)",
+        "scale_factor": 2.0,
+        "settle_seconds": 3,
+        "size_pixels": [
+          1200,
+          850
+        ],
+        "terminal_unchanged": true,
+        "visible_presentation_measured": false
+      }
+    },
+    {
+      "run": "03-B",
+      "variant": "B",
+      "report": {
+        "case": "cursor_blink",
+        "elapsed_seconds": 30.000163458,
+        "frames": 0,
+        "gpu_completion_measured": false,
+        "internal_focus": true,
+        "layer_activations": 0,
+        "layer_activations_total": 1,
+        "layer_active": true,
+        "layer_enabled": true,
+        "layer_updates": 50,
+        "lifecycle_checks": [
+          "content-retires-layer",
+          "capture-includes-cursor",
+          "capture-matches-ordinary",
+          "synchronized-visible-phase",
+          "popup-retires-layer",
+          "synchronized-release"
+        ],
+        "main_terminal_paints": 0,
+        "monitor": "Monitor #41053",
+        "native_keyboard_focus": false,
+        "outer_position": [
+          -3376,
+          996
+        ],
+        "pane_prepares": 0,
+        "passed": true,
+        "patch_pixels": [
+          8,
+          254,
+          1097,
+          31
+        ],
+        "prepared_panes": 1,
+        "process_cpu_percent_of_one_core": 0.03634980194446913,
+        "process_cpu_seconds": 0.010905,
+        "renderer": "gpu — Apple M4 Max (Metal, IntegratedGpu)",
+        "scale_factor": 2.0,
+        "settle_seconds": 3,
+        "size_pixels": [
+          1200,
+          850
+        ],
+        "terminal_unchanged": true,
+        "visible_presentation_measured": false
+      }
+    },
+    {
+      "run": "04-A",
+      "variant": "A",
+      "report": {
+        "case": "cursor_blink",
+        "elapsed_seconds": 30.000186542,
+        "frames": 51,
+        "gpu_completion_measured": false,
+        "internal_focus": true,
+        "layer_activations": 0,
+        "layer_activations_total": 0,
+        "layer_active": false,
+        "layer_enabled": false,
+        "layer_updates": 0,
+        "main_terminal_paints": 51,
+        "monitor": "Monitor #41053",
+        "native_keyboard_focus": false,
+        "outer_position": [
+          -3376,
+          996
+        ],
+        "pane_prepares": 51,
+        "passed": true,
+        "patch_pixels": null,
+        "prepared_panes": 1,
+        "process_cpu_percent_of_one_core": 0.2558417424923224,
+        "process_cpu_seconds": 0.076753,
+        "renderer": "gpu — Apple M4 Max (Metal, IntegratedGpu)",
+        "scale_factor": 2.0,
+        "settle_seconds": 3,
+        "size_pixels": [
+          1200,
+          850
+        ],
+        "terminal_unchanged": true,
+        "visible_presentation_measured": false
+      }
+    }
+  ],
+  "raw_directory": "/tmp/rustty-render-experiment/cursor-abba",
+  "limits": [
+    "Two samples per variant; baseline CPU varied between orders.",
+    "Single visible opaque pane, stable text, Menlo 13 at scale 2.",
+    "No WindowServer, GPU completion, scanout, or power measurement.",
+    "Native layer pixel alignment and visual handoff were not robustly verified; ordinary capture fallback and software patch reconstruction were tested."
+  ]
+}

@@ -56,6 +56,8 @@ fn hover_measurement_restarts_for_motion_and_leaving_but_not_duplicate_events() 
         active_title_accesskit: false,
         events: BTreeMap::new(),
         timing: None,
+        #[cfg(target_os = "macos")]
+        cursor_benchmark: None,
         report: None,
     };
     let position = Some(Pos2::new(100.0, 100.0));
@@ -96,6 +98,8 @@ pub(super) struct Smoke {
     active_title_accesskit: bool,
     events: BTreeMap<&'static str, u64>,
     timing: Option<Replay>,
+    #[cfg(target_os = "macos")]
+    cursor_benchmark: Option<CursorBenchmark>,
     report: Option<serde_json::Value>,
 }
 impl Smoke {
@@ -107,6 +111,10 @@ impl Smoke {
         fs::create_dir_all(&directory)?;
         for name in [
             "window.png",
+            "cursor-layer-capture.png",
+            "cursor-ordinary-capture.png",
+            "cursor-hidden-capture.png",
+            "cursor-synchronized-popup.png",
             "find-focused.png",
             "find-unfocused.png",
             "theme-picker.png",
@@ -144,6 +152,17 @@ impl Smoke {
             .ok()
             .map(|name| Replay::new(&name))
             .transpose()?;
+        #[cfg(target_os = "macos")]
+        let cursor_benchmark = if std::env::var_os("RUSTTY_SMOKE_CURSOR_LAYER").is_some() {
+            if timing.is_some() || std::env::var_os("RUSTTY_SMOKE_OFFSCREEN").is_some() {
+                return Err(
+                    "cursor-layer smoke requires native presentation without timing replay".into(),
+                );
+            }
+            Some(CursorBenchmark::default())
+        } else {
+            None
+        };
         Self::configure(loaded);
         Ok(Some(Self {
             directory,
@@ -171,15 +190,19 @@ impl Smoke {
             active_title_accesskit: false,
             events: BTreeMap::new(),
             timing,
+            #[cfg(target_os = "macos")]
+            cursor_benchmark,
             report: None,
         }))
     }
     pub(super) fn configure(loaded: &mut LoadedConfig) {
         loaded.config.stream_deck = false;
         let timing = std::env::var_os("RUSTTY_SMOKE_TIMING").is_some();
+        let cursor_benchmark =
+            cfg!(target_os = "macos") && std::env::var_os("RUSTTY_SMOKE_CURSOR_LAYER").is_some();
         let deck_only = std::env::var("RUSTTY_SMOKE_DECK").as_deref() == Ok("only");
         let outliner = std::env::var_os("RUSTTY_SMOKE_OUTLINER").is_some();
-        if timing {
+        if timing || cursor_benchmark {
             let renderer = loaded.config.renderer;
             loaded.config = Config::default();
             loaded.config.renderer = renderer;
@@ -192,7 +215,7 @@ impl Smoke {
             loaded.config.font_size = 13.0;
         }
         #[cfg(not(target_os = "windows"))]
-        let command = if timing || deck_only || outliner {
+        let command = if timing || cursor_benchmark || deck_only || outliner {
             config::Command::Direct(vec!["/bin/sleep".into(), "120".into()])
         } else {
             config::Command::Direct(vec!["/bin/sh".into(),"-c".into(),r"printf '\033[2J\033[H\033[30;107m  ✔️\033[5G  > selected row\033[0m\n\033[1;36mRustty native smoke\033[0m\n\033]7;file://localhost/tmp\007\033]9;4;1;65\007'; exec /bin/sh -i".into()])
@@ -231,7 +254,7 @@ impl Smoke {
         loaded.config.working_directory = Some(fixture_directory());
         loaded.config.window_save_state = config::WindowSaveState::Always;
         loaded.config.window_animations = Some(false);
-        loaded.config.cursor_style_blink = Some(false);
+        loaded.config.cursor_style_blink = Some(cursor_benchmark);
         loaded.config.grapheme_width_method = config::GraphemeWidthMethod::Unicode;
         loaded.config.mouse_shift_capture = config::MouseShiftCapture::False;
         loaded.config.link_url = true;
@@ -259,6 +282,13 @@ impl Smoke {
         if matches!(self.stage, 4 | 8 | 11 | 12) {
             *self.events.entry(event).or_default() += 1;
         }
+    }
+    pub(super) fn next_cursor_poll(&self) -> Option<Instant> {
+        #[cfg(target_os = "macos")]
+        if self.cursor_benchmark.is_some() {
+            return Some(self.next);
+        }
+        None
     }
     pub fn pointer(&mut self, position: Option<Pos2>, frames: u64) {
         if self.hover && self.pointer != position {
@@ -435,7 +465,10 @@ impl Smoke {
             check_focus_hint_clicks(app, event_loop, key)?;
         }
         let complete = done;
-        if complete && self.timing.is_none() {
+        let measured = self.timing.is_some();
+        #[cfg(target_os = "macos")]
+        let measured = measured || self.cursor_benchmark.is_some();
+        if complete && !measured {
             let mut host = app.windows.remove(&key).unwrap();
             let result = check_themes(app, event_loop, &mut host, &self.directory)
                 .and_then(|_| check_tab_frame(app, event_loop, &mut host, &self.directory));
@@ -486,6 +519,12 @@ impl Smoke {
         event_loop: &ActiveEventLoop,
         host: &mut Host,
     ) -> Result<bool> {
+        #[cfg(target_os = "macos")]
+        if let Some(cursor) = &mut self.cursor_benchmark {
+            let (done, next) = cursor.step(app, event_loop, host, &self.directory)?;
+            self.next = next;
+            return Ok(done);
+        }
         if let Some(timing) = &mut self.timing {
             let result = timing.step(app, event_loop, host, &self.directory, self.offscreen);
             self.next = Instant::now() + Duration::from_millis(50);
@@ -3021,6 +3060,294 @@ pub(super) fn monitor(event_loop: &ActiveEventLoop) -> Option<winit::monitor::Mo
         .available_monitors()
         .filter(|monitor| Some(monitor) != primary.as_ref())
         .max_by_key(|monitor| u64::from(monitor.size().width) * u64::from(monitor.size().height))
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Default)]
+struct CursorBenchmark {
+    settle_until: Option<Instant>,
+    sample: Option<CursorSample>,
+}
+
+#[cfg(target_os = "macos")]
+struct CursorSample {
+    started: Instant,
+    cpu_ns: u64,
+    frames: u64,
+    paints: u64,
+    prepares: u64,
+    updates: u64,
+    activations: u64,
+    terminal_generation: u64,
+}
+
+#[cfg(target_os = "macos")]
+impl CursorBenchmark {
+    fn step(
+        &mut self,
+        app: &mut App,
+        event_loop: &ActiveEventLoop,
+        host: &mut Host,
+        directory: &Path,
+    ) -> Result<(bool, Instant)> {
+        let now = Instant::now();
+        if host.frames == 0 || !host.visible || host.occluded {
+            return Ok((false, now + Duration::from_millis(50)));
+        }
+        if let Some(expected) = monitor(event_loop)
+            && host.window.current_monitor().as_ref() != Some(&expected)
+        {
+            return Err("cursor benchmark window is not on the largest non-primary monitor".into());
+        }
+        if host.window.has_focus() {
+            return Err("cursor benchmark unexpectedly took native keyboard focus".into());
+        }
+        let pane = app.focused(host.id).ok_or("cursor benchmark has no pane")?;
+        if self.settle_until.is_none() {
+            let wanted = winit::dpi::PhysicalSize::new(1200, 850);
+            if host.window.inner_size() != wanted {
+                let _ = host.window.request_inner_size(wanted);
+                return Ok((false, now + Duration::from_millis(50)));
+            }
+            let mut terminal = app.panes[&pane].session.terminal()?;
+            let mut fixture = vt::Terminal::new(terminal.cols, terminal.rows, 4096);
+            fixture.set_pixel_size(terminal.width_px, terminal.height_px);
+            workload::setup(&mut fixture, "cached_redraw");
+            fixture
+                .feed(format!("\x1b[{};8H\x1b[1 q\x1b[?25h", (fixture.rows / 3).max(1)).as_bytes());
+            *terminal = fixture;
+            drop(terminal);
+            host.focused = true;
+            host.focus_hint.focus(Some(pane), now);
+            host.focus_hint.dismiss();
+            host.capture = false;
+            host.prepared.clear();
+            host.composed = None;
+            host.cursor_blink_started = now;
+            host.repaint();
+            let next = now + Duration::from_secs(3);
+            self.settle_until = Some(next);
+            return Ok((false, next));
+        }
+        if let Some(next) = self.settle_until.filter(|&next| now < next) {
+            return Ok((false, next));
+        }
+        if self.sample.is_none() {
+            if host.cursor.enabled && !host.cursor.active {
+                return Err(format!(
+                    "cursor layer did not settle: active={}, activations={}, updates={}, patch={:?}",
+                    host.cursor.active, host.cursor.activations, host.cursor.updates, host.cursor.patch_pixels,
+                ).into());
+            }
+            self.sample = Some(CursorSample {
+                started: now,
+                cpu_ns: cpu_time(CpuClock::Process)?,
+                frames: host.frames,
+                paints: app.painter.terminal_paints(host.id),
+                prepares: host.pane_prepares,
+                updates: host.cursor.updates,
+                activations: host.cursor.activations,
+                terminal_generation: app.panes[&pane].session.terminal()?.generation,
+            });
+            eprintln!(
+                "Cursor benchmark: sampling thirty seconds, layer={}",
+                host.cursor.enabled
+            );
+            return Ok((false, now + Duration::from_secs(30)));
+        }
+        let sample = self.sample.as_ref().unwrap();
+        let next = sample.started + Duration::from_secs(30);
+        if now < next {
+            return Ok((false, next));
+        }
+        let elapsed = now.duration_since(sample.started).as_secs_f64();
+        let process_cpu = (cpu_time(CpuClock::Process)? - sample.cpu_ns) as f64 / 1e9;
+        let frames = host.frames - sample.frames;
+        let paints = app.painter.terminal_paints(host.id) - sample.paints;
+        let prepares = host.pane_prepares - sample.prepares;
+        let updates = host.cursor.updates - sample.updates;
+        let activations = host.cursor.activations - sample.activations;
+        let unchanged =
+            app.panes[&pane].session.terminal()?.generation == sample.terminal_generation;
+        let passed = unchanged
+            && host.focused
+            && if host.cursor.enabled {
+                host.cursor.active
+                    && updates >= 6
+                    && frames == 0
+                    && paints == 0
+                    && prepares == 0
+                    && activations == 0
+            } else {
+                !host.cursor.active && updates == 0 && frames >= 6 && paints >= 6
+            };
+        let size = host.window.inner_size();
+        let mut report = serde_json::json!({
+            "passed": passed, "case": "cursor_blink", "layer_enabled": host.cursor.enabled,
+            "settle_seconds": 3, "elapsed_seconds": elapsed,
+            "frames": frames, "main_terminal_paints": paints, "pane_prepares": prepares,
+            "layer_updates": updates, "layer_activations": activations,
+            "layer_activations_total": host.cursor.activations, "layer_active": host.cursor.active,
+            "patch_pixels": host.cursor.patch_pixels, "terminal_unchanged": unchanged,
+            "process_cpu_seconds": process_cpu,
+            "process_cpu_percent_of_one_core": 100.0 * process_cpu / elapsed,
+            "size_pixels": [size.width, size.height], "scale_factor": host.window.scale_factor(),
+            "monitor": host.window.current_monitor().and_then(|monitor| monitor.name()),
+            "outer_position": host.window.outer_position().ok().map(|position| [position.x, position.y]),
+            "native_keyboard_focus": host.window.has_focus(), "internal_focus": host.focused,
+            "prepared_panes": host.prepared.len(), "renderer": app.painter.description(),
+            "gpu_completion_measured": false, "visible_presentation_measured": false,
+        });
+        fs::write(
+            directory.join("result.json"),
+            serde_json::to_vec_pretty(&report)?,
+        )?;
+        if !passed {
+            return Err(format!("cursor benchmark failed: {report}").into());
+        }
+        if host.cursor.enabled {
+            let result = check_cursor_lifecycle(app, event_loop, host, directory);
+            match &result {
+                Ok(()) => {
+                    report["lifecycle_checks"] = serde_json::json!([
+                        "content-retires-layer",
+                        "capture-includes-cursor",
+                        "capture-matches-ordinary",
+                        "synchronized-visible-phase",
+                        "popup-retires-layer",
+                        "synchronized-release",
+                    ])
+                }
+                Err(error) => {
+                    report["passed"] = false.into();
+                    report["lifecycle_error"] = error.to_string().into();
+                }
+            }
+            fs::write(
+                directory.join("result.json"),
+                serde_json::to_vec_pretty(&report)?,
+            )?;
+            result?;
+        }
+        Ok((true, now))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn check_cursor_lifecycle(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    host: &mut Host,
+    directory: &Path,
+) -> Result<()> {
+    let pane = app.focused(host.id).ok_or("cursor lifecycle has no pane")?;
+    let retired = |host: &Host| {
+        !host.cursor.active
+            && host
+                .cursor
+                .layer
+                .as_ref()
+                .is_none_or(|layer| !layer.is_visible())
+    };
+    let activate = |app: &mut App, host: &mut Host| -> Result<()> {
+        host.cursor_blink_started = Instant::now();
+        app.draw(event_loop, host)?;
+        host.cursor_blink_started = Instant::now() - Duration::from_millis(650);
+        app.draw(event_loop, host)?;
+        if !host.cursor.active {
+            return Err("cursor lifecycle failed to reacquire the layer".into());
+        }
+        host.cursor.layer.as_ref().unwrap().set_visible(true);
+        Ok(())
+    };
+    host.cursor
+        .layer
+        .as_ref()
+        .ok_or("missing active cursor layer")?
+        .set_visible(true);
+    host.cursor_blink_started = Instant::now();
+    let paints = app.painter.terminal_paints(host.id);
+    app.panes[&pane]
+        .session
+        .terminal()?
+        .feed(b"\x1b7\x1b[Hchanged content\x1b8");
+    app.draw(event_loop, host)?;
+    if !retired(host)
+        || app.painter.terminal_paints(host.id) != paints + 1
+        || host.prepared[&pane].key.generation != app.panes[&pane].session.terminal()?.generation
+    {
+        return Err("ordinary content redraw did not replace and retire the cursor layer".into());
+    }
+
+    activate(app, host)?;
+    host.cursor_blink_started = Instant::now();
+    let layered = directory.join("cursor-layer-capture.png");
+    capture_window(app, event_loop, host, &layered)?;
+    host.cursor_blink_started = Instant::now();
+    app.draw(event_loop, host)?;
+    if !retired(host) {
+        return Err("ordinary redraw after capture left a native cursor layer".into());
+    }
+    host.cursor.enabled = false;
+    host.cursor_blink_started = Instant::now();
+    let ordinary = directory.join("cursor-ordinary-capture.png");
+    capture_window(app, event_loop, host, &ordinary)?;
+    if fs::read(&layered)? != fs::read(&ordinary)? {
+        return Err("cursor-layer capture differs from ordinary cursor rendering".into());
+    }
+    app.panes[&pane]
+        .session
+        .terminal()?
+        .screen_mut()
+        .cursor
+        .visible = false;
+    let hidden = directory.join("cursor-hidden-capture.png");
+    capture_window(app, event_loop, host, &hidden)?;
+    if fs::read(&ordinary)? == fs::read(&hidden)? {
+        return Err("ordinary cursor capture did not contain the visible cursor".into());
+    }
+
+    app.panes[&pane]
+        .session
+        .terminal()?
+        .screen_mut()
+        .cursor
+        .visible = true;
+    host.cursor.enabled = true;
+    activate(app, host)?;
+    let on = Arc::clone(&host.cursor.on.as_ref().unwrap().frame);
+    let generation = host.cursor.on.as_ref().unwrap().key.generation;
+    app.panes[&pane]
+        .session
+        .terminal()?
+        .feed(b"\x1b[?2026h\x1b[Hunseen synchronized edit");
+    host.palette.open = true;
+    app.draw(event_loop, host)?;
+    if !retired(host)
+        || !host.palette.open
+        || host.cursor.deadline.is_some()
+        || host.prepared[&pane].key.generation != generation
+        || !host.prepared[&pane].key.options.blink_visible
+        || !Arc::ptr_eq(&host.prepared[&pane].frame, &on)
+    {
+        return Err(
+            "synchronized popup redraw changed the held cursor phase or kept the layer above UI"
+                .into(),
+        );
+    }
+    capture_window(
+        app,
+        event_loop,
+        host,
+        &directory.join("cursor-synchronized-popup.png"),
+    )?;
+    host.palette.open = false;
+    app.panes[&pane].session.terminal()?.feed(b"\x1b[?2026l");
+    app.draw(event_loop, host)?;
+    if host.prepared[&pane].key.generation != app.panes[&pane].session.terminal()?.generation {
+        return Err("synchronized output release did not render its new content".into());
+    }
+    Ok(())
 }
 
 struct Replay {

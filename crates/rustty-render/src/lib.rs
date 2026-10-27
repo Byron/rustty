@@ -136,6 +136,9 @@ pub struct Frame {
     pub atlas_uploads: Vec<AtlasUpload>,
     /// IME candidate-window anchor in physical pixels, when a preedit caret is present.
     pub ime_cursor: Option<[f32; 4]>,
+    /// Cursor cell and its row's foreground bounds, before clipping, in either blink phase.
+    /// Present only on directly prepared pane frames, not composed frames.
+    pub cursor_row_bounds: Option<[f32; 4]>,
     /// Prepared text or decorations depend on `RenderOptions::blink_visible`.
     pub blinking_text: bool,
 }
@@ -148,6 +151,7 @@ impl Frame {
             quads: Vec::new(),
             atlas_uploads: Vec::new(),
             ime_cursor: None,
+            cursor_row_bounds: None,
             blinking_text: false,
         }
     }
