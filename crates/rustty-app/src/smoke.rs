@@ -4108,15 +4108,26 @@ fn check_passive_pointer_motion(
     let _ = host.egui.on_window_event(&host.window, &motion(host.mouse));
     host.egui.egui_input_mut().events.clear();
     let result = (|| -> Result<()> {
+        app.tick_deck();
+        let syncs = app.deck.syncs;
         // Crossing a split gap changes the native cursor, but no terminal pixels.
         for position in positions.into_iter().cycle().take(256) {
             app.window_event(event_loop, key, motion(position));
+            app.tick_deck();
             let host = app.windows.get_mut(&key).unwrap();
             if host.deferred_pointer != Some(position)
                 || !host.egui.egui_input_mut().events.is_empty()
             {
                 return Err(format!("passive pointer motion at {position:?} reached egui").into());
             }
+        }
+        if app.deck.syncs != syncs {
+            return Err("passive pointer motion rebuilt the Stream Deck dashboard".into());
+        }
+        app.changed();
+        app.tick_deck();
+        if app.deck.syncs != syncs + 1 {
+            return Err("workspace changes did not refresh the Stream Deck dashboard".into());
         }
         Ok(())
     })();
@@ -4134,7 +4145,9 @@ fn check_passive_pointer_motion(
     let _ = host.egui.on_window_event(&host.window, &restore_pointer);
     host.egui.egui_input_mut().events = events;
     result?;
-    eprintln!("Native smoke: repeated pointer motion across panes and split gaps stayed deferred");
+    eprintln!(
+        "Native smoke: 256 pointer moves across panes and split gaps stayed deferred without rebuilding the Stream Deck dashboard; workspace changes refreshed it"
+    );
     Ok(())
 }
 

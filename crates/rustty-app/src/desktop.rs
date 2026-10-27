@@ -1642,6 +1642,7 @@ impl App {
         visible
     }
     fn sync_host_state(&mut self) {
+        self.deck.dirty = true;
         let now = Instant::now();
         let mut focused_panes = HashSet::new();
         for host in self.windows.values_mut() {
@@ -1693,6 +1694,7 @@ impl App {
         }
     }
     fn changed(&mut self) {
+        self.deck.dirty = true;
         self.repaint_outliner();
         // Continuous resizing or title updates must not postpone saving forever.
         self.save_at
@@ -2819,6 +2821,7 @@ impl App {
     }
 
     fn drain(&mut self, event_loop: &ActiveEventLoop, id: Id) {
+        self.deck.dirty = true;
         let previous_tab_label = self.pane_tab_label(id);
         let tmuxx = self.tmuxx_pane(id).is_some();
         let previous_directory = self.panes.get(&id).map(|pane| pane.cwd.clone());
@@ -7868,11 +7871,8 @@ impl ApplicationHandler<Event> for App {
             self.reconcile(event_loop);
         }
         for pane in self.panes.values_mut() {
+            self.deck.dirty |= pane.deck_progress.deadline().is_some_and(|at| at <= now);
             pane.deck_progress.expire(now);
-        }
-        self.update_deck_commands();
-        if !self.import_selector {
-            self.tick_deck();
         }
         #[cfg(target_os = "windows")]
         if let Some(platform) = &self.platform {
@@ -7937,6 +7937,7 @@ impl ApplicationHandler<Event> for App {
             })
             .collect::<Vec<_>>();
         for (id, stopped) in expired {
+            self.deck.dirty = true;
             if stopped {
                 self.activity_stopped(id, now);
             }
@@ -7949,6 +7950,9 @@ impl ApplicationHandler<Event> for App {
         self.redo.retain(|(expires, _)| *expires > now);
         if count != self.history.len() + self.redo.len() || !self.closing.is_empty() {
             self.reconcile(event_loop);
+        }
+        if !self.import_selector {
+            self.tick_deck();
         }
         if self.close_at.is_some_and(|at| at <= now) {
             self.save();
