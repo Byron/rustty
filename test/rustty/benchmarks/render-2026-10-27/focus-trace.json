@@ -1,0 +1,134 @@
+{
+  "source": "russty-somewhat-busy-with-focus.trace",
+  "recording_seconds": 8.228576,
+  "reported_visible_panes": 12,
+  "layout": "Splits in one window, reported by the user; not recorded by Time Profiler",
+  "sample_units": "Statistical running-thread sample weights in milliseconds, not independent CPU accounting",
+  "sample_count": 112,
+  "sampled_ms": 112.0,
+  "thread_name_ms": {
+    "Main Thread": 52.0,
+    "rustty": 40.0,
+    "com.apple.NSEventThread": 20.0
+  },
+  "missing_stack_sample_weight_ms": 22.0,
+  "sample_clusters_gap_threshold_s": 0.05,
+  "sample_clusters": [
+    {
+      "first_s": 1.0446895,
+      "last_s": 1.127689458,
+      "sample_weight_ms": 32.0,
+      "thread_weight_ms": {
+        "Main Thread": 8,
+        "rustty": 21,
+        "com.apple.NSEventThread": 3
+      }
+    },
+    {
+      "first_s": 1.357688625,
+      "last_s": 1.405689458,
+      "sample_weight_ms": 7.0,
+      "thread_weight_ms": {
+        "Main Thread": 5,
+        "com.apple.NSEventThread": 2
+      }
+    },
+    {
+      "first_s": 1.4646895,
+      "last_s": 1.620688833,
+      "sample_weight_ms": 29.0,
+      "thread_weight_ms": {
+        "com.apple.NSEventThread": 9,
+        "Main Thread": 13,
+        "rustty": 7
+      }
+    },
+    {
+      "first_s": 2.273688791,
+      "last_s": 2.297688375,
+      "sample_weight_ms": 5.0,
+      "thread_weight_ms": {
+        "Main Thread": 4,
+        "rustty": 1
+      }
+    },
+    {
+      "first_s": 2.689689666,
+      "last_s": 2.740689791,
+      "sample_weight_ms": 7.0,
+      "thread_weight_ms": {
+        "Main Thread": 4,
+        "com.apple.NSEventThread": 3
+      }
+    },
+    {
+      "first_s": 2.806689541,
+      "last_s": 3.019689458,
+      "sample_weight_ms": 31.0,
+      "thread_weight_ms": {
+        "Main Thread": 18,
+        "com.apple.NSEventThread": 3,
+        "rustty": 10
+      }
+    },
+    {
+      "first_s": 3.15669,
+      "last_s": 3.15669,
+      "sample_weight_ms": 1.0,
+      "thread_weight_ms": {
+        "rustty": 1
+      }
+    }
+  ],
+  "draw_sample_groups": [
+    {
+      "first_s": 1.045689666,
+      "last_s": 1.046689041,
+      "sample_weight_ms": 2.0
+    },
+    {
+      "first_s": 1.603688875,
+      "last_s": 1.612688583,
+      "sample_weight_ms": 5.0
+    },
+    {
+      "first_s": 2.274691916,
+      "last_s": 2.274691916,
+      "sample_weight_ms": 1.0
+    },
+    {
+      "first_s": 2.987688625,
+      "last_s": 3.003688791,
+      "sample_weight_ms": 2.0
+    }
+  ],
+  "draw_sample_group_intervals_s": [
+    0.5579992090000001,
+    0.6710030410000001,
+    0.712996709
+  ],
+  "inclusive_function_ms": {
+    "<rustty::desktop::App>::draw_frame": 10.0,
+    "<rustty::desktop::App>::sync_deck_with_host": 7.0,
+    "<rustty_app::deck::Dashboard>::update": 6.0,
+    "<rustty::desktop::painter::Painter>::paint": 5.0,
+    "<rustty_app::workspace::Workspace>::reconcile_deck_positions": 4.0,
+    "<rustty::desktop::App>::mouse": 3.0,
+    "<rustty::desktop::App>::reconcile": 2.0
+  },
+  "inclusive_warning": "Child weights are included in their parents; do not add them",
+  "pty_threads_at_initial_blocked_snapshot": {
+    "read": 59,
+    "write": 59,
+    "wait": 59,
+    "running_samples": 0
+  },
+  "hid_discovery_or_connection_samples": 0,
+  "limits": [
+    "All running samples occur between 1.045 and 3.157 seconds; the same PID remains observable at 4.982 seconds",
+    "22 ms of generic-worker samples lack exported backtraces",
+    "Observed drawing intervals do not establish a regular 600 ms blink cadence",
+    "The initial blocked-thread snapshot does not identify visible panes or establish a thread leak",
+    "This trace is not a steady idle baseline or a before/after cursor comparison"
+  ]
+}

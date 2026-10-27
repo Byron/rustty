@@ -135,7 +135,7 @@ Here it was 1097×31 pixels, 3.3% of the 1200×850 window.
 
 Ordinary redraws retire the patch with a Core Animation transaction tied to
 successful main-frame presentation. Synchronized output preserves the visible
-cursor phase. Captures use ordinary rendering. The first implementation handles
+cursor phase. Captures use ordinary rendering. The first implementation handled
 one visible opaque pane without images or blinking text; overlapping UI, IME
 composition, transitions, and unsupported geometry use ordinary rendering.
 
@@ -197,3 +197,100 @@ display controls and focus, and saves reports, logs, and an aggregate summary.
 Baseline runs set `RUSTTY_CURSOR_LAYER=0`; layer runs use the macOS default
 with the variable unset. The saved measurements above used the earlier opt-in
 build with the same layer implementation.
+
+## Split-pane follow-up, 2026-10-27
+
+The user supplied `russty-somewhat-busy-with-focus.trace` with about twelve
+visible splits in one window. Its 8.229-second recording contains 112 running
+samples, each weighted at 1 ms: 52 ms on the main thread, 40 ms on generic worker
+threads, and 20 ms on the native event thread. Of the worker samples, 22 ms have
+no exported backtrace. These are statistical sample weights, not independent
+CPU accounting. [Saved trace summary](benchmarks/render-2026-10-27/focus-trace.json).
+
+The main thread shows pointer hit testing, layout traversal, drawing, and
+workspace/dashboard updates. `draw_frame` accounts for 10 ms; dashboard
+synchronization accounts for 7 ms, including 6 ms in `Dashboard::update` and
+4 ms in `reconcile_deck_positions`. The nested weights overlap. There is no
+sampled Stream Deck discovery/open retry loop.
+
+All running samples occur between 1.045 and 3.157 seconds. The same process
+remains observable in the event trace at 4.982 seconds. Sampled drawing groups
+are about 558, 671, and 713 ms apart, which does not establish a regular 600 ms
+blink cadence. This recording therefore shows event-related work but does not
+measure steady idle blinking. The initial blocked-thread snapshot contains
+59 PTY read/write/wait triads; none have running samples. It suggests that
+workspace-wide bookkeeping covers more sessions than the visible splits,
+without identifying their visibility or establishing a thread leak.
+
+Source inspection found two independent costs:
+
+- A single focused cursor invalidates the combined terminal frame on every
+  blink when multiple panes are visible. The other panes reuse their prepared
+  content, but Rustty still recombines and uploads the whole window. The initial
+  cursor-layer eligibility check required exactly one visible pane.
+- Every event-loop turn reaching `about_to_wait` rebuilds dashboard state,
+  including pane IDs, labels, groups, and layout positions. This scales with the
+  workspace and runs even when no report changed. It remains a separate
+  optimization opportunity; the cursor change does not remove input-driven
+  dashboard updates.
+
+The cursor layer now selects the focused pane inside a split layout. It keeps
+the existing opacity, content, transition, and UI guards, and rejects any other
+pane whose visible region intersects the cursor patch. Other panes' output and
+image animation continue to request ordinary frames, which retire the patch.
+
+### Split-pane validation
+
+The release comparison used twelve nonoverlapping panes in a 1200×850 physical
+pixel window at scale 2, Menlo 13 pt, and one blinking cursor in the last
+composed pane. Eleven other cursors remained steady. All twelve terminal
+generations remained unchanged throughout each sample. The 269×32-pixel patch
+covered about 0.84% of the window. All successful runs used the largest
+non-primary monitor, `Monitor #41053`, at `[-3376, 996]`, without native keyboard
+focus. Stream Deck was disabled in the fixture.
+
+| Run | Variant | CPU %, one core | Main terminal passes | Pane prepares | Layer visibility changes |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 01-A | Ordinary rendering | 0.551 | 50 | 50 | 0 |
+| 02-B | Cursor layer | 0.067 | 0 | 0 | 51 |
+| 03-B | Cursor layer | 0.070 | 0 | 0 | 51 |
+| 04-A | Ordinary rendering | 0.599 | 51 | 51 | 0 |
+
+Across matched sixty-second totals, process CPU fell from **0.575% to 0.068% of
+one core**, about **88% lower**. Main terminal passes and pane preparations
+fell from **101 to zero**. Both orders improved. These measurements isolate
+idle blinking; they do not predict the total cost of the supplied trace's
+input events and larger workspace. GPU completion, scanout, and WindowServer
+were not measured.
+
+[Saved comparison](benchmarks/render-2026-10-27/cursor-splits.json) preserves
+the frozen binary hash, reports, and build details. Built with Rust 1.99.1,
+`aarch64-apple-darwin`, and the unchanged workspace release profile (thin LTO,
+one codegen unit). No other agent builds or tests ran during the comparison.
+Full logs and capture fixtures remain under
+`/tmp/rustty-render-experiment/cursor-splits-20261027-background-abba/`.
+
+The first attempt was rejected because the locked, sleeping Mac yielded no
+terminal render passes. A second attempt failed the native keyboard-focus
+check before sampling. Both are excluded. Bundle comparisons now use macOS
+background launch (`open -g -n -W`); bare executables retain direct launch.
+The harness also rejects a sample before timing if settling produced no
+terminal render passes.
+
+Three cursor tests pass, including pixel reconstruction over a middle pane
+with dimmed neighbors, overlapping-pane rejection, clipping, cursor styles,
+and UI occlusion. Production Clippy, Windows ARM64 compilation, formatting,
+and the release bundle build pass. Each layer run passed all six existing
+native lifecycle checks plus neighboring-pane output retirement and
+focus-switch retirement/reacquisition. Captures exercise the ordinary
+fallback; native patch alignment and seamless handoff were not visually
+inspected.
+
+To repeat with an unlocked Mac and an awake secondary display:
+
+```sh
+nu crates/rustty-app/build.nu --release --offline
+python3 test/rustty/cursor_compare.py \
+  --binary target/release/Rustty.app/Contents/MacOS/rustty \
+  --panes 12 --output /tmp/rustty-cursor-splits-comparison
+```
