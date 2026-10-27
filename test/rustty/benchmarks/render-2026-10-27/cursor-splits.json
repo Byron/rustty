@@ -1,0 +1,287 @@
+{
+  "build": {
+    "command": "nu crates/rustty-app/build.nu --release --offline",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+    "target": "aarch64-apple-darwin",
+    "profile": "workspace release: thin LTO, one codegen unit",
+    "source_sha256": {
+      "crates/rustty-app/src/desktop.rs": "83f191c3b1a388e4531c3bbc90bc8efedd337d2a7d8066faa8d9c79ecbcbaaa8",
+      "crates/rustty-app/src/desktop_cursor.rs": "6f4f373d77f347c5483a8dad3b6e7af6a5d3a3d45010de56fbe54ad199550637",
+      "crates/rustty-app/src/desktop_painter.rs": "8ff56ddb572f022a23cd61f91967ad1d9c90f3308c9337a066cd0b270622ff2f",
+      "crates/rustty-app/src/smoke.rs": "c52e409f5e91c25e4dc81eb32aa5bd5789194d4eae152d20acf496173b7ec244"
+    }
+  },
+  "launch": "macOS open -g -n -W, test environment passed with --env",
+  "measured_harness_sha256": "31b25c4aee7eea064ce141f953485f0f78c3641f51b91eda957369e5ab5692f5",
+  "manifest": {
+    "case": "cursor_blink_12_panes",
+    "pane_count": 12,
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "binary": {
+      "path": "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/Rustty.app/Contents/MacOS/rustty",
+      "sha256": "05d95780a8cd5e30eacb9aae6a1eac85299bea5b18e92f91d60e9014b42a6261",
+      "build_profile": "unknown"
+    },
+    "order": [
+      "A",
+      "B",
+      "B",
+      "A"
+    ],
+    "variants": {
+      "A": "baseline",
+      "B": "native_cursor_layer"
+    },
+    "cpu_units": "Percent of one CPU core during the app's thirty-second sample",
+    "windowserver_measured": false
+  },
+  "results": [
+    {
+      "run": "01-A",
+      "variant": "A",
+      "report": {
+        "case": "cursor_blink_12_panes",
+        "elapsed_seconds": 30.000039542,
+        "focused_composed_index": 11,
+        "frames": 50,
+        "gpu_completion_measured": false,
+        "internal_focus": true,
+        "layer_activations": 0,
+        "layer_activations_total": 0,
+        "layer_active": false,
+        "layer_enabled": false,
+        "layer_updates": 0,
+        "main_terminal_paints": 50,
+        "monitor": "Monitor #41053",
+        "native_keyboard_focus": false,
+        "outer_position": [
+          -3376,
+          996
+        ],
+        "pane_count": 12,
+        "pane_prepares": 50,
+        "passed": true,
+        "patch_pixels": null,
+        "prepared_panes": 12,
+        "process_cpu_percent_of_one_core": 0.5512726067192861,
+        "process_cpu_seconds": 0.165382,
+        "renderer": "gpu \u2014 Apple M4 Max (Metal, IntegratedGpu)",
+        "scale_factor": 2.0,
+        "settle_seconds": 3,
+        "size_pixels": [
+          1200,
+          850
+        ],
+        "terminal_unchanged": true,
+        "visible_presentation_measured": false
+      }
+    },
+    {
+      "run": "02-B",
+      "variant": "B",
+      "report": {
+        "case": "cursor_blink_12_panes",
+        "elapsed_seconds": 30.000084834,
+        "focused_composed_index": 11,
+        "frames": 0,
+        "gpu_completion_measured": false,
+        "internal_focus": true,
+        "layer_activations": 0,
+        "layer_activations_total": 1,
+        "layer_active": true,
+        "layer_enabled": true,
+        "layer_updates": 51,
+        "lifecycle_checks": [
+          "content-retires-layer",
+          "capture-includes-cursor",
+          "capture-matches-ordinary",
+          "synchronized-visible-phase",
+          "popup-retires-layer",
+          "synchronized-release",
+          "neighbor-content-retires-layer",
+          "focus-switch-reacquires-layer"
+        ],
+        "main_terminal_paints": 0,
+        "monitor": "Monitor #41053",
+        "native_keyboard_focus": false,
+        "outer_position": [
+          -3376,
+          996
+        ],
+        "pane_count": 12,
+        "pane_prepares": 0,
+        "passed": true,
+        "patch_pixels": [
+          908,
+          679,
+          269,
+          32
+        ],
+        "prepared_panes": 12,
+        "process_cpu_percent_of_one_core": 0.06657647840170104,
+        "process_cpu_seconds": 0.019973,
+        "renderer": "gpu \u2014 Apple M4 Max (Metal, IntegratedGpu)",
+        "scale_factor": 2.0,
+        "settle_seconds": 3,
+        "size_pixels": [
+          1200,
+          850
+        ],
+        "terminal_unchanged": true,
+        "visible_presentation_measured": false
+      }
+    },
+    {
+      "run": "03-B",
+      "variant": "B",
+      "report": {
+        "case": "cursor_blink_12_panes",
+        "elapsed_seconds": 30.000130542,
+        "focused_composed_index": 11,
+        "frames": 0,
+        "gpu_completion_measured": false,
+        "internal_focus": true,
+        "layer_activations": 0,
+        "layer_activations_total": 1,
+        "layer_active": true,
+        "layer_enabled": true,
+        "layer_updates": 51,
+        "lifecycle_checks": [
+          "content-retires-layer",
+          "capture-includes-cursor",
+          "capture-matches-ordinary",
+          "synchronized-visible-phase",
+          "popup-retires-layer",
+          "synchronized-release",
+          "neighbor-content-retires-layer",
+          "focus-switch-reacquires-layer"
+        ],
+        "main_terminal_paints": 0,
+        "monitor": "Monitor #41053",
+        "native_keyboard_focus": false,
+        "outer_position": [
+          -3376,
+          996
+        ],
+        "pane_count": 12,
+        "pane_prepares": 0,
+        "passed": true,
+        "patch_pixels": [
+          908,
+          679,
+          269,
+          32
+        ],
+        "prepared_panes": 12,
+        "process_cpu_percent_of_one_core": 0.06960969710036403,
+        "process_cpu_seconds": 0.020883,
+        "renderer": "gpu \u2014 Apple M4 Max (Metal, IntegratedGpu)",
+        "scale_factor": 2.0,
+        "settle_seconds": 3,
+        "size_pixels": [
+          1200,
+          850
+        ],
+        "terminal_unchanged": true,
+        "visible_presentation_measured": false
+      }
+    },
+    {
+      "run": "04-A",
+      "variant": "A",
+      "report": {
+        "case": "cursor_blink_12_panes",
+        "elapsed_seconds": 30.002204459,
+        "focused_composed_index": 11,
+        "frames": 51,
+        "gpu_completion_measured": false,
+        "internal_focus": true,
+        "layer_activations": 0,
+        "layer_activations_total": 0,
+        "layer_active": false,
+        "layer_enabled": false,
+        "layer_updates": 0,
+        "main_terminal_paints": 51,
+        "monitor": "Monitor #41053",
+        "native_keyboard_focus": false,
+        "outer_position": [
+          -3376,
+          996
+        ],
+        "pane_count": 12,
+        "pane_prepares": 51,
+        "passed": true,
+        "patch_pixels": null,
+        "prepared_panes": 12,
+        "process_cpu_percent_of_one_core": 0.599415953736868,
+        "process_cpu_seconds": 0.179838,
+        "renderer": "gpu \u2014 Apple M4 Max (Metal, IntegratedGpu)",
+        "scale_factor": 2.0,
+        "settle_seconds": 3,
+        "size_pixels": [
+          1200,
+          850
+        ],
+        "terminal_unchanged": true,
+        "visible_presentation_measured": false
+      }
+    }
+  ],
+  "summary": {
+    "controls": {
+      "size_pixels": [
+        1200,
+        850
+      ],
+      "scale_factor": 2.0,
+      "monitor": "Monitor #41053",
+      "outer_position": [
+        -3376,
+        996
+      ],
+      "renderer": "gpu \u2014 Apple M4 Max (Metal, IntegratedGpu)",
+      "pane_count": 12,
+      "prepared_panes": 12,
+      "focused_composed_index": 11
+    },
+    "variants": {
+      "A": {
+        "process_cpu_seconds": 0.34521999999999997,
+        "elapsed_seconds": 60.002244001,
+        "process_cpu_percent_of_one_core": 0.5753451487485144,
+        "frames": 101,
+        "main_terminal_paints": 101,
+        "pane_prepares": 101,
+        "layer_updates": 0,
+        "layer_activations": 0
+      },
+      "B": {
+        "process_cpu_seconds": 0.040856,
+        "elapsed_seconds": 60.000215376,
+        "process_cpu_percent_of_one_core": 0.0680930889063814,
+        "frames": 0,
+        "main_terminal_paints": 0,
+        "pane_prepares": 0,
+        "layer_updates": 102,
+        "layer_activations": 0
+      }
+    }
+  },
+  "controls": {
+    "font": "Menlo",
+    "font_size_points": 13,
+    "stream_deck": false,
+    "native_focus": false,
+    "internal_focus": true,
+    "reported_user_layout": "12 splits in one window"
+  },
+  "scope": "Idle cursor blinking only; separate from the input activity in focus-trace.json",
+  "limits": [
+    "Native patch alignment and handoff not visually inspected",
+    "GPU completion, scanout, and WindowServer not measured"
+  ],
+  "excluded_attempts": [
+    "Sleeping/locked display: 50 preparations but zero terminal render passes",
+    "Direct bundle launch: native keyboard-focus check failed before sampling"
+  ]
+}

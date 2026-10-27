@@ -13,6 +13,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--panes", type=int, choices=[1, 12], default=1)
     args = parser.parse_args()
     binary = args.binary.resolve(strict=True)
     output = args.output.resolve()
@@ -20,7 +21,8 @@ def main():
     assert not any(output.iterdir()), "Use an empty output directory"
     digest = hashlib.sha256(binary.read_bytes()).hexdigest()
     manifest = {
-        "case": "cursor_blink", "platform": platform.platform(),
+        "case": "cursor_blink" if args.panes == 1 else "cursor_blink_12_panes",
+        "pane_count": args.panes, "platform": platform.platform(),
         "binary": {"path": str(binary), "sha256": digest, "build_profile": "unknown"},
         "order": ["A", "B", "B", "A"],
         "variants": {"A": "baseline", "B": "native_cursor_layer"},
@@ -36,25 +38,42 @@ def main():
         directory.mkdir()
         env = {key: value for key, value in os.environ.items()
                if not key.startswith("RUSTTY_SMOKE_") and key != "RUSTTY_CURSOR_LAYER"}
-        env.update(RUSTTY_SMOKE_CURSOR_LAYER="1", RUSTTY_SMOKE_DIR=str(directory))
+        env.update(RUSTTY_SMOKE_CURSOR_LAYER="1", RUSTTY_SMOKE_DIR=str(directory),
+                   RUSTTY_SMOKE_CURSOR_PANES=str(args.panes))
         if variant == "A":
             env["RUSTTY_CURSOR_LAYER"] = "0"
+        command = [str(binary)]
+        bundle = binary.parent.parent.parent
+        if platform.system() == "Darwin" and bundle.suffix == ".app":
+            command = ["open", "-g", "-n", "-W", "--stdout", str(directory / "stdout.log"),
+                       "--stderr", str(directory / "stderr.log")]
+            for key in ["RUSTTY_SMOKE_CURSOR_LAYER", "RUSTTY_SMOKE_DIR",
+                        "RUSTTY_SMOKE_CURSOR_PANES", "RUSTTY_CURSOR_LAYER"]:
+                if key in env:
+                    command += ["--env", f"{key}={env[key]}"]
+            command.append(str(bundle))
         print(directory.name, flush=True)
         with (directory / "stdout.log").open("w") as stdout, \
                 (directory / "stderr.log").open("w") as stderr:
-            run = subprocess.run([str(binary)], env=env, stdout=stdout, stderr=stderr, timeout=60)
+            run = subprocess.run(command, env=env, stdout=stdout, stderr=stderr, timeout=60)
         run.check_returncode()
         assert hashlib.sha256(binary.read_bytes()).hexdigest() == digest, "Binary changed"
         report = json.loads((directory / "result.json").read_text())
         assert report["passed"] is True, report
-        assert report["case"] == "cursor_blink", report
+        assert report["case"] == manifest["case"], report
+        assert report["pane_count"] == report["prepared_panes"] == args.panes, report
+        assert report["terminal_unchanged"] is True, report
+        assert 0 <= report["focused_composed_index"] < args.panes, report
+        if args.panes > 1:
+            assert report["focused_composed_index"] > 0, report
         assert report["layer_enabled"] == (variant == "B"), report
         assert report["native_keyboard_focus"] is False, report
         assert report["internal_focus"] is True, report
         assert report["gpu_completion_measured"] is False, report
         assert report["visible_presentation_measured"] is False, report
         settings = {key: report[key] for key in
-                    ["size_pixels", "scale_factor", "monitor", "outer_position", "renderer"]}
+                    ["size_pixels", "scale_factor", "monitor", "outer_position", "renderer",
+                     "pane_count", "prepared_panes", "focused_composed_index"]}
         assert all(value is not None for value in settings.values()), settings
         if control is None:
             control = settings

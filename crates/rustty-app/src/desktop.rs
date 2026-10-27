@@ -416,10 +416,14 @@ impl CursorCandidate {
             && self.frame.generation == other.frame.generation
     }
 
-    fn patch(&self, off: &Self, pane: &ComposedPane) -> Option<([u32; 4], Frame)> {
+    fn patch(&self, off: &Self, composed: &ComposedFrame) -> Option<([u32; 4], Frame)> {
         if !self.matches(off) || !self.key.options.blink_visible || off.key.options.blink_visible {
             return None;
         }
+        let pane = composed
+            .panes
+            .iter()
+            .find(|pane| Arc::ptr_eq(&pane.frame, &off.frame))?;
         let rect =
             |[x, y, w, h]: [f32; 4]| egui::Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h));
         let bounds = rect(self.frame.cursor_row_bounds?)
@@ -435,6 +439,16 @@ impl CursorCandidate {
             return None;
         }
         if min != bounds.min || max != bounds.max {
+            return None;
+        }
+        // Other panes and their dimming are inside the terminal callback, below the native layer.
+        if composed.panes.iter().any(|other| {
+            !std::ptr::eq(other, pane)
+                && rect(other.rect)
+                    .intersect(rect(other.clip))
+                    .intersect(bounds)
+                    .is_positive()
+        }) {
             return None;
         }
         let pixels = [
@@ -742,7 +756,7 @@ struct Host {
 impl Host {
     #[cfg(target_os = "macos")]
     fn cursor_candidate(&self, focused: Id) -> Option<CursorCandidate> {
-        // shortcut: one opaque pane without images, extend after measuring this common idle case.
+        // shortcut: opaque cursor pane without images; extend after validating transparent and image-backed patches.
         if !self.focused
             || self.composing
             || !self.preedit.is_empty()
@@ -753,13 +767,13 @@ impl Host {
             return None;
         }
         let composed = self.composed.as_ref()?;
-        let [pane] = composed.panes.as_slice() else {
-            return None;
-        };
         let prepared = self.prepared.get(&focused)?;
+        let pane = composed
+            .panes
+            .iter()
+            .find(|pane| Arc::ptr_eq(&pane.frame, &prepared.frame))?;
         let key = &prepared.key;
-        if !Arc::ptr_eq(&pane.frame, &prepared.frame)
-            || pane.dim.is_some()
+        if pane.dim.is_some()
             || pane.transition.is_some()
             || key.options.background_opacity != 1.0
             || !key.options.focused
@@ -799,8 +813,7 @@ impl Host {
         let Some(on) = previous else {
             return;
         };
-        let Some((pixels, patch)) = on.patch(&candidate, &self.composed.as_ref().unwrap().panes[0])
-        else {
+        let Some((pixels, patch)) = on.patch(&candidate, self.composed.as_ref().unwrap()) else {
             return;
         };
         if !cursor_patch_uncovered(primitives, pixels, candidate.key.scale) {
@@ -11462,7 +11475,7 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn cursor_patch_reconstructs_the_full_on_frame_over_an_off_frame() {
+    fn cursor_patch_reconstructs_split_frames_and_rejects_overlapping_panes() {
         fn raster(frame: Frame) -> Vec<u8> {
             let rect = egui::Rect::from_min_size(
                 Pos2::ZERO,
@@ -11509,7 +11522,7 @@ mod tests {
                     key: PaneRenderKey::new(
                         &terminal,
                         options.clone(),
-                        egui::Rect::from_min_size(Pos2::new(12.0, 16.0), Vec2::new(160.0, 80.0)),
+                        egui::Rect::from_min_size(Pos2::new(176.0, 16.0), Vec2::new(160.0, 80.0)),
                         2.0,
                     ),
                     frame: Arc::new(fonts.prepare(terminal.screen(), &options).unwrap()),
@@ -11519,20 +11532,35 @@ mod tests {
             let off = candidate(false);
             let pane = |frame: &Arc<Frame>| ComposedPane {
                 frame: Arc::clone(frame),
-                rect: [24.0, 32.0, 320.0, 160.0],
-                clip: [26.0, 32.0, 300.0, 160.0],
+                rect: [352.0, 32.0, 320.0, 160.0],
+                clip: [354.0, 32.0, 300.0, 160.0],
                 dim: None,
                 transition: None,
             };
-            let (pixels, patch) = on.patch(&off, &pane(&off.frame)).unwrap();
-            assert!(pixels[0] >= 26 && pixels[1] >= 32 && pixels[3] < 160);
-            assert!(off.patch(&on, &pane(&on.frame)).is_none());
-            let mut fractional = pane(&off.frame);
-            fractional.clip[0] = pixels[0] as f32 + 0.5;
+            let neighbor = Arc::new((*off.frame).clone());
+            let panes = |frame: &Arc<Frame>| {
+                let neighbor = |x| ComposedPane {
+                    frame: Arc::clone(&neighbor),
+                    rect: [x, 32.0, 320.0, 160.0],
+                    clip: [x, 32.0, 320.0, 160.0],
+                    dim: Some(rustty_render::Color::rgb([10, 20, 30]).opacity(0.4)),
+                    transition: None,
+                };
+                vec![neighbor(24.0), pane(frame), neighbor(680.0)]
+            };
+            let expected = ComposedFrame::new([1024, 224], panes(&on.frame)).unwrap();
+            let base = ComposedFrame::new([1024, 224], panes(&off.frame)).unwrap();
+            let (pixels, patch) = on.patch(&off, &base).unwrap();
+            assert!(pixels[0] >= 354 && pixels[1] >= 32 && pixels[3] < 160);
+            assert!(off.patch(&on, &expected).is_none());
+            assert!(
+                on.patch(&off, &expected).is_none(),
+                "the OFF frame must be composed"
+            );
+            let mut fractional = panes(&off.frame);
+            fractional[1].clip[0] = pixels[0] as f32 + 0.5;
+            let fractional = ComposedFrame::new([1024, 224], fractional).unwrap();
             assert!(on.patch(&off, &fractional).is_none());
-
-            let expected = ComposedFrame::new([384, 224], vec![pane(&on.frame)]).unwrap();
-            let base = ComposedFrame::new([384, 224], vec![pane(&off.frame)]).unwrap();
             let expected = raster((*expected.frame).clone());
             assert!(
                 expected != raster((*base.frame).clone()),
@@ -11552,6 +11580,22 @@ mod tests {
                 None,
                 "cursor style {shape}: the retained patch must reproduce every pixel",
             );
+            for index in [0, 2] {
+                let mut overlapping = panes(&off.frame);
+                overlapping[index].rect = [pixels[0] as f32 + 1.0, pixels[1] as f32, 320.0, 160.0];
+                overlapping[index].clip = [pixels[0] as f32 + 1.0, pixels[1] as f32, 10.0, 10.0];
+                let mut overlapping = ComposedFrame::new([1024, 224], overlapping).unwrap();
+                assert!(
+                    on.patch(&off, &overlapping).is_none(),
+                    "overlapping pane {index}"
+                );
+                // A pane can overlap the cursor row while its visible clip stays outside it.
+                overlapping.panes[index].clip[1] += pixels[3] as f32 + 1.0;
+                assert!(
+                    on.patch(&off, &overlapping).is_some(),
+                    "clipped pane {index}"
+                );
+            }
         }
     }
 

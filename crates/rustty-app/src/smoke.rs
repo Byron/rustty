@@ -159,7 +159,15 @@ impl Smoke {
                     "cursor-layer smoke requires native presentation without timing replay".into(),
                 );
             }
-            Some(CursorBenchmark::default())
+            let pane_count = match std::env::var("RUSTTY_SMOKE_CURSOR_PANES").as_deref() {
+                Ok("12") => 12,
+                Ok("1") | Err(std::env::VarError::NotPresent) => 1,
+                _ => return Err("RUSTTY_SMOKE_CURSOR_PANES must be 1 or 12".into()),
+            };
+            Some(CursorBenchmark {
+                pane_count,
+                ..Default::default()
+            })
         } else {
             None
         };
@@ -3065,6 +3073,7 @@ pub(super) fn monitor(event_loop: &ActiveEventLoop) -> Option<winit::monitor::Mo
 #[cfg(target_os = "macos")]
 #[derive(Default)]
 struct CursorBenchmark {
+    pane_count: usize,
     settle_until: Option<Instant>,
     sample: Option<CursorSample>,
 }
@@ -3078,7 +3087,8 @@ struct CursorSample {
     prepares: u64,
     updates: u64,
     activations: u64,
-    terminal_generation: u64,
+    focused_pane: Id,
+    terminal_generations: BTreeMap<Id, u64>,
 }
 
 #[cfg(target_os = "macos")]
@@ -3102,21 +3112,49 @@ impl CursorBenchmark {
         if host.window.has_focus() {
             return Err("cursor benchmark unexpectedly took native keyboard focus".into());
         }
-        let pane = app.focused(host.id).ok_or("cursor benchmark has no pane")?;
         if self.settle_until.is_none() {
             let wanted = winit::dpi::PhysicalSize::new(1200, 850);
             if host.window.inner_size() != wanted {
                 let _ = host.window.request_inner_size(wanted);
                 return Ok((false, now + Duration::from_millis(50)));
             }
-            let mut terminal = app.panes[&pane].session.terminal()?;
-            let mut fixture = vt::Terminal::new(terminal.cols, terminal.rows, 4096);
-            fixture.set_pixel_size(terminal.width_px, terminal.height_px);
-            workload::setup(&mut fixture, "cached_redraw");
-            fixture
-                .feed(format!("\x1b[{};8H\x1b[1 q\x1b[?25h", (fixture.rows / 3).max(1)).as_bytes());
-            *terminal = fixture;
-            drop(terminal);
+            if self.pane_count == 12 {
+                for _ in 1..4 {
+                    app.action(event_loop, host, Action::NewSplit(Direction::Right), true);
+                }
+                app.tab_mut(host.id).unwrap().root.equalize();
+                for column in app.tab(host.id).unwrap().pane_ids() {
+                    app.focus_pane(host.id, column);
+                    for _ in 1..3 {
+                        app.action(event_loop, host, Action::NewSplit(Direction::Down), true);
+                    }
+                }
+                // Split actions start their PTYs with the detached host; size every grid
+                // before installing the stable workload, without creating another window.
+                app.refresh_directory_labels();
+                app.draw(event_loop, host)?;
+                app.history.clear();
+                app.redo.clear();
+            }
+            let panes = app
+                .tab(host.id)
+                .ok_or("cursor benchmark has no tab")?
+                .pane_ids();
+            if panes.len() != self.pane_count {
+                return Err("cursor benchmark created the wrong number of panes".into());
+            }
+            for id in panes {
+                let mut terminal = app.panes[&id].session.terminal()?;
+                let mut fixture = vt::Terminal::new(terminal.cols, terminal.rows, 4096);
+                fixture.set_pixel_size(terminal.width_px, terminal.height_px);
+                workload::setup(&mut fixture, "cached_redraw");
+                fixture.feed(
+                    format!("\x1b[{};8H\x1b[1 q\x1b[?25h", (fixture.rows / 3).max(1)).as_bytes(),
+                );
+                *terminal = fixture;
+            }
+            let pane = app.focused(host.id).ok_or("cursor benchmark has no pane")?;
+            let now = Instant::now();
             host.focused = true;
             host.focus_hint.focus(Some(pane), now);
             host.focus_hint.dismiss();
@@ -3132,12 +3170,54 @@ impl CursorBenchmark {
         if let Some(next) = self.settle_until.filter(|&next| now < next) {
             return Ok((false, next));
         }
+        let pane = app.focused(host.id).ok_or("cursor benchmark has no pane")?;
+        let panes = app
+            .tab(host.id)
+            .ok_or("cursor benchmark has no tab")?
+            .pane_ids();
+        let focused_composed_index = host.composed.as_ref().and_then(|composed| {
+            let prepared = host.prepared.get(&pane)?;
+            composed
+                .panes
+                .iter()
+                .position(|p| Arc::ptr_eq(&p.frame, &prepared.frame))
+        });
+        if panes.len() != self.pane_count
+            || host.prepared.len() != self.pane_count
+            || host.rects.len() != self.pane_count
+            || host
+                .composed
+                .as_ref()
+                .is_none_or(|composed| composed.panes.len() != self.pane_count)
+            || app.workspace.windows.len() != 1
+            || focused_composed_index.is_none()
+            || (self.pane_count > 1 && focused_composed_index == Some(0))
+            || host.rects.iter().any(|(id, rect)| {
+                !rect.is_positive()
+                    || host
+                        .rects
+                        .iter()
+                        .any(|(other, bounds)| id != other && rect.intersect(*bounds).is_positive())
+            })
+        {
+            return Err("cursor benchmark did not retain its nonoverlapping pane layout".into());
+        }
         if self.sample.is_none() {
+            if app.painter.terminal_paints(host.id) == 0 {
+                return Err(
+                    "cursor benchmark has no terminal render passes; unlock the Mac and wake its displays"
+                        .into(),
+                );
+            }
             if host.cursor.enabled && !host.cursor.active {
                 return Err(format!(
                     "cursor layer did not settle: active={}, activations={}, updates={}, patch={:?}",
                     host.cursor.active, host.cursor.activations, host.cursor.updates, host.cursor.patch_pixels,
                 ).into());
+            }
+            let mut terminal_generations = BTreeMap::new();
+            for id in panes {
+                terminal_generations.insert(id, app.panes[&id].session.terminal()?.generation);
             }
             self.sample = Some(CursorSample {
                 started: now,
@@ -3147,11 +3227,12 @@ impl CursorBenchmark {
                 prepares: host.pane_prepares,
                 updates: host.cursor.updates,
                 activations: host.cursor.activations,
-                terminal_generation: app.panes[&pane].session.terminal()?.generation,
+                focused_pane: pane,
+                terminal_generations,
             });
             eprintln!(
-                "Cursor benchmark: sampling thirty seconds, layer={}",
-                host.cursor.enabled
+                "Cursor benchmark: sampling thirty seconds, panes={}, layer={}",
+                self.pane_count, host.cursor.enabled
             );
             return Ok((false, now + Duration::from_secs(30)));
         }
@@ -3167,10 +3248,14 @@ impl CursorBenchmark {
         let prepares = host.pane_prepares - sample.prepares;
         let updates = host.cursor.updates - sample.updates;
         let activations = host.cursor.activations - sample.activations;
-        let unchanged =
-            app.panes[&pane].session.terminal()?.generation == sample.terminal_generation;
+        let mut unchanged = panes.len() == sample.terminal_generations.len();
+        for id in panes {
+            unchanged &= sample.terminal_generations.get(&id)
+                == Some(&app.panes[&id].session.terminal()?.generation);
+        }
         let passed = unchanged
             && host.focused
+            && pane == sample.focused_pane
             && if host.cursor.enabled {
                 host.cursor.active
                     && updates >= 6
@@ -3183,7 +3268,10 @@ impl CursorBenchmark {
             };
         let size = host.window.inner_size();
         let mut report = serde_json::json!({
-            "passed": passed, "case": "cursor_blink", "layer_enabled": host.cursor.enabled,
+            "passed": passed,
+            "case": if self.pane_count == 1 { "cursor_blink" } else { "cursor_blink_12_panes" },
+            "pane_count": self.pane_count, "focused_composed_index": focused_composed_index,
+            "layer_enabled": host.cursor.enabled,
             "settle_seconds": 3, "elapsed_seconds": elapsed,
             "frames": frames, "main_terminal_paints": paints, "pane_prepares": prepares,
             "layer_updates": updates, "layer_activations": activations,
@@ -3209,14 +3297,21 @@ impl CursorBenchmark {
             let result = check_cursor_lifecycle(app, event_loop, host, directory);
             match &result {
                 Ok(()) => {
-                    report["lifecycle_checks"] = serde_json::json!([
+                    let mut checks = vec![
                         "content-retires-layer",
                         "capture-includes-cursor",
                         "capture-matches-ordinary",
                         "synchronized-visible-phase",
                         "popup-retires-layer",
                         "synchronized-release",
-                    ])
+                    ];
+                    if self.pane_count > 1 {
+                        checks.extend([
+                            "neighbor-content-retires-layer",
+                            "focus-switch-reacquires-layer",
+                        ]);
+                    }
+                    report["lifecycle_checks"] = serde_json::json!(checks);
                 }
                 Err(error) => {
                     report["passed"] = false.into();
@@ -3346,6 +3441,49 @@ fn check_cursor_lifecycle(
     app.draw(event_loop, host)?;
     if host.prepared[&pane].key.generation != app.panes[&pane].session.terminal()?.generation {
         return Err("synchronized output release did not render its new content".into());
+    }
+    if let Some(neighbor) = app
+        .tab(host.id)
+        .unwrap()
+        .pane_ids()
+        .into_iter()
+        .rev()
+        .find(|&id| id != pane)
+    {
+        activate(app, host)?;
+        let paints = app.painter.terminal_paints(host.id);
+        app.panes[&neighbor]
+            .session
+            .terminal()?
+            .feed(b"\x1b7\x1b[Hneighbor output\x1b8");
+        host.cursor_blink_started = Instant::now();
+        app.draw(event_loop, host)?;
+        if !retired(host)
+            || app.painter.terminal_paints(host.id) != paints + 1
+            || host.prepared[&neighbor].key.generation
+                != app.panes[&neighbor].session.terminal()?.generation
+        {
+            return Err(
+                "neighbor output did not retire the cursor layer and render its change".into(),
+            );
+        }
+
+        activate(app, host)?;
+        app.focus_pane(host.id, neighbor);
+        host.focus_hint.focus(Some(neighbor), Instant::now());
+        host.focus_hint.dismiss();
+        host.cursor_blink_started = Instant::now();
+        app.draw(event_loop, host)?;
+        if !retired(host)
+            || !host.prepared[&neighbor].key.options.focused
+            || host.prepared[&pane].key.options.focused
+        {
+            return Err("focus switch did not retire the previous pane's cursor layer".into());
+        }
+        activate(app, host)?;
+        if host.cursor.on.as_ref().map(|on| on.pane) != Some(neighbor) {
+            return Err("focus switch did not move the retained cursor to the new pane".into());
+        }
     }
     Ok(())
 }
