@@ -432,9 +432,10 @@ across terminal badges, the outliner, breadcrumbs, pins, and panel search, with
 unopened tabs included. Paths are compared lexically, without filesystem lookups.
 Quadrants share one label when all their panels have the same resolved directory
 name; differing or missing directories keep individual labels.
-Focusing a shared-name quad keeps sibling names hidden; small activity, attention,
-and completion badges remain visible. Single-panel quads keep the same label size
-when focused. Labels participate in the content fade during zoom transitions.
+Focusing a shared-name quad keeps sibling names hidden without replacing them
+with standalone status badges. Pinned panels retain their pin indicator.
+Single-panel quads keep the same label size when focused. Labels participate in
+the content fade during zoom transitions.
 
 The tab color menu offers the current theme's palette, background, and foreground,
 plus softer shades blended toward the theme background and higher-contrast shades
