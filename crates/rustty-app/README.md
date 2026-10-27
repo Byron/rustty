@@ -208,7 +208,7 @@ are complete. Set `RUSTTY_CONPTY_RESOURCES` to test another bundle's resources
 directory (for example, `target/release/Rustty/resources`). The shared PTY backend
 requires the pinned bundle; the former `--system` option is no longer supported.
 
-The session import regression runs three hidden debug instances in sequence, with
+The session import regression runs five hidden debug instances in sequence, with
 isolated state and disposable `cmd.exe /d /q` shells. Build the debug bundle first,
 then run:
 
@@ -218,7 +218,7 @@ New-Item -ItemType Directory -Path $handoffDir | Out-Null
 $handoffExe = (Resolve-Path target/debug/Rustty/rustty.exe).Path
 $env:RUSTTY_HANDOFF_SMOKE_DIR = $handoffDir
 try {
-    foreach ($role in 'source', 'cancel', 'requester') {
+    foreach ($role in 'source', 'cancel', 'requester', 'single', 'failed') {
         $env:RUSTTY_HANDOFF_SMOKE_ROLE = $role
         $process = Start-Process -FilePath $handoffExe -WindowStyle Hidden -PassThru `
             -ArgumentList '--config-default-files=false', '--renderer=software' `
@@ -231,10 +231,11 @@ try {
 }
 ```
 
-All three `*-result.json` files must report `"passed": true`; `selector.png` captures
-the chooser. The check covers saving on quit, startup selection, cancellation,
-import cleanup, styled history and alternate-screen contents, and output from a new
-ConPTY shell below the restoration marker. Use `--renderer=gpu` to check GPU rendering.
+All five `*-result.json` files must report `"passed": true`; `selector.png` captures
+the chooser. The check covers saving on quit, multiple-dump selection,
+single-dump automatic import and failure fallback, cancellation, import cleanup,
+styled history and alternate-screen contents, and output from a new ConPTY shell
+below the restoration marker. Use `--renderer=gpu` to check GPU rendering.
 
 ## macOS
 
@@ -465,7 +466,7 @@ cargo +1.95.0 run --release --offline -p rustty-vt --example parity-runner
 RUSTTY_SMOKE_DIR=/tmp/rustty-native-smoke RUSTTY_SMOKE_OFFSCREEN=1 target/debug/Rustty.app/Contents/MacOS/rustty
 ```
 
-The macOS session import regression runs three hidden debug instances in sequence
+The macOS session import regression runs five hidden debug instances in sequence
 with isolated configuration, disposable `/bin/sh` shells, and state. Each
 `*-result.json` must report `"passed": true`; `selector.png` captures the chooser.
 
@@ -473,7 +474,7 @@ with isolated configuration, disposable `/bin/sh` shells, and state. Each
 cargo build -p rustty-app --bin rustty --offline
 handoff_dir=$(mktemp -d /tmp/rustty-handoff.XXXXXX)
 printf 'command = /bin/sh\nshell-integration = none\nstream-deck = false\nworking-directory = %s\n' "$handoff_dir" > "$handoff_dir/config"
-for role in source cancel requester; do
+for role in source cancel requester single failed; do
   RUSTTY_HANDOFF_SMOKE_DIR="$handoff_dir" RUSTTY_HANDOFF_SMOKE_ROLE="$role" \
     target/debug/rustty --config-default-files=false --config-file="$handoff_dir/config" \
     > "$handoff_dir/$role.log" 2>&1 || break
@@ -551,13 +552,15 @@ that screen contents, scrollback, and working directories may contain personally
 identifiable information (PII) and secrets. The dump includes all local sessions
 in the current instance; tmuxx sessions are excluded. Canceling writes nothing.
 The saved data stays on disk until another Rustty instance successfully imports
-it; opening Rustty and canceling the import does not remove it.
+it; canceling the chooser does not remove it.
 
 After the old instance quits, replace its application bundle or the complete
 Windows application folder and launch Rustty normally. Every new process checks
-for saved sessions and opens **Import Saved Session State** when any are available,
-with the most recent first. It does not open terminal windows or start shells
-while the chooser is open. Select a saved session and click **Import**.
+for saved sessions. If exactly one is available, Rustty imports it automatically.
+If several are available, **Import Saved Session State** lists the most recent
+first. Select a saved session and click **Import**. Rustty does not open terminal
+windows or start shells while the chooser is open. If an automatic import fails,
+the chooser displays the error and keeps the dump available for retry.
 
 On macOS, use this command when another Rustty process is still running and you
 want a separate instance:

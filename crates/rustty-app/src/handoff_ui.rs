@@ -189,6 +189,19 @@ impl App {
         if !self.windows.is_empty() {
             return Ok(());
         }
+        let source = self
+            .handoff
+            .as_ref()
+            .and_then(|state| match state.dumps.as_slice() {
+                [dump] => Some(dump.id.clone()),
+                _ => None,
+            });
+        if let Some(source) = source {
+            match self.import_handoff(event_loop, &source) {
+                Ok(()) => return Ok(()),
+                Err(error) => self.handoff.as_mut().unwrap().error = Some(error.to_string()),
+            }
+        }
         self.open_host(
             event_loop,
             WindowState {

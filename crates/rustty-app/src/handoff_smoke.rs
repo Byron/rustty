@@ -6,6 +6,7 @@ use std::fs;
 const SOURCE_PROMPT: &str = "HANDOFF SOURCE PROMPT>";
 const FRESH_OUTPUT: &str = "HANDOFF FRESH SHELL OUTPUT";
 const ALT_OUTPUT: &str = "HANDOFF ALTERNATE DISPLAY";
+const INVALID_STARTUP_SESSION: &[u8] = b"invalid startup fixture session";
 
 pub(super) fn configure(loaded: &mut LoadedConfig, directory: PathBuf) {
     #[cfg(target_os = "windows")]
@@ -86,6 +87,14 @@ impl Smoke {
             )?;
             ensure(app.background_smoke, "handover fixture must run offscreen")?;
             ensure(
+                app.windows
+                    .values()
+                    .map(|host| &host.window)
+                    .chain(app.outliner.iter().map(|host| &host.window))
+                    .all(|window| window.is_visible() != Some(true) && !window.has_focus()),
+                "handover fixture exposed a window or took keyboard focus",
+            )?;
+            ensure(
                 app.state_path.starts_with(&self.directory),
                 "workspace path escaped fixture directory",
             )?;
@@ -97,7 +106,12 @@ impl Smoke {
                 "source" => self.source(app, event_loop),
                 "cancel" => self.cancel(app, event_loop),
                 "requester" => self.requester(app, event_loop),
-                _ => Err("RUSTTY_HANDOFF_SMOKE_ROLE must be source, cancel, or requester".into()),
+                "single" => self.single(app),
+                "failed" => self.failed(app, event_loop),
+                _ => Err(
+                    "RUSTTY_HANDOFF_SMOKE_ROLE must be source, cancel, requester, single, or failed"
+                        .into(),
+                ),
             }
         })();
         if let Err(error) = &result {
@@ -724,6 +738,125 @@ impl Smoke {
             _ => unreachable!(),
         }
         Ok(false)
+    }
+
+    fn single(&self, app: &App) -> Result<bool> {
+        ensure(
+            !app.import_selector
+                && app.windows.len() == 1
+                && app.windows.values().all(|host| host.id != SELECTOR_WINDOW)
+                && app.workspace.windows.len() == 1
+                && app.workspace.windows[0].tabs.len() == 1
+                && app.workspace.windows[0].tabs[0].panes.len() == 1
+                && app.panes.len() == 1
+                && app.pending_visuals.is_empty(),
+            "single saved session did not import at startup without a chooser",
+        )?;
+        let fixture = self.fixture()?;
+        let state = app.handoff.as_ref().ok_or("dump store missing")?;
+        ensure(
+            state.dumps.is_empty()
+                && state.store.dumps()?.is_empty()
+                && state.store.read_dump(&fixture.older).is_err(),
+            "automatic import did not consume the only remaining dump",
+        )?;
+        let pane = app.panes.values().next().unwrap();
+        let terminal = pane.session.terminal()?;
+        let text = terminal.plain_text();
+        if !text.contains(vt::visual::RESTORED_MARKER) {
+            return Ok(false);
+        }
+        for expected in ["HANDOFF HISTORY 0000", "HANDOFF HISTORY 0127", ALT_OUTPUT] {
+            ensure(
+                has_line(&terminal, expected),
+                format!("automatic import lost the older dump's {expected:?}"),
+            )?;
+        }
+        ensure(
+            !pane.session.has_exited()
+                && fs::canonicalize(&pane.cwd)? == fs::canonicalize(&self.directory)?,
+            "automatic import did not start a shell in the older dump's directory",
+        )?;
+        drop(terminal);
+        self.check_directories(app)?;
+        let invalid = state.store.save_dump(INVALID_STARTUP_SESSION)?;
+        ensure(
+            state.store.dumps()? == [invalid.clone()],
+            "failed-startup fixture needs exactly one malformed dump",
+        )?;
+        self.report(serde_json::json!({
+            "passed": true,
+            "renderer": app.painter.description(),
+            "imported_dump": fixture.older.id,
+            "seeded_invalid_dump": invalid.id,
+            "checks": ["single-dump-auto-import", "single-dump-skips-selector", "older-display-and-directory", "single-dump-consumed"],
+        }))?;
+        Ok(true)
+    }
+
+    fn failed(&self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
+        ensure(
+            app.import_selector
+                && app.panes.is_empty()
+                && app.pending_visuals.is_empty()
+                && app.windows.len() == 1
+                && app.windows.values().all(|host| host.id == SELECTOR_WINDOW),
+            "failed automatic import did not leave only the selector without shells",
+        )?;
+        let selector = *app.windows.keys().next().unwrap();
+        let workspace = serde_json::to_vec(&app.workspace)?;
+        let state = app.handoff.as_mut().ok_or("dump store missing")?;
+        let invalid = state
+            .dumps
+            .first()
+            .cloned()
+            .ok_or("failed import lost its dump")?;
+        ensure(
+            state.dumps == [invalid.clone()]
+                && state.store.read_dump(&invalid)? == INVALID_STARTUP_SESSION,
+            "failed automatic import consumed or changed its dump",
+        )?;
+        let error = state
+            .error
+            .take()
+            .ok_or("failed automatic import did not show its error")?;
+        ensure(!error.is_empty(), "automatic import error was empty")?;
+        // A repeated attempt would put the decode error back, even though the
+        // unchanged malformed dump cannot produce another observable result.
+        for _ in 0..2 {
+            app.resumed(event_loop);
+        }
+        app.handoff.as_mut().unwrap().next_refresh = Instant::now();
+        app.tick_import_selector();
+        let state = app.handoff.as_mut().unwrap();
+        ensure(
+            state.error.is_none(),
+            "resume or selector refresh retried the failed automatic import",
+        )?;
+        ensure(
+            state.dumps == [invalid.clone()]
+                && state.store.dumps()? == [invalid.clone()]
+                && state.store.read_dump(&invalid)? == INVALID_STARTUP_SESSION
+                && app.import_selector
+                && app.panes.is_empty()
+                && app.pending_visuals.is_empty()
+                && app.windows.len() == 1
+                && app.windows.contains_key(&selector)
+                && serde_json::to_vec(&app.workspace)? == workspace,
+            "failed startup retry checks changed the dump, chooser, or prior workspace",
+        )?;
+        state.error = Some(error);
+        let mut host = app.windows.remove(&selector).unwrap();
+        let drawn = app.draw_import_selector(event_loop, &mut host);
+        app.windows.insert(selector, host);
+        drawn?;
+        self.report(serde_json::json!({
+            "passed": true,
+            "renderer": app.painter.description(),
+            "preserved_dump": invalid.id,
+            "checks": ["single-dump-failure-shows-selector-error", "failed-startup-without-shells", "failed-startup-keeps-dump", "resume-and-refresh-do-not-retry"],
+        }))?;
+        Ok(true)
     }
 
     fn fixture(&self) -> Result<Fixture> {

@@ -1121,7 +1121,7 @@ pub fn run() -> Result<()> {
             tmuxx_host::LOCAL_TARGET_HINT
         );
         println!(
-            "\nSaved session dumps are offered automatically at startup. Hold Option (Alt on Windows) while quitting to save one.\nConfigure session-dump-on-quit = disabled|unchecked|checked (default: unchecked)."
+            "\nA sole saved session dump loads automatically at startup; multiple dumps open a chooser. Hold Option (Alt on Windows) while quitting to save one.\nConfigure session-dump-on-quit = disabled|unchecked|checked (default: unchecked)."
         );
         return Ok(());
     }
