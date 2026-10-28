@@ -1299,6 +1299,7 @@ fn check_zoom_animations(
                 },
             )?;
         }
+        check_closed_split_animation(app, event_loop, host, directory)?;
         Ok(())
     })();
     app.loaded.config.window_animations = animations;
@@ -1328,6 +1329,103 @@ fn check_zoom_animations(
         "Native smoke: configured pane, quad, nested zoom and Quad Peek animations kept endpoint grids and partially visible neighbors throughout the slide; quarter/midpoint/three-quarter captures saved"
     );
     Ok(())
+}
+
+fn check_closed_split_animation(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    host: &mut Host,
+    directory: &Path,
+) -> Result<()> {
+    let original = app.tab(host.id).unwrap().clone();
+    let animations = app.loaded.config.window_animations;
+    let duration = app.loaded.config.split_animation_duration;
+    let closed = original.focused;
+    let mut removed = None;
+    let result = (|| -> Result<()> {
+        app.loaded.config.window_animations = Some(false);
+        let tab = app.tab_mut(host.id).unwrap();
+        tab.zoom = None;
+        tab.quadrant_zoom = None;
+        app.draw(event_loop, host)?;
+        let frozen = Arc::clone(&host.prepared[&closed].frame);
+        app.loaded.config.window_animations = Some(true);
+        let transition_duration = Duration::from_millis(600);
+        app.loaded.config.split_animation_duration = transition_duration;
+        if !app.tab_mut(host.id).unwrap().close(closed) {
+            return Err("closing split fixture removed its last pane".into());
+        }
+        // Remove the live terminal so retaining its visual cannot accidentally read it.
+        removed = app.panes.remove(&closed);
+        app.draw(event_loop, host)?;
+        if !host.zoom_animation.is_running() {
+            return Err("closing split did not start its animation".into());
+        }
+        for (part, elapsed) in [
+            ("quarter", transition_duration / 4),
+            ("midpoint", transition_duration / 2),
+            ("threequarter", transition_duration * 3 / 4),
+        ] {
+            host.zoom_animation.started = Some(Instant::now() - elapsed);
+            capture_window(
+                app,
+                event_loop,
+                host,
+                &directory.join(format!("animation-close-{part}.png")),
+            )?;
+            let pane = host
+                .composed
+                .as_ref()
+                .and_then(|composed| {
+                    composed
+                        .panes
+                        .iter()
+                        .find(|pane| Arc::ptr_eq(&pane.frame, &frozen))
+                })
+                .ok_or("closing split dropped its cached terminal frame")?;
+            let paint = pane
+                .transition
+                .ok_or("closing split lost its transition paint")?;
+            if paint.moving
+                || paint.opacity != 1.0
+                || paint.background_opacity != 1.0
+                || pane.dim.is_some()
+                || host.rects.contains_key(&closed)
+                || host.pane_order.contains(&closed)
+            {
+                return Err(
+                    "closing split changed its frozen visual or retained live input".into(),
+                );
+            }
+        }
+        host.fonts.clear_cache();
+        host.zoom_animation.started = Some(Instant::now() - transition_duration / 2);
+        app.draw(event_loop, host)?;
+        if host
+            .prepared
+            .get(&closed)
+            .is_none_or(|pane| pane.frame.generation != host.fonts.generation())
+        {
+            return Err(
+                "closing split did not recover its frozen frame after atlas invalidation".into(),
+            );
+        }
+        host.zoom_animation.finish();
+        app.draw(event_loop, host)?;
+        if host.prepared.contains_key(&closed) {
+            return Err("closing split retained its cached terminal after animation".into());
+        }
+        Ok(())
+    })();
+    if let Some(pane) = removed {
+        app.panes.insert(closed, pane);
+    }
+    *app.tab_mut(host.id).unwrap() = original;
+    app.loaded.config.window_animations = animations;
+    app.loaded.config.split_animation_duration = duration;
+    host.zoom_animation.finish();
+    app.draw(event_loop, host)?;
+    result
 }
 
 fn check_zoom_transition(

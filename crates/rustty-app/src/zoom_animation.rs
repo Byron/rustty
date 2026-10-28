@@ -60,17 +60,19 @@ struct Snapshot {
 }
 
 impl Snapshot {
-    fn compatible(&self, next: &Self) -> bool {
+    fn compatible(&self, next: &Self, split_changed: bool) -> bool {
         self.tab == next.tab
             && self.content == next.content
             && self.cell_height == next.cell_height
-            && self.minimum == next.minimum
+            // The first split adds label space to the minimum pane height.
+            && (split_changed || self.minimum == next.minimum)
             && self.scale == next.scale
     }
 }
 
 struct Transition {
     source: Vec<Pane>,
+    closed: Vec<Id>,
     source_view: Option<View>,
     source_mode: (Option<Id>, Option<Id>, bool),
     target: View,
@@ -123,6 +125,22 @@ impl Transition {
             .filter_map(|source| {
                 let target = self.target.panes.iter().find(|(id, _)| *id == source.id);
                 match target {
+                    None if self.closed.contains(&source.id) => Some(Pane {
+                        moving: false,
+                        ..*source
+                    }),
+                    Some((_, layout))
+                        if source.rect == *layout
+                            && source.layout == *layout
+                            && source.label_quadrant == self.target.label_quadrant()
+                            && source.opacity == 1.0
+                            && source.background_opacity == 1.0 =>
+                    {
+                        Some(Pane {
+                            moving: false,
+                            ..*source
+                        })
+                    }
                     Some((_, layout)) => Some(Pane {
                         layout: if phase < 0.5 { source.layout } else { *layout },
                         label_quadrant: if phase < 0.5 {
@@ -252,6 +270,17 @@ impl State {
             },
         };
         let previous = self.snapshot.take();
+        let split_changed = previous.as_ref().is_some_and(|old| {
+            let (smaller, larger) = if old.topology.len() < next.topology.len() {
+                (&old.topology, &next.topology)
+            } else {
+                (&next.topology, &old.topology)
+            };
+            smaller.len() != larger.len()
+                && smaller
+                    .iter()
+                    .all(|(id, _)| larger.iter().any(|(next_id, _)| next_id == id))
+        });
         let phase = self
             .transition
             .as_ref()
@@ -267,8 +296,9 @@ impl State {
         }
         if !enabled
             || previous.as_ref().is_none_or(|old| {
-                !old.compatible(&next)
+                !old.compatible(&next, split_changed)
                     || old.view.mode() == next.view.mode()
+                        && !split_changed
                         && (old.topology != next.topology || old.view.panes != next.view.panes)
             })
         {
@@ -276,7 +306,9 @@ impl State {
         } else if let Some(previous) = &previous
             && previous.view != next.view
         {
-            let duration = if previous.view.peek || next.view.peek {
+            let duration = if split_changed {
+                config.split_animation_duration
+            } else if previous.view.peek || next.view.peek {
                 config.quad_peek_animation_duration
             } else if previous.view.quadrant.is_some()
                 && previous.view.quadrant == next.view.quadrant
@@ -287,15 +319,20 @@ impl State {
             } else {
                 config.zoom_animation_duration
             };
-            let reverse = self.transition.as_ref().and_then(|transition| {
-                if transition.source_view.as_ref() == Some(&next.view) {
-                    Some(-1.0)
-                } else if transition.target == next.view {
-                    Some(1.0)
-                } else {
-                    None
-                }
-            });
+            // Split changes resample the visible panes instead of reversing old endpoints.
+            let reverse = self
+                .transition
+                .as_ref()
+                .filter(|_| !split_changed)
+                .and_then(|transition| {
+                    if transition.source_view.as_ref() == Some(&next.view) {
+                        Some(-1.0)
+                    } else if transition.target == next.view {
+                        Some(1.0)
+                    } else {
+                        None
+                    }
+                });
             if duration.is_zero() {
                 self.finish();
             } else if let Some(direction) = reverse {
@@ -320,10 +357,12 @@ impl State {
                     )
                 };
                 self.transition = Some(Transition {
-                    source: source
-                        .into_iter()
-                        .filter(|pane| tab.contains(pane.id))
+                    closed: source
+                        .iter()
+                        .filter(|pane| !tab.contains(pane.id))
+                        .map(|pane| pane.id)
                         .collect(),
+                    source,
                     source_view,
                     source_mode,
                     target: next.view.clone(),
@@ -367,6 +406,7 @@ mod tests {
 
     const ZOOM_DURATION: Duration = Duration::from_millis(250);
     const PEEK_DURATION: Duration = Duration::from_millis(100);
+    const SPLIT_DURATION: Duration = Duration::from_millis(100);
 
     const CONTENT: Rect = Rect {
         x: 10.0,
@@ -809,18 +849,19 @@ mod tests {
             let survivor = if closed == 2 { 9 } else { 2 };
             let start = update(&mut state, &tab, false, now);
             assert!(state.is_running());
-            assert!(start.iter().all(|pane| pane.id != closed));
+            assert_eq!(pane(&start, closed), pane(&source, closed));
             assert_eq!(pane(&start, survivor).rect, pane(&source, survivor).rect);
             assert_eq!(
                 pane(&start, survivor).layout,
                 pane(&source, survivor).layout
             );
-            let middle = update(&mut state, &tab, false, now + ZOOM_DURATION / 2);
-            assert!(middle.iter().all(|pane| pane.id != closed));
+            let middle = update(&mut state, &tab, false, now + SPLIT_DURATION / 2);
+            assert_eq!(pane(&middle, closed), pane(&source, closed));
             assert_eq!(pane(&middle, survivor).opacity, 0.0);
             assert_ne!(pane(&middle, survivor).rect, pane(&start, survivor).rect);
-            let end = update(&mut state, &tab, false, now + ZOOM_DURATION);
+            let end = update(&mut state, &tab, false, now + SPLIT_DURATION);
             assert!(!state.is_running());
+            assert!(end.iter().all(|pane| pane.id != closed));
             assert_eq!(pane(&middle, survivor).layout, pane(&end, survivor).layout);
             assert_eq!(end.len(), tab.pane_ids().len());
             assert!(
@@ -848,13 +889,15 @@ mod tests {
             assert!(tab.close(2));
             update(&mut state, &tab, false, now);
             assert!(state.is_running());
-            let middle = update(&mut state, &tab, false, now + ZOOM_DURATION / 2);
+            let middle = update(&mut state, &tab, false, now + SPLIT_DURATION / 2);
             assert!(
                 middle
                     .iter()
-                    .all(|pane| pane.id != 2 && pane.opacity == 0.0)
+                    .filter(|pane| pane.id != 2)
+                    .all(|pane| pane.opacity == 0.0)
             );
-            let end = update(&mut state, &tab, false, now + ZOOM_DURATION);
+            assert_eq!(pane(&middle, 2).opacity, 1.0);
+            let end = update(&mut state, &tab, false, now + SPLIT_DURATION);
             assert!(!state.is_running());
             assert_eq!(end.len(), tab.visible_panes(false).len());
             assert!(
@@ -877,7 +920,7 @@ mod tests {
         assert!(tab.close(9));
         let after = update(&mut state, &tab, false, interrupted);
         assert!(state.is_running());
-        assert!(after.iter().all(|pane| pane.id != 9));
+        assert_eq!(pane(&after, 9).rect, pane(&before, 9).rect);
         for old in before.iter().filter(|pane| pane.id != 9) {
             let next = pane(&after, old.id);
             assert_eq!(next.rect, old.rect);
@@ -917,6 +960,210 @@ mod tests {
             assert!(!state.is_running());
             assert_eq!(end.len(), tab.pane_ids().len());
             assert_ne!(pane(&start, 2).layout, pane(&end, 2).layout);
+        }
+    }
+
+    #[test]
+    fn adding_and_removing_splits_use_their_duration_and_leave_unchanged_panes_steady() {
+        for direction in [
+            Direction::Left,
+            Direction::Right,
+            Direction::Up,
+            Direction::Down,
+        ] {
+            for mode in 0..6 {
+                for duration in [Duration::from_millis(100), Duration::from_millis(360)] {
+                    let now = Instant::now();
+                    let mut config = Config::default();
+                    config.split_animation_duration = duration;
+                    let update = |state: &mut State, tab: &Tab, now| {
+                        let minimum = [24.0, if tab.panes.len() > 1 { 42.0 } else { 24.0 }];
+                        state.update(tab, false, CONTENT, 16.0, minimum, 1.0, &config, true, now)
+                    };
+                    let mut tab = if mode == 0 {
+                        Tab::new(1, 2, "/tmp".into())
+                    } else {
+                        quadrants()
+                    };
+                    if (2..=3).contains(&mode) || mode == 5 {
+                        tab.focus(if mode == 2 { 5 } else { 2 });
+                        tab.toggle_quadrant_zoom();
+                    }
+                    if mode >= 4 {
+                        tab.toggle_zoom();
+                    }
+                    let mut state = State::default();
+                    let source = update(&mut state, &tab, now);
+                    let split = tab.focused;
+                    tab.split(11, 12, direction, "/tmp".into());
+                    let start = update(&mut state, &tab, now);
+                    assert_eq!(state.transition.as_ref().unwrap().duration, duration);
+                    for old in &source {
+                        let next = pane(&start, old.id);
+                        assert_eq!(next.rect, old.rect);
+                        assert_eq!(next.layout, old.layout);
+                    }
+                    let middle = update(&mut state, &tab, now + duration / 2);
+                    assert!(state.is_running());
+                    update(&mut state, &tab, now + duration - Duration::from_millis(1));
+                    assert!(state.is_running());
+                    let end = update(&mut state, &tab, now + duration);
+                    assert!(!state.is_running());
+                    assert_eq!(end.len(), tab.visible_panes(false).len());
+                    assert!(
+                        end.iter()
+                            .all(|pane| pane.rect == pane.layout && pane.opacity == 1.0)
+                    );
+                    let from = pane(&source, split);
+                    let to = pane(&end, split);
+                    assert_ne!(from.rect, to.rect);
+                    assert_eq!(
+                        pane(&middle, split).rect,
+                        interpolate(from.rect, to.rect, 0.5)
+                    );
+                    assert_eq!(pane(&middle, split).layout, to.layout);
+                    for old in &source {
+                        if *old == pane(&end, old.id) {
+                            assert_eq!(pane(&middle, old.id), *old);
+                        }
+                    }
+                    let source = end;
+                    assert!(tab.close(11));
+                    let start = update(&mut state, &tab, now + duration);
+                    assert_eq!(state.transition.as_ref().unwrap().duration, duration);
+                    assert_eq!(pane(&start, 11), pane(&source, 11));
+                    for old in source.iter().filter(|pane| pane.id != 11) {
+                        let next = pane(&start, old.id);
+                        assert_eq!(next.rect, old.rect);
+                        assert_eq!(next.layout, old.layout);
+                    }
+                    let middle = update(&mut state, &tab, now + duration + duration / 2);
+                    assert!(state.is_running());
+                    assert_eq!(pane(&middle, 11), pane(&source, 11));
+                    let end = update(&mut state, &tab, now + duration * 2);
+                    assert!(!state.is_running());
+                    assert_eq!(end.len(), tab.visible_panes(false).len());
+                    assert!(
+                        end.iter()
+                            .all(|pane| pane.rect == pane.layout && pane.opacity == 1.0)
+                    );
+                    let from = pane(&source, split);
+                    let to = pane(&end, split);
+                    assert_ne!(from.rect, to.rect);
+                    assert_eq!(
+                        pane(&middle, split).rect,
+                        interpolate(from.rect, to.rect, 0.5)
+                    );
+                    assert_eq!(pane(&middle, split).layout, to.layout);
+                    for old in source.iter().filter(|pane| pane.id != 11) {
+                        if *old == pane(&end, old.id) {
+                            assert_eq!(pane(&middle, old.id), *old);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn splitting_again_keeps_the_current_animation_geometry() {
+        let now = Instant::now();
+        let mut tab = Tab::new(1, 2, "/tmp".into());
+        let mut state = State::default();
+        update(&mut state, &tab, false, now);
+        tab.split(3, 4, Direction::Right, "/tmp".into());
+        update(&mut state, &tab, false, now);
+        let interrupted = now + Duration::from_millis(40);
+        let before = update(&mut state, &tab, false, interrupted);
+        tab.split(5, 6, Direction::Down, "/tmp".into());
+        let after = update(&mut state, &tab, false, interrupted);
+        assert!(state.is_running());
+        for old in &before {
+            let next = pane(&after, old.id);
+            assert_eq!(next.rect, old.rect);
+            assert_eq!(next.layout, old.layout);
+            assert_eq!(next.opacity, old.opacity);
+            assert_eq!(next.background_opacity, old.background_opacity);
+        }
+        let end = update(
+            &mut state,
+            &tab,
+            false,
+            interrupted + Duration::from_millis(100),
+        );
+        assert!(!state.is_running());
+        assert_eq!(end.len(), 3);
+    }
+
+    #[test]
+    fn removing_a_split_mid_animation_keeps_survivors_in_place_and_freezes_closed_panes() {
+        for closed in [2, 3] {
+            let now = Instant::now();
+            let mut tab = Tab::new(1, 2, "/tmp".into());
+            let mut state = State::default();
+            update(&mut state, &tab, false, now);
+            tab.split(3, 4, Direction::Right, "/tmp".into());
+            update(&mut state, &tab, false, now);
+            let interrupted = now + Duration::from_millis(40);
+            let before = update(&mut state, &tab, false, interrupted);
+            assert!(tab.close(closed));
+            let after = update(&mut state, &tab, false, interrupted);
+            assert!(state.is_running());
+            assert_eq!(after.len(), 2);
+            let frozen = pane(&after, closed);
+            assert!(!frozen.moving);
+            assert_eq!(frozen.rect, pane(&before, closed).rect);
+            assert_eq!(frozen.opacity, pane(&before, closed).opacity);
+            for old in before.iter().filter(|pane| pane.id != closed) {
+                let next = pane(&after, old.id);
+                assert_eq!(next.rect, old.rect);
+                assert_eq!(next.layout, old.layout);
+                assert_eq!(next.opacity, old.opacity);
+                assert_eq!(next.background_opacity, old.background_opacity);
+            }
+            let middle = update(&mut state, &tab, false, interrupted + SPLIT_DURATION / 2);
+            assert!(state.is_running());
+            assert_eq!(middle.len(), 2);
+            assert_eq!(pane(&middle, closed), frozen);
+            let end = update(&mut state, &tab, false, interrupted + SPLIT_DURATION);
+            assert!(!state.is_running());
+            assert_eq!(end.len(), 1);
+            assert!(
+                end.iter()
+                    .all(|pane| pane.id != closed && pane.rect == pane.layout)
+            );
+        }
+    }
+
+    #[test]
+    fn splits_settle_immediately_when_disabled() {
+        for (enabled, remove) in [(false, false), (true, false), (false, true), (true, true)] {
+            let now = Instant::now();
+            let mut config = Config::default();
+            if enabled {
+                config.split_animation_duration = Duration::ZERO;
+            }
+            let mut tab = quadrants();
+            let mut state = State::default();
+            update(&mut state, &tab, false, now);
+            tab.toggle_zoom();
+            update(&mut state, &tab, false, now);
+            assert!(state.is_running());
+            if remove {
+                assert!(tab.close(9));
+            } else {
+                tab.split(11, 12, Direction::Down, "/tmp".into());
+            }
+            let panes = state.update(
+                &tab, false, CONTENT, 16.0, [0.0; 2], 1.0, &config, enabled, now,
+            );
+            assert!(!state.is_running());
+            assert_eq!(panes.len(), if remove { 4 } else { 6 });
+            assert!(
+                panes
+                    .iter()
+                    .all(|pane| pane.rect == pane.layout && pane.opacity == 1.0)
+            );
         }
     }
 
@@ -969,11 +1216,8 @@ mod tests {
                 1 => content.width += 1.0,
                 2 => scale = 2.0,
                 3 => tab.id += 1,
-                4 => tab.root.equalize(),
+                4 => assert!(tab.root.resize(2, Direction::Right, 20.0, CONTENT)),
                 _ => state.finish(),
-            }
-            if changed == 4 {
-                tab.root.split(5, 11, 12, Direction::Down);
             }
             let panes = state.update(
                 &tab,
