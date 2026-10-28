@@ -347,6 +347,7 @@ pub struct Config {
     pub window_save_state: WindowSaveState,
     /// `None` follows macOS Reduce Motion, or enables animations on other GPU backends.
     pub window_animations: Option<bool>,
+    pub split_animation_duration: Duration,
     pub quad_zoom_animation_duration: Duration,
     pub quad_peek_animation_duration: Duration,
     pub zoom_animation_duration: Duration,
@@ -465,6 +466,7 @@ impl Default for Config {
             window_theme: WindowTheme::Auto,
             window_save_state: WindowSaveState::Default,
             window_animations: None,
+            split_animation_duration: Duration::from_millis(100),
             quad_zoom_animation_duration: Duration::from_millis(250),
             quad_peek_animation_duration: Duration::from_millis(100),
             zoom_animation_duration: Duration::from_millis(250),
@@ -668,6 +670,7 @@ impl Config {
             "window-theme" => set!(window_theme, WindowTheme::parse(value)?),
             "window-save-state" => set!(window_save_state, WindowSaveState::parse(value)?),
             "window-animations" => set!(window_animations, Some(parse_bool(value)?)),
+            "split-animation-duration" => set!(split_animation_duration, parse_duration(value)?),
             "quad-zoom-animation-duration" => {
                 set!(quad_zoom_animation_duration, parse_duration(value)?)
             }

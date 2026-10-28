@@ -351,8 +351,12 @@ Tabs, splits, zoom, quadrant navigation, clipboard and
 search use the configured Ghostty keybindings. Window layouts and pane directories
 are saved separately under `com.rustty.app`.
 
-Pane and quadrant zoom transitions slide into place in 250 ms by default; Quad
-Peek takes 100 ms. Text fades to the pane background at the midpoint, then reappears at
+Splitting a pane shrinks it to make room for the new pane in 100 ms by default.
+Closing a pane or exiting its shell expands surviving panes with the same duration,
+including when returning to a single pane.
+The closing pane's last rendered content stays visible until the expansion covers it.
+Pane and quadrant zoom transitions slide into place in 250 ms; Quad Peek takes
+100 ms. Text fades to the pane background at the midpoint, then reappears at
 its final size, without resizing terminals at intermediate animation steps.
 Automatic unzoom after a pane closes or exits uses the same animation, as do
 splitting or resizing panes when those actions leave zoom mode.
@@ -368,13 +372,15 @@ Set `window-animations = false` to disable these transitions, or `true` to enabl
 them explicitly. An empty value restores the platform default. This setting
 takes effect when configuration is reloaded.
 
-The following duration keys apply in both directions. `zoom-animation-duration`
+`split-animation-duration` controls adding and removing splits. The zoom duration keys
+apply in both directions. `zoom-animation-duration`
 controls pane zoom from the normal layout; `zoom-from-quad-animation-duration`
 controls pane zoom from a zoomed quadrant. Values use time units and may exceed
 the defaults; `0` disables that transition and an empty value restores its
 default. Changes take effect when configuration is reloaded.
 
 ```ini
+split-animation-duration = 100ms
 quad-zoom-animation-duration = 250ms
 quad-peek-animation-duration = 100ms
 zoom-animation-duration = 250ms

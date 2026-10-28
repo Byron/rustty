@@ -163,10 +163,11 @@ fn window_animations_default_to_platform_policy_and_support_overrides() {
 }
 
 #[test]
-fn zoom_animation_durations_support_independent_overrides_zero_and_reset() {
+fn animation_durations_support_independent_overrides_zero_and_reset() {
     let home = TestHome::new();
     let durations = |config: &Config| {
         [
+            config.split_animation_duration,
             config.quad_zoom_animation_duration,
             config.quad_peek_animation_duration,
             config.zoom_animation_duration,
@@ -174,29 +175,31 @@ fn zoom_animation_durations_support_independent_overrides_zero_and_reset() {
         ]
     };
     let keys = [
+        "split-animation-duration",
         "quad-zoom-animation-duration",
         "quad-peek-animation-duration",
         "zoom-animation-duration",
         "zoom-from-quad-animation-duration",
     ];
-    let defaults = [250, 100, 250, 250].map(Duration::from_millis);
+    let defaults = [100, 250, 100, 250, 250].map(Duration::from_millis);
     assert_eq!(durations(&home.loader.load().config), defaults);
     home.own(
-        "quad-zoom-animation-duration=125ms\n\
+        "split-animation-duration=75ms\n\
+         quad-zoom-animation-duration=125ms\n\
          quad-peek-animation-duration=50ms\n\
          zoom-animation-duration=200ms\n\
          zoom-from-quad-animation-duration=1s 25ms\n",
     );
-    let overrides = [125, 50, 200, 1_025].map(Duration::from_millis);
+    let overrides = [75, 125, 50, 200, 1_025].map(Duration::from_millis);
     let loaded = home.loader.load();
     assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
     assert_eq!(durations(&loaded.config), overrides);
     for (value, expected, diagnostic_count) in [
-        ("0", [Duration::ZERO; 4], 0),
+        ("0", [Duration::ZERO; 5], 0),
         ("", defaults, 0),
-        ("250", overrides, 4),
-        ("-1ms", overrides, 4),
-        ("1.5ms", overrides, 4),
+        ("250", overrides, 5),
+        ("-1ms", overrides, 5),
+        ("1.5ms", overrides, 5),
     ] {
         let args = keys.map(|key| format!("--{key}={value}"));
         let loaded = home.loader.load_with_args(&args);

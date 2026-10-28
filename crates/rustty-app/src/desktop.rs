@@ -421,6 +421,7 @@ impl PaneRenderKey {
 struct PreparedPane {
     key: PaneRenderKey,
     frame: Arc<Frame>,
+    dim: Option<rustty_render::Color>,
     // Accessibility may first be requested while synchronized output holds this frame.
     screen: vt::Screen,
     cell: [f32; 2],
@@ -557,6 +558,43 @@ struct HoveredLink {
 }
 
 impl PreparedPane {
+    fn compose(
+        &mut self,
+        visual: &zoom_animation::Pane,
+        content: egui::Rect,
+        scale: f32,
+        config: &Config,
+        dim: Option<rustty_render::Color>,
+        animated: bool,
+    ) -> ComposedPane {
+        self.dim = dim;
+        let clip = visual.rect.intersect(content);
+        ComposedPane {
+            transition: animated.then(|| ZoomPaint {
+                background: rustty_render::Color::rgb(self.key.options.background)
+                    .opacity(config.background_opacity),
+                frame_background: rustty_render::Color::rgb(config.background.to_array()),
+                opacity: visual.opacity,
+                background_opacity: visual.background_opacity,
+                moving: visual.moving,
+            }),
+            frame: Arc::clone(&self.frame),
+            rect: [
+                visual.rect.left() * scale,
+                visual.rect.top() * scale,
+                visual.layout.width() * scale,
+                visual.layout.height() * scale,
+            ],
+            clip: [
+                clip.left() * scale,
+                clip.top() * scale,
+                clip.width().max(0.0) * scale,
+                clip.height().max(0.0) * scale,
+            ],
+            dim,
+        }
+    }
+
     fn matches(&mut self, key: &PaneRenderKey, fonts: &rustty_render::Renderer) -> bool {
         let options = &mut self.key.options;
         let cursor = &self.screen.cursor;
@@ -600,6 +638,7 @@ impl PreparedPane {
         Ok(Self {
             key,
             frame: Arc::new(frame),
+            dim: None,
             screen,
             cell,
             text: None,
@@ -5590,6 +5629,24 @@ impl App {
                         accessible.clear();
                         for visual in &zoom_panes {
                             let (id, rect) = (visual.id, visual.layout);
+                            if !active.contains(id) {
+                                let Some(prepared) = host.prepared.get_mut(&id) else { continue; };
+                                let dim = prepared.dim;
+                                if prepared.frame.generation != host.fonts.generation() {
+                                    match host.fonts.prepare(&prepared.screen, &prepared.key.options) {
+                                        Ok(frame) => {
+                                            prepared.frame = Arc::new(frame);
+                                            host.pane_prepares += 1;
+                                        }
+                                        Err(error) => {
+                                            render_error = Some(error.to_string());
+                                            continue;
+                                        }
+                                    }
+                                }
+                                composition.push(prepared.compose(visual, content, scale, &config, dim, true));
+                                continue;
+                            }
                             let Some(pane) = self.panes.get_mut(&id) else {
                                 continue;
                             };
@@ -5756,33 +5813,16 @@ impl App {
                                     }
                                 }
                             }
-                            let Some(prepared) = host.prepared.get(&id) else {
+                            let Some(prepared) = host.prepared.get_mut(&id) else {
                                 continue;
                             };
                             needs_blink |= !synchronized
                                 && is_focused
                                 && !pane.exited
                                 && prepared.frame.blinking_text;
-                            composition.push(ComposedPane {
-                                transition: host.zoom_animation.is_running().then(|| ZoomPaint {
-                                    background: rustty_render::Color::rgb(prepared.key.options.background).opacity(config.background_opacity),
-                                    frame_background: rustty_render::Color::rgb(config.background.to_array()),
-                                    opacity: visual.opacity,
-                                    background_opacity: visual.background_opacity,
-                                    moving: visual.moving,
-                                }),
-                                frame: Arc::clone(&prepared.frame),
-                                rect: [
-                                    visual.rect.left() * scale,
-                                    visual.rect.top() * scale,
-                                    physical.x,
-                                    physical.y,
-                                ],
-                                clip: {
-                                    let clip = visual.rect.intersect(content);
-                                    [clip.left() * scale, clip.top() * scale, clip.width().max(0.0) * scale, clip.height().max(0.0) * scale]
-                                },
-                                dim: (id != focused && config.unfocused_split_opacity < 1.0).then(
+                            composition.push(prepared.compose(
+                                visual, content, scale, &config,
+                                (id != focused && config.unfocused_split_opacity < 1.0).then(
                                     || {
                                         let color = config
                                             .unfocused_split_fill
@@ -5791,7 +5831,8 @@ impl App {
                                             .opacity(1.0 - config.unfocused_split_opacity)
                                     },
                                 ),
-                            });
+                                host.zoom_animation.is_running(),
+                            ));
                             accessible.push((id, visual.rect.intersect(content)));
                             if id == focused && accepts_input {
                                 terminal_ime_rect = Some(prepared.ime_rect.translate(visual.rect.min - rect.min));
@@ -5921,6 +5962,7 @@ impl App {
                     }
                     for visual in &zoom_panes {
                         let (id, rect) = (visual.id, visual.rect);
+                        if !active.contains(id) { continue; }
                         zoom_chrome(ui, &zoom_panes, id, rect, rgb(config.background), |ui| {
                             if let Some(error) = self.failed_panes.get(&id) {
                                 ui.scope_builder(
@@ -6057,6 +6099,7 @@ impl App {
                     }
                     for visual in &zoom_panes {
                         let (id, bounds) = (visual.id, visual.rect);
+                        if !active.contains(id) { continue; }
                         let Some(pane) = self.panes.get(&id) else {
                             continue;
                         };
@@ -6139,6 +6182,7 @@ impl App {
                 }
                 for visual in &zoom_panes {
                     let (id, bounds) = (visual.id, visual.rect);
+                    if !active.contains(id) { continue; }
                     let Some(pane) = self.panes.get_mut(&id) else {
                         continue;
                     };
@@ -6521,7 +6565,9 @@ impl App {
         }
         if let Some(update) = &mut output.platform_output.accesskit_update {
             for (&id, pane) in &mut host.prepared {
-                pane.accessibility(id).append_to(update);
+                if host.rects.contains_key(&id) {
+                    pane.accessibility(id).append_to(update);
+                }
             }
         }
         if !self.background_smoke {
