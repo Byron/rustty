@@ -312,6 +312,7 @@ enum Confirmation {
     Quit {
         confirmation: Box<Confirmation>,
         save_dump: bool,
+        keep_across_reboots: bool,
         error: Option<String>,
     },
     Close(Action),
@@ -343,6 +344,7 @@ impl Confirmation {
         Some(Self::Quit {
             confirmation: Box::new(confirmation),
             save_dump: setting == config::SessionDumpOnQuit::Checked,
+            keep_across_reboots: false,
             error: None,
         })
     }
@@ -4797,7 +4799,7 @@ impl App {
                 loop {
                     match Platform::confirm_quit_dump(checked, error.as_deref()) {
                         Ok(Some(false)) => break,
-                        Ok(Some(true)) => match self.dump_session_state() {
+                        Ok(Some(true)) => match self.dump_session_state(false) {
                             Ok(_) => break,
                             Err(failure) => {
                                 checked = true;
@@ -6193,16 +6195,16 @@ impl App {
             let mut detached = false;
             let mut confirmed = None;
             if let Some(confirmation) = &mut host.confirm {
-                let (confirmation, save_dump, error) = match confirmation {
-                    Confirmation::Quit { confirmation, save_dump, error } => {
-                        (&**confirmation, Some(save_dump), error.as_deref())
+                let (confirmation, save_dump, keep_across_reboots, error) = match confirmation {
+                    Confirmation::Quit { confirmation, save_dump, keep_across_reboots, error } => {
+                        (&**confirmation, Some(save_dump), Some(keep_across_reboots), error.as_deref())
                     }
                     confirmation => {
                         let error = match &*confirmation {
                             Confirmation::DumpSessions { error } => error.as_deref(),
                             _ => None,
                         };
-                        (&*confirmation, None, error)
+                        (&*confirmation, None, None, error)
                     }
                 };
                 let (title, button) = match confirmation {
@@ -6294,8 +6296,11 @@ impl App {
                             }
                             Confirmation::Quit { .. } => unreachable!("nested quit confirmation"),
                         }
-                        if let Some(save_dump) = save_dump {
+                        if let (Some(save_dump), Some(keep_across_reboots)) = (save_dump, keep_across_reboots) {
                             ui.checkbox(save_dump, "Save session state for a future Rustty instance");
+                            ui.add_enabled_ui(*save_dump, |ui| {
+                                ui.checkbox(keep_across_reboots, "Keep session state across reboots");
+                            });
                         }
                         if let Some(error) = error {
                             ui.colored_label(ui.visuals().error_fg_color, error);
@@ -6321,8 +6326,8 @@ impl App {
                 && let Some(mut confirmation) = host.confirm.take()
                 && approved
             {
-                if let Confirmation::Quit { save_dump, error, .. } = &mut confirmation {
-                    if *save_dump && let Err(failure) = self.dump_session_state() {
+                if let Confirmation::Quit { save_dump, keep_across_reboots, error, .. } = &mut confirmation {
+                    if *save_dump && let Err(failure) = self.dump_session_state(*keep_across_reboots) {
                         *error = Some(format!("Could not save session state: {failure}"));
                         host.confirm = Some(confirmation);
                         host.repaint();
@@ -6337,7 +6342,7 @@ impl App {
                 }
                 match confirmation {
                     Confirmation::DumpSessions { .. } => {
-                        if let Err(error) = self.dump_session_state() {
+                        if let Err(error) = self.dump_session_state(false) {
                             host.confirm = Some(Confirmation::DumpSessions {
                                 error: Some(format!("Could not save session state: {error}")),
                             });
@@ -9267,7 +9272,7 @@ mod tests {
             } else {
                 for modal in [forced, natural] {
                     assert!(
-                        matches!(modal, Some(Confirmation::Quit { save_dump, error: None, .. }) if save_dump == (setting == Checked))
+                        matches!(modal, Some(Confirmation::Quit { save_dump, keep_across_reboots: false, error: None, .. }) if save_dump == (setting == Checked))
                     );
                 }
             }

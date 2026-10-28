@@ -170,7 +170,7 @@ impl Smoke {
                 self.verify_source(app)?;
                 let bytes = self.capture_with_tmuxx_window(app)?;
                 let state = app.handoff.as_ref().ok_or("source dump store missing")?;
-                let latest = state.store.save_dump(&bytes)?;
+                let latest = state.store.save_dump(&bytes, true)?;
                 let older = self.older.as_ref().unwrap();
                 ensure(
                     latest.created_at > older.created_at,
@@ -199,7 +199,7 @@ impl Smoke {
                 self.report(serde_json::json!({
                     "passed": true,
                     "renderer": app.painter.description(),
-                    "checks": ["session-dump-menu-consent", "dump-cancel-and-escape-save-nothing", "dump-failure-keeps-confirmation", "dump-retry-saves-once", "compressed-saved-dumps", "newest-first", "tmuxx-windows-excluded", "source-shell-alive-until-quit", "source-alternate-display-unchanged", "normal-workspace-saved"],
+                    "checks": ["session-dump-menu-consent", "dump-cancel-and-escape-save-nothing", "dump-failure-keeps-confirmation", "dump-retry-saves-once", "compressed-saved-dumps", "temporary-and-persistent-dumps", "newest-first", "tmuxx-windows-excluded", "source-shell-alive-until-quit", "source-alternate-display-unchanged", "normal-workspace-saved"],
                 }))?;
                 return Ok(true);
             }
@@ -443,7 +443,7 @@ impl Smoke {
             0 => {
                 self.check_selector(app)?;
                 let state = app.handoff.as_mut().unwrap();
-                let invalid = state.store.save_dump(b"invalid fixture session")?;
+                let invalid = state.store.save_dump(b"invalid fixture session", false)?;
                 state.refresh();
                 ensure(
                     app.import_handoff(event_loop, &invalid.id).is_err(),
@@ -881,7 +881,7 @@ impl Smoke {
         )?;
         drop(terminal);
         self.check_directories(app)?;
-        let invalid = state.store.save_dump(INVALID_STARTUP_SESSION)?;
+        let invalid = state.store.save_dump(INVALID_STARTUP_SESSION, false)?;
         ensure(
             state.store.dumps()? == [invalid.clone()],
             "failed-startup fixture needs exactly one malformed dump",
