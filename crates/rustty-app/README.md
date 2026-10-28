@@ -428,6 +428,9 @@ Tab colors apply to tab controls, split focus outlines and completion flashes,
 and bleed downward beneath the selected tab into a subtle tint in the existing
 thin frame and split gaps, without coloring terminal margins;
 unassigned tabs use the macOS system accent with the same bleed and frame tint.
+`tab-frame-color-mix = 9%` controls the tab color mixed into the window frame,
+which is the bottom color of the tab gradient. It accepts `0%` through `100%`;
+`18%` restores the previous intensity, and an empty value restores the 9% default.
 Inactive tabs and directory labels underline running commands, while `▶` counts panes explicitly reporting work
 through a leading activity spinner or progress report. Waiting-for-input titles
 do not count as active work. Each pane can trigger a short completion flash even

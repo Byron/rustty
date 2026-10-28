@@ -5296,7 +5296,8 @@ impl App {
                 [r, g, b]
             });
         let tab_accent = TabAccent::new(active.color, platform_accent);
-        let frame_background = tab_accent.frame_background(config.background.to_array());
+        let frame_background =
+            tab_accent.frame_background(config.background.to_array(), config.tab_frame_color_mix);
         let frame_color = Color32::from_rgb(
             frame_background[0],
             frame_background[1],
