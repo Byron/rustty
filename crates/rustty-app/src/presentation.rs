@@ -402,9 +402,10 @@ pub struct TabAccent {
     pub foreground: [u8; 3],
 }
 impl TabAccent {
-    pub fn frame_background(self, background: [u8; 3]) -> [u8; 3] {
+    pub fn frame_background(self, background: [u8; 3], mix: f32) -> [u8; 3] {
         std::array::from_fn(|i| {
-            ((u16::from(background[i]) * 82 + u16::from(self.background[i]) * 18 + 50) / 100) as u8
+            (f32::from(background[i]) * (1.0 - mix) + f32::from(self.background[i]) * mix).round()
+                as u8
         })
     }
 
@@ -918,11 +919,14 @@ mod tests {
             [255; 3]
         );
         let accent = TabAccent::new(Some([255, 200, 0]), [0; 3]);
-        assert_eq!(accent.frame_background([20; 3]), [62, 52, 16]);
+        assert_eq!(accent.frame_background([20; 3], 0.18), [62, 52, 16]);
         assert_eq!(
-            TabAccent::new(None, [255, 200, 0]).frame_background([20; 3]),
+            TabAccent::new(None, [255, 200, 0]).frame_background([20; 3], 0.18),
             [62, 52, 16]
         );
-        assert_eq!(accent.frame_background([240; 3]), [243, 233, 197]);
+        assert_eq!(accent.frame_background([240; 3], 0.18), [243, 233, 197]);
+        assert_eq!(accent.frame_background([20; 3], 0.09), [41, 36, 18]);
+        assert_eq!(accent.frame_background([20; 3], 0.0), [20; 3]);
+        assert_eq!(accent.frame_background([20; 3], 1.0), accent.background);
     }
 }

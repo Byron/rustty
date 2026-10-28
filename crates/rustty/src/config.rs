@@ -337,6 +337,8 @@ pub struct Config {
     pub unfocused_split_opacity: f32,
     pub unfocused_split_fill: Option<Rgb>,
     pub split_divider_color: Option<Rgb>,
+    /// Fraction of the tab color mixed into the window frame background.
+    pub tab_frame_color_mix: f32,
     pub quadrant_peek_opacity: f32,
     pub window_padding_x: Padding,
     pub window_padding_y: Padding,
@@ -452,6 +454,7 @@ impl Default for Config {
             unfocused_split_opacity: 0.7,
             unfocused_split_fill: None,
             split_divider_color: None,
+            tab_frame_color_mix: 0.09,
             quadrant_peek_opacity: 0.5,
             window_padding_x: Padding {
                 start: 2.0,
@@ -656,6 +659,14 @@ impl Config {
             "unfocused-split-opacity" => set!(unfocused_split_opacity, parse_opacity(value)?),
             "unfocused-split-fill" => set!(unfocused_split_fill, Some(Rgb::parse(value)?)),
             "split-divider-color" => set!(split_divider_color, Some(Rgb::parse(value)?)),
+            "tab-frame-color-mix" => set!(tab_frame_color_mix, {
+                let percentage =
+                    parse_nonnegative(value.strip_suffix('%').unwrap_or(value).trim())?;
+                if percentage > 100.0 {
+                    return Err("tab frame color mix must be between 0% and 100%");
+                }
+                percentage / 100.0
+            }),
             "quadrant-peek-opacity" => set!(quadrant_peek_opacity, parse_opacity(value)?),
             "window-padding-x" => set!(window_padding_x, Padding::parse(value)?),
             "window-padding-y" => set!(window_padding_y, Padding::parse(value)?),
