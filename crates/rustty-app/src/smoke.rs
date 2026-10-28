@@ -6569,6 +6569,9 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         &mut other_host,
         &directory.join("outliner-other-window.png"),
     )?;
+    if other_host.content.y != 0.0 {
+        return Err("single-tab breadcrumb resized terminal content".into());
+    }
     let scale = other_host.window.scale_factor();
     let point = Pos2::new(40.0, 80.0);
     app.windows.insert(other_key, other_host);
