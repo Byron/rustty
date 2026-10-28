@@ -77,6 +77,59 @@ fn assert_references(screen: &Screen) {
 }
 
 #[test]
+fn scroll_clear_pruning_keeps_cursor_page_resources_valid() {
+    let mut terminal = Terminal::with_limits(
+        10,
+        3,
+        ScrollbackLimits {
+            lines: Some(0),
+            bytes: None,
+        },
+    );
+    let page_rows = usize::from(terminal.primary.pages.pages[0].capacity.rows);
+    terminal.feed("x\r\n".repeat(page_rows + 1).as_bytes());
+    terminal.feed(b"x\x1b[H\x1b[1m\x1b]8;id=cursor;https://example.org\x07");
+    let old_page = terminal.primary.pages.pages[0].serial;
+    assert_eq!(terminal.primary.cursor_style.unwrap().0, old_page);
+    terminal.feed(b"\x1b[22J");
+    assert!(
+        terminal
+            .primary
+            .pages
+            .pages
+            .iter()
+            .all(|page| page.serial != old_page)
+    );
+    assert_references(&terminal.primary);
+    assert_eq!(
+        terminal.primary.cursor.hyperlink.as_ref().unwrap().uri,
+        "https://example.org"
+    );
+    terminal.feed(b"y");
+    let row = terminal.primary.row(0);
+    assert!(row.style(0).bold);
+    assert_eq!(row.hyperlink(0).unwrap().uri, "https://example.org");
+    assert_references(&terminal.primary);
+}
+
+#[test]
+fn erased_history_invalidates_its_tracked_points_only() {
+    let mut terminal = Terminal::new(10, 3, 20);
+    terminal.feed(b"history\r\nsecond\r\nthird\r\nactive");
+    let history = terminal.primary.point(0, 0).unwrap();
+    let active = terminal
+        .primary
+        .point(terminal.primary.history_len(), 0)
+        .unwrap();
+    let history_handle = terminal.primary.track(history);
+    let active_handle = terminal.primary.track(active);
+    terminal.feed(b"\x1b[3J");
+    assert_eq!(terminal.primary.resolve(history_handle), None);
+    assert_eq!(terminal.primary.resolve(active_handle), Some(active));
+    assert_eq!(terminal.primary.point(0, 0), Some(active));
+}
+
+#[test]
 fn grapheme_growth_uses_native_page_capacity() {
     let mut terminal = Terminal::new(1024, 2, 100);
     terminal.feed("a\u{301}".repeat(512).as_bytes());

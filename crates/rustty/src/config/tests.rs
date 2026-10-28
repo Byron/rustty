@@ -1922,6 +1922,10 @@ fn text_bytes_unicode_colors_duration_and_environment() {
         "日😀\n".as_bytes()
     );
     assert!(parse_escaped_bytes(r"\u{d800}").is_err());
+    for escape in [r"\u{aaaaaa}", r"\u{AAAAAA}", r"\u{110000}", r"\u{FFFFFFFF}"] {
+        assert!(parse_escaped_bytes(escape).is_err());
+    }
+    assert_eq!(parse_escaped_bytes(r"\u{aA}").unwrap(), "ª".as_bytes());
     assert!(parse_escaped_bytes(r"\x0").is_err());
     assert_eq!(Rgb::parse("FoReStGReen"), Ok(Rgb::new(34, 139, 34)));
     assert_eq!(Rgb::parse("rgb:f/00/ffff"), Ok(Rgb::new(255, 0, 255)));
@@ -1964,6 +1968,28 @@ fn symlink_cycles_and_invalid_utf8_are_reported_without_fallback() {
     assert_eq!(loaded.family, ConfigFamily::Rustty);
     assert_eq!(loaded.config.font_size, Config::default().font_size);
     assert_eq!(loaded.diagnostics.len(), 1);
+}
+
+#[test]
+fn truncated_utf8_configuration_is_rejected_without_partial_application() {
+    let home = TestHome::new();
+    let own = home.own("");
+    for tail in [
+        b"\xc2".as_slice(),
+        b"\xe2",
+        b"\xe2\x94",
+        b"\xf0",
+        b"\xf0\x9f",
+        b"\xf0\x9f\x98",
+    ] {
+        let mut bytes = b"font-size=99\nwindow-title=".to_vec();
+        bytes.extend_from_slice(tail);
+        fs::write(&own, bytes).unwrap();
+        let loaded = home.loader.load();
+        assert_eq!(loaded.config.font_size, Config::default().font_size);
+        assert_eq!(loaded.diagnostics.len(), 1);
+        assert!(loaded.diagnostics[0].message.contains("UTF-8"));
+    }
 }
 
 #[test]

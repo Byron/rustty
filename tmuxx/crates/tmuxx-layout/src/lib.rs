@@ -1265,6 +1265,19 @@ mod tests {
     }
 
     #[test]
+    fn wire_layouts_reject_zero_and_oversized_panes() {
+        for (width, height) in [(0, 24), (80, 0), (65_536, 24), (80, 65_536)] {
+            let body = format!("{width}x{height},0,0,7");
+            let wire = format!("{:04x},{body}", checksum(body.as_bytes()));
+            assert!(Layout::parse(&wire).is_err(), "{wire}");
+            let wire = format!(
+                r#"{{"V":2,"L":{{"t":"p","w":{width},"h":{height},"x":0,"y":0,"i":0,"I":"%7"}}}}"#
+            );
+            assert!(Layout::parse(&wire).is_err(), "{wire}");
+        }
+    }
+
+    #[test]
     fn c37_floating_suffix_keeps_signed_geometry_and_z_without_duplicate_ids() {
         let wire = "4081,80x24,0,0[80x12,0,0,0,80x11,0,13,2,24x8,-3,2,4]<24x8,-3,2,4>";
         let layout = Layout::parse(wire).unwrap();
