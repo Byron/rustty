@@ -44,15 +44,15 @@
     "sha256": "7fbba954f444369fcdf775e0c2f18afb2a349feaa202ce2bdb86ed31eb91fa97"
   },
   "page-layout": {
-    "bytes": 5207,
-    "cases": 337,
-    "commit": "ff73e968e198a4f9b67327e17ecf7e8f2c2e79a6",
-    "comparisons": 337,
+    "bytes": 5219,
+    "cases": 338,
+    "commit": "c7f12db96402426e005eb323928f33ef3b7bce48",
+    "comparisons": 338,
     "oracles": {
-      "rust": "c7f9ceb562d07b66cbd1ae5b56bc8b4324a2c990b2f39d8f417fcd1ef97a409b",
-      "zig": "0e065995435de4aa8666447dc8904e2501bedc8ce080552aabb5d38865712deb"
+      "rust": "b16f2fdb15ac875546cb0c2396d1b208310ea0df21eb8d2d8b00fde939ce9530",
+      "zig": "e051d30b4820e90634fc953b6a11ce1a295a3a9b0dec6c35458749e76e7fcafc"
     },
-    "sha256": "3dc21a117ac492257d9273bf7c02710803545383263ce081740dbed1ff836088"
+    "sha256": "34c8438dbcfd36cfb56d253f9f0d70eb6b8b8a67a080929730bc8f77e94a50e5"
   },
   "pages": {
     "bytes": 173507,

@@ -71,6 +71,12 @@ def requests():
         yield case(f"mixed/{index}", action="layout", capacity=capacity,
                    exact=bool(index % 2))
 
+    for name, capacity in (
+        ("wide", {"cols": 1024, "rows": 512}),
+        ("max-width", dict(empty, cols=65535, rows=4)),
+    ):
+        yield case(f"adjust/capped-rows/{name}", action="adjust", columns=1, capacity=capacity)
+
     for name, layout, error in (
         ("initial-zero", {"columns": 0}, "InvalidDimensions"),
         ("adjust-zero", {"action": "adjust", "columns": 0}, "InvalidDimensions"),
@@ -78,8 +84,6 @@ def requests():
         ("zero-rows", {"action": "layout", "capacity": {"cols": 1, "rows": 0}}, "InvalidDimensions"),
         ("unknown-action", {"action": "unknown"}, "InvalidLayoutAction"),
         ("no-row-fits", {"action": "adjust", "columns": 65535, "capacity": empty}, "OutOfMemory"),
-        ("row-overflow", {"action": "adjust", "columns": 1,
-                          "capacity": {"cols": 1024, "rows": 512}}, "RowCountOverflow"),
         ("page-too-large", {"action": "layout", "capacity": {"cols": 65535, "rows": 65535}}, "PageTooLarge"),
         ("graphemes-too-large", {"action": "layout", "capacity": dict(empty, grapheme_bytes=(1 << 32) - 1)}, "PageTooLarge"),
         ("strings-too-large", {"action": "layout", "capacity": dict(empty, string_bytes=(1 << 32) - 1)}, "PageTooLarge"),
