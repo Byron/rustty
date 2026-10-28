@@ -27,7 +27,6 @@ pub(crate) const METADATA_ALIGNMENT: usize = 8;
 pub(crate) enum LayoutError {
     InvalidDimensions,
     OutOfMemory,
-    RowCountOverflow,
     PageTooLarge,
     ArithmeticOverflow,
     UnsupportedPlatform,
@@ -95,8 +94,7 @@ impl PageCapacity {
         let original = self.layout()?;
         let available = original.total_size - self.metadata()?.total_size;
         let row_bytes = add(ROW_SIZE, mul(CELL_SIZE, usize::from(cols))?)?;
-        let mut rows =
-            u16::try_from(available / row_bytes).map_err(|_| LayoutError::RowCountOverflow)?;
+        let mut rows = (available / row_bytes).min(usize::from(u16::MAX)) as u16;
         while rows > 0 {
             let adjusted = Self { cols, rows, ..self };
             // Row-header padding can push the first estimate over a page
@@ -488,15 +486,30 @@ mod tests {
             .layout(),
             Err(LayoutError::PageTooLarge)
         );
-        assert_eq!(
+    }
+
+    #[test]
+    fn column_adjustment_caps_rows_without_growing_the_page() {
+        for capacity in [
             PageCapacity {
                 cols: 1024,
                 rows: 512,
                 ..PageCapacity::default()
-            }
-            .adjust_columns(1),
-            Err(LayoutError::RowCountOverflow)
-        );
+            },
+            PageCapacity {
+                cols: u16::MAX,
+                rows: 4,
+                styles: 0,
+                hyperlink_bytes: 0,
+                grapheme_bytes: 0,
+                string_bytes: 0,
+            },
+        ] {
+            let adjusted = capacity.adjust_columns(1).unwrap();
+            assert_eq!(adjusted.rows, u16::MAX);
+            assert_eq!(adjusted.metadata(), capacity.metadata());
+            assert!(adjusted.layout().unwrap().total_size <= capacity.layout().unwrap().total_size);
+        }
     }
 
     #[test]

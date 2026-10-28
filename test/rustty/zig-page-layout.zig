@@ -57,11 +57,6 @@ pub fn run(request: Request) !Result {
         };
     } else if (std.mem.eql(u8, request.action, "adjust")) {
         if (request.columns == 0) return error.InvalidDimensions;
-        const available = layout.total_size - vt.Page.MetaLayout.init(capacity).total_size;
-        const row_bytes = @sizeOf(vt.page.Row) + @as(usize, request.columns) * @sizeOf(vt.page.Cell);
-        // Native adjust uses a checked u16 cast. Report its invalid input
-        // domain without crashing the long-running comparison process.
-        if (available / row_bytes > std.math.maxInt(u16)) return error.RowCountOverflow;
         capacity = try capacity.adjust(.{ .cols = request.columns });
     } else if (!std.mem.eql(u8, request.action, "layout")) return error.InvalidLayoutAction;
 

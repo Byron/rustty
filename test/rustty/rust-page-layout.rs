@@ -33,7 +33,6 @@ pub fn run(request: &Request) -> Result<Value, &'static str> {
     run_inner(request).map_err(|error| match error {
         LayoutError::InvalidDimensions => "InvalidDimensions",
         LayoutError::OutOfMemory => "OutOfMemory",
-        LayoutError::RowCountOverflow => "RowCountOverflow",
         LayoutError::PageTooLarge => "PageTooLarge",
         LayoutError::ArithmeticOverflow => "ArithmeticOverflow",
         LayoutError::UnsupportedPlatform => "UnsupportedPlatform",
