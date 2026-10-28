@@ -1,4 +1,4 @@
-//! Persistent session dumps in the current user's private temporary directory.
+//! Private session dumps in temporary storage or application data across reboots.
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -32,10 +32,13 @@ pub struct SavedDump {
     pub created_at: u64,
     /// Compressed size on disk.
     pub bytes: u64,
+    #[serde(default)]
+    pub keep_across_reboots: bool,
 }
 
 pub struct Store {
     directory: PathBuf,
+    persistent_directory: PathBuf,
     instance_id: String,
     label: String,
 }
@@ -44,16 +47,25 @@ impl Store {
     pub fn open(label: String) -> io::Result<Self> {
         Self::open_in(
             user_temporary_directory()?.join("rustty-session-dumps"),
+            rustty::app_paths::data_dir()?.join("session-dumps"),
             label,
         )
     }
 
     #[cfg(debug_assertions)]
     pub fn open_isolated(directory: PathBuf, label: String) -> io::Result<Self> {
-        Self::open_in(directory, label)
+        Self::open_in(
+            directory.clone(),
+            directory.with_extension("persistent"),
+            label,
+        )
     }
 
-    fn open_in(directory: PathBuf, label: String) -> io::Result<Self> {
+    fn open_in(
+        directory: PathBuf,
+        persistent_directory: PathBuf,
+        label: String,
+    ) -> io::Result<Self> {
         if label.len() > 4096 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -63,6 +75,7 @@ impl Store {
         private_directory(&directory)?;
         Ok(Self {
             directory,
+            persistent_directory,
             instance_id: unique_id(),
             label,
         })
@@ -113,20 +126,25 @@ impl Store {
 
     /// Only complete, private dumps are offered, with the newest first.
     pub fn dumps(&self) -> io::Result<Vec<SavedDump>> {
-        check_private_directory(&self.directory)?;
         let mut dumps = Vec::new();
-        for entry in fs::read_dir(&self.directory)? {
-            let path = entry?.path();
-            if path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.ends_with(".session.json"))
-                && let Ok(dump) = read_json::<SavedDump>(&path)
-                && valid_dump(&dump)
-                && path == self.metadata_path(&dump)
-                && self.open_dump(&dump).is_ok()
-            {
-                dumps.push(dump);
+        for directory in [&self.directory, &self.persistent_directory] {
+            match check_private_directory(directory) {
+                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                result => result?,
+            }
+            for entry in fs::read_dir(directory)? {
+                let path = entry?.path();
+                if path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.ends_with(".session.json"))
+                    && let Ok(dump) = read_json::<SavedDump>(&path)
+                    && valid_dump(&dump)
+                    && path == self.metadata_path(&dump)
+                    && self.open_dump(&dump).is_ok()
+                {
+                    dumps.push(dump);
+                }
             }
         }
         dumps.sort_by(|a, b| {
@@ -137,7 +155,7 @@ impl Store {
         Ok(dumps)
     }
 
-    pub fn save_dump(&self, payload: &[u8]) -> io::Result<SavedDump> {
+    pub fn save_dump(&self, payload: &[u8], keep_across_reboots: bool) -> io::Result<SavedDump> {
         if payload.len() as u64 > MAX_DUMP_BYTES {
             return Err(io::Error::other(
                 "Session state exceeds the 512 MiB export limit",
@@ -153,8 +171,17 @@ impl Store {
                 .try_into()
                 .map_err(io::Error::other)?,
             bytes: 0,
+            keep_across_reboots,
         };
         let path = self.dump_path(&dump);
+        if keep_across_reboots {
+            fs::create_dir_all(
+                self.persistent_directory
+                    .parent()
+                    .ok_or_else(|| io::Error::other("Missing parent"))?,
+            )?;
+            private_directory(&self.persistent_directory)?;
+        }
         let mut output = lock_file(&path)?;
         {
             let mut encoder = lz4_flex::frame::FrameEncoder::new(&mut output);
@@ -217,13 +244,21 @@ impl Store {
     }
 
     fn dump_path(&self, dump: &SavedDump) -> PathBuf {
-        self.directory
+        self.dump_directory(dump)
             .join(format!("{}.{}", dump.id, DUMP_EXTENSION))
     }
 
     fn metadata_path(&self, dump: &SavedDump) -> PathBuf {
-        self.directory
+        self.dump_directory(dump)
             .join(format!("{}.{}", dump.id, METADATA_EXTENSION))
+    }
+
+    fn dump_directory(&self, dump: &SavedDump) -> &Path {
+        if dump.keep_across_reboots {
+            &self.persistent_directory
+        } else {
+            &self.directory
+        }
     }
 }
 
@@ -320,7 +355,12 @@ mod tests {
         }
 
         fn store(&self, label: &str) -> Store {
-            Store::open_in(self.0.clone(), label.into()).unwrap()
+            Store::open_in(
+                self.0.join("temporary"),
+                self.0.join("persistent"),
+                label.into(),
+            )
+            .unwrap()
         }
     }
 
@@ -335,7 +375,7 @@ mod tests {
         let directory = TestDirectory::new();
         let source = directory.store("source");
         let state = "scrollback and alternate screen\n".repeat(1000);
-        let dump = source.save_dump(state.as_bytes()).unwrap();
+        let dump = source.save_dump(state.as_bytes(), false).unwrap();
         assert_eq!(dump.label, "source");
         assert!(dump.created_at > 1_700_000_000_000);
         assert!(dump.bytes < state.len() as u64);
@@ -351,16 +391,58 @@ mod tests {
     }
 
     #[test]
+    fn persistent_sessions_remain_importable_after_temporary_storage_is_removed() {
+        let directory = TestDirectory::new();
+        let source = directory.store("source");
+        let temporary = source.save_dump(b"temporary", false).unwrap();
+        let mut persistent = source.save_dump(b"persistent", true).unwrap();
+        persistent.created_at = temporary.created_at + 1;
+        write_json(&source.metadata_path(&persistent), &persistent).unwrap();
+        assert_eq!(
+            source.dumps().unwrap(),
+            [persistent.clone(), temporary.clone()]
+        );
+        source.remove_dump(&temporary).unwrap();
+        assert_eq!(source.read_dump(&persistent).unwrap(), b"persistent");
+        fs::remove_dir_all(&source.directory).unwrap();
+        assert_eq!(source.dumps().unwrap(), [persistent.clone()]);
+        drop(source);
+
+        let importer = directory.store("importer");
+        assert_eq!(importer.dumps().unwrap(), [persistent.clone()]);
+        assert_eq!(importer.read_dump(&persistent).unwrap(), b"persistent");
+        let temporary = importer.save_dump(b"new temporary", false).unwrap();
+        importer.remove_dump(&persistent).unwrap();
+        assert!(!importer.dump_path(&persistent).exists());
+        assert_eq!(importer.dumps().unwrap(), [temporary]);
+    }
+
+    #[test]
+    fn existing_metadata_defaults_to_temporary_storage() {
+        let directory = TestDirectory::new();
+        let store = directory.store("source");
+        let dump = store.save_dump(b"existing", false).unwrap();
+        let mut metadata = serde_json::to_value(&dump).unwrap();
+        metadata
+            .as_object_mut()
+            .unwrap()
+            .remove("keep_across_reboots");
+        write_json(&store.metadata_path(&dump), &metadata).unwrap();
+        assert_eq!(store.dumps().unwrap(), [dump.clone()]);
+        assert_eq!(store.read_dump(&dump).unwrap(), b"existing");
+    }
+
+    #[test]
     fn discovery_sorts_newest_first_and_skips_incomplete_or_invalid_dumps() {
         let directory = TestDirectory::new();
         let store = directory.store("source");
-        let mut earlier = store.save_dump(b"earlier").unwrap();
-        let later = store.save_dump(b"later").unwrap();
+        let mut earlier = store.save_dump(b"earlier", false).unwrap();
+        let later = store.save_dump(b"later", false).unwrap();
         earlier.created_at = later.created_at - 1;
         write_json(&store.metadata_path(&earlier), &earlier).unwrap();
-        let incomplete = store.save_dump(b"incomplete").unwrap();
+        let incomplete = store.save_dump(b"incomplete", false).unwrap();
         fs::remove_file(store.dump_path(&incomplete)).unwrap();
-        let oversized = store.save_dump(b"oversized").unwrap();
+        let oversized = store.save_dump(b"oversized", false).unwrap();
         fs::OpenOptions::new()
             .write(true)
             .open(store.dump_path(&oversized))
@@ -368,11 +450,11 @@ mod tests {
             .set_len(MAX_DUMP_BYTES + 1)
             .unwrap();
         write_json(
-            &directory.0.join("invalid.session.json"),
+            &store.directory.join("invalid.session.json"),
             &serde_json::json!({}),
         )
         .unwrap();
-        let staged = lock_file(&directory.0.join("staged.session.json")).unwrap();
+        let staged = lock_file(&store.directory.join("staged.session.json")).unwrap();
         assert_eq!(store.dumps().unwrap(), [later, earlier]);
         drop(staged);
     }
@@ -381,7 +463,7 @@ mod tests {
     fn changed_metadata_and_path_traversal_cannot_read_or_remove_other_files() {
         let directory = TestDirectory::new();
         let store = directory.store("source");
-        let dump = store.save_dump(b"saved state").unwrap();
+        let dump = store.save_dump(b"saved state", false).unwrap();
         let mut changed = dump.clone();
         changed.label = "another session".into();
         assert!(store.read_dump(&changed).is_err());
@@ -390,7 +472,7 @@ mod tests {
         changed.id = "../outside".into();
         assert!(store.read_dump(&changed).is_err());
         assert!(store.remove_dump(&changed).is_err());
-        write_json(&directory.0.join("aliased.session.json"), &changed).unwrap();
+        write_json(&store.directory.join("aliased.session.json"), &changed).unwrap();
         assert_eq!(store.dumps().unwrap(), std::slice::from_ref(&dump));
         assert_eq!(store.read_dump(&dump).unwrap(), b"saved state");
     }
@@ -462,7 +544,7 @@ mod tests {
         use std::os::unix::fs::{PermissionsExt, symlink};
         let directory = TestDirectory::new();
         let store = directory.store("source");
-        let dump = store.save_dump(b"secret").unwrap();
+        let dump = store.save_dump(b"secret", false).unwrap();
         let path = store.dump_path(&dump);
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
         assert!(store.read_dump(&dump).is_err());
@@ -480,10 +562,17 @@ mod tests {
         let public = directory.0.join("public");
         private_directory(&public).unwrap();
         fs::set_permissions(&public, fs::Permissions::from_mode(0o755)).unwrap();
-        assert!(Store::open_in(public, "source".into()).is_err());
+        assert!(Store::open_in(public, directory.0.join("persistent"), "source".into()).is_err());
         let directory_link = directory.0.join("directory-link");
         symlink(&directory.0, &directory_link).unwrap();
-        assert!(Store::open_in(directory_link, "source".into()).is_err());
+        assert!(
+            Store::open_in(
+                directory_link,
+                directory.0.join("persistent"),
+                "source".into()
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -495,7 +584,7 @@ mod tests {
 
         let directory = TestDirectory::new();
         let store = directory.store("source");
-        let mut dump = store.save_dump(b"saved state").unwrap();
+        let mut dump = store.save_dump(b"saved state", false).unwrap();
         fs::write(store.dump_path(&dump), b"corrupt data").unwrap();
         dump.bytes = 12;
         write_json(&store.metadata_path(&dump), &dump).unwrap();

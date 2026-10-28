@@ -542,6 +542,11 @@ Enable the checkbox to save before quitting. An ordinary quit adds the same
 checkbox when Rustty already needs confirmation, such as when commands are
 running; it does not introduce an extra prompt by itself.
 
+The additional **Keep session state across reboots** checkbox is initially off.
+Enable it along with saving to keep the export in Rustty's application data
+directory, where system temporary-file cleanup will not remove it. Launching
+Rustty checks both temporary and persistent exports for import.
+
 Configure the checkbox with:
 
 ```ini
@@ -602,7 +607,11 @@ workspace.
 Dumps use private, atomically published `.rustty-state.lz4` files and metadata in
 `rustty-session-dumps` inside the current user's system temporary directory
 (normally `$TMPDIR` on macOS and `%LOCALAPPDATA%\Temp` on Windows). They survive
-Rustty exiting, but system temporary-file cleanup can remove them. Large dumps
+Rustty exiting, but system temporary-file cleanup can remove them. Dumps
+saved with **Keep session state across reboots** instead use `session-dumps`
+inside `~/Library/Application Support/com.rustty.app` on macOS or
+`%LOCALAPPDATA%\Rustty` on Windows. Both kinds are removed after a successful
+import. Large dumps
 can pause the saving instance while they are written. Compressed files and
 decoded state are each limited to 512 MiB. If saving fails, Rustty stays open so
 the user can retry or quit without saving.

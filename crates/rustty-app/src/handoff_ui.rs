@@ -259,7 +259,7 @@ impl App {
         }
     }
 
-    pub(super) fn dump_session_state(&self) -> Result<SavedDump> {
+    pub(super) fn dump_session_state(&self, keep_across_reboots: bool) -> Result<SavedDump> {
         // shortcut: capture/compression runs on the UI thread; use a worker if large histories stall saving.
         let bytes = self.capture_handoff()?;
         Ok(self
@@ -267,7 +267,7 @@ impl App {
             .as_ref()
             .ok_or("Session dumping is unavailable")?
             .store
-            .save_dump(&bytes)?)
+            .save_dump(&bytes, keep_across_reboots)?)
     }
 
     fn capture_handoff(&self) -> Result<Vec<u8>> {
