@@ -6040,7 +6040,7 @@ impl App {
                                 self.directory_labels.get(&id).cloned(),
                                 selected,
                                 host.focused,
-                                host.focus_hint.visible(id, now),
+                                peek.is_some() || host.focus_hint.visible(id, now),
                             ).filter(|_| !shared_labels.contains(&id)) {
                                 let centered = label.centered_in_pane(active, id, visual.label_quadrant);
                                 let flash = if label.shows_flash(true, false) {
