@@ -832,7 +832,7 @@ impl Smoke {
                     .current_monitor()
                     .and_then(|monitor| monitor.refresh_rate_millihertz())
                     .map(|rate| f64::from(rate) / 1000.0);
-                let report = serde_json::json!({"passed":true,"renderer":app.painter.description(),"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","native-rendered-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","zoom-animation-endpoint-grids","zoom-animation-disable","quad-peek-animation","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","drag-selection-scrolling","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
+                let report = serde_json::json!({"passed":true,"renderer":app.painter.description(),"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","native-rendered-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","zoom-animation-endpoint-grids","zoom-animation-disable","quad-peek-animation","quad-peek-focused-label","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","drag-selection-scrolling","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
                 self.report = Some(report);
                 return Ok(true);
             }
@@ -1076,6 +1076,8 @@ fn check_zoom_animations(
     let animations = app.loaded.config.window_animations;
     let background = app.loaded.config.background;
     let background_mix = app.loaded.config.zoom_animation_background_mix;
+    let focus_state = (host.focused, host.focus_hint);
+    let pinned_panes = app.workspace.pinned_panes.clone();
     let durations = (
         app.loaded.config.quad_zoom_animation_duration,
         app.loaded.config.quad_peek_animation_duration,
@@ -1183,6 +1185,86 @@ fn check_zoom_animations(
                 },
             )?;
         }
+        let focused = app.tab(host.id).unwrap().focused;
+        let tab = app.tab(host.id).unwrap();
+        if app
+            .quadrant_label(tab, host, tab.root.quadrant(focused).unwrap(), None, false)
+            .is_some()
+        {
+            return Err("Quad Peek label fixture has an aggregate label".into());
+        }
+        let name = app.directory_labels[&focused].clone();
+        let label_positions = Arc::new(std::sync::Mutex::new(Vec::<Pos2>::new()));
+        let probe = Arc::downgrade(&label_positions);
+        let viewport = host.viewport;
+        app.context.on_end_pass(
+            "quad-peek-focused-label",
+            Arc::new(move |ui| {
+                if ui.ctx().viewport_id() != viewport {
+                    return;
+                }
+                let Some(positions) = probe.upgrade() else {
+                    return;
+                };
+                *positions.lock().unwrap() = ui.ctx().graphics(|graphics| {
+                    graphics
+                        .get(ui.layer_id())
+                        .into_iter()
+                        .flat_map(|list| list.all_entries())
+                        .filter_map(|shape| match &shape.shape {
+                            egui::Shape::Text(text) if text.galley.job.text.starts_with(&name) => {
+                                Some(text.pos)
+                            }
+                            _ => None,
+                        })
+                        .collect()
+                });
+            }),
+        );
+        host.focused = true;
+        host.focus_hint.focus(Some(focused), Instant::now());
+        host.focus_hint.dismiss();
+        for pinned in [false, true] {
+            app.workspace.pinned_panes.retain(|id| *id != focused);
+            if pinned {
+                app.workspace.pinned_panes.push(focused);
+            }
+            for cycle in 0..2 {
+                for enter in [true, false] {
+                    if enter {
+                        host.peek = app.tab_mut(host.id).unwrap().begin_peek(config::Modifiers {
+                            control: true,
+                            super_key: true,
+                            ..Default::default()
+                        });
+                        if host.peek.is_none() {
+                            return Err("label fixture could not enter Quad Peek".into());
+                        }
+                    } else {
+                        let peek = host.peek.take().ok_or("label fixture lost Quad Peek")?;
+                        let target = app.tab_mut(host.id).unwrap().finish_peek(peek);
+                        app.focus_pane(host.id, target);
+                    }
+                    app.draw(event_loop, host)?;
+                    host.zoom_animation.finish();
+                    app.draw(event_loop, host)?;
+                    let visible = label_positions
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .any(|position| host.rects[&focused].contains(*position));
+                    if visible != enter
+                        || app.tab(host.id).unwrap().focused != focused
+                        || host.focus_hint.visible(focused, Instant::now())
+                    {
+                        return Err(format!("Quad Peek label: pinned={pinned}, cycle={cycle}, peek={enter}, visible={visible}").into());
+                    }
+                }
+            }
+        }
+        drop(label_positions);
+        (host.focused, host.focus_hint) = focus_state;
+        app.workspace.pinned_panes.clone_from(&pinned_panes);
         for (id, _, cwd) in &saved {
             app.panes.get_mut(id).unwrap().cwd = cwd.clone();
         }
@@ -1222,6 +1304,8 @@ fn check_zoom_animations(
     app.loaded.config.window_animations = animations;
     app.loaded.config.background = background;
     app.loaded.config.zoom_animation_background_mix = background_mix;
+    (host.focused, host.focus_hint) = focus_state;
+    app.workspace.pinned_panes = pinned_panes;
     (
         app.loaded.config.quad_zoom_animation_duration,
         app.loaded.config.quad_peek_animation_duration,
