@@ -1,3 +1,5 @@
+#[path = "clipboard_preview.rs"]
+mod clipboard_preview;
 #[path = "command_palette.rs"]
 mod command_palette;
 #[path = "deck_host.rs"]
@@ -777,7 +779,7 @@ struct Host {
     palette: CommandPalette,
     confirm: Option<Confirmation>,
     tmuxx_connect: Option<String>,
-    clipboard_request: VecDeque<(Id, vt::Effect)>,
+    clipboard_request: VecDeque<clipboard_preview::Pending>,
     capture: bool,
     frames: u64,
     last_frame_started: Option<Instant>,
@@ -3241,7 +3243,7 @@ impl App {
                     || host
                         .clipboard_request
                         .front()
-                        .is_some_and(|(pane, _)| *pane == id));
+                        .is_some_and(|pending| pending.pane == id));
             let terminal_changed = tab == window.active_tab
                 && (content_changed
                     || !self.panes.get(&id).is_some_and(|pane| {
@@ -3399,13 +3401,29 @@ impl App {
             .find(|(_, host)| Some(host.id) == window)
             .map(|(key, _)| *key);
         let Some(key) = key else {
-            self.finish_clipboard(pane, request, false, false);
+            self.finish_clipboard(pane, request, false, false, None);
             return;
         };
         let mut host = self.windows.remove(&key).unwrap();
         if policy == config::ClipboardAccess::Ask && supported && host.clipboard_request.len() < 16
         {
-            host.clipboard_request.push_back((pane, request));
+            let read_result = match &request {
+                vt::Effect::ClipboardRead(read) => Some(
+                    self.platform
+                        .as_ref()
+                        .map_or(vt::clipboard::ReadResult::IoError, |platform| {
+                            platform.clipboard_read(read)
+                        }),
+                ),
+                _ => None,
+            };
+            host.clipboard_request
+                .push_back(clipboard_preview::Pending {
+                    pane,
+                    request,
+                    read_result,
+                    preview: Default::default(),
+                });
             host.repaint();
         } else {
             self.finish_clipboard(
@@ -3414,11 +3432,19 @@ impl App {
                 policy != config::ClipboardAccess::Deny
                     && (policy == config::ClipboardAccess::Allow || !supported),
                 false,
+                None,
             );
         }
         self.windows.insert(key, host);
     }
-    fn finish_clipboard(&mut self, pane: Id, request: vt::Effect, allow: bool, remember: bool) {
+    fn finish_clipboard(
+        &mut self,
+        pane: Id,
+        request: vt::Effect,
+        allow: bool,
+        remember: bool,
+        preview: Option<vt::clipboard::ReadResult>,
+    ) {
         use vt::clipboard::{ReadResult, WriteResult};
         let Some(session) = self.panes.get(&pane).map(|pane| &pane.session) else {
             return;
@@ -3428,9 +3454,12 @@ impl App {
         let reply = match request {
             vt::Effect::ClipboardRead(read) => {
                 let mut result = if allow {
-                    self.platform
-                        .as_ref()
-                        .map_or(ReadResult::IoError, |p| p.clipboard_read(&read))
+                    // Approval sends exactly the representations shown in the preview.
+                    preview.unwrap_or_else(|| {
+                        self.platform
+                            .as_ref()
+                            .map_or(ReadResult::IoError, |p| p.clipboard_read(&read))
+                    })
                 } else {
                     ReadResult::Denied
                 };
@@ -4484,8 +4513,8 @@ impl App {
                 if let Some(platform) = &self.platform {
                     platform.forget_window(&host.window);
                 }
-                for (pane, request) in host.clipboard_request {
-                    self.finish_clipboard(pane, request, false, false);
+                for pending in host.clipboard_request {
+                    self.finish_clipboard(pending.pane, pending.request, false, false, None);
                 }
                 self.painter.remove_window(
                     host.viewport,
@@ -6361,7 +6390,9 @@ impl App {
                     Confirmation::Quit { .. } => unreachable!("nested quit confirmation"),
                 }
             }
-            if let Some((pane, request)) = host.clipboard_request.front() {
+            if let Some(pending) = host.clipboard_request.front_mut() {
+                let pane = pending.pane;
+                let request = &pending.request;
                 let write = matches!(request, vt::Effect::ClipboardWrite(_));
                 let (name, can_remember) = match request {
                     vt::Effect::ClipboardRead(read) => (&read.name, read.can_remember),
@@ -6371,9 +6402,10 @@ impl App {
                 let name = String::from_utf8_lossy(name).into_owned();
                 let title = self
                     .panes
-                    .get(pane)
+                    .get(&pane)
                     .map(|pane| pane.title.clone())
                     .unwrap_or_default();
+                let mut decision = None;
                 egui::Window::new("Terminal clipboard access")
                     .collapsible(false)
                     .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -6389,26 +6421,46 @@ impl App {
                         } else {
                             "A terminal program wants to read the clipboard."
                         });
-                        ui.horizontal(|ui| {
-                            if (ui.button("Deny").clicked()
-                                || ui.input(|input| input.key_pressed(egui::Key::Escape)))
-                                && let Some((pane, request)) = host.clipboard_request.pop_front()
-                            {
-                                self.finish_clipboard(pane, request, false, false);
+                        match request {
+                            vt::Effect::ClipboardWrite(write) => {
+                                if write.contents.is_empty() {
+                                    ui.label("The clipboard will be cleared.");
+                                } else {
+                                    pending.preview.show(ui, &write.contents);
+                                }
                             }
-                            if ui.button("Allow once").clicked()
-                                && let Some((pane, request)) = host.clipboard_request.pop_front()
+                            vt::Effect::ClipboardRead(_) => match pending.read_result.as_ref() {
+                                Some(vt::clipboard::ReadResult::Success(success)) => {
+                                    pending.preview.show(ui, &success.contents);
+                                    for mime in &success.available {
+                                        ui.label(String::from_utf8_lossy(mime));
+                                    }
+                                }
+                                _ => { ui.label("The clipboard could not be read."); }
+                            },
+                            _ => unreachable!(),
+                        }
+                        ui.horizontal(|ui| {
+                            if ui.button("Deny").clicked()
+                                || ui.input(|input| input.key_pressed(egui::Key::Escape))
                             {
-                                self.finish_clipboard(pane, request, true, false);
+                                decision = Some((false, false));
+                            }
+                            if ui.button("Allow once").clicked() {
+                                decision = Some((true, false));
                             }
                             if can_remember
                                 && ui.button("Allow for this session").clicked()
-                                && let Some((pane, request)) = host.clipboard_request.pop_front()
                             {
-                                self.finish_clipboard(pane, request, true, true);
+                                decision = Some((true, true));
                             }
                         });
                     });
+                if let Some((allow, remember)) = decision
+                    && let Some(pending) = host.clipboard_request.pop_front()
+                {
+                    self.finish_clipboard(pending.pane, pending.request, allow, remember, pending.read_result);
+                }
             }
             if let Some(picker) = &mut host.layout_picker {
                 layout_command = show_layout_picker(ctx, picker).or(layout_command.take());
