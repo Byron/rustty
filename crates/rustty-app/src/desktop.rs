@@ -5212,11 +5212,7 @@ impl App {
         let tmuxx_tag = self
             .tmuxx_window(host.id)
             .map(|entry| entry.window_tag(host.id, &self.config().tmuxx_connections));
-        let breadcrumb = if state.tabs.len() > 1 {
-            outliner::breadcrumb(active, &self.directory_labels)
-        } else {
-            Vec::new()
-        };
+        let breadcrumb = outliner::breadcrumb(active, &self.directory_labels);
         if host
             .selection_drag
             .as_ref()
@@ -5378,6 +5374,7 @@ impl App {
                             .inner_margin(6.0),
                     )
                     .show(root_ui, |ui| {
+                        let header_bounds = ui.max_rect();
                         ui.horizontal(|ui| {
                             ui.add_space(72.0);
                             let tag_width = tmuxx_tag.as_ref().map_or(0.0, |(label, _)| outliner_ui::tmuxx_tag_width(ui, label, ui.available_width() * 0.4));
@@ -5386,12 +5383,29 @@ impl App {
                             let crumb_width = (available * 0.4)
                                 .min(420.0)
                                 .min((available - 160.0).max(0.0));
-                            let tabs_width =
-                                (available - crumb_width - 24.0 - 2.0 * ui.spacing().item_spacing.x)
-                                    .max(1.0);
+                            outline_selection = outliner_ui::breadcrumb(ui, &breadcrumb, crumb_width);
+                            let mut measure = ui.new_child(egui::UiBuilder::new()
+                                .id_salt("tab-strip-size")
+                                .invisible().sizing_pass()
+                                .layout(egui::Layout::left_to_right(egui::Align::Center)));
+                            for (index, tab) in state.tabs.iter().enumerate() {
+                                let mut atoms = egui::Atoms::new(self.tab_label(tab).0);
+                                if tab.zoom.is_some() {
+                                    atoms.push_right(egui::Atom::custom(egui::Id::new(("tab-zoom", tab.id)), Vec2::splat(12.0)));
+                                }
+                                measure.add(egui::Button::selectable(index == state.active_tab, atoms).fill(Color32::TRANSPARENT));
+                            }
+                            measure.add_sized([24.0, 22.0], egui::Button::new("+"));
+                            let mut available = ui.available_rect_before_wrap();
+                            available.max.x -= tag_space;
+                            let tabs_rect = centered_tab_strip_rect(header_bounds, available, measure.min_rect().width());
+                            let tabs_width = (tabs_rect.width() - 24.0 - ui.spacing().item_spacing.x).max(1.0);
                             let focus_id = egui::Id::new(("tab-strip-focus", host.id));
                             let focus_changed =
                                 ui.data(|data| data.get_temp::<Id>(focus_id)) != Some(active.id);
+                            ui.scope_builder(egui::UiBuilder::new()
+                                .id_salt("centered-tabs").max_rect(tabs_rect)
+                                .layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
                             egui::ScrollArea::horizontal()
                                 .id_salt(("tab-strip", host.id))
                                 .max_width(tabs_width)
@@ -5500,9 +5514,6 @@ impl App {
                                         }
                                     });
                                 });
-                            if !ui.is_sizing_pass() {
-                                ui.data_mut(|data| data.insert_temp(focus_id, active.id));
-                            }
                             if ui
                                 .add_sized([24.0, 22.0], egui::Button::new("+"))
                                 .on_hover_text("New tab")
@@ -5510,10 +5521,13 @@ impl App {
                             {
                                 commands.push(Action::NewTab);
                             }
+                            });
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if let Some((label, tooltip)) = &tmuxx_tag { outliner_ui::tmuxx_tag(ui, label, tooltip, tag_width); }
-                                outline_selection = outliner_ui::breadcrumb(ui, &breadcrumb, crumb_width);
                             });
+                            if !ui.is_sizing_pass() {
+                                ui.data_mut(|data| data.insert_temp(focus_id, active.id));
+                            }
                         });
                     });
                 if let Some((tab, mut clip)) = selected_tab {
@@ -6141,6 +6155,8 @@ impl App {
                         });
                     }
                 });
+            #[cfg(target_os = "macos")]
+            let mut controls_right = root_ui.max_rect().right() - 8.0;
             if state.tabs.len() == 1 && let Some((label, tooltip)) = &tmuxx_tag {
                 let bounds = root_ui.max_rect();
                 let width = outliner_ui::tmuxx_tag_width(root_ui, label, (bounds.width() - 88.0).max(0.0));
@@ -6148,6 +6164,8 @@ impl App {
                     Pos2::new(bounds.right() - width - 8.0, bounds.top() + 6.0),
                     Vec2::new(width, 18.0),
                 );
+                #[cfg(target_os = "macos")]
+                { controls_right = rect.left() - 6.0; }
                 let mut tag_ui = root_ui.new_child(egui::UiBuilder::new().id_salt("tmuxx-window-tag").max_rect(rect));
                 tag_ui.painter().rect_filled(rect.expand(3.0), 4, rgb(config.background));
                 outliner_ui::tmuxx_tag(&mut tag_ui, label, tooltip, width);
@@ -6156,9 +6174,12 @@ impl App {
             if state.tabs.len() == 1
                 && let Some([x, y, width, height]) = Platform::window_controls_rect(&host.window)
             {
-                paint_window_controls_background(
-                    root_ui.painter(),
-                    egui::Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, height)),
+                let buttons = egui::Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, height));
+                outline_selection = paint_window_controls_background(
+                    root_ui,
+                    buttons,
+                    &breadcrumb,
+                    (controls_right - buttons.right() - 24.0).clamp(0.0, 420.0),
                     rgb(config.background),
                     rgb(config.foreground),
                 );
@@ -8901,20 +8922,56 @@ fn configure_ui_fonts(context: &egui::Context) {
 
 #[cfg(target_os = "macos")]
 fn paint_window_controls_background(
-    painter: &egui::Painter,
+    ui: &mut egui::Ui,
     buttons: egui::Rect,
+    rows: &[outliner::Row],
+    max_width: f32,
     background: Color32,
     foreground: Color32,
-) {
-    painter.rect_filled(
-        egui::Rect::from_min_max(Pos2::ZERO, buttons.max + Vec2::new(12.0, 10.0)),
-        egui::CornerRadius {
-            nw: 14,
-            se: 14,
-            ..Default::default()
-        },
-        background.lerp_to_gamma(foreground, 0.12),
+) -> Option<outliner::Target> {
+    let shape = ui.painter().add(egui::Shape::Noop);
+    let mut crumb_ui = ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt("window-controls-breadcrumb")
+            .max_rect(egui::Rect::from_min_size(
+                Pos2::new(buttons.right() + 12.0, buttons.center().y - 13.0),
+                Vec2::new(max_width, 26.0),
+            ))
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
+    let selected = outliner_ui::breadcrumb(&mut crumb_ui, rows, max_width);
+    let right = if crumb_ui.min_rect().is_positive() {
+        crumb_ui.min_rect().right()
+    } else {
+        buttons.right()
+    };
+    ui.painter().set(
+        shape,
+        egui::Shape::rect_filled(
+            egui::Rect::from_min_max(Pos2::ZERO, Pos2::new(right + 12.0, buttons.bottom() + 10.0)),
+            egui::CornerRadius {
+                nw: 14,
+                se: 14,
+                ..Default::default()
+            },
+            background
+                .lerp_to_gamma(foreground, 0.12)
+                .gamma_multiply(0.85),
+        ),
+    );
+    selected
+}
+
+fn centered_tab_strip_rect(window: egui::Rect, available: egui::Rect, width: f32) -> egui::Rect {
+    let width = width.min(available.width().max(0.0));
+    let left = (window.center().x - width * 0.5).clamp(
+        available.left(),
+        (available.right() - width).max(available.left()),
+    );
+    egui::Rect::from_min_size(
+        Pos2::new(left, available.top()),
+        Vec2::new(width, available.height()),
+    )
 }
 
 fn paint_tab_bleed(
@@ -10654,7 +10711,7 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "macos")]
-    fn window_controls_background_covers_text_and_rounds_opposite_corners() {
+    fn window_controls_background_is_translucent_and_rounds_opposite_corners() {
         let context = egui::Context::default();
         let buttons = egui::Rect::from_min_size(Pos2::new(10.0, 10.0), Vec2::new(54.0, 14.0));
         for (background, foreground) in [
@@ -10662,7 +10719,7 @@ mod tests {
             (Color32::WHITE, Color32::BLACK),
         ] {
             let mut output = context.run_ui(egui::RawInput::default(), |ui| {
-                paint_window_controls_background(ui.painter(), buttons, background, foreground);
+                paint_window_controls_background(ui, buttons, &[], 420.0, background, foreground);
             });
             output.textures_delta.clear();
             let shape = output
@@ -10680,8 +10737,94 @@ mod tests {
             assert_eq!(shape.corner_radius.nw, 14);
             assert_eq!(shape.corner_radius.ne, 0);
             assert_eq!(shape.corner_radius.sw, 0);
-            assert_eq!(shape.fill.a(), 255);
+            assert_eq!(shape.fill.a(), 217);
             assert_ne!(shape.fill, background);
+        }
+    }
+
+    #[test]
+    fn tab_strip_centers_until_the_breadcrumb_needs_space_and_fits_narrow_windows() {
+        let window = egui::Rect::from_min_size(Pos2::new(10.0, 6.0), Vec2::new(1000.0, 26.0));
+        for (left, right, width, expected_left, expected_width) in [
+            (90.0, 1004.0, 200.0, 410.0, 200.0),
+            (350.0, 1004.0, 200.0, 410.0, 200.0),
+            (450.0, 1004.0, 200.0, 450.0, 200.0),
+            (850.0, 1004.0, 300.0, 850.0, 154.0),
+            (90.0, 550.0, 200.0, 350.0, 200.0),
+            (90.0, 1004.0, 300.0, 360.0, 300.0),
+        ] {
+            let available = egui::Rect::from_min_max(Pos2::new(left, 6.0), Pos2::new(right, 32.0));
+            let rect = centered_tab_strip_rect(window, available, width);
+            assert_eq!(rect.left(), expected_left);
+            assert_eq!(rect.width(), expected_width);
+            assert!(available.contains_rect(rect));
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn window_controls_breadcrumb_extends_background_and_remains_clickable_when_narrow() {
+        let buttons = egui::Rect::from_min_size(Pos2::new(10.0, 10.0), Vec2::new(54.0, 14.0));
+        let rows = outliner::breadcrumb(
+            &Tab::new(1, 2, "/tmp".into()),
+            &HashMap::from([(2, "Long panel directory name".repeat(8))]),
+        );
+        for width in [80.0, 420.0] {
+            let context = egui::Context::default();
+            let draw = |events| {
+                let mut selected = None;
+                let mut output = context.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            Pos2::ZERO,
+                            Vec2::new(600.0, 240.0),
+                        )),
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        selected = paint_window_controls_background(
+                            ui,
+                            buttons,
+                            &rows,
+                            width,
+                            Color32::BLACK,
+                            Color32::WHITE,
+                        );
+                    },
+                );
+                output.textures_delta.clear();
+                (output, selected)
+            };
+            draw(Vec::new());
+            let (output, _) = draw(Vec::new());
+            let egui::Shape::Rect(background) = &output.shapes[0].shape else {
+                panic!("background must precede the breadcrumb");
+            };
+            assert!(background.rect.contains_rect(buttons));
+            assert_eq!(background.rect.right(), buttons.right() + width + 24.0);
+            assert_eq!(background.fill.a(), 217);
+            let text = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) => Some(text),
+                    _ => None,
+                })
+                .unwrap();
+            assert!(text.pos.x > buttons.right());
+            assert!(background.rect.contains_rect(text.visual_bounding_rect()));
+            let pos = Pos2::new(background.rect.right() - 14.0, buttons.center().y);
+            draw(vec![egui::Event::PointerMoved(pos)]);
+            for pressed in [true, false] {
+                let (_, selected) = draw(vec![egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                }]);
+                assert_eq!(selected, (!pressed).then_some(rows[0].target));
+            }
         }
     }
 
