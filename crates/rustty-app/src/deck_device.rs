@@ -87,6 +87,9 @@ pub enum Action {
         group: usize,
         generation: u64,
     },
+    Back {
+        generation: u64,
+    },
     Page {
         generation: u64,
     },
@@ -200,6 +203,9 @@ enum Binding {
         group: usize,
         generation: u64,
     },
+    Back {
+        generation: u64,
+    },
     Page {
         generation: u64,
     },
@@ -216,6 +222,7 @@ impl Binding {
             (Self::Agent(a), Self::Agent(b)) => same_capture(a, b),
             (Self::Cycle { group: a, .. }, Self::Cycle { group: b, .. }) => a == b,
             (Self::Page { .. }, Self::Page { .. }) => true,
+            (Self::Back { .. }, Self::Back { .. }) => true,
             _ => self == other,
         }
     }
@@ -234,8 +241,22 @@ fn keys(
     brightness: u8,
     elapsed: Duration,
 ) -> Vec<Key> {
+    let back = Key {
+        visual: Visual::Function {
+            value: "Back".into(),
+            mark: Mark::Back,
+            dim: moving.is_some() || board.back_count == 0,
+        },
+        binding: if board.back_count == 0 {
+            Binding::None
+        } else {
+            Binding::Back {
+                generation: board.mode_generation,
+            }
+        },
+    };
     if board.no_sessions {
-        return [
+        let mut keys: Vec<_> = [
             "R", "T", "🦀", "T", "R", "U", "T", "💻", "T", "U", "S", "Y", "✨", "Y", "S",
         ]
         .into_iter()
@@ -244,6 +265,10 @@ fn keys(
             binding: Binding::None,
         })
         .collect();
+        if board.back_count > 0 {
+            keys[layout.function_key(3)] = back;
+        }
+        return keys;
     }
     let mut keys = vec![
         Key {
@@ -268,7 +293,7 @@ fn keys(
             binding: Binding::Agent(tile.capture),
         };
     }
-    for (group, state) in [State::NeedsInput, State::Working, State::Done, State::Idle]
+    for (group, state) in [State::NeedsInput, State::Working, State::Done]
         .into_iter()
         .enumerate()
     {
@@ -288,17 +313,21 @@ fn keys(
             }
             continue;
         }
+        let count = board.counts[group] + if group == 2 { board.counts[3] } else { 0 };
         keys[layout.function_key(group)] = Key {
             visual: Visual::Function {
-                value: board.counts[group].to_string(),
+                value: count.to_string(),
                 mark: Mark::State(state),
-                dim: moving.is_some() || board.counts[group] == 0,
+                dim: moving.is_some() || count == 0,
             },
             binding: Binding::Cycle {
                 group,
                 generation: board.mode_generation,
             },
         };
+    }
+    if menu.is_none() {
+        keys[layout.function_key(3)] = back;
     }
     keys[layout.function_key(4)] = Key {
         visual: Visual::Function {
@@ -434,7 +463,7 @@ impl Gestures {
             self.moving = Some(source);
             self.page_press = None;
             for function in &mut self.functions {
-                if matches!(function, Some(Binding::Cycle { .. })) {
+                if matches!(function, Some(Binding::Cycle { .. } | Binding::Back { .. })) {
                     *function = None;
                 }
             }
@@ -491,7 +520,11 @@ impl Gestures {
                 self.suppressed[index] = true;
                 continue;
             }
-            if !self.normal {
+            if !self.normal
+                && !displayed[index]
+                    .as_ref()
+                    .is_some_and(|key| matches!(key.binding, Binding::Back { .. }))
+            {
                 continue;
             }
             if down {
@@ -532,7 +565,8 @@ impl Gestures {
                             emit(Action::Gesture(Some(*destination)));
                         }
                     }
-                    Binding::Cycle { .. } if self.moving.is_some() || self.menu.is_some() => {}
+                    Binding::Cycle { .. } | Binding::Back { .. }
+                        if self.moving.is_some() || self.menu.is_some() => {}
                     Binding::PullToFirst {
                         generation,
                         mode_generation,
@@ -589,6 +623,11 @@ impl Gestures {
                         if self.moving.is_none() && self.menu.is_none() =>
                     {
                         emit(Action::Cycle { group, generation })
+                    }
+                    Some(Binding::Back { generation })
+                        if self.moving.is_none() && self.menu.is_none() =>
+                    {
+                        emit(Action::Back { generation })
                     }
                     _ => {}
                 }
@@ -820,6 +859,7 @@ pub fn preview(path: &std::path::Path) -> Result<(), String> {
         page: 0,
         tiles,
         counts: [1, 1, 1, 1],
+        back_count: 2,
         no_sessions: false,
         brightness: 100,
         screens_awake: true,
@@ -869,6 +909,7 @@ mod tests {
             generation: 1,
             page: 0,
             counts: [0, 1, 0, 0],
+            back_count: 0,
             brightness: 100,
             screens_awake: true,
             no_sessions: false,
@@ -919,6 +960,72 @@ mod tests {
         })
     }
 
+    #[test]
+    fn ready_counts_both_states_and_back_works_without_reports() {
+        let mut board = board();
+        board.counts = [0, 0, 2, 3];
+        board.back_count = 2;
+        let keys = shown(&board);
+        assert_eq!(
+            keys[8].as_ref().unwrap().visual,
+            Visual::Function {
+                value: "5".into(),
+                mark: Mark::State(State::Done),
+                dim: false,
+            }
+        );
+        for no_sessions in [false, true] {
+            board.no_sessions = no_sessions;
+            let keys = shown(&board);
+            let actions = RefCell::new(Vec::new());
+            let mut gesture = Gestures::new(no_sessions, 1, 1);
+            input(&mut gesture, &keys, &[], 0, &actions);
+            input(&mut gesture, &keys, &[9], 1, &actions);
+            assert!(actions.borrow().is_empty());
+            input(&mut gesture, &keys, &[], 2, &actions);
+            assert_eq!(*actions.borrow(), [Action::Back { generation: 1 }]);
+        }
+        board.back_count = 0;
+        assert_eq!(shown(&board)[9].as_ref().unwrap().binding, Binding::None);
+    }
+    #[test]
+    fn back_is_cancelled_by_mode_changes_and_move_gestures() {
+        let mut board = board();
+        board.back_count = 2;
+        for change in 0..3 {
+            let keys = shown(&board);
+            let actions = RefCell::new(Vec::new());
+            let mut gesture = Gestures::new(false, 1, 1);
+            input(&mut gesture, &keys, &[], 0, &actions);
+            input(&mut gesture, &keys, &[9], 1, &actions);
+            match change {
+                0 => {
+                    let mut updated = board.clone();
+                    updated.mode_generation += 1;
+                    gesture.reconcile(&updated, &|a| actions.borrow_mut().push(a));
+                }
+                1 => {
+                    input(&mut gesture, &keys, &[0, 9], 2, &actions);
+                    gesture.advance(Duration::from_millis(2002), &|a| {
+                        actions.borrow_mut().push(a)
+                    });
+                }
+                _ => {
+                    input(&mut gesture, &keys, &[9, 14], 2, &actions);
+                    gesture.advance(Duration::from_millis(1002), &|a| {
+                        actions.borrow_mut().push(a)
+                    });
+                }
+            }
+            input(&mut gesture, &keys, &[], 2003, &actions);
+            assert!(
+                !actions
+                    .borrow()
+                    .iter()
+                    .any(|a| matches!(a, Action::Back { .. }))
+            );
+        }
+    }
     #[test]
     fn remote_origin_changes_artwork_without_changing_key_targets() {
         let layout = Layout::new(Kind::Mk2Scissor).unwrap();

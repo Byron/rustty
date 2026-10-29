@@ -98,7 +98,7 @@ board, dim flashing phase, move mode, alternate controls, and no-session board:
 | Agent | Agent | Agent | Function | Function |
 |---|---|---|---|---|
 | 1 | 2 | 3 | ! count | ▂█▅ count |
-| 4 | 5 | 6 | ✓ count | ● count |
+| 4 | 5 | 6 | ✓ Ready count | ‹ Back |
 | 7 | 8 | 9 | ☀ level | › current/total |
 
 The left 3×3 region holds nine logical slots per page. Physical indexes come from
@@ -114,27 +114,35 @@ the same logical source slot to cancel. The destination may be pressed while the
 source is still held; already-held keys are not fresh destinations. Releases are
 consumed. The source slug remains visible with purple ⇄ swap arrows and outline.
 
-During move mode **Page and Brightness still work**. The four state-cycle keys
+During move mode **Page and Brightness still work**. The state keys and Back
 are dimmed and disabled. Function keys cannot be moved. A Page tap advances/wraps
 on release and has no effect when there is one page. Status, label and focus
 changes never sort or compact slots. Interior holes stay holes.
 
-Outside move mode, hold **Page for one second** to replace the four state-cycle
+Outside move mode, hold **Page for one second** to replace the state and Back
 keys with a one-shot menu. Releasing Page keeps it open. The top-left function
 key becomes **Pull first**; the other three are blank and inert. Select Pull first
 to run it and close the menu, or tap Page again to cancel. Brightness still works.
 Only fresh presses count; held keys and stale artwork cannot select an alternative.
 Sleep, disconnect and layout changes cancel the menu.
 
-Attention, Working, Done and Idle cycle live agent, command and OSC progress panes in stable slot order,
+Attention, Working and Ready cycle live agent, command and OSC progress panes in stable slot order,
 including off-page and hidden panes. They advance from the focused matching pane,
 otherwise from the group's last slot cursor, and wrap. Membership is recomputed
-each time; an empty group is dimmed and inert. The selected agent pane's page is revealed.
+each time; an empty group is dimmed and inert. Ready selects Done panes first,
+then cycles Idle panes when no Done panes remain. Its count includes both states.
+The selected agent pane's page is revealed.
 Attention includes needs-input, error and paused states. Unknown remains directly
 tappable and pageable. Progress-only panes follow assigned panes in workspace order
 without occupying agent slots. Each pane counts in one group: structured agent
 status takes precedence over progress, and OSC 133 command status is the fallback.
 These actions never approve a request, submit a prompt or send agent keystrokes.
+
+Back retraces successful visits from agent keys, state controls and their menu or
+shortcut commands, newest first. It skips closed panes and keeps visits after a
+reporter ends. Consecutive visits to the same pane count once. Ordinary focus
+changes and Back itself add no visits. After ordinary navigation away, Back
+returns to the most recent Stream Deck destination. History lives in memory only.
 
 Brightness starts at 100%; successive taps select **25 → 50 → 75 → 100 → 25%**.
 The worker changes the displayed level only after a successful USB write. The
@@ -145,15 +153,16 @@ from the device or saved to disk. Holding a function key does not repeat it.
 
 Rustty shows a native **Stream Deck** menu after successfully opening and
 initializing the device, and removes it on disconnect or disable. It offers the
-four state cycles, Next Page, Brightness and Pull to First. All seven commands
+three state cycles, Back, Next Page, Brightness and Pull to First. All seven commands
 support configurable shortcuts; none has a default binding. For example:
 
 ```text
 keybind = ctrl+alt+p=stream_deck:pull_to_first
 ```
 
-The `stream_deck` arguments are `needs_input` (Attention), `working`, `done`, `idle`,
-`next_page`, `brightness` and `pull_to_first`. Shortcuts require the connected
+The `stream_deck` arguments are `needs_input` (Attention), `working`, `done` (Ready),
+`back`, `next_page`, `brightness` and `pull_to_first`. The existing `idle` argument
+still cycles Idle panes for compatibility. Shortcuts require the connected
 device. Rapid brightness presses preserve every cycle step while coalescing
 pending USB writes to the final level.
 
@@ -300,7 +309,8 @@ With no live agent or qualifying command tiles and no pending OSC progress the e
 | U | T | 💻 | T | U |
 | S | Y | ✨ | Y | S |
 
-These keys are decorative and inert while the Mac's displays are awake. Idle/done
+These keys are decorative and inert while the Mac's displays are awake, except
+that Back remains available while earlier visited panes are open. Idle/done
 sessions still count. Transitions cancel gestures and suppress keys held across
 the change. The USB owner stays
 connected and preserves the selected brightness. The next begin restores the
