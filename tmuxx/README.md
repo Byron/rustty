@@ -86,6 +86,19 @@ Rustty validates the native greeting before sending queued commands. Window-size
 connections also verify the primary connection's server incarnation, so a daemon
 replacement cannot resize unrelated sessions that reuse the same numeric IDs.
 
+## Clipboard forwarding
+
+Application OSC 52 clipboard requests, including tmux-wrapped requests emitted
+by Codex's fallback, use `set-clipboard on`. Rustty enables this for servers it
+creates; existing and remote servers retain their settings. For those servers,
+add `set -s set-clipboard on` to the tmuxx configuration or apply it to the running
+server. The request goes to one eligible client, preferring a focused pane view,
+and follows that client's clipboard access policy.
+
+This compatibility path unwraps OSC 52 specifically, without enabling general
+DCS passthrough. Fragmented requests resume through snapshots; completed requests
+are not replayed when clients attach or reconnect.
+
 ## Source and maintenance
 
 Imported from [Byron/tmux](https://github.com/Byron/tmux) commit
