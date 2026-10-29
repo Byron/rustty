@@ -5345,7 +5345,7 @@ impl App {
                 [r, g, b]
             });
         let panel_accent = TabAccent::new(active.color, platform_accent);
-        let tab_accent = panel_accent.for_window(host.focused);
+        let tab_accent = panel_accent.for_window(host.focused, config.unfocused_tab_saturation);
         let frame_background =
             tab_accent.frame_background(config.background.to_array(), config.tab_frame_color_mix);
         let frame_color = Color32::from_rgb(
@@ -5468,7 +5468,7 @@ impl App {
                                         for (index, tab) in state.tabs.iter().enumerate() {
                                             let (label, is_active) = self.tab_label(tab);
                                             let selected = index == state.active_tab;
-                                            let colors = TabAccent::new(tab.color, platform_accent).for_window(host.focused);
+                                            let colors = TabAccent::new(tab.color, platform_accent).for_window(host.focused, config.unfocused_tab_saturation);
                                             let color = Color32::from_rgb(
                                                 colors.background[0],
                                                 colors.background[1],

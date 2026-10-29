@@ -404,15 +404,15 @@ pub struct TabAccent {
     pub foreground: [u8; 3],
 }
 impl TabAccent {
-    pub fn for_window(self, focused: bool) -> Self {
+    pub fn for_window(self, focused: bool, saturation: f32) -> Self {
         if focused {
             return self;
         }
         let [r, g, b] = self.background.map(u32::from);
         let gray = (299 * r + 587 * g + 114 * b + 500) / 1000;
-        let background = self
-            .background
-            .map(|channel| ((95 * gray + 5 * u32::from(channel) + 50) / 100) as u8);
+        let background = self.background.map(|channel| {
+            (gray as f32 * (1.0 - saturation) + f32::from(channel) * saturation).round() as u8
+        });
         Self::new(None, background)
     }
 
@@ -945,6 +945,7 @@ mod tests {
     }
     #[test]
     fn unfocused_window_accents_are_nearly_neutral_and_restore_original_colors() {
+        let saturation = rustty::config::Config::default().unfocused_tab_saturation;
         for (assigned, foreground) in [
             (None, [255; 3]),
             (Some([255, 200, 0]), [0; 3]),
@@ -954,8 +955,8 @@ mod tests {
             (Some([255; 3]), [0; 3]),
         ] {
             let accent = TabAccent::new(assigned, [0, 100, 255]);
-            assert_eq!(accent.for_window(true), accent);
-            let muted = accent.for_window(false);
+            assert_eq!(accent.for_window(true, saturation), accent);
+            let muted = accent.for_window(false, saturation);
             let min = *muted.background.iter().min().unwrap();
             let max = *muted.background.iter().max().unwrap();
             assert!(max - min <= 13);
@@ -963,9 +964,23 @@ mod tests {
             let frame = muted.frame_background([20; 3], 0.18);
             assert!(frame.iter().max().unwrap() - frame.iter().min().unwrap() <= 3);
             assert_eq!(
-                accent.for_window(true).background,
+                accent.for_window(true, saturation).background,
                 assigned.unwrap_or([0, 100, 255])
             );
         }
+    }
+
+    #[test]
+    fn unfocused_window_accents_use_configured_saturation() {
+        let accent = TabAccent::new(Some([255, 0, 0]), [0; 3]);
+        for (saturation, expected) in [
+            (0.0, [76; 3]),
+            (0.5, [166, 38, 38]),
+            (1.0, accent.background),
+        ] {
+            assert_eq!(accent.for_window(true, saturation), accent);
+            assert_eq!(accent.for_window(false, saturation).background, expected);
+        }
+        assert_eq!(accent.for_window(false, 1.0), accent);
     }
 }

@@ -339,6 +339,8 @@ pub struct Config {
     pub split_divider_color: Option<Rgb>,
     /// Fraction of the tab color mixed into the window frame background.
     pub tab_frame_color_mix: f32,
+    /// Fraction of tab and window accent saturation retained when unfocused.
+    pub unfocused_tab_saturation: f32,
     pub quadrant_peek_opacity: f32,
     pub window_padding_x: Padding,
     pub window_padding_y: Padding,
@@ -455,6 +457,7 @@ impl Default for Config {
             unfocused_split_fill: None,
             split_divider_color: None,
             tab_frame_color_mix: 0.09,
+            unfocused_tab_saturation: 0.05,
             quadrant_peek_opacity: 0.5,
             window_padding_x: Padding {
                 start: 2.0,
@@ -664,6 +667,14 @@ impl Config {
                     parse_nonnegative(value.strip_suffix('%').unwrap_or(value).trim())?;
                 if percentage > 100.0 {
                     return Err("tab frame color mix must be between 0% and 100%");
+                }
+                percentage / 100.0
+            }),
+            "unfocused-tab-saturation" => set!(unfocused_tab_saturation, {
+                let percentage =
+                    parse_nonnegative(value.strip_suffix('%').unwrap_or(value).trim())?;
+                if percentage > 100.0 {
+                    return Err("unfocused tab saturation must be between 0% and 100%");
                 }
                 percentage / 100.0
             }),

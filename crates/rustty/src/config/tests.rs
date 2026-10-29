@@ -272,6 +272,38 @@ fn tab_frame_color_mix_defaults_validates_and_resets() {
 }
 
 #[test]
+fn unfocused_tab_saturation_defaults_validates_resets_and_reloads() {
+    let home = TestHome::new();
+    assert_eq!(home.loader.load().config.unfocused_tab_saturation, 0.05);
+    home.own("unfocused-tab-saturation=25%\n");
+    assert_eq!(home.loader.load().config.unfocused_tab_saturation, 0.25);
+    for (value, expected) in [
+        ("0%", 0.0),
+        ("18", 0.18),
+        ("37.5%", 0.375),
+        ("100%", 1.0),
+        ("", 0.05),
+    ] {
+        let loaded = home
+            .loader
+            .load_with_args(&args(&[&format!("--unfocused-tab-saturation={value}")]));
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        assert_eq!(loaded.config.unfocused_tab_saturation, expected, "{value}");
+    }
+    for value in ["-1%", "101", "100.1%", "NaN", "inf%", "-inf", "50%%", "%"] {
+        let loaded = home
+            .loader
+            .load_with_args(&args(&[&format!("--unfocused-tab-saturation={value}")]));
+        assert_eq!(loaded.diagnostics.len(), 1, "{value}");
+        assert_eq!(loaded.config.unfocused_tab_saturation, 0.25, "{value}");
+    }
+    home.own("unfocused-tab-saturation=50%\n");
+    assert_eq!(home.loader.load().config.unfocused_tab_saturation, 0.5);
+    home.own("unfocused-tab-saturation=\n");
+    assert_eq!(home.loader.load().config.unfocused_tab_saturation, 0.05);
+}
+
+#[test]
 fn tmuxx_config_file_resolves_paths_without_requiring_the_file() {
     let home = TestHome::new();
     assert_eq!(home.loader.load().config.tmuxx_config_file, None);
