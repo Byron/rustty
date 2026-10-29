@@ -26,7 +26,12 @@ does not activate the application. Ordinary windows keep their existing behavior
 Local patch: macOS text input reports an empty insertion point (`{0, 0}`)
 from `selectedRange` instead of `{NSNotFound, 0}`, as Ghostty does. System
 dictation otherwise refuses to start and beeps.
+Local patch: macOS text insertions combine separately delivered
+UTF-16 surrogate halves before UTF-8 conversion, preserving supplementary emoji.
+Unmatched trailing halves are ignored; other text and disabling IME clear pending halves.
 The modified source files and manifests carry Rustty modification notices.
 
 Native regression check (main thread, hidden windows; macOS desktop required):
 `cargo test -p rustty-app --test native_panel --offline -- --ignored`.
+The hidden-window text-input regression also checks split surrogate insertions:
+`cargo test -p rustty-app --test native_text_input --offline -- --ignored`.

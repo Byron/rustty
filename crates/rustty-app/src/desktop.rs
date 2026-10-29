@@ -5977,7 +5977,8 @@ impl App {
                             node.add_action(egui::accesskit::Action::ScrollUp);
                             node.add_action(egui::accesskit::Action::ScrollDown);
                         });
-                        if id == focused && host.focused {
+                        // The character picker can commit while the terminal window is unfocused.
+                        if id == focused {
                             input::terminal_input(&response, terminal_ime_rect, host.ui_input());
                         }
                         zoom_chrome(ui, &zoom_panes, id, rect, rgb(config.background), |ui| {

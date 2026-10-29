@@ -404,8 +404,8 @@ pub fn terminal_input(response: &egui::Response, cursor_rect: Option<egui::Rect>
     if ui_input {
         return;
     }
-    // Requesting focus even when already focused interrupts composition in egui.
-    if !response.has_focus() {
+    // Native focus changes must not request widget focus again and interrupt composition.
+    if !response.ctx.memory(|memory| memory.has_focus(response.id)) {
         response.request_focus();
     }
     if let Some(cursor_rect) = cursor_rect {
@@ -1727,6 +1727,7 @@ mod tests {
         search: crate::search::Search,
         search_focus_pending: bool,
         popup_open: bool,
+        window_unfocused: bool,
         time: f64,
     }
 
@@ -1747,7 +1748,7 @@ mod tests {
                     egui::Pos2::ZERO,
                     egui::vec2(600.0, 400.0),
                 )),
-                focused: true,
+                focused: !self.window_unfocused,
                 time: Some(self.time),
                 events,
                 ..Default::default()
@@ -1811,6 +1812,25 @@ mod tests {
                 }
             }
             output.platform_output
+        }
+    }
+
+    #[test]
+    fn terminal_ime_survives_window_focus_changes_without_interrupting_composition() {
+        let mut frame = InputFrame::default();
+        frame.draw(Editor::Terminal, false, vec![]);
+        for focused in [false, false, true] {
+            frame.window_unfocused = !focused;
+            let ime = frame
+                .draw(
+                    Editor::Terminal,
+                    false,
+                    vec![egui::Event::WindowFocused(focused)],
+                )
+                .ime
+                .expect("the terminal must remain available to the character picker");
+            assert_eq!(ime.rect, InputFrame::cursor_rect());
+            assert!(!ime.should_interrupt_composition);
         }
     }
 

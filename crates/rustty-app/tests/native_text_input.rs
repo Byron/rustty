@@ -18,7 +18,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(target_os = "macos")]
 mod macos {
-    use objc2::msg_send;
+    use std::ptr::NonNull;
+
+    use objc2::{AnyThread, msg_send};
     use objc2_app_kit::{NSEvent, NSEventModifierFlags, NSEventType, NSView};
     use objc2_foundation::{NSAttributedString, NSNotFound, NSObject, NSPoint, NSRange, NSString};
     use winit::{
@@ -79,6 +81,17 @@ mod macos {
             // starting composition, and without a surrounding keyDown call.
             insert(view, &NSString::from_str("🦀"));
             type_a(view);
+
+            // macOS can deliver a supplementary character in two UTF-16 callbacks.
+            insert_utf16(view, &[0xd83e]);
+            insert_utf16(view, &[0xdd80]);
+            type_a(view);
+            // Ignore orphaned trailing halves and clear a pending half on other text.
+            insert_utf16(view, &[0xdd80]);
+            insert_utf16(view, &[0xd83e]);
+            insert(view, &NSString::from_str("z"));
+            insert_utf16(view, &[0xdd80]);
+            type_a(view);
             insert(
                 view,
                 &NSAttributedString::from_nsstring(&NSString::from_str("👩🏽‍💻")),
@@ -95,10 +108,13 @@ mod macos {
             insert(view, &NSString::from_str("字"));
             type_a(view);
 
+            insert_utf16(view, &[0xd83e]);
             window.set_ime_allowed(false);
             insert(view, &NSString::from_str("ignored"));
             type_a(view);
+            insert_utf16(view, &[0xd83e]);
             window.set_ime_allowed(true);
+            insert_utf16(view, &[0xdd80]);
             insert(view, &NSString::from_str("✓"));
             type_a(view);
             insert(view, &NSString::from_str(""));
@@ -125,6 +141,10 @@ mod macos {
                     Ime::Preedit(String::new(), None),
                     Ime::Commit("🦀".into()),
                     Ime::Preedit(String::new(), None),
+                    Ime::Commit("🦀".into()),
+                    Ime::Preedit(String::new(), None),
+                    Ime::Commit("z".into()),
+                    Ime::Preedit(String::new(), None),
                     Ime::Commit("👩🏽‍💻".into()),
                     Ime::Preedit("候補".into(), Some((6, 6))),
                     Ime::Preedit(String::new(), None),
@@ -141,7 +161,7 @@ mod macos {
                     (ElementState::Pressed, PhysicalKey::Code(KeyCode::KeyA)),
                     (ElementState::Released, PhysicalKey::Code(KeyCode::KeyA)),
                 ]
-                .repeat(5),
+                .repeat(7),
                 "commits must neither duplicate typing nor swallow the next key",
             );
             self.finished = true;
@@ -156,6 +176,18 @@ mod macos {
             msg_send![view, insertText: text,
                 replacementRange: NSRange::new(NSNotFound as usize, 0)]
         };
+    }
+
+    fn insert_utf16(view: &NSView, units: &[u16]) {
+        // NSString copies these code units, including unpaired surrogates.
+        let text = unsafe {
+            NSString::initWithCharacters_length(
+                NSString::alloc(),
+                NonNull::new(units.as_ptr().cast_mut()).unwrap(),
+                units.len(),
+            )
+        };
+        insert(view, &text);
     }
 
     fn type_a(view: &NSView) {

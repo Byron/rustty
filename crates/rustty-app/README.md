@@ -532,8 +532,11 @@ cleanup using synthetic Carbon events without posting keyboard input.
 
 The native text-input regression runs with
 `cargo test -p rustty-app --test native_text_input --offline -- --ignored`.
-It checks character-picker commits, composition cleanup and subsequent typing
+It checks external text commits (including split UTF-16 surrogates), composition
+cleanup and subsequent typing
 through a hidden native window without posting keyboard input to other apps.
+The input-routing tests also check that terminal composition survives native
+window focus changes, including when the character picker takes focus.
 
 The opt-in native smoke check starts disposable `/bin/sh` sessions, checks input,
 four split panes, tabs, quadrant focus and zoom, URI directory reports, restoration,
