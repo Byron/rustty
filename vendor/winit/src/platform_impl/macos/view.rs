@@ -140,6 +140,9 @@ pub struct ViewState {
     /// Whether insertText is being called while interpreting a physical key.
     interpreting_key_event: Cell<bool>,
 
+    /// macOS can insert a supplementary character in two callbacks.
+    pending_lead_surrogate: Cell<Option<u16>>,
+
     marked_text: RefCell<Retained<NSMutableAttributedString>>,
     accepts_first_mouse: bool,
 
@@ -406,11 +409,32 @@ declare_class!(
             let string = if string.is_kind_of::<NSAttributedString>() {
                 let string: *const NSObject = string;
                 let string: *const NSAttributedString = string.cast();
-                unsafe { &*string }.string().to_string()
+                unsafe { &*string }.string()
             } else {
                 let string: *const NSObject = string;
                 let string: *const NSString = string.cast();
-                unsafe { &*string }.to_string()
+                unsafe { &*string }.copy()
+            };
+
+            // NSString cannot convert an unpaired surrogate to UTF-8.
+            let unit = (string.length() == 1).then(|| unsafe { string.characterAtIndex(0) });
+            let string = match unit {
+                Some(lead @ 0xd800..=0xdbff) => {
+                    self.ivars().pending_lead_surrogate.set(
+                        self.ivars().ime_allowed.get().then_some(lead)
+                    );
+                    return;
+                }
+                Some(trail @ 0xdc00..=0xdfff) => {
+                    let Some(lead) = self.ivars().pending_lead_surrogate.take() else {
+                        return;
+                    };
+                    String::from_utf16(&[lead, trail]).expect("valid surrogate pair")
+                }
+                _ => {
+                    self.ivars().pending_lead_surrogate.set(None);
+                    string.to_string()
+                }
             };
 
             let is_control = string.chars().next().is_some_and(|c| c.is_control());
@@ -833,6 +857,7 @@ impl WinitView {
             ime_allowed: Default::default(),
             forward_key_to_app: Default::default(),
             interpreting_key_event: Default::default(),
+            pending_lead_surrogate: Default::default(),
             marked_text: Default::default(),
             accepts_first_mouse,
             _ns_window: WeakId::new(&window.retain()),
@@ -919,6 +944,7 @@ impl WinitView {
         }
 
         // Clear markedText
+        self.ivars().pending_lead_surrogate.set(None);
         *self.ivars().marked_text.borrow_mut() = NSMutableAttributedString::new();
 
         if self.ivars().ime_state.get() != ImeState::Disabled {
