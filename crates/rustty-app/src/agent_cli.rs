@@ -43,8 +43,9 @@ Fixed board:
   Agent 7   Agent 8   Agent 9       ☀ Light      › Page
 
 Input and Working cycle matching panes across all windows, tabs and pages.
-Ready visits Done panes first, then cycles Idle panes when none are ready.
-Their numbers count matches; Ready counts both Done and Idle.
+Ready visits Done panes, then unseen Idle panes, then cycles all Idle panes.
+Their numbers count matches; Ready counts Done and unseen Idle until visited.
+With none left to visit, Ready shows the Idle dot and total Idle count.
 Back retraces panels reached by agent keys, state keys or their menu/shortcut
 commands, skipping closed panes. Ordinary focus changes do not add visits.
 Repeated taps on the same pane add no visit; Back does not add itself to history.

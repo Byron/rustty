@@ -313,7 +313,13 @@ fn keys(
             }
             continue;
         }
-        let count = board.counts[group] + if group == 2 { board.counts[3] } else { 0 };
+        let (state, count) = if group == 2 && board.ready_count > 0 {
+            (state, board.ready_count)
+        } else if group == 2 {
+            (State::Idle, board.counts[3])
+        } else {
+            (state, board.counts[group])
+        };
         keys[layout.function_key(group)] = Key {
             visual: Visual::Function {
                 value: count.to_string(),
@@ -859,6 +865,7 @@ pub fn preview(path: &std::path::Path) -> Result<(), String> {
         page: 0,
         tiles,
         counts: [1, 1, 1, 1],
+        ready_count: 2,
         back_count: 2,
         no_sessions: false,
         brightness: 100,
@@ -909,6 +916,7 @@ mod tests {
             generation: 1,
             page: 0,
             counts: [0, 1, 0, 0],
+            ready_count: 0,
             back_count: 0,
             brightness: 100,
             screens_awake: true,
@@ -961,17 +969,46 @@ mod tests {
     }
 
     #[test]
-    fn ready_counts_both_states_and_back_works_without_reports() {
+    fn ready_counts_unseen_states_and_back_works_without_reports() {
         let mut board = board();
         board.counts = [0, 0, 2, 3];
+        board.ready_count = 2;
         board.back_count = 2;
         let keys = shown(&board);
         assert_eq!(
             keys[8].as_ref().unwrap().visual,
             Visual::Function {
-                value: "5".into(),
+                value: "2".into(),
                 mark: Mark::State(State::Done),
                 dim: false,
+            }
+        );
+        board.counts[2] = 0;
+        board.ready_count = 1;
+        assert_eq!(
+            shown(&board)[8].as_ref().unwrap().visual,
+            Visual::Function {
+                value: "1".into(),
+                mark: Mark::State(State::Done),
+                dim: false,
+            }
+        );
+        board.ready_count = 0;
+        assert_eq!(
+            shown(&board)[8].as_ref().unwrap().visual,
+            Visual::Function {
+                value: "3".into(),
+                mark: Mark::State(State::Idle),
+                dim: false,
+            }
+        );
+        board.counts[3] = 0;
+        assert_eq!(
+            shown(&board)[8].as_ref().unwrap().visual,
+            Visual::Function {
+                value: "0".into(),
+                mark: Mark::State(State::Idle),
+                dim: true,
             }
         );
         for no_sessions in [false, true] {
