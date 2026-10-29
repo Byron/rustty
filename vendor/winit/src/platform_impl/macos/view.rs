@@ -1,4 +1,4 @@
-// Rustty modifications: preserve native window ownership and character-picker input.
+// Rustty modifications: preserve native window ownership, character-picker input and dictation.
 #![allow(clippy::unnecessary_cast)]
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
@@ -32,6 +32,11 @@ use crate::event::{
 };
 use crate::keyboard::{Key, KeyCode, KeyLocation, ModifiersState, NamedKey};
 use crate::platform::macos::OptionAsAlt;
+
+/// The `selectedRange` of a view with nothing selected. macOS dictation will not start without
+/// one. Ghostty does the same:
+/// https://github.com/ghostty-org/ghostty/blob/011fc77caa5a12c5009577cdd1602da3ede6a8dd/macos/Sources/Ghostty/SurfaceView_AppKit.swift#L1629-L1636
+const EMPTY_INSERTION_POINT: NSRange = NSRange::new(0, 0);
 
 #[derive(Debug)]
 struct CursorState {
@@ -266,8 +271,7 @@ declare_class!(
         #[method(selectedRange)]
         fn selected_range(&self) -> NSRange {
             trace_scope!("selectedRange");
-            // Documented to return `{NSNotFound, 0}` if there is no selection.
-            NSRange::new(NSNotFound as NSUInteger, 0)
+            EMPTY_INSERTION_POINT
         }
 
         #[method(setMarkedText:selectedRange:replacementRange:)]

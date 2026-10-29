@@ -23,6 +23,9 @@ Local patch: macOS `WindowAttributesExtMacOS::with_nonactivating_panel` construc
 a real `NSPanel` while retaining Winit's existing view/delegate ownership. Its
 nonactivating style survives Winit's later style updates, and focusing the panel
 does not activate the application. Ordinary windows keep their existing behavior.
+Local patch: macOS text input reports an empty insertion point (`{0, 0}`)
+from `selectedRange` instead of `{NSNotFound, 0}`, as Ghostty does. System
+dictation otherwise refuses to start and beeps.
 The modified source files and manifests carry Rustty modification notices.
 
 Native regression check (main thread, hidden windows; macOS desktop required):
