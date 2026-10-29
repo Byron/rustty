@@ -131,7 +131,7 @@ pub struct Terminal {
     /// compatibility; application sessions opt in. Retained through reset,
     /// but not persisted in terminal snapshots.
     pub shell_command_events: bool,
-    /// Match tmux OSC 52 selectors and strict base64. Owner policy remains external.
+    /// Match tmux OSC 52 selectors, strict base64 and wrappers. Owner policy remains external.
     pub tmux_clipboard: bool,
     /// tmux graphics replies, chunked queries and fallback cell geometry.
     pub tmux_graphics: bool,
@@ -3243,43 +3243,7 @@ impl Terminal {
                     }
                 }
             }
-            52 => {
-                if let Some(split) = data.iter().position(|&b| b == b';')
-                    && (self.tmux_clipboard || split <= 1)
-                {
-                    let selector = data[..split]
-                        .iter()
-                        .copied()
-                        .find(|b| b"cpqs01234567".contains(b))
-                        .unwrap_or(0);
-                    let location = clipboard::Location::from_selector(if self.tmux_clipboard {
-                        selector
-                    } else if split == 0 {
-                        b'c'
-                    } else {
-                        data[0]
-                    });
-                    let encoded = &data[split + 1..];
-                    if encoded == b"?" {
-                        let mut request = clipboard::Read::osc52(
-                            location,
-                            if bell {
-                                clipboard::Terminator::Bell
-                            } else {
-                                clipboard::Terminator::St
-                            },
-                        );
-                        request.tmux_selector = self.tmux_clipboard.then_some(selector);
-                        effects.push(Effect::ClipboardRead(request));
-                    } else if let Some(write) = if self.tmux_clipboard {
-                        clipboard::Write::decode_tmux_osc52(location, encoded)
-                    } else {
-                        clipboard::Write::decode_osc52(location, encoded)
-                    } {
-                        effects.push(Effect::ClipboardWrite(write));
-                    }
-                }
-            }
+            52 => self.osc52(data, bell, effects),
             5522 => self.clipboard.handle(
                 data,
                 if bell {
@@ -3296,6 +3260,44 @@ impl Terminal {
             133 => self.osc133(data, effects),
             1 => {}
             _ => effects.push(Effect::UnknownSequence(format!("OSC {number}"))),
+        }
+    }
+
+    fn osc52(&self, data: &[u8], bell: bool, effects: &mut Vec<Effect>) {
+        if let Some(split) = data.iter().position(|&b| b == b';')
+            && (self.tmux_clipboard || split <= 1)
+        {
+            let selector = data[..split]
+                .iter()
+                .copied()
+                .find(|b| b"cpqs01234567".contains(b))
+                .unwrap_or(0);
+            let location = clipboard::Location::from_selector(if self.tmux_clipboard {
+                selector
+            } else if split == 0 {
+                b'c'
+            } else {
+                data[0]
+            });
+            let encoded = &data[split + 1..];
+            if encoded == b"?" {
+                let mut request = clipboard::Read::osc52(
+                    location,
+                    if bell {
+                        clipboard::Terminator::Bell
+                    } else {
+                        clipboard::Terminator::St
+                    },
+                );
+                request.tmux_selector = self.tmux_clipboard.then_some(selector);
+                effects.push(Effect::ClipboardRead(request));
+            } else if let Some(write) = if self.tmux_clipboard {
+                clipboard::Write::decode_tmux_osc52(location, encoded)
+            } else {
+                clipboard::Write::decode_osc52(location, encoded)
+            } {
+                effects.push(Effect::ClipboardWrite(write));
+            }
         }
     }
 
@@ -3538,19 +3540,27 @@ impl Terminal {
             return;
         }
         if self.tmux_strings
-            && self.agent_status_events
             && self.dcs_header.0.is_empty()
             && self.dcs_header.1.is_empty()
             && self.dcs_header.2 == b't'
-            && let Some(payload) = self.dcs.strip_prefix(b"mux;\x1b]777;rustty-agent;")
+            && let Some(payload) = self.dcs.strip_prefix(b"mux;\x1b]")
         {
-            // Interpret only private metadata, never replay arbitrary passthrough host actions.
+            let bell = payload.ends_with(b"\x07");
             if let Some(payload) = payload
                 .strip_suffix(b"\x07")
                 .or_else(|| payload.strip_suffix(b"\x1b\\"))
-                && let Some(event) = crate::agent::Event::decode(payload)
             {
-                effects.push(Effect::AgentStatus(event));
+                if self.agent_status_events
+                    && let Some(payload) = payload.strip_prefix(b"777;rustty-agent;")
+                    && let Some(event) = crate::agent::Event::decode(payload)
+                {
+                    effects.push(Effect::AgentStatus(event));
+                } else if self.tmux_clipboard
+                    && let Some(payload) = payload.strip_prefix(b"52;")
+                {
+                    // Decode clipboard requests here; the owner still applies its access policy.
+                    self.osc52(payload, bell, effects);
+                }
             }
         } else if self.tmux_graphics && self.dcs_header.0.is_empty() && self.dcs_header.2 == b'q' {
             let data = std::mem::take(&mut self.dcs);

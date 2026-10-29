@@ -70,6 +70,48 @@ fn clipboard_defaults_block_application_access_and_buffer_reads_are_owner_local(
 }
 
 #[test]
+fn tmux_wrapped_osc52_uses_the_existing_clipboard_policies() {
+    let write = b"\x1bPtmux;\x1b\x1b]52;c;c2VsZWN0ZWQ=\x07\x1b\\";
+    let read = b"\x1bPtmux;\x1b\x1b]52;c;?\x1b\x1b\\\x1b\\";
+    for policy in ["off", "external", "on"] {
+        let (mut engine, mut context) = engine();
+        command(
+            &mut engine,
+            &mut context,
+            &["set-option", "-s", "set-clipboard", policy],
+        );
+        let effects = engine.feed(0, write);
+        if policy != "on" {
+            assert!(effects.is_empty());
+            assert!(engine.buffers.is_empty());
+            assert!(engine.feed(0, read).is_empty());
+            continue;
+        }
+        assert!(effects.iter().any(|effect| matches!(effect,
+            Effect::Host { action: HostAction::ClipboardWrite(request), .. }
+                if request.contents[0].data.as_ref() == b"selected")));
+        assert_eq!(engine.buffers["buffer0"], b"selected");
+        assert_eq!(
+            writes(&engine.feed(0, read)),
+            b"\x1b]52;c;c2VsZWN0ZWQ=\x1b\\"
+        );
+        command(
+            &mut engine,
+            &mut context,
+            &["set-option", "-s", "get-clipboard", "request"],
+        );
+        assert!(matches!(engine.feed(0, read).as_slice(),
+            [Effect::Host { action: HostAction::ClipboardRead(request), .. }]
+                if request.terminator == tmuxx_terminal::clipboard::Terminator::St));
+        command(
+            &mut engine,
+            &mut context,
+            &["set-option", "-s", "get-clipboard", "off"],
+        );
+        assert!(engine.feed(0, read).is_empty());
+    }
+}
+#[test]
 fn clipboard_writes_keep_user_buffers_and_report_automatic_eviction() {
     let (mut engine, mut context) = engine();
     engine

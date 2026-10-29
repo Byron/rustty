@@ -872,6 +872,63 @@ mod tests {
     }
 
     #[test]
+    fn tmux_wrapped_osc52_survives_fragmented_snapshots_without_replay() {
+        for stream in [
+            b"\x1bPtmux;\x1b\x1b]52;c;c2VsZWN0ZWQ=\x07\x1b\\".as_slice(),
+            b"\x1bPtmux;\x1b\x1b]52;c;c2VsZWN0ZWQ=\x1b\x1b\\\x1b\\",
+        ] {
+            for split in 0..=stream.len() {
+                let mut owner = Terminal::new(20, 4, 20);
+                let prefix = owner.feed(&stream[..split]);
+                for mut restored in [
+                    owner.snapshot().restore().unwrap(),
+                    owner.checkpoint_snapshot().restore().unwrap(),
+                ] {
+                    assert!(restored.feed(b"").is_empty());
+                    let mut effects = prefix.clone();
+                    effects.extend(restored.feed(&stream[split..]));
+                    assert!(
+                        matches!(effects.as_slice(), [Effect::ClipboardWrite(write)]
+                        if write.is_osc52()
+                            && write.location == clipboard::Location::Standard
+                            && write.contents[0].data.as_ref() == b"selected"),
+                        "split {split}: {effects:?}"
+                    );
+                    assert!(restored.feed(b"").is_empty());
+                }
+            }
+        }
+    }
+    #[test]
+    fn tmux_wrapped_osc52_rejects_invalid_or_unrelated_payloads() {
+        for stream in [
+            b"\x1bPtmux;\x1b\x1b]52;c;!\x07\x1b\\".as_slice(),
+            b"\x1bPtmux;\x1b\x1b]52;c;YQ\x07\x1b\\",
+            b"\x1bPtmux;\x1b\x1b]52;c;YR==\x07\x1b\\",
+            b"\x1bPtmux;\x1b\x1b]52;c;YQ==\x1b\\",
+            b"\x1bPtmux;\x1b\x1b]52;c;YQ==\x07extra\x1b\\",
+            b"\x1bPtmux;\x1b\x1b]52;c;YQ==\x07\x1b\x1b[2J\x1b\\",
+            b"\x1bPtmux;\x1b\x1b]9;notification\x07\x1b\\",
+        ] {
+            let mut terminal = Terminal::new(20, 4, 20);
+            terminal.feed(b"keep");
+            assert!(
+                terminal
+                    .feed(stream)
+                    .iter()
+                    .all(|effect| matches!(effect, Effect::UnknownSequence(_)))
+            );
+            assert_eq!(terminal.capture(), "keep\n\n\n\n");
+        }
+        let mut oversized = b"\x1bPtmux;\x1b\x1b]52;c;".to_vec();
+        oversized.extend(std::iter::repeat_n(b'A', 1024 * 1024));
+        oversized.extend_from_slice(b"\x07\x1b\\");
+        let mut terminal = Terminal::new(20, 4, 20);
+        assert!(terminal.feed(&oversized).is_empty());
+        terminal.feed(b"after");
+        assert_eq!(terminal.capture(), "after\n\n\n\n");
+    }
+    #[test]
     fn agent_status_survives_fragmented_snapshots_without_replaying_host_actions() {
         use rustty_vt::agent::Event;
         let begin =

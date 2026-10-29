@@ -625,9 +625,34 @@ fn one_view_handles_clipboard_and_reply_cannot_be_replayed() {
 
 #[test]
 fn clipboard_defaults_block_writes_and_opt_in_fires_buffer_notification_and_hook() {
+    clipboard_write_policy(false);
+}
+
+#[test]
+fn tmux_wrapped_clipboard_writes_follow_policy_and_reach_one_client() {
+    clipboard_write_policy(true);
+}
+
+fn clipboard_write_policy(wrapped: bool) {
     let host = host();
     let admin = host.connect().unwrap();
-    let script = "import os,tty\ntty.setraw(0)\nos.write(1,b'READY')\nos.read(0,1)\nos.write(1,b'\\x1b]52;c;bm8=\\x07BLOCKED')\nos.read(0,1)\nos.write(1,b'\\x1b]52;cp;b2s=\\x07ALLOWED')\nos.read(0,1)";
+    let script = format!(
+        r"import os,tty
+tty.setraw(0)
+def emit(data):
+    if {wrapped}: data=b'\x1bPtmux;'+data.replace(b'\x1b',b'\x1b\x1b')+b'\x1b\\'
+    os.write(1,data)
+os.write(1,b'READY')
+os.read(0,1)
+emit(b'\x1b]52;c;bm8=\x07')
+os.write(1,b'BLOCKED')
+os.read(0,1)
+emit(b'\x1b]52;cp;b2s=\x07')
+os.write(1,b'ALLOWED')
+os.read(0,1)
+",
+        wrapped = if wrapped { "True" } else { "False" }
+    );
     assert_eq!(
         command(
             &admin,
@@ -639,7 +664,7 @@ fn clipboard_defaults_block_writes_and_opt_in_fires_buffer_notification_and_hook
                 "python3",
                 "-u",
                 "-c",
-                script
+                &script
             ],
             None,
             false
@@ -658,6 +683,19 @@ fn clipboard_defaults_block_writes_and_opt_in_fires_buffer_notification_and_hook
         None
     );
     receive(&view, |message| {
+        matches!(message, ServerMessage::Snapshot { .. }).then_some(())
+    });
+    let other = host
+        .connect_with_context(ClientContext {
+            host_effects: true,
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(
+        command(&other, &["attach-session", "-t", "clipboard"], None, true).error,
+        None
+    );
+    receive(&other, |message| {
         matches!(message, ServerMessage::Snapshot { .. }).then_some(())
     });
     let wait = |needle: &[u8]| {
@@ -740,6 +778,10 @@ fn clipboard_defaults_block_writes_and_opt_in_fires_buffer_notification_and_hook
     assert_eq!(notifications, 1);
     wait(b"ALLOWED");
     assert_eq!(command(&admin, &["show-buffer"], None, false).output, b"ok");
+    assert!(
+        !std::iter::from_fn(|| other.try_recv().ok())
+            .any(|message| matches!(message, ServerMessage::HostEffect { .. }))
+    );
     let deadline = Instant::now() + Duration::from_secs(5);
     while command(
         &admin,
