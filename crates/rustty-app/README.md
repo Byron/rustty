@@ -351,6 +351,10 @@ Tabs, splits, zoom, quadrant navigation, clipboard and
 search use the configured Ghostty keybindings. Window layouts and pane directories
 are saved separately under `com.rustty.app`.
 
+Unfocused windows show nearly neutral tab colors and UI accents, including the
+frame tint and selected panel outline. Terminal and panel status colors stay intact;
+tab colors return when the window gains focus.
+
 **Quad roots** add recursive quad levels to local tiled tabs. Zoom into an inferred
 quad, then use **Toggle Quad Root** in the command palette to designate the focused
 sub-quad and zoom into it. The same inference rule applies at each level: the first

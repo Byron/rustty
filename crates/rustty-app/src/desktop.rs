@@ -5344,7 +5344,8 @@ impl App {
                 let [r, g, b, _] = context.global_style().visuals.selection.bg_fill.to_array();
                 [r, g, b]
             });
-        let tab_accent = TabAccent::new(active.color, platform_accent);
+        let panel_accent = TabAccent::new(active.color, platform_accent);
+        let tab_accent = panel_accent.for_window(host.focused);
         let frame_background =
             tab_accent.frame_background(config.background.to_array(), config.tab_frame_color_mix);
         let frame_color = Color32::from_rgb(
@@ -5467,7 +5468,7 @@ impl App {
                                         for (index, tab) in state.tabs.iter().enumerate() {
                                             let (label, is_active) = self.tab_label(tab);
                                             let selected = index == state.active_tab;
-                                            let colors = TabAccent::new(tab.color, platform_accent);
+                                            let colors = TabAccent::new(tab.color, platform_accent).for_window(host.focused);
                                             let color = Color32::from_rgb(
                                                 colors.background[0],
                                                 colors.background[1],
@@ -6015,7 +6016,7 @@ impl App {
                                     id,
                                     rect,
                                     progress,
-                                    accent,
+                                    Color32::from_rgb(panel_accent.background[0], panel_accent.background[1], panel_accent.background[2]),
                                     offset,
                                     native_started,
                                 ) {
@@ -6149,7 +6150,7 @@ impl App {
                                     shared: true,
                                     pinned: false,
                                     attention,
-                                    accent: tab_accent,
+                                    accent: panel_accent,
                                     active: members.iter().any(|id| {
                                         self.panes
                                             .get(id)
@@ -6191,7 +6192,7 @@ impl App {
                                     shared: active.label_quad(id, peek.is_some()) == Some(id),
                                     pinned,
                                     flash,
-                                    accent: tab_accent,
+                                    accent: panel_accent,
                                     active: pane.activity.is_active(),
                                     attention: pane.unseen,
                                 }
