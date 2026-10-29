@@ -130,7 +130,9 @@ Attention, Working and Ready cycle live agent, command and OSC progress panes in
 including off-page and hidden panes. They advance from the focused matching pane,
 otherwise from the group's last slot cursor, and wrap. Membership is recomputed
 each time; an empty group is dimmed and inert. Ready selects Done panes first,
-then cycles Idle panes when no Done panes remain. Its count includes both states.
+then unseen Idle panes. Its count decreases as these panes are visited and their
+unseen flags clear. When none remain, its checkmark becomes an Idle dot; it shows
+the total Idle count and cycles all Idle panes.
 The selected agent pane's page is revealed.
 Attention includes needs-input, error and paused states. Unknown remains directly
 tappable and pageable. Progress-only panes follow assigned panes in workspace order

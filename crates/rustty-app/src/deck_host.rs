@@ -882,12 +882,17 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
         0,
         false,
     );
+    app.sync_deck();
+    assert_eq!(app.deck.dashboard.board.ready_count, 1);
     assert!(app.deck_command(StreamDeckAction::Done));
     assert_eq!(app.focused(app.active.unwrap()), Some(second));
     assert_eq!(
         app.panes[&second].deck_view(second, "").unwrap().state,
         State::Idle
     );
+    app.sync_deck();
+    assert_eq!(app.deck.dashboard.board.ready_count, 0);
+    assert!(!app.panes[&second].deck_view(second, "").unwrap().unseen);
     assert!(app.deck_command(StreamDeckAction::Done));
     assert_eq!(app.focused(app.active.unwrap()), Some(first));
     for pane in [first, second] {

@@ -275,6 +275,7 @@ pub struct Board {
     pub tiles: Vec<Tile>,
     pub page: usize,
     pub counts: [usize; 4],
+    pub ready_count: usize,
     pub back_count: usize,
     pub no_sessions: bool,
     pub brightness: u8,
@@ -288,6 +289,7 @@ impl Default for Board {
             tiles: Vec::new(),
             page: 0,
             counts: [0; 4],
+            ready_count: 0,
             back_count: 0,
             no_sessions: true,
             brightness: 100,
@@ -467,6 +469,7 @@ pub struct Dashboard {
     positions: Vec<Option<Id>>,
     last_activity: Vec<Option<Instant>>,
     groups: [Vec<(usize, Id)>; 4],
+    ready_idle: Vec<(usize, Id)>,
     history: Vec<Id>,
 }
 impl Dashboard {
@@ -598,6 +601,12 @@ impl Dashboard {
                 .collect()
         });
         self.board.counts = std::array::from_fn(|group| self.groups[group].len());
+        self.ready_idle = self.groups[3]
+            .iter()
+            .copied()
+            .filter(|(_, id)| reports.get(id).is_some_and(|report| report.unseen))
+            .collect();
+        self.board.ready_count = self.board.counts[2] + self.ready_idle.len();
         self.last_activity = workspace
             .deck_positions
             .iter()
@@ -610,12 +619,17 @@ impl Dashboard {
         if self.moving {
             return None;
         }
-        let group = if group == 2 && self.groups[2].is_empty() {
+        let ready = group == 2;
+        let group = if ready && self.groups[2].is_empty() {
             3
         } else {
             group
         };
-        let members = self.groups.get(group)?;
+        let members = if ready && group == 3 && !self.ready_idle.is_empty() {
+            &self.ready_idle
+        } else {
+            self.groups.get(group)?
+        };
         let cursor = members
             .iter()
             .find(|(_, id)| Some(*id) == focused)
@@ -1734,6 +1748,51 @@ mod tests {
         let mode = deck.board.mode_generation;
         assert!(!deck.pull_to_first(&mut workspace));
         assert_eq!(deck.board.mode_generation, mode + 1);
+    }
+    #[test]
+    fn ready_visits_clear_counts_and_flags_before_idle_cycling() {
+        let (mut workspace, mut reports) = setup(8);
+        for report in reports.values_mut() {
+            report.state = State::Idle;
+        }
+        let mut deck = Dashboard::default();
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
+        assert_eq!(deck.board.ready_count, 0);
+        let positions = workspace.deck_positions.clone();
+        let mut agents = HashMap::new();
+        for (slot, state) in [(3, State::Idle), (6, State::Done), (7, State::Idle)] {
+            let pane = positions[slot].unwrap();
+            let mut agent = Report::default();
+            agent.apply(Event::Begin(snapshot(State::Working, "A", None)), 1, false);
+            let update = snapshot(state, "A", (state == State::Done).then_some("T1"));
+            agent.apply(Event::Update(update.clone()), 1, false);
+            reports.insert(
+                pane,
+                agent.view(pane, "task", &Activity::default()).unwrap(),
+            );
+            agents.insert(pane, (agent, update));
+        }
+        let mut focused = positions[0];
+        deck.update(&mut workspace, &reports, &HashMap::new(), focused);
+        assert_eq!(deck.board.ready_count, 3);
+        // The legacy Idle command still includes quiet panes.
+        assert_eq!(deck.cycle(3, focused), positions[1]);
+        for (slot, remaining) in [(6, 2), (3, 1), (7, 0)] {
+            let pane = deck.cycle(2, focused).unwrap();
+            assert_eq!(Some(pane), positions[slot]);
+            let (agent, update) = agents.get_mut(&pane).unwrap();
+            agent.acknowledge();
+            agent.apply(Event::Update(update.clone()), 1, false);
+            let view = agent.view(pane, "task", &Activity::default()).unwrap();
+            assert_eq!(view.state, State::Idle);
+            assert!(!view.unseen);
+            reports.insert(pane, view);
+            focused = Some(pane);
+            deck.update(&mut workspace, &reports, &HashMap::new(), focused);
+            assert_eq!(deck.board.ready_count, remaining);
+            assert!(!deck.board.tile(slot).unseen);
+        }
+        assert_eq!(deck.cycle(2, focused), positions[0]);
     }
     #[test]
     fn ready_prioritizes_completions_then_cycles_idle() {
