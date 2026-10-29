@@ -152,7 +152,19 @@ impl App {
             self.deck_focused()
         };
         if let Some(pane) = self.deck.dashboard.cycle(group, focused) {
+            self.reveal_deck_pane_with_host(pane, host);
+        }
+    }
+    fn back_deck_with_host(&mut self, host: Option<&mut Host>) {
+        self.sync_deck_with_host(host.as_deref());
+        let focused = self.active.and_then(|id| self.focused(id));
+        if let Some(pane) = self.deck.dashboard.back(focused) {
             self.reveal_pane_with_host(pane, host);
+        }
+    }
+    fn reveal_deck_pane_with_host(&mut self, pane: Id, host: Option<&mut Host>) {
+        if self.reveal_pane_with_host(pane, host) {
+            self.deck.dashboard.visited(pane);
         }
     }
     fn pull_deck_to_first(&mut self) {
@@ -187,6 +199,7 @@ impl App {
             StreamDeckAction::Working => self.cycle_deck_with_host(1, host.as_deref_mut()),
             StreamDeckAction::Done => self.cycle_deck_with_host(2, host.as_deref_mut()),
             StreamDeckAction::Idle => self.cycle_deck_with_host(3, host.as_deref_mut()),
+            StreamDeckAction::Back => self.back_deck_with_host(host.as_deref_mut()),
             StreamDeckAction::NextPage => self.deck.dashboard.page(),
             StreamDeckAction::Brightness => {
                 if let Some(worker) = &self.deck.worker {
@@ -293,6 +306,11 @@ impl App {
         {
             self.changed();
         }
+        // Back follows logical focus even before native activation or in hidden windows.
+        self.deck.dashboard.board.back_count = self
+            .deck
+            .dashboard
+            .back_count(self.active.and_then(|id| self.focused(id)));
     }
     fn live_deck_target(&self, target: Target) -> bool {
         self.workspace
@@ -311,7 +329,7 @@ impl App {
     pub(super) fn reveal_pane(&mut self, pane: Id) {
         self.reveal_pane_with_host(pane, None);
     }
-    fn reveal_pane_with_host(&mut self, pane: Id, mut host: Option<&mut Host>) {
+    fn reveal_pane_with_host(&mut self, pane: Id, mut host: Option<&mut Host>) -> bool {
         let target = self.workspace.windows.iter().find_map(|window| {
             window
                 .tabs
@@ -320,14 +338,14 @@ impl App {
                 .map(|tab| (window.id, tab, window.quick))
         });
         let Some((id, tab, quick)) = target else {
-            return;
+            return false;
         };
         let native = self
             .windows
             .iter()
             .find_map(|(native, host)| (host.id == id).then_some(*native));
         if native.is_none() && host.as_deref().is_none_or(|host| host.id != id) {
-            return;
+            return false;
         }
         let index = self.index(id).unwrap();
         self.workspace.windows[index].active_tab = tab;
@@ -352,6 +370,7 @@ impl App {
         if host.is_none() {
             self.sync_host_state();
         }
+        true
     }
     pub(super) fn reveal_host(&mut self, host: &mut Host, quick: bool) {
         if quick {
@@ -410,7 +429,7 @@ impl App {
                     && let Some(target) = capture.target.filter(|t| self.live_deck_target(*t))
                 {
                     self.deck.dashboard.board.page = capture.slot / rustty_app::deck::PAGE_SIZE;
-                    self.reveal_pane(target.pane);
+                    self.reveal_deck_pane_with_host(target.pane, None);
                 }
             }
             Action::Swap {
@@ -430,6 +449,12 @@ impl App {
                 self.sync_deck();
                 if generation == self.deck.dashboard.board.mode_generation {
                     self.cycle_deck(group);
+                }
+            }
+            Action::Back { generation } => {
+                self.sync_deck();
+                if generation == self.deck.dashboard.board.mode_generation {
+                    self.back_deck_with_host(None);
                 }
             }
             Action::PullToFirst {
@@ -846,6 +871,68 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
     app.windows.insert(key, host);
     assert_eq!(app.active, Some(two));
     assert_eq!(app.focused(two), Some(second));
+    // Physical taps and Ready share the trail; Back also works with a borrowed host.
+    app.sync_deck();
+    let capture = app.deck.dashboard.board.tile(0).capture;
+    app.deck_action(Action::Focus(capture));
+    app.deck_action(Action::Focus(capture));
+    assert_eq!(app.focused(app.active.unwrap()), Some(first));
+    app.panes.get_mut(&second).unwrap().agent.apply(
+        AgentEvent::Update(snapshot(State::Done, Some("ready-first".into()))),
+        0,
+        false,
+    );
+    assert!(app.deck_command(StreamDeckAction::Done));
+    assert_eq!(app.focused(app.active.unwrap()), Some(second));
+    assert_eq!(
+        app.panes[&second].deck_view(second, "").unwrap().state,
+        State::Idle
+    );
+    assert!(app.deck_command(StreamDeckAction::Done));
+    assert_eq!(app.focused(app.active.unwrap()), Some(first));
+    for pane in [first, second] {
+        app.panes.get_mut(&pane).unwrap().title = "keep until reset".into();
+    }
+    let mut binding = config::KeyBinding::parse("ctrl+alt+b=stream_deck:back")?;
+    binding.actions.push(config::Action::Reset);
+    binding
+        .actions
+        .push(config::Action::StreamDeck(StreamDeckAction::Back));
+    let mut host = app.windows.remove(&native).unwrap();
+    assert!(app.host_binding(event_loop, &mut host, binding));
+    app.windows.insert(native, host);
+    assert_eq!(app.panes[&first].title, "keep until reset");
+    assert!(app.panes[&second].title.is_empty());
+    assert_eq!(app.focused(app.active.unwrap()), Some(first));
+    assert!(app.deck_command(StreamDeckAction::Back));
+    assert_eq!(app.focused(app.active.unwrap()), Some(second));
+    // The duplicate tap did not add a fourth destination.
+    assert!(app.deck_command(StreamDeckAction::Back));
+    assert_eq!(app.focused(app.active.unwrap()), Some(second));
+    assert_eq!(app.deck.dashboard.board.back_count, 0);
+    app.deck_action(Action::Focus(app.deck.dashboard.board.tile(0).capture));
+    for pane in app.panes.values_mut() {
+        pane.agent.clear();
+    }
+    app.sync_deck();
+    assert!(app.deck.dashboard.board.no_sessions);
+    let generation = app.deck.dashboard.board.mode_generation;
+    app.deck_action(Action::Back {
+        generation: generation.wrapping_sub(1),
+    });
+    assert_eq!(app.focused(app.active.unwrap()), Some(first));
+    app.deck_action(Action::Back { generation });
+    assert_eq!(app.focused(app.active.unwrap()), Some(second));
+    app.reveal_pane(first);
+    assert!(app.deck_command(StreamDeckAction::Back));
+    assert_eq!(app.focused(app.active.unwrap()), Some(second));
+    for (id, state) in [(first, State::Idle), (second, State::Working)] {
+        app.panes.get_mut(&id).unwrap().agent.apply(
+            AgentEvent::Begin(snapshot(state, None)),
+            0,
+            false,
+        );
+    }
     for scenario in 0..3 {
         if scenario == 2 {
             let window = app.workspace.windows.remove(app.index(two).unwrap());
@@ -1274,7 +1361,7 @@ printf '\033]133;D;0\007'; exec sleep 120"#
     assert!(app.deck.worker.is_none());
     assert!(app.deck.discovery.is_none());
     eprintln!(
-        "Native Stream Deck smoke: exact panes across windows/tabs, completion acknowledgement, qualifying command tiles and agent precedence, progress-only Working/Attention/Done cycling and timeout removal, menu/shortcut chains, pull-to-first, stale control rejection, disconnected gating, input preservation, pane removal and save-state-never passed; no USB used; native minimization and quick animation {}",
+        "Native Stream Deck smoke: exact panes across windows/tabs, Ready-before-Idle and Back trails across taps/shortcut chains and ended reports, completion acknowledgement, qualifying command tiles and agent precedence, progress-only Working/Attention/Done cycling and timeout removal, menu/shortcut chains, pull-to-first, stale control rejection, disconnected gating, input preservation, pane removal and save-state-never passed; no USB used; native minimization and quick animation {}",
         if app.background_smoke {
             "skipped"
         } else {

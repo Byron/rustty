@@ -4727,6 +4727,7 @@ impl App {
                             | config::StreamDeckAction::Working
                             | config::StreamDeckAction::Done
                             | config::StreamDeckAction::Idle
+                            | config::StreamDeckAction::Back
                     )
             );
             let performed = if target == host.id {

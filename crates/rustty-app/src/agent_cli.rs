@@ -39,11 +39,16 @@ and Working stay quiet; later Idle transitions flash too. Flashing sends no inpu
 
 Fixed board:
   Agent 1   Agent 2   Agent 3       ! Input     ▂█▅ Working
-  Agent 4   Agent 5   Agent 6       ✓ Done       ● Idle
+  Agent 4   Agent 5   Agent 6       ✓ Ready      ‹ Back
   Agent 7   Agent 8   Agent 9       ☀ Light      › Page
 
-The four state keys cycle matching panes across all windows, tabs and pages.
-Their numbers count matches; an empty group is dimmed and does nothing.
+Input and Working cycle matching panes across all windows, tabs and pages.
+Ready visits Done panes first, then cycles Idle panes when none are ready.
+Their numbers count matches; Ready counts both Done and Idle.
+Back retraces panels reached by agent keys, state keys or their menu/shortcut
+commands, skipping closed panes. Ordinary focus changes do not add visits.
+Repeated taps on the same pane add no visit; Back does not add itself to history.
+Unavailable controls are dimmed and do nothing.
 Light shows the selected brightness: 100 → 25 → 50 → 75 → 100%.
 Page shows current/total; tap to advance and wrap.
 Hold Page for one second to open a one-shot menu, then press the top-left
@@ -57,11 +62,12 @@ all menu commands can be assigned keyboard shortcuts.
 Tap an agent to reveal its exact pane. Revealing Done acknowledges it locally.
 Hold an agent for two seconds, then press another agent slot to swap or move it.
 Press the source again to cancel. Empty/reserved destinations accept swaps.
-In move mode Page and Light still work; the four state-cycle keys are disabled.
+In move mode Page and Light still work; state keys and Back are disabled.
 Keys never approve requests or send input to an agent.
 New reporters use free slots, then reclaim inactive reservations before adding pages.
 
-With no reporting sessions the RUS/TTY/🦀💻✨/TTY/RUS board is decorative and inert.
+With no reporting sessions the RUS/TTY/🦀💻✨/TTY/RUS board is decorative;
+Back remains available while earlier visited panes are open. History is not saved.
 This command prints a reference only; it does not connect to the USB device.
 ";
 

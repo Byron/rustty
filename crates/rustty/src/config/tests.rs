@@ -1851,6 +1851,7 @@ fn stream_deck_commands_are_bindable_and_reject_unknown_arguments() {
         ("working", StreamDeckAction::Working),
         ("done", StreamDeckAction::Done),
         ("idle", StreamDeckAction::Idle),
+        ("back", StreamDeckAction::Back),
         ("next_page", StreamDeckAction::NextPage),
         ("brightness", StreamDeckAction::Brightness),
         ("pull_to_first", StreamDeckAction::PullToFirst),

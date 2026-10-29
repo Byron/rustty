@@ -1652,8 +1652,8 @@ fn make_menu(
     for (name, action) in [
         ("Next Attention", StreamDeckAction::NeedsInput),
         ("Next Working", StreamDeckAction::Working),
-        ("Next Done", StreamDeckAction::Done),
-        ("Next Idle", StreamDeckAction::Idle),
+        ("Next Ready", StreamDeckAction::Done),
+        ("Back", StreamDeckAction::Back),
         ("Next Page", StreamDeckAction::NextPage),
         ("Cycle Brightness", StreamDeckAction::Brightness),
         ("Pull to First Page", StreamDeckAction::PullToFirst),

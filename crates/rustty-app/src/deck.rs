@@ -275,6 +275,7 @@ pub struct Board {
     pub tiles: Vec<Tile>,
     pub page: usize,
     pub counts: [usize; 4],
+    pub back_count: usize,
     pub no_sessions: bool,
     pub brightness: u8,
     pub screens_awake: bool,
@@ -287,6 +288,7 @@ impl Default for Board {
             tiles: Vec::new(),
             page: 0,
             counts: [0; 4],
+            back_count: 0,
             no_sessions: true,
             brightness: 100,
             screens_awake: true,
@@ -465,6 +467,7 @@ pub struct Dashboard {
     positions: Vec<Option<Id>>,
     last_activity: Vec<Option<Instant>>,
     groups: [Vec<(usize, Id)>; 4],
+    history: Vec<Id>,
 }
 impl Dashboard {
     pub fn screens_awake(&mut self, awake: bool) {
@@ -491,6 +494,9 @@ impl Dashboard {
             .flat_map(|w| &w.tabs)
             .flat_map(|t| t.pane_ids())
             .collect();
+        self.history.retain(|pane| live.contains(pane));
+        self.history.dedup();
+        self.board.back_count = self.back_count(focused);
         if self.gesture.is_some_and(|source| {
             source.target.is_none_or(|target| {
                 !live.contains(&target.pane)
@@ -604,6 +610,11 @@ impl Dashboard {
         if self.moving {
             return None;
         }
+        let group = if group == 2 && self.groups[2].is_empty() {
+            3
+        } else {
+            group
+        };
         let members = self.groups.get(group)?;
         let cursor = members
             .iter()
@@ -616,14 +627,40 @@ impl Dashboard {
             .copied()?;
         // Keep the slot cursor after Done acknowledgement removes its member.
         self.cursors[group] = Some(next.0);
-        if let Some(tile) =
-            self.board.tiles.iter().find(|tile| {
-                tile.capture.assignment == Some(next.1) && tile.capture.target.is_some()
-            })
+        self.show_page(next.1);
+        Some(next.1)
+    }
+    pub fn visited(&mut self, pane: Id) {
+        if self.history.last() != Some(&pane) {
+            self.history.push(pane);
+        }
+    }
+    pub fn back_count(&self, focused: Option<Id>) -> usize {
+        self.history.len()
+            - usize::from(focused.is_some() && self.history.last().copied() == focused)
+    }
+    pub fn back(&mut self, focused: Option<Id>) -> Option<Id> {
+        if self.moving {
+            return None;
+        }
+        let index = self
+            .history
+            .iter()
+            .rposition(|pane| Some(*pane) != focused)?;
+        let pane = self.history[index];
+        self.history.truncate(index + 1);
+        self.show_page(pane);
+        Some(pane)
+    }
+    fn show_page(&mut self, pane: Id) {
+        if let Some(tile) = self
+            .board
+            .tiles
+            .iter()
+            .find(|tile| tile.capture.assignment == Some(pane) && tile.capture.target.is_some())
         {
             self.board.page = tile.capture.slot / PAGE_SIZE;
         }
-        Some(next.1)
     }
     pub fn page(&mut self) {
         self.board.page = (self.board.page + 1) % self.board.pages();
@@ -1697,6 +1734,72 @@ mod tests {
         let mode = deck.board.mode_generation;
         assert!(!deck.pull_to_first(&mut workspace));
         assert_eq!(deck.board.mode_generation, mode + 1);
+    }
+    #[test]
+    fn ready_prioritizes_completions_then_cycles_idle() {
+        let (mut workspace, mut reports) = setup(8);
+        let mut deck = Dashboard::default();
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
+        let positions = workspace.deck_positions.clone();
+        let mut focused = positions[3];
+        for slot in [2, 6] {
+            let pane = deck.cycle(2, focused).unwrap();
+            assert_eq!(Some(pane), positions[slot]);
+            reports.get_mut(&pane).unwrap().state = State::Idle;
+            focused = Some(pane);
+            deck.update(&mut workspace, &reports, &HashMap::new(), focused);
+        }
+        for slot in [7, 2, 3, 6] {
+            focused = deck.cycle(2, focused);
+            assert_eq!(focused, positions[slot]);
+        }
+        reports.get_mut(&positions[2].unwrap()).unwrap().state = State::Done;
+        deck.update(&mut workspace, &reports, &HashMap::new(), focused);
+        assert_eq!(deck.cycle(2, focused), positions[2]);
+        deck.moving = true;
+        assert_eq!(deck.cycle(2, focused), None);
+    }
+    #[test]
+    fn back_retraces_visits_without_reports_and_skips_closed_panes() {
+        let (mut workspace, mut reports) = setup(12);
+        let mut deck = Dashboard::default();
+        deck.update(&mut workspace, &reports, &HashMap::new(), None);
+        let panes: Vec<_> = workspace
+            .deck_positions
+            .iter()
+            .map(|id| id.unwrap())
+            .collect();
+        for pane in [panes[10], panes[1], panes[2], panes[2], panes[3]] {
+            deck.visited(pane);
+        }
+        reports.clear();
+        workspace.close_pane(panes[2]);
+        deck.update(&mut workspace, &reports, &HashMap::new(), Some(panes[3]));
+        assert!(deck.board.no_sessions);
+        assert_eq!(deck.board.back_count, 2);
+        deck.moving = true;
+        assert_eq!(deck.back(Some(panes[3])), None);
+        deck.moving = false;
+        assert_eq!(deck.back(Some(panes[3])), Some(panes[1]));
+        assert_eq!(deck.back(Some(panes[1])), Some(panes[10]));
+        assert_eq!(deck.back(Some(panes[10])), None);
+        // Ordinary focus changes do not enter the trail; new visits branch from Back.
+        deck.visited(panes[1]);
+        deck.visited(panes[3]);
+        assert_eq!(deck.back(Some(panes[5])), Some(panes[3]));
+        assert_eq!(deck.back(Some(panes[3])), Some(panes[1]));
+        deck.visited(panes[4]);
+        assert_eq!(deck.back(Some(panes[4])), Some(panes[1]));
+        assert_eq!(deck.back(Some(panes[1])), Some(panes[10]));
+        assert_eq!(deck.back(Some(panes[10])), None);
+        // A page is restored for live reporting targets.
+        deck.visited(panes[10]);
+        deck.visited(panes[3]);
+        let (_, restored) = setup(12);
+        reports = restored;
+        deck.update(&mut workspace, &reports, &HashMap::new(), Some(panes[3]));
+        assert_eq!(deck.back(Some(panes[3])), Some(panes[10]));
+        assert_eq!(deck.board.page, 1);
     }
     #[test]
     fn slots_reservations_cycles_and_closed_panes() {
