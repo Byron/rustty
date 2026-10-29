@@ -382,6 +382,7 @@ fn actions() -> Vec<(&'static str, Action)> {
         ("New Floating Panel", Action::NewFloatingPane),
         ("Zoom Pane", Action::ToggleSplitZoom),
         ("Zoom Quadrant", Action::ToggleQuadrantZoom),
+        ("Toggle Quad Root", Action::ToggleQuadRoot),
         ("Equalize Splits", Action::EqualizeSplits),
         ("Find", Action::StartSearch),
         ("Open Configuration", Action::OpenConfig),

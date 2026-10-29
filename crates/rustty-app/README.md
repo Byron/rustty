@@ -351,6 +351,31 @@ Tabs, splits, zoom, quadrant navigation, clipboard and
 search use the configured Ghostty keybindings. Window layouts and pane directories
 are saved separately under `com.rustty.app`.
 
+**Quad roots** add recursive quad levels to local tiled tabs. Zoom into an inferred
+quad, then use **Toggle Quad Root** in the command palette to designate the focused
+sub-quad and zoom into it. The same inference rule applies at each level: the first
+split on both axes identifies the subtree. A leaf can be designated too; subsequent
+splits stay inside its root. While zoomed into a root, the action tries to create
+another level. From its parent view, it removes the focused child's designation
+from any contained panel. Removing a parent also clears descendant designations,
+leaving panels and splits intact.
+There is no fixed nesting limit beyond the existing layout limits.
+
+Quad Zoom toggles between a designated child and its parent. If the focused branch
+has a designated child, Quad Zoom enters it instead of leaving the parent; selecting
+an ancestor in the breadcrumb returns directly to that level. The outliner,
+breadcrumbs, and pinned paths show the extra levels. Quad navigation uses the
+visible hierarchy, while holding the configured Quad Peek chord still shows the
+original inferred quads; releasing it restores the nested zoom when staying in that
+root. Designations survive undo, saved state, and layout imports, and follow surviving
+subtrees when panels close. They are unavailable in server-owned tmuxx tabs.
+
+The action has no default shortcut. For example:
+
+```ini
+keybind = ctrl+shift+g=toggle_quad_root
+```
+
 Splitting a pane shrinks it to make room for the new pane in 100 ms by default.
 Closing a pane or exiting its shell expands surviving panes with the same duration,
 including when returning to a single pane.

@@ -529,6 +529,59 @@ mod tests {
         assert!(!state.is_running());
         assert_eq!(restored, nested);
     }
+    #[test]
+    fn designated_quad_levels_animate_with_their_endpoint_grids() {
+        let mut tab = quadrants();
+        tab.split(11, 12, Direction::Down, "/tmp".into());
+        tab.focus(2);
+        tab.split(13, 14, Direction::Down, "/tmp".into());
+        tab.focus(2);
+        tab.toggle_quadrant_zoom();
+        assert!(tab.toggle_quad_root());
+        tab.split(15, 16, Direction::Right, "/tmp".into());
+        tab.split(17, 18, Direction::Down, "/tmp".into());
+        tab.focus(2);
+        tab.split(19, 20, Direction::Down, "/tmp".into());
+        let root = tab.clone();
+        let mut child = root.clone();
+        assert!(child.toggle_quad_root());
+        let mut parent = root.clone();
+        parent.toggle_quadrant_zoom();
+        for (from, to) in [
+            (&parent, &root),
+            (&root, &child),
+            (&child, &root),
+            (&root, &parent),
+        ] {
+            let now = Instant::now();
+            let mut state = State::default();
+            let source = update(&mut state, from, false, now);
+            update(&mut state, to, false, now);
+            assert!(state.is_running());
+            let before = update(&mut state, to, false, now + ZOOM_DURATION / 4);
+            let after = update(&mut state, to, false, now + ZOOM_DURATION * 3 / 4);
+            assert_eq!(
+                state.display_zoom(),
+                Some((to.zoom, to.quadrant_zoom, false))
+            );
+            let end = update(&mut state, to, false, now + ZOOM_DURATION);
+            assert!(!state.is_running());
+            for endpoint in &source {
+                assert_eq!(pane(&before, endpoint.id).layout, endpoint.layout);
+            }
+            let expected = to.layout(CONTENT, false, 16.0);
+            assert_eq!(end.len(), expected.len());
+            for (id, rect) in expected {
+                let rect = egui::Rect::from_min_size(
+                    egui::pos2(rect.x, rect.y),
+                    egui::vec2(rect.width, rect.height),
+                )
+                .shrink(1.0);
+                assert_eq!(pane(&after, id).layout, rect);
+                assert_eq!(pane(&end, id).rect, rect);
+            }
+        }
+    }
 
     #[test]
     fn nested_zoom_keeps_background_labels_centered_in_both_directions() {

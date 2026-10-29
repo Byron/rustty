@@ -318,6 +318,7 @@ pub fn search_shortcut(action: &config::Action) -> bool {
             | EqualizeSplits
             | ToggleSplitZoom
             | ToggleQuadrantZoom
+            | ToggleQuadRoot
             | ToggleQuickTerminal
             | ToggleFullscreen
             | ToggleCommandPalette

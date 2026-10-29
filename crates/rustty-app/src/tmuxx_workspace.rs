@@ -442,7 +442,11 @@ impl Mapping {
             Action::ToggleSplitZoom => target("resize-pane", "-Z", pid, '%'),
             Action::CloseSurface => target("kill-pane", "", pid, '%'),
             Action::CloseTab => target("kill-window", "", wid, '@'),
-            Action::Undo | Action::Redo | Action::MoveTab(_) | Action::OpenLayout => {
+            Action::Undo
+            | Action::Redo
+            | Action::MoveTab(_)
+            | Action::OpenLayout
+            | Action::ToggleQuadRoot => {
                 return Some(Err(
                     "this action is unavailable for a server-owned workspace".into(),
                 ));
