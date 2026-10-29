@@ -383,7 +383,9 @@ impl DirectoryLabel {
     }
 
     pub fn centered_in_pane(&self, tab: &Tab, pane: Id, quadrant: Option<Id>) -> bool {
-        self.large(quadrant.is_some() && tab.root.quadrant(pane) == quadrant)
+        self.large(
+            quadrant.is_some_and(|id| tab.root.node(id).is_some_and(|node| node.contains(pane))),
+        )
     }
 
     pub fn shows_activity(&self, active: bool) -> bool {

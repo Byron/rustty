@@ -312,6 +312,7 @@ impl GhosttyState {
             focused,
             zoom,
             quadrant_zoom,
+            quad_roots: Default::default(),
             remembered: BTreeMap::new(),
             overlays: Vec::new(),
             server_size: None,

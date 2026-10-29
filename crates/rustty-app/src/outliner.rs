@@ -321,22 +321,38 @@ pub fn breadcrumb(tab: &Tab, labels: &HashMap<Id, String>) -> Vec<Row> {
 }
 
 fn tab_rows(tab: &Tab, labels: &HashMap<Id, String>, depth: usize, active: bool) -> Vec<Row> {
-    let layout = tab.layout(Rect::UNIT, true, 0.0);
+    if tab.quad_roots.contains(&tab.root.id) {
+        let mut rows = vec![quad_row(tab, labels, &tab.root, Rect::UNIT, depth, active)];
+        rows.extend(tree_rows(tab, &tab.root, labels, depth + 1, active));
+        return rows;
+    }
+    tree_rows(tab, &tab.root, labels, depth, active)
+}
+
+fn tree_rows(
+    tab: &Tab,
+    tree: &Tree,
+    labels: &HashMap<Id, String>,
+    depth: usize,
+    active: bool,
+) -> Vec<Row> {
+    let layout = if tree.id == tab.root.id {
+        tab.layout(Rect::UNIT, true, 0.0)
+    } else {
+        tree.layout(Rect::UNIT)
+    };
     let mut rows = Vec::new();
     let mut seen = HashSet::new();
     for &(pane, rect) in &layout {
-        if let Some(quad) = tab.root.quadrant(pane) {
+        if let Some(quad) = tab
+            .quad_path(pane)
+            .into_iter()
+            .find(|id| *id != tree.id && tree.node(*id).is_some())
+        {
             if !seen.insert(quad) {
                 continue;
             }
             let node = tab.root.node(quad).unwrap();
-            let children = node.layout(Rect::UNIT);
-            let mut names: Vec<_> = children
-                .iter()
-                .map(|(pane, _)| pane_label(*pane, labels))
-                .collect();
-            names.sort_unstable();
-            names.dedup();
             let rect = layout
                 .iter()
                 .filter(|(pane, _)| node.contains(*pane))
@@ -348,33 +364,49 @@ fn tab_rows(tab: &Tab, labels: &HashMap<Id, String>, depth: usize, active: bool)
                     height: (a.y + a.height).max(b.y + b.height) - a.y.min(b.y),
                 })
                 .unwrap();
-            rows.push(Row {
-                target: Target::Quad {
-                    tab: tab.id,
-                    node: quad,
-                },
-                depth,
-                label: names.join(", "),
-                tab_index: None,
-                rect,
-                focused: false,
-                ancestor: active && node.contains(tab.focused),
-                color: tab.color,
-                tmuxx: None,
-                zoom: if tab.quadrant_zoom == Some(quad) {
-                    Zoom::Quad
-                } else {
-                    Zoom::None
-                },
-            });
-            for (pane, rect) in children {
-                rows.push(pane_row(tab, labels, pane, rect, depth + 1, active));
-            }
+            rows.push(quad_row(tab, labels, node, rect, depth, active));
+            rows.extend(tree_rows(tab, node, labels, depth + 1, active));
         } else {
             rows.push(pane_row(tab, labels, pane, rect, depth, active));
         }
     }
     rows
+}
+
+fn quad_row(
+    tab: &Tab,
+    labels: &HashMap<Id, String>,
+    node: &Tree,
+    rect: Rect,
+    depth: usize,
+    active: bool,
+) -> Row {
+    let mut names: Vec<_> = node
+        .panes()
+        .into_iter()
+        .map(|pane| pane_label(pane, labels))
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    Row {
+        target: Target::Quad {
+            tab: tab.id,
+            node: node.id,
+        },
+        depth,
+        label: names.join(", "),
+        tab_index: None,
+        rect,
+        focused: false,
+        ancestor: active && node.contains(tab.focused),
+        color: tab.color,
+        tmuxx: None,
+        zoom: if tab.quadrant_zoom == Some(node.id) {
+            Zoom::Quad
+        } else {
+            Zoom::None
+        },
+    }
 }
 
 fn pane_row(
@@ -497,6 +529,22 @@ fn select_in_window(window: &mut WindowState, target: Target, active: bool) -> O
         return Some(tab.focused);
     }
     let node = target_node(tab, target)?;
+    if !tab.quad_roots.is_empty() && matches!(target, Target::Quad { .. }) {
+        let id = node.id;
+        let pane = if node.contains(tab.focused) {
+            tab.focused
+        } else {
+            *node.panes().first()?
+        };
+        if active && window.active_tab == index && tab.zoom == Some(id) && tab.focused == pane {
+            return None;
+        }
+        window.active_tab = index;
+        tab.quadrant_zoom = Some(id);
+        tab.zoom = Some(id);
+        tab.focus(pane);
+        return Some(tab.focused);
+    }
     if active && window.active_tab == index && node.contains(tab.focused) {
         return None;
     }
@@ -512,7 +560,7 @@ fn target_node(tab: &Tab, target: Target) -> Option<&Tree> {
         Target::Quad { node, .. } => {
             let node = tab.root.node(node)?;
             let pane = *node.panes().first()?;
-            (tab.root.quadrant(pane) == Some(node.id)).then_some(node)
+            tab.quad_path(pane).contains(&node.id).then_some(node)
         }
         Target::Pane { pane, .. } => {
             let node = tab.root.node(pane)?;
@@ -546,6 +594,74 @@ mod tests {
         tab.focus(2);
         tab.split(9, 10, Direction::Right, "/tmp".into());
         window
+    }
+    #[test]
+    fn nested_quad_roots_extend_breadcrumbs_pin_paths_and_ancestor_selection() {
+        let mut window = quads();
+        let tab = &mut window.tabs[0];
+        tab.split(11, 12, Direction::Down, "/tmp".into());
+        tab.focus(2);
+        tab.split(13, 14, Direction::Down, "/tmp".into());
+        tab.focus(2);
+        tab.toggle_quadrant_zoom();
+        assert!(tab.toggle_quad_root());
+        assert_eq!(tab.zoom, Some(2));
+        tab.split(15, 16, Direction::Right, "/tmp".into());
+        tab.split(17, 18, Direction::Down, "/tmp".into());
+        tab.focus(2);
+        tab.split(19, 20, Direction::Down, "/tmp".into());
+        tab.focus(2);
+        assert!(tab.toggle_quad_root());
+        let labels = tab
+            .pane_ids()
+            .into_iter()
+            .map(|pane| (pane, format!("panel {pane}")))
+            .collect();
+        let path = breadcrumb(tab, &labels);
+        assert_eq!(
+            path.iter().map(|row| row.target).collect::<Vec<_>>(),
+            [
+                Target::Quad { tab: 1, node: 10 },
+                Target::Quad { tab: 1, node: 16 },
+                Target::Quad { tab: 1, node: 2 },
+                Target::Pane { tab: 1, pane: 2 },
+            ]
+        );
+        assert_eq!(
+            path.iter().map(|row| row.depth).collect::<Vec<_>>(),
+            [0, 1, 2, 3]
+        );
+        let outline = rows(&window, &labels, &HashMap::new());
+        let pins = pinned_paths(&outline, &[2]);
+        assert_eq!(
+            pins[0].iter().map(|row| row.target).collect::<Vec<_>>(),
+            path.iter().map(|row| row.target).collect::<Vec<_>>()
+        );
+        let mut expansion = Expansion::default();
+        expansion.sync(&outline);
+        expansion.toggle(&outline, 0, true);
+        for row in path.iter().take(3) {
+            assert!(expansion.is_open(row.target));
+        }
+        assert_eq!(select(&mut window, path[0].target), Some(2));
+        assert_eq!(window.tabs[0].zoom, Some(10));
+        assert_eq!(select(&mut window, path[1].target), Some(2));
+        assert_eq!(window.tabs[0].zoom, Some(16));
+    }
+    #[test]
+    fn a_quad_root_that_becomes_the_whole_tab_still_has_a_group_row() {
+        let mut window = window();
+        window.tabs[0].quad_roots.insert(2);
+        window.tabs[0].zoom = Some(2);
+        window.tabs[0].quadrant_zoom = Some(2);
+        let path = breadcrumb(&window.tabs[0], &HashMap::new());
+        assert_eq!(path.len(), 2);
+        assert_eq!(path[0].target, Target::Quad { tab: 1, node: 2 });
+        assert_eq!(path[1].depth, 1);
+        window.tabs[0].toggle_quadrant_zoom();
+        assert!(window.tabs[0].toggle_quad_root());
+        assert!(window.tabs[0].quad_roots.is_empty());
+        assert_eq!(breadcrumb(&window.tabs[0], &HashMap::new()).len(), 1);
     }
 
     fn expansion_rows() -> Vec<Row> {

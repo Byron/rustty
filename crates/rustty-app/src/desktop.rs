@@ -3392,8 +3392,8 @@ impl App {
                         .or_default()
                         .start_if_idle(now);
                 }
-                if let Some(quadrant) = tab.root.quadrant(pane)
-                    && let Some(host) = self.windows.values().find(|host| host.id == window.id)
+                if let Some(host) = self.windows.values().find(|host| host.id == window.id)
+                    && let Some(quadrant) = tab.label_quad(pane, host.peek.is_some())
                     && self
                         .quadrant_label(tab, host, quadrant, host.peek, false)
                         .is_some_and(|label| !label.focused || host.peek.is_some())
@@ -3801,18 +3801,26 @@ impl App {
                         | Direction::QuadrantUp
                         | Direction::QuadrantDown
                 );
-                let target = from.and_then(|from| self.tab(host.id)?.target(from, direction));
+                let target = from.and_then(|from| {
+                    self.tab(host.id)?
+                        .target_for_view(from, direction, host.peek.is_some())
+                });
                 let target = target.map(|pane| {
                     if quadrant {
                         self.tab(host.id)
-                            .and_then(|tab| tab.remembered_for(pane))
+                            .and_then(|tab| tab.remembered_for_view(pane, host.peek.is_some()))
                             .unwrap_or(pane)
                     } else {
                         pane
                     }
                 });
                 let moved = target.is_some() && target != from;
-                if quadrant {
+                if quadrant
+                    && (host.peek.is_some()
+                        || self
+                            .tab(host.id)
+                            .is_none_or(|tab| tab.quad_roots.is_empty()))
+                {
                     if host.peek.is_none()
                         && let Some(tab) = self.tab_mut(host.id)
                     {
@@ -3861,6 +3869,18 @@ impl App {
             Action::ToggleQuadrantZoom => {
                 if let Some(tab) = self.tab_mut(host.id) {
                     tab.toggle_quadrant_zoom();
+                }
+            }
+            Action::ToggleQuadRoot => {
+                if let Some(peek) = host.peek.take()
+                    && let Some(tab) = self.tab_mut(host.id)
+                {
+                    let target = tab.finish_peek(peek);
+                    tab.focus(target);
+                }
+                self.remember();
+                if let Some(tab) = self.tab_mut(host.id) {
+                    tab.toggle_quad_root();
                 }
             }
             Action::ResizeSplit { direction, amount } => {
@@ -4996,7 +5016,12 @@ impl App {
                 let binding = self.config().keybinds[index].clone();
                 let flags = binding.flags;
                 let zoom_toggle = binding.actions.iter().any(|action| {
-                    matches!(action, Action::ToggleSplitZoom | Action::ToggleQuadrantZoom)
+                    matches!(
+                        action,
+                        Action::ToggleSplitZoom
+                            | Action::ToggleQuadrantZoom
+                            | Action::ToggleQuadRoot
+                    )
                 });
                 // Find permits repeats through its UI key tracking, but zoom still fires once.
                 if flags.consumed
@@ -6075,7 +6100,7 @@ impl App {
                     let mut quadrants = BTreeMap::<Id, egui::Rect>::new();
                     for visual in &zoom_panes {
                         let (pane, rect) = (visual.id, visual.rect);
-                        if let Some(quadrant) = active.root.quadrant(pane) {
+                        if let Some(quadrant) = active.label_quad(pane, peek.is_some()) {
                             quadrants
                                 .entry(quadrant)
                                 .and_modify(|bounds| *bounds = bounds.union(rect))
@@ -6163,7 +6188,7 @@ impl App {
                                     label,
                                     bounds,
                                     centered,
-                                    shared: active.root.quadrant(id) == Some(id),
+                                    shared: active.label_quad(id, peek.is_some()) == Some(id),
                                     pinned,
                                     flash,
                                     accent: tab_accent,

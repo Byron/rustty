@@ -1,7 +1,7 @@
 //! Window/tab/split state, independent of native windows and running processes.
 use rustty::config::{Direction, Modifiers};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -532,6 +532,7 @@ pub struct Peek {
     pub chord: Modifiers,
     pub target: Id,
     pub full_zoom: Option<Id>,
+    pub quadrant: Id,
     pub navigation_used: bool,
 }
 
@@ -575,6 +576,8 @@ pub struct Tab {
     pub focused: Id,
     pub zoom: Option<Id>,
     pub quadrant_zoom: Option<Id>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub quad_roots: BTreeSet<Id>,
     pub remembered: BTreeMap<Id, Id>,
     pub panes: BTreeMap<Id, SavedPane>,
     #[serde(default)]
@@ -595,6 +598,7 @@ impl Tab {
             focused: pane,
             zoom: None,
             quadrant_zoom: None,
+            quad_roots: BTreeSet::new(),
             remembered: BTreeMap::new(),
             overlays: Vec::new(),
             server_size: None,
@@ -761,8 +765,9 @@ impl Tab {
         {
             return;
         }
-        if let Some(quadrant) = self.root.quadrant(self.focused) {
-            self.remembered.insert(quadrant, self.focused);
+        let previous_path = self.quad_path(self.focused);
+        for quadrant in &previous_path {
+            self.remembered.insert(*quadrant, self.focused);
         }
         self.focused = pane;
         if self.server_view.is_none()
@@ -770,15 +775,19 @@ impl Tab {
                 .zoom
                 .is_some_and(|id| self.root.node(id).is_none_or(|node| !node.contains(pane)))
         {
-            self.quadrant_zoom = self.quadrant_zoom.and_then(|_| self.root.quadrant(pane));
+            self.quadrant_zoom = self.quadrant_zoom.and_then(|zoom| {
+                let depth = previous_path.iter().position(|id| *id == zoom).unwrap_or(0);
+                let path = self.quad_path(pane);
+                path.get(depth).or_else(|| path.last()).copied()
+            });
             self.zoom = self.quadrant_zoom;
         }
-        if let Some(quadrant) = self.root.quadrant(pane) {
+        for quadrant in self.quad_path(pane) {
             self.remembered.insert(quadrant, pane);
         }
     }
     pub fn begin_peek(&mut self, chord: Modifiers) -> Option<Peek> {
-        self.quadrant_zoom?;
+        let quadrant = self.quadrant_zoom?;
         if chord == Modifiers::default() {
             return None;
         }
@@ -786,6 +795,7 @@ impl Tab {
             chord,
             target: self.focused,
             full_zoom: self.zoom.filter(|zoom| Some(*zoom) != self.quadrant_zoom),
+            quadrant,
             navigation_used: false,
         };
         self.zoom = None;
@@ -805,11 +815,16 @@ impl Tab {
                     && self.root.contains(*original)
             })
             .unwrap_or(peek.target);
-        self.quadrant_zoom = quadrant;
+        self.quadrant_zoom = self
+            .root
+            .node(peek.quadrant)
+            .filter(|node| node.contains(target))
+            .map(|node| node.id)
+            .or(quadrant);
         self.zoom = if Some(target) == peek.full_zoom {
             Some(target)
         } else {
-            quadrant
+            self.quadrant_zoom
         };
         target
     }
@@ -819,6 +834,114 @@ impl Tab {
             .get(&quadrant.id)
             .copied()
             .filter(|id| quadrant.contains(*id))
+    }
+    /// Inferred outer quads and designated roots, ordered from outside to inside.
+    pub fn quad_path(&self, pane: Id) -> Vec<Id> {
+        let inferred = self.root.quadrant(pane);
+        if self.quad_roots.is_empty() {
+            return inferred.into_iter().collect();
+        }
+        let mut path = Vec::new();
+        let mut node = &self.root;
+        while node.contains(pane) {
+            if Some(node.id) == inferred || self.quad_roots.contains(&node.id) {
+                path.push(node.id);
+            }
+            let Node::Split { first, second, .. } = &node.kind else {
+                break;
+            };
+            node = if first.contains(pane) { first } else { second };
+        }
+        path
+    }
+    fn parent_quad(&self, quad: Id) -> Option<Id> {
+        let pane = *self.root.node(quad)?.panes().first()?;
+        let path = self.quad_path(pane);
+        let index = path.iter().position(|id| *id == quad)?;
+        index.checked_sub(1).map(|index| path[index])
+    }
+    /// At a root, designate the focused sub-quad; from its parent, remove it.
+    pub fn toggle_quad_root(&mut self) -> bool {
+        if self.server_size.is_some() {
+            return false;
+        }
+        let scope = self.quadrant_zoom.unwrap_or(self.root.id);
+        let Some(tree) = self.root.node(scope) else {
+            return false;
+        };
+        let child = self.quad_path(self.focused).into_iter().find(|id| {
+            Some(*id) != self.quadrant_zoom
+                && tree.node(*id).is_some()
+                && self.quad_roots.contains(id)
+        });
+        if let Some(child) = child {
+            let subtree = tree.node(child).unwrap();
+            self.quad_roots.retain(|id| subtree.node(*id).is_none());
+            self.quadrant_zoom = (scope != self.root.id).then_some(scope);
+        } else {
+            // A designation adds a level inside an already zoomed quad.
+            if self.quadrant_zoom.is_none() {
+                return false;
+            }
+            let Some(child) = tree.quadrant(self.focused) else {
+                return false;
+            };
+            self.quad_roots.insert(child);
+            self.quadrant_zoom = Some(child);
+        }
+        self.zoom = self.quadrant_zoom;
+        true
+    }
+    fn navigation_tree(&self, peek: bool) -> &Tree {
+        if !peek && !self.quad_roots.is_empty() {
+            let scope = self
+                .quadrant_zoom
+                .and_then(|id| self.root.node(id))
+                .filter(|tree| self.quad_roots.iter().any(|id| tree.node(*id).is_some()));
+            if let Some(scope) = scope {
+                if self.navigation_quad(scope, self.focused, false).is_some() {
+                    return scope;
+                }
+                if let Some(parent) = self.parent_quad(scope.id).and_then(|id| self.root.node(id)) {
+                    return parent;
+                }
+            }
+        }
+        &self.root
+    }
+    fn navigation_quad(&self, tree: &Tree, pane: Id, peek: bool) -> Option<Id> {
+        if !peek && tree.id != self.root.id {
+            let pane = self
+                .root
+                .node(pane)
+                .and_then(|node| node.panes().first().copied())
+                .unwrap_or(pane);
+            return self
+                .quad_path(pane)
+                .into_iter()
+                .find(|id| *id != tree.id && tree.node(*id).is_some())
+                .or_else(|| tree.quadrant(pane));
+        }
+        tree.quadrant(pane)
+    }
+    pub fn remembered_for_view(&self, pane: Id, peek: bool) -> Option<Id> {
+        let tree = self.navigation_tree(peek);
+        let quad = self.root.node(self.navigation_quad(tree, pane, peek)?)?;
+        self.remembered
+            .get(&quad.id)
+            .copied()
+            .filter(|id| quad.contains(*id))
+    }
+    pub fn label_quad(&self, pane: Id, peek: bool) -> Option<Id> {
+        if !peek
+            && !self.quad_roots.is_empty()
+            && let Some(scope) = self.quadrant_zoom.and_then(|id| self.root.node(id))
+            && scope.contains(pane)
+            && self.quad_roots.iter().any(|id| scope.node(*id).is_some())
+        {
+            return self.navigation_quad(scope, pane, false).or(Some(scope.id));
+        }
+        self.root.quadrant(pane)
     }
     pub fn activate_quadrant(&self, pane: Id) -> Option<Id> {
         let quadrant = self.root.node(self.root.quadrant(pane)?)?;
@@ -843,7 +966,14 @@ impl Tab {
         if Some(zoom) == self.quadrant_zoom && !self.root.contains(zoom) {
             return false;
         }
-        self.zoom = self.quadrant_zoom.filter(|id| *id != zoom);
+        self.zoom = self.quadrant_zoom.filter(|id| *id != zoom).or_else(|| {
+            (!self.quad_roots.is_empty())
+                .then(|| self.parent_quad(zoom))
+                .flatten()
+        });
+        if self.zoom != self.quadrant_zoom {
+            self.quadrant_zoom = self.zoom;
+        }
         if self.zoom.is_none() {
             self.quadrant_zoom = None;
         }
@@ -851,22 +981,38 @@ impl Tab {
     }
     pub fn toggle_zoom(&mut self) {
         if self.zoom == Some(self.focused) {
+            if self.quadrant_zoom == self.zoom && self.quad_roots.contains(&self.focused) {
+                self.quadrant_zoom = self.parent_quad(self.focused);
+                self.zoom = self.quadrant_zoom;
+                return;
+            }
             self.zoom = self.quadrant_zoom.filter(|id| *id != self.focused);
         } else {
             self.zoom = Some(self.focused);
         }
     }
     pub fn toggle_quadrant_zoom(&mut self) {
-        let quadrant = self.root.quadrant(self.focused);
-        if quadrant == self.quadrant_zoom && self.zoom == quadrant {
-            self.zoom = None;
-            self.quadrant_zoom = None;
-        } else {
-            self.zoom = quadrant;
-            self.quadrant_zoom = quadrant;
+        if self.quadrant_zoom.is_some() && self.zoom != self.quadrant_zoom {
+            self.zoom = self.quadrant_zoom;
+            return;
         }
+        let path = self.quad_path(self.focused);
+        self.quadrant_zoom = match self
+            .quadrant_zoom
+            .and_then(|id| path.iter().position(|quad| *quad == id))
+        {
+            Some(index) => path
+                .get(index + 1)
+                .copied()
+                .or_else(|| index.checked_sub(1).map(|index| path[index])),
+            None => path.first().copied(),
+        };
+        self.zoom = self.quadrant_zoom;
     }
     pub fn target(&self, from: Id, direction: Direction) -> Option<Id> {
+        self.target_for_view(from, direction, false)
+    }
+    pub fn target_for_view(&self, from: Id, direction: Direction, peek: bool) -> Option<Id> {
         let quadrant_only = matches!(
             direction,
             Direction::QuadrantLeft
@@ -875,7 +1021,7 @@ impl Tab {
                 | Direction::QuadrantDown
         );
         let root = if quadrant_only {
-            &self.root
+            self.navigation_tree(peek)
         } else {
             self.quadrant_zoom
                 .and_then(|id| self.root.node(id))
@@ -922,10 +1068,10 @@ impl Tab {
             candidates.into_iter().map(|(id, _)| *id).collect()
         };
         let target_quadrant = if quadrant_only {
-            let current = root.quadrant(from)?;
+            let current = self.navigation_quad(root, from, peek)?;
             let target = adjacent(current)
                 .into_iter()
-                .find(|id| root.quadrant(*id) == Some(*id))?;
+                .find(|id| self.navigation_quad(root, *id, peek) == Some(*id))?;
             Some(root.node(target)?)
         } else {
             None
@@ -937,6 +1083,18 @@ impl Tab {
     pub fn split(&mut self, new_pane: Id, split_id: Id, direction: Direction, directory: PathBuf) {
         if !self.root.split(self.focused, new_pane, split_id, direction) {
             return;
+        }
+        if self.quad_roots.remove(&self.focused) {
+            self.quad_roots.insert(split_id);
+            if self.quadrant_zoom == Some(self.focused) {
+                self.quadrant_zoom = Some(split_id);
+                if self.zoom == Some(self.focused) {
+                    self.zoom = Some(split_id);
+                }
+            }
+            if let Some(pane) = self.remembered.remove(&self.focused) {
+                self.remembered.insert(split_id, pane);
+            }
         }
         self.panes.insert(
             new_pane,
@@ -966,12 +1124,43 @@ impl Tab {
         } else {
             None
         };
-        let quadrant_zoom = self
+        let mut quadrant_zoom = self
             .quadrant_zoom
             .and_then(|id| self.root.node(id))
             .and_then(|node| node.clone().remove(pane))
-            .filter(|node| matches!(node.kind, Node::Split { .. }))
+            .filter(|node| {
+                self.quadrant_zoom
+                    .is_some_and(|id| self.quad_roots.contains(&id))
+                    || matches!(node.kind, Node::Split { .. })
+            })
             .map(|node| node.id);
+        if quadrant_zoom.is_none() && !self.quad_roots.is_empty() {
+            let mut parent = self.quadrant_zoom.and_then(|id| self.parent_quad(id));
+            while let Some(id) = parent {
+                if let Some(node) = self
+                    .root
+                    .node(id)
+                    .and_then(|node| node.clone().remove(pane))
+                {
+                    quadrant_zoom = Some(node.id);
+                    break;
+                }
+                parent = self.parent_quad(id);
+            }
+        }
+        let mut remembered = self.remembered.clone();
+        self.quad_roots = self
+            .quad_roots
+            .iter()
+            .filter_map(|id| {
+                let node = self.root.node(*id)?.clone().remove(pane)?;
+                if let Some(focused) = self.remembered.get(id) {
+                    remembered.insert(node.id, *focused);
+                }
+                Some(node.id)
+            })
+            .collect();
+        self.remembered = remembered;
         self.overlays.retain(|overlay| overlay.pane != pane);
         let Some(root) = self
             .root
@@ -1259,6 +1448,10 @@ impl Workspace {
                 tab.focused = remap[&tab.focused];
                 tab.zoom = tab.zoom.map(|id| remap[&id]);
                 tab.quadrant_zoom = tab.quadrant_zoom.map(|id| remap[&id]);
+                tab.quad_roots = std::mem::take(&mut tab.quad_roots)
+                    .into_iter()
+                    .map(|id| remap[&id])
+                    .collect();
                 tab.remembered = std::mem::take(&mut tab.remembered)
                     .into_iter()
                     .filter_map(|(node, pane)| Some((*remap.get(&node)?, *remap.get(&pane)?)))
@@ -1469,6 +1662,11 @@ impl Workspace {
                     || tab
                         .quadrant_zoom
                         .is_some_and(|id| tab.root.node(id).is_none())
+                    || tab.quad_roots.iter().any(|id| {
+                        tab.root
+                            .node(*id)
+                            .is_none_or(|node| matches!(node.kind, Node::Empty))
+                    })
                 {
                     return Err(invalid("invalid saved split tree"));
                 }
@@ -1496,6 +1694,266 @@ mod tests {
         tab.focus(2);
         tab.split(7, 8, Direction::Down, PathBuf::from("/tmp"));
         tab
+    }
+    fn recursive_quads(depth: usize) -> Tab {
+        fn grid(next: &mut Id, depth: usize) -> Tree {
+            let id = *next;
+            *next += 1;
+            if depth == 0 {
+                return Tree::leaf(id);
+            }
+            let left_id = *next;
+            *next += 1;
+            let first = grid(next, depth - 1);
+            let second = grid(next, 0);
+            let right_id = *next;
+            *next += 1;
+            let third = grid(next, 0);
+            let fourth = grid(next, 0);
+            Tree {
+                id,
+                kind: Node::Split {
+                    axis: Axis::Horizontal,
+                    ratio: 0.5,
+                    first: Box::new(Tree {
+                        id: left_id,
+                        kind: Node::Split {
+                            axis: Axis::Vertical,
+                            ratio: 0.5,
+                            first: Box::new(first),
+                            second: Box::new(second),
+                        },
+                    }),
+                    second: Box::new(Tree {
+                        id: right_id,
+                        kind: Node::Split {
+                            axis: Axis::Vertical,
+                            ratio: 0.5,
+                            first: Box::new(third),
+                            second: Box::new(fourth),
+                        },
+                    }),
+                },
+            }
+        }
+        let mut next = 2;
+        let root = grid(&mut next, depth);
+        let panes = root.panes();
+        let mut tab = Tab::new(1, panes[0], "/tmp".into());
+        tab.root = root;
+        tab.panes = panes
+            .into_iter()
+            .map(|pane| {
+                (
+                    pane,
+                    SavedPane {
+                        working_directory: "/tmp".into(),
+                        ..SavedPane::default()
+                    },
+                )
+            })
+            .collect();
+        tab
+    }
+    #[test]
+    fn quad_roots_repeat_inference_and_toggle_between_parent_and_child() {
+        let mut tab = recursive_quads(6);
+        assert!(!tab.toggle_quad_root());
+        tab.toggle_quadrant_zoom();
+        let mut path = vec![tab.quadrant_zoom.unwrap()];
+        for _ in 0..5 {
+            let expected = tab
+                .root
+                .node(*path.last().unwrap())
+                .unwrap()
+                .quadrant(tab.focused)
+                .unwrap();
+            assert!(tab.toggle_quad_root());
+            path.push(expected);
+            assert_eq!(tab.quad_path(tab.focused), path);
+            assert_eq!(
+                (tab.zoom, tab.quadrant_zoom),
+                (Some(expected), Some(expected))
+            );
+        }
+        assert!(
+            !tab.toggle_quad_root(),
+            "an unsplit leaf has no deeper inferred quad"
+        );
+        let child = path[5];
+        let parent = path[4];
+        tab.toggle_quadrant_zoom();
+        assert_eq!(tab.zoom, Some(parent));
+        tab.toggle_quadrant_zoom();
+        assert_eq!(tab.zoom, Some(child));
+        tab.toggle_quadrant_zoom();
+        assert!(tab.toggle_quad_root());
+        assert!(!tab.quad_roots.contains(&child));
+        assert_eq!(tab.zoom, Some(parent));
+        assert!(tab.toggle_quad_root());
+        assert_eq!(tab.zoom, Some(child));
+    }
+    #[test]
+    fn quad_zoom_stays_inside_a_parent_when_all_children_are_designated() {
+        let mut tab = recursive_quads(2);
+        tab.toggle_quadrant_zoom();
+        let parent = tab.quadrant_zoom.unwrap();
+        let panes = tab.root.node(parent).unwrap().panes();
+        for pane in &panes {
+            tab.focus(*pane);
+            assert!(tab.toggle_quad_root());
+            assert_eq!(tab.zoom, Some(*pane));
+            tab.toggle_quadrant_zoom();
+            assert_eq!(tab.zoom, Some(parent));
+        }
+        for pane in panes {
+            tab.focus(pane);
+            tab.toggle_quadrant_zoom();
+            assert_eq!(tab.zoom, Some(pane));
+            tab.toggle_zoom();
+            assert_eq!((tab.zoom, tab.quadrant_zoom), (Some(parent), Some(parent)));
+            tab.toggle_quadrant_zoom();
+            assert_eq!(tab.zoom, Some(pane));
+            tab.toggle_quadrant_zoom();
+            assert_eq!(tab.zoom, Some(parent));
+        }
+    }
+    #[test]
+    fn removing_a_quad_root_from_another_panel_clears_nested_designations() {
+        let mut tab = recursive_quads(4);
+        tab.toggle_quadrant_zoom();
+        let parent = tab.quadrant_zoom.unwrap();
+        assert!(tab.toggle_quad_root());
+        let child = tab.quadrant_zoom.unwrap();
+        assert!(tab.toggle_quad_root());
+        let grandchild = tab.quadrant_zoom.unwrap();
+        let sibling = *tab.root.node(child).unwrap().panes().last().unwrap();
+        tab.zoom = Some(parent);
+        tab.quadrant_zoom = Some(parent);
+        tab.focus(sibling);
+        assert!(tab.toggle_quad_root());
+        assert!(!tab.quad_roots.contains(&child));
+        assert!(!tab.quad_roots.contains(&grandchild));
+        assert_eq!(tab.zoom, Some(parent));
+        let pane = *tab.root.node(grandchild).unwrap().panes().first().unwrap();
+        assert_eq!(tab.quad_path(pane), [parent]);
+        tab.focus(pane);
+        tab.toggle_quadrant_zoom();
+        assert_eq!(tab.zoom, None);
+    }
+    #[test]
+    fn designated_leaf_follows_splits_and_collapses_and_closing_it_returns_to_parent() {
+        let mut tab = recursive_quads(2);
+        tab.toggle_quadrant_zoom();
+        let parent = tab.quadrant_zoom.unwrap();
+        let original = tab.focused;
+        assert!(tab.toggle_quad_root());
+        assert_eq!(tab.zoom, Some(original));
+        tab.split(100, 101, Direction::Right, "/tmp".into());
+        assert_eq!(tab.zoom, Some(101));
+        assert_eq!(tab.quad_roots, BTreeSet::from([101]));
+        assert_eq!(tab.root.node(101).unwrap().panes(), [original, 100]);
+        assert!(tab.close(original));
+        assert_eq!(tab.zoom, Some(100));
+        assert_eq!(tab.quad_roots, BTreeSet::from([100]));
+        assert!(tab.close(100));
+        assert_eq!(tab.zoom, Some(parent));
+        assert!(tab.quad_roots.is_empty());
+        assert!(tab.root.contains(tab.focused));
+    }
+    #[test]
+    fn quad_root_navigation_uses_visible_children_but_peek_uses_original_quads() {
+        let mut tab = recursive_quads(3);
+        tab.toggle_quadrant_zoom();
+        let parent = tab.quadrant_zoom.unwrap();
+        assert!(tab.toggle_quad_root());
+        let child = tab.quadrant_zoom.unwrap();
+        tab.toggle_quadrant_zoom();
+        let right = tab.target(tab.focused, Direction::QuadrantRight).unwrap();
+        assert!(tab.root.node(parent).unwrap().contains(right));
+        assert!(!tab.root.node(child).unwrap().contains(right));
+        tab.toggle_quadrant_zoom();
+        let pane = tab.focused;
+        let peek = tab
+            .begin_peek(Modifiers {
+                alt: true,
+                ..Modifiers::default()
+            })
+            .unwrap();
+        assert_eq!(tab.visible_tree(true).id, tab.root.id);
+        let right = tab
+            .target_for_view(pane, Direction::QuadrantRight, true)
+            .unwrap();
+        assert_ne!(tab.root.quadrant(right), Some(parent));
+        assert_eq!(tab.finish_peek(peek), pane);
+        assert_eq!(tab.zoom, Some(child));
+        let mut peek = tab
+            .begin_peek(Modifiers {
+                alt: true,
+                ..Modifiers::default()
+            })
+            .unwrap();
+        peek.target = right;
+        peek.navigation_used = true;
+        assert_eq!(tab.finish_peek(peek), right);
+        assert_eq!(tab.zoom, tab.root.quadrant(right));
+    }
+    #[test]
+    fn quad_roots_roundtrip_import_and_validate_with_legacy_defaults() {
+        let mut tab = recursive_quads(4);
+        tab.toggle_quadrant_zoom();
+        tab.toggle_quad_root();
+        tab.toggle_quad_root();
+        let mut state = Workspace {
+            next_id: 100,
+            ..Workspace::default()
+        };
+        state.windows.push(WindowState {
+            id: 90,
+            tabs: vec![tab],
+            active_tab: 0,
+            frame: [0.0, 0.0, 800.0, 600.0],
+            quick: false,
+        });
+        state.validate().unwrap();
+        let value = serde_json::to_value(&state).unwrap();
+        let decoded: Workspace = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(
+            decoded.windows[0].tabs[0].quad_roots,
+            state.windows[0].tabs[0].quad_roots
+        );
+        let mut legacy = value.clone();
+        legacy["windows"][0]["tabs"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("quad_roots");
+        let legacy: Workspace = serde_json::from_value(legacy).unwrap();
+        assert!(legacy.windows[0].tabs[0].quad_roots.is_empty());
+        let mut invalid_roots = decoded.clone();
+        invalid_roots.windows[0].tabs[0].quad_roots.insert(999);
+        assert!(invalid_roots.validate().is_err());
+        let before = state.clone();
+        let ids = state.append_layout(decoded).unwrap();
+        state.validate().unwrap();
+        let imported = state
+            .windows
+            .iter()
+            .find(|window| window.id == ids[0])
+            .unwrap();
+        let imported = &imported.tabs[0];
+        assert_eq!(imported.quad_roots.len(), 2);
+        assert!(
+            imported
+                .quad_roots
+                .is_disjoint(&before.windows[0].tabs[0].quad_roots)
+        );
+        assert_eq!(imported.quad_path(imported.focused).len(), 3);
+        state.restore(before.clone());
+        assert_eq!(
+            state.windows[0].tabs[0].quad_roots,
+            before.windows[0].tabs[0].quad_roots
+        );
+        assert_eq!(state.windows.len(), 1);
     }
     #[test]
     fn quadrants_follow_first_split_on_each_axis_and_nested_focus() {

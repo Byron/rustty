@@ -214,6 +214,7 @@ pub enum Action {
     EqualizeSplits,
     ToggleSplitZoom,
     ToggleQuadrantZoom,
+    ToggleQuadRoot,
     ToggleQuickTerminal,
     ToggleFullscreen,
     ToggleCommandPalette,
@@ -338,6 +339,7 @@ impl Action {
             "new_floating_pane" => Self::NewFloatingPane,
             "toggle_split_zoom" => Self::ToggleSplitZoom,
             "toggle_quadrant_zoom" => Self::ToggleQuadrantZoom,
+            "toggle_quad_root" => Self::ToggleQuadRoot,
             "toggle_quick_terminal" => Self::ToggleQuickTerminal,
             "toggle_fullscreen" => Self::ToggleFullscreen,
             "toggle_command_palette" => Self::ToggleCommandPalette,
@@ -773,5 +775,11 @@ mod platform_defaults_tests {
         let binding = KeyBinding::parse("super+shift+m=copy_window_to_tmuxx").unwrap();
         assert_eq!(binding.actions, vec![Action::CopyWindowToTmuxx]);
         assert!(Action::parse("copy_window_to_tmuxx:session").is_err());
+    }
+    #[test]
+    fn quad_root_action_is_bindable_without_arguments() {
+        let binding = KeyBinding::parse("ctrl+shift+g=toggle_quad_root").unwrap();
+        assert_eq!(binding.actions, vec![Action::ToggleQuadRoot]);
+        assert!(Action::parse("toggle_quad_root:child").is_err());
     }
 }
