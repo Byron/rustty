@@ -354,6 +354,10 @@ are saved separately under `com.rustty.app`.
 Unfocused windows show nearly neutral tab colors and UI accents, including the
 frame tint and selected panel outline. Terminal and panel status colors stay intact;
 tab colors return when the window gains focus.
+`unfocused-tab-saturation = 5%` controls how much color unfocused windows retain:
+`0%` is grayscale and `100%` preserves the original colors. Values without `%`
+are also percentages, and an empty value restores the 5% default. Changes take
+effect on configuration reload.
 
 **Quad roots** add recursive quad levels to local tiled tabs. Zoom into an inferred
 quad, then use **Toggle Quad Root** in the command palette to designate the focused
