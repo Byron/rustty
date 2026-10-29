@@ -1407,13 +1407,29 @@ pub fn run() -> Result<()> {
     if !import_requested {
         app.start_sessions()?;
     }
+    let check_shutdown = background_smoke || app.smoke.is_some();
     let result = event_loop.run_app(&mut app);
+    let shutdown_windows = if check_shutdown {
+        app.windows
+            .values()
+            .map(|host| Arc::downgrade(&host.window))
+            .chain(app.outliner.iter().map(|host| Arc::downgrade(&host.window)))
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     app.shutdown();
+    if shutdown_windows
+        .iter()
+        .any(|window| window.upgrade().is_some())
+    {
+        return Err("native smoke retained a window after shutdown".into());
+    }
     result?;
-    if let Some(error) = app.startup_error {
+    if let Some(error) = app.startup_error.take() {
         return Err(error.into());
     }
-    if let Some(error) = app.smoke_error {
+    if let Some(error) = app.smoke_error.take() {
         return Err(error.into());
     }
     if let Some(directory) = tmuxx_smoke
@@ -7818,6 +7834,10 @@ impl ApplicationHandler<Event> for App {
         }
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, window: WindowId, event: WindowEvent) {
+        // AppKit can close renderer-owned windows while the application unwinds.
+        if event_loop.exiting() || std::thread::panicking() {
+            return;
+        }
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         if self.import_selector {
             self.import_window_event(event_loop, window, event);
@@ -8430,9 +8450,22 @@ impl App {
     fn shutdown(&mut self) {
         self.deck.stop();
         self.hide_outliner();
-        for host in self.windows.values() {
+        let windows = std::mem::take(&mut self.windows);
+        let outliner = self.outliner.take();
+        let remaining = egui::ViewportIdSet::default();
+        for host in windows.values() {
             host.window.set_visible(false);
+            if let Some(platform) = &self.platform {
+                platform.forget_window(&host.window);
+            }
+            self.painter
+                .remove_window(host.viewport, host.id, &remaining);
         }
+        if let Some(host) = &outliner {
+            self.painter.remove_window(host.viewport, 0, &remaining);
+        }
+        drop(outliner);
+        drop(windows);
         for session in self
             .panes
             .values()
@@ -8469,6 +8502,13 @@ impl App {
         self.panes.clear();
         self.closing.clear();
         self.starting_panes.clear();
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        // Release native owners before field destruction frees the workspace.
+        self.shutdown();
     }
 }
 
