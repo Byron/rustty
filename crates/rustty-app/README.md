@@ -530,6 +530,10 @@ The windowless hotkey regression runs explicitly on a macOS desktop with
 It checks registration conflicts, reloads, stale events, layout notifications and
 cleanup using synthetic Carbon events without posting keyboard input.
 
+On macOS, drag emoji or plain text into a terminal pane to paste it there.
+File drops insert shell-quoted paths. Text drops use the same bracketed-paste
+handling and paste protection as clipboard text.
+
 The native text-input regression runs with
 `cargo test -p rustty-app --test native_text_input --offline -- --ignored`.
 It checks external text commits (including split UTF-16 surrogates), composition
@@ -538,9 +542,14 @@ through a hidden native window without posting keyboard input to other apps.
 The input-routing tests also check that terminal composition survives native
 window focus changes, including when the character picker takes focus.
 
+The native drag-and-drop regression runs with
+`cargo test -p rustty-app --test native_drag_drop --offline -- --ignored`.
+It checks text drops, file precedence, and drop coordinates through a hidden
+native window and a private pasteboard.
+
 The opt-in native smoke check starts disposable `/bin/sh` sessions, checks input,
 four split panes, tabs, quadrant focus and zoom, URI directory reports, restoration,
-progress animation across pane focus changes, hover scrolling, file-drop targeting,
+progress animation across pane focus changes, hover scrolling, file/text-drop targeting,
 reverse video, DEC column mode, text blinking, synchronized output, hidden-tab title
 updates, independent Find overlays without terminal resizing, and idle rendering.
 On macOS, unobscured indefinite progress bars animate in Core Animation without

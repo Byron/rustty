@@ -1,4 +1,4 @@
-// Rustty modification: opt-in construction of nonactivating NSPanel windows.
+// Rustty modifications: nonactivating NSPanel windows and optional text-drop callbacks.
 //! # macOS / AppKit
 //!
 //! Winit has an OS requirement of macOS 10.11 or higher (same as Rust
@@ -84,16 +84,29 @@
 //! ```
 
 use std::os::raw::c_void;
+use std::sync::Arc;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use crate::dpi::LogicalPosition;
 use crate::event_loop::{ActiveEventLoop, EventLoopBuilder};
 use crate::monitor::MonitorHandle;
 use crate::window::{Window, WindowAttributes};
 
 /// Additional methods on [`Window`] that are specific to MacOS.
 pub trait WindowExtMacOS {
+    /// Accept plain-text drops in addition to file drops.
+    ///
+    /// The handler runs on the main thread with the text and drop position in logical
+    /// content coordinates. Queue application work from the handler to avoid reentrancy.
+    /// Installing another handler replaces the previous one. File drops retain their
+    /// normal window events and take precedence over the text representation.
+    fn set_text_drop_handler(
+        &self,
+        handler: Arc<dyn Fn(String, LogicalPosition<f64>) + Send + Sync>,
+    );
+
     /// Returns whether or not the window is in simple fullscreen mode.
     fn simple_fullscreen(&self) -> bool;
 
@@ -174,6 +187,14 @@ pub trait WindowExtMacOS {
 }
 
 impl WindowExtMacOS for Window {
+    #[inline]
+    fn set_text_drop_handler(
+        &self,
+        handler: Arc<dyn Fn(String, LogicalPosition<f64>) + Send + Sync>,
+    ) {
+        self.window.maybe_queue_on_main(move |w| w.set_text_drop_handler(handler))
+    }
+
     #[inline]
     fn simple_fullscreen(&self) -> bool {
         self.window.maybe_wait_on_main(|w| w.simple_fullscreen())

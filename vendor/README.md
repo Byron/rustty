@@ -29,9 +29,16 @@ dictation otherwise refuses to start and beeps.
 Local patch: macOS text insertions combine separately delivered
 UTF-16 surrogate halves before UTF-8 conversion, preserving supplementary emoji.
 Unmatched trailing halves are ignored; other text and disabling IME clear pending halves.
+Local patch: `WindowExtMacOS::set_text_drop_handler` opts into plain-text drops
+with the drop position in logical content coordinates. File representations take
+precedence and retain their normal events. Rustty queues text drops through its
+platform event sink and applies the usual paste protection.
 The modified source files and manifests carry Rustty modification notices.
 
 Native regression check (main thread, hidden windows; macOS desktop required):
 `cargo test -p rustty-app --test native_panel --offline -- --ignored`.
 The hidden-window text-input regression also checks split surrogate insertions:
 `cargo test -p rustty-app --test native_text_input --offline -- --ignored`.
+The hidden-window drag regression uses a private pasteboard to check emoji text,
+drop coordinates, unsupported formats, and file precedence:
+`cargo test -p rustty-app --test native_drag_drop --offline -- --ignored`.
