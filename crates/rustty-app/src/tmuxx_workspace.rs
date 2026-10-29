@@ -16,6 +16,7 @@ pub struct Mapping {
     pub sessions: BTreeMap<Id, u64>,
     pub session_names: BTreeMap<Id, String>,
     pub windows: BTreeMap<Id, u64>,
+    pub window_names: BTreeMap<Id, String>,
     window_indices: BTreeMap<Id, u32>,
     pub sizes: BTreeMap<u64, (u16, u16)>,
     pub dividers: BTreeMap<Id, (u64, Axis, u32)>,
@@ -58,6 +59,7 @@ impl Mapping {
         self.sessions.clear();
         self.session_names.clear();
         self.windows.clear();
+        self.window_names.clear();
         self.window_indices.clear();
         self.dividers.clear();
         self.server_focused.clear();
@@ -79,6 +81,7 @@ impl Mapping {
                 let key = format!("{}:{window_index}:{wid}", session.id);
                 let tab_id = self.id(workspace, format!("tab:{key}"));
                 self.windows.insert(tab_id, wid);
+                self.window_names.insert(tab_id, window.name.clone());
                 self.window_indices.insert(tab_id, window_index);
                 let layout = &layouts[&wid];
                 let root = if let Some(tiled) = layout.tiled_copy() {
@@ -123,7 +126,6 @@ impl Mapping {
                 tab.overlays = overlays;
                 tab.server_size = Some([u32::from(window.cols), u32::from(window.rows)]);
                 tab.panes = panes;
-                tab.title = Some(window.name.clone());
                 let visible = if window.zoomed && !window.visible_layout.is_empty() {
                     Layout::parse(&window.visible_layout).map_err(|e| e.to_string())?
                 } else {
@@ -585,6 +587,47 @@ mod tests {
             .into_iter()
             .find(|pane| mapping.panes[pane] == server)
             .unwrap()
+    }
+
+    #[test]
+    fn server_refresh_preserves_explicit_tab_titles() {
+        let mut graph = graph();
+        let mut workspace = Workspace::default();
+        let mut mapping = Mapping::default();
+        mapping
+            .apply(&mut workspace, &graph, &[0, 1].into())
+            .unwrap();
+        assert!(workspace.windows[0].tabs[0].title.is_none());
+        workspace.windows[0].tabs[0].title = Some("Work 日誌".into());
+
+        for name in ["fish", "fish.exe"] {
+            graph.windows[0].name = name.into();
+            mapping
+                .apply(&mut workspace, &graph, &[0, 1].into())
+                .unwrap();
+            assert_eq!(
+                workspace.windows[0].tabs[0].title.as_deref(),
+                Some("Work 日誌")
+            );
+            for tab in workspace.windows.iter().flat_map(|window| &window.tabs) {
+                assert_eq!(mapping.window_names[&tab.id], name);
+            }
+            assert!(workspace.windows[1].tabs[0].title.is_none());
+        }
+
+        workspace.windows[0].tabs[0].title = None;
+        graph.windows[0].name = "vim".into();
+        mapping
+            .apply(&mut workspace, &graph, &[0, 1].into())
+            .unwrap();
+        let tab = &workspace.windows[0].tabs[0];
+        assert!(tab.title.is_none());
+        assert_eq!(mapping.window_names[&tab.id], "vim");
+
+        mapping
+            .apply(&mut workspace, &graph, &BTreeSet::new())
+            .unwrap();
+        assert!(mapping.window_names.is_empty());
     }
 
     #[test]

@@ -2934,6 +2934,13 @@ impl App {
         tab.title
             .as_deref()
             .filter(|s| !s.is_empty())
+            .or_else(|| {
+                self.tmuxx
+                    .iter()
+                    .find_map(|entry| entry.mapping.window_names.get(&tab.id))
+                    .map(String::as_str)
+                    .filter(|s| !s.is_empty())
+            })
             .or_else(|| pane.map(|p| p.title.as_str()).filter(|s| !s.is_empty()))
             .unwrap_or("Terminal")
     }

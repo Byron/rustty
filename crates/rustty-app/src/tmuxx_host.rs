@@ -868,6 +868,7 @@ fn apply_copy_metadata(copied: CopiedWindow, mapping: &Mapping, workspace: &mut 
         else {
             continue;
         };
+        tab.title.clone_from(&source.title);
         tab.color = source.color;
         for (id, saved) in &mut tab.panes {
             if let Some(source) = source.panes.iter().find_map(|(source, saved)| {
@@ -2534,6 +2535,7 @@ mod tests {
             frame: [100.0, 200.0, 900.0, 600.0],
             quick: false,
         };
+        source.tabs[1].title = Some("Build tab".into());
         source.tabs[1].color = Some([12, 34, 56]);
         source.tabs[1].panes.get_mut(&5).unwrap().title_override = Some("Build".into());
         let before = serde_json::to_value(&source).unwrap();
@@ -2596,6 +2598,7 @@ mod tests {
         assert_eq!(window.frame, [130.0, 230.0, 900.0, 600.0]);
         assert_eq!(window.active_tab, 1);
         let tab = &window.tabs[1];
+        assert_eq!(tab.title.as_deref(), Some("Build tab"));
         assert_eq!(tab.color, Some([12, 34, 56]));
         assert_eq!(
             tab.panes[&tab.focused].working_directory,
