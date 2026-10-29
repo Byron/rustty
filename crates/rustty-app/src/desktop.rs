@@ -2489,6 +2489,22 @@ impl App {
         };
         self.paste(host, PendingPaste { pane, data }, true);
     }
+    fn drop_text(&mut self, host: &mut Host, position: Pos2, text: String) {
+        if host.modal_input() || host.ui_areas.contains(position) {
+            return;
+        }
+        let Some(pane) = host.pane_at(position) else {
+            return;
+        };
+        self.paste(
+            host,
+            PendingPaste {
+                pane,
+                data: text.into_bytes(),
+            },
+            false,
+        );
+    }
     fn paste_event(
         &mut self,
         window: Id,
@@ -7752,6 +7768,19 @@ impl ApplicationHandler<Event> for App {
                             .and_then(|platform| platform.global_keybinding(id))
                         {
                             self.platform_binding(event_loop, binding);
+                        }
+                    }
+                    #[cfg(target_os = "macos")]
+                    PlatformEvent::DroppedText {
+                        window,
+                        position: [x, y],
+                        text,
+                    } => {
+                        if !self.import_selector
+                            && let Some(mut host) = self.windows.remove(&window)
+                        {
+                            self.drop_text(&mut host, Pos2::new(x, y), text);
+                            self.windows.insert(window, host);
                         }
                     }
                     #[cfg(target_os = "macos")]

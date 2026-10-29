@@ -72,7 +72,15 @@ pub enum PlatformEvent {
     Tmuxx(crate::tmuxx_menu::Command),
     NotificationClicked(u64),
     ScreensAwake(bool),
-    GlobalHotkey { id: u32, key_code: u16 },
+    GlobalHotkey {
+        id: u32,
+        key_code: u16,
+    },
+    DroppedText {
+        window: WindowId,
+        position: [f32; 2],
+        text: String,
+    },
     Warning(String),
 }
 
@@ -467,6 +475,15 @@ impl Platform {
         quick: bool,
         config: &Config,
     ) -> Result<(), String> {
+        let callback = self.callback.clone();
+        let window_id = window.id();
+        window.set_text_drop_handler(Arc::new(move |text, position| {
+            callback(PlatformEvent::DroppedText {
+                window: window_id,
+                position: [position.x as f32, position.y as f32],
+                text,
+            });
+        }));
         window.set_option_as_alt(match config.macos_option_as_alt {
             OptionAsAlt::False => WinitOptionAsAlt::None,
             OptionAsAlt::True => WinitOptionAsAlt::Both,

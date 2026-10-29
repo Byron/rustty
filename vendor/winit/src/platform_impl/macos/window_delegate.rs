@@ -1,4 +1,4 @@
-// Rustty modification: construct and focus NSPanel owners without application activation.
+// Rustty modifications: nonactivating NSPanel owners and optional plain-text drops.
 #![allow(clippy::unnecessary_cast)]
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -10,12 +10,13 @@ use core_graphics::display::{CGDisplay, CGPoint};
 use monitor::VideoModeHandle;
 use objc2::rc::{autoreleasepool, Retained};
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{declare_class, msg_send_id, mutability, sel, ClassType, DeclaredClass};
+use objc2::{declare_class, msg_send, msg_send_id, mutability, sel, ClassType, DeclaredClass};
 use objc2_app_kit::{
     NSAppKitVersionNumber, NSAppKitVersionNumber10_12, NSAppearance, NSAppearanceCustomization,
     NSAppearanceNameAqua, NSApplication, NSApplicationPresentationOptions, NSBackingStoreType,
-    NSColor, NSDraggingDestination, NSFilenamesPboardType, NSPasteboard,
-    NSRequestUserAttentionType, NSScreen, NSView, NSWindow, NSWindowButton, NSWindowDelegate,
+    NSColor, NSDragOperation, NSDraggingDestination, NSFilenamesPboardType, NSPasteboard,
+    NSPasteboardTypeString, NSRequestUserAttentionType, NSScreen, NSView, NSWindow, NSWindowButton,
+    NSWindowDelegate,
     NSWindowFullScreenButton, NSWindowLevel, NSWindowOcclusionState, NSWindowOrderingMode,
     NSWindowSharingType, NSWindowStyleMask, NSWindowTabbingMode, NSWindowTitleVisibility,
 };
@@ -81,13 +82,13 @@ impl Default for PlatformSpecificWindowAttributes {
     }
 }
 
-#[derive(Debug)]
 pub(crate) struct State {
     /// Strong reference to the global application state.
     app_delegate: Retained<ApplicationDelegate>,
 
     window: Retained<NSWindow>,
     nonactivating_panel: bool,
+    text_drop_handler: RefCell<Option<Arc<dyn Fn(String, LogicalPosition<f64>) + Send + Sync>>>,
 
     // During `windowDidResize`, we use this to only send Moved if the position changed.
     //
@@ -371,7 +372,7 @@ declare_class!(
     unsafe impl NSDraggingDestination for WindowDelegate {
         /// Invoked when the dragged image enters destination bounds or frame
         #[method(draggingEntered:)]
-        fn dragging_entered(&self, sender: &NSObject) -> bool {
+        fn dragging_entered(&self, sender: &NSObject) -> NSDragOperation {
             trace_scope!("draggingEntered:");
 
             use std::path::PathBuf;
@@ -379,7 +380,17 @@ declare_class!(
             let pb: Retained<NSPasteboard> = unsafe { msg_send_id![sender, draggingPasteboard] };
             let filenames = match pb.propertyListForType(unsafe { NSFilenamesPboardType }) {
                 Some(filenames) => filenames,
-                None => return false.into(),
+                None => {
+                    return if self.ivars().text_drop_handler.borrow().is_some()
+                        && unsafe { pb.types() }.is_some_and(|types| {
+                            unsafe { types.containsObject(NSPasteboardTypeString) }
+                        })
+                    {
+                        NSDragOperation::Copy
+                    } else {
+                        NSDragOperation::None
+                    };
+                },
             };
             let filenames: Retained<NSArray<NSString>> = unsafe { Retained::cast(filenames) };
 
@@ -388,7 +399,7 @@ declare_class!(
                 self.queue_event(WindowEvent::HoveredFile(path));
             });
 
-            true
+            NSDragOperation::Copy
         }
 
         /// Invoked when the image is released
@@ -408,7 +419,17 @@ declare_class!(
             let pb: Retained<NSPasteboard> = unsafe { msg_send_id![sender, draggingPasteboard] };
             let filenames = match pb.propertyListForType(unsafe { NSFilenamesPboardType }) {
                 Some(filenames) => filenames,
-                None => return false.into(),
+                None => {
+                    let handler = self.ivars().text_drop_handler.borrow().clone();
+                    let Some(handler) = handler else { return false.into() };
+                    let Some(text) = (unsafe { pb.stringForType(NSPasteboardTypeString) }) else {
+                        return false.into();
+                    };
+                    let position: NSPoint = unsafe { msg_send![sender, draggingLocation] };
+                    let position = self.view().convertPoint_fromView(position, None);
+                    handler(text.to_string(), LogicalPosition::new(position.x, position.y));
+                    return true.into();
+                },
             };
             let filenames: Retained<NSArray<NSString>> = unsafe { Retained::cast(filenames) };
 
@@ -741,6 +762,7 @@ impl WindowDelegate {
             app_delegate: app_delegate.retain(),
             window: window.retain(),
             nonactivating_panel: attrs.platform_specific.nonactivating_panel,
+            text_drop_handler: RefCell::new(None),
             previous_position: Cell::new(flip_window_screen_coordinates(window.frame())),
             previous_scale_factor: Cell::new(scale_factor),
             resize_increments: Cell::new(resize_increments),
@@ -1753,6 +1775,17 @@ fn restore_and_release_display(monitor: &MonitorHandle) {
 }
 
 impl WindowExtMacOS for WindowDelegate {
+    fn set_text_drop_handler(
+        &self,
+        handler: Arc<dyn Fn(String, LogicalPosition<f64>) + Send + Sync>,
+    ) {
+        *self.ivars().text_drop_handler.borrow_mut() = Some(handler);
+        self.window().registerForDraggedTypes(&NSArray::from_id_slice(&[
+            unsafe { NSFilenamesPboardType }.copy(),
+            unsafe { NSPasteboardTypeString }.copy(),
+        ]));
+    }
+
     #[inline]
     fn simple_fullscreen(&self) -> bool {
         self.ivars().is_simple_fullscreen.get()

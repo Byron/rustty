@@ -32,6 +32,11 @@ path = "tests/native_text_input.rs"
 harness = false
 
 [[test]]
+name = "native_drag_drop"
+path = "tests/native_drag_drop.rs"
+harness = false
+
+[[test]]
 name = "windows_platform"
 path = "tests/windows_platform.rs"
 harness = false

@@ -832,7 +832,7 @@ impl Smoke {
                     .current_monitor()
                     .and_then(|monitor| monitor.refresh_rate_millihertz())
                     .map(|rate| f64::from(rate) / 1000.0);
-                let report = serde_json::json!({"passed":true,"renderer":app.painter.description(),"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","native-rendered-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","zoom-animation-endpoint-grids","zoom-animation-disable","quad-peek-animation","quad-peek-focused-label","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","osc-pointer","command-hover-links","double-click-selection","drag-selection-scrolling","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
+                let report = serde_json::json!({"passed":true,"renderer":app.painter.description(),"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","native-rendered-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","zoom-animation-endpoint-grids","zoom-animation-disable","quad-peek-animation","quad-peek-focused-label","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","text-drop-targeting","osc-pointer","command-hover-links","double-click-selection","drag-selection-scrolling","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
                 self.report = Some(report);
                 return Ok(true);
             }
@@ -4970,6 +4970,8 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
     let link_hit = host.link_hit.take();
     let hovered_link = host.hovered_link.take();
     let pointer_in_window = host.egui.is_pointer_in_window();
+    let confirm = host.confirm.take();
+    let paste_protection = app.loaded.config.clipboard_paste_protection;
     let mut saved = Vec::new();
     for id in [focused, hovered] {
         let pane = app.panes.get_mut(&id).unwrap();
@@ -5255,6 +5257,44 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
             }
             pane.input.pop_back();
             pane.input_bytes = 0;
+
+            let text = "🦀👩🏽‍💻";
+            app.drop_text(host, position, text.into());
+            app.drop_text(host, Pos2::ZERO, text.into());
+            let expected = if bracketed {
+                format!("\x1b[200~{text}\x1b[201~").into_bytes()
+            } else {
+                text.as_bytes().to_vec()
+            };
+            if app.focused(host.id) != Some(focused) || app.panes[&focused].input.len() != 1 {
+                return Err("text drop affected the focused pane".into());
+            }
+            let pane = app.panes.get_mut(&hovered).unwrap();
+            if pane.input.len() != 2 || queued_input(pane)?.last() != Some(&expected) {
+                return Err(
+                    "text drop did not preserve emoji or the target pane's paste mode".into(),
+                );
+            }
+            pane.input.pop_back();
+            pane.input_bytes = 0;
+        }
+        app.loaded.config.clipboard_paste_protection = true;
+        app.panes[&hovered].session.terminal()?.feed(b"\x1b[?2004l");
+        let text = "emoji 🦀\ncommand";
+        app.drop_text(host, position, text.into());
+        let Some(Confirmation::Paste(paste)) = &host.confirm else {
+            return Err("multiline text drop bypassed paste protection".into());
+        };
+        if paste.pane != hovered || paste.data != text.as_bytes() {
+            return Err("text drop confirmation changed the target or content".into());
+        }
+        app.drop_text(host, position, "ignored while confirmation is open".into());
+        if app.focused(host.id) != Some(focused)
+            || [focused, hovered]
+                .iter()
+                .any(|id| app.panes[id].input.len() != 1)
+        {
+            return Err("unapproved text drop leaked terminal input or changed focus".into());
         }
         Ok(())
     })();
@@ -5269,6 +5309,8 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
         pane.selection_gesture = selection_gesture;
     }
     host.mouse = mouse;
+    host.confirm = confirm;
+    app.loaded.config.clipboard_paste_protection = paste_protection;
     host.modifiers = modifiers;
     host.link_hit = link_hit;
     host.hovered_link = hovered_link;
@@ -5286,7 +5328,7 @@ fn check_pointer_targets(app: &mut App, host: &mut Host) -> Result<()> {
     let _ = host.egui.on_window_event(&host.window, &event);
     result?;
     eprintln!(
-        "Native smoke: trackpad momentum, scrolling, and file drops followed the pointer without changing focus"
+        "Native smoke: scrolling, file drops, and protected emoji drops followed the pointer without changing focus"
     );
     Ok(())
 }
