@@ -916,9 +916,16 @@ pub fn paint_pin(painter: &egui::Painter, rect: Rect, color: Color32) {
     ));
 }
 
-/// Call in a right-aligned header; width is bounded even for long pane labels.
+/// Draw the window header breadcrumb; width is bounded even for long pane labels.
 pub fn breadcrumb(ui: &mut egui::Ui, rows: &[Row], max_width: f32) -> Option<Target> {
-    breadcrumb_with_pin_highlight(ui, rows, max_width, None)
+    ui.scope(|ui| {
+        let family = egui::FontFamily::Name("system-ui-bold".into());
+        if ui.fonts(|fonts| fonts.definitions().families.contains_key(&family)) {
+            ui.style_mut().override_font_id = Some(FontId::new(13.0, family));
+        }
+        breadcrumb_with_pin_highlight(ui, rows, max_width, None)
+    })
+    .inner
 }
 
 fn breadcrumb_with_pin_highlight(
@@ -978,7 +985,14 @@ fn breadcrumb_with_panels(
         .enumerate()
         .map(|(index, (row, label))| {
             ui.painter()
-                .layout_no_wrap(label.clone(), FontId::proportional(13.0), foreground)
+                .layout_no_wrap(
+                    label.clone(),
+                    ui.style()
+                        .override_font_id
+                        .clone()
+                        .unwrap_or_else(|| FontId::proportional(13.0)),
+                    foreground,
+                )
                 .size()
                 .x
                 + if row.tab_index.is_some() {
@@ -1170,7 +1184,10 @@ fn paint_label(
     }
     let mut job = egui::text::LayoutJob::simple_singleline(
         label.to_owned(),
-        FontId::proportional(13.0),
+        ui.style()
+            .override_font_id
+            .clone()
+            .unwrap_or_else(|| FontId::proportional(13.0)),
         foreground,
     );
     if !highlights.is_empty() {
