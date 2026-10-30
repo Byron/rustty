@@ -1,4 +1,4 @@
-//! A movable hierarchy and its compact, neutral breadcrumb.
+//! A movable hierarchy and its compact breadcrumb.
 use crate::{
     outliner::{Expansion, Row, Target, Zoom, has_children, pinned_paths},
     presentation::TabAccent,
@@ -621,6 +621,7 @@ fn search_results(
                 &panels,
                 selected_pane,
                 None,
+                None,
             );
             if active && changed {
                 response.scroll_to_me(None);
@@ -919,11 +920,15 @@ pub fn paint_pin(painter: &egui::Painter, rect: Rect, color: Color32) {
 /// Draw the window header breadcrumb; width is bounded even for long pane labels.
 pub fn breadcrumb(ui: &mut egui::Ui, rows: &[Row], max_width: f32) -> Option<Target> {
     ui.scope(|ui| {
-        let family = egui::FontFamily::Name("system-ui-bold".into());
-        if ui.fonts(|fonts| fonts.definitions().families.contains_key(&family)) {
-            ui.style_mut().override_font_id = Some(FontId::new(13.0, family));
-        }
-        breadcrumb_with_pin_highlight(ui, rows, max_width, None)
+        let accent = ui.visuals().selection.bg_fill;
+        let background = ui.painter().add(egui::Shape::Noop);
+        let selected =
+            breadcrumb_with_panels(ui, rows, max_width, None, &[], None, None, Some(accent));
+        ui.painter().set(
+            background,
+            egui::Shape::rect_filled(ui.min_rect(), 4, accent.gamma_multiply(0.15)),
+        );
+        selected
     })
     .inner
 }
@@ -934,9 +939,10 @@ fn breadcrumb_with_pin_highlight(
     max_width: f32,
     pin_highlight: Option<(Rect, TabAccent, egui::layers::ShapeIdx)>,
 ) -> Option<Target> {
-    breadcrumb_with_panels(ui, rows, max_width, None, &[], None, pin_highlight)
+    breadcrumb_with_panels(ui, rows, max_width, None, &[], None, pin_highlight, None)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn breadcrumb_with_panels(
     ui: &mut egui::Ui,
     rows: &[Row],
@@ -945,6 +951,7 @@ fn breadcrumb_with_panels(
     panels: &[&Row],
     selected_pane: Option<Id>,
     pin_highlight: Option<(Rect, TabAccent, egui::layers::ShapeIdx)>,
+    label_color: Option<Color32>,
 ) -> Option<Target> {
     if rows.is_empty() || max_width <= 0.0 {
         return None;
@@ -985,14 +992,7 @@ fn breadcrumb_with_panels(
         .enumerate()
         .map(|(index, (row, label))| {
             ui.painter()
-                .layout_no_wrap(
-                    label.clone(),
-                    ui.style()
-                        .override_font_id
-                        .clone()
-                        .unwrap_or_else(|| FontId::proportional(13.0)),
-                    foreground,
-                )
+                .layout_no_wrap(label.clone(), FontId::proportional(13.0), foreground)
                 .size()
                 .x
                 + if row.tab_index.is_some() {
@@ -1142,7 +1142,7 @@ fn breadcrumb_with_panels(
             &labels[index],
             rect,
             text_left,
-            foreground,
+            label_color.unwrap_or(foreground),
             if index + 1 == rows.len() {
                 highlights.unwrap_or_default()
             } else {
@@ -1184,10 +1184,7 @@ fn paint_label(
     }
     let mut job = egui::text::LayoutJob::simple_singleline(
         label.to_owned(),
-        ui.style()
-            .override_font_id
-            .clone()
-            .unwrap_or_else(|| FontId::proportional(13.0)),
+        FontId::proportional(13.0),
         foreground,
     );
     if !highlights.is_empty() {
@@ -3548,6 +3545,9 @@ mod tests {
     fn breadcrumb_compact_names_keep_icons_and_every_click_target() {
         let context = egui::Context::default();
         context.enable_accesskit();
+        let accent = Color32::from_rgb(255, 200, 0);
+        let foreground = Color32::from_rgb(120, 130, 140);
+        let weak_foreground = Color32::from_rgb(90, 100, 110);
         let mut rows = rows();
         rows[2].label = "Work".into();
         rows[3].label = "Work".into();
@@ -3561,6 +3561,9 @@ mod tests {
                 },
                 |root| {
                     egui::CentralPanel::default().show(root, |ui| {
+                        ui.visuals_mut().selection.bg_fill = accent;
+                        ui.visuals_mut().override_text_color = Some(foreground);
+                        ui.visuals_mut().weak_text_color = Some(weak_foreground);
                         selected = breadcrumb(ui, rows, 580.0);
                     });
                 },
@@ -3583,8 +3586,38 @@ mod tests {
             })
             .collect();
         assert_eq!(labels, ["Window 1", "Work", "Work"]);
+        let background = output
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Rect(rect) if rect.fill == accent.gamma_multiply(0.15) => Some(rect),
+                _ => None,
+            })
+            .unwrap();
+        for shape in &output.shapes {
+            if let egui::Shape::Rect(rect) = &shape.shape
+                && rect.stroke.width > 0.0
+            {
+                assert_eq!(rect.stroke.color, foreground);
+            }
+            if let egui::Shape::Text(text) = &shape.shape
+                && text.galley.text() == "›"
+            {
+                assert_eq!(text.galley.job.sections[0].format.color, weak_foreground);
+            }
+            if let egui::Shape::Text(text) = &shape.shape
+                && text.galley.text() != "›"
+            {
+                assert_eq!(text.galley.job.sections[0].format.color, accent);
+                assert_eq!(
+                    text.galley.job.sections[0].format.font_id,
+                    FontId::proportional(13.0)
+                );
+            }
+        }
         for row in &rows {
             let rect = bounds(&output, row);
+            assert!(background.rect.contains_rect(rect));
             assert!(rect.width() >= ICON_SIZE);
             let pos = rect.center();
             draw(&rows, vec![egui::Event::PointerMoved(pos)]);
