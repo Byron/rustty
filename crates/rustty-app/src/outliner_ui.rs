@@ -433,16 +433,22 @@ pub fn contents(
                     label_rect.max.x = tag.left() - 6.0;
                 }
                 if pinned {
-                    label_rect.max.x -= 20.0;
                     paint_pin(
                         ui.painter(),
                         Rect::from_center_size(
-                            Pos2::new(rect.right() - 11.0, rect.center().y),
+                            Pos2::new(label_rect.right() - 11.0, rect.center().y),
                             Vec2::splat(14.0),
                         ),
                         foreground,
                     );
+                    label_rect.max.x -= 20.0;
                 }
+                label_rect.min.x = text_left.min(label_rect.right());
+                let label_rect = paint_working(ui.painter(), label_rect, row.working, if row.focused {
+                    foreground
+                } else {
+                    ui.visuals().weak_text_color()
+                });
                 if !matches!(row.target, Target::Quad { .. }) || !expansion.is_open(row.target) {
                     paint_label(ui, &row.label, label_rect, text_left, foreground, &[]);
                 }
@@ -573,7 +579,10 @@ fn search_results(
                 paint_label(
                     ui,
                     &ancestor.label,
-                    rect,
+                    paint_working(ui.painter(), Rect::from_min_max(
+                        Pos2::new((left + ICON_SIZE + 6.0).min(rect.right()), rect.top()),
+                        rect.max,
+                    ), ancestor.working, ui.visuals().weak_text_color()),
                     left + ICON_SIZE + 6.0,
                     ui.visuals().weak_text_color(),
                     &[],
@@ -607,16 +616,18 @@ fn search_results(
                 ui.painter()
                     .rect_filled(rect, 3, ui.visuals().widgets.hovered.bg_fill);
             }
+            let working = group.iter().map(|index| results[*index].path.last().unwrap().working).sum();
+            let label_rect = paint_working(ui.painter(), rect, working, ui.visuals().weak_text_color());
             let mut child = ui.new_child(
                 egui::UiBuilder::new()
                     .id_salt(("search-path", pane))
-                    .max_rect(rect.shrink2(Vec2::new(3.0, 2.0))),
+                    .max_rect(label_rect.shrink2(Vec2::new(3.0, 2.0))),
             );
             let panels: Vec<_> = group.iter().map(|index| results[*index].path.last().unwrap()).collect();
             let clicked = breadcrumb_with_panels(
                 &mut child,
                 &result.path[result.path.len() - 1..],
-                rect.width() - 6.0,
+                label_rect.width() - 6.0,
                 Some(&result.highlights),
                 &panels,
                 selected_pane,
@@ -631,7 +642,11 @@ fn search_results(
                     egui::WidgetType::SelectableLabel,
                     true,
                     active,
-                    format!("Search result: {}", row.label),
+                    if working > 0 {
+                        format!("Search result: {} · {working} running", row.label)
+                    } else {
+                        format!("Search result: {}", row.label)
+                    },
                 )
             });
             if let Some(target) = clicked {
@@ -821,6 +836,16 @@ fn pins(
                 let crumb_rect = Rect::from_min_max(
                     Pos2::new(handle_rect.right() + 3.0, rect.top() + 2.0),
                     rect.max,
+                );
+                let crumb_rect = paint_working(
+                    ui.painter(),
+                    crumb_rect,
+                    row.working,
+                    if row.focused {
+                        foreground
+                    } else {
+                        ui.visuals().weak_text_color()
+                    },
                 );
                 let mut child = ui.new_child(
                     egui::UiBuilder::new()
@@ -1285,6 +1310,23 @@ fn paint_icon(painter: &egui::Painter, rect: Rect, row: &Row, color: Color32) {
     }
 }
 
+fn paint_working(painter: &egui::Painter, mut rect: Rect, working: usize, color: Color32) -> Rect {
+    if working == 0 {
+        return rect;
+    }
+    let galley = painter.layout_no_wrap(format!("▶ {working}"), FontId::proportional(13.0), color);
+    let left = (rect.right() - 6.0 - galley.size().x).max(rect.left());
+    painter
+        .with_clip_rect(rect.intersect(painter.clip_rect()))
+        .galley(
+            Pos2::new(left, rect.center().y - galley.size().y / 2.0),
+            galley,
+            color,
+        );
+    rect.max.x = (left - 6.0).max(rect.left());
+    rect
+}
+
 fn description(row: &Row) -> String {
     let kind = match row.target {
         Target::Window(_) => "Window",
@@ -1293,6 +1335,9 @@ fn description(row: &Row) -> String {
         Target::Pane { .. } => "Panel",
     };
     let mut description = format!("{kind}: {}", row.label);
+    if row.working > 0 {
+        description.push_str(&format!(" · {} running", row.working));
+    }
     if row.tmuxx.is_some() {
         description.push_str(" · tmuxx");
     }
@@ -1407,6 +1452,7 @@ mod tests {
                 color: Some([210, 110, 70]),
                 zoom: Zoom::None,
                 tmuxx: None,
+                working: 0,
             },
             Row {
                 target: Target::Tab(1),
@@ -1419,6 +1465,7 @@ mod tests {
                 color: Some([210, 110, 70]),
                 zoom: Zoom::PaneInQuad,
                 tmuxx: None,
+                working: 0,
             },
             Row {
                 target: Target::Quad { tab: 1, node: 2 },
@@ -1435,6 +1482,7 @@ mod tests {
                 color: Some([210, 110, 70]),
                 zoom: Zoom::Quad,
                 tmuxx: None,
+                working: 0,
             },
             Row {
                 target: Target::Pane { tab: 1, pane: 3 },
@@ -1452,6 +1500,7 @@ mod tests {
                 color: Some([210, 110, 70]),
                 zoom: Zoom::PaneInQuad,
                 tmuxx: None,
+                working: 0,
             },
         ]
     }
@@ -1557,6 +1606,115 @@ mod tests {
             assert_eq!(text.galley.rows.len(), 1);
             assert!(text.galley.size().x <= width - 12.0);
         }
+    }
+
+    #[test]
+    fn working_counts_stay_visible_on_expanded_quads_and_clear_at_zero() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let mut rows = rows();
+        for (index, row) in rows.iter_mut().enumerate() {
+            row.working = [3, 2, 1, 1][index];
+            row.label = format!("Level {index} {}", "long directory name ".repeat(10));
+        }
+        rows[0].tmuxx = Some("tmuxx · remote".into());
+        frame(&context, &rows, Vec::new(), false);
+        for open in [false, true] {
+            let (output, _) = frame(&context, &rows, Vec::new(), false);
+            let badges: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text().starts_with("▶ ") => Some(text),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(badges.len(), if open { 4 } else { 3 });
+            for (row, badge) in rows.iter().zip(&badges) {
+                assert_eq!(badge.galley.text(), format!("▶ {}", row.working));
+                assert!(bounds(&output, row).contains_rect(badge.visual_bounding_rect()));
+                assert!(description(row).contains(&format!("{} running", row.working)));
+                if let Some(label) = output.shapes.iter().find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == row.label => Some(text),
+                    _ => None,
+                }) {
+                    assert!(label.visual_bounding_rect().right() < badge.pos.x);
+                }
+                let color = if row.focused {
+                    rgb(TabAccent::new(row.color, [210, 110, 70]).foreground)
+                } else {
+                    context.global_style().visuals.weak_text_color()
+                };
+                assert_eq!(badge.galley.job.sections[0].format.color, color);
+            }
+            let tag = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == "tmuxx" => Some(text),
+                    _ => None,
+                })
+                .unwrap();
+            assert!(badges[0].visual_bounding_rect().right() < tag.pos.x);
+            let disclosure = context
+                .read_response(egui::Id::new(("outliner-disclosure", rows[2].target)))
+                .unwrap()
+                .rect;
+            assert_eq!(click(&context, &rows, disclosure.center(), false), None);
+        }
+        for row in &mut rows {
+            row.working = 0;
+        }
+        let (output, _) = frame(&context, &rows, Vec::new(), false);
+        assert!(!output.shapes.iter().any(|shape| matches!(
+            &shape.shape, egui::Shape::Text(text) if text.galley.text().starts_with("▶ ")
+        )));
+    }
+
+    #[test]
+    fn working_counts_follow_search_groups_and_pinned_panes() {
+        let context = egui::Context::default();
+        let mut rows = rows();
+        for row in &mut rows {
+            row.working = if matches!(row.target, Target::Pane { .. }) {
+                1
+            } else {
+                2
+            };
+        }
+        rows.push(Row {
+            target: Target::Pane { tab: 1, pane: 4 },
+            ..rows[3].clone()
+        });
+        let mut search = SearchState::default();
+        search.start();
+        search.query = "Tests".into();
+        search_frame(&context, &rows, &[], &mut search, Default::default());
+        let (output, _, _) = search_frame(&context, &rows, &[], &mut search, Default::default());
+        assert_eq!(
+            output
+                .shapes
+                .iter()
+                .filter(|shape| matches!(
+                    &shape.shape, egui::Shape::Text(text) if text.galley.text() == "▶ 2"
+                ))
+                .count(),
+            4
+        );
+        let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+            pins(ui, &pinned_paths(&rows, &[3]), &[3], [210, 110, 70]);
+        });
+        output.textures_delta.clear();
+        assert_eq!(
+            output
+                .shapes
+                .iter()
+                .filter(|shape| matches!(
+                    &shape.shape, egui::Shape::Text(text) if text.galley.text() == "▶ 1"
+                ))
+                .count(),
+            1
+        );
     }
 
     fn node<'a>(output: &'a egui::FullOutput, label: &str) -> Option<&'a egui::accesskit::Node> {

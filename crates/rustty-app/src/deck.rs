@@ -342,6 +342,12 @@ impl Report {
     pub fn is_registered(&self) -> bool {
         self.snapshot.is_some()
     }
+    pub fn reported_active(&self, activity: &Activity) -> bool {
+        self.snapshot.as_ref().map_or_else(
+            || activity.reported_active(),
+            |snapshot| snapshot.state == State::Working,
+        )
+    }
     pub fn apply(&mut self, event: Event, generation: u64, command_running: bool) {
         match event {
             Event::Begin(snapshot) => {
@@ -1494,6 +1500,43 @@ mod tests {
                 );
             }
         }
+    }
+    #[test]
+    fn working_count_prefers_agent_reports_and_falls_back_after_they_end() {
+        let mut report = Report::default();
+        let mut activity = Activity::default();
+        activity.command_started();
+        assert!(!report.reported_active(&activity));
+        for title in ["⠋ Working", "[ ! ] Action Required | Codex"] {
+            activity.title_changed(title);
+            for state in [
+                State::Working,
+                State::Idle,
+                State::NeedsInput,
+                State::Done,
+                State::Error,
+                State::Paused,
+                State::Unknown,
+            ] {
+                report.apply(Event::Begin(snapshot(state, "A", Some("T1"))), 1, true);
+                assert_eq!(report.reported_active(&activity), state == State::Working);
+                report.apply(Event::End, 1, true);
+                assert_eq!(
+                    report.reported_active(&activity),
+                    activity.reported_active()
+                );
+            }
+        }
+        activity.title_changed("Normal title");
+        let now = Instant::now();
+        activity.progress_reported(3, None, now);
+        assert!(report.reported_active(&activity));
+        activity.expire(now + crate::presentation::PROGRESS_TIMEOUT);
+        assert!(!report.reported_active(&activity));
+        report.apply(Event::Begin(snapshot(State::Working, "A", None)), 2, true);
+        assert!(report.reported_active(&activity));
+        report.command_ended();
+        assert!(!report.reported_active(&activity));
     }
     #[test]
     fn tile_labels_use_local_task_names_without_changing_report_identity() {

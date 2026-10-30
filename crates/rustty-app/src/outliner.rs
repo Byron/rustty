@@ -33,6 +33,7 @@ pub struct Row {
     pub color: Option<[u8; 3]>,
     pub tmuxx: Option<String>,
     pub zoom: Zoom,
+    pub working: usize,
 }
 
 #[derive(Clone, Default)]
@@ -171,6 +172,7 @@ pub fn workspace_rows(
                 color: tab.color,
                 tmuxx: tmuxx_windows.get(&window.id).cloned(),
                 zoom: Zoom::None,
+                working: 0,
             });
         }
         outline.extend(rows(window, labels, tab_labels).into_iter().map(|mut row| {
@@ -181,6 +183,22 @@ pub fn workspace_rows(
         }));
     }
     outline
+}
+
+/// Sum live working panes through the full hierarchy before filtering visible rows.
+pub fn count_working(rows: &mut [Row], is_working: impl Fn(Id) -> bool) {
+    let mut descendants = Vec::new();
+    for row in rows.iter_mut().rev() {
+        row.working =
+            usize::from(matches!(row.target, Target::Pane { pane, .. } if is_working(pane)));
+        while descendants
+            .last()
+            .is_some_and(|&(depth, _)| depth > row.depth)
+        {
+            row.working += descendants.pop().unwrap().1;
+        }
+        descendants.push((row.depth, row.working));
+    }
 }
 
 pub fn pinned_paths(rows: &[Row], pins: &[Id]) -> Vec<Vec<Row>> {
@@ -306,6 +324,7 @@ pub fn rows(
                 color: tab.color,
                 zoom: zoom(tab),
                 tmuxx: None,
+                working: 0,
             });
         }
         rows.extend(tab_rows(tab, labels, usize::from(has_tabs), active));
@@ -401,6 +420,7 @@ fn quad_row(
         ancestor: active && node.contains(tab.focused),
         color: tab.color,
         tmuxx: None,
+        working: 0,
         zoom: if tab.quadrant_zoom == Some(node.id) {
             Zoom::Quad
         } else {
@@ -427,6 +447,7 @@ fn pane_row(
         ancestor: false,
         color: tab.color,
         tmuxx: None,
+        working: 0,
         zoom: if tab.zoom == Some(pane) && tab.zoom != tab.quadrant_zoom {
             zoom(tab)
         } else {
@@ -682,6 +703,72 @@ mod tests {
             &HashSet::new(),
             &Default::default(),
         )
+    }
+
+    #[test]
+    fn working_counts_roll_up_through_nested_quads_tabs_and_windows() {
+        let mut first = quads();
+        let tab = &mut first.tabs[0];
+        tab.quad_roots.insert(tab.root.id);
+        let mut second = Tab::new(21, 22, "/tmp".into());
+        second.split(23, 24, Direction::Right, "/tmp".into());
+        first.tabs.push(second);
+        let mut workspace = Workspace::default();
+        workspace.windows = vec![
+            first,
+            WindowState {
+                id: 200,
+                tabs: vec![Tab::new(31, 32, "/tmp".into())],
+                ..window()
+            },
+        ];
+        let mut rows = workspace_rows(
+            &workspace,
+            Some(100),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashSet::new(),
+            &HashMap::new(),
+        );
+        let working = [2, 22, 23];
+        count_working(&mut rows, |pane| working.contains(&pane));
+        assert!(
+            rows.iter()
+                .any(|row| { matches!(row.target, Target::Quad { .. }) && row.depth > 2 })
+        );
+        for row in &rows {
+            let expected = match row.target {
+                Target::Window(100) => 3,
+                Target::Window(_) => 0,
+                Target::Tab(1) => 1,
+                Target::Tab(21) => 2,
+                Target::Tab(_) => 0,
+                Target::Quad { node, .. } => usize::from(
+                    workspace.windows[0].tabs[0]
+                        .root
+                        .node(node)
+                        .unwrap()
+                        .contains(2),
+                ),
+                Target::Pane { pane, .. } => usize::from(working.contains(&pane)),
+            };
+            assert_eq!(row.working, expected, "{:?}", row.target);
+        }
+        let mut expansion = Expansion::default();
+        expansion.sync(&rows);
+        expansion.toggle(&rows, 0, true);
+        assert_eq!(rows[expansion.visible(&rows)[0]].working, 3);
+
+        count_working(&mut rows, |pane| pane == 32);
+        assert_eq!(rows[row_index(&rows, Target::Window(100))].working, 0);
+        assert_eq!(rows[row_index(&rows, Target::Window(200))].working, 1);
+        assert!(
+            rows.iter()
+                .filter(|row| row.target != Target::Window(200)
+                    && row.target != Target::Pane { tab: 31, pane: 32 })
+                .all(|row| row.working == 0)
+        );
+        count_working(&mut [], |_| panic!("no panes"));
     }
 
     #[test]
