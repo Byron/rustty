@@ -1469,7 +1469,6 @@ fn check_zoom_transition(
             scale,
             [metrics.cell_width, metrics.cell_height],
             app.window_config(host.id),
-            if tab.panes.len() > 1 { 18.0 } else { 0.0 },
         );
         after.insert(id, size);
         if !source.contains(&id) {

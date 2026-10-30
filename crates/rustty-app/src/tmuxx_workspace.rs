@@ -457,7 +457,7 @@ impl Mapping {
     }
 }
 
-/// Compute the server grid from split topology, per-pane padding/headers,
+/// Compute the server grid from split topology, per-pane padding,
 /// and the server's one-cell borders, independently of divider positions.
 // shortcut: A shared grid can clip asymmetric panes after padding; exact per-pane fit must also update layout and divider placement.
 pub fn grid_size(
@@ -889,11 +889,11 @@ mod tests {
     }
 
     #[test]
-    fn view_grid_and_status_rows_fit_real_cells_after_headers_padding_and_frames() {
+    fn view_grid_and_status_rows_fit_real_cells_after_padding_and_frames() {
         let cell = [8.0, 10.0];
-        // Horizontal padding 12; vertical padding 8 + header 20; frame 2 on both axes.
-        let padding = [14.0, 30.0];
-        for (width, height, cols, rows) in [(654.0, 270.0, 80, 24), (652.0, 268.0, 79, 23)] {
+        // Horizontal padding 12; vertical padding 8; frame 2 on both axes.
+        let padding = [14.0, 10.0];
+        for (width, height, cols, rows) in [(654.0, 250.0, 80, 24), (652.0, 248.0, 79, 23)] {
             for (top, bottom) in [(0, 0), (1, 0), (0, 1)] {
                 let mut graph = graph();
                 graph.windows[0].cols = cols;
