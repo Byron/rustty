@@ -1959,7 +1959,6 @@ impl App {
                         [metrics.cell_width, metrics.cell_height],
                         scale,
                         self.window_config(host.id),
-                        tab.panes.len() > 1,
                     );
                     let rect = tab
                         .layout_with_minimum(
@@ -1986,7 +1985,6 @@ impl App {
                         scale,
                         [metrics.cell_width, metrics.cell_height],
                         self.window_config(host.id),
-                        if tab.panes.len() > 1 { 18.0 } else { 0.0 },
                     ))
                 })
                 .unwrap_or((80, 24));
@@ -5202,7 +5200,7 @@ fn selection_pointer(
     }
 }
 
-fn pane_minimum_size(cell: [u32; 2], scale: f32, config: &Config, split: bool) -> [f32; 2] {
+fn pane_minimum_size(cell: [u32; 2], scale: f32, config: &Config) -> [f32; 2] {
     [
         (cell[0] as f32 / scale
             + config.window_padding_x.start
@@ -5212,23 +5210,16 @@ fn pane_minimum_size(cell: [u32; 2], scale: f32, config: &Config, split: bool) -
         (cell[1] as f32 / scale
             + config.window_padding_y.start
             + config.window_padding_y.end
-            + if split { 18.0 } else { 0.0 }
             + 2.0)
             .ceil(),
     ]
 }
 
-fn pane_grid_size(
-    size: Vec2,
-    scale: f32,
-    cell: [u32; 2],
-    config: &Config,
-    header_height: f32,
-) -> (u16, u16) {
+fn pane_grid_size(size: Vec2, scale: f32, cell: [u32; 2], config: &Config) -> (u16, u16) {
     let physical = size * scale;
     let padding = [
         config.window_padding_x.start + config.window_padding_x.end,
-        config.window_padding_y.start + config.window_padding_y.end + header_height,
+        config.window_padding_y.start + config.window_padding_y.end,
     ];
     let columns = ((physical.x - padding[0] * scale).max(cell[0] as f32) / cell[0] as f32)
         .floor()
@@ -5249,7 +5240,6 @@ impl App {
             [metrics.cell_width, metrics.cell_height],
             host.window.scale_factor() as f32,
             self.window_config(host.id),
-            self.tab(host.id).is_some_and(|tab| tab.panes.len() > 1),
         )
     }
 
@@ -5298,7 +5288,6 @@ impl App {
         }) {
             host.search_focus = None;
         }
-        let header_height = if active.panes.len() > 1 { 18.0 } else { 0.0 };
         let scale = host.window.scale_factor() as f32;
         let size = host.window.inner_size();
         if size.width == 0 || size.height == 0 {
@@ -5706,7 +5695,7 @@ impl App {
                             tab, host.content, host.peek.is_some(),
                             [metrics.cell_width as f32 / scale, metrics.cell_height as f32 / scale],
                             [config.window_padding_x.start + config.window_padding_x.end + 2.0,
-                             config.window_padding_y.start + config.window_padding_y.end + header_height + 2.0],
+                             config.window_padding_y.start + config.window_padding_y.end + 2.0],
                         )).unwrap_or((80, 24));
                         if let Err(error) = connection.view_size(*session, cols, rows, metrics.cell_width.min(u16::MAX.into()) as u16, metrics.cell_height.min(u16::MAX.into()) as u16) { render_error = Some(error.to_string()); }
                     }
@@ -5742,12 +5731,12 @@ impl App {
                             let physical = rect.size() * scale;
                             let padding = [
                                 config.window_padding_x.start * scale,
-                                (config.window_padding_y.start + header_height) * scale,
+                                config.window_padding_y.start * scale,
                             ];
                             let metrics = host.fonts.metrics();
                             let (cols, rows) = pane_grid_size(
                                 rect.size(), scale, [metrics.cell_width, metrics.cell_height],
-                                &config, header_height,
+                                &config,
                             );
                             // Image placement and pixel mouse input share the renderer's cell grid.
                             if let Err(error) = pane.session.resize(
@@ -6973,13 +6962,7 @@ impl App {
         let metrics = host.fonts.metrics();
         let padding = [
             self.window_config(host.id).window_padding_x.start * scale,
-            (self.window_config(host.id).window_padding_y.start
-                + if self.tab(host.id).is_some_and(|tab| tab.panes.len() > 1) {
-                    18.0
-                } else {
-                    0.0
-                })
-                * scale,
+            self.window_config(host.id).window_padding_y.start * scale,
         ];
         let Some(pane) = self.panes.get_mut(&id) else {
             self.cancel_selection_drag(host);
@@ -7141,7 +7124,6 @@ impl App {
             {
                 return None;
             }
-            let header = if tab.panes.len() > 1 { 18.0 } else { 0.0 };
             let id = host.hovered_pane()?;
             let rect = host.rects[&id];
             let config = self.window_config(host.id).clone();
@@ -7158,11 +7140,7 @@ impl App {
                 return None;
             }
             let text = egui::Rect::from_min_max(
-                rect.min
-                    + Vec2::new(
-                        config.window_padding_x.start,
-                        config.window_padding_y.start + header,
-                    ),
+                rect.min + Vec2::new(config.window_padding_x.start, config.window_padding_y.start),
                 rect.max - Vec2::new(config.window_padding_x.end, config.window_padding_y.end),
             );
             if !text.contains(host.mouse) {
@@ -7486,13 +7464,7 @@ impl App {
         let surface = (host.mouse - rect.min) * scale;
         let padding = [
             self.window_config(host.id).window_padding_x.start * scale,
-            (self.window_config(host.id).window_padding_y.start
-                + if self.tab(host.id).is_some_and(|t| t.panes.len() > 1) {
-                    18.0
-                } else {
-                    0.0
-                })
-                * scale,
+            self.window_config(host.id).window_padding_y.start * scale,
             self.window_config(host.id).window_padding_x.end * scale,
             self.window_config(host.id).window_padding_y.end * scale,
         ];
@@ -9501,7 +9473,7 @@ mod tests {
     }
 
     #[test]
-    fn split_minimum_includes_scaled_cells_padding_and_header() {
+    fn pane_minimum_includes_scaled_cells_and_both_padding_edges() {
         let mut config = Config::default();
         config.window_padding_x = config::Padding {
             start: 3.25,
@@ -9511,25 +9483,29 @@ mod tests {
             start: 1.0,
             end: 2.0,
         };
-        let minimum = pane_minimum_size([15, 31], 1.5, &config, true);
-        assert_eq!(minimum, [20.0, 44.0]);
+        let minimum = pane_minimum_size([15, 31], 1.5, &config);
+        assert_eq!(minimum, [20.0, 26.0]);
         assert_eq!(
             pane_grid_size(
                 Vec2::new(minimum[0] - 2.0, minimum[1] - 2.0),
                 1.5,
                 [15, 31],
                 &config,
-                18.0
             ),
             (1, 1)
         );
         config.window_padding_x.end += 10.0;
-        assert_eq!(pane_minimum_size([15, 31], 1.5, &config, true)[0], 30.0);
+        assert_eq!(pane_minimum_size([15, 31], 1.5, &config)[0], 30.0);
+        assert_eq!(pane_minimum_size([30, 62], 1.5, &config), [40.0, 47.0]);
         assert_eq!(
-            pane_minimum_size([30, 62], 1.5, &config, true),
-            [40.0, 65.0]
+            pane_grid_size(Vec2::new(100.0, 103.0), 1.5, [15, 30], &config),
+            (8, 5)
         );
-        assert_eq!(pane_minimum_size([15, 31], 1.5, &config, false)[1], 26.0);
+        config.window_padding_y.end += 20.0;
+        assert_eq!(
+            pane_grid_size(Vec2::new(100.0, 103.0), 1.5, [15, 30], &config),
+            (8, 4)
+        );
     }
 
     #[test]

@@ -1074,10 +1074,7 @@ impl App {
                     ],
                     [
                         config.window_padding_x.start + config.window_padding_x.end + 2.0,
-                        config.window_padding_y.start
-                            + config.window_padding_y.end
-                            + if tab.panes.len() > 1 { 18.0 } else { 0.0 }
-                            + 2.0,
+                        config.window_padding_y.start + config.window_padding_y.end + 2.0,
                     ],
                 )
             })
