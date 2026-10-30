@@ -145,6 +145,10 @@ struct PaneStartup {
 }
 
 impl Pane {
+    fn reported_active(&self) -> bool {
+        !self.exited && self.agent.reported_active(&self.activity)
+    }
+
     fn has_deck_report(&self) -> bool {
         !self.exited
             && (self.agent.is_registered()
@@ -2709,7 +2713,7 @@ impl App {
             .filter(|host| host.quick_used)
             .map(|host| host.id)
             .collect();
-        outliner::workspace_rows(
+        let mut rows = outliner::workspace_rows(
             &self.workspace,
             self.active,
             &self.directory_labels,
@@ -2726,7 +2730,11 @@ impl App {
                         .map(|id| (*id, entry.label(&self.config().tmuxx_connections)))
                 })
                 .collect(),
-        )
+        );
+        outliner::count_working(&mut rows, |id| {
+            self.panes.get(&id).is_some_and(Pane::reported_active)
+        });
+        rows
     }
     fn draw_outliner(
         &mut self,
@@ -2981,11 +2989,7 @@ impl App {
         let working = tab
             .panes
             .keys()
-            .filter(|id| {
-                self.panes
-                    .get(id)
-                    .is_some_and(|p| p.activity.reported_active())
-            })
+            .filter(|id| self.panes.get(id).is_some_and(Pane::reported_active))
             .count();
         let attention = tab
             .panes
@@ -3021,6 +3025,7 @@ impl App {
         self.poll_starting_pane(id);
         self.deck.dirty = true;
         let previous_tab_label = self.pane_tab_label(id);
+        let previously_working = self.panes.get(&id).is_some_and(Pane::reported_active);
         let tmuxx = self.tmuxx_pane(id).is_some();
         let previous_directory = self.panes.get(&id).map(|pane| pane.cwd.clone());
         let live = previous_tab_label.is_some();
@@ -3253,7 +3258,10 @@ impl App {
         if directory_changed {
             self.refresh_directory_labels();
         }
-        if directory_changed || title_changed {
+        if directory_changed
+            || title_changed
+            || previously_working != self.panes.get(&id).is_some_and(Pane::reported_active)
+        {
             self.repaint_outliner();
         }
         if stopped {
@@ -8353,11 +8361,18 @@ impl ApplicationHandler<Event> for App {
                 pane.activity
                     .deadline()
                     .filter(|&deadline| deadline <= now)
-                    .map(|_| (id, pane.activity.expire(now)))
+                    .map(|_| {
+                        let previously_working = pane.reported_active();
+                        let stopped = pane.activity.expire(now);
+                        (id, stopped, previously_working != pane.reported_active())
+                    })
             })
             .collect::<Vec<_>>();
-        for (id, stopped) in expired {
+        for (id, stopped, working_changed) in expired {
             self.deck.dirty = true;
+            if working_changed {
+                self.repaint_outliner();
+            }
             if stopped {
                 self.activity_stopped(id, now);
             }

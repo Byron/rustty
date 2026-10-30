@@ -464,9 +464,12 @@ unassigned tabs use the macOS system accent with the same bleed and frame tint.
 `tab-frame-color-mix = 9%` controls the tab color mixed into the window frame,
 which is the bottom color of the tab gradient. It accepts `0%` through `100%`;
 `18%` restores the previous intensity, and an empty value restores the 9% default.
-Inactive tabs and directory labels underline running commands, while `▶` counts panes explicitly reporting work
-through a leading activity spinner or progress report. Waiting-for-input titles
-do not count as active work. Each pane can trigger a short completion flash even
+Inactive tabs and directory labels underline running commands, while `▶ N` counts
+panes explicitly reporting work. Structured agent status takes precedence;
+otherwise, a leading activity spinner or progress report indicates work, excluding
+waiting-for-input titles. The outliner shows the same counts on panels and sums
+them through every quad, tab, and window row, including collapsed branches. Zero
+counts are hidden. Each pane can trigger a short completion flash even
 while another pane remains busy. Directory labels normally use the basename.
 When different paths share that basename, labels include the shortest parent suffix
 that distinguishes them, such as `work/project` and `fork/project`. Names are shared

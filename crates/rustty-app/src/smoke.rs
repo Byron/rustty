@@ -5933,6 +5933,36 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
                 .as_bytes(),
         );
     }
+    for id in [first, second, second_last] {
+        app.panes.get_mut(&id).unwrap().agent.apply(
+            vt::agent::Event::Begin(vt::agent::Snapshot {
+                state: vt::agent::State::Working,
+                label: None,
+                thread_id: None,
+                turn_id: None,
+            }),
+            1,
+            false,
+        );
+    }
+    let rows = app.outline_rows();
+    for (tab, count) in [(first_tab, 1), (second_tab, 2)] {
+        assert_eq!(
+            rows.iter()
+                .find(|row| row.target == Target::Tab(tab))
+                .unwrap()
+                .working,
+            count
+        );
+        let tab = app
+            .workspace
+            .windows
+            .iter()
+            .flat_map(|window| &window.tabs)
+            .find(|candidate| candidate.id == tab)
+            .unwrap();
+        assert!(app.tab_label(tab).0.ends_with(&format!("▶ {count}")));
+    }
     app.refresh_directory_labels();
     app.windows.insert(key, host);
     let action = |app: &mut App, action| {
@@ -6577,6 +6607,21 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         .find_map(|(&key, host)| (host.id == other).then_some(key))
         .unwrap();
     let other_pane = app.focused(other).unwrap();
+    let rows = app.outline_rows();
+    assert_eq!(
+        rows.iter()
+            .find(|row| row.target == Target::Window(window))
+            .unwrap()
+            .working,
+        3
+    );
+    assert_eq!(
+        rows.iter()
+            .find(|row| row.target == Target::Window(other))
+            .unwrap()
+            .working,
+        0
+    );
     let navigate_search = |app: &mut App| -> Result<()> {
         app.outliner
             .as_mut()
@@ -6850,7 +6895,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
             "native_search_focus_checked": native_focus_available,
             "native_minimization_checked": native_focus_available,
             "background": app.background_smoke,
-            "checks": ["outliner-native-window", "outliner-hierarchy", "outliner-disclosure", "outliner-navigation", "outliner-zoom", "outliner-single-tab-bar", "outliner-narrow-tab-bar", "outliner-pins", "outliner-pin-drag", "outliner-search", "outliner-search-navigation", "outliner-terminal-input", "outliner-quick-terminal", "outliner-close"],
+            "checks": ["outliner-native-window", "outliner-hierarchy", "outliner-working-counts", "outliner-disclosure", "outliner-navigation", "outliner-zoom", "outliner-single-tab-bar", "outliner-narrow-tab-bar", "outliner-pins", "outliner-pin-drag", "outliner-search", "outliner-search-navigation", "outliner-terminal-input", "outliner-quick-terminal", "outliner-close"],
             "captures": ["outliner.png", "outliner-collapsed.png", "outliner-terminal.png", "outliner-quad.png", "outliner-quad-terminal.png", "outliner-nested.png", "outliner-nested-terminal.png", "outliner-pane.png", "outliner-pane-terminal.png", "outliner-narrow-terminal.png", "outliner-pinned.png", "outliner-pinned-terminal.png", "outliner-search.png", "outliner-search-empty.png", "outliner-search-navigation.png", "outliner-windows.png", "outliner-other-window.png", "outliner-quick.png", "outliner-flat.png"]
         }))?,
     )?;
