@@ -9010,19 +9010,8 @@ fn configure_ui_fonts(context: &egui::Context) {
     let path = PathBuf::from(std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into()))
         .join("Fonts/segoeui.ttf");
     // Use the native UI face; egui's embedded fonts remain fallbacks.
-    if let Ok(bytes) = std::fs::read(&path) {
+    if let Ok(bytes) = std::fs::read(path) {
         let mut fonts = egui::FontDefinitions::default();
-        #[cfg(target_os = "macos")]
-        let bold = Some(
-            egui::FontData::from_owned(bytes.clone()).tweak(egui::FontTweak {
-                coords: egui::epaint::text::VariationCoords::new([(b"wght", 700.0)]),
-                ..Default::default()
-            }),
-        );
-        #[cfg(target_os = "windows")]
-        let bold = std::fs::read(path.with_file_name("segoeuib.ttf"))
-            .ok()
-            .map(egui::FontData::from_owned);
         fonts.font_data.insert(
             "system-ui".into(),
             Arc::new(egui::FontData::from_owned(bytes)),
@@ -9032,16 +9021,6 @@ fn configure_ui_fonts(context: &egui::Context) {
             .get_mut(&egui::FontFamily::Proportional)
             .unwrap()
             .insert(0, "system-ui".into());
-        if let Some(bold) = bold {
-            fonts
-                .font_data
-                .insert("system-ui-bold".into(), Arc::new(bold));
-            let mut family = fonts.families[&egui::FontFamily::Proportional].clone();
-            family.insert(0, "system-ui-bold".into());
-            fonts
-                .families
-                .insert(egui::FontFamily::Name("system-ui-bold".into()), family);
-        }
         context.set_fonts(fonts);
     }
 }
@@ -10891,6 +10870,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     fn window_controls_breadcrumb_extends_background_and_remains_clickable_when_narrow() {
         let buttons = egui::Rect::from_min_size(Pos2::new(10.0, 10.0), Vec2::new(54.0, 14.0));
+        let accent = Color32::from_rgb(255, 200, 0);
         let rows = outliner::breadcrumb(
             &Tab::new(1, 2, "/tmp".into()),
             &HashMap::from([(2, "Long panel directory name".repeat(8))]),
@@ -10910,6 +10890,7 @@ mod tests {
                         ..Default::default()
                     },
                     |ui| {
+                        ui.visuals_mut().selection.bg_fill = accent;
                         selected = paint_window_controls_background(
                             ui,
                             buttons,
@@ -10942,17 +10923,14 @@ mod tests {
             assert!(text.pos.x > buttons.right());
             assert_eq!(
                 text.galley.job.sections[0].format.font_id.family,
-                egui::FontFamily::Name("system-ui-bold".into())
+                egui::FontFamily::Proportional
             );
-            context.fonts(|fonts| {
-                let bold = &fonts.definitions().font_data["system-ui-bold"];
-                assert!(
-                    bold.variation_axes()
-                        .iter()
-                        .any(|axis| axis.tag.into_bytes() == *b"wght" && axis.range.contains(700.0))
-                );
-                assert_eq!(bold.tweak.coords.as_ref()[0].1, 700.0);
-            });
+            assert_eq!(text.galley.job.sections[0].format.color, accent);
+            assert!(output.shapes.iter().any(|shape| matches!(
+                &shape.shape,
+                egui::Shape::Rect(rect) if rect.fill == accent.gamma_multiply(0.15)
+                    && rect.rect.contains_rect(text.visual_bounding_rect())
+            )));
             assert!(background.rect.contains_rect(text.visual_bounding_rect()));
             let pos = Pos2::new(background.rect.right() - 14.0, buttons.center().y);
             draw(vec![egui::Event::PointerMoved(pos)]);
