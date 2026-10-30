@@ -6247,18 +6247,20 @@ impl App {
                 outliner_ui::tmuxx_tag(&mut tag_ui, label, tooltip, width);
             }
             #[cfg(target_os = "macos")]
-            if state.tabs.len() == 1
-                && let Some([x, y, width, height]) = Platform::window_controls_rect(&host.window)
-            {
-                let buttons = egui::Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, height));
-                outline_selection = paint_window_controls_background(
-                    root_ui,
-                    buttons,
-                    &breadcrumb,
-                    (controls_right - buttons.right() - 24.0).clamp(0.0, 420.0),
-                    rgb(config.background),
-                    rgb(config.foreground),
-                );
+            if state.tabs.len() == 1 {
+                let buttons = Platform::window_controls_rect(&host.window).map(|[x, y, width, height]| {
+                    egui::Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, height))
+                });
+                if buttons.is_some() || host.window.fullscreen().is_some() {
+                    outline_selection = paint_window_controls_background(
+                        root_ui,
+                        buttons,
+                        &breadcrumb,
+                        (controls_right - buttons.map_or(10.0, |buttons| buttons.right() + 12.0) - 12.0).clamp(0.0, 420.0),
+                        rgb(config.background),
+                        rgb(config.foreground),
+                    );
+                }
             }
             host.search_rects.clear();
             let modal_input = host.modal_input();
@@ -9043,18 +9045,21 @@ fn configure_ui_fonts(context: &egui::Context) {
 #[cfg(target_os = "macos")]
 fn paint_window_controls_background(
     ui: &mut egui::Ui,
-    buttons: egui::Rect,
+    buttons: Option<egui::Rect>,
     rows: &[outliner::Row],
     max_width: f32,
     background: Color32,
     foreground: Color32,
 ) -> Option<outliner::Target> {
     let shape = ui.painter().add(egui::Shape::Noop);
+    let origin = buttons.map_or(Pos2::new(10.0, 4.0), |buttons| {
+        Pos2::new(buttons.right() + 12.0, buttons.center().y - 13.0)
+    });
     let mut crumb_ui = ui.new_child(
         egui::UiBuilder::new()
             .id_salt("window-controls-breadcrumb")
             .max_rect(egui::Rect::from_min_size(
-                Pos2::new(buttons.right() + 12.0, buttons.center().y - 13.0),
+                origin,
                 Vec2::new(max_width, 26.0),
             ))
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
@@ -9063,12 +9068,18 @@ fn paint_window_controls_background(
     let right = if crumb_ui.min_rect().is_positive() {
         crumb_ui.min_rect().right()
     } else {
-        buttons.right()
+        buttons.map_or(origin.x, |buttons| buttons.right())
     };
     ui.painter().set(
         shape,
         egui::Shape::rect_filled(
-            egui::Rect::from_min_max(Pos2::ZERO, Pos2::new(right + 12.0, buttons.bottom() + 10.0)),
+            egui::Rect::from_min_max(
+                Pos2::ZERO,
+                Pos2::new(
+                    right + 12.0,
+                    buttons.map_or(34.0, |buttons| buttons.bottom() + 10.0),
+                ),
+            ),
             egui::CornerRadius {
                 nw: 14,
                 se: 14,
@@ -10839,7 +10850,14 @@ mod tests {
             (Color32::WHITE, Color32::BLACK),
         ] {
             let mut output = context.run_ui(egui::RawInput::default(), |ui| {
-                paint_window_controls_background(ui, buttons, &[], 420.0, background, foreground);
+                paint_window_controls_background(
+                    ui,
+                    Some(buttons),
+                    &[],
+                    420.0,
+                    background,
+                    foreground,
+                );
             });
             output.textures_delta.clear();
             let shape = output
@@ -10883,14 +10901,19 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "macos")]
-    fn window_controls_breadcrumb_extends_background_and_remains_clickable_when_narrow() {
+    fn window_breadcrumb_stays_clickable_with_hidden_controls_and_narrow_width() {
         let buttons = egui::Rect::from_min_size(Pos2::new(10.0, 10.0), Vec2::new(54.0, 14.0));
         let accent = Color32::from_rgb(255, 200, 0);
         let rows = outliner::breadcrumb(
             &Tab::new(1, 2, "/tmp".into()),
             &HashMap::from([(2, "Long panel directory name".repeat(8))]),
         );
-        for width in [80.0, 420.0] {
+        for (buttons, width) in [
+            (Some(buttons), 80.0),
+            (Some(buttons), 420.0),
+            (None, 80.0),
+            (None, 420.0),
+        ] {
             let context = egui::Context::default();
             configure_ui_fonts(&context);
             let draw = |events| {
@@ -10906,6 +10929,7 @@ mod tests {
                     },
                     |ui| {
                         ui.visuals_mut().selection.bg_fill = accent;
+                        let available = ui.available_rect_before_wrap();
                         selected = paint_window_controls_background(
                             ui,
                             buttons,
@@ -10914,6 +10938,7 @@ mod tests {
                             Color32::BLACK,
                             Color32::WHITE,
                         );
+                        assert_eq!(ui.available_rect_before_wrap(), available);
                     },
                 );
                 output.textures_delta.clear();
@@ -10924,8 +10949,11 @@ mod tests {
             let egui::Shape::Rect(background) = &output.shapes[0].shape else {
                 panic!("background must precede the breadcrumb");
             };
-            assert!(background.rect.contains_rect(buttons));
-            assert_eq!(background.rect.right(), buttons.right() + width + 24.0);
+            let left = buttons.map_or(10.0, |buttons| buttons.right() + 12.0);
+            if let Some(buttons) = buttons {
+                assert!(background.rect.contains_rect(buttons));
+            }
+            assert_eq!(background.rect.right(), left + width + 12.0);
             assert_eq!(background.fill.a(), 217);
             let text = output
                 .shapes
@@ -10935,7 +10963,7 @@ mod tests {
                     _ => None,
                 })
                 .unwrap();
-            assert!(text.pos.x > buttons.right());
+            assert!(text.pos.x >= left);
             assert_eq!(
                 text.galley.job.sections[0].format.font_id.family,
                 egui::FontFamily::Proportional
@@ -10947,7 +10975,10 @@ mod tests {
                     && rect.rect.contains_rect(text.visual_bounding_rect())
             )));
             assert!(background.rect.contains_rect(text.visual_bounding_rect()));
-            let pos = Pos2::new(background.rect.right() - 14.0, buttons.center().y);
+            let pos = Pos2::new(
+                background.rect.right() - 14.0,
+                buttons.map_or(17.0, |buttons| buttons.center().y),
+            );
             draw(vec![egui::Event::PointerMoved(pos)]);
             for pressed in [true, false] {
                 let (_, selected) = draw(vec![egui::Event::PointerButton {
