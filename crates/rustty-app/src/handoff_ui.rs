@@ -626,6 +626,49 @@ mod tests {
     }
 
     #[test]
+    fn session_dump_preserves_nested_quad_roots_and_zoom() {
+        let mut state = dump();
+        let focused = state.workspace.windows[0].tabs[0].focused;
+        for _ in 0..3 {
+            let right = state.workspace.id();
+            let horizontal = state.workspace.id();
+            let bottom_right = state.workspace.id();
+            let right_vertical = state.workspace.id();
+            let bottom_left = state.workspace.id();
+            let left_vertical = state.workspace.id();
+            let tab = &mut state.workspace.windows[0].tabs[0];
+            tab.focus(focused);
+            tab.split(right, horizontal, Direction::Right, "/tmp".into());
+            tab.split(bottom_right, right_vertical, Direction::Down, "/tmp".into());
+            tab.focus(focused);
+            tab.split(bottom_left, left_vertical, Direction::Down, "/tmp".into());
+        }
+        let tab = &mut state.workspace.windows[0].tabs[0];
+        tab.focus(focused);
+        tab.toggle_quadrant_zoom();
+        assert!(tab.toggle_quad_root());
+        assert!(tab.toggle_quad_root());
+        assert_eq!(tab.quad_roots.len(), 2);
+        let visual = state.panels[&focused].visual.clone();
+        for id in tab.pane_ids() {
+            state.panels.insert(
+                id,
+                Panel {
+                    visual: visual.clone(),
+                },
+            );
+        }
+        let restored = Dump::decode(&rmp_serde::to_vec_named(&state).unwrap()).unwrap();
+        let before = &state.workspace.windows[0].tabs[0];
+        let after = &restored.workspace.windows[0].tabs[0];
+        assert_eq!(after.quad_roots, before.quad_roots);
+        assert_eq!(after.quad_path(focused), before.quad_path(focused));
+        assert_eq!(after.quadrant_zoom, before.quadrant_zoom);
+        assert_eq!(after.zoom, before.zoom);
+        assert_eq!(after.remembered, before.remembered);
+    }
+
+    #[test]
     fn validates_the_complete_workspace_before_importing() {
         let mut state = dump();
         assert!(validates(&state));
