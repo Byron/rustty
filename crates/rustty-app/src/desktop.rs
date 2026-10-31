@@ -2148,7 +2148,7 @@ impl App {
         let id = state.id;
         let config = self.window_config(id).clone();
         let activate =
-            !self.background_smoke && !(cfg!(target_os = "macos") && self.smoke.is_some());
+            !(self.background_smoke || cfg!(target_os = "macos") && self.smoke.is_some());
         let quick = state.quick;
         let mut frame = state.frame;
         if quick
@@ -12195,7 +12195,8 @@ mod tests {
         };
         assert!(on.key.options.blink_visible);
         assert!(on.matches(&off()) && off().matches(&on));
-        let mutations: &[(&str, fn(&mut CursorCandidate))] = &[
+        type Mutation = (&'static str, fn(&mut CursorCandidate));
+        let mutations: &[Mutation] = &[
             ("pane", |c| c.pane += 1),
             ("terminal", |c| c.key.generation += 1),
             ("scroll", |c| c.key.viewport_offset += 1),
