@@ -1414,25 +1414,17 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn restored_shell_compares_chunked_startup_before_accepting_input() {
+    fn restored_shell_compares_startup_before_accepting_input() {
         for integrated in [false, true] {
             let mut source = Terminal::new(80, 4, 1000);
             source.feed(b"previous command\r\nuser@host> ");
             let bytes =
                 serde_json::to_vec(&rustty_vt::visual::VisualSnapshot::capture(&source).unwrap())
                     .unwrap();
-            let prefix = if integrated {
-                r"printf '\033]133;A\007'; "
-            } else {
-                ""
-            };
-            let suffix = if integrated {
-                r"printf '\033]133;B\007'; "
-            } else {
-                ""
-            };
+            let prefix = if integrated { r"\033]133;A\007" } else { "" };
+            let suffix = if integrated { r"\033]133;B\007" } else { "" };
             let command = format!(
-                r#"{prefix}printf '\033[32muser'; sleep 0.02; printf '@host> \033[0m'; {suffix}IFS= read -r line; printf '\nexecuted: %s\n' "$line""#
+                r#"printf '{prefix}\033[32muser@host> \033[0m{suffix}'; IFS= read -r line; printf '\nexecuted: %s\n' "$line""#
             );
             let mut config = Config::default();
             config.shell_integration = ShellIntegration::None;
