@@ -428,7 +428,7 @@ mod tests {
             .unwrap()
             .remove("keep_across_reboots");
         write_json(&store.metadata_path(&dump), &metadata).unwrap();
-        assert_eq!(store.dumps().unwrap(), [dump.clone()]);
+        assert_eq!(store.dumps().unwrap(), std::slice::from_ref(&dump));
         assert_eq!(store.read_dump(&dump).unwrap(), b"existing");
     }
 

@@ -54,10 +54,12 @@ mod macos {
         Ok(())
     }
 
+    type TextDrop = (String, LogicalPosition<f64>);
+
     #[derive(Default)]
     struct Check {
         window: Option<Window>,
-        text: Arc<Mutex<Vec<(String, LogicalPosition<f64>)>>>,
+        text: Arc<Mutex<Vec<TextDrop>>>,
         files: Vec<WindowEvent>,
         finished: bool,
     }
