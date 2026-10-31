@@ -151,6 +151,9 @@ impl Smoke {
                 terminal.feed(ALT_OUTPUT.as_bytes());
                 terminal.feed(b"\x1b[?25l\x1b[?2004h\x1b[?1003h");
                 drop(terminal);
+                app.workspace.windows[0].tabs[0]
+                    .quad_roots
+                    .insert(self.pane.unwrap());
                 // egui records widget labels only while its interaction debugger is enabled.
                 app.context
                     .all_styles_mut(|style| style.debug.show_interactive_widgets = true);
@@ -187,6 +190,11 @@ impl Smoke {
                 ensure(
                     workspace.windows.len() == 1 && workspace.windows[0].tabs[0].panes.len() == 1,
                     "source saved the dump's synthetic split layout as its normal workspace",
+                )?;
+                ensure(
+                    workspace.windows[0].tabs[0].quad_roots
+                        == app.workspace.windows[0].tabs[0].quad_roots,
+                    "normal workspace saving lost quad roots",
                 )?;
                 fs::write(
                     self.directory.join("source-ready.json"),
@@ -400,6 +408,7 @@ impl Smoke {
             Direction::Right,
             dormant_directory,
         );
+        tab.quad_roots.extend([tab.root.id, dormant_pane]);
         dump.workspace.windows[0].tabs.insert(1, tab);
         for id in [dormant_pane, dormant_second] {
             dump.panels.insert(
@@ -422,6 +431,8 @@ impl Smoke {
             !app.import_selector
                 && app.workspace.windows.len() == 1
                 && app.workspace.windows[0].id == workspace.windows[0].id
+                && app.workspace.windows[0].tabs[0].quad_roots
+                    == workspace.windows[0].tabs[0].quad_roots
                 && app.panes.len() == 1,
             "cancel did not open the previous window configuration",
         )?;
@@ -497,11 +508,23 @@ impl Smoke {
                 app.windows.insert(key, host);
                 drawn?;
                 let imported = self.imported.as_ref().unwrap();
+                let expected =
+                    Dump::decode(&app.handoff.as_ref().unwrap().store.read_dump(imported)?)?;
                 app.import_handoff(event_loop, &imported.id)?;
                 ensure(
                     !app.import_selector && app.panes.len() == 3 && app.pending_visuals.len() == 3,
                     "import did not open the restored workspace",
                 )?;
+                for (window, saved) in app
+                    .workspace
+                    .windows
+                    .iter()
+                    .zip(&expected.workspace.windows)
+                {
+                    for (tab, saved) in window.tabs.iter().zip(&saved.tabs) {
+                        ensure(tab.quad_roots == saved.quad_roots, "import lost quad roots")?;
+                    }
+                }
                 let state = app.handoff.as_ref().unwrap();
                 ensure(
                     state.store.read_dump(imported).is_err()
@@ -526,6 +549,16 @@ impl Smoke {
                 let untouched = app.pending_visuals.clone();
                 for _ in 0..2 {
                     let exported = Dump::decode(&app.capture_handoff()?)?;
+                    for (tab, saved) in app.workspace.windows[0]
+                        .tabs
+                        .iter()
+                        .zip(&exported.workspace.windows[0].tabs)
+                    {
+                        ensure(
+                            tab.quad_roots == saved.quad_roots,
+                            "re-export lost quad roots",
+                        )?;
+                    }
                     for (id, visual) in &untouched {
                         ensure(
                             exported.panels[id].visual.as_slice() == visual.as_slice(),
@@ -850,6 +883,8 @@ impl Smoke {
                 && app.workspace.windows.len() == 1
                 && app.workspace.windows[0].tabs.len() == 1
                 && app.workspace.windows[0].tabs[0].panes.len() == 1
+                && app.workspace.windows[0].tabs[0].quad_roots
+                    == std::collections::BTreeSet::from([app.workspace.windows[0].tabs[0].root.id])
                 && app.panes.len() == 1
                 && app.pending_visuals.is_empty(),
             "single saved session did not import at startup without a chooser",
