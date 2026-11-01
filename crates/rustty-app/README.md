@@ -937,6 +937,43 @@ For `rustty.exe`, use `tmux --native-stdio` as `Arguments`. Remove any old
 per-block LZ4 compression; update Rustty, the remote bridge, and each owner
 together, then restart the owners before reconnecting.
 
+Populate new remote panes from a local secrets store or another shell expression:
+
+```ini
+tmuxx-ssh-env-command-host = 20.240.208.217 = API_TOKEN = security find-generic-password -s remote-api -w
+tmuxx-ssh-env-command-host = 20.240.208.217 = BUILD_ACCOUNT = printf '%s' my-account
+```
+
+These commands run **locally**, once when connecting or reconnecting, using
+`/bin/sh -c` on Unix and Windows PowerShell without profiles on Windows. They
+inherit Rustty's process environment and run without terminal input. Host keys
+match the exact `ssh:` target, including aliases and `user@` prefixes. Later
+entries replace the same host/variable pair; an empty
+`tmuxx-ssh-env-command-host =` clears the providers. Reload configuration and use
+Reconnect to refresh a live connection. Providers require native `ssh:` tmuxx
+connections; configured providers on `system-ssh:` targets report an error.
+
+Rustty removes previous values for these names, including inherited global values,
+then installs the fresh values in each session it opens using `set-environment`.
+Session views and pane creation wait for acknowledgment. Existing shells keep
+their old environment; newly created panes inherit the new values. No SSH
+`AcceptEnv`, `SendEnv`, or tmuxx `update-environment` configuration is required.
+Sizing clients attach with `-E` so they cannot clear the exported values.
+
+Stdout is the UTF-8 value, with trailing LF/CRLF line endings removed; empty
+values are allowed. Variable names must match `[A-Za-z_][A-Za-z0-9_]*`. Providers
+have a shared 30-second deadline, a 64 KiB output limit per command and a 1 MiB
+total value limit. A failed, timed-out, invalid or oversized provider blocks the
+session views until reconnecting; failures omit command text, stdout and stderr.
+Resolved values are never added to Rustty's saved state, diagnostics or SSH
+arguments. Commands themselves remain in your trusted configuration, so use
+references to secrets rather than literal secrets.
+
+Values remain in the remote session after disconnecting, and other tmux clients
+can read or overwrite them. Removing a provider from configuration does not erase
+an already exported remote variable; remove it with `set-environment -r -t
+'$SESSION_ID' NAME` on the remote server if needed.
+
 Give connection windows different themes with exact SSH targets or session names:
 
 ```ini

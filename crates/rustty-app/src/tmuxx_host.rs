@@ -1,6 +1,6 @@
 //! Window attachments own views; only temporary attachments own the engine.
 use super::*;
-use rustty::tmuxx::{Connection, ServerOptions};
+use rustty::tmuxx::{Connection, ServerOptions, SessionEnvironment};
 use rustty_app::tmuxx_copy::{CopiedWindow, WindowCopy};
 use rustty_app::tmuxx_workspace::Mapping;
 use std::collections::BTreeSet;
@@ -99,6 +99,7 @@ pub(super) struct Attachment {
     shutdown_deadline: Option<Instant>,
     restore: Vec<workspace::SavedAttachment>,
     replacing: bool,
+    environment: Option<SessionEnvironment>,
 }
 
 impl Attachment {
@@ -130,6 +131,7 @@ impl Attachment {
             restore: Vec::new(),
             replacing: false,
             reconnect_enabled,
+            environment: None,
         }
     }
     pub fn temporary(&self) -> bool {
@@ -142,7 +144,14 @@ impl Attachment {
         }
     }
     pub fn view_connection(&self) -> Option<&Connection> {
-        if self.monitoring || self.replacing || self.instance.is_empty() {
+        if self.monitoring
+            || self.replacing
+            || self.instance.is_empty()
+            || self
+                .environment
+                .as_ref()
+                .is_some_and(|env| !env.ready(&self.selected))
+        {
             return None;
         }
         self.connection
@@ -282,6 +291,11 @@ impl Attachment {
             .chain(self.connection_deadline)
             .chain(self.shutdown_deadline)
             .chain(self.pending_panes.iter().map(|pending| pending.deadline))
+            .chain(
+                self.environment
+                    .as_ref()
+                    .and_then(SessionEnvironment::deadline),
+            )
             .min()
     }
     fn expire_connection(&mut self, now: Instant) -> bool {
@@ -698,7 +712,9 @@ impl Attachment {
                 ));
             }
         }
-        if matches!(self.source, Source::Local(_)) && (self.monitoring || !live) {
+        if (matches!(self.source, Source::Local(_)) && (self.monitoring || !live))
+            || (live && matches!(self.source, Source::Ssh(_)))
+        {
             children.push(Entry::command("Reconnect", MenuCommand::Reconnect(target)));
         }
         if name.is_some()
@@ -1206,6 +1222,21 @@ impl App {
         if existing.is_none() && self.tmuxx.len() >= 64 {
             return Err("Close a tmuxx connection before opening another".into());
         }
+        let providers = match &source {
+            Source::Ssh(host) | Source::SystemSsh(host) => {
+                self.config().tmuxx_ssh_env_command_hosts.get(host)
+            }
+            _ => None,
+        };
+        if matches!(source, Source::SystemSsh(_)) && providers.is_some_and(|p| !p.is_empty()) {
+            return Err(
+                "SSH environment providers require a native tmuxx connection (ssh:host)".into(),
+            );
+        }
+        let environment = providers
+            .filter(|p| !p.is_empty())
+            .map(|providers| SessionEnvironment::start(providers, self.tmuxx_wake()))
+            .transpose()?;
         let connection = match &source {
             Source::SystemSsh(host) => {
                 Connection::system_ssh_with_env(host, &self.config().env, self.tmuxx_wake())?
@@ -1225,6 +1256,7 @@ impl App {
             entry.restore = entry.saved_attachments(&self.workspace);
             entry.open_all |= entry.instance.is_empty() && entry.restore.is_empty();
             entry.connection = Some(connection);
+            entry.environment = environment;
             entry.monitoring = false;
             entry.connection_deadline = Some(Instant::now() + connection_timeout(&source));
             entry.reconnect_enabled = matches!(source, Source::Local(_));
@@ -1232,8 +1264,9 @@ impl App {
             entry.replacing = true;
             entry.status = None;
         } else {
-            self.tmuxx
-                .push(Attachment::new(source, Some(connection), true));
+            let mut entry = Attachment::new(source, Some(connection), true);
+            entry.environment = environment;
+            self.tmuxx.push(entry);
         }
         let _ = self.proxy.send_event(Event::Tmuxx);
         Ok(())
@@ -1315,6 +1348,7 @@ impl App {
                 self.errors.extend(errors);
             }
             if connection.is_closed() {
+                entry.environment = None;
                 entry.connection_deadline = None;
                 entry.pending_panes.clear();
                 if !entry.reconnect_enabled {
@@ -1351,6 +1385,29 @@ impl App {
             }
             let instance = connection.instance();
             let frames = entry.observe_graph(&graph, instance);
+            if let Some(environment) = &mut entry.environment {
+                match environment.prepare(entry.connection.as_ref().unwrap(), &entry.selected) {
+                    Ok(true) => {
+                        if entry.status.as_deref() == Some("Preparing remote session environment…")
+                        {
+                            entry.status = None;
+                        }
+                    }
+                    Ok(false) => {
+                        entry.status = Some("Preparing remote session environment…".into());
+                        continue;
+                    }
+                    Err(error) => {
+                        let message = error.to_string();
+                        if entry.status.as_ref() != Some(&message) {
+                            self.errors.push(message.clone());
+                            connection_error = true;
+                        }
+                        entry.status = Some(message);
+                        continue;
+                    }
+                }
+            }
             for session in entry
                 .mapping
                 .sessions
@@ -1543,6 +1600,14 @@ impl App {
             if entry.expire_requests(now) {
                 let _ = self.proxy.send_event(Event::Tmuxx);
             }
+            if entry
+                .environment
+                .as_ref()
+                .and_then(SessionEnvironment::deadline)
+                .is_some_and(|deadline| deadline <= now)
+            {
+                let _ = self.proxy.send_event(Event::Tmuxx);
+            }
             if entry.retry_at.is_none_or(|at| at > now) {
                 continue;
             }
@@ -1695,6 +1760,8 @@ impl App {
                 unreachable!("connection command handled above")
             }
             MenuCommand::Reconnect(target) => {
+                self.tmuxx[index].environment = None;
+                self.tmuxx[index].connection = None;
                 if let Err(error) = self.connect_tmuxx_source(target.source) {
                     self.errors.push(error.to_string());
                 }
@@ -1777,7 +1844,18 @@ impl App {
                 }
             }
             MenuCommand::Execute(_, argv) => {
-                if let Err(error) = self.tmuxx[index].connection.as_ref().unwrap().command(argv) {
+                let entry = &self.tmuxx[index];
+                if entry
+                    .environment
+                    .as_ref()
+                    .is_some_and(|env| !env.ready(&entry.selected))
+                {
+                    self.errors.push(
+                        "Wait for the remote session environment before running commands".into(),
+                    );
+                    return;
+                }
+                if let Err(error) = entry.connection.as_ref().unwrap().command(argv) {
                     self.errors.push(error.to_string());
                     return;
                 }
@@ -1809,6 +1887,7 @@ impl App {
                 }
             }
             MenuCommand::Disconnect(_) => {
+                self.tmuxx[index].environment = None;
                 let entry = &self.tmuxx[index];
                 if let Some(connection) = &entry.connection {
                     for session in entry.mapping.sessions.values() {
@@ -2627,6 +2706,44 @@ mod tests {
             None
         );
         assert_eq!(hidden_error_window(false, None, [].into_iter()), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ssh_environment_blocks_actions_and_offers_live_reconnect_without_saved_values() {
+        let (mut entry, _peer) = monitoring_peer("env-ready", true);
+        entry.monitoring = false;
+        entry.source = Source::Ssh("host".into());
+        entry.selected.insert(7);
+        assert!(entry.view_connection().is_some());
+        assert!(
+            entry
+                .menu_entry(None)
+                .children
+                .iter()
+                .any(|item| { item.command == Some(MenuCommand::Reconnect(entry.target())) })
+        );
+        entry.environment = Some(
+            SessionEnvironment::start(
+                &BTreeMap::from([("TOKEN".into(), "printf private-test-value".into())]),
+                Arc::new(|| {}),
+            )
+            .unwrap(),
+        );
+        assert!(entry.view_connection().is_none());
+        assert!(
+            entry
+                .command_action(
+                    &Workspace::default(),
+                    7,
+                    &Action::NewFloatingPane,
+                    Vec::new()
+                )
+                .is_err()
+        );
+        assert!(entry.saved_attachments(&Workspace::default()).is_empty());
+        entry.environment = None;
+        assert!(entry.view_connection().is_some());
     }
 
     #[cfg(unix)]

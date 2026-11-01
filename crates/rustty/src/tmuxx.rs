@@ -23,8 +23,10 @@ pub use tmuxx_runtime::initialize_conpty;
 #[cfg(windows)]
 pub use tmuxx_runtime::windows::endpoint as windows_endpoint;
 
+mod environment;
 mod ssh;
 mod system;
+pub use environment::SessionEnvironment;
 
 const RECORD_LIMIT: usize = 128 * 1024 * 1024;
 
@@ -812,6 +814,7 @@ impl Connection {
             };
             connection.command([
                 "attach-session".into(),
+                "-E".into(),
                 "-f".into(),
                 "no-output".into(),
                 "-t".into(),
@@ -4317,6 +4320,163 @@ mod tests {
             thread::sleep(Duration::from_millis(5));
         }
     }
+    #[test]
+    fn native_session_environment_reconnects_and_survives_size_attachments() {
+        use std::collections::BTreeSet;
+        const NAME: &str = "RUSTTY_TEST_TOKEN";
+        let owner = test_owner(
+            "import os,time; print('ORIGINAL:'+os.environ.get('RUSTTY_TEST_TOKEN','absent'),flush=True); time.sleep(30)",
+        );
+        let graph = wait(&owner, |g| !g.panes.is_empty());
+        let session = graph.sessions[0].id;
+        let original = Session::attach_tmuxx(&owner, graph.panes[0].id, Arc::new(|| {})).unwrap();
+        wait_text(&owner, &original, "ORIGINAL:absent");
+        let run = |connection: &Connection, argv: Vec<String>| {
+            connection
+                .command_with_reply(argv.into_iter().map(String::into_bytes).collect())
+                .unwrap()
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap()
+                .unwrap()
+        };
+        let target = format!("${session}");
+        run(
+            &owner,
+            ["set-environment", "-g", NAME, "global-old"]
+                .map(str::to_owned)
+                .to_vec(),
+        );
+        run(
+            &owner,
+            ["set-environment", "-t", &target, NAME, "session-old"]
+                .map(str::to_owned)
+                .to_vec(),
+        );
+        run(
+            &owner,
+            ["set-option", "-g", "update-environment", NAME]
+                .map(str::to_owned)
+                .to_vec(),
+        );
+        run(
+            &owner,
+            [
+                "new-session",
+                "-d",
+                "-s",
+                "untouched",
+                "-e",
+                "RUSTTY_TEST_TOKEN=untouched",
+                "python3",
+                "-c",
+                "import time; time.sleep(30)",
+            ]
+            .map(str::to_owned)
+            .to_vec(),
+        );
+        let graph = wait(&owner, |g| g.sessions.len() == 2);
+        let unrelated = graph
+            .sessions
+            .iter()
+            .find(|s| s.name == "untouched")
+            .unwrap()
+            .id;
+        let Source::Unix(endpoint) = &owner.source else {
+            panic!("missing endpoint")
+        };
+        let remote = Connection::native(endpoint, Arc::new(|| {})).unwrap();
+        wait(&remote, |g| g.sessions.len() == 2);
+        let selected = BTreeSet::from([session]);
+        let prepare = |connection: &Connection, command: &str| {
+            let mut environment = SessionEnvironment::start(
+                &BTreeMap::from([(NAME.into(), command.into())]),
+                Arc::new(|| {}),
+            )
+            .unwrap();
+            let until = Instant::now() + Duration::from_secs(5);
+            while !environment.prepare(connection, &selected).unwrap() {
+                assert!(Instant::now() < until, "environment was not prepared");
+                thread::sleep(Duration::from_millis(5));
+            }
+            environment
+        };
+        let environment = prepare(&remote, "printf 'fresh;'");
+        remote.view_size(session, 80, 24, 8, 16).unwrap();
+        // Barrier on the separate sizing transport, which must attach with -E.
+        let views = remote.size_views.lock().unwrap();
+        run(&views[&session].0, Vec::new());
+        drop(views);
+        assert_eq!(
+            run(
+                &remote,
+                ["show-environment", "-t", &target, NAME]
+                    .map(str::to_owned)
+                    .to_vec()
+            ),
+            b"RUSTTY_TEST_TOKEN=fresh;\n"
+        );
+        assert_eq!(
+            run(
+                &remote,
+                vec![
+                    "show-environment".into(),
+                    "-t".into(),
+                    format!("${unrelated}"),
+                    NAME.into()
+                ]
+            ),
+            b"RUSTTY_TEST_TOKEN=untouched\n"
+        );
+        let pane = run(
+            &remote,
+            [
+                "new-window",
+                "-d",
+                "-t",
+                &target,
+                "-P",
+                "-F",
+                "#{pane_id}",
+                "python3",
+                "-u",
+                "-c",
+                "import os,time; print('FRESH:'+os.environ['RUSTTY_TEST_TOKEN']); time.sleep(30)",
+            ]
+            .map(str::to_owned)
+            .to_vec(),
+        );
+        let pane = std::str::from_utf8(&pane)
+            .unwrap()
+            .trim()
+            .trim_start_matches('%')
+            .parse::<u64>()
+            .unwrap();
+        wait(&remote, |g| g.panes.iter().any(|p| p.id == pane));
+        let fresh = Session::attach_tmuxx(&remote, pane, Arc::new(|| {})).unwrap();
+        wait_text(&remote, &fresh, "FRESH:fresh;");
+        drop(environment);
+        drop(remote);
+        let reconnected = Connection::native(endpoint, Arc::new(|| {})).unwrap();
+        wait(&reconnected, |g| g.sessions.len() == 2);
+        let _environment = prepare(&reconnected, "printf refreshed");
+        assert_eq!(
+            run(
+                &reconnected,
+                ["show-environment", "-t", &target, NAME]
+                    .map(str::to_owned)
+                    .to_vec()
+            ),
+            b"RUSTTY_TEST_TOKEN=refreshed\n"
+        );
+        assert!(
+            original
+                .terminal()
+                .unwrap()
+                .plain_text()
+                .contains("ORIGINAL:absent")
+        );
+    }
+
     #[test]
     fn native_notifications_are_observed_by_all_views_and_delivered_to_one_host() {
         let connection = test_owner(
