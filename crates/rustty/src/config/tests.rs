@@ -445,6 +445,48 @@ fn native_ssh_host_commands_select_exact_targets_and_preserve_fallback() {
 }
 
 #[test]
+fn ssh_environment_providers_match_exact_hosts_replace_and_clear() {
+    let home = TestHome::new();
+    home.own(
+        "tmuxx-ssh-env-command-host=linux=TOKEN=old\n\
+        tmuxx-ssh-env-command-host=linux=OTHER=printf 'a=b'\n\
+        tmuxx-ssh-env-command-host=user@linux=TOKEN=separate\n\
+        tmuxx-ssh-env-command-host=linux = TOKEN = printf fresh\n",
+    );
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    let providers = &loaded.config.tmuxx_ssh_env_command_hosts;
+    assert_eq!(providers["linux"]["TOKEN"], "printf fresh");
+    assert_eq!(providers["linux"]["OTHER"], "printf 'a=b'");
+    assert_eq!(providers["user@linux"]["TOKEN"], "separate");
+    assert!(!providers.contains_key("Linux"));
+    let cleared = home
+        .loader
+        .load_with_args(&args(&["--tmuxx-ssh-env-command-host="]));
+    assert!(cleared.config.tmuxx_ssh_env_command_hosts.is_empty());
+    for invalid in [
+        "host",
+        "host=TOKEN",
+        "=TOKEN=cmd",
+        "two hosts=TOKEN=cmd",
+        "host\0=TOKEN=cmd",
+        "linux==cmd",
+        "linux=1TOKEN=cmd",
+        "linux=A-B=cmd",
+        "linux=A B=cmd",
+        "linux=TOKEN=",
+        "linux=TOKEN=bad\0cmd",
+    ] {
+        let loaded = home
+            .loader
+            .load_with_args(&args(&[&format!("--tmuxx-ssh-env-command-host={invalid}")]));
+        assert_eq!(loaded.diagnostics.len(), 1, "{invalid:?}");
+        assert_eq!(loaded.config.tmuxx_ssh_env_command_hosts, *providers);
+        assert!(!loaded.diagnostics[0].message.contains("bad\0cmd"));
+    }
+}
+
+#[test]
 fn invalid_native_ssh_host_commands_preserve_previous_entries() {
     let home = TestHome::new();
     for invalid in [

@@ -367,6 +367,8 @@ pub struct Config {
     pub tmuxx_ssh_command: String,
     /// Overrides keyed by the exact SSH target or alias supplied when connecting.
     pub tmuxx_ssh_command_hosts: BTreeMap<String, String>,
+    /// Local shell providers for environment variables in native SSH sessions.
+    pub tmuxx_ssh_env_command_hosts: BTreeMap<String, BTreeMap<String, String>>,
     /// Named local and remote targets offered by the native tmuxx menu.
     pub tmuxx_connections: BTreeMap<String, String>,
     /// Themes keyed by the exact SSH target or alias supplied when connecting.
@@ -483,6 +485,7 @@ impl Default for Config {
             tmuxx_config_file: None,
             tmuxx_ssh_command: "rustty tmux --native-stdio".into(),
             tmuxx_ssh_command_hosts: BTreeMap::new(),
+            tmuxx_ssh_env_command_hosts: BTreeMap::new(),
             tmuxx_connections: BTreeMap::new(),
             tmuxx_theme_hosts: BTreeMap::new(),
             tmuxx_theme_sessions: BTreeMap::new(),
@@ -745,6 +748,35 @@ impl Config {
                     }
                     self.tmuxx_ssh_command_hosts
                         .insert(host.to_owned(), command.to_owned());
+                }
+            }
+            "tmuxx-ssh-env-command-host" => {
+                if value.is_empty() {
+                    self.tmuxx_ssh_env_command_hosts.clear();
+                } else {
+                    let (host, rest) = value
+                        .split_once('=')
+                        .ok_or("SSH environment provider requires host=NAME=command")?;
+                    let (name, command) = rest
+                        .split_once('=')
+                        .ok_or("SSH environment provider requires host=NAME=command")?;
+                    let (host, name, command) = (host.trim(), name.trim(), command.trim());
+                    if host.is_empty()
+                        || host.contains('\0')
+                        || host.chars().any(char::is_whitespace)
+                    {
+                        return Err("SSH host must be nonempty and contain no whitespace or NUL");
+                    }
+                    if !environment_name(name) {
+                        return Err("environment name must match [A-Za-z_][A-Za-z0-9_]*");
+                    }
+                    if command.is_empty() || command.contains('\0') {
+                        return Err("environment command must be nonempty and contain no NUL");
+                    }
+                    self.tmuxx_ssh_env_command_hosts
+                        .entry(host.to_owned())
+                        .or_default()
+                        .insert(name.to_owned(), command.to_owned());
                 }
             }
             "tmuxx-connection" => {
@@ -1528,6 +1560,14 @@ fn parse_entry(text: &str, path: &Path, line: usize, result: &mut LoadedConfig) 
         value: unquote(value).to_owned(),
         quoted: value.starts_with('"'),
     })
+}
+
+pub(crate) fn environment_name(name: &str) -> bool {
+    let mut bytes = name.bytes();
+    bytes
+        .next()
+        .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
+        && bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
 fn unquote(value: &str) -> &str {
