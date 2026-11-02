@@ -41,6 +41,7 @@ use rustty_app::{
         Activity, CompletionFlash, DirectoryLabel, FocusHint, Progress, TabAccent, common_label,
         cursor_blink_phase, directory_labels, paint_zoom_icon, zoom_label,
     },
+    resize_animation,
     search::{self, Search},
     workspace::{self, Axis, Id, Peek, Rect, SavedPane, Tab, WindowState, Workspace},
     zoom_animation,
@@ -433,6 +434,71 @@ struct PreparedPane {
     ime_rect: egui::Rect,
 }
 
+struct ResizeFrame {
+    transition: u64,
+    source: Arc<Frame>,
+    source_opacity: f32,
+    shown: Arc<Frame>,
+    cross_fade: Option<bool>,
+    shown_opacity: f32,
+}
+
+impl ResizeFrame {
+    fn retain(&self, pane: &mut ComposedPane) {
+        if self.shown.generation != pane.frame.generation {
+            return;
+        }
+        pane.frame = Arc::clone(&self.shown);
+        pane.dim = pane.dim.map(|dim| dim.opacity(self.shown_opacity));
+        let paint = pane.transition.as_mut().unwrap();
+        paint.opacity = if self.shown_opacity > 0.0 {
+            paint.opacity / self.shown_opacity
+        } else {
+            0.0
+        };
+    }
+
+    fn present(
+        &mut self,
+        target: &Arc<Frame>,
+        phase: f32,
+    ) -> std::result::Result<Arc<Frame>, rustty_render::ComposeError> {
+        // shortcut: atlas resets use the fade fallback, retain rerenderable sources if resets become distracting.
+        let compatible = self.source.generation == target.generation;
+        if !compatible {
+            self.cross_fade = Some(false);
+        }
+        let cross_fade = *self
+            .cross_fade
+            .get_or_insert_with(|| resize_animation::mostly_unchanged(&self.source, target));
+        let frame = if cross_fade {
+            self.shown_opacity = 1.0;
+            let mix = phase * phase * (3.0 - 2.0 * phase);
+            resize_animation::blend(&self.source, target, mix)?
+        } else {
+            let mut frame = if phase < 0.5 && compatible {
+                (*self.source).clone()
+            } else {
+                (**target).clone()
+            };
+            let opacity = (phase * 2.0 - 1.0).abs();
+            let opacity = opacity * opacity * (3.0 - 2.0 * opacity);
+            self.shown_opacity = opacity
+                * if phase < 0.5 && compatible {
+                    self.source_opacity
+                } else {
+                    1.0
+                };
+            for quad in frame.quads.iter_mut().skip(1) {
+                quad.color = quad.color.opacity(opacity);
+            }
+            frame
+        };
+        self.shown = Arc::new(frame);
+        Ok(Arc::clone(&self.shown))
+    }
+}
+
 #[cfg(target_os = "macos")]
 struct CursorCandidate {
     pane: Id,
@@ -777,6 +843,7 @@ struct Host {
     modal_pane: Option<Id>,
     overlay_panes: std::collections::BTreeSet<Id>,
     prepared: BTreeMap<Id, PreparedPane>,
+    resize_frames: BTreeMap<Id, ResizeFrame>,
     composed: Option<ComposedFrame>,
     zoom_animation: zoom_animation::State,
     pane_prepares: u64,
@@ -2242,6 +2309,7 @@ impl App {
             modal_pane: None,
             overlay_panes: std::collections::BTreeSet::new(),
             prepared: BTreeMap::new(),
+            resize_frames: BTreeMap::new(),
             composed: None,
             zoom_animation: zoom_animation::State::default(),
             pane_prepares: 0,
@@ -5684,6 +5752,7 @@ impl App {
                         })
                         .collect();
                     host.prepared.retain(|id, _| zoom_panes.iter().any(|pane| pane.id == *id));
+                    host.resize_frames.retain(|id, _| host.zoom_animation.is_running() && zoom_panes.iter().any(|pane| pane.id == *id));
                     let mut composed = None;
                     let mut accessible = Vec::new();
                     if let Some(entry) = self.tmuxx_window(host.id)
@@ -5705,8 +5774,25 @@ impl App {
                     for attempt in 0..2 {
                         let mut composition = Vec::with_capacity(host.rects.len());
                         accessible.clear();
-                        for visual in &zoom_panes {
-                            let (id, rect) = (visual.id, visual.layout);
+                        for visual in &mut zoom_panes {
+                            let (id, rect) = (visual.id, visual.resize.map_or(visual.layout, |resize| resize.layout));
+                            if let Some(resize) = visual.resize
+                                && host.resize_frames.get(&id).is_none_or(|frame| frame.transition != resize.transition)
+                                && let Some(prepared) = host.prepared.get(&id)
+                            {
+                                let (source, source_opacity) = host.resize_frames.remove(&id).map_or_else(
+                                    || (Arc::clone(&prepared.frame), 1.0),
+                                    |frame| (frame.shown, frame.shown_opacity),
+                                );
+                                host.resize_frames.insert(id, ResizeFrame {
+                                    transition: resize.transition,
+                                    shown: Arc::clone(&source),
+                                    source,
+                                    source_opacity,
+                                    cross_fade: None,
+                                    shown_opacity: source_opacity,
+                                });
+                            }
                             if !active.contains(id) {
                                 let Some(prepared) = host.prepared.get_mut(&id) else { continue; };
                                 let dim = prepared.dim;
@@ -5722,7 +5808,11 @@ impl App {
                                         }
                                     }
                                 }
-                                composition.push(prepared.compose(visual, content, scale, &config, dim, true));
+                                let mut composed = prepared.compose(visual, content, scale, &config, dim, true);
+                                if let Some(frame) = host.resize_frames.get(&id) {
+                                    frame.retain(&mut composed);
+                                }
+                                composition.push(composed);
                                 continue;
                             }
                             let Some(pane) = self.panes.get_mut(&id) else {
@@ -5898,7 +5988,7 @@ impl App {
                                 && is_focused
                                 && !pane.exited
                                 && prepared.frame.blinking_text;
-                            composition.push(prepared.compose(
+                            let mut composed_pane = prepared.compose(
                                 visual, content, scale, &config,
                                 (id != focused && config.unfocused_split_opacity < 1.0).then(
                                     || {
@@ -5910,7 +6000,30 @@ impl App {
                                     },
                                 ),
                                 host.zoom_animation.is_running(),
-                            ));
+                            );
+                            if let Some(resize) = visual.resize
+                                && let Some(frame) = host.resize_frames.get_mut(&id)
+                            {
+                                match frame.present(&prepared.frame, resize.phase) {
+                                    Ok(frame) => composed_pane.frame = frame,
+                                    Err(error) => {
+                                        render_error = Some(error.to_string());
+                                        continue;
+                                    }
+                                }
+                                // Content opacity is already baked into the retained frame.
+                                let paint = composed_pane.transition.as_mut().unwrap();
+                                paint.opacity = paint.background_opacity;
+                                if frame.cross_fade == Some(true) {
+                                    visual.opacity = 1.0;
+                                } else {
+                                    composed_pane.dim = composed_pane.dim.map(|dim| dim.opacity(frame.shown_opacity));
+                                }
+                                host.zoom_animation.cross_fade(id, frame.cross_fade == Some(true));
+                            } else if let Some(frame) = host.resize_frames.get(&id) {
+                                frame.retain(&mut composed_pane);
+                            }
+                            composition.push(composed_pane);
                             accessible.push((id, visual.rect.intersect(content)));
                             if id == focused && accepts_input {
                                 terminal_ime_rect = Some(prepared.ime_rect.translate(visual.rect.min - rect.min));
@@ -10176,6 +10289,115 @@ mod tests {
     }
 
     #[test]
+    fn resize_frames_keep_stationary_text_visible_and_reverse_the_same_blend() {
+        let endpoint = |height, positions: &[f32]| {
+            let mut frame = Frame::empty([8, height]);
+            frame.quads.push(rustty_render::Quad::solid(
+                [0.0, 0.0, 8.0, height as f32],
+                rustty_render::Color::rgb([0; 3]),
+            ));
+            for &x in positions {
+                let mut glyph = rustty_render::Quad::solid(
+                    [x, 0.0, 1.0, 1.0],
+                    rustty_render::Color::rgb([255; 3]),
+                );
+                glyph.paint = rustty_render::Paint::Mask;
+                frame.quads.push(glyph);
+            }
+            Arc::new(frame)
+        };
+        let source = endpoint(1, &[0.0, 1.0, 2.0]);
+        let target = endpoint(2, &[0.0, 1.0, 4.0]);
+        let mut resize = ResizeFrame {
+            transition: 1,
+            source: Arc::clone(&source),
+            source_opacity: 1.0,
+            shown: Arc::clone(&source),
+            cross_fade: None,
+            shown_opacity: 1.0,
+        };
+        let middle = resize.present(&target, 0.5).unwrap();
+        assert_eq!(resize.cross_fade, Some(true));
+        assert_eq!(resize.shown_opacity, 1.0);
+        for quad in &source.quads[1..3] {
+            assert!(middle.quads.contains(quad));
+        }
+        resize.present(&target, 0.75).unwrap();
+        assert_eq!(resize.present(&target, 0.5).unwrap().quads, middle.quads);
+        assert_eq!(resize.present(&target, 0.0).unwrap().quads, source.quads);
+        resize.present(&target, 0.5).unwrap();
+        let mut interrupted = ResizeFrame {
+            transition: 2,
+            source: Arc::clone(&resize.shown),
+            source_opacity: resize.shown_opacity,
+            shown: Arc::clone(&resize.shown),
+            cross_fade: None,
+            shown_opacity: 1.0,
+        };
+        let next = endpoint(3, &[0.0, 5.0, 6.0]);
+        assert_eq!(interrupted.present(&next, 0.0).unwrap().quads, middle.quads);
+        assert_eq!(interrupted.cross_fade, Some(false));
+        let faded = interrupted.present(&next, 0.5).unwrap();
+        assert!(faded.quads[1..].iter().all(|quad| quad.color.0[3] == 0.0));
+        let mut replaced = (*target).clone();
+        replaced.generation += 1;
+        let replaced = Arc::new(replaced);
+        assert_eq!(resize.present(&replaced, 0.75).unwrap().generation, 1);
+        assert_eq!(resize.cross_fade, Some(false));
+    }
+
+    #[test]
+    fn retained_resize_content_and_dimming_are_faded_once() {
+        use rustty_render::{Color, Quad};
+        let background = Color::rgb([0; 3]);
+        let mut source = Frame::empty([8, 1]);
+        source
+            .quads
+            .push(Quad::solid([0.0, 0.0, 8.0, 1.0], background));
+        source
+            .quads
+            .push(Quad::solid([0.0, 0.0, 1.0, 1.0], Color::rgb([255; 3])));
+        let source = Arc::new(source);
+        let mut resize = ResizeFrame {
+            transition: 1,
+            source: Arc::clone(&source),
+            source_opacity: 1.0,
+            shown: Arc::clone(&source),
+            cross_fade: Some(false),
+            shown_opacity: 1.0,
+        };
+        resize.present(&source, 0.25).unwrap();
+        let mut interrupted = ResizeFrame {
+            transition: 2,
+            source: Arc::clone(&resize.shown),
+            source_opacity: resize.shown_opacity,
+            shown: Arc::clone(&resize.shown),
+            cross_fade: Some(false),
+            shown_opacity: resize.shown_opacity,
+        };
+        interrupted.present(&source, 0.25).unwrap();
+        assert_eq!(interrupted.shown_opacity, 0.25);
+        let mut pane = ComposedPane {
+            frame: source,
+            rect: [0.0, 0.0, 8.0, 1.0],
+            clip: [0.0, 0.0, 8.0, 1.0],
+            dim: Some(Color::rgb([255, 0, 0]).opacity(0.8)),
+            transition: Some(ZoomPaint {
+                background,
+                frame_background: background,
+                opacity: 0.25,
+                background_opacity: 1.0,
+                moving: false,
+            }),
+        };
+        interrupted.retain(&mut pane);
+        let composed = ComposedFrame::new([8, 1], vec![pane]).unwrap();
+        assert_eq!(composed.frame.quads[0].color, background);
+        assert_eq!(composed.frame.quads[1].color.0[3], 0.25);
+        assert_eq!(composed.frame.quads[2].color.0[3], 0.2);
+    }
+
+    #[test]
     fn zoom_composition_moves_and_fades_glyphs_without_scaling_them() {
         use rustty_render::{Color, Paint, Quad};
         let background = Color::rgb([0; 3]).opacity(0.8);
@@ -10321,6 +10543,7 @@ mod tests {
                     opacity,
                     background_opacity,
                     moving,
+                    resize: None,
                 }];
                 let mut output = context.run_ui(egui::RawInput::default(), |ui| {
                     let layer = if separate_layer {
@@ -10401,6 +10624,7 @@ mod tests {
                 opacity: retained,
                 background_opacity: retained,
                 moving: false,
+                resize: None,
             }];
             let mut output = context.run_ui(
                 egui::RawInput {
