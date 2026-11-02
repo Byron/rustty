@@ -438,7 +438,11 @@ struct ResizeFrame {
     transition: u64,
     source: Arc<Frame>,
     source_opacity: f32,
+    source_grid_height: f32,
     shown: Arc<Frame>,
+    shown_grid_height: f32,
+    target: Option<Arc<Frame>>,
+    bottom: Option<resize_animation::Bottom>,
     cross_fade: Option<bool>,
     shown_opacity: f32,
 }
@@ -462,24 +466,68 @@ impl ResizeFrame {
         &mut self,
         target: &Arc<Frame>,
         phase: f32,
+        grid_height: f32,
+        cell_height: f32,
+        padding_top: f32,
     ) -> std::result::Result<Arc<Frame>, rustty_render::ComposeError> {
         // shortcut: atlas resets use the fade fallback, retain rerenderable sources if resets become distracting.
         let compatible = self.source.generation == target.generation;
         if !compatible {
             self.cross_fade = Some(false);
+            self.bottom = None;
+        } else if self
+            .target
+            .as_ref()
+            .is_none_or(|previous| !Arc::ptr_eq(previous, target))
+        {
+            let delta = grid_height - self.source_grid_height;
+            if let Some(bottom) = &mut self.bottom {
+                bottom.target_y = bottom.source_y + delta;
+            } else {
+                self.bottom = resize_animation::bottom_anchor(
+                    &self.source,
+                    target,
+                    delta,
+                    cell_height,
+                    padding_top,
+                );
+            }
+            self.target = Some(Arc::clone(target));
         }
-        let cross_fade = *self
-            .cross_fade
-            .get_or_insert_with(|| resize_animation::mostly_unchanged(&self.source, target));
+        let cross_fade = *self.cross_fade.get_or_insert_with(|| {
+            resize_animation::mostly_unchanged(&self.source, target, self.bottom)
+        });
+        let mix = phase * phase * (3.0 - 2.0 * phase);
+        self.shown_grid_height = if self.bottom.is_some() {
+            self.source_grid_height + (grid_height - self.source_grid_height) * mix
+        } else if cross_fade || phase < 0.5 && compatible {
+            self.source_grid_height
+        } else {
+            grid_height
+        };
         let frame = if cross_fade {
             self.shown_opacity = 1.0;
-            let mix = phase * phase * (3.0 - 2.0 * phase);
-            resize_animation::blend(&self.source, target, mix)?
+            resize_animation::blend(&self.source, target, mix, self.bottom)?
         } else {
-            let mut frame = if phase < 0.5 && compatible {
-                (*self.source).clone()
+            let source = phase < 0.5 && compatible;
+            let frame = if source { &self.source } else { target };
+            let mut frame = if let Some(bottom) = self.bottom {
+                let delta = bottom.target_y - bottom.source_y;
+                resize_animation::project(
+                    frame,
+                    if source {
+                        bottom.source_y
+                    } else {
+                        bottom.target_y
+                    },
+                    if source {
+                        delta * mix
+                    } else {
+                        -delta * (1.0 - mix)
+                    },
+                )?
             } else {
-                (**target).clone()
+                (**frame).clone()
             };
             let opacity = (phase * 2.0 - 1.0).abs();
             let opacity = opacity * opacity * (3.0 - 2.0 * opacity);
@@ -5780,15 +5828,25 @@ impl App {
                                 && host.resize_frames.get(&id).is_none_or(|frame| frame.transition != resize.transition)
                                 && let Some(prepared) = host.prepared.get(&id)
                             {
-                                let (source, source_opacity) = host.resize_frames.remove(&id).map_or_else(
-                                    || (Arc::clone(&prepared.frame), 1.0),
-                                    |frame| (frame.shown, frame.shown_opacity),
+                                let (source, source_opacity, source_grid_height, bottom) = host.resize_frames.remove(&id).map_or_else(
+                                    || (Arc::clone(&prepared.frame), 1.0, prepared.screen.height() as f32 * host.fonts.metrics().cell_height as f32, None),
+                                    |frame| {
+                                        let bottom = frame.bottom.map(|bottom| {
+                                            let source_y = bottom.source_y + frame.shown_grid_height - frame.source_grid_height;
+                                            resize_animation::Bottom { source_y, target_y: source_y }
+                                        });
+                                        (frame.shown, frame.shown_opacity, frame.shown_grid_height, bottom)
+                                    },
                                 );
                                 host.resize_frames.insert(id, ResizeFrame {
                                     transition: resize.transition,
                                     shown: Arc::clone(&source),
                                     source,
                                     source_opacity,
+                                    source_grid_height,
+                                    shown_grid_height: source_grid_height,
+                                    target: None,
+                                    bottom,
                                     cross_fade: None,
                                     shown_opacity: source_opacity,
                                 });
@@ -6004,7 +6062,12 @@ impl App {
                             if let Some(resize) = visual.resize
                                 && let Some(frame) = host.resize_frames.get_mut(&id)
                             {
-                                match frame.present(&prepared.frame, resize.phase) {
+                                match frame.present(
+                                    &prepared.frame, resize.phase,
+                                    prepared.screen.height() as f32 * host.fonts.metrics().cell_height as f32,
+                                    host.fonts.metrics().cell_height as f32,
+                                    prepared.key.options.padding[1],
+                                ) {
                                     Ok(frame) => composed_pane.frame = frame,
                                     Err(error) => {
                                         render_error = Some(error.to_string());
@@ -10289,6 +10352,105 @@ mod tests {
     }
 
     #[test]
+    fn bottom_anchored_resize_matches_native_text_and_status_pixels() {
+        fn raster(frame: Frame, size: [u32; 2]) -> Vec<u8> {
+            let mut clipped = Frame::empty(size);
+            clipped
+                .append_clipped(&frame, [0.0; 2], [0.0, 0.0, size[0] as f32, size[1] as f32])
+                .unwrap();
+            let rect =
+                egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(size[0] as f32, size[1] as f32));
+            rustty_render_software::Renderer::default()
+                .render(
+                    size,
+                    1.0,
+                    &[egui::ClippedPrimitive {
+                        clip_rect: rect,
+                        primitive: egui::epaint::Primitive::Callback(egui::PaintCallback {
+                            rect,
+                            callback: Arc::new(rustty_render_software::TerminalPaint {
+                                window: 1,
+                                frame: Arc::new(clipped),
+                            }),
+                        }),
+                    }],
+                    &egui::TexturesDelta::default(),
+                )
+                .unwrap()
+                .to_vec()
+        }
+        let mut fonts = rustty_render::Renderer::new(font_config(&Config::default(), 1.0)).unwrap();
+        let [width, height] = [fonts.metrics().cell_width, fonts.metrics().cell_height];
+        let mut fixture = |rows: u16| {
+            let mut terminal = vt::Terminal::new(40, rows, 0);
+            terminal.feed(
+                format!(
+                    "\x1b[?1049h\x1b[?25l\x1b[1;1HFixed header\x1b[3;1HBody stays at the top\x1b[{};1HChanges: three files\x1b[{};1H\x1b[44m\x1b[2K\x1b[93m Ready | Escape to close \x1b[0m",
+                    rows - 1,
+                    rows,
+                )
+                .as_bytes(),
+            );
+            fonts
+                .prepare(
+                    terminal.screen(),
+                    &RenderOptions {
+                        size: [40 * width + 6, u32::from(rows) * height + 6],
+                        padding: [3.0; 2],
+                        cursor_visible: false,
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+        };
+        let short = fixture(8);
+        let tall = fixture(16);
+        for (source, target, direction) in [(&short, &tall, 1.0), (&tall, &short, -1.0)] {
+            let bottom = resize_animation::bottom_anchor(
+                source,
+                target,
+                direction * 8.0 * height as f32,
+                height as f32,
+                3.0,
+            )
+            .expect("the lower two rows must be recognized without moving the header");
+            assert!(resize_animation::mostly_unchanged(
+                source,
+                target,
+                Some(bottom)
+            ));
+            for (mix, growing_rows) in [(0.25, 10), (0.5, 12), (0.75, 14)] {
+                let rows = if direction > 0.0 {
+                    growing_rows
+                } else {
+                    24 - growing_rows
+                };
+                let expected = fixture(rows);
+                let size = expected.size;
+                let blended = resize_animation::blend(source, target, mix, Some(bottom)).unwrap();
+                let actual = raster(blended, size);
+                let expected = raster(expected, size);
+                let mismatch = actual
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .zip(expected.as_chunks::<4>().0)
+                    .position(|(actual, expected)| actual != expected);
+                assert!(
+                    mismatch.is_none(),
+                    "direction={direction}, mix={mix}, first changed pixel={:?}",
+                    mismatch.map(|index| (
+                        index % size[0] as usize,
+                        index / size[0] as usize,
+                        &actual[index * 4..index * 4 + 4],
+                        &expected[index * 4..index * 4 + 4]
+                    )),
+                );
+            }
+        }
+    }
+
+    #[test]
     fn resize_frames_keep_stationary_text_visible_and_reverse_the_same_blend() {
         let endpoint = |height, positions: &[f32]| {
             let mut frame = Frame::empty([8, height]);
@@ -10312,38 +10474,162 @@ mod tests {
             transition: 1,
             source: Arc::clone(&source),
             source_opacity: 1.0,
+            source_grid_height: 1.0,
             shown: Arc::clone(&source),
+            shown_grid_height: 1.0,
+            target: None,
+            bottom: None,
             cross_fade: None,
             shown_opacity: 1.0,
         };
-        let middle = resize.present(&target, 0.5).unwrap();
+        let middle = resize
+            .present(&target, 0.5, target.size[1] as f32, 1.0, 0.0)
+            .unwrap();
         assert_eq!(resize.cross_fade, Some(true));
         assert_eq!(resize.shown_opacity, 1.0);
         for quad in &source.quads[1..3] {
             assert!(middle.quads.contains(quad));
         }
-        resize.present(&target, 0.75).unwrap();
-        assert_eq!(resize.present(&target, 0.5).unwrap().quads, middle.quads);
-        assert_eq!(resize.present(&target, 0.0).unwrap().quads, source.quads);
-        resize.present(&target, 0.5).unwrap();
+        resize
+            .present(&target, 0.75, target.size[1] as f32, 1.0, 0.0)
+            .unwrap();
+        assert_eq!(
+            resize
+                .present(&target, 0.5, target.size[1] as f32, 1.0, 0.0)
+                .unwrap()
+                .quads,
+            middle.quads
+        );
+        assert_eq!(
+            resize
+                .present(&target, 0.0, target.size[1] as f32, 1.0, 0.0)
+                .unwrap()
+                .quads,
+            source.quads
+        );
+        resize
+            .present(&target, 0.5, target.size[1] as f32, 1.0, 0.0)
+            .unwrap();
         let mut interrupted = ResizeFrame {
             transition: 2,
             source: Arc::clone(&resize.shown),
             source_opacity: resize.shown_opacity,
+            source_grid_height: resize.shown_grid_height,
             shown: Arc::clone(&resize.shown),
+            shown_grid_height: resize.shown_grid_height,
+            target: None,
+            bottom: None,
             cross_fade: None,
             shown_opacity: 1.0,
         };
         let next = endpoint(3, &[0.0, 5.0, 6.0]);
-        assert_eq!(interrupted.present(&next, 0.0).unwrap().quads, middle.quads);
+        assert_eq!(
+            interrupted
+                .present(&next, 0.0, next.size[1] as f32, 1.0, 0.0)
+                .unwrap()
+                .quads,
+            middle.quads
+        );
         assert_eq!(interrupted.cross_fade, Some(false));
-        let faded = interrupted.present(&next, 0.5).unwrap();
+        let faded = interrupted
+            .present(&next, 0.5, next.size[1] as f32, 1.0, 0.0)
+            .unwrap();
         assert!(faded.quads[1..].iter().all(|quad| quad.color.0[3] == 0.0));
         let mut replaced = (*target).clone();
         replaced.generation += 1;
         let replaced = Arc::new(replaced);
-        assert_eq!(resize.present(&replaced, 0.75).unwrap().generation, 1);
+        assert_eq!(
+            resize
+                .present(&replaced, 0.75, replaced.size[1] as f32, 1.0, 0.0)
+                .unwrap()
+                .generation,
+            1
+        );
         assert_eq!(resize.cross_fade, Some(false));
+    }
+
+    #[test]
+    fn resize_frames_recognize_delayed_footer_redraws_and_keep_interrupted_grid_height() {
+        use rustty_render::{Color, Paint, Quad};
+        let endpoint = |height, footer_y| {
+            let mut frame = Frame::empty([80, height]);
+            frame.quads.push(Quad::solid(
+                [0.0, 0.0, 80.0, height as f32],
+                Color::rgb([0; 3]),
+            ));
+            for (x, y) in [
+                (0.0, 5.0),
+                (20.0, footer_y),
+                (30.0, footer_y),
+                (40.0, footer_y),
+            ] {
+                let mut glyph = Quad::solid([x, y, 4.0, 4.0], Color::rgb([255; 3]));
+                glyph.paint = Paint::Mask;
+                frame.quads.push(glyph);
+            }
+            Arc::new(frame)
+        };
+        let source = endpoint(105, 85.0);
+        let mut resize = ResizeFrame {
+            transition: 1,
+            source: Arc::clone(&source),
+            source_opacity: 1.0,
+            source_grid_height: 100.0,
+            shown: Arc::clone(&source),
+            shown_grid_height: 100.0,
+            target: None,
+            bottom: None,
+            cross_fade: None,
+            shown_opacity: 1.0,
+        };
+        let pending = endpoint(156, 85.0);
+        resize.present(&pending, 0.0, 150.0, 10.0, 3.0).unwrap();
+        assert_eq!(resize.bottom, None);
+        assert_eq!(resize.cross_fade, Some(true));
+
+        let target = endpoint(156, 135.0);
+        let quarter = resize.present(&target, 0.25, 150.0, 10.0, 3.0).unwrap();
+        let bottom = resize.bottom.unwrap();
+        assert_eq!(bottom.target_y - bottom.source_y, 50.0);
+        assert_eq!(quarter.quads[1], source.quads[1], "header stays at the top");
+        assert_eq!(quarter.quads[2].rect[1], 92.8125);
+        assert_eq!(resize.shown_grid_height, 107.8125);
+        resize.present(&target, 0.75, 150.0, 10.0, 3.0).unwrap();
+        assert_eq!(
+            resize
+                .present(&target, 0.25, 150.0, 10.0, 3.0)
+                .unwrap()
+                .quads,
+            quarter.quads
+        );
+
+        let cutoff = bottom.source_y + resize.shown_grid_height - resize.source_grid_height;
+        let mut interrupted = ResizeFrame {
+            transition: 2,
+            source: Arc::clone(&resize.shown),
+            source_opacity: resize.shown_opacity,
+            source_grid_height: resize.shown_grid_height,
+            shown: Arc::clone(&resize.shown),
+            shown_grid_height: resize.shown_grid_height,
+            target: None,
+            bottom: Some(resize_animation::Bottom {
+                source_y: cutoff,
+                target_y: cutoff,
+            }),
+            cross_fade: None,
+            shown_opacity: 1.0,
+        };
+        let next = endpoint(183, 165.0);
+        assert_eq!(
+            interrupted
+                .present(&next, 0.0, 180.0, 10.0, 3.0)
+                .unwrap()
+                .quads,
+            quarter.quads
+        );
+        assert_eq!(interrupted.cross_fade, Some(true));
+        let middle = interrupted.present(&next, 0.5, 180.0, 10.0, 3.0).unwrap();
+        assert_eq!(middle.quads[2].rect[1], 128.90625);
     }
 
     #[test]
@@ -10362,20 +10648,32 @@ mod tests {
             transition: 1,
             source: Arc::clone(&source),
             source_opacity: 1.0,
+            source_grid_height: 1.0,
             shown: Arc::clone(&source),
+            shown_grid_height: 1.0,
+            target: None,
+            bottom: None,
             cross_fade: Some(false),
             shown_opacity: 1.0,
         };
-        resize.present(&source, 0.25).unwrap();
+        resize
+            .present(&source, 0.25, source.size[1] as f32, 1.0, 0.0)
+            .unwrap();
         let mut interrupted = ResizeFrame {
             transition: 2,
             source: Arc::clone(&resize.shown),
             source_opacity: resize.shown_opacity,
+            source_grid_height: resize.shown_grid_height,
             shown: Arc::clone(&resize.shown),
+            shown_grid_height: resize.shown_grid_height,
+            target: None,
+            bottom: None,
             cross_fade: Some(false),
             shown_opacity: resize.shown_opacity,
         };
-        interrupted.present(&source, 0.25).unwrap();
+        interrupted
+            .present(&source, 0.25, source.size[1] as f32, 1.0, 0.0)
+            .unwrap();
         assert_eq!(interrupted.shown_opacity, 0.25);
         let mut pane = ComposedPane {
             frame: source,
