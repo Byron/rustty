@@ -1453,7 +1453,6 @@ fn check_zoom_transition(
         return Err(format!("{name} did not start its animation").into());
     }
     let target = host.rects.keys().copied().collect::<HashSet<_>>();
-    let mut initial = before.clone();
     let mut after = before.clone();
     let tab = app.tab(host.id).unwrap();
     let scale = host.window.scale_factor() as f32;
@@ -1471,12 +1470,9 @@ fn check_zoom_transition(
             app.window_config(host.id),
         );
         after.insert(id, size);
-        if !source.contains(&id) {
-            initial.insert(id, size);
-        }
     }
-    if sizes(app)? != initial {
-        return Err(format!("{name} resized moving terminals before its midpoint").into());
+    if sizes(app)? != after {
+        return Err(format!("{name} did not prepare resized terminals at its start").into());
     }
     if before == after {
         return Err(format!("{name} fixture did not change any terminal dimensions").into());
@@ -1522,7 +1518,7 @@ fn check_zoom_transition(
             host,
             &directory.join(format!("animation-{name}-{part}.png")),
         )?;
-        let expected = if part == "quarter" { &initial } else { &after };
+        let expected = &after;
         let actual = sizes(app)?;
         if &actual != expected {
             return Err(format!(
@@ -1543,11 +1539,7 @@ fn check_zoom_transition(
             if paint.frame_background != window_frame {
                 return Err(format!("{name} {part} faded toward the tab accent").into());
             }
-            if paint.moving {
-                if part == "midpoint" && paint.opacity > 0.02 {
-                    return Err(format!("{name} left moving text visible at its midpoint").into());
-                }
-            } else {
+            if !paint.moving {
                 neighbors += 1;
                 if !(retained..1.0).contains(&paint.opacity)
                     || !(retained..1.0).contains(&paint.background_opacity)

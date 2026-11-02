@@ -13,6 +13,14 @@ pub struct Pane {
     pub opacity: f32,
     pub background_opacity: f32,
     pub moving: bool,
+    pub resize: Option<Resize>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Resize {
+    pub transition: u64,
+    pub layout: egui::Rect,
+    pub phase: f32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -44,6 +52,7 @@ impl View {
                 opacity: 1.0,
                 background_opacity: 1.0,
                 moving: false,
+                resize: None,
             })
             .collect()
     }
@@ -71,6 +80,8 @@ impl Snapshot {
 }
 
 struct Transition {
+    id: u64,
+    cross_fade: Vec<Id>,
     source: Vec<Pane>,
     closed: Vec<Id>,
     source_view: Option<View>,
@@ -127,6 +138,7 @@ impl Transition {
                 match target {
                     None if self.closed.contains(&source.id) => Some(Pane {
                         moving: false,
+                        resize: None,
                         ..*source
                     }),
                     Some((_, layout))
@@ -138,6 +150,7 @@ impl Transition {
                     {
                         Some(Pane {
                             moving: false,
+                            resize: None,
                             ..*source
                         })
                     }
@@ -149,7 +162,9 @@ impl Transition {
                             self.target.label_quadrant()
                         },
                         rect: interpolate(source.rect, *layout, position),
-                        opacity: if phase < 0.5 {
+                        opacity: if self.cross_fade.contains(&source.id) {
+                            1.0
+                        } else if phase < 0.5 {
                             source.opacity * opacity
                         } else {
                             opacity
@@ -161,9 +176,15 @@ impl Transition {
                             1.0
                         },
                         moving: true,
+                        resize: Some(Resize {
+                            transition: self.id,
+                            layout: *layout,
+                            phase,
+                        }),
                         ..*source
                     }),
                     None if sliding && !source.moving => Some(Pane {
+                        resize: None,
                         opacity: source.opacity
                             + (1.0 - self.background_mix - source.opacity) * background_fade,
                         background_opacity: source.background_opacity
@@ -172,6 +193,7 @@ impl Transition {
                         ..*source
                     }),
                     None if phase < 0.5 => Some(Pane {
+                        resize: None,
                         opacity: source.opacity * opacity,
                         background_opacity: source.background_opacity * opacity,
                         ..*source
@@ -198,6 +220,7 @@ impl Transition {
                     opacity,
                     background_opacity: opacity,
                     moving: false,
+                    resize: None,
                 })
             }));
         }
@@ -213,9 +236,19 @@ pub struct State {
     snapshot: Option<Snapshot>,
     transition: Option<Transition>,
     display_zoom: Option<(Option<Id>, Option<Id>, bool)>,
+    next_transition: u64,
 }
 
 impl State {
+    pub fn cross_fade(&mut self, id: Id, enabled: bool) {
+        if let Some(transition) = &mut self.transition {
+            transition.cross_fade.retain(|pane| *pane != id);
+            if enabled {
+                transition.cross_fade.push(id);
+            }
+        }
+    }
+
     pub fn is_running(&self) -> bool {
         self.transition.is_some()
     }
@@ -356,7 +389,10 @@ impl State {
                         previous.view.mode(),
                     )
                 };
+                self.next_transition = self.next_transition.wrapping_add(1);
                 self.transition = Some(Transition {
+                    id: self.next_transition,
+                    cross_fade: Vec::new(),
                     closed: source
                         .iter()
                         .filter(|pane| !tab.contains(pane.id))
@@ -490,6 +526,115 @@ mod tests {
                 .all(|pane| pane.background_opacity == 1.0)
         );
         assert_eq!(end.len(), 2);
+    }
+
+    #[test]
+    fn cross_fade_keeps_target_metadata_and_opacity_through_reversal() {
+        let now = Instant::now();
+        let mut state = State::default();
+        let mut tab = quadrants();
+        let original = update(&mut state, &tab, false, now);
+        let id = tab.focused;
+        tab.toggle_zoom();
+        let start = pane(&update(&mut state, &tab, false, now), id);
+        let resize = start.resize.unwrap();
+        assert_eq!(resize.phase, 0.0);
+        assert_eq!(start.layout, pane(&original, id).layout);
+        assert_ne!(resize.layout, start.layout);
+        assert_eq!(
+            resize.layout,
+            state.transition.as_ref().unwrap().target.panes[0].1
+        );
+
+        state.cross_fade(id, true);
+        let reverse_at = now + ZOOM_DURATION / 2;
+        let forward = update(&mut state, &tab, false, reverse_at);
+        assert_eq!(pane(&forward, id).opacity, 1.0);
+        tab.toggle_zoom();
+        let reversed = update(&mut state, &tab, false, reverse_at);
+        assert_eq!(reversed, forward);
+        let returning = pane(
+            &update(&mut state, &tab, false, reverse_at + ZOOM_DURATION / 4),
+            id,
+        );
+        assert_eq!(returning.opacity, 1.0);
+        assert_eq!(returning.resize.unwrap().transition, resize.transition);
+        assert_eq!(returning.resize.unwrap().layout, resize.layout);
+        assert_eq!(returning.resize.unwrap().phase, 0.25);
+
+        let finished_at = reverse_at + ZOOM_DURATION / 2;
+        let finished = update(&mut state, &tab, false, finished_at);
+        assert_eq!(finished, original);
+        assert!(finished.iter().all(|pane| pane.resize.is_none()));
+        assert!(!state.is_running());
+        tab.toggle_zoom();
+        let restarted = pane(&update(&mut state, &tab, false, finished_at), id);
+        assert_ne!(restarted.resize.unwrap().transition, resize.transition);
+    }
+
+    #[test]
+    fn interrupted_cross_fade_retains_the_visible_source_opacity() {
+        let now = Instant::now();
+        let mut state = State::default();
+        let mut tab = quadrants();
+        update(&mut state, &tab, false, now);
+        tab.toggle_quadrant_zoom();
+        update(&mut state, &tab, false, now);
+        let id = tab.focused;
+        state.cross_fade(id, true);
+        let interrupted = now + ZOOM_DURATION / 2;
+        let before = pane(&update(&mut state, &tab, false, interrupted), id);
+        assert_eq!(before.opacity, 1.0);
+        tab.toggle_zoom();
+        let after = pane(&update(&mut state, &tab, false, interrupted), id);
+        assert_eq!(after.rect, before.rect);
+        assert_eq!(after.layout, before.layout);
+        assert_eq!(after.opacity, 1.0);
+        assert_eq!(after.resize.unwrap().phase, 0.0);
+        assert_ne!(
+            after.resize.unwrap().transition,
+            before.resize.unwrap().transition
+        );
+    }
+
+    #[test]
+    fn outgoing_and_closed_cross_fades_keep_their_sampled_opacity() {
+        for close in [false, true] {
+            let now = Instant::now();
+            let mut state = State::default();
+            let mut tab = quadrants();
+            update(&mut state, &tab, false, now);
+            tab.toggle_zoom();
+            update(&mut state, &tab, false, now);
+            let id = tab.focused;
+            state.cross_fade(id, true);
+            let interrupted = now + ZOOM_DURATION / 2;
+            let before = pane(&update(&mut state, &tab, false, interrupted), id);
+            if close {
+                assert!(tab.close(id));
+            } else {
+                tab.zoom = Some(5);
+                tab.focus(5);
+            }
+            let after = pane(&update(&mut state, &tab, false, interrupted), id);
+            assert_eq!(after.rect, before.rect);
+            assert_eq!(after.layout, before.layout);
+            assert_eq!(after.opacity, 1.0);
+            assert!(after.resize.is_none());
+            let duration = if close { SPLIT_DURATION } else { ZOOM_DURATION };
+            let middle = update(&mut state, &tab, false, interrupted + duration / 2);
+            if close {
+                assert_eq!(pane(&middle, id), after);
+            } else {
+                assert!(middle.iter().all(|pane| pane.id != id));
+            }
+            let end = update(&mut state, &tab, false, interrupted + duration);
+            assert!(!state.is_running());
+            assert!(
+                end.iter()
+                    .all(|pane| pane.id != id && pane.resize.is_none())
+            );
+        }
     }
 
     #[test]

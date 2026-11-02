@@ -13,6 +13,7 @@ pub mod outliner;
 pub mod outliner_ui;
 pub mod platform;
 pub mod presentation;
+pub mod resize_animation;
 pub mod search;
 #[cfg(target_os = "windows")]
 pub mod software_surface;
