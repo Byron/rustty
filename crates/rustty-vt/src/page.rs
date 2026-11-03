@@ -104,9 +104,9 @@ pub(crate) struct Page {
     pub headers: Vec<RowHeader>,
     #[serde(skip)]
     pub row_ids: Vec<u64>,
-    // Physical row slots, shared by snapshots until their placeholder content changes.
+    // Physical row slots, shared by snapshots until their content changes.
     #[serde(skip)]
-    pub placeholder_revisions: Vec<u64>,
+    pub row_revisions: Vec<u64>,
     #[serde(skip)]
     pub grapheme_map: SlotMap<GraphemeAllocation>,
     #[serde(skip)]
@@ -160,7 +160,11 @@ impl Page {
                 let _scope = Scope::enter(Kind::PageBuffer);
                 vec![0; usize::from(capacity.rows)]
             },
-            placeholder_revisions: Vec::new(),
+            row_revisions: {
+                #[cfg(feature = "allocation-probe")]
+                let _scope = Scope::enter(Kind::PageBuffer);
+                vec![0; usize::from(capacity.rows)]
+            },
             grapheme_map: SlotMap::default(),
             link_map: SlotMap::default(),
             link_overrides: SlotMap::default(),
@@ -220,7 +224,7 @@ impl Page {
             + self.cells.capacity() * size_of::<Cell>()
             + self.headers.capacity() * size_of::<RowHeader>()
             + self.row_ids.capacity() * size_of::<u64>()
-            + self.placeholder_revisions.capacity() * size_of::<u64>()
+            + self.row_revisions.capacity() * size_of::<u64>()
             + self.styles.storage_bytes()
             + self.links.storage_bytes()
             + self.graphemes.storage_bytes()
@@ -339,26 +343,17 @@ impl Page {
     #[inline]
     pub fn mark_row(&mut self, row: usize) {
         self.headers[row].set(RowHeader::DIRTY, true);
-        if self.headers[row].has(RowHeader::PLACEHOLDER) {
-            self.refresh_placeholder_revision(row);
-        }
+        self.refresh_row_revision(row);
     }
 
-    #[cold]
-    fn refresh_placeholder_revision(&mut self, row: usize) {
+    #[inline]
+    fn refresh_row_revision(&mut self, row: usize) {
         use std::sync::atomic::{AtomicU64, Ordering};
         static NEXT: AtomicU64 = AtomicU64::new(1);
-        if self.placeholder_revisions.len() < usize::from(self.capacity.rows) {
-            #[cfg(feature = "allocation-probe")]
-            let _scope = Scope::enter(Kind::PageBuffer);
-            self.placeholder_revisions
-                .resize(usize::from(self.capacity.rows), 0);
-            self.refresh_charge();
-        }
         let slot = self.headers[row].offset() / usize::from(self.capacity.cols);
-        self.placeholder_revisions[slot] = NEXT
+        self.row_revisions[slot] = NEXT
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-            .expect("placeholder revisions exhausted");
+            .expect("row revisions exhausted");
     }
 
     #[inline]
@@ -400,8 +395,10 @@ impl Page {
         }
         self.link_overrides.clear();
         self.override_bytes = 0;
-        for header in &mut self.headers[..usize::from(self.rows)] {
-            header.set(RowHeader::DIRTY, true);
+        for row in 0..usize::from(self.rows) {
+            if self.headers[row].has(RowHeader::HYPERLINK) {
+                self.mark_row(row);
+            }
         }
         self.refresh_charge();
     }
@@ -417,11 +414,8 @@ impl Page {
             self.row_cells_mut(row).fill(Cell::blank(background));
         }
         self.headers[row].reset();
-        let slot = start / usize::from(self.capacity.cols);
-        if let Some(revision) = self.placeholder_revisions.get_mut(slot) {
-            *revision = 0;
-        }
         self.row_ids[row] = id;
+        self.mark_row(row);
         if released_payload {
             self.refresh_charge();
         }
@@ -492,7 +486,8 @@ impl Page {
             .resize(usize::from(capacity.rows), RowHeader::default());
         self.row_ids.resize(usize::from(capacity.rows), 0);
         self.row_ids.fill(0);
-        self.placeholder_revisions.clear();
+        self.row_revisions.resize(usize::from(capacity.rows), 0);
+        self.row_revisions.fill(0);
         for (row, header) in self.headers.iter_mut().enumerate() {
             *header = RowHeader::new((row * usize::from(capacity.cols)) as u32);
         }
