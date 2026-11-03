@@ -187,6 +187,7 @@ pub struct Terminal {
     dcs_header: (Vec<u8>, Vec<u16>, u8),
     apc: Vec<u8>,
     apc_glyph_limit: Option<usize>,
+    apc_graphics_rejected: bool,
     tmux_string_kind: u8,
     string_overflow: bool,
 }
@@ -274,6 +275,7 @@ impl Terminal {
             dcs_header: (Vec::new(), Vec::new(), 0),
             apc: Vec::new(),
             apc_glyph_limit: None,
+            apc_graphics_rejected: false,
             tmux_string_kind: 0,
             string_overflow: false,
         }
@@ -325,6 +327,7 @@ impl Terminal {
         self.dcs_header.2 = 0;
         self.apc.clear();
         self.apc_glyph_limit = None;
+        self.apc_graphics_rejected = false;
         self.string_overflow = false;
         self.reset();
     }
@@ -378,6 +381,13 @@ impl Terminal {
         alternate: Option<crate::graphics::ViewSnapshot>,
         max_bytes: usize,
     ) -> Result<(), &'static str> {
+        if alternate.is_some() && self.alternate.is_none() {
+            return Err("graphics has no alternate screen");
+        }
+        // Host denial wins over serialized graphics settings, including pending uploads.
+        if self.primary.graphics.limit == 0 {
+            return Ok(());
+        }
         let primary = crate::graphics::Graphics::from_view_snapshot_with_limit(primary, max_bytes)?;
         let alternate = alternate
             .map(|snapshot| {
@@ -828,11 +838,13 @@ impl Terminal {
             std::mem::take(&mut self.dcs_header),
             std::mem::take(&mut self.apc),
             self.apc_glyph_limit,
+            self.apc_graphics_rejected,
             self.tmux_string_kind,
             self.string_overflow,
         );
         let limits = self.primary.limits;
         let memory_limit = self.primary.memory_limit;
+        let graphics_limit = self.primary.graphics.limit;
         let primary_identity = self.primary.metadata.identity;
         let terminfo_name = self.terminfo_name.take();
         let query_defaults = self.query_defaults.clone();
@@ -890,12 +902,14 @@ impl Terminal {
         modes.reset();
         *self = Self::with_limits(self.cols, self.rows, limits);
         self.primary.memory_limit = memory_limit;
+        self.primary.graphics.limit = graphics_limit;
         (
             self.parser,
             self.dcs,
             self.dcs_header,
             self.apc,
             self.apc_glyph_limit,
+            self.apc_graphics_rejected,
             self.tmux_string_kind,
             self.string_overflow,
         ) = input;
@@ -1244,6 +1258,7 @@ impl Terminal {
             Event::ApcStart | Event::TmuxStringStart(_) => {
                 self.apc.clear();
                 self.apc_glyph_limit = None;
+                self.apc_graphics_rejected = false;
                 self.string_overflow = false;
                 self.tmux_string_kind = if let Event::TmuxStringStart(kind) = event {
                     kind
@@ -1255,6 +1270,7 @@ impl Terminal {
             Event::ApcCancel => {
                 self.apc.clear();
                 self.apc_glyph_limit = None;
+                self.apc_graphics_rejected = false;
                 self.string_overflow = false;
             }
             Event::ApcEnd | Event::TmuxStringEnd => {
@@ -1266,6 +1282,8 @@ impl Terminal {
                         }
                     } else if self.tmux_strings && !matches!(self.tmux_string_kind, b'_' | 0x9f) {
                         // SOS and PM consume their payload without changing pane metadata.
+                    } else if self.apc_graphics_rejected {
+                        self.reject_graphics_command(&apc, effects);
                     } else if self.apc_glyph_limit.is_some() {
                         let (reply, changed) = self.glyphs.execute(&apc[5..]);
                         if let Some(reply) = reply {
@@ -1285,6 +1303,7 @@ impl Terminal {
                 }
                 apc.clear();
                 self.apc = apc;
+                self.apc_graphics_rejected = false;
             }
             Event::OscOverflow => {
                 effects.push(Effect::UnknownSequence("OSC exceeded capture limit".into()))
@@ -1294,6 +1313,10 @@ impl Terminal {
 
     fn apc_put(&mut self, mut bytes: &[u8]) {
         if self.string_overflow {
+            return;
+        }
+        if self.apc_graphics_rejected {
+            self.retain_graphics_header(bytes);
             return;
         }
         if self.apc.len() < 5 {
@@ -1311,6 +1334,11 @@ impl Terminal {
                 }
             }
         }
+        self.discard_disabled_graphics_input();
+        if self.apc_graphics_rejected {
+            self.retain_graphics_header(bytes);
+            return;
+        }
         let limit = if self.tmux_strings
             && (self.tmux_string_kind == b'k' || self.apc.first() != Some(&b'G'))
         {
@@ -1323,6 +1351,37 @@ impl Terminal {
         self.apc
             .extend_from_slice(&bytes[..bytes.len().min(available)]);
         self.string_overflow = bytes.len() > available;
+    }
+
+    pub(crate) fn discard_disabled_graphics_input(&mut self) {
+        if self.primary.graphics.limit == 0
+            && self.tmux_string_kind != b'k'
+            && self.apc.first() == Some(&b'G')
+        {
+            self.apc_graphics_rejected = true;
+            self.retain_graphics_header(&[]);
+            self.apc.shrink_to_fit();
+        }
+    }
+
+    fn retain_graphics_header(&mut self, bytes: &[u8]) {
+        // Keep only bounded control metadata for rejection, never image data.
+        const LIMIT: usize = 4096;
+        if let Some(end) = self.apc.iter().position(|&byte| byte == b';') {
+            self.apc.truncate(end + 1);
+        } else {
+            let end = bytes
+                .iter()
+                .position(|&byte| byte == b';')
+                .map_or(bytes.len(), |end| end + 1);
+            let available = LIMIT.saturating_sub(self.apc.len());
+            self.apc.extend_from_slice(&bytes[..end.min(available)]);
+            self.string_overflow = end > available;
+        }
+        if self.apc.len() > LIMIT || self.string_overflow {
+            self.apc = Vec::new();
+            self.string_overflow = true;
+        }
     }
 
     /// Fill ordinary row spans without repeating cursor and page lookup per cell.
@@ -2642,6 +2701,7 @@ impl Terminal {
             let mut alternate =
                 Screen::new(self.cols.into(), self.rows.into(), ScrollbackLimits::NONE);
             alternate.memory_limit = self.primary.memory_limit;
+            alternate.graphics.limit = self.primary.graphics.limit;
             alternate.tmux_capture_enabled = self.tmux_strings;
             self.alternate = Some(alternate);
         }
@@ -3880,4 +3940,85 @@ fn tmux_emoji_modifier_base(cp: char) -> bool {
         0x1f64b..=0x1f64f | 0x1f6b4..=0x1f6b6 | 0x1f926 |
         0x1f937..=0x1f939 | 0x1f93d..=0x1f93e | 0x1f9b5..=0x1f9b6 |
         0x1f9b8..=0x1f9b9 | 0x1f9cd..=0x1f9cf | 0x1f9d1..=0x1f9df)
+}
+
+#[cfg(test)]
+mod graphics_policy_tests {
+    use super::*;
+
+    #[test]
+    fn disabled_graphics_payloads_never_accumulate() {
+        let mut terminal = Terminal::new(10, 3, 0);
+        terminal.set_graphics_limit(0);
+        terminal.feed(b"\x1b_Ga=T,i=1,s=1,v=1,f=100;");
+        let payload = vec![b'A'; 1024 * 1024];
+        for _ in 0..65 {
+            assert!(terminal.feed(&payload).is_empty());
+            assert_eq!(terminal.apc, b"Ga=T,i=1,s=1,v=1,f=100;");
+            assert!(terminal.apc.capacity() <= 4096);
+            assert!(terminal.parser().pending_input().is_err());
+            assert!(terminal.parser().continuation().is_err());
+        }
+        assert_eq!(
+            terminal.feed(b"\x1b\\ok\x1b[c"),
+            [
+                Effect::Write(b"\x1b_Gi=1;ENOTSUP: graphics disabled\x1b\\".to_vec()),
+                Effect::Write(b"\x1b[?62;22c".to_vec()),
+            ]
+        );
+        assert_eq!(terminal.screen().cursor.col, 2);
+        terminal.set_graphics_limit(320_000_000);
+        terminal.feed(b"\x1b_Ga=T,i=1,s=1,v=1,f=24,m=1;AQ\x1b\\");
+        terminal.set_graphics_limit(0);
+        assert!(terminal.feed(b"\x1b_Gm=0;ID\x1b\\").is_empty());
+        terminal.set_graphics_limit(320_000_000);
+        terminal.feed(b"\x1b_Gm=0;ID\x1b\\");
+        assert!(terminal.graphics().images.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod graphics_rejection_tests {
+    use super::*;
+
+    #[test]
+    fn disabling_a_live_upload_releases_payload_capacity_and_cannot_revive_it() {
+        let mut terminal = Terminal::new(10, 3, 0);
+        terminal.feed(b"\x1b_Ga=T,i=3,q=1,s=1,v=1,f=24;");
+        terminal.feed(&vec![b'A'; 1024 * 1024]);
+        assert!(terminal.apc.capacity() >= 1024 * 1024);
+        terminal.set_graphics_limit(0);
+        assert_eq!(terminal.apc, b"Ga=T,i=3,q=1,s=1,v=1,f=24;");
+        assert!(terminal.apc.capacity() <= 4096);
+        terminal.set_graphics_limit(320_000_000);
+        assert_eq!(
+            terminal.feed(b"AQID\x1b\\"),
+            [Effect::Write(
+                b"\x1b_Gi=3;ENOTSUP: graphics disabled\x1b\\".to_vec()
+            )]
+        );
+        assert!(terminal.graphics().images.is_empty());
+        assert_eq!(
+            terminal.feed(b"\x1b_Ga=q,i=1,s=1,v=1,f=24;AQID\x1b\\"),
+            [Effect::Write(b"\x1b_Gi=1;OK\x1b\\".to_vec())]
+        );
+    }
+
+    #[test]
+    fn oversized_control_headers_are_bounded_and_recover_at_the_terminator() {
+        let mut terminal = Terminal::new(10, 3, 0);
+        terminal.set_graphics_limit(0);
+        terminal.feed(b"\x1b_Gi=1,");
+        for _ in 0..5 {
+            terminal.feed(&[b'a'; 4096]);
+            assert!(terminal.apc.capacity() <= 8192);
+        }
+        assert!(terminal.apc.is_empty());
+        assert_eq!(
+            terminal.feed(b";AQID\x1b\\ok\x1b[c"),
+            [Effect::Write(b"\x1b[?62;22c".to_vec())]
+        );
+        assert_eq!(terminal.screen().cursor.col, 2);
+        assert!(terminal.graphics().images.is_empty());
+    }
 }

@@ -227,6 +227,7 @@ pub struct Parser {
     continuation_broken: bool,
     capture_pending: Vec<u8>,
     capture_pending_broken: bool,
+    capture_kitty_graphics: bool,
     tmux_strings: bool,
     tmux_dcs_escape: bool,
 }
@@ -257,6 +258,7 @@ impl Parser {
             continuation_broken: false,
             capture_pending: Vec::new(),
             capture_pending_broken: false,
+            capture_kitty_graphics: true,
             tmux_strings: false,
             tmux_dcs_escape: false,
         }
@@ -380,10 +382,38 @@ impl Parser {
         Ok(())
     }
 
+    /// Replay-capture plumbing for a terminal's graphics policy; parser events
+    /// remain unchanged. Disabled Kitty APCs consume input without retaining it.
+    #[doc(hidden)]
+    pub fn set_kitty_graphics_capture(&mut self, enabled: bool) {
+        self.capture_kitty_graphics = enabled;
+        if !enabled
+            && self.state == State::SosPmApcString
+            && [&self.capture_pending, &self.continuation]
+                .into_iter()
+                .any(|bytes| bytes.starts_with(b"\x1b_G") || bytes.starts_with(b"\x9fG"))
+        {
+            self.discard_graphics_capture();
+        }
+    }
+
+    fn discard_graphics_capture(&mut self) {
+        self.capture_pending = Vec::new();
+        self.continuation = Vec::new();
+        self.capture_pending_broken = true;
+        self.continuation_broken = true;
+    }
+
     fn retain_pending(&mut self, bytes: &[u8]) {
         if self.state == State::Ground {
             self.capture_pending.clear();
             self.capture_pending_broken = false;
+        } else if !self.capture_kitty_graphics
+            && self.state == State::SosPmApcString
+            && (self.capture_pending.ends_with(b"\x1b_") || self.capture_pending.ends_with(b"\x9f"))
+            && bytes.first() == Some(&b'G')
+        {
+            self.discard_graphics_capture();
         } else if !self.capture_pending_broken {
             if bytes.len()
                 > self
@@ -477,6 +507,10 @@ impl Parser {
     }
 
     fn retain_continuation(&mut self, bytes: &[u8]) {
+        if self.state == State::SosPmApcString && self.capture_pending_broken {
+            self.continuation_broken = true;
+            return;
+        }
         if self.tmux_strings && self.state == State::DcsPassthrough {
             self.continuation.clone_from(&self.capture_pending);
             self.continuation_broken = self.capture_pending_broken;
@@ -1137,5 +1171,36 @@ mod tests {
         });
         assert_eq!(result, "😄");
         assert!(parser.is_ground());
+    }
+}
+
+#[cfg(test)]
+mod graphics_capture_tests {
+    use super::*;
+
+    #[test]
+    fn graphics_denial_discards_only_kitty_replay_buffers() {
+        let mut parser = Parser::new();
+        parser.set_kitty_graphics_capture(false);
+        parser.advance_batched(b"\x1b_G", |_| {});
+        for _ in 0..10 {
+            parser.advance_batched(&[b'A'; 4096], |_| {});
+            assert_eq!(parser.capture_pending.capacity(), 0);
+            assert_eq!(parser.continuation.capacity(), 0);
+        }
+        parser.advance_batched(b"\x18\x1b]52;c;YQ==", |_| {});
+        assert_eq!(parser.continuation().unwrap(), b"\x1b]52;c;YQ==");
+        parser.advance_batched(b"\x07\x1b_25a1;name_", |_| {});
+        parser.advance_batched(b"G", |_| {});
+        assert_eq!(parser.continuation().unwrap(), b"\x1b_25a1;name_G");
+        parser.advance_batched(b"\x1b\\\x1b_G", |_| {});
+        parser.set_kitty_graphics_capture(true);
+        parser.advance_batched(b"still-discarded", |_| {});
+        assert!(parser.continuation().is_err());
+        parser.advance_batched(b"\x1b\\\x1b_Gkept", |_| {});
+        assert_eq!(parser.continuation().unwrap(), b"\x1b_Gkept");
+        parser.set_kitty_graphics_capture(false);
+        assert_eq!(parser.capture_pending.capacity(), 0);
+        assert_eq!(parser.continuation.capacity(), 0);
     }
 }

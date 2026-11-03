@@ -81,6 +81,7 @@ impl VisualSnapshot {
 
     /// Install historical display cells into a fresh terminal before child output.
     pub fn restore_into(self, terminal: &mut Terminal) -> io::Result<()> {
+        let graphics_limit = terminal.primary.graphics.limit;
         let mut restored = self.decode()?;
         restored.resize(terminal.cols, terminal.rows);
         // Keep fresh-shell defaults, parser state, modes, keyboard and host policy.
@@ -104,6 +105,7 @@ impl VisualSnapshot {
         // output uses the receiving session's normal scrollback policy.
         terminal.primary.limits = limits;
         terminal.primary.memory_limit = memory_limit;
+        terminal.set_graphics_limit(graphics_limit);
         Ok(())
     }
 }
@@ -111,6 +113,9 @@ impl VisualSnapshot {
 /// Join saved history to a live shell after its initial output has settled.
 /// Matching rendered rows replace the saved tail; differing output gets a band.
 pub fn finish_restore(history: &mut Terminal, terminal: &mut Terminal) -> io::Result<()> {
+    if terminal.primary.graphics.limit == 0 {
+        history.set_graphics_limit(0);
+    }
     history.resize(terminal.cols, terminal.rows);
     history.background = terminal.background;
     history.primary.limits = Default::default();
