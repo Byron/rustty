@@ -729,16 +729,14 @@ fn page_rotations_preserve_slots_and_recycling_renews_identity() {
 }
 
 #[test]
-fn placeholder_revisions_follow_content_and_stable_physical_slots() {
+fn row_revisions_follow_content_and_stable_physical_slots() {
     let mut terminal = Terminal::new(12, 4, 100);
     terminal.feed(b"ordinary text\r\nmore text");
     assert!(
         terminal
             .screen()
-            .pages
-            .pages
-            .iter()
-            .all(|page| page.placeholder_revisions.is_empty())
+            .viewport()
+            .all(|row| row.placeholder_revision().is_none())
     );
     terminal.feed("\x1b[H\x1b[38;5;1m\u{10eeee}\u{305}\u{305}".as_bytes());
     let original = terminal.screen().row(0).placeholder_revision().unwrap();
@@ -779,7 +777,7 @@ fn placeholder_revisions_follow_content_and_stable_physical_slots() {
     );
 
     let encoded = serde_json::to_vec(&snapshot).unwrap();
-    assert!(!String::from_utf8_lossy(&encoded).contains("placeholder_revisions"));
+    assert!(!String::from_utf8_lossy(&encoded).contains("row_revisions"));
     let decoded: Screen = serde_json::from_slice(&encoded).unwrap();
     assert_ne!(decoded.row(0).placeholder_revision(), Some(original));
     assert_eq!(

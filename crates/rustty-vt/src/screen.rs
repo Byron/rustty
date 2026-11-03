@@ -331,6 +331,7 @@ pub struct RowView<'a> {
     pub wrap_continuation: bool,
     pub semantic: SemanticContent,
     pub dirty: bool,
+    has_placeholders: bool,
     pub(crate) page: &'a Page,
     pub(crate) offset: usize,
 }
@@ -449,6 +450,7 @@ impl<'a> RowView<'a> {
             wrap_continuation: header.has(RowHeader::CONTINUATION),
             semantic: header.semantic(),
             dirty: header.has(RowHeader::DIRTY),
+            has_placeholders: header.has(RowHeader::PLACEHOLDER),
             page,
             offset: header.offset(),
         }
@@ -457,16 +459,27 @@ impl<'a> RowView<'a> {
     pub fn cells(self) -> &'a [Cell] {
         self.cells
     }
+    /// Revision of cell content, styles, graphemes, spacers and hyperlinks.
+    /// Cache rows by `(Screen::render_identity(), id, revision())`. Unedited
+    /// clones retain revisions; mutations and decoded content get fresh values.
+    /// Cursor, selection, viewport, global colors and modes are separate state;
+    /// compare those and the host's render settings when building a frame.
+    #[inline]
+    pub fn revision(self) -> u64 {
+        self.page
+            .row_revisions
+            .get(self.offset / usize::from(self.page.capacity.cols))
+            .copied()
+            .unwrap_or(0)
+    }
+
     /// Transient identity of the row's Kitty placeholder text and colors.
     /// Unedited clones keep it; edits and decoding assign fresh identities.
     /// None means the row has no placeholders and needs no decoding.
     #[inline]
     pub fn placeholder_revision(self) -> Option<u64> {
-        let slot = self.offset / usize::from(self.page.capacity.cols);
-        self.page
-            .placeholder_revisions
-            .get(slot)
-            .copied()
+        self.has_placeholders
+            .then(|| self.revision())
             .filter(|&revision| revision != 0)
     }
     #[inline]
@@ -940,6 +953,13 @@ impl Screen {
             .skip(self.history_len().saturating_sub(self.viewport_offset))
             .take(self.height)
     }
+    /// Runtime incarnation of the screen's row storage. Changes on replacement,
+    /// decoding and cloning, including RIS even if row IDs/generations repeat.
+    /// This is not serialized and is independent of retained snapshot identities.
+    pub fn render_identity(&self) -> u64 {
+        self.pages.identity()
+    }
+
     pub fn page_allocations(&self) -> impl Iterator<Item = PageAllocationInfo> + '_ {
         self.pages.allocations()
     }
@@ -1027,7 +1047,9 @@ impl Screen {
     }
     pub(crate) fn row_header_mut(&mut self, y: usize) -> &mut RowHeader {
         let (index, row) = self.locate(self.history_len() + y);
-        &mut self.pages.pages[index].headers[row]
+        let page = &mut self.pages.pages[index];
+        page.mark_row(row);
+        &mut page.headers[row]
     }
     pub(crate) fn cell_mut(&mut self, y: usize, col: usize) -> &mut Cell {
         let (index, row) = self.locate(self.history_len() + y);
@@ -1664,7 +1686,9 @@ impl Screen {
         let old_width = old.width();
         if y > 0 && col <= 1 && old_width != width && old_width != 1 {
             let last = self.row_columns(y - 1) - 1;
-            self.cell_mut(y - 1, last).set_spacer_head(false);
+            if self.row(y - 1).cells[last].spacer_head() {
+                self.cell_mut(y - 1, last).set_spacer_head(false);
+            }
         }
         let template = self.cursor_template(codepoint, width, spacer_head);
         let page = &mut self.pages.pages[index];
@@ -1939,7 +1963,7 @@ impl Screen {
             page.headers[row].set(RowHeader::CONTINUATION, copy.wrap_continuation);
         }
         page.headers[row].set_semantic(copy.semantic);
-        page.headers[row].set(RowHeader::DIRTY, true);
+        page.mark_row(row);
     }
 
     /// Move rows in page-sized segments. Only a boundary row copies cells.
