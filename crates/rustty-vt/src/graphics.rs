@@ -1078,13 +1078,24 @@ impl Terminal {
     pub fn graphics(&self) -> &Graphics {
         &self.screen().graphics
     }
+    /// Host graphics budget, retained through reset, resize and screen creation.
+    /// Zero rejects Kitty graphics with ENOTSUP (respecting quiet flags), without
+    /// decoding, uploads or placements. Control headers are capped at 4 KiB;
+    /// malformed, unaddressed or fully quiet commands receive no response.
+    /// It also discards retained graphics and unfinished uploads. Snapshot decoders
+    /// create a new terminal; set this policy before feeding or importing view state.
     pub fn set_graphics_limit(&mut self, bytes: usize) {
-        self.primary.graphics.limit = bytes;
-        let _ = self.primary.graphics.reserve(0, 0);
-        if let Some(alt) = &mut self.alternate {
-            alt.graphics.limit = bytes;
-            let _ = alt.graphics.reserve(0, 0);
+        self.parser.set_kitty_graphics_capture(bytes != 0);
+        for screen in std::iter::once(&mut self.primary).chain(self.alternate.iter_mut()) {
+            if bytes == 0 {
+                screen.graphics.release_placement_quota();
+                screen.graphics = Graphics::default();
+            }
+            screen.graphics.limit = bytes;
+            let _ = screen.graphics.reserve(0, 0);
         }
+        self.discard_disabled_graphics_input();
+        self.generation = self.generation.wrapping_add(1);
     }
     pub fn tick_graphics(&mut self, now_ms: u64) -> Option<u64> {
         let before = self.screen().graphics.generation;
@@ -1104,8 +1115,20 @@ impl Terminal {
             self.generation = self.generation.wrapping_add(1);
         }
     }
+    pub(crate) fn reject_graphics_command(&self, bytes: &[u8], effects: &mut Vec<Effect>) {
+        if let Some((mut command, _)) = Command::parse(bytes) {
+            command.tmux = self.tmux_graphics;
+            if matches!(
+                command.action(),
+                b't' | b'T' | b'q' | b'p' | b'd' | b'f' | b'a' | b'c'
+            ) {
+                command.reply(command.n(b'i'), 0, "ENOTSUP: graphics disabled", effects);
+            }
+        }
+    }
     fn graphics_command_inner(&mut self, bytes: &[u8], effects: &mut Vec<Effect>) {
         if self.graphics().limit == 0 {
+            self.reject_graphics_command(bytes, effects);
             return;
         }
         let Some((mut command, payload)) = Command::parse(bytes) else {
