@@ -22,6 +22,7 @@ pub mod paste;
 mod printing;
 pub mod program_status;
 pub mod query;
+pub mod render;
 pub mod screen;
 pub mod search;
 pub mod selection;

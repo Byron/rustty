@@ -377,9 +377,7 @@ enum LayoutCommand {
 #[derive(Clone, PartialEq)]
 struct PaneRenderKey {
     generation: u64,
-    viewport_offset: usize,
-    selection: Option<vt::Selection>,
-    cursor: (usize, usize, vt::screen::CursorShape, bool, bool),
+    view: vt::render::ViewKey,
     options: RenderOptions,
     rect: egui::Rect,
     scale: f32,
@@ -387,35 +385,13 @@ struct PaneRenderKey {
 
 impl PaneRenderKey {
     fn matches_terminal(&self, terminal: &vt::Terminal) -> bool {
-        let screen = terminal.screen();
-        let cursor = &screen.cursor;
-        self.generation == terminal.generation
-            && self.viewport_offset == screen.viewport_offset
-            && self.selection == screen.selection
-            && self.cursor
-                == (
-                    cursor.col,
-                    cursor.row,
-                    cursor.shape,
-                    cursor.visible,
-                    cursor.blink,
-                )
+        self.generation == terminal.generation && self.view == terminal.screen().render_key()
     }
 
     fn new(terminal: &vt::Terminal, options: RenderOptions, rect: egui::Rect, scale: f32) -> Self {
-        let screen = terminal.screen();
-        let cursor = &screen.cursor;
         Self {
             generation: terminal.generation,
-            viewport_offset: screen.viewport_offset,
-            selection: screen.selection,
-            cursor: (
-                cursor.col,
-                cursor.row,
-                cursor.shape,
-                cursor.visible,
-                cursor.blink,
-            ),
+            view: terminal.screen().render_key(),
             options,
             rect,
             scale,
@@ -967,9 +943,9 @@ impl Host {
             || key.options.background_opacity != 1.0
             || !key.options.focused
             || !key.options.cursor_visible
-            || !key.cursor.3
-            || !key.cursor.4
-            || key.viewport_offset != 0
+            || !key.view.cursor.visible
+            || !key.view.cursor.blink
+            || key.view.viewport_offset != 0
             || prepared.frame.blinking_text
             || prepared.frame.cursor_row_bounds.is_none()
             || !prepared.screen.graphics.images.is_empty()
@@ -11061,6 +11037,20 @@ mod tests {
     }
 
     #[test]
+    fn pane_render_key_distinguishes_reset_screens_with_repeated_generation_counts() {
+        let mut terminal = vt::Terminal::new(20, 3, 0);
+        terminal.feed(b"\x1bcfirst");
+        let key = PaneRenderKey::new(&terminal, RenderOptions::default(), egui::Rect::ZERO, 1.0);
+        let generation = terminal.generation;
+        terminal.feed(b"\x1bcother");
+        assert_eq!(terminal.generation, generation);
+        assert!(
+            !key.matches_terminal(&terminal),
+            "RIS replaces the screen even when cursor and generation repeat"
+        );
+    }
+
+    #[test]
     fn prepared_panes_follow_terminal_view_and_atlas_changes() {
         let mut fonts = rustty_render::Renderer::new(font_config(&Config::default(), 1.0)).unwrap();
         let rect = egui::Rect::from_min_size(Pos2::new(10.0, 20.0), Vec2::new(320.0, 160.0));
@@ -12721,16 +12711,20 @@ mod tests {
         let mutations: &[Mutation] = &[
             ("pane", |c| c.pane += 1),
             ("terminal", |c| c.key.generation += 1),
-            ("scroll", |c| c.key.viewport_offset += 1),
-            ("cursor position", |c| c.key.cursor.0 += 1),
+            ("scroll", |c| c.key.view.viewport_offset += 1),
+            ("cursor position", |c| c.key.view.cursor.x += 1),
             ("cursor shape", |c| {
-                c.key.cursor.2 = vt::screen::CursorShape::Bar
+                c.key.view.cursor.shape = vt::screen::CursorShape::Bar
             }),
-            ("cursor visibility", |c| c.key.cursor.3 = !c.key.cursor.3),
-            ("cursor blinking", |c| c.key.cursor.4 = !c.key.cursor.4),
+            ("cursor visibility", |c| {
+                c.key.view.cursor.visible = !c.key.view.cursor.visible
+            }),
+            ("cursor blinking", |c| {
+                c.key.view.cursor.blink = !c.key.view.cursor.blink
+            }),
             ("selection", |c| {
                 let point = vt::GridPoint { row: 1, col: 0 };
-                c.key.selection = Some(vt::Selection {
+                c.key.view.selection = Some(vt::Selection {
                     start: point,
                     end: point,
                     rectangular: false,
