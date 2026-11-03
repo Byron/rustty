@@ -75,6 +75,10 @@ pub trait EffectHandler {
     /// afterward. Retaining frames and scheduling timeouts belong to the host.
     fn synchronized_output(&mut self, _terminal: &Terminal, _enabled: bool) {}
 
+    /// Observe tracking changes before later input, including disable/re-enable
+    /// within one batch. Hosts can clear their mouse encoder's last-cell cache.
+    fn mouse_tracking_changed(&mut self, _mode: u16, _format: u16) {}
+
     fn color_scheme(&mut self) -> Option<query::ColorScheme> {
         None
     }
@@ -589,8 +593,12 @@ impl Terminal {
                 }
                 BatchEvent::Event(event) => event,
             };
+            let tracking = (self.mouse_mode, self.mouse_format);
             let hold = (self.modes.dec(2026), self.synchronized_output_generation);
             self.handle(event, &mut effects, write_enabled, read_enabled);
+            if tracking != (self.mouse_mode, self.mouse_format) {
+                handler.mouse_tracking_changed(self.mouse_mode, self.mouse_format);
+            }
             if hold != (self.modes.dec(2026), self.synchronized_output_generation) {
                 handler.synchronized_output(self, self.modes.dec(2026));
             }
