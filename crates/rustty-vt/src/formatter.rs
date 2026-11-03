@@ -413,6 +413,17 @@ impl<'a> TerminalFormatter<'a> {
                 self.options,
                 self.extra.screen,
             );
+            if self.extra.screen.cursor && !terminal.metadata.cursor_is_default {
+                let cursor = &terminal.screen().cursor;
+                let shape = match cursor.shape {
+                    crate::CursorShape::Block | crate::CursorShape::HollowBlock => 2,
+                    crate::CursorShape::Underline => 4,
+                    crate::CursorShape::Bar => 6,
+                };
+                out.bytes.extend_from_slice(
+                    format!("\x1b[{} q", shape - u8::from(cursor.blink)).as_bytes(),
+                );
+            }
             out.map_last();
         }
         Some(())

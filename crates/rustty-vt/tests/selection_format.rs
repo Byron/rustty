@@ -524,3 +524,33 @@ fn html_and_plain_hyperlink_exports_keep_their_existing_formats() {
         assert_eq!(map.point(offset), screen.point(0, 3));
     }
 }
+
+#[test]
+fn terminal_cursor_export_retains_application_shape_and_blink() {
+    use rustty_vt::formatter::{Format, TerminalExtra};
+    for style in 1..=6 {
+        for blink in [false, true] {
+            let mut source = Terminal::new(10, 2, 10);
+            source.feed(
+                format!("\x1b[{style} q\x1b[?12{}", if blink { 'h' } else { 'l' }).as_bytes(),
+            );
+            let mut formatter = source.formatter(Format::Vt);
+            formatter.extra = TerminalExtra::ALL;
+            let mut restored = Terminal::new(10, 2, 10);
+            restored.feed(&formatter.format().unwrap());
+            assert_eq!(restored.screen().cursor.shape, source.screen().cursor.shape);
+            assert_eq!(restored.screen().cursor.blink, blink);
+        }
+    }
+    let mut source = Terminal::new(10, 2, 10);
+    source.set_default_cursor(rustty_vt::CursorShape::Bar, None);
+    let mut formatter = source.formatter(Format::Vt);
+    formatter.extra = TerminalExtra::ALL;
+    let mut restored = Terminal::new(10, 2, 10);
+    restored.feed(&formatter.format().unwrap());
+    restored.set_default_cursor(rustty_vt::CursorShape::Underline, None);
+    assert_eq!(
+        restored.screen().cursor.shape,
+        rustty_vt::CursorShape::Underline
+    );
+}
