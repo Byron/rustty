@@ -40,8 +40,7 @@ def measure(binary, native, output, variant, case, direction):
     started = time.time()
     with log.open("w") as stream:
         subprocess.run(command, env=env, stdout=stream, stderr=subprocess.STDOUT, check=True)
-    group, name = bench_id.rsplit("/", 1)
-    saved = home / group.replace("/", "_") / name / direction
+    saved = home / f"{engine}_{case}" / direction
     sample = json.loads((saved / "sample.json").read_text())
     estimates = json.loads((saved / "estimates.json").read_text())
     assert len(sample["times"]) == len(sample["iters"]) == 50, saved
