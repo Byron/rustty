@@ -28,6 +28,10 @@ pub enum Effect {
     },
     /// Private pane-local metadata, enabled by `Terminal::agent_status_events`.
     AgentStatus(crate::agent::Event),
+    /// Validated OSC 7501 metadata, enabled by `Terminal::program_status_events`.
+    ProgramStatus(crate::program_status::Report),
+    /// RIS clears every status record when program-status support is enabled.
+    ProgramStatusReset,
     /// Rustty host extension, enabled by `Terminal::shell_command_events`.
     CommandStart {
         /// Explicit OSC metadata, otherwise retained input text; never inferred from the title.
@@ -150,6 +154,9 @@ pub struct Terminal {
     /// Emit private OSC 777 agent metadata. Application sessions opt in; retained
     /// through reset, but neither this setting nor agent status enters snapshots.
     pub agent_status_events: bool,
+    /// Accept OSC 7501 reports and answer support queries. Disabled by default;
+    /// retained through reset, but not persisted in terminal snapshots.
+    pub program_status_events: bool,
     /// Report ANSI mode 20 changes to the PTY writer, including RIS. Retained
     /// through reset, but not snapshots; standalone VT clients opt in.
     pub linefeed_mode_events: bool,
@@ -248,6 +255,7 @@ impl Terminal {
             tmux_image_limit: 64 * 1024 * 1024,
             tmux_image_quota: None,
             agent_status_events: false,
+            program_status_events: false,
             linefeed_mode_events: false,
             visible: true,
             clipboard_write_limit: 64 * 1024 * 1024,
@@ -871,6 +879,7 @@ impl Terminal {
             alt.graphics.release_placement_quota();
         }
         let agent_status_events = self.agent_status_events;
+        let program_status_events = self.program_status_events;
         let linefeed_mode_events = self.linefeed_mode_events;
         let synchronized_output_generation = self.synchronized_output_generation;
         let visible = self.visible;
@@ -937,6 +946,7 @@ impl Terminal {
             self.primary.graphics = sources;
         }
         self.agent_status_events = agent_status_events;
+        self.program_status_events = program_status_events;
         self.linefeed_mode_events = linefeed_mode_events;
         self.synchronized_output_generation = synchronized_output_generation;
         self.visible = visible;
@@ -2750,6 +2760,9 @@ impl Terminal {
             ([], b'c') => {
                 self.reset();
                 self.clipboard.clear_grants();
+                if self.program_status_events {
+                    effects.push(Effect::ProgramStatusReset);
+                }
                 if self.linefeed_mode_events {
                     effects.push(Effect::LinefeedMode(self.modes.get(false, 20)));
                 }
@@ -3184,6 +3197,7 @@ impl Terminal {
             // These fixed captures append a NUL before dispatch.
             0 | 2 | 7 | 8 | 22 | 777 | 1337 if !has_separator || data.len() >= 2048 => return,
             9 | 133 if !has_separator || data.len() > 2048 => return,
+            7501 if !has_separator || data.len() > 4087 => return,
             // Allocating captures count only bytes after the numeric prefix.
             // OSC 52 and 66 reserve a byte for the parser's trailing NUL.
             52 | 66 if !has_separator || data.len() >= MAX_OSC_BYTES => return,
@@ -3191,6 +3205,18 @@ impl Terminal {
             _ => {}
         }
         match number {
+            7501 => {
+                if !self.program_status_events {
+                    return;
+                }
+                if data == b"?" {
+                    let mut reply = crate::program_status::QUERY_REPLY.to_vec();
+                    reply.extend_from_slice(if bell { b"\x07" } else { b"\x1b\\" });
+                    effects.push(Effect::Write(reply));
+                } else if let Some(report) = crate::program_status::Report::parse(data) {
+                    effects.push(Effect::ProgramStatus(report));
+                }
+            }
             0 | 2 => {
                 // The stream validates the full title before the host handler
                 // keeps its first 1024 bytes, even across a UTF-8 boundary.
