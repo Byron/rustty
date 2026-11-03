@@ -281,7 +281,7 @@ enum CellTextStorage<'a> {
 
 impl CellText<'_> {
     #[inline]
-    fn scalar(codepoint: Option<char>) -> Self {
+    pub(crate) fn scalar(codepoint: Option<char>) -> Self {
         let mut bytes = [0; 4];
         let len = codepoint.map_or(0, |cp| cp.encode_utf8(&mut bytes).len()) as u8;
         Self(CellTextStorage::Scalar {

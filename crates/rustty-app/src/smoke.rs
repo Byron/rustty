@@ -4207,7 +4207,7 @@ fn check_terminal_frames(
         app.draw(event_loop, host)?;
         let previous = &host.prepared[&id];
         let generation = previous.key.generation;
-        let cursor = previous.key.cursor;
+        let cursor = previous.key.view.cursor;
         let ime_rect = previous.ime_rect;
         let frame = Arc::clone(&previous.frame);
         for chunk in [
@@ -4218,7 +4218,7 @@ fn check_terminal_frames(
             app.draw(event_loop, host)?;
             let held = &host.prepared[&id];
             if held.key.generation != generation
-                || held.key.cursor != cursor
+                || held.key.view.cursor != cursor
                 || held.ime_rect != ime_rect
             {
                 return Err("synchronized output displayed a partial frame or cursor".into());

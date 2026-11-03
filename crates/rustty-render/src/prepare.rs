@@ -217,27 +217,20 @@ impl Renderer {
         // ponytail: reuse scratch within the frame; retain it across frames
         // if these remaining allocations become measurable.
         let mut scratch = RowScratch::default();
-        let viewport_start = screen.history_len().saturating_sub(screen.viewport_offset);
-        let selection = screen.selection.and_then(|selection| {
-            let start = screen
-                .all_rows()
-                .position(|r| r.id == selection.start.row)?;
-            let end = screen.all_rows().position(|r| r.id == selection.end.row)?;
-            let a = (start, selection.start.col);
-            let b = (end, selection.end.col);
-            Some((a.min(b), a.max(b), selection.rectangular))
-        });
-        for (row_index, row) in screen.viewport().enumerate() {
+        let view = screen.render_view();
+        let cursor_view = view.cursor();
+        for (row_index, rendered) in view.rows().enumerate() {
+            let row = rendered.row;
+            let selection = rendered.selection;
             let top = options.padding[1] + row_index as f32 * metrics.cell_height as f32;
             if top >= options.size[1] as f32 {
                 break;
             }
-            let cursor_row = screen.cursor.visible
+            let cursor_row = cursor_view.is_some_and(|cursor| cursor.y == row_index)
                 && options.cursor_visible
                 && !(options.focused
                     && options.preedit.as_ref().is_some_and(|p| !p.text.is_empty()))
-                && screen.viewport_offset == 0
-                && screen.cursor.row == row_index;
+                && screen.viewport_offset == 0;
             let cursor =
                 cursor_row && (!options.focused || !screen.cursor.blink || options.blink_visible);
             let foreground_start = foreground.quads.len();
@@ -279,17 +272,7 @@ impl Renderer {
                         || row.style(col).overline
                         || cell.codepoint() != Some(graphics::PLACEHOLDER)
                             && row.text(col).chars().any(|ch| !ch.is_whitespace()));
-                let selected = selection.is_some_and(|(start, end, rectangular)| {
-                    let position = (viewport_start + row_index, col);
-                    if rectangular {
-                        position.0 >= start.0
-                            && position.0 <= end.0
-                            && col >= start.1.min(end.1)
-                            && col <= start.1.max(end.1)
-                    } else {
-                        position >= start && position <= end
-                    }
-                });
+                let selected = selection.as_ref().is_some_and(|range| range.contains(&col));
                 let mut fg = resolve(row.style(col).foreground, options.foreground, options);
                 let mut bg = resolve(row.style(col).background, options.background, options);
                 if row.style(col).inverse {
@@ -1295,6 +1278,30 @@ mod tests {
         let restored = renderer.prepare(terminal.screen(), &options).unwrap();
         assert_ne!(first.generation, restored.generation);
         assert_eq!(first.quads, restored.quads);
+    }
+
+    #[test]
+    fn selection_on_a_wide_tail_paints_the_whole_glyph() {
+        let mut terminal = Terminal::new(10, 2, 0);
+        terminal.feed("界".as_bytes());
+        let point = terminal.screen().point(0, 1).unwrap();
+        terminal.screen_mut().selection = Some(Selection {
+            start: point,
+            end: point,
+            rectangular: false,
+        });
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let options = RenderOptions {
+            cursor_visible: false,
+            ..Default::default()
+        };
+        let frame = renderer.prepare(terminal.screen(), &options).unwrap();
+        let metrics = renderer.metrics();
+        for col in [0, 1] {
+            assert!(frame.quads.iter().any(|quad| quad.paint == Paint::Solid
+                && quad.color == Color::rgb(options.selection_background)
+                && quad.rect[0] == options.padding[0] + col as f32 * metrics.cell_width as f32));
+        }
     }
 
     #[test]
