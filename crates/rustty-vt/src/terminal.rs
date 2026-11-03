@@ -68,6 +68,13 @@ pub trait EffectHandler {
         self.effect(Effect::DragAndDrop(event));
     }
 
+    /// Observe a DEC 2026 hold at its input boundary, before subsequent drawing.
+    /// Repeated enables are reported so the host can restart its deadline.
+    /// RIS and input-triggered resize report the end after resetting the view.
+    /// Direct host reset/resize/mode changes have no handler; inspect the mode
+    /// afterward. Retaining frames and scheduling timeouts belong to the host.
+    fn synchronized_output(&mut self, _terminal: &Terminal, _enabled: bool) {}
+
     fn color_scheme(&mut self) -> Option<query::ColorScheme> {
         None
     }
@@ -582,7 +589,11 @@ impl Terminal {
                 }
                 BatchEvent::Event(event) => event,
             };
+            let hold = (self.modes.dec(2026), self.synchronized_output_generation);
             self.handle(event, &mut effects, write_enabled, read_enabled);
+            if hold != (self.modes.dec(2026), self.synchronized_output_generation) {
+                handler.synchronized_output(self, self.modes.dec(2026));
+            }
             self.dispatch_effects(effects.drain(..), handler, write_enabled, read_enabled);
         });
         self.parser = parser;
