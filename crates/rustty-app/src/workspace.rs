@@ -579,6 +579,8 @@ pub struct Tab {
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub quad_roots: BTreeSet<Id>,
     pub remembered: BTreeMap<Id, Id>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub remembered_quad_zoom: BTreeMap<Id, Id>,
     pub panes: BTreeMap<Id, SavedPane>,
     #[serde(default)]
     pub overlays: Vec<Overlay>,
@@ -600,6 +602,7 @@ impl Tab {
             quadrant_zoom: None,
             quad_roots: BTreeSet::new(),
             remembered: BTreeMap::new(),
+            remembered_quad_zoom: BTreeMap::new(),
             overlays: Vec::new(),
             server_size: None,
             server_view: None,
@@ -791,6 +794,13 @@ impl Tab {
         if chord == Modifiers::default() {
             return None;
         }
+        if let Some(outer) = self.root.quadrant(self.focused) {
+            if quadrant != outer {
+                self.remembered_quad_zoom.insert(outer, quadrant);
+            } else {
+                self.remembered_quad_zoom.remove(&outer);
+            }
+        }
         let peek = Peek {
             chord,
             target: self.focused,
@@ -820,6 +830,10 @@ impl Tab {
             .node(peek.quadrant)
             .filter(|node| node.contains(target))
             .map(|node| node.id)
+            .or_else(|| {
+                let zoom = *self.remembered_quad_zoom.get(&quadrant?)?;
+                self.quad_path(target).contains(&zoom).then_some(zoom)
+            })
             .or(quadrant);
         self.zoom = if Some(target) == peek.full_zoom {
             Some(target)
@@ -877,6 +891,8 @@ impl Tab {
         if let Some(child) = child {
             let subtree = tree.node(child).unwrap();
             self.quad_roots.retain(|id| subtree.node(*id).is_none());
+            self.remembered_quad_zoom
+                .retain(|_, zoom| subtree.node(*zoom).is_none());
             self.quadrant_zoom = (scope != self.root.id).then_some(scope);
         } else {
             // A designation adds a level inside an already zoomed quad.
@@ -1095,6 +1111,11 @@ impl Tab {
             if let Some(pane) = self.remembered.remove(&self.focused) {
                 self.remembered.insert(split_id, pane);
             }
+            for zoom in self.remembered_quad_zoom.values_mut() {
+                if *zoom == self.focused {
+                    *zoom = split_id;
+                }
+            }
         }
         self.panes.insert(
             new_pane,
@@ -1170,7 +1191,23 @@ impl Tab {
         else {
             return false;
         };
-        self.root = root;
+        let previous_root = std::mem::replace(&mut self.root, root);
+        self.remembered_quad_zoom = self
+            .remembered_quad_zoom
+            .values()
+            .filter_map(|zoom| {
+                let zoom = previous_root.node(*zoom)?.clone().remove(pane)?.id;
+                let scope = self.root.node(zoom)?;
+                let target = self
+                    .remembered
+                    .get(&zoom)
+                    .copied()
+                    .filter(|pane| scope.contains(*pane))
+                    .or_else(|| scope.panes().first().copied())?;
+                let outer = self.root.quadrant(target)?;
+                (outer != zoom && self.quad_path(target).contains(&zoom)).then_some((outer, zoom))
+            })
+            .collect();
         self.panes.remove(&pane);
         if let Some(view) = &mut self.server_view {
             view.retain(|rect| rect.pane != pane);
@@ -1455,6 +1492,10 @@ impl Workspace {
                 tab.remembered = std::mem::take(&mut tab.remembered)
                     .into_iter()
                     .filter_map(|(node, pane)| Some((*remap.get(&node)?, *remap.get(&pane)?)))
+                    .collect();
+                tab.remembered_quad_zoom = std::mem::take(&mut tab.remembered_quad_zoom)
+                    .into_iter()
+                    .filter_map(|(outer, zoom)| Some((*remap.get(&outer)?, *remap.get(&zoom)?)))
                     .collect();
                 tab.panes = std::mem::take(&mut tab.panes)
                     .into_iter()
@@ -1899,11 +1940,139 @@ mod tests {
         assert_eq!(tab.zoom, tab.root.quadrant(right));
     }
     #[test]
+    fn peek_restores_the_last_quad_root_zoom_after_visiting_another_quad() {
+        let mut tab = recursive_quads(4);
+        tab.toggle_quadrant_zoom();
+        let outer = tab.quadrant_zoom.unwrap();
+        assert!(tab.toggle_quad_root());
+        let child = tab.quadrant_zoom.unwrap();
+        assert!(tab.toggle_quad_root());
+        let nested = tab.quadrant_zoom.unwrap();
+        let pane = tab.focused;
+        let other = tab
+            .target_for_view(pane, Direction::QuadrantRight, true)
+            .unwrap();
+        for scope in [nested, child, outer, nested] {
+            tab.zoom = Some(scope);
+            tab.quadrant_zoom = Some(scope);
+            peek_to(&mut tab, other);
+            assert_eq!(tab.zoom, tab.root.quadrant(other));
+            peek_to(&mut tab, pane);
+            assert_eq!(tab.focused, pane);
+            assert_eq!((tab.zoom, tab.quadrant_zoom), (Some(scope), Some(scope)));
+        }
+    }
+
+    fn peek_to(tab: &mut Tab, pane: Id) {
+        let mut peek = tab
+            .begin_peek(Modifiers {
+                alt: true,
+                ..Modifiers::default()
+            })
+            .unwrap();
+        peek.target = tab.remembered_for_view(pane, true).unwrap_or(pane);
+        peek.navigation_used = true;
+        tab.focus(peek.target);
+        let target = tab.finish_peek(peek);
+        tab.focus(target);
+    }
+
+    #[test]
+    fn remembered_quad_zoom_follows_split_and_close() {
+        let mut tab = recursive_quads(2);
+        tab.toggle_quadrant_zoom();
+        let outer = tab.quadrant_zoom.unwrap();
+        let pane = tab.focused;
+        assert!(tab.toggle_quad_root());
+        let other = tab
+            .target_for_view(pane, Direction::QuadrantRight, true)
+            .unwrap();
+        peek_to(&mut tab, other);
+        peek_to(&mut tab, pane);
+        tab.split(100, 101, Direction::Right, "/tmp".into());
+        assert_eq!(tab.remembered_quad_zoom.get(&outer), Some(&101));
+        peek_to(&mut tab, other);
+        peek_to(&mut tab, 100);
+        assert_eq!(tab.zoom, Some(101));
+        assert!(tab.close(pane));
+        assert_eq!(tab.remembered_quad_zoom.get(&outer), Some(&100));
+        peek_to(&mut tab, other);
+        peek_to(&mut tab, 100);
+        assert_eq!(tab.zoom, Some(100));
+        assert!(tab.close(100));
+        assert!(tab.remembered_quad_zoom.is_empty());
+        assert_eq!(tab.zoom, Some(outer));
+    }
+
+    #[test]
+    fn remembered_quad_zoom_follows_outer_quad_changes_after_ancestor_collapse() {
+        let mut tab = recursive_quads(4);
+        let pane = tab.focused;
+        let other = tab
+            .target_for_view(pane, Direction::QuadrantRight, true)
+            .unwrap();
+        tab.focus(other);
+        tab.split(100, 101, Direction::Right, "/tmp".into());
+        tab.focus(pane);
+        tab.toggle_quadrant_zoom();
+        let outer = tab.quadrant_zoom.unwrap();
+        assert!(tab.toggle_quad_root());
+        assert!(tab.toggle_quad_root());
+        let nested = tab.quadrant_zoom.unwrap();
+        let sibling = tab
+            .target_for_view(pane, Direction::QuadrantDown, true)
+            .unwrap();
+        peek_to(&mut tab, other);
+        assert!(tab.close(sibling));
+        assert!(tab.root.node(outer).is_some());
+        assert_ne!(tab.root.quadrant(pane), Some(outer));
+        peek_to(&mut tab, pane);
+        assert_eq!(
+            (tab.focused, tab.zoom, tab.quadrant_zoom),
+            (pane, Some(nested), Some(nested))
+        );
+    }
+
+    #[test]
+    fn peek_ignores_removed_or_unrelated_remembered_quad_roots() {
+        let mut tab = recursive_quads(3);
+        tab.toggle_quadrant_zoom();
+        let outer = tab.quadrant_zoom.unwrap();
+        let pane = tab.focused;
+        assert!(tab.toggle_quad_root());
+        let child = tab.quadrant_zoom.unwrap();
+        let other = tab
+            .target_for_view(pane, Direction::QuadrantRight, true)
+            .unwrap();
+        peek_to(&mut tab, other);
+        peek_to(&mut tab, pane);
+        tab.toggle_quadrant_zoom();
+        assert!(tab.toggle_quad_root());
+        assert!(tab.remembered_quad_zoom.is_empty());
+        for removed in [child, other, 999] {
+            peek_to(&mut tab, other);
+            tab.remembered_quad_zoom.insert(outer, removed);
+            peek_to(&mut tab, pane);
+            assert_eq!(
+                (tab.focused, tab.zoom, tab.quadrant_zoom),
+                (pane, Some(outer), Some(outer))
+            );
+        }
+    }
+
+    #[test]
     fn quad_roots_roundtrip_import_and_validate_with_legacy_defaults() {
         let mut tab = recursive_quads(4);
         tab.toggle_quadrant_zoom();
         tab.toggle_quad_root();
         tab.toggle_quad_root();
+        let peek = tab
+            .begin_peek(Modifiers {
+                alt: true,
+                ..Modifiers::default()
+            })
+            .unwrap();
+        tab.finish_peek(peek);
         let mut state = Workspace {
             next_id: 100,
             ..Workspace::default()
@@ -1922,13 +2091,22 @@ mod tests {
             decoded.windows[0].tabs[0].quad_roots,
             state.windows[0].tabs[0].quad_roots
         );
+        assert_eq!(
+            decoded.windows[0].tabs[0].remembered_quad_zoom,
+            state.windows[0].tabs[0].remembered_quad_zoom
+        );
         let mut legacy = value.clone();
         legacy["windows"][0]["tabs"][0]
             .as_object_mut()
             .unwrap()
             .remove("quad_roots");
+        legacy["windows"][0]["tabs"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("remembered_quad_zoom");
         let legacy: Workspace = serde_json::from_value(legacy).unwrap();
         assert!(legacy.windows[0].tabs[0].quad_roots.is_empty());
+        assert!(legacy.windows[0].tabs[0].remembered_quad_zoom.is_empty());
         let mut invalid_roots = decoded.clone();
         invalid_roots.windows[0].tabs[0].quad_roots.insert(999);
         assert!(invalid_roots.validate().is_err());
@@ -1948,6 +2126,13 @@ mod tests {
                 .is_disjoint(&before.windows[0].tabs[0].quad_roots)
         );
         assert_eq!(imported.quad_path(imported.focused).len(), 3);
+        assert_eq!(
+            imported.remembered_quad_zoom,
+            BTreeMap::from([(
+                imported.root.quadrant(imported.focused).unwrap(),
+                imported.quadrant_zoom.unwrap()
+            )])
+        );
         state.restore(before.clone());
         assert_eq!(
             state.windows[0].tabs[0].quad_roots,
