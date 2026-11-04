@@ -3196,8 +3196,32 @@ impl App {
                         // The reporter can end before OSC 133 D arrives, including codex review.
                         pane.deck_command.agent_reported();
                     }
-                    pane.agent
-                        .apply(event, self.deck.report_generation, pane.running.is_some());
+                    let title = match &event {
+                        vt::agent::Event::Begin(snapshot) | vt::agent::Event::Update(snapshot) => {
+                            match snapshot.state {
+                                vt::agent::State::NeedsInput => Some("Agent needs input"),
+                                vt::agent::State::Error => Some("Agent failed"),
+                                vt::agent::State::Paused => Some("Agent paused"),
+                                _ => None,
+                            }
+                        }
+                        vt::agent::Event::End => None,
+                    };
+                    if pane
+                        .agent
+                        .apply(event, self.deck.report_generation, pane.running.is_some())
+                        && !self.deck.commands_available()
+                        && let Some(title) = title
+                        && let Some(platform) = &self.platform
+                    {
+                        pane.unseen = !focused;
+                        // shortcut: copied tmuxx views notify separately until inferred alerts share host election.
+                        if let Err(error) =
+                            platform.notify(id, title, &pane.cwd.display().to_string())
+                        {
+                            self.errors.push(error);
+                        }
+                    }
                 }
                 SessionEvent::Effect(vt::Effect::Title(title)) => {
                     let title = String::from_utf8_lossy(&title);
