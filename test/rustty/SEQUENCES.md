@@ -110,6 +110,7 @@ Unknown mode numbers do not create stored state or imply support.
 | --- | --- |
 | `0` | Reset current rendition for subsequent writes. |
 | `1`, `2`, `3`; `22`, `23` | Bold, faint, italic and their resets; font selection and foreground opacity. |
+| `221`, `222` | Kitty independent bold/faint resets; ordinary `22` still resets both. |
 | `4`, `4:0` through `4:5`, `21`, `24` | No/single/double/curly/dotted/dashed underline and resets; renderer decorations. |
 | `5`, `6`, `25` | Text blinking and reset. Both blink forms use the same 600 ms phase. Visible blinking text/decorations schedule redraws even with a hidden/steady cursor; unfocused panes remain visible without blink wakeups. |
 | `7`, `27`; `8`, `28` | Inverse and invisible text with resets; resolved foreground/background and glyph/decorations visibility. |
