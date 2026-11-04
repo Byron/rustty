@@ -1,0 +1,77 @@
+Rustty Cell: 8 bytes
+Benchmarking rustty/feed/ascii
+Benchmarking rustty/feed/ascii: Warming up for 300.00 ms
+Benchmarking rustty/feed/ascii: Collecting 20 samples in estimated 1.0002 s (692k iterations)
+Benchmarking rustty/feed/ascii: Analyzing
+rustty/feed/ascii       time:   [1.4426 µs 1.4433 µs 1.4441 µs]
+                        thrpt:  [678.21 MiB/s 678.59 MiB/s 678.92 MiB/s]
+Benchmarking rustty/feed/emoji
+Benchmarking rustty/feed/emoji: Warming up for 300.00 ms
+Benchmarking rustty/feed/emoji: Collecting 20 samples in estimated 1.0070 s (16k iterations)
+Benchmarking rustty/feed/emoji: Analyzing
+rustty/feed/emoji       time:   [62.316 µs 62.354 µs 62.401 µs]
+                        thrpt:  [43.082 MiB/s 43.115 MiB/s 43.142 MiB/s]
+Found 2 outliers among 20 measurements (10.00%)
+  2 (10.00%) high mild
+
+Benchmarking rustty/stream_styled/ascii
+Benchmarking rustty/stream_styled/ascii: Warming up for 300.00 ms
+Benchmarking rustty/stream_styled/ascii: Collecting 20 samples in estimated 1.0043 s (36k iterations)
+Benchmarking rustty/stream_styled/ascii: Analyzing
+rustty/stream_styled/ascii
+                        time:   [28.066 µs 28.090 µs 28.112 µs]
+                        thrpt:  [223.09 MiB/s 223.26 MiB/s 223.45 MiB/s]
+Found 2 outliers among 20 measurements (10.00%)
+  1 (5.00%) low mild
+  1 (5.00%) high mild
+Benchmarking rustty/stream_styled/emoji
+Benchmarking rustty/stream_styled/emoji: Warming up for 300.00 ms
+Benchmarking rustty/stream_styled/emoji: Collecting 20 samples in estimated 1.2286 s (1050 iterations)
+Benchmarking rustty/stream_styled/emoji: Analyzing
+rustty/stream_styled/emoji
+                        time:   [1.1641 ms 1.1685 ms 1.1728 ms]
+                        thrpt:  [27.829 MiB/s 27.933 MiB/s 28.038 MiB/s]
+Found 5 outliers among 20 measurements (25.00%)
+  1 (5.00%) low mild
+  4 (20.00%) high mild
+
+Benchmarking ghostty/feed/ascii
+Benchmarking ghostty/feed/ascii: Warming up for 300.00 ms
+Benchmarking ghostty/feed/ascii: Collecting 20 samples in estimated 1.0002 s (770k iterations)
+Benchmarking ghostty/feed/ascii: Analyzing
+ghostty/feed/ascii      time:   [1.2238 µs 1.2260 µs 1.2285 µs]
+                        thrpt:  [797.28 MiB/s 798.88 MiB/s 800.31 MiB/s]
+Benchmarking ghostty/feed/emoji
+Benchmarking ghostty/feed/emoji: Warming up for 300.00 ms
+Benchmarking ghostty/feed/emoji: Collecting 20 samples in estimated 1.0072 s (25k iterations)
+Benchmarking ghostty/feed/emoji: Analyzing
+ghostty/feed/emoji      time:   [39.211 µs 39.359 µs 39.581 µs]
+                        thrpt:  [67.922 MiB/s 68.304 MiB/s 68.563 MiB/s]
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high severe
+
+Benchmarking ghostty/stream_styled/ascii
+Benchmarking ghostty/stream_styled/ascii: Warming up for 300.00 ms
+Benchmarking ghostty/stream_styled/ascii: Collecting 20 samples in estimated 1.0117 s (13k iterations)
+Benchmarking ghostty/stream_styled/ascii: Analyzing
+ghostty/stream_styled/ascii
+                        time:   [62.577 µs 64.975 µs 67.467 µs]
+                        thrpt:  [92.955 MiB/s 96.519 MiB/s 100.22 MiB/s]
+Benchmarking ghostty/stream_styled/emoji
+Benchmarking ghostty/stream_styled/emoji: Warming up for 300.00 ms
+
+Warning: Unable to complete 20 samples in 1.0s. You may wish to increase target time to 1.3s, enable flat sampling, or reduce sample count to 10.
+Benchmarking ghostty/stream_styled/emoji: Collecting 20 samples in estimated 1.2782 s (210 iterations)
+Benchmarking ghostty/stream_styled/emoji: Analyzing
+ghostty/stream_styled/emoji
+                        time:   [1.6789 ms 1.7444 ms 1.8104 ms]
+                        thrpt:  [18.028 MiB/s 18.711 MiB/s 19.440 MiB/s]
+Found 3 outliers among 20 measurements (15.00%)
+  1 (5.00%) low severe
+  1 (5.00%) high mild
+  1 (5.00%) high severe
+
+kitty_upload/unique_256px_4_terminals: sources=4, source_bytes=1048576
+kitty_upload/duplicate_256px_4_terminals: sources=1, source_bytes=262144
+kitty_upload/unique_1024px_4_terminals: sources=4, source_bytes=16777216
+kitty_upload/duplicate_1024px_4_terminals: sources=1, source_bytes=4194304

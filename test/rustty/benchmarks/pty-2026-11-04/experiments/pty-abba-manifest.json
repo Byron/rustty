@@ -1,0 +1,24 @@
+{
+  "order": [
+    "local base A",
+    "local gather A",
+    "local gather B",
+    "local base B",
+    "embedded base A",
+    "embedded event A",
+    "embedded event B",
+    "embedded base B"
+  ],
+  "artifacts": {
+    "/tmp/rustty-pty-baseline-bin": "562a1868c8b49987b2e454a9b208ed9d70b6d8e11accd094c81462518d52f4fb",
+    "/tmp/rustty-pty-gather-bin": "0f2bba6a42208618d1a668df5aa7ed60a41debe93e656dcc49224d38271c0156",
+    "/tmp/rustty-pty-event-bin": "7fed64cefae0f42a782bb13e5c688ed5165b8ee2da188f7d05a89e67c6a842ee",
+    "/tmp/rustty-session-before.rs": "27ecb3b37091a5f10af86ef965088f45ab1aab4d58d53cf8b59ecb7a57606f61",
+    "/tmp/rustty-session-gather.rs": "4aaef2e8b742b3eef41be60f03348b272b4c168e6a68c454f12cda17425268a8",
+    "/tmp/rustty-tmuxx-before.rs": "dccd8a0d9180d75b104f3818ca4a0d47d673289af7258848344ad3adde69cf25",
+    "/tmp/rustty-tmuxx-event.rs": "863db1550a786821ddc14c5da992aab512f38509f95dcbf98be57d04009c2d50",
+    "/tmp/rustty-runtime-before.rs": "f7c4aec0f2c2bf4d9ccdd64c807bfbd2cffeb696596527dc11c6c32981abbfb7",
+    "/tmp/rustty-runtime-event.rs": "5243e2cedd8d243ef0d543597c06d0b88cee5f629d3b124b7ec82faf063fc7fd",
+    "/tmp/rustty-pty-paced.rs": "0dd5f408330b848a0068f4d9806e74a8f29a40edf103cdf0dfa0152012fbf69a"
+  }
+}

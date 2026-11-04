@@ -1,5 +1,8 @@
 # Rustty terminal compatibility checks
 
+The [real-PTY benchmarks](PTY_BENCHMARKS.md) measure local and tmuxx throughput
+and parser/view-delivery latency on Linux.
+
 The [unit-level benchmarks](BENCHMARKS.md) use Criterion to compare terminal
 primitives across Rustty revisions and with Ghostty, without an app or renderer.
 

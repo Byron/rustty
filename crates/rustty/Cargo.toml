@@ -28,3 +28,8 @@ getrandom = { version = "0.3", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { version = "0.2", optional = true }
+
+[[example]]
+name = "pty-bench"
+path = "../../test/rustty/pty-bench.rs"
+required-features = ["sessions"]

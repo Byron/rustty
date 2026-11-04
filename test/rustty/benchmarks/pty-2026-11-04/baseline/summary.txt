@@ -1,0 +1,12 @@
+measuring local
+local: input-to-parsed-title p50=50.3us p99=69.1us
+  bulk_ascii MiB/s: [160.85, 161.50, 161.67]
+  bulk_styled_mixed MiB/s: [50.68, 50.77, 50.88]
+measuring embedded
+embedded: input-to-parsed-title p50=3066.2us p99=3099.3us
+  bulk_ascii MiB/s: [35.22, 35.21, 35.22]
+  bulk_styled_mixed MiB/s: [10.11, 10.11, 10.10]
+measuring native
+native: input-to-parsed-title p50=136.4us p99=174.7us
+  bulk_ascii MiB/s: [67.81, 68.18, 69.10]
+  bulk_styled_mixed MiB/s: [11.11, 11.01, 11.03]

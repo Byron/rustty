@@ -1,0 +1,5 @@
+measuring embedded
+
+thread 'main' (1724814) panicked at crates/rustty/examples/pty-benchmark.rs:135:71:
+connection: ["tmuxx disconnected"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
