@@ -67,6 +67,7 @@ pub struct Output {
 pub struct SearchState {
     pub open: bool,
     pub query: String,
+    pub agents_only: bool,
     selected_pane: Option<Id>,
     request_focus: bool,
 }
@@ -192,6 +193,54 @@ impl SearchState {
     }
 }
 
+fn header(ui: &mut egui::Ui, pinned: bool, agents_only: &mut bool) -> bool {
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        if pinned {
+            ui.label(egui::RichText::new("Pinned").small().weak());
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let (_, rect) = ui.allocate_space(Vec2::splat(22.0));
+            let response =
+                ui.interact(rect, egui::Id::new("outliner-agent-filter"), Sense::click());
+            if response.clicked() {
+                *agents_only = !*agents_only;
+                changed = true;
+                ui.ctx().request_repaint();
+            }
+            let visuals = ui.style().interact_selectable(&response, *agents_only);
+            if *agents_only || response.hovered() || response.has_focus() {
+                ui.painter().rect_filled(rect, 3, visuals.bg_fill);
+                ui.painter()
+                    .rect_stroke(rect, 3, visuals.bg_stroke, egui::StrokeKind::Inside);
+            }
+            let icon = rect.shrink(5.0);
+            let center = icon.center();
+            ui.painter().add(egui::Shape::closed_line(
+                vec![
+                    icon.left_top(),
+                    icon.right_top(),
+                    Pos2::new(center.x + 2.0, center.y + 1.0),
+                    Pos2::new(center.x + 2.0, icon.bottom()),
+                    Pos2::new(center.x - 2.0, icon.bottom()),
+                    Pos2::new(center.x - 2.0, center.y + 1.0),
+                ],
+                visuals.fg_stroke,
+            ));
+            response.widget_info(|| {
+                egui::WidgetInfo::selected(
+                    egui::WidgetType::Button,
+                    ui.is_enabled(),
+                    *agents_only,
+                    "Show only panels with agents",
+                )
+            });
+            response.on_hover_text("Show only panels with agents");
+        });
+    });
+    changed
+}
+
 pub fn contents(
     ui: &mut egui::Ui,
     rows: &[Row],
@@ -201,10 +250,19 @@ pub fn contents(
 ) -> Output {
     ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
     let (accept, query_changed, navigation) = search.footer(ui);
-    let results = search
-        .open
-        .then(|| crate::outliner::search(rows, &search.query));
-    let searching = search.open && !search.query.trim().is_empty();
+    let mut paths = pinned_paths(rows, pinned_panes);
+    let has_pins = paths
+        .iter()
+        .any(|path| !search.agents_only || path.last().is_some_and(|row| row.has_agent));
+    let filter_changed = header(ui, has_pins, &mut search.agents_only);
+    let mut results =
+        (search.open || search.agents_only).then(|| crate::outliner::search(rows, &search.query));
+    if search.agents_only
+        && let Some(results) = &mut results
+    {
+        results.retain(|result| result.path.last().is_some_and(|row| row.has_agent));
+    }
+    let searching = search.agents_only || search.open && !search.query.trim().is_empty();
     let result_groups = search_groups(results.as_deref().unwrap_or_default());
     let panes: Vec<_> = results
         .as_deref()
@@ -247,12 +305,10 @@ pub fn contents(
         .iter()
         .find(|(pane, _)| Some(*pane) == search.selected_pane)
         .map(|(_, target)| *target);
-    let mut output = pins(
-        ui,
-        &pinned_paths(rows, pinned_panes),
-        pinned_panes,
-        platform_accent,
-    );
+    if search.agents_only {
+        paths.retain(|path| path.last().is_some_and(|row| row.has_agent));
+    }
+    let mut output = pins(ui, &paths, pinned_panes, platform_accent);
     if selection_changed && !accept {
         output.preview = selected_target;
     }
@@ -266,7 +322,7 @@ pub fn contents(
             results.as_deref().unwrap_or_default(),
             &result_groups,
             search.selected_pane,
-            query_changed || selection_changed,
+            query_changed || selection_changed || filter_changed,
         );
         if let Some(Target::Pane { pane, .. }) = clicked {
             search.selected_pane = Some(pane);
@@ -677,7 +733,6 @@ fn pins(
             _ => None,
         })
         .collect();
-    ui.label(egui::RichText::new("Pinned").small().weak());
     egui::ScrollArea::vertical()
         .id_salt("outliner-pins")
         .max_height(
@@ -1453,6 +1508,7 @@ mod tests {
                 zoom: Zoom::None,
                 tmuxx: None,
                 working: 0,
+                has_agent: false,
             },
             Row {
                 target: Target::Tab(1),
@@ -1466,6 +1522,7 @@ mod tests {
                 zoom: Zoom::PaneInQuad,
                 tmuxx: None,
                 working: 0,
+                has_agent: false,
             },
             Row {
                 target: Target::Quad { tab: 1, node: 2 },
@@ -1483,6 +1540,7 @@ mod tests {
                 zoom: Zoom::Quad,
                 tmuxx: None,
                 working: 0,
+                has_agent: false,
             },
             Row {
                 target: Target::Pane { tab: 1, pane: 3 },
@@ -1501,6 +1559,7 @@ mod tests {
                 zoom: Zoom::PaneInQuad,
                 tmuxx: None,
                 working: 0,
+                has_agent: false,
             },
         ]
     }
@@ -1819,7 +1878,7 @@ mod tests {
             egui::CentralPanel::default().show(root, |ui| {
                 result = contents(ui, rows, pins, search, [210, 110, 70]);
                 scroll_id = ui.make_persistent_id(egui::IdSalt::new(
-                    if search.open && !search.query.trim().is_empty() {
+                    if search.agents_only || search.open && !search.query.trim().is_empty() {
                         "outliner-search-results"
                     } else {
                         "outliner-rows"
@@ -1889,6 +1948,86 @@ mod tests {
             repeat,
             modifiers: egui::Modifiers::CTRL,
         }
+    }
+
+    #[test]
+    fn agent_filter_combines_with_search_and_remains_available_without_matches_or_pins() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let mut rows = navigation_rows();
+        rows[3].has_agent = true;
+        rows[4].has_agent = true;
+        let mut search = SearchState {
+            agents_only: true,
+            ..Default::default()
+        };
+        let (output, _, _) = search_frame(&context, &rows, &[], &mut search, Default::default());
+        for (pane, visible) in [(3, true), (4, true), (5, false)] {
+            assert_eq!(
+                context
+                    .read_response(egui::Id::new(("outliner-search-result", pane)))
+                    .is_some(),
+                visible,
+            );
+        }
+        let filter_id = egui::Id::new("outliner-agent-filter");
+        let filter = context.read_response(filter_id).unwrap();
+        assert!(filter.rect.right() > 380.0);
+        let label = "Show only panels with agents";
+        let node = &output
+            .platform_output
+            .accesskit_update
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|(_, node)| node.label() == Some(label))
+            .unwrap()
+            .1;
+        assert_eq!(node.role(), egui::accesskit::Role::Button);
+        assert_eq!(node.toggled(), Some(egui::accesskit::Toggled::True));
+        assert!(!output.shapes.iter().any(|shape| matches!(
+            &shape.shape, egui::Shape::Text(text) if text.galley.text() == label
+        )));
+
+        search.start();
+        search.query = "Tracks".into();
+        let (output, _, _) = search_frame(&context, &rows, &[], &mut search, Default::default());
+        assert!(output.shapes.iter().any(|shape| matches!(
+            &shape.shape, egui::Shape::Text(text) if text.galley.text() == "No matching panels"
+        )));
+        search.close();
+        assert!(search.agents_only);
+        for row in &mut rows {
+            row.has_agent = false;
+        }
+        let (output, _, _) = search_frame(&context, &rows, &[], &mut search, Default::default());
+        assert!(output.shapes.iter().any(|shape| matches!(
+            &shape.shape, egui::Shape::Text(text) if text.galley.text() == "No matching panels"
+        )));
+        assert_eq!(
+            search_click(&context, &rows, &mut search, filter.rect.center()),
+            Output::default()
+        );
+        assert!(!search.agents_only);
+        context.memory_mut(|memory| memory.request_focus(filter_id));
+        search_frame(
+            &context,
+            &rows,
+            &[],
+            &mut search,
+            egui::RawInput {
+                events: vec![egui::Event::Key {
+                    key: egui::Key::Space,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+                ..Default::default()
+            },
+        );
+        assert!(search.agents_only);
     }
 
     #[test]
@@ -2899,7 +3038,6 @@ mod tests {
             assert_eq!(
                 text,
                 [
-                    "Pinned",
                     "1",
                     "agents",
                     "gitoxide.check",

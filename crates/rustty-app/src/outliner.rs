@@ -34,6 +34,7 @@ pub struct Row {
     pub tmuxx: Option<String>,
     pub zoom: Zoom,
     pub working: usize,
+    pub has_agent: bool,
 }
 
 #[derive(Clone, Default)]
@@ -173,6 +174,7 @@ pub fn workspace_rows(
                 tmuxx: tmuxx_windows.get(&window.id).cloned(),
                 zoom: Zoom::None,
                 working: 0,
+                has_agent: false,
             });
         }
         outline.extend(rows(window, labels, tab_labels).into_iter().map(|mut row| {
@@ -325,6 +327,7 @@ pub fn rows(
                 zoom: zoom(tab),
                 tmuxx: None,
                 working: 0,
+                has_agent: false,
             });
         }
         rows.extend(tab_rows(tab, labels, usize::from(has_tabs), active));
@@ -421,6 +424,7 @@ fn quad_row(
         color: tab.color,
         tmuxx: None,
         working: 0,
+        has_agent: false,
         zoom: if tab.quadrant_zoom == Some(node.id) {
             Zoom::Quad
         } else {
@@ -448,6 +452,7 @@ fn pane_row(
         color: tab.color,
         tmuxx: None,
         working: 0,
+        has_agent: false,
         zoom: if tab.zoom == Some(pane) && tab.zoom != tab.quadrant_zoom {
             zoom(tab)
         } else {
@@ -732,6 +737,7 @@ mod tests {
         );
         let working = [2, 22, 23];
         count_working(&mut rows, |pane| working.contains(&pane));
+        assert!(rows.iter().all(|row| !row.has_agent));
         assert!(
             rows.iter()
                 .any(|row| { matches!(row.target, Target::Quad { .. }) && row.depth > 2 })

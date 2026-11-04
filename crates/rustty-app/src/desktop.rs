@@ -146,6 +146,10 @@ struct PaneStartup {
 }
 
 impl Pane {
+    fn has_agent(&self) -> bool {
+        !self.exited && self.agent.is_registered()
+    }
+
     fn reported_active(&self) -> bool {
         !self.exited && self.agent.reported_active(&self.activity)
     }
@@ -2824,6 +2828,10 @@ impl App {
         outliner::count_working(&mut rows, |id| {
             self.panes.get(&id).is_some_and(Pane::reported_active)
         });
+        for row in &mut rows {
+            row.has_agent = matches!(row.target, outliner::Target::Pane { pane, .. }
+                if self.panes.get(&pane).is_some_and(Pane::has_agent));
+        }
         rows
     }
     fn draw_outliner(
@@ -3116,6 +3124,7 @@ impl App {
         self.deck.dirty = true;
         let previous_tab_label = self.pane_tab_label(id);
         let previously_working = self.panes.get(&id).is_some_and(Pane::reported_active);
+        let previously_agent = self.panes.get(&id).is_some_and(Pane::has_agent);
         let tmuxx = self.tmuxx_pane(id).is_some();
         let previous_directory = self.panes.get(&id).map(|pane| pane.cwd.clone());
         let live = previous_tab_label.is_some();
@@ -3375,6 +3384,7 @@ impl App {
         if directory_changed
             || title_changed
             || previously_working != self.panes.get(&id).is_some_and(Pane::reported_active)
+            || previously_agent != self.panes.get(&id).is_some_and(Pane::has_agent)
         {
             self.repaint_outliner();
         }

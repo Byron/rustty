@@ -52,6 +52,11 @@ Without a connected dashboard, new agent questions, failures, and pauses produce
 system notifications instead. Click a notification to open its pane. Repeated
 status reports stay quiet; no Stream Deck configuration is required.
 
+The funnel icon at the right of the Outliner's “Pinned” line filters both pins
+and the hierarchy to panels with agents in any state. Matching panels appear
+without expanding their ancestors; switching the filter off restores the normal
+view with its expansion unchanged. Panel search also respects this filter.
+
 ## Windows 11 x64
 
 Install Rust 1.95 or later and the Visual Studio C++ build tools/Windows SDK.
