@@ -49,7 +49,8 @@ fn reports_decode_all_states_and_reset_in_order() {
                     [Effect::ProgramStatus(Report {
                         state,
                         id: Some("a/b".into()),
-                        message: "安全".into()
+                        message: "安全".into(),
+                        ..Default::default()
                     })],
                     "{ending:?} split {split}"
                 );
@@ -65,7 +66,8 @@ fn reports_decode_all_states_and_reset_in_order() {
             Effect::ProgramStatus(Report {
                 state: State::Clear,
                 id: None,
-                message: String::new()
+                message: String::new(),
+                ..Default::default()
             })
         ]
     );
@@ -124,7 +126,8 @@ fn validation_matches_the_old_parser_and_recovers_after_rejected_records() {
         [Effect::ProgramStatus(Report {
             state: State::Idle,
             id: None,
-            message: "B".into()
+            message: "B".into(),
+            ..Default::default()
         })]
     );
     for cancel in [0x18, 0x1a] {
