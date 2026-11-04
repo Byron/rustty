@@ -1,0 +1,55 @@
+Rustty Cell: 8 bytes
+Benchmarking rustty/read/ascii
+Benchmarking rustty/read/ascii: Warming up for 300.00 ms
+Benchmarking rustty/read/ascii: Collecting 20 samples in estimated 1.0007 s (305k iterations)
+Benchmarking rustty/read/ascii: Analyzing
+rustty/read/ascii       time:   [3.2994 µs 3.3097 µs 3.3162 µs]
+                        thrpt:  [1.2351 Gelem/s 1.2376 Gelem/s 1.2414 Gelem/s]
+Benchmarking rustty/read/chinese
+Benchmarking rustty/read/chinese: Warming up for 300.00 ms
+Benchmarking rustty/read/chinese: Collecting 20 samples in estimated 1.0005 s (311k iterations)
+Benchmarking rustty/read/chinese: Analyzing
+rustty/read/chinese     time:   [3.2088 µs 3.2170 µs 3.2274 µs]
+                        thrpt:  [1.2691 Gelem/s 1.2732 Gelem/s 1.2765 Gelem/s]
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high mild
+
+Benchmarking rustty/feed/ascii
+Benchmarking rustty/feed/ascii: Warming up for 300.00 ms
+Benchmarking rustty/feed/ascii: Collecting 20 samples in estimated 1.0003 s (674k iterations)
+Benchmarking rustty/feed/ascii: Analyzing
+rustty/feed/ascii       time:   [1.4832 µs 1.4840 µs 1.4850 µs]
+                        thrpt:  [659.54 MiB/s 659.99 MiB/s 660.33 MiB/s]
+Found 3 outliers among 20 measurements (15.00%)
+  1 (5.00%) low mild
+  2 (10.00%) high mild
+Benchmarking rustty/feed/chinese
+Benchmarking rustty/feed/chinese: Warming up for 300.00 ms
+Benchmarking rustty/feed/chinese: Collecting 20 samples in estimated 1.0007 s (131k iterations)
+Benchmarking rustty/feed/chinese: Analyzing
+rustty/feed/chinese     time:   [7.6005 µs 7.6040 µs 7.6085 µs]
+                        thrpt:  [385.43 MiB/s 385.66 MiB/s 385.84 MiB/s]
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high mild
+
+Benchmarking rustty/stream/ascii
+Benchmarking rustty/stream/ascii: Warming up for 300.00 ms
+Benchmarking rustty/stream/ascii: Collecting 20 samples in estimated 1.0024 s (55k iterations)
+Benchmarking rustty/stream/ascii: Analyzing
+rustty/stream/ascii     time:   [18.278 µs 18.296 µs 18.314 µs]
+                        thrpt:  [323.27 MiB/s 323.59 MiB/s 323.90 MiB/s]
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high mild
+Benchmarking rustty/stream/chinese
+Benchmarking rustty/stream/chinese: Warming up for 300.00 ms
+Benchmarking rustty/stream/chinese: Collecting 20 samples in estimated 1.0024 s (32k iterations)
+Benchmarking rustty/stream/chinese: Analyzing
+rustty/stream/chinese   time:   [31.756 µs 31.773 µs 31.789 µs]
+                        thrpt:  [278.40 MiB/s 278.54 MiB/s 278.69 MiB/s]
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high mild
+
+kitty_upload/unique_256px_4_terminals: sources=4, source_bytes=1048576
+kitty_upload/duplicate_256px_4_terminals: sources=1, source_bytes=262144
+kitty_upload/unique_1024px_4_terminals: sources=4, source_bytes=16777216
+kitty_upload/duplicate_1024px_4_terminals: sources=1, source_bytes=4194304

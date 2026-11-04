@@ -13,7 +13,7 @@ use std::process::{Child, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak, mpsc};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 pub use tmuxx_layout::{Axis, Kind, Layout};
 pub use tmuxx_protocol::native::ServerStatus;
 use tmuxx_protocol::native::{Hello, Request, ServerMessage, SnapshotAssembler};
@@ -55,6 +55,7 @@ struct Model {
     refresh_pending: bool,
     pending_focus: Vec<PendingFocus>,
     pending_replies: BTreeMap<u64, mpsc::Sender<io::Result<Vec<u8>>>>,
+    compression_cursor: usize,
 }
 struct PendingFocus {
     request_id: u64,
@@ -130,6 +131,7 @@ struct View {
     visible: Arc<AtomicBool>,
     dark: Arc<AtomicBool>,
     pending: Arc<Mutex<Vec<(u64, Effect)>>>,
+    compression_generation: u64,
 }
 struct Shared {
     model: Mutex<Model>,
@@ -554,6 +556,7 @@ impl Connection {
         thread::Builder::new()
             .name("rustty-tmuxx-local".into())
             .spawn(move || {
+                let mut compression_deadline = Instant::now();
                 while !shared.closed.load(Ordering::Acquire) {
                     for request in requests.try_iter() {
                         if let Err(error) = client.send(request) {
@@ -578,6 +581,10 @@ impl Connection {
                                 return;
                             }
                         }
+                    }
+                    if Instant::now() >= compression_deadline {
+                        compress_views(&shared);
+                        compression_deadline = Instant::now() + Duration::from_millis(50);
                     }
                     thread::sleep(Duration::from_millis(2));
                 }
@@ -969,7 +976,9 @@ impl Connection {
                                             return;
                                         }
                                     }
-                                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                                        compress_views(&shared_writer)
+                                    }
                                     Err(mpsc::RecvTimeoutError::Disconnected) => return,
                                 }
                             }
@@ -1273,6 +1282,7 @@ impl Connection {
             visible: visible.clone(),
             dark: dark.clone(),
             pending: pending.clone(),
+            compression_generation: 0,
             terminal: Arc::downgrade(&terminal),
             appearance: appearance.clone(),
             events: events_tx,
@@ -1382,6 +1392,48 @@ mod ssh_tests {
             ("host", "bad\0command"),
         ] {
             assert!(Connection::ssh_command(host, command, Arc::new(|| {})).is_err());
+        }
+    }
+}
+
+/// Reuse the connection's idle turn, without blocking output or host input on
+/// an occupied view. Round-robin traversal keeps multiple attached views fair.
+fn compress_views(shared: &Shared) {
+    let Ok(mut model) = shared.model.try_lock() else {
+        return;
+    };
+    let count = model
+        .panes
+        .values()
+        .map(|pane| pane.views.len())
+        .sum::<usize>();
+    if count == 0 {
+        return;
+    }
+    for _ in 0..count.min(8) {
+        let index = model.compression_cursor % count;
+        model.compression_cursor = index.wrapping_add(1);
+        let view = model
+            .panes
+            .values_mut()
+            .flat_map(|pane| &mut pane.views)
+            .nth(index)
+            .unwrap();
+        let Some(terminal) = view.terminal.upgrade() else {
+            continue;
+        };
+        let Ok(mut terminal) = terminal.try_lock() else {
+            continue;
+        };
+        if !terminal.scrollback_compression() {
+            continue;
+        }
+        if terminal.generation != view.compression_generation {
+            view.compression_generation = terminal.generation;
+            continue;
+        }
+        if terminal.compress_scrollback_step() {
+            break;
         }
     }
 }
@@ -3963,6 +4015,45 @@ mod tests {
             assert!(terminal.screen().selection.is_none());
             assert_eq!(terminal.screen().search_literal(b"output").len(), 1);
         }
+    }
+
+    #[test]
+    fn native_views_compress_independently_and_keep_policy_after_reconnect() {
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        let mut owner = tmuxx_terminal::Terminal::new(80, 4, 5000);
+        owner.feed(&b"retained history line\r\n".repeat(2400));
+        let snapshot = |sequence| ServerMessage::Snapshot {
+            instance_id: "compression".into(),
+            sequence,
+            state: snapshot_state(serde_json::json!({
+                "sessions": [{"id":1,"name":"test","active":0,"windows":{"0":2}}],
+                "windows": [{"id":2,"name":"shell","active":7,"cols":80,"rows":4,"panes":[7],"layout":Layout::pane(7,80,4).to_legacy().unwrap()}],
+                "panes": [{"id":7,"window":2,"cols":80,"rows":4,"status":null,"terminal":owner.checkpoint_snapshot()}],
+            })),
+        };
+        apply(&connection.shared, snapshot(1)).unwrap();
+        let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        first.apply_appearance(&Config::default()).unwrap();
+        let mut disabled = Config::default();
+        disabled.scrollback_compression = false;
+        second.apply_appearance(&disabled).unwrap();
+        let before = first.terminal().unwrap().screen().owned_bytes();
+        for sequence in [2, 3] {
+            for _ in 0..100 {
+                compress_views(&connection.shared);
+            }
+            assert!(first.terminal().unwrap().screen().owned_bytes() < before / 2);
+            assert_eq!(second.terminal().unwrap().screen().owned_bytes(), before);
+            assert_eq!(
+                first.terminal().unwrap().screen().history_len(),
+                second.terminal().unwrap().screen().history_len()
+            );
+            apply(&connection.shared, snapshot(sequence)).unwrap();
+            assert!(first.terminal().unwrap().scrollback_compression());
+            assert!(!second.terminal().unwrap().scrollback_compression());
+        }
+        assert!(connection.errors().is_empty());
     }
 
     #[test]

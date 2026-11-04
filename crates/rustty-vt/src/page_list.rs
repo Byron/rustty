@@ -46,6 +46,8 @@ pub(crate) struct PageList {
     pub(crate) next_serial: u64,
     #[serde(skip)]
     identity: ListIdentity,
+    #[serde(skip)]
+    pub(crate) compression: crate::compression::Compression,
 }
 
 impl PageList {
@@ -278,6 +280,7 @@ impl PageList {
     /// Physically erase a prefix, preserving the retained page's capacity.
     pub fn remove_prefix(&mut self, mut count: usize) {
         assert!(count < self.total_rows());
+        self.compression.invalidate();
         while count > 0 {
             let page = self.pages.front_mut().unwrap();
             if count >= usize::from(page.rows) {
@@ -291,6 +294,7 @@ impl PageList {
 
     pub fn truncate(&mut self, rows: usize) {
         assert!(rows > 0 && rows <= self.total_rows());
+        self.compression.invalidate();
         let mut remove = self.total_rows() - rows;
         while remove > 0 {
             let page = self.pages.back_mut().unwrap();

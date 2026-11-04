@@ -5839,3 +5839,91 @@ Raw samples, logs, frozen binaries, pairing scripts and summaries remain in
 rejected capture experiments. `final-binaries.sha256` identifies the retained
 baseline, final and Ghostty executables. Validation logs use the
 `grapheme-runs-*` and `final-*` prefixes in the same temporary directory.
+
+## Linux scrollback compression, 2026-11-04
+
+These measurements use Linux ARM64 Neoverse-N2 and **Rust 1.99.0
+(`b940084d7`, LLVM 23.1.1) for both variants**, with the existing release
+profile (optimization 3, thin LTO, one codegen unit, no native RUSTFLAGS).
+They are separate from the Rust 1.95 measurements elsewhere in the Linux
+report. The frozen baseline is `9f8e2a258cb3953d2eca0d27143c1c53ff7d6bf0`.
+The candidate is the compression implementation recorded with this section.
+Compiler details, executable SHA-256 values, Criterion samples and logs, and
+memory runs are retained in
+[the compression artifacts](benchmarks/linux-2026-11-04/compression).
+
+The new headless example produces 20,000 deterministic log records in a
+120×32 terminal with unlimited interactive history. It retains 19,969 history
+rows in each case and verifies an identical full-snapshot CRC after compression
+and restoration. The exact generator is
+[scrollback-compression.rs](scrollback-compression.rs). Three fresh processes
+produced identical owned-memory counts; latency columns below are their medians.
+
+| Corpus | Input bytes | Owned before | Owned compressed | Reduction | First cold row µs | Restore remaining rows ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| ASCII logs | 1,288,890 | 19,856,096 | 1,323,584 | 93.3% | 155.1 | 8.15 |
+| Colored logs | 1,448,890 | 19,876,064 | 1,358,350 | 93.2% | 153.3 | 7.81 |
+| Unicode, combining and emoji logs | 1,228,890 | 22,244,448 | 3,729,078 | 83.2% | 190.1 | 9.50 |
+
+Each pass took 59 steps. Total codec/scan time was 3.38, 2.23, and 2.10 ms;
+the largest individual step across all runs was 100.0 µs. Those are direct
+maintenance costs, excluding the host's idle delays between steps. Codec work
+is capped at one buffer of at most 1 MiB per step, with at most eight candidates
+inspected; the page-metadata scan remains linear in the number of pages.
+First-row access restores its entire page. Full history reads, selection, or
+snapshots can restore many pages synchronously; these numbers describe terminal
+memory access, not rendered or PTY latency.
+
+Owned bytes include the retained page/resource allocations and are the primary
+memory comparison. RSS is included in the raw JSONL for diagnosis only: the
+allocator retains freed storage, and the example retains input allocations and
+reuses the process between corpora. For example, the first ASCII case released
+RSS, while later styled/Unicode cases retained their process RSS despite
+releasing owned cell buffers. RSS must not be interpreted as the precise size
+of interactive history.
+
+Existing primitive controls keep all pages resident and leave compression
+disabled, exposing the storage abstraction's cost even when the setting is off.
+The unchanged 128×32 harness feeds 1,027 ASCII or 3,075 Chinese bytes per
+overwrite; stream batches contain 32 records and 6,208 or 9,280 bytes, with
+warmed 1,024-row bounded history and steady eviction. Read controls traverse
+4,096 cells containing 1,024 or 3,072 UTF-8 source bytes. Exact text checks run
+before and after each workload.
+
+Runs used before/after/after/before order. Each cell below shows the adjacent
+pair's before → after median; ratios use those same pairs, avoiding comparisons
+between phases of the run.
+
+| Workload | First pair µs | Second pair µs | After / before, first / second |
+| --- | ---: | ---: | ---: |
+| feed/ASCII | 1.450 → 1.484 | 1.449 → 1.484 | 1.024 / 1.024 |
+| feed/Chinese | 7.395 → 7.607 | 7.391 → 7.606 | 1.029 / 1.029 |
+| stream/ASCII | 18.320 → 18.302 | 18.318 → 18.432 | 0.999 / 1.006 |
+| stream/Chinese | 31.375 → 31.772 | 31.427 → 31.793 | 1.013 / 1.012 |
+| read/ASCII | 2.965 → 3.286 | 2.958 → 3.273 | 1.108 / 1.107 |
+| read/Chinese | 3.099 → 3.224 | 3.165 → 3.351 | 1.041 / 1.059 |
+
+The retained tradeoff is 2.4–2.9% more feed time, up to 1.3% more stream time,
+and 4.1–10.8% more read time (the largest absolute read increase is 0.32 µs)
+for 83–93% less owned history in these corpora. These are parser/terminal
+throughput and memory-access measurements. They do not establish GUI, renderer,
+ordinary PTY, or tmuxx transport latency.
+
+Reproduction, using the same toolchain/profile in separate baseline and candidate
+checkouts and a distinct `CRITERION_HOME` for each timed invocation:
+
+```sh
+cargo bench --locked --offline -p rustty-vt --bench primitives --no-run
+CRITERION_HOME=/tmp/compression-run target/release/deps/primitives-<hash> \
+  --bench '^rustty/(feed|stream|read)/(ascii|chinese)$' \
+  --sample-size 20 --warm-up-time 0.3 --measurement-time 1 --noplot
+cargo build --locked --offline --release -p rustty-vt \
+  --example scrollback-compression
+target/release/examples/scrollback-compression 20000
+```
+
+Repeat the primitive invocation in before/after/after/before order and run the
+memory example three times. The original baseline checkout used only the VT
+and parser workspace members, with unused GUI patch entries removed; source,
+lockfile, release profile, and compiler matched the full candidate workspace.
+No Ghostty or Kitty production source was changed.

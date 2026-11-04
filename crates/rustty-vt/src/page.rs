@@ -99,7 +99,7 @@ pub(crate) struct Page {
     #[serde(skip)]
     pub links: HyperlinkAdmission,
     #[serde(skip)]
-    pub cells: Vec<Cell>,
+    pub cells: crate::compression::CellStorage,
     #[serde(skip)]
     pub headers: Vec<RowHeader>,
     #[serde(skip)]
@@ -147,6 +147,7 @@ impl Page {
                 #[cfg(feature = "allocation-probe")]
                 let _scope = Scope::enter(Kind::PageBuffer);
                 vec![Cell::default(); usize::from(capacity.cols) * usize::from(capacity.rows)]
+                    .into()
             },
             headers: {
                 #[cfg(feature = "allocation-probe")]
@@ -202,7 +203,7 @@ impl Page {
     }
 
     pub fn storage_bytes(&self) -> usize {
-        self.owned_bytes
+        self.owned_bytes + self.cells.storage_bytes()
     }
 
     pub fn refresh_charge(&mut self) {
@@ -221,7 +222,6 @@ impl Page {
         self.map_bytes[1] = self.map_bytes[1].max(map_bytes(&self.link_map));
         self.map_bytes[2] = self.map_bytes[2].max(map_bytes(&self.link_overrides));
         self.owned_bytes = size_of::<Self>()
-            + self.cells.capacity() * size_of::<Cell>()
             + self.headers.capacity() * size_of::<RowHeader>()
             + self.row_ids.capacity() * size_of::<u64>()
             + self.row_revisions.capacity() * size_of::<u64>()

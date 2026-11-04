@@ -730,7 +730,7 @@ fn failed_style_rebuild_preserves_words_maps_and_references() {
         let mut page = original.clone();
         assert_eq!(page.rebuild(grow), Err(SetFull::OutOfMemory));
         assert_eq!(page.capacity, capacity);
-        assert_eq!(page.cells, original.cells);
+        assert_eq!(page.cells.as_slice(), original.cells.as_slice());
         assert_eq!(page.grapheme_map, original.grapheme_map);
         page.graphemes.assert_allocations(std::iter::once(grapheme));
         for cell in page.cells.iter().filter(|cell| cell.style_id() != 0) {
