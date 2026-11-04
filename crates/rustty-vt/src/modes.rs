@@ -184,9 +184,11 @@ impl Modes {
         self.saved = INITIAL;
     }
     pub fn report(&self, private: bool, mode: u16) -> u8 {
-        // A native ModeTag stores its number in fifteen bits.
-        let mode = mode & 0x7fff;
-        if private && mode == 117 {
+        // Query identifiers retain the full parser range. Unknown high values
+        // must never alias a supported mode or a permanently reset mode.
+        if private && mode == 117
+            || !private && matches!(mode, 1 | 5 | 7 | 10 | 11 | 13 | 14 | 15 | 16 | 17 | 18 | 19)
+        {
             return 4;
         }
         let mask = bit(private, mode);
