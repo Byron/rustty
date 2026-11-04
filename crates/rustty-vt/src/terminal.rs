@@ -3941,6 +3941,8 @@ fn sgr(screen: &mut Screen, params: &[u16], separators: u32, tmux: bool) {
                 style.bold = false;
                 style.faint = false;
             }
+            221 => style.bold = false,
+            222 => style.faint = false,
             23 => style.italic = false,
             24 => style.underline = Underline::None,
             25 => style.blink = false,
