@@ -8,6 +8,7 @@ use std::{
     sync::Arc,
 };
 
+mod features;
 mod images;
 pub use images::Images;
 mod pixels;
@@ -1106,9 +1107,20 @@ impl Terminal {
         next
     }
     pub(crate) fn graphics_command(&mut self, bytes: &[u8], effects: &mut Vec<Effect>) {
+        let Some((mut command, payload)) = Command::parse(bytes) else {
+            return;
+        };
+        command.tmux = self.tmux_graphics;
+        // Discovery must not disturb pending chunks, quota ownership, or images.
+        if command.values.contains_key(&b'e') {
+            if command.action() == b'q' && command.n(b'i') != 0 && command.n(b'I') == 0 {
+                command.feature_reply(self.graphics().limit != 0, effects);
+            }
+            return;
+        }
         let generation = self.screen().graphics.generation;
         self.prune_tmux_images();
-        self.graphics_command_inner(bytes, effects);
+        self.graphics_command_inner(command, payload, effects);
         self.synchronize_tmux_sources();
         self.prune_tmux_images();
         if self.screen().graphics.generation != generation {
@@ -1118,6 +1130,12 @@ impl Terminal {
     pub(crate) fn reject_graphics_command(&self, bytes: &[u8], effects: &mut Vec<Effect>) {
         if let Some((mut command, _)) = Command::parse(bytes) {
             command.tmux = self.tmux_graphics;
+            if command.values.contains_key(&b'e') {
+                if command.action() == b'q' && command.n(b'i') != 0 && command.n(b'I') == 0 {
+                    command.feature_reply(false, effects);
+                }
+                return;
+            }
             if matches!(
                 command.action(),
                 b't' | b'T' | b'q' | b'p' | b'd' | b'f' | b'a' | b'c'
@@ -1126,15 +1144,16 @@ impl Terminal {
             }
         }
     }
-    fn graphics_command_inner(&mut self, bytes: &[u8], effects: &mut Vec<Effect>) {
+    fn graphics_command_inner(
+        &mut self,
+        mut command: Command,
+        payload: &[u8],
+        effects: &mut Vec<Effect>,
+    ) {
         if self.graphics().limit == 0 {
-            self.reject_graphics_command(bytes, effects);
+            command.reply(command.n(b'i'), 0, "ENOTSUP: graphics disabled", effects);
             return;
         }
-        let Some((mut command, payload)) = Command::parse(bytes) else {
-            return;
-        };
-        command.tmux = self.tmux_graphics;
         command.image_limit = Some(self.tmux_image_limit);
         let mut id = command.n(b'i');
         if id != 0 && command.n(b'I') != 0 {
