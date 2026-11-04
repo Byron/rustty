@@ -924,6 +924,7 @@ impl Terminal {
         metadata.shell_redraw = 0;
         metadata.mouse_shift_capture = None;
         metadata.password_input = false;
+        metadata.saved_mouse = None;
         metadata.title_raw = None;
         metadata.pwd_raw = None;
         let mut modes = self.modes.clone();
@@ -989,6 +990,7 @@ impl Terminal {
     // tmux RIS resets the pen and visible grid, retaining the existing screens.
     fn reset_tmux(&mut self) {
         self.reset_pointer_shapes();
+        self.metadata.saved_mouse = None;
         let alternate_modes = [47, 1047, 1049].map(|mode| self.modes.dec(mode));
         self.modes.reset();
         for (mode, value) in [47, 1047, 1049].into_iter().zip(alternate_modes) {
@@ -2696,6 +2698,42 @@ impl Terminal {
         }
     }
 
+    fn save_all_modes(&mut self) {
+        for (private, mode) in Modes::bulk_saved() {
+            self.modes.save(private, mode);
+        }
+        // Ordinary mode bits can retain multiple enabled tracking modes. Save
+        // the actual encoder selection as well, rather than guessing from bits.
+        self.metadata.saved_mouse = Some([self.mouse_mode, self.mouse_format]);
+    }
+
+    fn restore_all_modes(&mut self, effects: &mut Vec<Effect>) {
+        let saved_mouse = self.metadata.saved_mouse.unwrap_or_else(|| {
+            // Older snapshots lack the selection. Use their saved mode bits.
+            let selected = |modes: &[u16]| {
+                modes
+                    .iter()
+                    .copied()
+                    .rfind(|&mode| self.modes.get_saved(true, mode) == Some(true))
+                    .unwrap_or(0)
+            };
+            [
+                selected(&[9, 1000, 1002, 1003]),
+                selected(&[1005, 1006, 1015, 1016]),
+            ]
+        });
+        for (private, mode) in Modes::bulk_saved() {
+            let value = self.modes.restore(private, mode);
+            if private && matches!(mode, 9 | 1000 | 1002 | 1003 | 1005 | 1006 | 1015 | 1016) {
+                // Avoid the mutual-exclusion and disable side effects of an
+                // ordered series of individual mouse mode transitions.
+                continue;
+            }
+            self.set_stream_mode(private, mode, value, effects);
+        }
+        [self.mouse_mode, self.mouse_format] = saved_mouse;
+    }
+
     fn switch_screen(&mut self, mode: u16, enabled: bool) {
         if self.tmux_graphics && mode == 1049 && enabled && !self.alternate_active {
             self.tmux_state.alternate_saved = [
@@ -3026,6 +3064,9 @@ impl Terminal {
                 }
             }
             ([b'?'], b's') => {
+                if p.is_empty() {
+                    self.save_all_modes();
+                }
                 for &mode in p {
                     self.modes.save(true, mode);
                 }
@@ -3034,6 +3075,9 @@ impl Terminal {
                 self.metadata.mouse_shift_capture = Some(n == 1);
             }
             ([b'?'], b'r') => {
+                if p.is_empty() {
+                    self.restore_all_modes(effects);
+                }
                 for &mode in p {
                     let value = self.modes.restore(true, mode);
                     self.set_stream_mode(true, mode, value, effects);

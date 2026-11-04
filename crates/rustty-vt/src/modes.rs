@@ -93,6 +93,14 @@ impl Default for Modes {
 }
 
 impl Modes {
+    /// XTSAVE without parameters excludes transitions that move the cursor,
+    /// alter grid contents/margins, or start/end a synchronized-output hold.
+    pub(crate) fn bulk_saved() -> impl Iterator<Item = (bool, u16)> {
+        keys().filter(|&(private, mode)| {
+            !private || !matches!(mode, 3 | 6 | 40 | 47 | 69 | 1047 | 1048 | 1049 | 2026)
+        })
+    }
+
     /// Enumerate the supported ANSI/DEC keys without exposing storage layout.
     pub fn iter(&self) -> impl Iterator<Item = (bool, u16)> + '_ {
         keys()

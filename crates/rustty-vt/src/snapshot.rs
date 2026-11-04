@@ -27,6 +27,7 @@ use std::sync::Arc;
 const MAGIC: &[u8; 10] = b"GHOSTSNP\x01\x00";
 // Rustty extension; older readers skip this record and use the legacy header.
 const POINTER_SHAPES: u16 = 0x8001;
+const SAVED_MOUSE: u16 = 0x8002;
 
 pub(crate) fn invalid(message: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
@@ -510,6 +511,12 @@ fn encode_inner(
         .map_err(invalid)?;
     destination.write_all(MAGIC)?;
     record(destination, 1, &encode_terminal(terminal)?)?;
+    if let Some([mode, format]) = terminal.metadata.saved_mouse {
+        let mut payload = vec![1];
+        payload.extend_from_slice(&mode.to_le_bytes());
+        payload.extend_from_slice(&format.to_le_bytes());
+        record(destination, SAVED_MOUSE, &payload)?;
+    }
     let screens = [Some(&terminal.primary), terminal.alternate.as_ref()];
     let mut plans = screens
         .iter()
@@ -852,7 +859,7 @@ impl<R: Read> Decoder<R> {
             if len > limit || tag == 7 && len > self.options.max_continuation_bytes {
                 return Err(invalid("snapshot record exceeds allocation policy"));
             }
-            if (1..=10).contains(&tag) || tag == POINTER_SHAPES {
+            if (1..=10).contains(&tag) || matches!(tag, POINTER_SHAPES | SAVED_MOUSE) {
                 return Ok((header, len));
             }
             let mut remaining = len;
@@ -1042,6 +1049,20 @@ impl<R: Read> Decoder<R> {
         terminal.foreground = m.colors[1][1].or(m.colors[1][0]).unwrap_or([255; 3]);
         terminal.cursor_color = m.colors[2][1].or(m.colors[2][0]);
         terminal.metadata = m;
+        if self.peek_tag()? == SAVED_MOUSE {
+            let payload = self.record(SAVED_MOUSE)?;
+            if payload.len() != 5 || payload[0] != 1 {
+                return Err(invalid("invalid saved mouse record"));
+            }
+            let mode = u16::from_le_bytes(payload[1..3].try_into().unwrap());
+            let format = u16::from_le_bytes(payload[3..5].try_into().unwrap());
+            if !matches!(mode, 0 | 9 | 1000 | 1002 | 1003)
+                || !matches!(format, 0 | 1005 | 1006 | 1015 | 1016)
+            {
+                return Err(invalid("invalid saved mouse mode"));
+            }
+            terminal.metadata.saved_mouse = Some([mode, format]);
+        }
         let mut seen = [false; 2];
         for _ in 0..screen_count {
             let (key, screen, extent) =
@@ -1556,6 +1577,7 @@ pub fn decode_exact(mut source: impl BufRead, options: DecodeOptions) -> io::Res
 
 #[derive(Clone, Debug)]
 pub(crate) struct TerminalMetadata {
+    pub saved_mouse: Option<[u16; 2]>,
     pub title_raw: Option<Vec<u8>>,
     pub pwd_raw: Option<Vec<u8>>,
     pub colors: [[Option<[u8; 3]>; 2]; 3],
@@ -1571,6 +1593,7 @@ pub(crate) struct TerminalMetadata {
 impl Default for TerminalMetadata {
     fn default() -> Self {
         Self {
+            saved_mouse: None,
             title_raw: None,
             pwd_raw: None,
             colors: [[None; 2]; 3],
