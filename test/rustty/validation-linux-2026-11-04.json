@@ -1,0 +1,142 @@
+{
+  "source_commit": "bced675daca9f35ec4b417b64707193c65220d61",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "zig_version": "0.17.0",
+  "ghostty_production_sources": "unchanged from a90e26835",
+  "build_command": [
+    "cargo",
+    "+1.95.0",
+    "build",
+    "--release",
+    "--locked",
+    "--offline",
+    "-p",
+    "rustty-vt",
+    "--example",
+    "parity",
+    "--example",
+    "parity-runner"
+  ],
+  "sha256": {
+    "rust_oracle": "35846dc5d12b19b58231f0ec900d40600c08c5a18e6244d7c75f799797adf512",
+    "runner": "58b9fd80c08b6b34c5941c6ce8754d3f0ac8f3591e233173de270ae7d3d47d37",
+    "zig_oracle": "315372bd88132e7520437702152fce0f3f4f41befab8e6a32136b5266386d410"
+  },
+  "groups": [
+    {
+      "aborted": false,
+      "checked": 129,
+      "coverage_gaps": [],
+      "covered": [
+        "effects.pty",
+        "terminal.cursor",
+        "terminal.modes",
+        "terminal.reset"
+      ],
+      "error": null,
+      "failures": 0,
+      "full_parity": false,
+      "mode": "smoke",
+      "name": "stream",
+      "command": [
+        "target/release/examples/parity-runner",
+        "--no-build",
+        "--zig-bin",
+        "/home/byron/dev/rustty/zig-out/bin/vt-oracle",
+        "--rust-bin",
+        "/home/byron/dev/rustty/target/release/examples/parity",
+        "--protocols",
+        "--case",
+        "protocol/modes/stream/",
+        "--artifacts",
+        "/tmp/rustty-final-stream"
+      ]
+    },
+    {
+      "aborted": false,
+      "checked": 48,
+      "coverage_gaps": [],
+      "covered": [
+        "effects.pty",
+        "terminal.cursor",
+        "terminal.modes",
+        "terminal.reset"
+      ],
+      "error": null,
+      "failures": 0,
+      "full_parity": false,
+      "mode": "smoke",
+      "name": "unknown",
+      "command": [
+        "target/release/examples/parity-runner",
+        "--no-build",
+        "--zig-bin",
+        "/home/byron/dev/rustty/zig-out/bin/vt-oracle",
+        "--rust-bin",
+        "/home/byron/dev/rustty/target/release/examples/parity",
+        "--protocols",
+        "--case",
+        "protocol/modes/unknown/",
+        "--artifacts",
+        "/tmp/rustty-final-unknown"
+      ]
+    },
+    {
+      "aborted": false,
+      "checked": 648,
+      "coverage_gaps": [],
+      "covered": [
+        "clipboard",
+        "effects.host",
+        "effects.pty",
+        "parser.events",
+        "terminal.cells"
+      ],
+      "error": null,
+      "failures": 0,
+      "full_parity": false,
+      "mode": "smoke",
+      "name": "osc",
+      "command": [
+        "target/release/examples/parity-runner",
+        "--no-build",
+        "--zig-bin",
+        "/home/byron/dev/rustty/zig-out/bin/vt-oracle",
+        "--rust-bin",
+        "/home/byron/dev/rustty/target/release/examples/parity",
+        "--osc",
+        "--case",
+        "osc/",
+        "--artifacts",
+        "/tmp/rustty-final-osc"
+      ]
+    },
+    {
+      "aborted": false,
+      "checked": 336,
+      "coverage_gaps": [],
+      "covered": [
+        "snapshot.cross-decode"
+      ],
+      "error": null,
+      "failures": 0,
+      "full_parity": false,
+      "mode": "smoke",
+      "name": "snapshots",
+      "command": [
+        "target/release/examples/parity-runner",
+        "--no-build",
+        "--zig-bin",
+        "/home/byron/dev/rustty/zig-out/bin/vt-oracle",
+        "--rust-bin",
+        "/home/byron/dev/rustty/target/release/examples/parity",
+        "--snapshots",
+        "--case",
+        "snapshot/",
+        "--artifacts",
+        "/tmp/rustty-final-snapshots"
+      ]
+    }
+  ],
+  "total_checked": 1161
+}
