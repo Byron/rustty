@@ -1,0 +1,4 @@
+measuring embedded
+embedded: input-to-parsed-title p50=99.6us p99=131.1us
+  bulk_ascii MiB/s: [72.26, 70.75, 70.06]
+  bulk_styled_mixed MiB/s: [11.08, 11.08, 11.08]

@@ -96,6 +96,7 @@ pub(super) fn serve(stream: UnixStream, id: u64, tx: SyncSender<Event>) -> io::R
         tx,
         rx,
         delivery_bytes,
+        alive: Arc::new(AtomicBool::new(true)),
     };
     let argv = if accepted.argv.is_empty() {
         vec![b"new-session".to_vec()]

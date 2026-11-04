@@ -1,0 +1,31 @@
+{
+  "baseline_revision": "53d107620892e19ef4c4ad7ea1fcb80c2ff114f2",
+  "order": [
+    "before-a",
+    "after-a",
+    "after-b",
+    "before-b",
+    "native-control",
+    "stress"
+  ],
+  "harness_sha256": "208f182a51e4b7b6e8f1db605114f6693d2d6609b3d6679b4fdc2cefc4a57702",
+  "binaries": {
+    "before": "a05b0b87b0dd7a57e2466a4e49745a67029b2bcdb60b70b762ba5c8530e8d8cc",
+    "after": "2d2b55363b058be172c4b58c1807a2b2bc454d514a64e8627b778219f0d7b275"
+  },
+  "candidate_sources": {
+    "crates/rustty/src/tmuxx.rs": "351cdda2efe5bf4fa636f439c4299401e9806c4cab3bfb1ceb4cde72303fa76e",
+    "tmuxx/crates/tmuxx-runtime/src/lib.rs": "eb9a2c8ff993f2b829df2c046ef1e3165db4589c4f0cc7d08687e560ad7167f5",
+    "tmuxx/crates/tmuxx-runtime/src/unix_ipc.rs": "4d2161a1b30dabfbd7cf4e9a87df3721d3c8930609b2a59f3bfefe9722eed6bf"
+  },
+  "compiler": "Rust 1.95.0; repository release thin LTO/codegen-units=1; default AArch64 CPU flags",
+  "machine": "Linux 7.0.0-1019-azure, ARM Neoverse-N2, 16 cores; no affinity pinning",
+  "validation": "4 runtime sender/receive tests passed; 71 Rustty tmuxx tests passed, 1 existing SSH fixture ignored; all 4 paced embedded runs and native control completed expected DSR/title checks; unpaced stress exits 1 and records complete:false",
+  "commands": {
+    "build": "cargo +1.95.0 build --locked --offline --release -p rustty --features sessions --example pty-bench",
+    "abba": "BINARY NEW_OUTPUT_DIRECTORY embedded",
+    "native-control": "AFTER_BINARY NEW_OUTPUT_DIRECTORY native",
+    "stress": "AFTER_BINARY NEW_OUTPUT_DIRECTORY embedded unpaced"
+  },
+  "conditions": "Outside syscall-restricting sandbox; builds and other timed jobs stopped. Native control is a single functional/timing sample, not a paired performance comparison."
+}

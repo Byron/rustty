@@ -233,6 +233,7 @@ impl ServerHandle {
             tx: self.tx.clone(),
             rx,
             delivery_bytes,
+            alive: Arc::new(AtomicBool::new(true)),
         })
     }
     pub fn shutdown(mut self) -> io::Result<()> {
@@ -259,9 +260,51 @@ pub struct LocalClient {
     tx: SyncSender<Event>,
     rx: Receiver<ServerMessage>,
     delivery_bytes: Arc<AtomicUsize>,
+    alive: Arc<AtomicBool>,
+}
+
+/// A request handle for a dedicated transport worker. The originating
+/// LocalClient owns the connection and must stay alive while requests are sent.
+/// Dropping this handle never disconnects that client.
+pub struct LocalClientSender {
+    id: u64,
+    tx: SyncSender<Event>,
+    alive: Arc<AtomicBool>,
+}
+
+impl LocalClientSender {
+    /// Wait for bounded owner-queue capacity. Call only from a worker that may
+    /// block, independently of the LocalClient's response consumer. A request
+    /// racing client shutdown may already have been queued.
+    pub fn send_wait(&self, request: Request) -> io::Result<()> {
+        if !self.alive.load(Ordering::Acquire) {
+            return Err(io::Error::new(io::ErrorKind::BrokenPipe, "client closed"));
+        }
+        self.tx
+            .send(Event::Request {
+                id: self.id,
+                request,
+            })
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "server stopped"))
+    }
 }
 
 impl LocalClient {
+    pub fn sender(&self) -> LocalClientSender {
+        LocalClientSender {
+            id: self.id,
+            tx: self.tx.clone(),
+            alive: self.alive.clone(),
+        }
+    }
+    /// Receive with a deadline while retaining delivery accounting and snapshot
+    /// acknowledgments, just like recv and try_recv.
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<ServerMessage, mpsc::RecvTimeoutError> {
+        self.rx
+            .recv_timeout(timeout)
+            .map(|message| self.received(message))
+    }
+
     /// Supply one bounded chunk (or EOF) for a ServerMessage::Stdin request.
     pub fn stdin(&self, request_id: u64, data: Option<Vec<u8>>) -> io::Result<()> {
         self.stdin_result(request_id, Ok(data))
@@ -403,6 +446,7 @@ impl LocalClient {
 
 impl Drop for LocalClient {
     fn drop(&mut self) {
+        self.alive.store(false, Ordering::Release);
         let _ = self.tx.send(Event::Disconnect(self.id));
     }
 }
@@ -2313,6 +2357,157 @@ fn os_string(bytes: &[u8]) -> io::Result<std::ffi::OsString> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn local_client(capacity: usize) -> (LocalClient, Receiver<Event>, SyncSender<ServerMessage>) {
+        let (tx, events) = mpsc::sync_channel(capacity);
+        let (messages, rx) = mpsc::sync_channel(4);
+        (
+            LocalClient {
+                id: 7,
+                tx,
+                rx,
+                delivery_bytes: Arc::new(AtomicUsize::new(0)),
+                alive: Arc::new(AtomicBool::new(true)),
+            },
+            events,
+            messages,
+        )
+    }
+    fn local_request(request_id: u64) -> Request {
+        Request {
+            request_id,
+            argv: vec![b"display-message".to_vec()],
+            stdin: None,
+            subscribe: false,
+            control: false,
+        }
+    }
+
+    #[test]
+    fn local_client_sender_waits_for_capacity_without_losing_or_reordering_requests() {
+        let (client, events, _messages) = local_client(1);
+        client.send(local_request(0)).unwrap();
+        assert_eq!(
+            client.send(local_request(99)).unwrap_err().kind(),
+            io::ErrorKind::WouldBlock
+        );
+        let sender = client.sender();
+        let (done, completed) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            for id in 1..=1025 {
+                sender.send_wait(local_request(id)).unwrap();
+            }
+            done.send(()).unwrap();
+        });
+        assert!(matches!(
+            completed.recv_timeout(Duration::from_millis(20)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        for expected in 0..=1025 {
+            let Event::Request { id, request } =
+                events.recv_timeout(Duration::from_secs(2)).unwrap()
+            else {
+                panic!("expected request");
+            };
+            assert_eq!(id, 7);
+            assert_eq!(request, local_request(expected));
+        }
+        completed.recv_timeout(Duration::from_secs(2)).unwrap();
+        worker.join().unwrap();
+        assert!(matches!(events.try_recv(), Err(mpsc::TryRecvError::Empty)));
+        drop(client);
+        assert!(matches!(events.recv().unwrap(), Event::Disconnect(7)));
+    }
+
+    #[test]
+    fn local_client_sender_unblocks_when_owner_stops() {
+        let (client, events, _messages) = local_client(1);
+        client.send(local_request(0)).unwrap();
+        let sender = client.sender();
+        let (done, completed) = mpsc::channel();
+        let worker = thread::spawn(move || done.send(sender.send_wait(local_request(1))).unwrap());
+        assert!(matches!(
+            completed.recv_timeout(Duration::from_millis(20)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        drop(events);
+        assert_eq!(
+            completed
+                .recv_timeout(Duration::from_secs(2))
+                .unwrap()
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::BrokenPipe
+        );
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn local_client_alone_owns_disconnect_and_late_sender_fails() {
+        let (client, events, _messages) = local_client(1);
+        drop(client.sender());
+        assert!(matches!(events.try_recv(), Err(mpsc::TryRecvError::Empty)));
+        let sender = client.sender();
+        drop(client);
+        assert!(matches!(events.recv().unwrap(), Event::Disconnect(7)));
+        assert_eq!(
+            sender.send_wait(local_request(1)).unwrap_err().kind(),
+            io::ErrorKind::BrokenPipe
+        );
+        assert!(matches!(events.try_recv(), Err(mpsc::TryRecvError::Empty)));
+        drop(sender);
+        assert!(matches!(
+            events.try_recv(),
+            Err(mpsc::TryRecvError::Disconnected)
+        ));
+    }
+
+    #[test]
+    fn local_client_timed_receive_accounts_bytes_and_acknowledges_snapshots() {
+        let (client, events, messages) = local_client(1);
+        let output = ServerMessage::PaneOutput {
+            sequence: 1,
+            pane_id: 3,
+            data: vec![b'x'; 4096],
+        };
+        let snapshot = ServerMessage::Snapshot {
+            instance_id: "local".into(),
+            sequence: 2,
+            state: Default::default(),
+        };
+        let output_bytes = control::message_bytes(&output);
+        let snapshot_bytes = control::message_bytes(&snapshot);
+        client
+            .delivery_bytes
+            .store(output_bytes + snapshot_bytes, Ordering::Release);
+        messages.send(output).unwrap();
+        messages.send(snapshot).unwrap();
+        assert!(matches!(
+            client.recv_timeout(Duration::from_secs(1)).unwrap(),
+            ServerMessage::PaneOutput { sequence: 1, .. }
+        ));
+        assert_eq!(
+            client.delivery_bytes.load(Ordering::Acquire),
+            snapshot_bytes
+        );
+        assert!(matches!(events.try_recv(), Err(mpsc::TryRecvError::Empty)));
+        assert!(matches!(
+            client.recv_timeout(Duration::from_secs(1)).unwrap(),
+            ServerMessage::Snapshot { sequence: 2, .. }
+        ));
+        assert_eq!(client.delivery_bytes.load(Ordering::Acquire), 0);
+        assert!(matches!(events.recv().unwrap(), Event::SnapshotSent(7)));
+        assert!(matches!(
+            client.recv_timeout(Duration::ZERO),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        assert!(matches!(events.try_recv(), Err(mpsc::TryRecvError::Empty)));
+        drop(messages);
+        assert!(matches!(
+            client.recv_timeout(Duration::ZERO),
+            Err(mpsc::RecvTimeoutError::Disconnected)
+        ));
+    }
+
     #[test]
     #[cfg(unix)]
     fn host_environment_rejects_non_utf8_without_panicking() {

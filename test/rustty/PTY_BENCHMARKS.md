@@ -192,3 +192,45 @@ the pool capacity, EINTR/error ordering, backpressured pool drop, startup
 cancellation, and a real 256KiB tail with ordered titles, cursor reply and status
 cleanup before `OutputClosed`. Existing compression, restored-output, input
 backpressure and child-reaping tests pass; formatting and diff checks pass.
+
+### Retained embedded request/response workers
+
+The production embedded transport replaces its unconditional 2ms poll with
+independent request and response workers. A dedicated request handle waits for
+capacity in the existing bounded owner queue; the caller-facing nonblocking
+queue behavior is unchanged. The response worker retains delivery-byte
+accounting, snapshot acknowledgments and ordered application. Only LocalClient
+owns disconnection; its sender rejects new calls after that client is dropped.
+The 50ms receive deadlines permit idle shutdown, and the request worker uses its
+idle timeout for the existing opportunistic view compression.
+
+Fresh ABBA runs against `53d107620` use the same corrected harness and quiet
+machine. Six pooled throughput samples improve paced ASCII from **34.70 to
+70.70MiB/s (104%)**, and styled mixed text from **9.70 to 10.97MiB/s (13%)**.
+Raw samples, the unchanged harness hash and executable/source hashes are in
+`embedded/`.
+
+| Latency boundary | Before p50 / p99 | After p50 / p99 |
+| --- | ---: | ---: |
+| Sparse host echo before bulk | 3067.04 / 3077.93µs | 98.82 / 136.18µs |
+| Sparse host echo after bulk | 3067.19 / 3108.50µs | 98.59 / 143.55µs |
+| Sparse owner DSR | 56.35 / 73.79µs | 53.52 / 85.88µs |
+| 4KiB burst plus owner DSR | 108.26 / 154.48µs | 108.89 / 154.29µs |
+| 64KiB burst plus owner DSR | 820.33 / 894.00µs | 832.09 / 886.12µs |
+| 64KiB post-write tail only | 615.42 / 685.43µs | 635.88 / 699.73µs |
+
+The gain is in embedded input/view delivery. Owner-side parser/PTY latency is
+largely unchanged, and the fixed cost is one additional worker per embedded
+connection. The native-socket transport retains its existing workers. A single
+native control run completed at 131.3µs echo p50, 69.3–69.6MiB/s ASCII and
+11.24–11.27MiB/s mixed; it is a control sample, not a paired speedup claim.
+The unpaced embedded 16MiB stress run still fails with `tmuxx disconnected` and
+is retained as `embedded/stress.json` with `complete: false`.
+
+Validation: four runtime tests cover full-queue backpressure with 1025 ordered
+requests, owner-stop unblocking, sole disconnection ownership, late-send failure,
+and timed receive accounting/ACK behavior. All 71 Linux Rustty tmuxx tests pass
+(one existing SSH-fixture test is ignored), including outstanding replies,
+idle/busy worker release, borrowed size-client shutdown, compression, status,
+selection and reconnect behavior. Formatting and diff checks pass. No wire
+version or configuration changes are needed.

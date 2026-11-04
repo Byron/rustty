@@ -1,0 +1,4 @@
+measuring native
+native: input-to-parsed-title p50=131.3us p99=207.3us
+  bulk_ascii MiB/s: [69.58, 69.49, 69.33]
+  bulk_styled_mixed MiB/s: [11.27, 11.25, 11.24]
