@@ -925,6 +925,7 @@ impl Terminal {
         metadata.mouse_shift_capture = None;
         metadata.password_input = false;
         metadata.saved_mouse = None;
+        metadata.rectangular_attributes = false;
         metadata.title_raw = None;
         metadata.pwd_raw = None;
         let mut modes = self.modes.clone();
@@ -991,6 +992,7 @@ impl Terminal {
     fn reset_tmux(&mut self) {
         self.reset_pointer_shapes();
         self.metadata.saved_mouse = None;
+        self.metadata.rectangular_attributes = false;
         let alternate_modes = [47, 1047, 1049].map(|mode| self.modes.dec(mode));
         self.modes.reset();
         for (mode, value) in [47, 1047, 1049].into_iter().zip(alternate_modes) {
@@ -1043,6 +1045,7 @@ impl Terminal {
     /// moving the cursor. Dynamic colors and modes outside DECSTR stay intact.
     pub fn soft_reset(&mut self) {
         self.reset_pointer_shapes();
+        self.metadata.rectangular_attributes = false;
         for (private, mode) in [
             (true, 25),
             (false, 4),
@@ -2885,6 +2888,67 @@ impl Terminal {
         }
     }
 
+    /// Kitty extends DECCARA to all SGR attributes. DECSACE defaults to a
+    /// stream from the first cell through the last; mode 2 selects a rectangle.
+    fn change_region_attributes(&mut self, params: &[u16], separators: u32) {
+        // Colons are meaningful only after the four semicolon-delimited
+        // coordinates. Coordinate-only commands have no rendition to apply.
+        if separators & 0xf != 0 || (!params.is_empty() && params.len() <= 4) {
+            return;
+        }
+        let rows = usize::from(self.rows);
+        let cols = usize::from(self.cols);
+        let coordinate = |index, default| {
+            params
+                .get(index)
+                .copied()
+                .filter(|&value| value != 0)
+                .map_or(default, usize::from)
+        };
+        let (origin_row, origin_col) = if self.modes.dec(6) {
+            (self.margins.top, self.margins.left)
+        } else {
+            (0, 0)
+        };
+        let top = origin_row + coordinate(0, 1) - 1;
+        let bottom = origin_row + coordinate(2, rows);
+        let left = (origin_col + coordinate(1, 1) - 1).min(cols - 1);
+        let right = (origin_col + coordinate(3, cols)).min(cols);
+        if top >= bottom.min(rows) {
+            return;
+        }
+        let attributes = params.get(4..).unwrap_or_default();
+        let separators = separators >> 4;
+        let rectangular = self.metadata.rectangular_attributes;
+        let tmux = self.tmux_graphics;
+        let mut changed = false;
+        for y in top..bottom.min(rows) {
+            let start = if rectangular || y == top { left } else { 0 };
+            let end = if rectangular || y + 1 == bottom {
+                right
+            } else {
+                cols
+            };
+            if start >= end {
+                continue;
+            }
+            self.ensure_row_cells(y, end);
+            for x in start..end {
+                let old = self.screen().row(y).style(x);
+                let mut style = apply_sgr(old, attributes, separators, tmux, |style| style);
+                // Retained HT spelling describes the text, not its rendition.
+                style.tmux_tab = old.tmux_tab;
+                if style != old {
+                    self.screen_mut().set_cell_style(y, x, style);
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            self.changed();
+        }
+    }
+
     fn csi(
         &mut self,
         i: &[u8],
@@ -2894,7 +2958,7 @@ impl Terminal {
         effects: &mut Vec<Effect>,
         clipboard_read_enabled: bool,
     ) {
-        if sep != 0 && byte != b'm' {
+        if sep != 0 && byte != b'm' && (i != b"$" || byte != b'r') {
             return;
         }
         // Validate before dispatch: excess parameters invalidate the whole
@@ -3035,6 +3099,10 @@ impl Terminal {
                 let tmux = self.tmux_graphics;
                 sgr(self.screen_mut(), p, sep, tmux);
                 self.changed();
+            }
+            ([b'$'], b'r') => self.change_region_attributes(p, sep),
+            ([b'*'], b'x') if p.len() <= 1 => {
+                self.metadata.rectangular_attributes = n == 2;
             }
             ([b'>'], b'm') => {
                 if let Some((policy, mode)) = &mut self.tmux_extended_keys {
@@ -3878,10 +3946,23 @@ pub fn default_palette() -> Vec<[u8; 3]> {
 }
 
 fn sgr(screen: &mut Screen, params: &[u16], separators: u32, tmux: bool) {
-    let mut style = screen.cursor.style;
+    apply_sgr(screen.cursor.style, params, separators, tmux, |style| {
+        screen.set_cursor_style(style);
+        screen.cursor.style
+    });
+}
+
+/// Keep cursor style admission at each attribute boundary; region edits need
+/// the same transformations without borrowing or changing the cursor's pen.
+fn apply_sgr(
+    mut style: Style,
+    params: &[u16],
+    separators: u32,
+    tmux: bool,
+    mut admit: impl FnMut(Style) -> Style,
+) -> Style {
     if params.is_empty() {
-        screen.set_cursor_style(Style::default());
-        return;
+        return admit(Style::default());
     }
     let is_colon = |index: usize| separators & (1 << index) != 0;
     let colon_count = |start: usize| {
@@ -4016,9 +4097,9 @@ fn sgr(screen: &mut Screen, params: &[u16], separators: u32, tmux: bool) {
             }
             _ => {}
         }
-        screen.set_cursor_style(style);
-        style = screen.cursor.style;
+        style = admit(style);
     }
+    style
 }
 
 // Modifier bases in tmux utf8-combined.c; scalar widths alone do not imply this.
