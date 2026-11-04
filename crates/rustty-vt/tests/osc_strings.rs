@@ -67,8 +67,7 @@ fn mouse_shape_survives_chunking_invalid_requests_reset_and_snapshots() {
         assert_eq!(terminal.mouse_shape(), expected);
     }
     for name in [
-        b"".as_slice(),
-        b"unknown",
+        b"unknown".as_slice(),
         b"Pointer",
         b"text;wait",
         &[b'x'; 2048],
@@ -76,11 +75,11 @@ fn mouse_shape_survives_chunking_invalid_requests_reset_and_snapshots() {
         terminal.feed(&osc("22", name));
         assert_eq!(terminal.mouse_shape(), "pointer");
     }
-    terminal.feed(b"\x1bc");
-    assert_eq!(terminal.mouse_shape(), "pointer");
     let snapshot = rustty_vt::snapshot::encode_to_vec(&terminal).unwrap();
     let restored = rustty_vt::snapshot::decode(snapshot.as_slice(), Default::default()).unwrap();
     assert_eq!(restored.mouse_shape(), "pointer");
+    terminal.feed(b"\x1bc");
+    assert_eq!(terminal.mouse_shape(), "text");
 }
 
 #[test]

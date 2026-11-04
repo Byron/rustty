@@ -25,6 +25,8 @@ use std::io::{self, BufRead, Read, Write};
 use std::sync::Arc;
 
 const MAGIC: &[u8; 10] = b"GHOSTSNP\x01\x00";
+// Rustty extension; older readers skip this record and use the legacy header.
+const POINTER_SHAPES: u16 = 0x8001;
 
 pub(crate) fn invalid(message: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
@@ -212,7 +214,7 @@ fn encode_terminal(t: &Terminal) -> io::Result<Vec<u8>> {
     });
     out.extend_from_slice(&[
         optional_bool(m.mouse_shift_capture),
-        m.mouse_shape,
+        t.screen().pointer_shapes.current().unwrap_or(8),
         u8::from(m.password_input),
     ]);
     for bits in t.modes.packed() {
@@ -543,6 +545,9 @@ fn encode_inner(
             if let Some(plan) = &plans[key] {
                 plan.storage(destination)?;
             }
+            let mut shapes = vec![1, key as u8];
+            shapes.extend_from_slice(&screen.pointer_shapes.0);
+            record(destination, POINTER_SHAPES, &shapes)?;
         }
     }
     record(destination, 7, &continuation)?;
@@ -847,7 +852,7 @@ impl<R: Read> Decoder<R> {
             if len > limit || tag == 7 && len > self.options.max_continuation_bytes {
                 return Err(invalid("snapshot record exceeds allocation policy"));
             }
-            if (1..=10).contains(&tag) {
+            if (1..=10).contains(&tag) || tag == POINTER_SHAPES {
                 return Ok((header, len));
             }
             let mut remaining = len;
@@ -975,7 +980,7 @@ impl<R: Read> Decoder<R> {
             _ => 0,
         };
         m.mouse_shift_capture = decode_bool(r.u8()?);
-        m.mouse_shape = match r.u8()? {
+        let legacy_mouse_shape = match r.u8()? {
             v @ 0..=33 => v,
             _ => 8,
         };
@@ -1039,7 +1044,8 @@ impl<R: Read> Decoder<R> {
         terminal.metadata = m;
         let mut seen = [false; 2];
         for _ in 0..screen_count {
-            let (key, screen, extent) = self.screen(cols, rows, limits, &terminal.modes)?;
+            let (key, screen, extent) =
+                self.screen(cols, rows, limits, &terminal.modes, legacy_mouse_shape)?;
             if key >= usize::from(screen_count) || seen[key] {
                 return Err(invalid("unexpected or duplicate snapshot screen"));
             }
@@ -1075,6 +1081,7 @@ impl<R: Read> Decoder<R> {
         rows: u16,
         limits: ScrollbackLimits,
         modes: &Modes,
+        legacy_mouse_shape: u8,
     ) -> io::Result<(usize, Screen, u64)> {
         let payload = self.record(2)?;
         let mut r = Slice::new(&payload);
@@ -1192,6 +1199,17 @@ impl<R: Read> Decoder<R> {
             self.images[key] =
                 kitty::decode_storage(&payload, &mut screen, key, self.options.max_graphics_bytes)?;
         }
+        screen.pointer_shapes = if self.peek_tag()? == POINTER_SHAPES {
+            let payload = self.record(POINTER_SHAPES)?;
+            if payload.get(..2) != Some(&[1, key as u8]) {
+                return Err(invalid("invalid pointer shape record"));
+            }
+            crate::input::PointerShapes::try_from(payload[2..].to_vec()).map_err(invalid)?
+        } else {
+            // Older snapshots only know a terminal-wide shape. Seed each screen
+            // with that value so switching screens preserves the old behavior.
+            crate::input::PointerShapes(vec![legacy_mouse_shape])
+        };
         Ok((key, screen, extent))
     }
 
@@ -1548,7 +1566,6 @@ pub(crate) struct TerminalMetadata {
     pub cursor_default_blink: Option<bool>,
     pub shell_redraw: u8,
     pub mouse_shift_capture: Option<bool>,
-    pub mouse_shape: u8,
     pub password_input: bool,
 }
 impl Default for TerminalMetadata {
@@ -1564,7 +1581,6 @@ impl Default for TerminalMetadata {
             cursor_default_blink: Some(false),
             shell_redraw: 0,
             mouse_shift_capture: None,
-            mouse_shape: 8,
             password_input: false,
         }
     }

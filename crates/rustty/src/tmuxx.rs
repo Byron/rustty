@@ -3966,6 +3966,53 @@ mod tests {
     }
 
     #[test]
+    fn native_views_preserve_pointer_stacks_across_output_and_reconnect() {
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        let mut owner = tmuxx_terminal::Terminal::new(8, 3, 100);
+        owner.feed(b"\x1b]22;>pointer,help\x07\x1b[?1049h\x1b]22;>wait,crosshair\x07");
+        let snapshot = |owner: &tmuxx_terminal::Terminal, sequence| ServerMessage::Snapshot {
+            instance_id: "pointer".into(),
+            sequence,
+            state: snapshot_state(serde_json::json!({
+                "sessions": [{"id":1,"name":"test","active":0,"windows":{"0":2}}],
+                "windows": [{"id":2,"name":"shell","active":7,"cols":8,"rows":3,"panes":[7],"layout":Layout::pane(7,8,3).to_legacy().unwrap()}],
+                "panes": [{"id":7,"window":2,"cols":8,"rows":3,"status":null,"terminal":owner.checkpoint_snapshot()}],
+            })),
+        };
+        apply(&connection.shared, snapshot(&owner, 1)).unwrap();
+        let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        assert_eq!(first.terminal().unwrap().mouse_shape(), "crosshair");
+        assert_eq!(second.terminal().unwrap().mouse_shape(), "crosshair");
+        for (index, (data, expected)) in [
+            (b"\x1b]22;<\x07".as_slice(), "wait"),
+            (b"\x1b[?1049l", "help"),
+            (b"\x1b]22;<\x07", "pointer"),
+            (b"\x1b[?1049h", "wait"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            owner.feed(data);
+            apply(
+                &connection.shared,
+                ServerMessage::PaneOutput {
+                    sequence: 2 + index as u64 * 2,
+                    pane_id: 7,
+                    data: data.to_vec(),
+                },
+            )
+            .unwrap();
+            assert_eq!(first.terminal().unwrap().mouse_shape(), expected);
+            assert_eq!(second.terminal().unwrap().mouse_shape(), expected);
+            apply(&connection.shared, snapshot(&owner, 3 + index as u64 * 2)).unwrap();
+            assert_eq!(first.terminal().unwrap().mouse_shape(), expected);
+            assert_eq!(second.terminal().unwrap().mouse_shape(), expected);
+        }
+        assert!(connection.errors().is_empty());
+    }
+
+    #[test]
     fn native_views_preserve_wide_cells_viewports_sync_modes_and_stationary_cursor_changes() {
         let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
         let mut owner = tmuxx_terminal::Terminal::new(10, 3, 100);

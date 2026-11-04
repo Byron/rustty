@@ -988,6 +988,7 @@ impl Terminal {
 
     // tmux RIS resets the pen and visible grid, retaining the existing screens.
     fn reset_tmux(&mut self) {
+        self.reset_pointer_shapes();
         let alternate_modes = [47, 1047, 1049].map(|mode| self.modes.dec(mode));
         self.modes.reset();
         for (mode, value) in [47, 1047, 1049].into_iter().zip(alternate_modes) {
@@ -1039,6 +1040,7 @@ impl Terminal {
     /// DECSTR resets application modes and the pen without clearing content or
     /// moving the cursor. Dynamic colors and modes outside DECSTR stay intact.
     pub fn soft_reset(&mut self) {
+        self.reset_pointer_shapes();
         for (private, mode) in [
             (true, 25),
             (false, 4),
@@ -3306,10 +3308,8 @@ impl Terminal {
             }
             9 => self.osc9(data, effects),
             22 => {
-                if let Ok(name) = std::str::from_utf8(data)
-                    && let Some(shape) = crate::input::mouse_shape_index(name)
-                {
-                    self.metadata.mouse_shape = shape;
+                if let Some(reply) = self.osc_pointer_shape(data, bell) {
+                    effects.push(Effect::Write(reply));
                 }
             }
             777 => {

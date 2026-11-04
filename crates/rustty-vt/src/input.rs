@@ -201,7 +201,73 @@ impl Terminal {
 
     /// W3C pointer name selected by OSC 22, also retained in terminal snapshots.
     pub fn mouse_shape(&self) -> &'static str {
-        MOUSE_SHAPES[usize::from(self.metadata.mouse_shape)]
+        MOUSE_SHAPES[usize::from(self.screen().pointer_shapes.current().unwrap_or(8))]
+    }
+
+    pub(crate) fn osc_pointer_shape(&mut self, data: &[u8], bell: bool) -> Option<Vec<u8>> {
+        let value = std::str::from_utf8(data).ok()?;
+        let (op, names) = match value.as_bytes().first() {
+            Some(op @ (b'=' | b'>' | b'<' | b'?')) => (*op, &value[1..]),
+            _ => (b'=', value),
+        };
+        if op == b'?' {
+            let answers = names
+                .split(',')
+                .map(|name| match name {
+                    "__current__" => self
+                        .screen()
+                        .pointer_shapes
+                        .current()
+                        .map_or("0", |shape| MOUSE_SHAPES[usize::from(shape)]),
+                    // Rustty uses a text pointer even when mouse reporting is enabled.
+                    "__default__" | "__grabbed__" => "text",
+                    name if MOUSE_SHAPES.contains(&name) => "1",
+                    _ => "0",
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+            return Some(
+                [
+                    b"\x1b]22;".as_slice(),
+                    answers.as_bytes(),
+                    if bell { b"\x07" } else { b"\x1b\\" },
+                ]
+                .concat(),
+            );
+        }
+        let stack = &mut self.screen_mut().pointer_shapes;
+        if op == b'<' {
+            stack.0.pop();
+        } else {
+            for name in names.split(',') {
+                let shape = if name.is_empty() {
+                    if op == b'>' {
+                        continue;
+                    }
+                    u8::MAX
+                } else if let Some(shape) = mouse_shape_index(name) {
+                    shape
+                } else {
+                    continue;
+                };
+                if op == b'=' && !stack.0.is_empty() {
+                    *stack.0.last_mut().unwrap() = shape;
+                } else {
+                    if stack.0.len() == PointerShapes::CAPACITY {
+                        stack.0.remove(0);
+                    }
+                    stack.0.push(shape);
+                }
+            }
+        }
+        None
+    }
+
+    pub(crate) fn reset_pointer_shapes(&mut self) {
+        self.primary.pointer_shapes = Default::default();
+        if let Some(screen) = &mut self.alternate {
+            screen.pointer_shapes = Default::default();
+        }
     }
 
     /// Encode an event whose Alt modifier already denotes terminal Alt.
@@ -473,6 +539,35 @@ const MOUSE_SHAPES: [&str; 34] = [
     "zoom-in",
     "zoom-out",
 ];
+
+/// Each screen owns a bounded stack; 255 denotes an explicit default override.
+/// An empty set replaces only the top, so a later pop can recover its parent.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "Vec<u8>")]
+pub(crate) struct PointerShapes(pub(crate) Vec<u8>);
+
+impl PointerShapes {
+    pub(crate) const CAPACITY: usize = 16;
+
+    pub(crate) fn current(&self) -> Option<u8> {
+        self.0.last().copied().filter(|&shape| shape != u8::MAX)
+    }
+}
+
+impl TryFrom<Vec<u8>> for PointerShapes {
+    type Error = &'static str;
+
+    fn try_from(shapes: Vec<u8>) -> Result<Self, Self::Error> {
+        if shapes.len() > Self::CAPACITY
+            || shapes
+                .iter()
+                .any(|&shape| shape != u8::MAX && usize::from(shape) >= MOUSE_SHAPES.len())
+        {
+            return Err("invalid pointer shape stack");
+        }
+        Ok(Self(shapes))
+    }
+}
 
 pub(crate) fn mouse_shape_index(name: &str) -> Option<u8> {
     let name = match name {

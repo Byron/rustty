@@ -755,6 +755,8 @@ pub struct Screen {
     pub(crate) tmux_current_time: u64,
     #[serde(skip)]
     pub(crate) metadata: crate::snapshot::ScreenMetadata,
+    #[serde(default)]
+    pub(crate) pointer_shapes: crate::input::PointerShapes,
     #[serde(skip)]
     pub graphics: crate::graphics::Graphics,
     /// Logical width. Restored physical rows retain their own width until a
@@ -865,6 +867,7 @@ impl Screen {
         }
         Self {
             metadata: crate::snapshot::ScreenMetadata::default(),
+            pointer_shapes: Default::default(),
             graphics: crate::graphics::Graphics::default(),
             columns: cols,
             height: rows,
@@ -1004,6 +1007,7 @@ impl Screen {
             tmux_current_time: self.tmux_current_time,
             tmux_shell: self.tmux_shell.clone(),
             metadata: self.metadata.clone(),
+            pointer_shapes: self.pointer_shapes.clone(),
             graphics: self.graphics.snapshot(self),
             columns: self.columns,
             height: self.height,

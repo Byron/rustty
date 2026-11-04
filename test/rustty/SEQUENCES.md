@@ -143,7 +143,7 @@ Capture limits and invalid input can reject a request before these operations.
 | 10, 11, 12; 110, 111, 112 | Set/query/reset default foreground, background, and cursor colors; used in rendered frames and replies. |
 | 13–19, 113–119 | Pointer/Tektronix/highlight colors and resets: intentionally unsupported in both implementations. |
 | 21 | Kitty palette/foreground/background/cursor query, set, and reset. Selection colors, cursor text, visual bell, and second transparent background keys are parsed but unsupported, matching the reference. |
-| 22 | Validated W3C pointer shapes and supported xterm/foot aliases; the native pointer follows the hovered terminal pane, with UI/divider cursors taking precedence. |
+| 22 | Per-screen 16-entry pointer stacks, set/push/pop, shape support and current/default/grabbed queries, and supported xterm/foot aliases. RIS and DECSTR clear both stacks. The native pointer follows the hovered terminal pane, with UI/divider cursors taking precedence. |
 | 52 | Clipboard read/write requests, binary decoding, reply terminators, and native policy/confirmation. The macOS primary selection is unsupported. |
 | 66, 99 | Kitty text sizing and Kitty notifications: no terminal/desktop effect, matching the reference's unimplemented callbacks. Generic notifications use OSC 9/777. |
 | 72 | Kitty drag-and-drop state, callbacks, and host APIs exist in the VT crate; the native desktop drag handshake is missing in both apps. Ordinary file drops insert paths into the hovered pane. |
