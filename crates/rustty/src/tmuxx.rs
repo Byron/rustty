@@ -13,7 +13,7 @@ use std::process::{Child, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak, mpsc};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 pub use tmuxx_layout::{Axis, Kind, Layout};
 pub use tmuxx_protocol::native::ServerStatus;
 use tmuxx_protocol::native::{Hello, Request, ServerMessage, SnapshotAssembler};
@@ -552,41 +552,44 @@ impl Connection {
             model.view_size_ownership = true;
             model.selection_updates = true;
         }
+        let shared_writer = connection.shared.clone();
+        let sender = client.sender();
+        thread::Builder::new()
+            .name("rustty-tmuxx-local-write".into())
+            .spawn(move || {
+                while !shared_writer.closed.load(Ordering::Acquire) {
+                    // Shared owns a request sender, so a timeout is also needed
+                    // to observe shutdown when this queue remains idle.
+                    match requests.recv_timeout(Duration::from_millis(50)) {
+                        Ok(request) => {
+                            if let Err(error) = sender.send_wait(request) {
+                                fail(&shared_writer, error);
+                                return;
+                            }
+                        }
+                        Err(mpsc::RecvTimeoutError::Timeout) => compress_views(&shared_writer),
+                        Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                    }
+                }
+            })?;
         let shared = connection.shared.clone();
         thread::Builder::new()
             .name("rustty-tmuxx-local".into())
             .spawn(move || {
-                let mut compression_deadline = Instant::now();
                 while !shared.closed.load(Ordering::Acquire) {
-                    for request in requests.try_iter() {
-                        if let Err(error) = client.send(request) {
-                            fail(&shared, error);
-                            return;
-                        }
-                    }
-                    loop {
-                        match client.try_recv() {
-                            Ok(message) => {
-                                if let Err(error) = apply(&shared, message) {
-                                    fail(&shared, error);
-                                    return;
-                                }
-                                if shared.closed.load(Ordering::Acquire) {
-                                    return;
-                                }
-                            }
-                            Err(mpsc::TryRecvError::Empty) => break,
-                            Err(mpsc::TryRecvError::Disconnected) => {
-                                fail(&shared, "tmuxx disconnected");
+                    match client.recv_timeout(Duration::from_millis(50)) {
+                        Ok(message) => {
+                            if let Err(error) = apply(&shared, message) {
+                                fail(&shared, error);
                                 return;
                             }
                         }
+                        Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                        Err(mpsc::RecvTimeoutError::Disconnected) => {
+                            fail(&shared, "tmuxx disconnected");
+                            return;
+                        }
                     }
-                    if Instant::now() >= compression_deadline {
-                        compress_views(&shared);
-                        compression_deadline = Instant::now() + Duration::from_millis(50);
-                    }
-                    thread::sleep(Duration::from_millis(2));
                 }
             })?;
         Ok(connection)
@@ -4866,6 +4869,84 @@ mod tests {
         assert!(remote.fit_view_size(session).is_err());
     }
 
+    fn wait_local_workers_closed(workers: Weak<Shared>) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while workers.upgrade().is_some() {
+            assert!(
+                Instant::now() < deadline,
+                "embedded workers survived connection shutdown"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn embedded_idle_and_busy_workers_release_on_close() {
+        for busy in [false, true] {
+            let script = if busy {
+                "import time\nwhile True: print('BUSY',flush=True); time.sleep(0.001)"
+            } else {
+                "import time; time.sleep(30)"
+            };
+            let owner = test_owner(script);
+            let graph = wait(&owner, |g| !g.panes.is_empty());
+            let borrowed = Connection::local(
+                owner.owner.as_ref().unwrap().connect().unwrap(),
+                Arc::new(|| {}),
+                true,
+            )
+            .unwrap();
+            borrowed
+                .command([
+                    "attach-session".into(),
+                    "-t".into(),
+                    format!("${}", graph.sessions[0].id),
+                ])
+                .unwrap();
+            wait(&borrowed, |g| !g.panes.is_empty());
+            let view =
+                Session::attach_tmuxx(&borrowed, graph.panes[0].id, Arc::new(|| {})).unwrap();
+            if busy {
+                wait_text(&borrowed, &view, "BUSY");
+            }
+            // Both workers must stop even though the actual owner stays alive.
+            let workers = Arc::downgrade(&borrowed.shared);
+            drop(view);
+            drop(borrowed);
+            wait_local_workers_closed(workers);
+            assert!(owner.errors().is_empty());
+            let workers = Arc::downgrade(&owner.shared);
+            drop(owner);
+            wait_local_workers_closed(workers);
+        }
+    }
+
+    #[test]
+    fn embedded_requests_and_replies_keep_order_without_polling() {
+        let owner = test_owner("import time; time.sleep(30)");
+        wait(&owner, |g| !g.panes.is_empty());
+        // Many outstanding replies exercise independent writers/readers and
+        // registration before an immediately available owner response.
+        let replies = (0..128)
+            .map(|index| {
+                owner
+                    .command_with_reply(vec![
+                        b"display-message".to_vec(),
+                        b"-p".to_vec(),
+                        index.to_string().into_bytes(),
+                    ])
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        for (index, reply) in replies.into_iter().enumerate() {
+            assert_eq!(
+                reply.recv_timeout(Duration::from_secs(5)).unwrap().unwrap(),
+                format!("{index}\n").as_bytes()
+            );
+        }
+        assert!(owner.errors().is_empty());
+    }
+
     #[test]
     fn embedded_size_clients_use_the_owner_and_release_their_size_context() {
         let connection = test_owner("import time; time.sleep(30)");
@@ -4895,7 +4976,12 @@ mod tests {
             g.windows[0].cols == 60 && g.windows[0].rows == 20
         });
         assert_eq!(connection.view_connection_count(), Some(2));
+        let size_workers = {
+            let views = connection.size_views.lock().unwrap();
+            Arc::downgrade(&views.get(&session).unwrap().0.shared)
+        };
         connection.release_view(session).unwrap();
+        wait_local_workers_closed(size_workers);
         assert_eq!(connection.view_connection_count(), Some(1));
         let graph = wait(&connection, |g| {
             g.windows[0].cols == 100 && g.windows[0].rows == 40
