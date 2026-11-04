@@ -19,6 +19,16 @@ mod capture;
 mod capture_raw;
 pub use capture::CaptureOptions;
 
+/// Rustty extensions to C tmux's generated format registry.
+pub const PROGRAM_STATUS_FORMATS: &[&str] = &[
+    "pane_program_app",
+    "pane_program_message",
+    "pane_program_progress",
+    "pane_program_state",
+    "pane_program_status",
+    "pane_program_title",
+];
+
 /// Native input retains its kind so each synchronized pane uses its own modes.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "data")]
@@ -31,6 +41,16 @@ pub enum Input {
     Paste(Vec<u8>),
     Mouse(Vec<u8>),
     Reply(Vec<u8>),
+}
+
+impl Input {
+    pub fn acknowledges_program_status(&self) -> bool {
+        match self {
+            Self::Key { event, .. } => rustty_vt::program_status::acknowledges_key(event),
+            Self::Text(data) => !data.is_empty(),
+            Self::Paste(_) | Self::Mouse(_) | Self::Reply(_) => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -273,6 +293,7 @@ impl<S> Snapshot<S> {
         }
         self.agent_status.validate().map_err(io::Error::other)?;
         inner.agent_status_events = true;
+        inner.program_status_events = true;
         inner.shell_command_events = true;
         inner.linefeed_mode_events = true;
         inner.generation = self.generation;
@@ -315,6 +336,15 @@ impl Terminal {
         let t = &self.inner;
         let state = &t.tmux_state;
         Some(match key {
+            "pane_program_status" => serde_json::to_string(&t.program_status().query()).ok()?,
+            "pane_program_state" => t.program_status().most_urgent()?.state.as_str().into(),
+            "pane_program_progress" => t.program_status().most_urgent()?.progress?.to_string(),
+            "pane_program_app" => t
+                .program_status()
+                .app_for(t.program_status().most_urgent()?)
+                .into(),
+            "pane_program_title" => t.program_status().most_urgent()?.title.clone(),
+            "pane_program_message" => t.program_status().most_urgent()?.message.clone(),
             "history_bytes" => t.primary_screen().owned_bytes().to_string(),
             "history_all_bytes" => t
                 .primary_screen()
@@ -450,6 +480,15 @@ impl Terminal {
     pub fn agent_status(&self) -> &AgentStatus {
         &self.agent_status
     }
+    pub fn program_status(&self) -> &rustty_vt::program_status::Records {
+        self.inner.program_status()
+    }
+    pub fn program_status_seen(&mut self) -> bool {
+        self.inner.program_status_seen()
+    }
+    pub fn program_status_exited(&mut self) -> bool {
+        self.inner.program_status_exited()
+    }
     pub fn clear_agent_status(&mut self) {
         self.agent_status = AgentStatus::default();
     }
@@ -524,6 +563,7 @@ impl Terminal {
         inner.terminfo_name = Some(b"tmux-256color".to_vec());
         inner.shell_command_events = true;
         inner.agent_status_events = true;
+        inner.program_status_events = true;
         inner.linefeed_mode_events = true;
         inner.tmux_clipboard = true;
         inner.tmux_graphics = true;
@@ -616,6 +656,7 @@ impl Terminal {
     ) -> Vec<Effect> {
         let old_theme = self.inner.tmux_color_scheme();
         let terminal = &mut self.inner;
+        terminal.program_status_focus(focused && visible);
         let mut reply = Vec::new();
         let reported_focus = focus_events.then_some(focused);
         if terminal.query_defaults.focused != reported_focus {
@@ -1164,5 +1205,57 @@ mod tests {
         let mut malformed = snapshot;
         malformed.primary_graphics.images[0].width = u32::MAX;
         assert!(malformed.restore().is_err());
+    }
+
+    #[test]
+    fn program_status_survives_direct_wrapped_and_fragmented_native_snapshots() {
+        let mut stream = b"\x1b]7501;state=working:app=parent\x07\x1b]7501;state=blocked:id=job:kind=permission:progress=10\x07".to_vec();
+        stream.extend(b"\x1bPtmux;\x1b\x1b]7501;state=done:id=job:title=RG9uZQ\x07\x1b\\");
+        let mut complete = Terminal::new(20, 4, 20);
+        complete.feed(&stream);
+        assert_eq!(complete.program_status().len(), 2);
+        assert_eq!(
+            complete.format_value("pane_program_state").as_deref(),
+            Some("done")
+        );
+        assert_eq!(
+            complete.format_value("pane_program_app").as_deref(),
+            Some("parent")
+        );
+        assert_eq!(
+            complete.format_value("pane_program_title").as_deref(),
+            Some("Done")
+        );
+        assert!(complete.agent_status().snapshot.is_none());
+        for split in 0..=stream.len() {
+            let mut owner = Terminal::new(20, 4, 20);
+            owner.feed(&stream[..split]);
+            for mut restored in [
+                owner.snapshot().restore().unwrap(),
+                owner.checkpoint_snapshot().restore().unwrap(),
+            ] {
+                assert!(restored.feed(b"").is_empty());
+                restored.feed(&stream[split..]);
+                assert_eq!(
+                    restored.program_status(),
+                    complete.program_status(),
+                    "split {split}"
+                );
+                assert_eq!(
+                    restored.format_value("pane_program_status"),
+                    complete.format_value("pane_program_status")
+                );
+                restored.feed(b"\x1b]133;A\x07");
+                assert_eq!(restored.program_status().len(), 1);
+                // Focus-events disabled affects reports, not actual focus acknowledgment.
+                assert!(restored.set_host_state(true, true, None, false).is_empty());
+                assert!(restored.program_status().is_empty());
+                restored.feed(b"\x1b]7501;state=done\x07");
+                assert!(restored.set_host_state(true, true, None, false).is_empty());
+                assert_eq!(restored.program_status().len(), 1);
+            }
+        }
+        let reply = complete.feed(b"\x1bPtmux;\x1b\x1b]7501;?\x07\x1b\\");
+        assert_eq!(reply, [Effect::Write(b"\x1b]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\x07".to_vec())]);
     }
 }

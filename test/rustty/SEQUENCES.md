@@ -162,11 +162,48 @@ Capture limits and invalid input can reject a request before these operations.
 | 777 | `notify;title;body` produces a native notification. Private `rustty-agent;1;BASE64(JSON)` reports pane-local agent metadata only when the host opts in. |
 | 1337 | `CurrentDir` uses the directory consumer; `Copy=:` uses OSC 52 decoding and clipboard policy. Other iTerm2 keys are unsupported. |
 | 5522 | Kitty clipboard transfers, MIME selection, grants, paste events, bounded decoding, and replies; native clipboard access honors configured policy. |
+| 7501 | Opt-in program-status discovery and bounded hierarchical records. Local sessions and tmuxx owners retain/query metadata, acknowledge real focus/input and process/prompt lifecycle, and restore it through optional checkpoints. |
 
 OSC 133's `cl` and `click_events` hints are retained/exposed with semantic metadata
 but do not drive editor click forwarding in the desktop. Prompt `redraw` and `k`
 options do affect terminal behavior. OSC 3008 context signals are not dispatched
 by Rustty; Ghostty recognizes their metadata but also has no terminal callback.
+
+### Program status
+
+`OSC 7501;? ST` advertises the implemented idle, working, done, blocked, and
+error states and permission, question, and auth blocked kinds. Reports replace
+records by slash-separated ID; absent ID selects the root, and `state=clear`
+removes a subtree or all records. Progress applies to working/blocked records.
+App names inherit from the nearest ancestor; title/message are decoded UTF-8.
+At most 256 records are retained. Urgency uses the last actual change, while
+identical reports refresh only eviction recency. Rustty retains its existing
+128-byte ID limit and strict base64 validation.
+
+`Session::program_status()` exposes the local or attached native pane's retained
+records. `Records::activity()` maps blocked to the existing `NeedsInput` activity
+state without registering an OSC 777 agent. tmuxx exposes
+`#{pane_program_status}` as JSON records (root ID is empty, app is resolved), plus
+`pane_program_state`, `pane_program_progress`, `pane_program_app`,
+`pane_program_title`, and `pane_program_message` for the most urgent record.
+These extensions also appear in `display-message -a`; the generated C tmux
+format registry remains unchanged.
+
+Primary OSC 133 A/N prompts and fully drained child exit remove idle, working,
+and blocked records. Continuation prompts, command-end markers, screen switches,
+and soft reset preserve them. Real focus gains and accepted non-modifier keys
+or committed text acknowledge done/error; repeated focus, paste, mouse, protocol
+replies, composition, and key release do not. Failed native input requests retain
+records, including partially queued synchronized input. RIS clears all records.
+Kitty's private `process-exited` body remains ignored.
+
+Owners handle direct and bounded tmux-wrapped OSC 7501; attached views never
+write duplicate query replies. Full and compact native snapshots retain records
+and both ordering policies through optional GHOSTSNP record `0x8004`. Older
+readers skip it and older snapshots default to no records; the protocol version
+is unchanged. Host opt-in/focus policy is not serialized. Display-only handover
+to a new shell omits process status. Native desktop status presentation remains
+outside this portable integration.
 
 ### Private agent status
 

@@ -161,3 +161,114 @@ fn synchronous_status_queries_keep_order_and_host_opt_in_is_not_serialized() {
     let restored = rustty_vt::snapshot::decode(wire.as_slice(), Default::default()).unwrap();
     assert!(!restored.program_status_events);
 }
+
+#[test]
+fn retained_status_follows_prompt_reset_and_actual_focus() {
+    for tmux in [false, true] {
+        let mut t = terminal();
+        t.set_tmux_strings(tmux);
+        t.tmux_graphics = tmux;
+        t.program_status_focus(true);
+        let records = b"\x1b]7501;state=working:id=w\x07\x1b]7501;state=blocked:id=b\x07\x1b]7501;state=idle:id=i\x07\x1b]7501;state=done:id=d\x07\x1b]7501;state=error:id=e\x07";
+        t.feed(records);
+        assert_eq!(t.program_status().len(), 5);
+        let before = t.program_status().clone();
+        for inert in [
+            b"\x1b[?1049h\x1b[?1049l".as_slice(),
+            b"\x1b[!p",
+            b"\x1b]133;C\x07\x1b]133;D;0\x07",
+            b"\x1b]133;P\x07",
+            b"\x1b]133;A;k=s\x07",
+            b"\x1b]133;A;k=c\x07",
+            b"\x1b]133;N;k=s;k=p\x07",
+            b"\x1b]7501;process-exited\x07",
+        ] {
+            t.feed(inert);
+            assert_eq!(t.program_status(), &before);
+        }
+        assert!(!t.program_status_focus(true));
+        t.feed(b"\x1b]133;A\x07");
+        assert_eq!(t.program_status().len(), 2);
+        assert!(t.program_status().get(Some("d")).is_some());
+        assert!(!t.program_status_focus(false));
+        assert!(t.program_status_focus(true));
+        assert!(t.program_status().is_empty());
+        t.feed(records);
+        t.feed(b"\x1bc");
+        assert!(t.program_status().is_empty());
+        t.feed(b"\x1b]7501;state=done\x07");
+        // RIS keeps real host focus; only the reports were reset.
+        assert!(!t.program_status_focus(true));
+        assert_eq!(t.program_status().len(), 1);
+        assert!(t.program_status_seen());
+        assert!(!t.program_status_seen());
+        t.feed(records);
+        t.feed(b"\x1b]133;N;aid=1\x07");
+        assert_eq!(t.program_status().len(), 2);
+    }
+}
+
+#[test]
+fn retained_status_snapshots_validate_optional_metadata_and_preserve_orders() {
+    let mut t = terminal();
+    t.feed(b"\x1b]7501;state=working:app=root\x07\x1b]7501;state=blocked:id=a:kind=auth:progress=50\x07\x1b]7501;state=working:app=root\x07");
+    let wire = rustty_vt::snapshot::encode_to_vec(&t).unwrap();
+    let restored = rustty_vt::snapshot::decode_exact(wire.as_slice(), Default::default()).unwrap();
+    assert_eq!(restored.program_status(), t.program_status());
+    assert!(!restored.program_status_events);
+    let visual = rustty_vt::visual::VisualSnapshot::capture(&t).unwrap();
+    let mut fresh = terminal();
+    visual.restore_into(&mut fresh).unwrap();
+    assert!(fresh.program_status().is_empty());
+    let mut offset = 10;
+    while u16::from_le_bytes(wire[offset..offset + 2].try_into().unwrap()) != 0x8004 {
+        offset +=
+            10 + u32::from_le_bytes(wire[offset + 2..offset + 6].try_into().unwrap()) as usize;
+    }
+    let end =
+        offset + 10 + u32::from_le_bytes(wire[offset + 2..offset + 6].try_into().unwrap()) as usize;
+    let old = [&wire[..offset], &wire[end..]].concat();
+    assert!(
+        rustty_vt::snapshot::decode_exact(old.as_slice(), Default::default())
+            .unwrap()
+            .program_status()
+            .is_empty()
+    );
+    for payload in [
+        b"".as_slice(),
+        b"\x02{}",
+        b"\x01{}",
+        b"\x01{\"records\":[{\"state\":\"clear\"}],\"reported\":[null]}",
+    ] {
+        let mut header = vec![4, 128];
+        header.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        let crc = crc32c::crc32c_append(crc32c::crc32c(&header), payload);
+        header.extend_from_slice(&crc.to_le_bytes());
+        let bad = [&wire[..offset], &header, payload, &wire[end..]].concat();
+        assert!(rustty_vt::snapshot::decode_exact(bad.as_slice(), Default::default()).is_err());
+    }
+    // Reject the announced allocation before attempting to read an oversized body.
+    let mut oversized = wire[..offset].to_vec();
+    oversized.extend(0x8004u16.to_le_bytes());
+    oversized.extend((2 * 1024 * 1024 + 1u32).to_le_bytes());
+    oversized.extend([0; 4]);
+    let error =
+        rustty_vt::snapshot::decode_exact(oversized.as_slice(), Default::default()).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+}
+
+#[test]
+fn maximum_program_records_fit_the_snapshot_budget() {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let mut t = terminal();
+    let title = STANDARD.encode("\"".repeat(192));
+    let message = STANDARD.encode("\\".repeat(2048));
+    for index in 0..rustty_vt::program_status::MAX_RECORDS {
+        t.feed(format!("\x1b]7501;state=blocked:id=job{index}:kind=question:progress=100:title={title}:msg={message}\x07").as_bytes());
+    }
+    assert_eq!(t.program_status().len(), 256);
+    let bytes = rustty_vt::snapshot::encode_to_vec(&t).unwrap();
+    assert!(bytes.len() < 2 * 1024 * 1024);
+    let restored = rustty_vt::snapshot::decode_exact(bytes.as_slice(), Default::default()).unwrap();
+    assert_eq!(restored.program_status(), t.program_status());
+}

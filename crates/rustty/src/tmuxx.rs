@@ -3525,6 +3525,66 @@ mod tests {
     }
 
     #[test]
+    fn native_program_status_mirrors_owner_snapshots_without_replaying_replies() {
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        let mut owner = tmuxx_terminal::Terminal::new(20, 4, 20);
+        owner.feed(b"\x1b]7501;state=working:app=parent\x07");
+        let snapshot = |owner: &tmuxx_terminal::Terminal, sequence| ServerMessage::Snapshot {
+            instance_id: "program-owner".into(),
+            sequence,
+            state: snapshot_state(serde_json::json!({
+                "sessions": [{"id":1,"name":"program","active":0,"windows":{"0":2}}],
+                "windows": [{"id":2,"name":"shell","active":7,"cols":20,"rows":4,"panes":[7],"layout":Layout::pane(7,20,4).to_legacy().unwrap()}],
+                "panes": [{"id":7,"window":2,"cols":20,"rows":4,"pid":123,"status":null,"terminal":serde_json::to_value(owner.checkpoint_snapshot()).unwrap()}],
+            })),
+        };
+        apply(&connection.shared, snapshot(&owner, 1)).unwrap();
+        let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        for view in [&first, &second] {
+            assert_eq!(view.program_status().unwrap(), *owner.program_status());
+            assert_eq!(view.events().count(), 0);
+        }
+        let output = b"\x1bPtmux;\x1b\x1b]7501;?\x07\x1b\\\x1bPtmux;\x1b\x1b]7501;state=done:id=job\x07\x1b\\";
+        let effects = owner.feed(output);
+        assert_eq!(
+            effects
+                .iter()
+                .filter(|e| matches!(e, Effect::Write(_)))
+                .count(),
+            1
+        );
+        apply(
+            &connection.shared,
+            ServerMessage::PaneOutput {
+                sequence: 2,
+                pane_id: 7,
+                data: output.to_vec(),
+            },
+        )
+        .unwrap();
+        for view in [&first, &second] {
+            assert_eq!(view.program_status().unwrap(), *owner.program_status());
+            let events = view.events().collect::<Vec<_>>();
+            assert!(matches!(
+                events.as_slice(),
+                [SessionEvent::Effect(Effect::ProgramStatus(_))]
+            ));
+        }
+        assert!(owner.program_status_seen());
+        apply(&connection.shared, snapshot(&owner, 3)).unwrap();
+        apply(&connection.shared, snapshot(&owner, 3)).unwrap();
+        for view in [&first, &second] {
+            assert_eq!(view.program_status().unwrap(), *owner.program_status());
+            assert_eq!(view.program_status().unwrap().len(), 1);
+            assert_eq!(view.events().count(), 0);
+        }
+        let third = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        assert_eq!(third.program_status().unwrap(), *owner.program_status());
+        assert_eq!(third.events().count(), 0);
+    }
+
+    #[test]
     fn native_agent_status_attach_live_and_resync_do_not_replay_host_actions() {
         use rustty_vt::agent::{Event, State};
         {
