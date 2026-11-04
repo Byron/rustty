@@ -2258,6 +2258,24 @@ impl Terminal {
         self.changed();
     }
 
+    fn unscroll(&mut self, count: usize) {
+        self.ensure_active_columns();
+        // The extension permits an implementation limit of one screen. Keep
+        // work bounded even when a program requests an arbitrarily large count.
+        let mut remaining = count.min(usize::from(self.rows));
+        while remaining != 0 && !self.is_alternate_screen() && self.screen().history_len() != 0 {
+            let margins = self.margins;
+            let background = self.screen().cursor.style.background;
+            self.screen_mut().unscroll_history_row(margins, background);
+            remaining -= 1;
+        }
+        if remaining != 0 {
+            self.scroll_region(remaining, false);
+        } else {
+            self.changed();
+        }
+    }
+
     fn prepare_row_shift(&mut self) {
         let m = self.margins;
         let right_edge = m.right + 1 == usize::from(self.cols);
@@ -3086,6 +3104,11 @@ impl Terminal {
                 // Scrolling defaults to one only when the parameter is omitted.
                 if p.is_empty() || n != 0 {
                     self.scroll_region(count, byte == b'S');
+                }
+            }
+            ([b'+'], b'T') if p.len() <= 1 => {
+                if p.is_empty() || n != 0 {
+                    self.unscroll(count);
                 }
             }
             ([], b'b') => {

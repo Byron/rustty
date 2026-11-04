@@ -38,6 +38,7 @@ significant. Values describe the recognized operations, not arbitrary parameters
 | `J`, `K`, `?J`, `?K` | Display/line erasure; selective forms honor protected cells. Erasure updates visible content, history, links, and image placement state. |
 | `@`, `P`, `X`, `L`, `M` | Insert/delete/erase cells or lines with wide-cell and margin handling. |
 | `S`, `T` | Scroll the selected region. |
+| `Ps+T` | Unscroll into the selected region from primary interactive history, preserving retained row identities, text, links, and image anchors. Empty history and alternate screens insert ordinary SD blanks. Explicit zero does nothing; each request is bounded to one screen. |
 | `b` | Repeat the preceding printable character. |
 | `m` | SGR styling; see the attribute table below. |
 | `Pt;Pl;Pb;Pr;...$r`, `Ps*x` | Kitty's DECCARA extension applies all supported SGR attributes to existing cells. DECSACE selects stream (default/0/1) or rectangular (2) extent. Styles preserve text, links, protection, selection, and the cursor pen; origins offset the coordinates and the page clips them. Extent survives screen switches and snapshots, and hard/soft resets restore stream extent. |
@@ -62,6 +63,14 @@ significant. Values describe the recognized operations, not arbitrary parameters
 | `$p` | ANSI mode query: ignored by the reference stream and Rustty. |
 | `$}` | Select the status display; selecting the status area suppresses main-screen printing. There is no rendered status area. |
 | `$~` | Status-display type declaration: no effect, matching the reference. |
+
+Unscroll follows Kitty's extension (`docs/unscroll.rst`), but restores into the
+configured top margin, including nonzero top and left margins. Kitty currently
+copies the incoming history row to physical row zero after scrolling its region;
+Rustty preserves SD's region geometry instead. Whole restored rows retain their
+selection and image identities. With horizontal margins, only the selected cells
+and anchors are restored; content outside those columns in the consumed history
+row is discarded. This consumes interactive scrollback, not a pager transcript.
 
 ## ANSI and DEC modes
 

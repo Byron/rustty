@@ -666,6 +666,30 @@ fn region_attributes_grow_and_release_page_style_resources() {
 }
 
 #[test]
+fn unscroll_across_pages_preserves_resource_ownership() {
+    for partial in [false, true] {
+        let mut terminal = Terminal::new(180, 12, 1000);
+        let lines = usize::from(PageCapacity::initial(180).unwrap().rows) + 5;
+        for line in 0..lines {
+            terminal.feed(format!("\x1b[38;2;{line};23;47m\x1b]8;id={line};https://example.org/{line}\x07界\u{301} rich text\x1b]8;;\x07\r\n").as_bytes());
+        }
+        assert!(terminal.screen().pages.pages.len() > 1);
+        if partial {
+            terminal.feed(b"\x1b[2;11r\x1b[?69h\x1b[2;150s");
+        }
+        let snapshot = terminal.screen().snapshot_viewport();
+        for _ in 0..3 {
+            terminal.feed(b"\x1b[12+T");
+            assert_references(terminal.screen());
+        }
+        assert_references(&snapshot);
+        terminal.feed(b"\x1bc");
+        assert_references(terminal.screen());
+        assert_references(&snapshot);
+    }
+}
+
+#[test]
 fn failed_style_rebuild_preserves_words_maps_and_references() {
     let rgb = |value: u32| Style {
         foreground: Color::Rgb(value as u8, (value >> 8) as u8, (value >> 16) as u8),

@@ -905,6 +905,42 @@ fn mixed_physical_widths_survive_observation_and_grow_before_mutation() {
 }
 
 #[test]
+fn unscroll_widens_restored_history_beneath_an_existing_cursor() {
+    let mut source = Terminal::new(4, 1, 10);
+    source.feed(b"abcd");
+    let narrow_page = records(&encode_to_vec(&source).unwrap())[2].clone();
+    let mut logical = Terminal::new(8, 2, 10);
+    logical.feed(b"\x1b[31m\x1b[1;8H");
+    let mut stream = records(&encode_to_vec(&logical).unwrap());
+    stream.insert(2, narrow_page);
+    stream[1].1[2..4].copy_from_slice(&2u16.to_le_bytes());
+    stream[1].1[4..12].copy_from_slice(&1u64.to_le_bytes());
+    let mut terminal = decode(frame(&stream).as_slice(), DecodeOptions::default()).unwrap();
+    assert_eq!(terminal.screen().history_len(), 1);
+    assert_eq!(
+        terminal.screen().history().next_back().unwrap().cells.len(),
+        4
+    );
+    let cursor = terminal.screen().cursor.clone();
+    terminal.feed(b"\x1b[+T");
+    assert_eq!(terminal.screen().cursor, cursor);
+    assert_eq!(terminal.screen().row(0).cells.len(), 8);
+    assert_eq!(terminal.screen().row_text(terminal.screen().row(0)), "abcd");
+    let restored = decode(
+        encode_to_vec(&terminal).unwrap().as_slice(),
+        DecodeOptions::default(),
+    )
+    .unwrap();
+    same_terminal(&terminal, &restored);
+    terminal.feed(b"X");
+    assert_eq!(terminal.screen().row(0).cells[7].codepoint(), Some('X'));
+    assert_eq!(
+        terminal.screen().row(0).style(7).foreground,
+        Color::Indexed(1)
+    );
+}
+
+#[test]
 fn narrow_restored_pages_support_direct_cursor_and_row_edits() {
     let mut stream = records(&encode_to_vec(&Terminal::new(8, 2, 10)).unwrap());
     let mut pages = Vec::new();
