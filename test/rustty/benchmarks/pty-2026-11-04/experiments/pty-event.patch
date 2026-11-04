@@ -1,0 +1,86 @@
+--- a/crates/rustty/src/tmuxx.rs
++++ b/crates/rustty/src/tmuxx.rs
+@@ -551,37 +551,26 @@
+             model.selection_updates = true;
+         }
+         let shared = connection.shared.clone();
+-        thread::Builder::new()
+-            .name("rustty-tmuxx-local".into())
+-            .spawn(move || {
+-                while !shared.closed.load(Ordering::Acquire) {
+-                    for request in requests.try_iter() {
+-                        if let Err(error) = client.send(request) {
+-                            fail(&shared, error);
+-                            return;
+-                        }
+-                    }
+-                    loop {
+-                        match client.try_recv() {
+-                            Ok(message) => {
+-                                if let Err(error) = apply(&shared, message) {
+-                                    fail(&shared, error);
+-                                    return;
+-                                }
+-                                if shared.closed.load(Ordering::Acquire) {
+-                                    return;
+-                                }
+-                            }
+-                            Err(mpsc::TryRecvError::Empty) => break,
+-                            Err(mpsc::TryRecvError::Disconnected) => {
+-                                fail(&shared, "tmuxx disconnected");
+-                                return;
+-                            }
+-                        }
+-                    }
+-                    thread::sleep(Duration::from_millis(2));
++        let writer_shared = shared.clone();
++        let sender = client.sender();
++        thread::Builder::new().name("rustty-tmuxx-local-write".into()).spawn(move || {
++            while !writer_shared.closed.load(Ordering::Acquire) {
++                match requests.recv_timeout(Duration::from_millis(50)) {
++                    Ok(request) => if let Err(error) = sender.send(request) { fail(&writer_shared, error); return; },
++                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
++                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                 }
+-            })?;
++            }
++        })?;
++        thread::Builder::new().name("rustty-tmuxx-local".into()).spawn(move || {
++            while !shared.closed.load(Ordering::Acquire) {
++                match client.recv_timeout(Duration::from_millis(50)) {
++                    Ok(message) => if let Err(error) = apply(&shared, message) { fail(&shared, error); return; },
++                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
++                    Err(mpsc::RecvTimeoutError::Disconnected) => { fail(&shared, "tmuxx disconnected"); return; },
++                }
++            }
++        })?;
+         Ok(connection)
+     }
+     /// Attach an existing local owner without starting an owner or a pane.
+--- a/tmuxx/crates/tmuxx-runtime/src/lib.rs
++++ b/tmuxx/crates/tmuxx-runtime/src/lib.rs
+@@ -261,7 +261,24 @@
+     delivery_bytes: Arc<AtomicUsize>,
+ }
+ 
++pub struct LocalClientSender {
++    id: u64,
++    tx: SyncSender<Event>,
++}
++impl LocalClientSender {
++    pub fn send(&self, request: Request) -> io::Result<()> {
++        self.tx.try_send(Event::Request { id: self.id, request }).map_err(|error| {
++            io::Error::new(match error { TrySendError::Full(_) => io::ErrorKind::WouldBlock, TrySendError::Disconnected(_) => io::ErrorKind::BrokenPipe }, "server request queue unavailable")
++        })
++    }
++}
+ impl LocalClient {
++    pub fn sender(&self) -> LocalClientSender {
++        LocalClientSender { id: self.id, tx: self.tx.clone() }
++    }
++    pub fn recv_timeout(&self, timeout: Duration) -> Result<ServerMessage, mpsc::RecvTimeoutError> {
++        self.rx.recv_timeout(timeout).map(|message| self.received(message))
++    }
+     /// Supply one bounded chunk (or EOF) for a ServerMessage::Stdin request.
+     pub fn stdin(&self, request_id: u64, data: Option<Vec<u8>>) -> io::Result<()> {
+         self.stdin_result(request_id, Ok(data))

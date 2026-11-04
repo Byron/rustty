@@ -1,0 +1,45 @@
+--- a/tmuxx/crates/tmuxx-runtime/src/lib.rs
++++ b/tmuxx/crates/tmuxx-runtime/src/lib.rs
+@@ -1176,6 +1176,7 @@
+     fn run(&mut self, rx: Receiver<Event>, options: &Options) -> io::Result<()> {
+         self.start_configuration(&options.config);
+         let mut had_session = false;
++        let mut pending_event = None;
+         while !self.stopping {
+             self.refresh_server_status();
+             self.engine.now = tmuxx_core::timestamp();
+@@ -1210,7 +1211,9 @@
+             self.check_window_names();
+             self.start_format_jobs();
+             let did_work = self.scheduled_work();
+-            let event = if did_work {
++            let event = if let Some(event) = pending_event.take() {
++                event
++            } else if did_work {
+                 match rx.try_recv() {
+                     Ok(event) => event,
+                     Err(mpsc::TryRecvError::Empty) => continue,
+@@ -1320,9 +1323,22 @@
+                         Some(flags),
+                     );
+                 }
+-                Event::Output(pane, generation, data) => {
++                Event::Output(pane, generation, mut data) => {
+                     if !self.is_process(pane, generation) {
+                         continue;
++                    }
++                    // Experiment: consume only consecutive, already-ready output.
++                    // Preserve every other event and bound one pane's owner turn.
++                    while data.len() < 64 * 1024 {
++                        match rx.try_recv() {
++                            Ok(Event::Output(next_pane, next_generation, next))
++                                if next_pane == pane && next_generation == generation
++                                    && data.len() + next.len() <= 64 * 1024 => {
++                                data.extend_from_slice(&next);
++                            }
++                            Ok(next) => { pending_event = Some(next); break; }
++                            Err(_) => break,
++                        }
+                     }
+                     if !data.is_empty()
+                         && let Some(pane) = self.engine.panes.get_mut(&pane)

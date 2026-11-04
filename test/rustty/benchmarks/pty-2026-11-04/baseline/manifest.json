@@ -1,0 +1,27 @@
+{
+  "revision": "76a5d2ffebb99068b5af7b568be408b64cd9ae41",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "uname": {
+    "system": "Linux",
+    "node": "cr1",
+    "release": "7.0.0-1019-azure",
+    "version": "#20-Ubuntu SMP PREEMPT Mon Oct 19 23:06:15 UTC 2026",
+    "machine": "aarch64",
+    "processor": ""
+  },
+  "cpu": "ARM Neoverse-N2, 16 cores",
+  "RUSTFLAGS": "",
+  "profile": "repository release: thin LTO, codegen-units=1",
+  "affinity": "unrestricted; builds and other timed jobs stopped",
+  "harness_sha256": "208f182a51e4b7b6e8f1db605114f6693d2d6609b3d6679b4fdc2cefc4a57702",
+  "executable_sha256": "9dd2b84b38298eae127ca3440d0351a35e51e8a4f85ca727b3614be3b7defcde",
+  "commands": [
+    "cargo +1.95.0 build --release --locked --offline -p rustty --features sessions --example pty-bench",
+    "target/release/examples/pty-bench /tmp/rustty-pty-production-baseline",
+    "target/release/examples/pty-bench /tmp/rustty-pty-production-stress embedded unpaced"
+  ],
+  "execution": "outside syscall-restricting sandbox; all PTYs/sockets test-owned",
+  "paced_exit_code": 0,
+  "unpaced_exit_code": 1,
+  "boundaries": "No renderer or visible latency; echo ends at parsed title in Session; DSR ends at owner reply; paced bulk includes view acknowledgment."
+}

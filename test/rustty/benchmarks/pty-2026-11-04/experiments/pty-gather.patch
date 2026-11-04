@@ -1,0 +1,38 @@
+--- a/crates/rustty/src/session.rs
++++ b/crates/rustty/src/session.rs
+@@ -378,9 +378,25 @@
+         thread::Builder::new()
+             .name("rustty-pty-read".into())
+             .spawn(move || {
+-                let mut buffer = [0; 32 * 1024];
++                // Experiment: bounded preallocated read/parse pipeline with immediate delivery.
++                let (ready_tx, ready_rx) = mpsc::sync_channel(4);
++                let (free_tx, free_rx) = mpsc::sync_channel(4);
++                for _ in 0..4 { free_tx.send(vec![0; 32 * 1024]).unwrap(); }
++                thread::Builder::new().name("rustty-pty-gather".into()).spawn(move || {
++                    while let Ok(mut buffer) = free_rx.recv() {
++                        let result = loop {
++                            match reader.read(&mut buffer) {
++                                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
++                                result => break result,
++                            }
++                        };
++                        let done = !matches!(&result, Ok(length) if *length != 0);
++                        if ready_tx.send((buffer, result)).is_err() || done { break; }
++                    }
++                }).expect("spawn experimental PTY gather thread");
+                 loop {
+-                    let length = match reader.read(&mut buffer) {
++                    let Ok((buffer, result)) = ready_rx.recv() else { break; };
++                    let length = match result {
+                         Ok(0) => break,
+                         Ok(length) => length,
+                         Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+@@ -438,6 +454,7 @@
+                             }
+                         }
+                     }
++                    let _ = free_tx.send(buffer);
+                     read_wake();
+                 }
+                 if let (Ok(mut terminal), Ok(mut restored)) =
