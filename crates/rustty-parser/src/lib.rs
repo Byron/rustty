@@ -767,7 +767,9 @@ impl Parser {
                 final_byte: byte,
             }),
             TransitionAction::CsiDispatch => {
-                if self.finalize_params() && (byte == b'm' || self.colon_separators == 0) {
+                let rendition = byte == b'm'
+                    || (byte == b'r' && self.intermediates[..self.intermediate_count] == *b"$");
+                if self.finalize_params() && (rendition || self.colon_separators == 0) {
                     handler(Event::Csi {
                         intermediates: &self.intermediates[..self.intermediate_count],
                         params: &self.params[..self.param_count],

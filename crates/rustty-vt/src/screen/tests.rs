@@ -645,6 +645,27 @@ fn blank_backgrounds_switch_between_inline_and_managed_styles() {
 }
 
 #[test]
+fn region_attributes_grow_and_release_page_style_resources() {
+    let mut terminal = Terminal::new(180, 3, 100);
+    terminal.feed(b"\x1b[2*x");
+    for x in 1..=180 {
+        terminal.feed(format!("\x1b[1;{x};3;{x};48;2;{x};23;47;1$r").as_bytes());
+    }
+    assert_references(terminal.screen());
+    let snapshot = terminal.screen().snapshot_viewport();
+    terminal.feed(b"\x1b[$r");
+    assert_references(terminal.screen());
+    assert_references(&snapshot);
+    for x in 0..180 {
+        assert_eq!(terminal.screen().row(1).style(x), Style::default());
+        assert_eq!(
+            snapshot.row(1).style(x).background,
+            Color::Rgb((x + 1) as u8, 23, 47)
+        );
+    }
+}
+
+#[test]
 fn failed_style_rebuild_preserves_words_maps_and_references() {
     let rgb = |value: u32| Style {
         foreground: Color::Rgb(value as u8, (value >> 8) as u8, (value >> 16) as u8),

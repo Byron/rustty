@@ -28,6 +28,7 @@ const MAGIC: &[u8; 10] = b"GHOSTSNP\x01\x00";
 // Rustty extension; older readers skip this record and use the legacy header.
 const POINTER_SHAPES: u16 = 0x8001;
 const SAVED_MOUSE: u16 = 0x8002;
+const ATTRIBUTE_EXTENT: u16 = 0x8003;
 
 pub(crate) fn invalid(message: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
@@ -517,6 +518,9 @@ fn encode_inner(
         payload.extend_from_slice(&format.to_le_bytes());
         record(destination, SAVED_MOUSE, &payload)?;
     }
+    if terminal.metadata.rectangular_attributes {
+        record(destination, ATTRIBUTE_EXTENT, &[1, 2])?;
+    }
     let screens = [Some(&terminal.primary), terminal.alternate.as_ref()];
     let mut plans = screens
         .iter()
@@ -859,7 +863,9 @@ impl<R: Read> Decoder<R> {
             if len > limit || tag == 7 && len > self.options.max_continuation_bytes {
                 return Err(invalid("snapshot record exceeds allocation policy"));
             }
-            if (1..=10).contains(&tag) || matches!(tag, POINTER_SHAPES | SAVED_MOUSE) {
+            if (1..=10).contains(&tag)
+                || matches!(tag, POINTER_SHAPES | SAVED_MOUSE | ATTRIBUTE_EXTENT)
+            {
                 return Ok((header, len));
             }
             let mut remaining = len;
@@ -1062,6 +1068,13 @@ impl<R: Read> Decoder<R> {
                 return Err(invalid("invalid saved mouse mode"));
             }
             terminal.metadata.saved_mouse = Some([mode, format]);
+        }
+        if self.peek_tag()? == ATTRIBUTE_EXTENT {
+            let payload = self.record(ATTRIBUTE_EXTENT)?;
+            if payload.as_slice() != [1, 2] {
+                return Err(invalid("invalid attribute extent record"));
+            }
+            terminal.metadata.rectangular_attributes = true;
         }
         let mut seen = [false; 2];
         for _ in 0..screen_count {
@@ -1578,6 +1591,7 @@ pub fn decode_exact(mut source: impl BufRead, options: DecodeOptions) -> io::Res
 #[derive(Clone, Debug)]
 pub(crate) struct TerminalMetadata {
     pub saved_mouse: Option<[u16; 2]>,
+    pub rectangular_attributes: bool,
     pub title_raw: Option<Vec<u8>>,
     pub pwd_raw: Option<Vec<u8>>,
     pub colors: [[Option<[u8; 3]>; 2]; 3],
@@ -1594,6 +1608,7 @@ impl Default for TerminalMetadata {
     fn default() -> Self {
         Self {
             saved_mouse: None,
+            rectangular_attributes: false,
             title_raw: None,
             pwd_raw: None,
             colors: [[None; 2]; 3],

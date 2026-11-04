@@ -40,6 +40,7 @@ significant. Values describe the recognized operations, not arbitrary parameters
 | `S`, `T` | Scroll the selected region. |
 | `b` | Repeat the preceding printable character. |
 | `m` | SGR styling; see the attribute table below. |
+| `Pt;Pl;Pb;Pr;...$r`, `Ps*x` | Kitty's DECCARA extension applies all supported SGR attributes to existing cells. DECSACE selects stream (default/0/1) or rectangular (2) extent. Styles preserve text, links, protection, selection, and the cursor pen; origins offset the coordinates and the page clips them. Extent survives screen switches and snapshots, and hard/soft resets restore stream extent. |
 | `>4;2m`, `>...n` | Enable/disable the supported xterm modify-other-keys mode; consumed by key encoding. Other modify-other-keys levels do not enable level 2. |
 | `h`, `l`, `?h`, `?l` | Set/reset the supported ANSI/DEC modes listed below. |
 | `?s`, `?r` | Explicit lists save/restore DEC modes with their transitions and initial host reports. With no parameters, save/restore all supported ANSI/DEC modes except cursor, grid, margin, screen-switch, and synchronized-output transitions; mouse encoder selection is retained exactly. |
