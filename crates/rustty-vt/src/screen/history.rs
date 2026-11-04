@@ -12,6 +12,105 @@ pub struct TmuxHistory {
 }
 
 impl Screen {
+    /// Pull the newest history row into the scrolling region. Whole rows keep
+    /// their identities; partial-width edits retain the existing screen rows.
+    pub(crate) fn unscroll_history_row(&mut self, margins: crate::Margins, background: Color) {
+        let history = self.history_len();
+        debug_assert!(history != 0);
+        let total = self.pages.total_rows();
+        let full_width = margins.left == 0 && margins.right + 1 == self.columns;
+        if full_width {
+            // Move the incoming row past the unchanged rows above the margin.
+            if margins.top != 0 {
+                let incoming = RowCopy::from_view(self.physical_row(history - 1));
+                let blank = self.next_row_id();
+                self.rotate_rows(
+                    history - 1,
+                    history + margins.top - 1,
+                    true,
+                    blank,
+                    background,
+                    usize::MAX,
+                );
+                self.install_row(history + margins.top - 1, incoming, usize::MAX);
+            }
+            // Removing the region's bottom row moves the history boundary back
+            // one, without changing the position of rows below the margin.
+            let removed = self.physical_row(history + margins.bottom).id;
+            if margins.bottom + 1 != self.height {
+                let blank = self.next_row_id();
+                self.rotate_rows(
+                    history + margins.bottom,
+                    total - 1,
+                    true,
+                    blank,
+                    background,
+                    usize::MAX,
+                );
+            }
+            self.pages.truncate(total - 1);
+            self.discard_row(removed);
+        } else {
+            let incoming = RowCopy::from_view(self.physical_row(history - 1));
+            let blank = self.next_row_id();
+            // Remove the history row while leaving every active row unchanged.
+            self.rotate_rows(history - 1, total - 1, true, blank, background, usize::MAX);
+            self.pages.truncate(total - 1);
+            for y in margins.top..=margins.bottom {
+                self.prepare_row_shift(
+                    y,
+                    margins.left,
+                    margins.right,
+                    margins.right + 1 == self.columns,
+                );
+            }
+            for y in (margins.top + 1..=margins.bottom).rev() {
+                self.copy_row_cells(y - 1, y, margins.left, margins.right + 1, background);
+            }
+            let destination = self.history_len() + margins.top;
+            let source_id = incoming.id;
+            for col in margins.left..=margins.right {
+                let copy = incoming.cells.get(col).filter(|copy| {
+                    !(col == margins.left && copy.cell.width() == 0
+                        || col == margins.right && copy.cell.width() == 2)
+                });
+                let copy = copy
+                    .cloned()
+                    .unwrap_or_else(|| CellCopy::plain(Cell::blank(background)));
+                let _ = self.install_cell(destination, col, copy, false);
+            }
+            let (index, row) = self.locate(destination);
+            self.pages.pages[index].repair_wide(row, background);
+            self.tmux_capture_write(margins.top, margins.right + 1);
+            let destination_id = self.row(margins.top).id;
+            for point in self.grid_points_mut() {
+                if point.row == source_id && (margins.left..=margins.right).contains(&point.col) {
+                    point.row = destination_id;
+                }
+            }
+            self.graphics.restore_row_segment(
+                source_id,
+                destination_id,
+                margins.left..=margins.right,
+            );
+            self.discard_row(source_id);
+        }
+        self.viewport_offset = self
+            .viewport_offset
+            .saturating_sub(1)
+            .min(self.history_len());
+        let remaining = self.history_len();
+        if let Some(history) = &mut self.tmux_history {
+            history.scrolled = history.scrolled.saturating_sub(1).min(remaining);
+        }
+        // A restored history page can be narrower than the logical screen.
+        // Preserve the cursor coordinate before reacquiring its page resources.
+        if self.cursor.col >= self.row_columns(self.cursor.row) {
+            self.extend_physical_row(self.cursor.row, self.columns);
+        }
+        self.sync_cursor_resources();
+    }
+
     /// Native allocated row slots/bytes, cell slots/bytes, auxiliary arenas/bytes.
     /// Row bytes include stable row IDs and content revisions. Auxiliary arenas
     /// include page objects, styles, hyperlinks and graphemes. Graphics and

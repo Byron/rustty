@@ -695,6 +695,32 @@ impl Graphics {
         }
     }
 
+    pub(crate) fn restore_row_segment(
+        &mut self,
+        source: u64,
+        destination: u64,
+        columns: std::ops::RangeInclusive<usize>,
+    ) {
+        if self.placements.iter().any(|p| {
+            p.row == source
+                && p.parent.is_none()
+                && !p.virtual_placement
+                && columns.contains(&p.col)
+        }) {
+            self.placements.retain_mut(|p| {
+                if p.row == source
+                    && p.parent.is_none()
+                    && !p.virtual_placement
+                    && columns.contains(&p.col)
+                {
+                    p.row = destination;
+                }
+                true
+            });
+            self.generation = self.generation.wrapping_add(1);
+        }
+    }
+
     fn reap_orphans(&mut self) -> HashSet<u32> {
         let mut removed = HashSet::new();
         if !self.placements.has_relatives() {
