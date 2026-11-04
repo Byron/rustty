@@ -4,13 +4,14 @@ use crate::config::{
 };
 use portable_pty::{Child, CommandBuilder, ExitStatus, PtySize, native_pty_system};
 use rustty_vt::{CursorShape, Effect, Screen, ScrollbackLimits, Terminal, query};
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
+mod read;
 mod shell;
 pub use shell::{ShellInfo, ShellKind, default_shell, resolve_shell};
 
@@ -245,7 +246,7 @@ impl Session {
         // Prepare handles before launching a child: any failure here has no
         // process to kill or reap. Retaining the slave keeps the reader from
         // seeing EOF while the workers are starting.
-        let mut reader = pair.master.try_clone_reader().map_err(error)?;
+        let reader = pair.master.try_clone_reader().map_err(error)?;
         let mut writer = pair.master.take_writer().map_err(error)?;
 
         let mut terminal = Terminal::with_limits(cols, rows, scrollback_limits(config));
@@ -413,6 +414,9 @@ impl Session {
                 writer_pending.close();
             })?;
 
+        // The slave is still held here; startup failure drops it and releases
+        // any reader already waiting for output. No child has been spawned yet.
+        let reader = read::Pipeline::spawn(reader)?;
         let read_terminal = terminal.clone();
         let read_input = input.clone();
         let read_events = events_tx.clone();
@@ -423,12 +427,10 @@ impl Session {
         thread::Builder::new()
             .name("rustty-pty-read".into())
             .spawn(move || {
-                let mut buffer = [0; 32 * 1024];
-                loop {
-                    let length = match reader.read(&mut buffer) {
+                while let Some((buffer, result)) = reader.recv() {
+                    let length = match result {
                         Ok(0) => break,
                         Ok(length) => length,
-                        Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                         Err(e) => {
                             read_wake();
                             let _ = read_events.send(SessionEvent::Error(e.to_string()));
@@ -486,6 +488,7 @@ impl Session {
                             }
                         }
                     }
+                    reader.recycle(buffer);
                     read_wake();
                 }
                 if let (Ok(mut terminal), Ok(mut restored)) =
@@ -508,7 +511,7 @@ impl Session {
         let wait_exited = exited.clone();
         #[cfg(windows)]
         let wait_input = input.clone();
-        // Spawn the process only after all three workers exist. Its owner never
+        // Spawn the process only after the I/O workers exist. Its owner never
         // crosses a fallible thread-spawn boundary and always performs the wait.
         thread::Builder::new()
             .name("rustty-pty-wait".into())
@@ -2711,5 +2714,71 @@ mod tests {
         let records = session.program_status().unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records.get(Some("d")).unwrap().title, "Done");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bulk_pty_tail_keeps_effects_and_status_before_output_closed() {
+        let script = r#"import os,tty
+ tty.setraw(0)
+ def write(data):
+     while data: data=data[os.write(1,data):]
+ for i in range(8):
+     write(bytes([65+i])*32768+b'\x1b]2;batch-'+str(i).encode()+b'\x07')
+ write(b'\r\nFINAL-PTY-TAIL\r\n\x1b[6n')
+ reply=b''
+ while not reply.endswith(b'R'): reply+=os.read(0,1)
+ assert reply==b'\x1b[24;1R',reply
+ write(b'\x1b]7501;state=working:id=w\x07\x1b]7501;state=done:id=d:title=RG9uZQ\x07\x1b]7501;state=blocked:id=last\x07')
+ "#.replace("\n ", "\n");
+        let session = Session::spawn(
+            &Config::default(),
+            SessionOptions {
+                command: Some(Command::Direct(vec!["python3".into(), "-c".into(), script])),
+                ..Default::default()
+            },
+            Arc::new(|| {}),
+        )
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let (mut exited, mut closed) = (false, false);
+        let mut titles = Vec::new();
+        while !(exited && closed) {
+            for event in session.events() {
+                match event {
+                    SessionEvent::Effect(Effect::Title(title)) => titles.push(title),
+                    SessionEvent::Exited { code, .. } => {
+                        assert_eq!(code, 0);
+                        exited = true;
+                    }
+                    SessionEvent::OutputClosed => {
+                        assert_eq!(
+                            titles,
+                            (0..8)
+                                .map(|i| format!("batch-{i}").into_bytes())
+                                .collect::<Vec<_>>()
+                        );
+                        assert!(
+                            session
+                                .terminal()
+                                .unwrap()
+                                .plain_text()
+                                .contains("FINAL-PTY-TAIL")
+                        );
+                        let records = session.program_status().unwrap();
+                        assert_eq!(records.len(), 1);
+                        assert_eq!(records.get(Some("d")).unwrap().title, "Done");
+                        closed = true;
+                    }
+                    SessionEvent::Error(error) => panic!("{error}"),
+                    _ => {}
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "large final PTY tail did not drain"
+            );
+            thread::sleep(Duration::from_millis(2));
+        }
     }
 }

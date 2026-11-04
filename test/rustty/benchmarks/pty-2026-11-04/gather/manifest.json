@@ -1,0 +1,22 @@
+{
+  "baseline_revision": "ff7fea1fd6d71c204a1b34d2ac1b650b0a5c24fc",
+  "order": [
+    "before-a",
+    "after-a",
+    "after-b",
+    "before-b"
+  ],
+  "harness_sha256": "208f182a51e4b7b6e8f1db605114f6693d2d6609b3d6679b4fdc2cefc4a57702",
+  "binaries": {
+    "before": "9dd2b84b38298eae127ca3440d0351a35e51e8a4f85ca727b3614be3b7defcde",
+    "after": "a05b0b87b0dd7a57e2466a4e49745a67029b2bcdb60b70b762ba5c8530e8d8cc"
+  },
+  "candidate_sources": {
+    "crates/rustty/src/session.rs": "efb511cdd0478be996e1d84a3a939fb3325b56dc1d0b44668fbd4c91bc06cd21",
+    "crates/rustty/src/session/read.rs": "006a5a1ea366dcf8d2559b0fd1bc6b5be2139beddc7b9b037d8a17926f2bc29e"
+  },
+  "compiler": "Rust1.95.0, repository release thin LTO/codegen-units=1; default ARM64 CPU flags",
+  "machine": "Linux7.0.0-1019-azure, ARM Neoverse-N2,16cores",
+  "validation": "33 session tests passed; rustfmt and diff --check; all4 paced local runs completed expected DSR/title checks",
+  "command": "BINARY NEW_OUTPUT_DIRECTORY local; outside sandbox, builds and other timed jobs stopped"
+}

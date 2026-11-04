@@ -1,0 +1,4 @@
+measuring local
+local: input-to-parsed-title p50=59.8us p99=67.8us
+  bulk_ascii MiB/s: [237.65, 240.36, 240.66]
+  bulk_styled_mixed MiB/s: [52.83, 53.08, 53.00]
