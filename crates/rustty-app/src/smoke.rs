@@ -121,6 +121,7 @@ impl Smoke {
             "tmuxx-secondary-selection.png",
             "outliner.png",
             "outliner-collapsed.png",
+            "outliner-agents.png",
             "outliner-terminal.png",
             "outliner-quad.png",
             "outliner-quad-terminal.png",
@@ -6042,6 +6043,95 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     {
         return Err("Outliner did not initially show quads or ungrouped panels".into());
     }
+    let saved_pins = std::mem::replace(&mut app.workspace.pinned_panes, vec![sibling, first]);
+    for _ in 0..2 {
+        app.draw_outliner(event_loop, None)?;
+    }
+    let visibility = |app: &App| {
+        app.outline_rows()
+            .iter()
+            .map(|row| {
+                (
+                    row.target,
+                    widget_bounds(app, egui::Id::new(("outliner-row", row.target))).is_some(),
+                    widget_bounds(app, disclosure(row.target)).is_some(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let before = (
+        visibility(app),
+        serde_json::to_vec(&app.workspace)?,
+        app.active,
+    );
+    for enabled in [true, false] {
+        let point = widget_bounds(app, egui::Id::new("outliner-agent-filter"))
+            .ok_or("missing Outliner agent filter")?
+            .center();
+        for event in [
+            egui::Event::PointerMoved(point),
+            egui::Event::PointerButton {
+                pos: point,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+            egui::Event::PointerButton {
+                pos: point,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ] {
+            app.outliner
+                .as_mut()
+                .unwrap()
+                .egui
+                .egui_input_mut()
+                .events
+                .push(event);
+            app.draw_outliner(event_loop, None)?;
+        }
+        for _ in 0..2 {
+            app.draw_outliner(event_loop, None)?;
+        }
+        if app.outliner.as_ref().unwrap().search.agents_only != enabled {
+            return Err("Outliner agent filter did not toggle".into());
+        }
+        if enabled {
+            for pane in [
+                first,
+                sibling,
+                right,
+                mixed,
+                bottom_left,
+                bottom_right,
+                second,
+                second_last,
+            ] {
+                let visible =
+                    widget_bounds(app, egui::Id::new(("outliner-search-result", pane))).is_some();
+                if visible != [first, second, second_last].contains(&pane) {
+                    return Err("Outliner agent filter hid an agent or retained a non-agent".into());
+                }
+            }
+            if widget_bounds(app, egui::Id::new(("outliner-pin", first))).is_none()
+                || widget_bounds(app, egui::Id::new(("outliner-pin", sibling))).is_some()
+            {
+                return Err("Outliner agent filter did not filter pinned panels".into());
+            }
+            app.draw_outliner(event_loop, Some(&directory.join("outliner-agents.png")))?;
+        }
+    }
+    if (
+        visibility(app),
+        serde_json::to_vec(&app.workspace)?,
+        app.active,
+    ) != before
+    {
+        return Err("Outliner agent filter changed expansion, pins, or terminal focus".into());
+    }
+    app.workspace.pinned_panes = saved_pins;
     for pane in [sibling, first] {
         app.select_outline_target(Target::Pane {
             tab: first_tab,
@@ -6886,8 +6976,8 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
             "native_search_focus_checked": native_focus_available,
             "native_minimization_checked": native_focus_available,
             "background": app.background_smoke,
-            "checks": ["outliner-native-window", "outliner-hierarchy", "outliner-working-counts", "outliner-disclosure", "outliner-navigation", "outliner-zoom", "outliner-single-tab-bar", "outliner-narrow-tab-bar", "outliner-pins", "outliner-pin-drag", "outliner-search", "outliner-search-navigation", "outliner-terminal-input", "outliner-quick-terminal", "outliner-close"],
-            "captures": ["outliner.png", "outliner-collapsed.png", "outliner-terminal.png", "outliner-quad.png", "outliner-quad-terminal.png", "outliner-nested.png", "outliner-nested-terminal.png", "outliner-pane.png", "outliner-pane-terminal.png", "outliner-narrow-terminal.png", "outliner-pinned.png", "outliner-pinned-terminal.png", "outliner-search.png", "outliner-search-empty.png", "outliner-search-navigation.png", "outliner-windows.png", "outliner-other-window.png", "outliner-quick.png", "outliner-flat.png"]
+            "checks": ["outliner-native-window", "outliner-hierarchy", "outliner-working-counts", "outliner-disclosure", "outliner-agent-filter", "outliner-navigation", "outliner-zoom", "outliner-single-tab-bar", "outliner-narrow-tab-bar", "outliner-pins", "outliner-pin-drag", "outliner-search", "outliner-search-navigation", "outliner-terminal-input", "outliner-quick-terminal", "outliner-close"],
+            "captures": ["outliner.png", "outliner-collapsed.png", "outliner-agents.png", "outliner-terminal.png", "outliner-quad.png", "outliner-quad-terminal.png", "outliner-nested.png", "outliner-nested-terminal.png", "outliner-pane.png", "outliner-pane-terminal.png", "outliner-narrow-terminal.png", "outliner-pinned.png", "outliner-pinned-terminal.png", "outliner-search.png", "outliner-search-empty.png", "outliner-search-navigation.png", "outliner-windows.png", "outliner-other-window.png", "outliner-quick.png", "outliner-flat.png"]
         }))?,
     )?;
     eprintln!("Native Outliner smoke passed: {}", directory.display());
