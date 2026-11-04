@@ -1,0 +1,2372 @@
+{
+  "child": [
+    {
+      "roundtrip_ns": [
+        68594,
+        46146,
+        43322,
+        47722,
+        43978,
+        44930,
+        46202,
+        46961,
+        43193,
+        44633,
+        42169,
+        42186,
+        46306,
+        43337,
+        45721,
+        42825,
+        48849,
+        42265,
+        42306,
+        42154,
+        43122,
+        46577,
+        43633,
+        42809,
+        42818,
+        42378,
+        42418,
+        43345,
+        41817,
+        43050,
+        41730,
+        45266,
+        44050,
+        43130,
+        43641,
+        44033,
+        46673,
+        43137,
+        46426,
+        42802,
+        47538,
+        43130,
+        46106,
+        42969,
+        43457,
+        43066,
+        50074,
+        42042,
+        42338,
+        46850,
+        43385,
+        42681,
+        42657,
+        42114,
+        41794,
+        42177,
+        48657,
+        43521,
+        46353,
+        43841,
+        46882,
+        43594,
+        42642,
+        43146,
+        43001,
+        42137,
+        45034,
+        45698,
+        42978,
+        42826,
+        43089,
+        42449,
+        42209,
+        42170,
+        41914,
+        42905,
+        52505,
+        43601,
+        42177,
+        41985,
+        41954,
+        42609,
+        42521,
+        42185,
+        42802,
+        42042,
+        48770,
+        44138,
+        42321,
+        41625,
+        42282,
+        41722,
+        41817,
+        41537,
+        42345,
+        46258,
+        46194,
+        43266,
+        42177,
+        42153,
+        42297,
+        41874,
+        42073,
+        43345,
+        46641,
+        45625,
+        47993,
+        47177,
+        42953,
+        42458,
+        42290,
+        42337,
+        42873,
+        46442,
+        43889,
+        41978,
+        44122,
+        42761,
+        41017,
+        42241,
+        41882,
+        42073,
+        46785,
+        50265,
+        44585,
+        42937,
+        45601,
+        43538,
+        42762,
+        42257,
+        42105,
+        46401,
+        43306,
+        42602,
+        42442,
+        42161,
+        48473,
+        45113,
+        41722,
+        41930,
+        41770,
+        44401,
+        43377,
+        42137,
+        42362,
+        42146,
+        44257,
+        44274,
+        46018,
+        42697,
+        42569,
+        46497,
+        44377,
+        43386,
+        42546,
+        42354,
+        41873,
+        43145,
+        41418,
+        41322,
+        42521,
+        42225,
+        43025,
+        42586,
+        42265,
+        42905,
+        42793,
+        43681,
+        42554,
+        43089,
+        42433,
+        42129,
+        42033,
+        42322,
+        42121,
+        42497,
+        43657,
+        48426,
+        42074,
+        42634,
+        43337,
+        43465,
+        43113,
+        44233,
+        43298,
+        42514,
+        42601,
+        45025,
+        42641,
+        42194,
+        42161,
+        42569,
+        42385,
+        42873,
+        42186,
+        44090,
+        58802,
+        45498,
+        43882,
+        42913,
+        43673,
+        43017,
+        43617,
+        42586,
+        44002,
+        48602,
+        45098,
+        46514,
+        44489,
+        43985,
+        42777,
+        43002,
+        46194,
+        48026,
+        48378,
+        46418,
+        44018,
+        44834,
+        44066,
+        50442,
+        43610,
+        43705,
+        43665,
+        43097,
+        48265,
+        43545,
+        43714,
+        44538,
+        43098,
+        44337,
+        43073,
+        44129,
+        42218,
+        47090,
+        43666,
+        42577,
+        42889,
+        44097,
+        42274,
+        41914,
+        43481,
+        42785,
+        46569,
+        43929,
+        42682,
+        43546,
+        43465,
+        44745,
+        44417,
+        42881,
+        42946,
+        46210,
+        43450,
+        44786,
+        43433,
+        43801,
+        43273,
+        43730,
+        43066,
+        43330,
+        46993,
+        43241,
+        43041,
+        43713,
+        43634,
+        42994,
+        42233,
+        43385,
+        43153,
+        45210,
+        43666,
+        43145,
+        43089,
+        42617,
+        43513,
+        43194,
+        42921,
+        44609,
+        43529,
+        46905,
+        43953,
+        42202,
+        43202,
+        43105,
+        48682,
+        47354,
+        45185,
+        44049,
+        47201,
+        44617,
+        44689,
+        43297,
+        43130,
+        42786,
+        42929,
+        42777,
+        44305,
+        48193,
+        43889,
+        41985
+      ],
+      "workload": "sparse_dsr"
+    },
+    {
+      "bytes": 16777208,
+      "runs": [
+        {
+          "drained_ns": 101588790,
+          "write_ns": 101544533
+        },
+        {
+          "drained_ns": 99583413,
+          "write_ns": 99538643
+        },
+        {
+          "drained_ns": 100002787,
+          "write_ns": 99945937
+        }
+      ],
+      "view_ack_bytes": 262052,
+      "workload": "bulk_ascii"
+    },
+    {
+      "bytes": 16777176,
+      "runs": [
+        {
+          "drained_ns": 320422073,
+          "write_ns": 320377744
+        },
+        {
+          "drained_ns": 321112984,
+          "write_ns": 321069086
+        },
+        {
+          "drained_ns": 320560101,
+          "write_ns": 320516396
+        }
+      ],
+      "view_ack_bytes": 262080,
+      "workload": "bulk_styled_mixed"
+    },
+    {
+      "bytes": 4096,
+      "runs": [
+        {
+          "drained_ns": 71138,
+          "write_ns": 4584
+        },
+        {
+          "drained_ns": 80170,
+          "write_ns": 6848
+        },
+        {
+          "drained_ns": 78922,
+          "write_ns": 5448
+        },
+        {
+          "drained_ns": 81130,
+          "write_ns": 5024
+        },
+        {
+          "drained_ns": 72018,
+          "write_ns": 4704
+        },
+        {
+          "drained_ns": 70850,
+          "write_ns": 4784
+        },
+        {
+          "drained_ns": 75339,
+          "write_ns": 4336
+        },
+        {
+          "drained_ns": 68506,
+          "write_ns": 4688
+        },
+        {
+          "drained_ns": 84610,
+          "write_ns": 4136
+        },
+        {
+          "drained_ns": 69674,
+          "write_ns": 4472
+        },
+        {
+          "drained_ns": 67538,
+          "write_ns": 4216
+        },
+        {
+          "drained_ns": 67858,
+          "write_ns": 4552
+        },
+        {
+          "drained_ns": 68330,
+          "write_ns": 4224
+        },
+        {
+          "drained_ns": 72867,
+          "write_ns": 4377
+        },
+        {
+          "drained_ns": 75275,
+          "write_ns": 4136
+        },
+        {
+          "drained_ns": 71755,
+          "write_ns": 6936
+        },
+        {
+          "drained_ns": 73378,
+          "write_ns": 4632
+        },
+        {
+          "drained_ns": 72002,
+          "write_ns": 4904
+        },
+        {
+          "drained_ns": 67282,
+          "write_ns": 4368
+        },
+        {
+          "drained_ns": 72658,
+          "write_ns": 4248
+        },
+        {
+          "drained_ns": 77162,
+          "write_ns": 4176
+        },
+        {
+          "drained_ns": 68546,
+          "write_ns": 4272
+        },
+        {
+          "drained_ns": 67371,
+          "write_ns": 4265
+        },
+        {
+          "drained_ns": 67450,
+          "write_ns": 4352
+        },
+        {
+          "drained_ns": 75810,
+          "write_ns": 4352
+        },
+        {
+          "drained_ns": 82890,
+          "write_ns": 4520
+        },
+        {
+          "drained_ns": 69098,
+          "write_ns": 4192
+        },
+        {
+          "drained_ns": 67603,
+          "write_ns": 4528
+        },
+        {
+          "drained_ns": 68194,
+          "write_ns": 4224
+        },
+        {
+          "drained_ns": 68027,
+          "write_ns": 4585
+        },
+        {
+          "drained_ns": 73291,
+          "write_ns": 4264
+        },
+        {
+          "drained_ns": 76235,
+          "write_ns": 4408
+        },
+        {
+          "drained_ns": 78162,
+          "write_ns": 4232
+        },
+        {
+          "drained_ns": 67946,
+          "write_ns": 4464
+        },
+        {
+          "drained_ns": 74051,
+          "write_ns": 4041
+        },
+        {
+          "drained_ns": 81043,
+          "write_ns": 4648
+        },
+        {
+          "drained_ns": 75675,
+          "write_ns": 4561
+        },
+        {
+          "drained_ns": 75131,
+          "write_ns": 4368
+        },
+        {
+          "drained_ns": 67690,
+          "write_ns": 4216
+        },
+        {
+          "drained_ns": 69162,
+          "write_ns": 4504
+        },
+        {
+          "drained_ns": 69171,
+          "write_ns": 4385
+        },
+        {
+          "drained_ns": 67098,
+          "write_ns": 4504
+        },
+        {
+          "drained_ns": 79810,
+          "write_ns": 4056
+        },
+        {
+          "drained_ns": 67802,
+          "write_ns": 4360
+        },
+        {
+          "drained_ns": 67786,
+          "write_ns": 4304
+        },
+        {
+          "drained_ns": 67282,
+          "write_ns": 4392
+        },
+        {
+          "drained_ns": 66827,
+          "write_ns": 4041
+        },
+        {
+          "drained_ns": 72642,
+          "write_ns": 4696
+        },
+        {
+          "drained_ns": 77002,
+          "write_ns": 4608
+        },
+        {
+          "drained_ns": 67290,
+          "write_ns": 4416
+        },
+        {
+          "drained_ns": 67243,
+          "write_ns": 4177
+        },
+        {
+          "drained_ns": 67362,
+          "write_ns": 4456
+        },
+        {
+          "drained_ns": 67218,
+          "write_ns": 4224
+        },
+        {
+          "drained_ns": 72266,
+          "write_ns": 4456
+        },
+        {
+          "drained_ns": 79362,
+          "write_ns": 4464
+        },
+        {
+          "drained_ns": 68538,
+          "write_ns": 4344
+        },
+        {
+          "drained_ns": 68218,
+          "write_ns": 4160
+        },
+        {
+          "drained_ns": 66970,
+          "write_ns": 4320
+        },
+        {
+          "drained_ns": 67306,
+          "write_ns": 4128
+        },
+        {
+          "drained_ns": 80091,
+          "write_ns": 4336
+        },
+        {
+          "drained_ns": 67914,
+          "write_ns": 4072
+        },
+        {
+          "drained_ns": 66442,
+          "write_ns": 4360
+        },
+        {
+          "drained_ns": 67578,
+          "write_ns": 4208
+        },
+        {
+          "drained_ns": 67442,
+          "write_ns": 4512
+        },
+        {
+          "drained_ns": 71898,
+          "write_ns": 4424
+        },
+        {
+          "drained_ns": 75058,
+          "write_ns": 4576
+        },
+        {
+          "drained_ns": 67939,
+          "write_ns": 4257
+        },
+        {
+          "drained_ns": 67010,
+          "write_ns": 4376
+        },
+        {
+          "drained_ns": 67314,
+          "write_ns": 4432
+        },
+        {
+          "drained_ns": 66874,
+          "write_ns": 4472
+        },
+        {
+          "drained_ns": 73618,
+          "write_ns": 4112
+        },
+        {
+          "drained_ns": 76194,
+          "write_ns": 4304
+        },
+        {
+          "drained_ns": 69411,
+          "write_ns": 4265
+        },
+        {
+          "drained_ns": 67554,
+          "write_ns": 4600
+        },
+        {
+          "drained_ns": 67506,
+          "write_ns": 3992
+        },
+        {
+          "drained_ns": 68483,
+          "write_ns": 4424
+        },
+        {
+          "drained_ns": 93107,
+          "write_ns": 10281
+        },
+        {
+          "drained_ns": 73370,
+          "write_ns": 6184
+        },
+        {
+          "drained_ns": 69938,
+          "write_ns": 4944
+        },
+        {
+          "drained_ns": 76419,
+          "write_ns": 5480
+        },
+        {
+          "drained_ns": 72770,
+          "write_ns": 4424
+        },
+        {
+          "drained_ns": 72922,
+          "write_ns": 4752
+        },
+        {
+          "drained_ns": 78034,
+          "write_ns": 4480
+        },
+        {
+          "drained_ns": 69826,
+          "write_ns": 4760
+        },
+        {
+          "drained_ns": 68602,
+          "write_ns": 4272
+        },
+        {
+          "drained_ns": 69154,
+          "write_ns": 4456
+        },
+        {
+          "drained_ns": 69034,
+          "write_ns": 4224
+        },
+        {
+          "drained_ns": 78979,
+          "write_ns": 4872
+        },
+        {
+          "drained_ns": 79035,
+          "write_ns": 4360
+        },
+        {
+          "drained_ns": 68730,
+          "write_ns": 4472
+        },
+        {
+          "drained_ns": 67642,
+          "write_ns": 4168
+        },
+        {
+          "drained_ns": 68018,
+          "write_ns": 4448
+        },
+        {
+          "drained_ns": 67610,
+          "write_ns": 4296
+        },
+        {
+          "drained_ns": 80922,
+          "write_ns": 4408
+        },
+        {
+          "drained_ns": 69234,
+          "write_ns": 4024
+        },
+        {
+          "drained_ns": 69739,
+          "write_ns": 4760
+        },
+        {
+          "drained_ns": 67354,
+          "write_ns": 4184
+        },
+        {
+          "drained_ns": 68114,
+          "write_ns": 4408
+        },
+        {
+          "drained_ns": 73075,
+          "write_ns": 4216
+        },
+        {
+          "drained_ns": 78363,
+          "write_ns": 4304
+        },
+        {
+          "drained_ns": 70146,
+          "write_ns": 4088
+        },
+        {
+          "drained_ns": 68514,
+          "write_ns": 4944
+        },
+        {
+          "drained_ns": 68291,
+          "write_ns": 4313
+        },
+        {
+          "drained_ns": 68658,
+          "write_ns": 4296
+        },
+        {
+          "drained_ns": 71898,
+          "write_ns": 4024
+        },
+        {
+          "drained_ns": 79467,
+          "write_ns": 4361
+        },
+        {
+          "drained_ns": 69578,
+          "write_ns": 4352
+        },
+        {
+          "drained_ns": 70267,
+          "write_ns": 4488
+        },
+        {
+          "drained_ns": 72402,
+          "write_ns": 6816
+        },
+        {
+          "drained_ns": 69394,
+          "write_ns": 5560
+        },
+        {
+          "drained_ns": 96132,
+          "write_ns": 4913
+        },
+        {
+          "drained_ns": 75979,
+          "write_ns": 5248
+        },
+        {
+          "drained_ns": 69498,
+          "write_ns": 4400
+        },
+        {
+          "drained_ns": 68410,
+          "write_ns": 4584
+        },
+        {
+          "drained_ns": 69346,
+          "write_ns": 4528
+        },
+        {
+          "drained_ns": 75506,
+          "write_ns": 4472
+        },
+        {
+          "drained_ns": 80346,
+          "write_ns": 4112
+        },
+        {
+          "drained_ns": 69586,
+          "write_ns": 4432
+        },
+        {
+          "drained_ns": 77379,
+          "write_ns": 4289
+        },
+        {
+          "drained_ns": 67971,
+          "write_ns": 4633
+        },
+        {
+          "drained_ns": 69274,
+          "write_ns": 4288
+        },
+        {
+          "drained_ns": 74594,
+          "write_ns": 4752
+        },
+        {
+          "drained_ns": 77578,
+          "write_ns": 4464
+        },
+        {
+          "drained_ns": 69123,
+          "write_ns": 4993
+        },
+        {
+          "drained_ns": 69346,
+          "write_ns": 4216
+        },
+        {
+          "drained_ns": 70378,
+          "write_ns": 4504
+        },
+        {
+          "drained_ns": 72931,
+          "write_ns": 4465
+        },
+        {
+          "drained_ns": 85123,
+          "write_ns": 4400
+        },
+        {
+          "drained_ns": 70467,
+          "write_ns": 4297
+        },
+        {
+          "drained_ns": 69034,
+          "write_ns": 4464
+        },
+        {
+          "drained_ns": 69058,
+          "write_ns": 4392
+        },
+        {
+          "drained_ns": 69483,
+          "write_ns": 4553
+        },
+        {
+          "drained_ns": 74275,
+          "write_ns": 4576
+        },
+        {
+          "drained_ns": 78562,
+          "write_ns": 4560
+        },
+        {
+          "drained_ns": 71994,
+          "write_ns": 4488
+        },
+        {
+          "drained_ns": 67858,
+          "write_ns": 4896
+        },
+        {
+          "drained_ns": 68155,
+          "write_ns": 4360
+        },
+        {
+          "drained_ns": 68442,
+          "write_ns": 4560
+        },
+        {
+          "drained_ns": 83266,
+          "write_ns": 4424
+        },
+        {
+          "drained_ns": 77314,
+          "write_ns": 4736
+        },
+        {
+          "drained_ns": 71074,
+          "write_ns": 4472
+        },
+        {
+          "drained_ns": 71459,
+          "write_ns": 4608
+        },
+        {
+          "drained_ns": 70131,
+          "write_ns": 4617
+        },
+        {
+          "drained_ns": 68706,
+          "write_ns": 4704
+        },
+        {
+          "drained_ns": 85922,
+          "write_ns": 4840
+        },
+        {
+          "drained_ns": 68922,
+          "write_ns": 4648
+        },
+        {
+          "drained_ns": 71122,
+          "write_ns": 4384
+        },
+        {
+          "drained_ns": 71411,
+          "write_ns": 4945
+        },
+        {
+          "drained_ns": 70706,
+          "write_ns": 4224
+        },
+        {
+          "drained_ns": 76802,
+          "write_ns": 4368
+        },
+        {
+          "drained_ns": 77746,
+          "write_ns": 4280
+        },
+        {
+          "drained_ns": 68642,
+          "write_ns": 4664
+        },
+        {
+          "drained_ns": 71171,
+          "write_ns": 6377
+        },
+        {
+          "drained_ns": 69314,
+          "write_ns": 5488
+        },
+        {
+          "drained_ns": 68682,
+          "write_ns": 4792
+        },
+        {
+          "drained_ns": 73419,
+          "write_ns": 4945
+        },
+        {
+          "drained_ns": 75283,
+          "write_ns": 4368
+        },
+        {
+          "drained_ns": 68194,
+          "write_ns": 4608
+        },
+        {
+          "drained_ns": 69594,
+          "write_ns": 4336
+        },
+        {
+          "drained_ns": 67995,
+          "write_ns": 4809
+        },
+        {
+          "drained_ns": 68578,
+          "write_ns": 4224
+        },
+        {
+          "drained_ns": 80602,
+          "write_ns": 4632
+        },
+        {
+          "drained_ns": 68658,
+          "write_ns": 4224
+        },
+        {
+          "drained_ns": 68315,
+          "write_ns": 4777
+        },
+        {
+          "drained_ns": 67690,
+          "write_ns": 4256
+        },
+        {
+          "drained_ns": 70130,
+          "write_ns": 4712
+        },
+        {
+          "drained_ns": 67715,
+          "write_ns": 4232
+        },
+        {
+          "drained_ns": 80699,
+          "write_ns": 4552
+        },
+        {
+          "drained_ns": 68290,
+          "write_ns": 4152
+        },
+        {
+          "drained_ns": 67346,
+          "write_ns": 4624
+        },
+        {
+          "drained_ns": 68018,
+          "write_ns": 4184
+        },
+        {
+          "drained_ns": 68370,
+          "write_ns": 4576
+        },
+        {
+          "drained_ns": 72515,
+          "write_ns": 4217
+        },
+        {
+          "drained_ns": 86307,
+          "write_ns": 4672
+        },
+        {
+          "drained_ns": 70211,
+          "write_ns": 4537
+        },
+        {
+          "drained_ns": 68050,
+          "write_ns": 4680
+        },
+        {
+          "drained_ns": 67314,
+          "write_ns": 4360
+        },
+        {
+          "drained_ns": 67075,
+          "write_ns": 4505
+        },
+        {
+          "drained_ns": 81659,
+          "write_ns": 4368
+        },
+        {
+          "drained_ns": 77130,
+          "write_ns": 4624
+        },
+        {
+          "drained_ns": 69458,
+          "write_ns": 4520
+        },
+        {
+          "drained_ns": 65850,
+          "write_ns": 4872
+        },
+        {
+          "drained_ns": 67706,
+          "write_ns": 4424
+        },
+        {
+          "drained_ns": 67306,
+          "write_ns": 4608
+        },
+        {
+          "drained_ns": 84347,
+          "write_ns": 4136
+        },
+        {
+          "drained_ns": 67451,
+          "write_ns": 4617
+        },
+        {
+          "drained_ns": 68090,
+          "write_ns": 4352
+        },
+        {
+          "drained_ns": 68530,
+          "write_ns": 4760
+        },
+        {
+          "drained_ns": 68619,
+          "write_ns": 4401
+        },
+        {
+          "drained_ns": 77435,
+          "write_ns": 4480
+        },
+        {
+          "drained_ns": 78154,
+          "write_ns": 4224
+        },
+        {
+          "drained_ns": 67674,
+          "write_ns": 4328
+        },
+        {
+          "drained_ns": 67922,
+          "write_ns": 4216
+        },
+        {
+          "drained_ns": 66922,
+          "write_ns": 4432
+        },
+        {
+          "drained_ns": 67290,
+          "write_ns": 4016
+        },
+        {
+          "drained_ns": 79835,
+          "write_ns": 4344
+        },
+        {
+          "drained_ns": 69923,
+          "write_ns": 4137
+        },
+        {
+          "drained_ns": 68442,
+          "write_ns": 4576
+        },
+        {
+          "drained_ns": 66970,
+          "write_ns": 4032
+        },
+        {
+          "drained_ns": 66570,
+          "write_ns": 4280
+        }
+      ],
+      "workload": "burst_4096_then_dsr"
+    },
+    {
+      "bytes": 65536,
+      "runs": [
+        {
+          "drained_ns": 503169,
+          "write_ns": 352948
+        },
+        {
+          "drained_ns": 510185,
+          "write_ns": 356540
+        },
+        {
+          "drained_ns": 520081,
+          "write_ns": 355316
+        },
+        {
+          "drained_ns": 507769,
+          "write_ns": 356492
+        },
+        {
+          "drained_ns": 496641,
+          "write_ns": 350340
+        },
+        {
+          "drained_ns": 502825,
+          "write_ns": 353468
+        },
+        {
+          "drained_ns": 515921,
+          "write_ns": 361868
+        },
+        {
+          "drained_ns": 506633,
+          "write_ns": 354524
+        },
+        {
+          "drained_ns": 508377,
+          "write_ns": 355556
+        },
+        {
+          "drained_ns": 503521,
+          "write_ns": 359204
+        },
+        {
+          "drained_ns": 502536,
+          "write_ns": 350403
+        },
+        {
+          "drained_ns": 512368,
+          "write_ns": 351915
+        },
+        {
+          "drained_ns": 504176,
+          "write_ns": 353027
+        },
+        {
+          "drained_ns": 516144,
+          "write_ns": 364572
+        },
+        {
+          "drained_ns": 508064,
+          "write_ns": 355779
+        },
+        {
+          "drained_ns": 494224,
+          "write_ns": 348155
+        },
+        {
+          "drained_ns": 505873,
+          "write_ns": 354644
+        },
+        {
+          "drained_ns": 508505,
+          "write_ns": 354988
+        },
+        {
+          "drained_ns": 517561,
+          "write_ns": 352468
+        },
+        {
+          "drained_ns": 507345,
+          "write_ns": 355572
+        },
+        {
+          "drained_ns": 503073,
+          "write_ns": 360820
+        },
+        {
+          "drained_ns": 502857,
+          "write_ns": 351868
+        },
+        {
+          "drained_ns": 511537,
+          "write_ns": 360644
+        },
+        {
+          "drained_ns": 510113,
+          "write_ns": 358372
+        },
+        {
+          "drained_ns": 517881,
+          "write_ns": 366036
+        },
+        {
+          "drained_ns": 521697,
+          "write_ns": 355076
+        },
+        {
+          "drained_ns": 494336,
+          "write_ns": 357723
+        },
+        {
+          "drained_ns": 516097,
+          "write_ns": 365356
+        },
+        {
+          "drained_ns": 507384,
+          "write_ns": 356339
+        },
+        {
+          "drained_ns": 521521,
+          "write_ns": 366388
+        },
+        {
+          "drained_ns": 507888,
+          "write_ns": 355283
+        },
+        {
+          "drained_ns": 518961,
+          "write_ns": 375796
+        },
+        {
+          "drained_ns": 510713,
+          "write_ns": 356516
+        },
+        {
+          "drained_ns": 515145,
+          "write_ns": 364284
+        },
+        {
+          "drained_ns": 514584,
+          "write_ns": 363403
+        },
+        {
+          "drained_ns": 516289,
+          "write_ns": 356875
+        },
+        {
+          "drained_ns": 600019,
+          "write_ns": 450023
+        },
+        {
+          "drained_ns": 498408,
+          "write_ns": 356628
+        },
+        {
+          "drained_ns": 504864,
+          "write_ns": 354035
+        },
+        {
+          "drained_ns": 514889,
+          "write_ns": 352924
+        },
+        {
+          "drained_ns": 508776,
+          "write_ns": 356395
+        },
+        {
+          "drained_ns": 517185,
+          "write_ns": 365508
+        },
+        {
+          "drained_ns": 509457,
+          "write_ns": 358460
+        },
+        {
+          "drained_ns": 505928,
+          "write_ns": 357196
+        },
+        {
+          "drained_ns": 508568,
+          "write_ns": 357491
+        },
+        {
+          "drained_ns": 519041,
+          "write_ns": 367540
+        },
+        {
+          "drained_ns": 520113,
+          "write_ns": 358716
+        },
+        {
+          "drained_ns": 507177,
+          "write_ns": 356988
+        },
+        {
+          "drained_ns": 507929,
+          "write_ns": 363756
+        },
+        {
+          "drained_ns": 506393,
+          "write_ns": 350852
+        },
+        {
+          "drained_ns": 513721,
+          "write_ns": 362292
+        },
+        {
+          "drained_ns": 511801,
+          "write_ns": 357316
+        },
+        {
+          "drained_ns": 518257,
+          "write_ns": 364404
+        },
+        {
+          "drained_ns": 526249,
+          "write_ns": 360244
+        },
+        {
+          "drained_ns": 500449,
+          "write_ns": 353220
+        },
+        {
+          "drained_ns": 511185,
+          "write_ns": 363428
+        },
+        {
+          "drained_ns": 508161,
+          "write_ns": 353700
+        },
+        {
+          "drained_ns": 521129,
+          "write_ns": 364836
+        },
+        {
+          "drained_ns": 512728,
+          "write_ns": 357635
+        },
+        {
+          "drained_ns": 502272,
+          "write_ns": 358803
+        },
+        {
+          "drained_ns": 525569,
+          "write_ns": 373444
+        },
+        {
+          "drained_ns": 519521,
+          "write_ns": 362684
+        },
+        {
+          "drained_ns": 526050,
+          "write_ns": 372221
+        },
+        {
+          "drained_ns": 515569,
+          "write_ns": 363076
+        },
+        {
+          "drained_ns": 515681,
+          "write_ns": 364004
+        },
+        {
+          "drained_ns": 495281,
+          "write_ns": 356740
+        },
+        {
+          "drained_ns": 514089,
+          "write_ns": 363836
+        },
+        {
+          "drained_ns": 504777,
+          "write_ns": 353668
+        },
+        {
+          "drained_ns": 506433,
+          "write_ns": 355548
+        },
+        {
+          "drained_ns": 515457,
+          "write_ns": 357004
+        },
+        {
+          "drained_ns": 506897,
+          "write_ns": 356868
+        },
+        {
+          "drained_ns": 526721,
+          "write_ns": 377900
+        },
+        {
+          "drained_ns": 514776,
+          "write_ns": 360859
+        },
+        {
+          "drained_ns": 521793,
+          "write_ns": 370244
+        },
+        {
+          "drained_ns": 515825,
+          "write_ns": 359444
+        },
+        {
+          "drained_ns": 512616,
+          "write_ns": 361819
+        },
+        {
+          "drained_ns": 508568,
+          "write_ns": 354571
+        },
+        {
+          "drained_ns": 498224,
+          "write_ns": 347651
+        },
+        {
+          "drained_ns": 513777,
+          "write_ns": 363796
+        },
+        {
+          "drained_ns": 506089,
+          "write_ns": 353444
+        },
+        {
+          "drained_ns": 547914,
+          "write_ns": 392181
+        },
+        {
+          "drained_ns": 514840,
+          "write_ns": 365036
+        },
+        {
+          "drained_ns": 500576,
+          "write_ns": 353491
+        },
+        {
+          "drained_ns": 515937,
+          "write_ns": 359004
+        },
+        {
+          "drained_ns": 531673,
+          "write_ns": 382252
+        },
+        {
+          "drained_ns": 516697,
+          "write_ns": 363628
+        },
+        {
+          "drained_ns": 506344,
+          "write_ns": 354195
+        },
+        {
+          "drained_ns": 498568,
+          "write_ns": 356659
+        },
+        {
+          "drained_ns": 500225,
+          "write_ns": 353756
+        },
+        {
+          "drained_ns": 510393,
+          "write_ns": 354156
+        },
+        {
+          "drained_ns": 514497,
+          "write_ns": 350923
+        },
+        {
+          "drained_ns": 503897,
+          "write_ns": 353732
+        },
+        {
+          "drained_ns": 503784,
+          "write_ns": 359252
+        },
+        {
+          "drained_ns": 500120,
+          "write_ns": 361740
+        },
+        {
+          "drained_ns": 511128,
+          "write_ns": 363187
+        },
+        {
+          "drained_ns": 506608,
+          "write_ns": 355715
+        },
+        {
+          "drained_ns": 509552,
+          "write_ns": 362108
+        },
+        {
+          "drained_ns": 512184,
+          "write_ns": 350827
+        },
+        {
+          "drained_ns": 493280,
+          "write_ns": 354603
+        },
+        {
+          "drained_ns": 516777,
+          "write_ns": 361260
+        },
+        {
+          "drained_ns": 591547,
+          "write_ns": 440270
+        },
+        {
+          "drained_ns": 507849,
+          "write_ns": 357476
+        },
+        {
+          "drained_ns": 502000,
+          "write_ns": 353212
+        },
+        {
+          "drained_ns": 506528,
+          "write_ns": 356172
+        },
+        {
+          "drained_ns": 511592,
+          "write_ns": 358931
+        },
+        {
+          "drained_ns": 504480,
+          "write_ns": 353851
+        },
+        {
+          "drained_ns": 522713,
+          "write_ns": 371868
+        },
+        {
+          "drained_ns": 510809,
+          "write_ns": 359916
+        },
+        {
+          "drained_ns": 519105,
+          "write_ns": 367972
+        },
+        {
+          "drained_ns": 540521,
+          "write_ns": 391172
+        },
+        {
+          "drained_ns": 500128,
+          "write_ns": 355571
+        },
+        {
+          "drained_ns": 516385,
+          "write_ns": 356796
+        },
+        {
+          "drained_ns": 509440,
+          "write_ns": 358499
+        },
+        {
+          "drained_ns": 517664,
+          "write_ns": 364659
+        },
+        {
+          "drained_ns": 511705,
+          "write_ns": 360180
+        },
+        {
+          "drained_ns": 508008,
+          "write_ns": 366516
+        },
+        {
+          "drained_ns": 525353,
+          "write_ns": 358635
+        },
+        {
+          "drained_ns": 517345,
+          "write_ns": 363948
+        },
+        {
+          "drained_ns": 520465,
+          "write_ns": 359955
+        },
+        {
+          "drained_ns": 514225,
+          "write_ns": 361428
+        },
+        {
+          "drained_ns": 519705,
+          "write_ns": 368660
+        },
+        {
+          "drained_ns": 497272,
+          "write_ns": 351459
+        },
+        {
+          "drained_ns": 520209,
+          "write_ns": 368212
+        },
+        {
+          "drained_ns": 508609,
+          "write_ns": 357108
+        },
+        {
+          "drained_ns": 511296,
+          "write_ns": 358651
+        },
+        {
+          "drained_ns": 518609,
+          "write_ns": 360707
+        },
+        {
+          "drained_ns": 496448,
+          "write_ns": 355316
+        },
+        {
+          "drained_ns": 514576,
+          "write_ns": 369156
+        },
+        {
+          "drained_ns": 502808,
+          "write_ns": 353803
+        },
+        {
+          "drained_ns": 511416,
+          "write_ns": 362963
+        },
+        {
+          "drained_ns": 503576,
+          "write_ns": 353755
+        },
+        {
+          "drained_ns": 512696,
+          "write_ns": 358635
+        },
+        {
+          "drained_ns": 507848,
+          "write_ns": 357731
+        },
+        {
+          "drained_ns": 508688,
+          "write_ns": 353587
+        },
+        {
+          "drained_ns": 514416,
+          "write_ns": 357203
+        },
+        {
+          "drained_ns": 509376,
+          "write_ns": 358803
+        },
+        {
+          "drained_ns": 515057,
+          "write_ns": 362468
+        },
+        {
+          "drained_ns": 516657,
+          "write_ns": 362644
+        },
+        {
+          "drained_ns": 502096,
+          "write_ns": 355820
+        },
+        {
+          "drained_ns": 511585,
+          "write_ns": 358196
+        },
+        {
+          "drained_ns": 510289,
+          "write_ns": 357684
+        },
+        {
+          "drained_ns": 515441,
+          "write_ns": 358252
+        },
+        {
+          "drained_ns": 505689,
+          "write_ns": 355908
+        },
+        {
+          "drained_ns": 506049,
+          "write_ns": 365468
+        },
+        {
+          "drained_ns": 499872,
+          "write_ns": 347451
+        },
+        {
+          "drained_ns": 516097,
+          "write_ns": 364132
+        },
+        {
+          "drained_ns": 514657,
+          "write_ns": 360860
+        },
+        {
+          "drained_ns": 514937,
+          "write_ns": 362596
+        },
+        {
+          "drained_ns": 526945,
+          "write_ns": 363492
+        },
+        {
+          "drained_ns": 497568,
+          "write_ns": 349875
+        },
+        {
+          "drained_ns": 514936,
+          "write_ns": 364835
+        },
+        {
+          "drained_ns": 506424,
+          "write_ns": 355211
+        },
+        {
+          "drained_ns": 509680,
+          "write_ns": 361635
+        },
+        {
+          "drained_ns": 508056,
+          "write_ns": 356035
+        },
+        {
+          "drained_ns": 506040,
+          "write_ns": 361163
+        },
+        {
+          "drained_ns": 528425,
+          "write_ns": 369716
+        },
+        {
+          "drained_ns": 508401,
+          "write_ns": 357700
+        },
+        {
+          "drained_ns": 511449,
+          "write_ns": 361196
+        },
+        {
+          "drained_ns": 501913,
+          "write_ns": 353324
+        },
+        {
+          "drained_ns": 504201,
+          "write_ns": 357020
+        },
+        {
+          "drained_ns": 499288,
+          "write_ns": 358180
+        },
+        {
+          "drained_ns": 512248,
+          "write_ns": 360579
+        },
+        {
+          "drained_ns": 502648,
+          "write_ns": 351531
+        },
+        {
+          "drained_ns": 505616,
+          "write_ns": 356395
+        },
+        {
+          "drained_ns": 526578,
+          "write_ns": 363124
+        },
+        {
+          "drained_ns": 515625,
+          "write_ns": 362396
+        },
+        {
+          "drained_ns": 507945,
+          "write_ns": 364236
+        },
+        {
+          "drained_ns": 508665,
+          "write_ns": 356236
+        },
+        {
+          "drained_ns": 522145,
+          "write_ns": 369748
+        },
+        {
+          "drained_ns": 508304,
+          "write_ns": 359411
+        },
+        {
+          "drained_ns": 511232,
+          "write_ns": 361571
+        },
+        {
+          "drained_ns": 510128,
+          "write_ns": 352867
+        },
+        {
+          "drained_ns": 502704,
+          "write_ns": 352755
+        },
+        {
+          "drained_ns": 517641,
+          "write_ns": 367380
+        },
+        {
+          "drained_ns": 504696,
+          "write_ns": 354339
+        },
+        {
+          "drained_ns": 511200,
+          "write_ns": 359667
+        },
+        {
+          "drained_ns": 513208,
+          "write_ns": 362531
+        },
+        {
+          "drained_ns": 503760,
+          "write_ns": 355923
+        },
+        {
+          "drained_ns": 517441,
+          "write_ns": 355955
+        },
+        {
+          "drained_ns": 506672,
+          "write_ns": 354260
+        },
+        {
+          "drained_ns": 525841,
+          "write_ns": 374500
+        },
+        {
+          "drained_ns": 510049,
+          "write_ns": 354828
+        },
+        {
+          "drained_ns": 502657,
+          "write_ns": 362708
+        },
+        {
+          "drained_ns": 498408,
+          "write_ns": 352172
+        },
+        {
+          "drained_ns": 528393,
+          "write_ns": 374796
+        },
+        {
+          "drained_ns": 520465,
+          "write_ns": 358212
+        },
+        {
+          "drained_ns": 504952,
+          "write_ns": 354779
+        },
+        {
+          "drained_ns": 516585,
+          "write_ns": 363012
+        },
+        {
+          "drained_ns": 493328,
+          "write_ns": 347331
+        },
+        {
+          "drained_ns": 515648,
+          "write_ns": 367012
+        },
+        {
+          "drained_ns": 510272,
+          "write_ns": 358836
+        },
+        {
+          "drained_ns": 516761,
+          "write_ns": 364340
+        },
+        {
+          "drained_ns": 512185,
+          "write_ns": 352771
+        },
+        {
+          "drained_ns": 494784,
+          "write_ns": 354684
+        },
+        {
+          "drained_ns": 515761,
+          "write_ns": 352819
+        },
+        {
+          "drained_ns": 503864,
+          "write_ns": 351243
+        },
+        {
+          "drained_ns": 516328,
+          "write_ns": 363819
+        },
+        {
+          "drained_ns": 508305,
+          "write_ns": 358028
+        },
+        {
+          "drained_ns": 513961,
+          "write_ns": 361956
+        },
+        {
+          "drained_ns": 492112,
+          "write_ns": 350427
+        }
+      ],
+      "workload": "burst_65536_then_dsr"
+    }
+  ],
+  "coalesced_wakes": 28617,
+  "cols": 128,
+  "complete": true,
+  "history_lines": 1024,
+  "host_echo_after_ns": [
+    65202,
+    53778,
+    52922,
+    52506,
+    51930,
+    52241,
+    52689,
+    52962,
+    50706,
+    51146,
+    51186,
+    51418,
+    51442,
+    53938,
+    61850,
+    54226,
+    52402,
+    50810,
+    50930,
+    50738,
+    50530,
+    50242,
+    50730,
+    50905,
+    51337,
+    50393,
+    50737,
+    52049,
+    50721,
+    56186,
+    54162,
+    52850,
+    51786,
+    54273,
+    51186,
+    52298,
+    50258,
+    50410,
+    51594,
+    51978,
+    51154,
+    50858,
+    53865,
+    53049,
+    51874,
+    50754,
+    50962,
+    52674,
+    52162,
+    51690,
+    51162,
+    51498,
+    51897,
+    50849,
+    51809,
+    51241,
+    50961,
+    50858,
+    51906,
+    50914,
+    50730,
+    51634,
+    50602,
+    50282,
+    51186,
+    50793,
+    50993,
+    51265,
+    51634,
+    51098,
+    55786,
+    52706,
+    51234,
+    50786,
+    54906,
+    54449,
+    53354,
+    55426,
+    55418,
+    52601,
+    51225,
+    51713,
+    52090,
+    50970,
+    50226,
+    51210,
+    50778,
+    51546,
+    50626,
+    52882,
+    51514,
+    50410,
+    50865,
+    51201,
+    50617,
+    51017,
+    51201,
+    51114,
+    52522,
+    50066
+  ],
+  "host_echo_before_ns": [
+    80883,
+    55594,
+    57330,
+    57722,
+    56362,
+    54698,
+    57018,
+    59162,
+    54338,
+    52610,
+    52026,
+    53594,
+    53058,
+    55089,
+    54578,
+    51938,
+    53450,
+    52682,
+    52386,
+    51465,
+    55730,
+    53890,
+    55242,
+    55130,
+    52513,
+    56401,
+    54794,
+    53050,
+    51594,
+    51634,
+    51666,
+    54938,
+    53769,
+    53466,
+    51914,
+    51962,
+    51458,
+    51442,
+    51490,
+    52121,
+    54321,
+    54354,
+    54586,
+    52426,
+    52490,
+    50201,
+    50393,
+    51409,
+    51601,
+    52866,
+    53362,
+    51274,
+    51570,
+    49954,
+    57434,
+    53169,
+    51145,
+    51001,
+    53729,
+    56610,
+    52530,
+    52810,
+    49577,
+    53505,
+    50937,
+    51578,
+    51658,
+    55202,
+    55466,
+    53122,
+    52577,
+    52201,
+    52618,
+    50914,
+    141461,
+    141653,
+    54626,
+    55978,
+    52258,
+    53809,
+    52562,
+    51226,
+    52426,
+    53322,
+    75595,
+    58354,
+    57073,
+    55066,
+    61146,
+    67082,
+    55082,
+    53842,
+    52042,
+    51658,
+    55881,
+    57402,
+    55570,
+    53578,
+    51858,
+    51130,
+    53289,
+    50409,
+    50937,
+    54770,
+    55722,
+    52074,
+    54354,
+    51585,
+    51425,
+    52281,
+    50938,
+    51930,
+    54362,
+    54906,
+    52578,
+    57841,
+    51642,
+    51202,
+    50818,
+    52170,
+    51306,
+    51306,
+    53498,
+    52042,
+    61266,
+    58578,
+    52258,
+    52881,
+    51849,
+    54985,
+    51874,
+    51738,
+    51618,
+    51378,
+    53186,
+    51002,
+    51809,
+    51601,
+    50977,
+    52514,
+    51338,
+    50562,
+    51098,
+    52026,
+    50378,
+    51218,
+    50954,
+    51089,
+    50745,
+    54777,
+    52321,
+    51810,
+    58930,
+    52410,
+    51354,
+    51330,
+    50753,
+    51633,
+    52714,
+    52842,
+    52146,
+    55874,
+    53146,
+    52545,
+    50993,
+    51041,
+    51761,
+    51282,
+    52194,
+    51018,
+    52058,
+    52666,
+    50250,
+    52066,
+    52033,
+    51185,
+    52761,
+    51186,
+    51650,
+    51954,
+    53266,
+    51738,
+    51842,
+    50881,
+    51913,
+    66570,
+    55282,
+    52322,
+    51121,
+    55570,
+    63082,
+    54530,
+    51865,
+    51953,
+    52009,
+    51186,
+    52962,
+    51290,
+    52538,
+    51282,
+    51898,
+    57106,
+    54450,
+    51242,
+    50834,
+    52178,
+    50906,
+    51202,
+    51378,
+    50945,
+    52129,
+    51617,
+    51217,
+    50842,
+    51650,
+    52522,
+    50370,
+    51514,
+    51122,
+    51442,
+    51746,
+    50858,
+    51281,
+    50945,
+    51281,
+    51873,
+    52458,
+    51322,
+    49890,
+    50962,
+    57922,
+    55162,
+    52345,
+    52874,
+    53010,
+    56266,
+    79107,
+    141692,
+    53513,
+    52298,
+    52322,
+    52722,
+    53930,
+    53730,
+    51913,
+    50377,
+    52041,
+    51009,
+    49345,
+    50697,
+    50666,
+    50098,
+    50666,
+    49602,
+    49290,
+    49530,
+    50050,
+    51441,
+    50201,
+    50169,
+    50913,
+    50817,
+    50417,
+    50402,
+    51426,
+    58562,
+    52450,
+    50370,
+    50706,
+    49801,
+    67722,
+    59218,
+    55081,
+    50986,
+    50810,
+    52250,
+    50322,
+    51178,
+    50978,
+    52986,
+    50929,
+    48849,
+    48657,
+    49602,
+    51457,
+    49817,
+    49505,
+    48977,
+    48401,
+    49785,
+    48393,
+    48537,
+    48737,
+    48889,
+    47953,
+    49473,
+    48577,
+    48473,
+    50985,
+    50241
+  ],
+  "path": "local",
+  "rows": 32,
+  "schema": 1,
+  "unpaced": false,
+  "wake_calls": 29253
+}

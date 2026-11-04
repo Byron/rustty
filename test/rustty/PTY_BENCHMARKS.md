@@ -159,3 +159,36 @@ compiler/source/executable manifest are in `baseline/`.
 The same harness records `complete: false` and exits 1 for unpaced embedded
 16MiB output (`baseline/embedded-unpaced.json`), preserving the known overload
 failure as explicit evidence.
+
+### Retained ordinary-session gather
+
+The production change moves blocking reads into a fallibly started worker,
+before child creation, with four reusable 32KiB buffers. The existing parser
+still orders effects, idle-compression scheduling, restored output and final
+program-status cleanup. EOF/errors travel behind prior data in the same FIFO.
+There are no refill delays, spinning, platform thresholds or tuning settings.
+
+Fresh ABBA runs against `ff7fea1fd` use the corrected permanent harness and
+normal compression policy. Builds were stopped. The six pooled throughput runs
+improve ASCII from **158.58 to 235.18MiB/s (48%)**, and styled mixed text from
+**49.95 to 52.88MiB/s (6%)**. Raw samples and hashes are in `gather/`.
+
+| Latency boundary | Before p50 / p99 | After p50 / p99 |
+| --- | ---: | ---: |
+| Sparse host echo before bulk | 51.44 / 79.11µs | 59.41 / 68.23µs |
+| Sparse host echo after bulk | 50.74 / 60.90µs | 59.77 / 79.43µs |
+| Sparse owner DSR | 42.30 / 48.85µs | 50.31 / 64.49µs |
+| 4KiB burst plus DSR | 69.99 / 87.71µs | 79.58 / 99.86µs |
+| 64KiB burst plus DSR | 511.05 / 543.73µs | 404.01 / 469.40µs |
+| 64KiB post-write tail only | 150.99 / 165.57µs | 195.66 / 253.27µs |
+
+The retained tradeoff is one additional worker, a fixed 128KiB pool instead of
+a 32KiB buffer, and about 8–10µs extra small-request handoff latency. Larger bursts
+finish earlier overall despite a longer tail after the child finishes writing.
+These measurements establish PTY/parser delivery behavior, not visible latency.
+
+Validation: all 33 session tests pass, including byte identity across more than
+the pool capacity, EINTR/error ordering, backpressured pool drop, startup
+cancellation, and a real 256KiB tail with ordered titles, cursor reply and status
+cleanup before `OutputClosed`. Existing compression, restored-output, input
+backpressure and child-reaping tests pass; formatting and diff checks pass.
