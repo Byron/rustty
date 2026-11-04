@@ -6,6 +6,15 @@ switching its displayed thread updates that pane's existing tile. The generic
 emitter below is useful for a reporting program or a disposable demonstration.
 It does not discover stock Codex sessions.
 
+When no Stream Deck dashboard is connected (including when `stream-deck` is
+disabled), entering `needs_input`, `error`, or `paused` posts a system
+notification. Clicking it opens the reporting pane. This also works while the
+pane is focused, independently of command-finish notification settings.
+Repeated snapshots, label changes, and switching back to the same pending state
+do not post another alert. Returning to an attention state after it resolves
+does. Disconnecting a deck does not replay earlier alerts; the fallback applies
+to new state transitions. Other agent states remain quiet.
+
 Build locally without replacing installed applications:
 
 ```sh

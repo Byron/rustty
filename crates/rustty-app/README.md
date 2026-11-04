@@ -48,6 +48,9 @@ Tiles use large icons with short worktree task slugs; run
 `rustty stream-deck-legend` for the symbol meanings and controls.
 Automatic Codex status requires the companion TUI build with
 `tui.terminal_status = "rustty"`; stock notifications alone do not register panes.
+Without a connected dashboard, new agent questions, failures, and pauses produce
+system notifications instead. Click a notification to open its pane. Repeated
+status reports stay quiet; no Stream Deck configuration is required.
 
 ## Windows 11 x64
 

@@ -348,21 +348,27 @@ impl Report {
             |snapshot| snapshot.state == State::Working,
         )
     }
-    pub fn apply(&mut self, event: Event, generation: u64, command_running: bool) {
+    /// Return whether this thread entered a new state (or completed a new turn).
+    pub fn apply(&mut self, event: Event, generation: u64, command_running: bool) -> bool {
         match event {
             Event::Begin(snapshot) => {
                 self.clear();
                 self.generation = generation;
                 self.enclosing_command = command_running;
-                self.observe(&snapshot);
+                let changed = self.observe(&snapshot);
                 self.snapshot = Some(snapshot);
+                changed
             }
             Event::Update(snapshot) if self.snapshot.is_some() => {
-                self.observe(&snapshot);
+                let changed = self.observe(&snapshot);
                 self.snapshot = Some(snapshot);
+                changed
             }
-            Event::Update(_) => {}
-            Event::End => self.clear(),
+            Event::Update(_) => false,
+            Event::End => {
+                self.clear();
+                false
+            }
         }
     }
     pub fn clear(&mut self) {
@@ -375,7 +381,7 @@ impl Report {
             self.clear();
         }
     }
-    fn observe(&mut self, snapshot: &Snapshot) {
+    fn observe(&mut self, snapshot: &Snapshot) -> bool {
         if self.snapshot.as_ref().is_none_or(|previous| {
             previous.state != snapshot.state
                 || previous.thread_id != snapshot.thread_id
@@ -412,6 +418,7 @@ impl Report {
         if self.attention.len() > ACK_HISTORY {
             self.attention.pop_front();
         }
+        !same
     }
     pub fn acknowledge(&mut self) {
         let Some(snapshot) = &self.snapshot else {
@@ -1417,6 +1424,54 @@ mod tests {
         report.apply(Event::End, 8, false);
         assert!(!report.is_registered());
         assert!(report.view(1, "pane", &activity).is_none());
+    }
+    #[test]
+    fn report_transitions_ignore_duplicate_attention_per_thread() {
+        for state in [State::NeedsInput, State::Error, State::Paused] {
+            let mut report = Report::default();
+            let first = snapshot(state, "A", Some("T1"));
+            assert!(!report.apply(Event::Update(first.clone()), 1, false));
+            assert!(!report.apply(Event::End, 1, false));
+            assert!(report.apply(Event::Begin(first.clone()), 1, false));
+            assert!(!report.apply(Event::Update(first.clone()), 1, false));
+
+            let mut renamed = first.clone();
+            renamed.label = Some("Updated display metadata".into());
+            assert!(!report.apply(Event::Update(renamed), 1, false));
+            let next_turn = snapshot(state, "A", Some("T2"));
+            assert!(!report.apply(Event::Update(next_turn.clone()), 1, false));
+            report.acknowledge();
+            assert!(!report.apply(Event::Update(next_turn.clone()), 1, false));
+
+            assert!(report.apply(Event::Update(snapshot(state, "B", None)), 1, false));
+            assert!(!report.apply(Event::Update(next_turn.clone()), 1, false));
+            assert!(report.apply(
+                Event::Update(snapshot(State::Working, "A", Some("T2"))),
+                1,
+                false,
+            ));
+            assert!(report.apply(Event::Update(next_turn), 1, false));
+            assert!(report.apply(Event::Begin(first.clone()), 2, false));
+            assert!(!report.apply(Event::End, 2, false));
+            assert!(!report.apply(Event::Update(first), 2, false));
+        }
+    }
+    #[test]
+    fn report_transitions_distinguish_completed_turns() {
+        let mut report = Report::default();
+        let first = snapshot(State::Done, "A", Some("T1"));
+        assert!(report.apply(Event::Begin(first.clone()), 1, false));
+        report.acknowledge();
+        assert!(!report.apply(Event::Update(first.clone()), 1, false));
+        assert!(report.apply(
+            Event::Update(snapshot(State::Done, "B", Some("T1"))),
+            1,
+            false,
+        ));
+        assert!(!report.apply(Event::Update(first), 1, false));
+        let next = snapshot(State::Done, "A", Some("T2"));
+        assert!(report.apply(Event::Update(next.clone()), 1, false));
+        assert!(!report.apply(Event::Update(next), 1, false));
     }
     #[test]
     fn important_transitions_flash_until_seen_without_rearming_duplicates() {
