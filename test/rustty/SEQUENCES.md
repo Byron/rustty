@@ -42,7 +42,7 @@ significant. Values describe the recognized operations, not arbitrary parameters
 | `m` | SGR styling; see the attribute table below. |
 | `>4;2m`, `>...n` | Enable/disable the supported xterm modify-other-keys mode; consumed by key encoding. Other modify-other-keys levels do not enable level 2. |
 | `h`, `l`, `?h`, `?l` | Set/reset the supported ANSI/DEC modes listed below. |
-| `?s`, `?r` | Save/restore supported DEC modes; restore performs their transitions and initial host reports. |
+| `?s`, `?r` | Explicit lists save/restore DEC modes with their transitions and initial host reports. With no parameters, save/restore all supported ANSI/DEC modes except cursor, grid, margin, screen-switch, and synchronized-output transitions; mouse encoder selection is retained exactly. |
 | `>s`, `>0s`, `>1s` | XTSHIFTESCAPE requests whether the application captures Shift with mouse input. The desktop applies `mouse-shift-capture` policy to both buttons and scrolling; snapshots preserve the request and RIS resets it. |
 | `r` | Top/bottom scrolling margins, consumed by indexing, scrolling, erasure, and origin-relative positioning. |
 | `s` | Left/right margins while mode 69 is enabled; otherwise saves the cursor. |
