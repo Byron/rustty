@@ -51,7 +51,7 @@ significant. Values describe the recognized operations, not arbitrary parameters
 | `u` | Restore the saved cursor, attributes, origin, and character-set state. |
 | `0 q` through `6 q` | Default/blinking/steady block, underline, or bar cursor; rendered by the desktop. |
 | `0"q`, `1"q`, `2"q` | Character protection for subsequent writes and selective erasure. |
-| `?Ps$p` | DEC mode status reply, including unsupported/permanently-reset states. |
+| `Ps$p`, `?Ps$p` | ANSI/DEC mode status replies, including unknown and permanently-reset states. Query identifiers retain the full parser range without aliasing supported modes. |
 | `5n`, `6n` | Device status and current cursor-position replies. |
 | `?996n`, `?998n` | Actual host color-scheme and pane-visibility replies. |
 | `c`, `>c`, `=c`, `>q` | Primary/secondary/tertiary device attributes and version replies. Version identifies as Ghostty for CLI compatibility. |
@@ -60,7 +60,6 @@ significant. Values describe the recognized operations, not arbitrary parameters
 | `21t` | Title reply when `title-report = true`; disabled by default, applied at startup and reload. |
 | `22t`, `23t` | Title-stack operations: intentionally unimplemented in both reference handlers and Rustty. |
 | `!p` | DEC soft reset (DECSTR): restores application modes, margins, pen, character sets and palette defaults without clearing content or moving the cursor. |
-| `$p` | ANSI mode query: ignored by the reference stream and Rustty. |
 | `$}` | Select the status display; selecting the status area suppresses main-screen printing. There is no rendered status area. |
 | `$~` | Status-display type declaration: no effect, matching the reference. |
 
@@ -111,7 +110,8 @@ identified explicitly.
 | DEC 2048 | Initial and resize-triggered in-band size reports. |
 | DEC 5522 | Kitty clipboard/paste protocol selection and host policy. |
 
-DEC 117 is additionally reported as permanently reset; it is not a mutable mode.
+DEC 117 and ANSI 1, 5, 7, 10, 11, 13–19 are reported as permanently reset;
+they are not mutable modes.
 Unknown mode numbers do not create stored state or imply support.
 
 ## SGR attributes

@@ -104,11 +104,49 @@ fn stream_mode_queries_follow_native_parameter_and_host_rules() {
     assert_eq!(
         handler.0,
         [
+            b"\x1b[4;2$y".to_vec(),
             b"\x1b[?7;1$y".to_vec(),
             b"\x1b[?5522;0$y".to_vec(),
-            b"\x1b[?117;4$y".to_vec(),
-            b"\x1b[?7;1$y".to_vec(),
-            b"\x1b[?32767;0$y".to_vec(),
+            b"\x1b[?32885;0$y".to_vec(),
+            b"\x1b[?32775;0$y".to_vec(),
+            b"\x1b[?65535;0$y".to_vec(),
         ]
     );
+}
+
+#[test]
+fn ansi_mode_queries_report_mutable_fixed_and_unknown_modes_without_aliasing() {
+    for tmux in [false, true] {
+        let mut terminal = Terminal::new(10, 3, 0);
+        terminal.tmux_graphics = tmux;
+        for mode in [2, 4, 12, 20] {
+            for enabled in [false, true] {
+                terminal.set_mode(false, mode, enabled);
+                let request = format!("\x1b[{mode}$p");
+                let expected = Effect::Write(
+                    format!("\x1b[{mode};{}$y", if enabled { 1 } else { 2 }).into_bytes(),
+                );
+                for split in 0..=request.len() {
+                    let mut effects = terminal.feed(&request.as_bytes()[..split]);
+                    effects.extend(terminal.feed(&request.as_bytes()[split..]));
+                    assert_eq!(effects.as_slice(), std::slice::from_ref(&expected));
+                }
+            }
+        }
+        for mode in [1, 5, 7, 10, 11, 13, 14, 15, 16, 17, 18, 19] {
+            assert_eq!(
+                terminal.feed(format!("\x1b[{mode}$p").as_bytes()),
+                [Effect::Write(format!("\x1b[{mode};4$y").into_bytes())]
+            );
+        }
+        for mode in [0, 6, 117, 5522, 32772, 65535] {
+            assert_eq!(
+                terminal.feed(format!("\x1b[{mode}$p").as_bytes()),
+                [Effect::Write(format!("\x1b[{mode};0$y").into_bytes())]
+            );
+        }
+        for bytes in [b"\x1b[$p".as_slice(), b"\x1b[2;4$p", b"\x1b[2:4$p"] {
+            assert!(terminal.feed(bytes).is_empty());
+        }
+    }
 }

@@ -3228,18 +3228,19 @@ impl Terminal {
                 }
             }
             ([b'!'], b'p') if p.is_empty() => self.soft_reset(),
-            ([b'!'] | [b'$'], b'p') => {}
-            ([b'?', b'$'], b'p') => {
+            ([b'!'], b'p') => {}
+            ([b'$'], b'p') | ([b'?', b'$'], b'p') => {
                 if p.len() != 1 {
                     return;
                 }
-                let report = if n == 5522 && !clipboard_read_enabled {
+                let report = if private && n == 5522 && !clipboard_read_enabled {
                     0
                 } else {
-                    self.modes.report(true, n)
+                    self.modes.report(private, n)
                 };
+                let prefix = if private { "?" } else { "" };
                 effects.push(Effect::Write(
-                    format!("\x1b[?{};{report}$y", n & 0x7fff).into_bytes(),
+                    format!("\x1b[{prefix}{n};{report}$y").into_bytes(),
                 ));
             }
             ([], b'n') | ([b'?'], b'n') if p.len() == 1 => match (private, n) {
