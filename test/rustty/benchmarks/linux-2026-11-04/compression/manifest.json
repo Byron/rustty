@@ -1,0 +1,39 @@
+{
+  "baseline_commit": "9f8e2a258cb3953d2eca0d27143c1c53ff7d6bf0",
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+  "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+  "profile": {
+    "opt_level": 3,
+    "lto": "thin",
+    "codegen_units": 1
+  },
+  "cpu": "ARM64 Neoverse-N2",
+  "order": [
+    "before",
+    "after",
+    "after",
+    "before"
+  ],
+  "criterion_args": [
+    "--bench",
+    "^rustty/(feed|stream|read)/(ascii|chinese)$",
+    "--sample-size",
+    "20",
+    "--warm-up-time",
+    "0.3",
+    "--measurement-time",
+    "1",
+    "--noplot"
+  ],
+  "memory_args": [
+    "scrollback-compression",
+    "20000"
+  ],
+  "memory_runs": 3,
+  "sha256": {
+    "before": "6258107ed5a5d4faf20527bb895f1412f163a0bb209886b2fbfcb3ab80584c31",
+    "after": "a65a63080d1fb36294e84045451983265fbe697dedde8cfb1221110d62e41133",
+    "memory": "dff62c9c65c0f67b0462b106ac327b7e1436eda6e575cdf3f721fac2aa3c862f"
+  },
+  "notes": "No renderer or PTY. Before and after use the same Rust1.99.0 default toolchain/profile. Analyze adjacent matched order pairs; do not pool across phase drift. RSS includes allocator-retained memory and live input buffers."
+}

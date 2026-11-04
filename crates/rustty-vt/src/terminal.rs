@@ -123,6 +123,7 @@ pub struct Margins {
 #[derive(Clone, Debug)]
 pub struct Terminal {
     pub(crate) metadata: crate::snapshot::TerminalMetadata,
+    pub(crate) scrollback_compression: bool,
     pub cols: u16,
     pub rows: u16,
     pub width_px: u32,
@@ -232,6 +233,7 @@ impl Terminal {
         parser.set_osc_limit(MAX_OSC_BYTES + b"5522;".len());
         Self {
             metadata: crate::snapshot::TerminalMetadata::default(),
+            scrollback_compression: false,
             cols,
             rows,
             width_px: 0,
@@ -556,6 +558,7 @@ impl Terminal {
             }
         });
         self.parser = parser;
+        self.request_scrollback_compression();
         (stop, effects)
     }
 
@@ -605,6 +608,7 @@ impl Terminal {
             self.dispatch_effects(effects.drain(..), handler, write_enabled, read_enabled);
         });
         self.parser = parser;
+        self.request_scrollback_compression();
         stop
     }
 
@@ -870,6 +874,7 @@ impl Terminal {
             self.string_overflow,
         );
         let limits = self.primary.limits;
+        let scrollback_compression = self.scrollback_compression;
         let memory_limit = self.primary.memory_limit;
         let graphics_limit = self.primary.graphics.limit;
         let primary_identity = self.primary.metadata.identity;
@@ -931,6 +936,7 @@ impl Terminal {
         let mut modes = self.modes.clone();
         modes.reset();
         *self = Self::with_limits(self.cols, self.rows, limits);
+        self.set_scrollback_compression(scrollback_compression);
         self.primary.memory_limit = memory_limit;
         self.primary.graphics.limit = graphics_limit;
         (

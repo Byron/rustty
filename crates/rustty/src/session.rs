@@ -108,6 +108,7 @@ enum IoCommand {
     Linefeed(bool),
     HostReport(Vec<u8>),
     Resize { size: PtySize, reply: Vec<u8> },
+    Compress,
     Close,
 }
 
@@ -134,6 +135,7 @@ pub struct Session {
     input: mpsc::Sender<IoCommand>,
     events: mpsc::Receiver<SessionEvent>,
     pending_input: Arc<PendingInput>,
+    compression_pending: Arc<AtomicBool>,
     restored: Arc<Mutex<Option<RestoredOutput>>>,
     exited: Arc<AtomicBool>,
     #[cfg(target_os = "macos")]
@@ -198,7 +200,12 @@ impl Session {
                 .as_ref()
                 .map_or(&*terminal, |output| &output.history),
         )?;
-        serde_json::to_vec(&visual).map_err(error)
+        let encoded = serde_json::to_vec(&visual).map_err(error);
+        terminal.request_scrollback_compression();
+        if terminal.scrollback_compression() {
+            self.schedule_compression();
+        }
+        encoded
     }
 
     /// Validate a display before the application changes its current workspace.
@@ -280,6 +287,7 @@ impl Session {
         let (input, input_rx) = mpsc::channel();
         let (events_tx, events) = mpsc::sync_channel(256);
         let pending_input = Arc::new(PendingInput::default());
+        let compression_pending = Arc::new(AtomicBool::new(false));
         let exited = Arc::new(AtomicBool::new(false));
         #[cfg(target_os = "macos")]
         let (close_child, child_closed) = std::os::unix::net::UnixStream::pair()?;
@@ -292,15 +300,24 @@ impl Session {
         let writer_pending = pending_input.clone();
         let writer_terminal = terminal.clone();
         let writer_restored = restored.clone();
+        let writer_compression = compression_pending.clone();
         thread::Builder::new()
             .name("rustty-pty-write".into())
             .spawn(move || {
                 let master = pair.master;
                 let mut linefeed = false;
+                let mut compression_generation = 0;
+                let mut compression_quiet = false;
                 loop {
                     let comparing = writer_restored.lock().is_ok_and(|output| output.is_some());
-                    let command = if comparing {
-                        match input_rx.recv_timeout(Duration::from_millis(100)) {
+                    let compressing = writer_compression.load(Ordering::Acquire);
+                    let command = if comparing || compressing {
+                        let delay = if compressing && compression_quiet && !comparing {
+                            10
+                        } else {
+                            100
+                        };
+                        match input_rx.recv_timeout(Duration::from_millis(delay)) {
                             Ok(command) => command,
                             Err(mpsc::RecvTimeoutError::Disconnected) => break,
                             Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -316,11 +333,24 @@ impl Session {
                                             time.elapsed() >= Duration::from_secs(1)
                                         })
                                     });
-                                    if ready {
-                                        finish_restored_output(&mut terminal, &mut restored)
+                                    let changed = if ready {
+                                        finish_restored_output(&mut terminal, &mut restored)?
                                     } else {
-                                        Ok(false)
+                                        false
+                                    };
+                                    if compressing {
+                                        compression_quiet =
+                                            terminal.generation == compression_generation;
+                                        compression_generation = terminal.generation;
+                                        if compression_quiet && !terminal.compress_scrollback_step()
+                                        {
+                                            // Clear under the terminal lock so a subsequent
+                                            // read cannot lose its coalesced maintenance wake.
+                                            writer_compression.store(false, Ordering::Release);
+                                            compression_quiet = false;
+                                        }
                                     }
+                                    Ok::<_, io::Error>(changed)
                                 })();
                                 match result {
                                     Ok(true) => writer_wake(),
@@ -349,6 +379,10 @@ impl Session {
                             linefeed = enabled;
                             continue;
                         }
+                        IoCommand::Compress => {
+                            compression_quiet = false;
+                            continue;
+                        }
                         IoCommand::HostReport(bytes) => write_pty(&mut writer, &bytes, linefeed),
                         IoCommand::Resize { size, reply } => master
                             .resize(size)
@@ -375,6 +409,7 @@ impl Session {
         let read_pending = pending_input.clone();
         let read_wake = wake.clone();
         let read_restored = restored.clone();
+        let read_compression = compression_pending.clone();
         thread::Builder::new()
             .name("rustty-pty-read".into())
             .spawn(move || {
@@ -390,7 +425,7 @@ impl Session {
                             break;
                         }
                     };
-                    let effects = match read_terminal.lock() {
+                    let (effects, compress) = match read_terminal.lock() {
                         Ok(mut terminal) => {
                             let effects = feed_output(&mut terminal, &buffer[..length]);
                             if let Ok(mut restored) = read_restored.lock()
@@ -408,10 +443,13 @@ impl Session {
                                     let _ = read_events.send(SessionEvent::Error(e.to_string()));
                                 }
                             }
-                            effects
+                            (effects, terminal.scrollback_compression())
                         }
                         Err(_) => break,
                     };
+                    if compress {
+                        schedule_compression(&read_input, &read_compression);
+                    }
                     for effect in effects {
                         match effect {
                             Effect::LinefeedMode(enabled) => {
@@ -508,6 +546,7 @@ impl Session {
             input,
             events,
             pending_input,
+            compression_pending,
             restored,
             exited,
             close_child: Some(close_child),
@@ -528,6 +567,7 @@ impl Session {
             input,
             events: attached.events,
             pending_input: Arc::new(PendingInput::default()),
+            compression_pending: Arc::new(AtomicBool::new(false)),
             restored: Arc::new(Mutex::new(None)),
             exited: attached.exited,
             close_child: None,
@@ -538,6 +578,12 @@ impl Session {
         self.terminal
             .lock()
             .map_err(|_| error("terminal worker panicked"))
+    }
+
+    fn schedule_compression(&self) {
+        if self.attached.is_none() {
+            schedule_compression(&self.input, &self.compression_pending);
+        }
     }
 
     pub fn shell(&self) -> &ShellInfo {
@@ -652,6 +698,10 @@ impl Session {
         let effects =
             terminal.resize_with_cell_size(cols, rows, Some((size.cell_width, size.cell_height)));
         terminal.set_pixel_size(width_px.into(), height_px.into());
+        terminal.request_scrollback_compression();
+        if terminal.scrollback_compression() {
+            self.schedule_compression();
+        }
         drop(terminal);
         let mut reply = Vec::new();
         for effect in effects {
@@ -826,6 +876,9 @@ impl Session {
         terminal.set_limits(scrollback_limits(config));
         terminal.set_scrollback_memory_limit(config.scrollback_limit_bytes);
         apply_appearance(&mut terminal, config);
+        if config.scrollback_compression {
+            self.schedule_compression();
+        }
         self.report_config_color_scheme(terminal)
     }
 
@@ -836,6 +889,9 @@ impl Session {
             attached.set_appearance(config)?;
         }
         apply_appearance(&mut terminal, config);
+        if config.scrollback_compression {
+            self.schedule_compression();
+        }
         self.report_config_color_scheme(terminal)
     }
 
@@ -851,6 +907,12 @@ impl Session {
                 .map_err(error)?;
         }
         Ok(())
+    }
+}
+
+fn schedule_compression(input: &mpsc::Sender<IoCommand>, pending: &AtomicBool) {
+    if !pending.swap(true, Ordering::AcqRel) && input.send(IoCommand::Compress).is_err() {
+        pending.store(false, Ordering::Release);
     }
 }
 
@@ -1091,6 +1153,7 @@ fn enqueue(
 }
 
 pub(crate) fn apply_appearance(terminal: &mut Terminal, config: &Config) {
+    terminal.set_scrollback_compression(config.scrollback_compression);
     terminal.clipboard_write_limit = config.clipboard_write_limit_bytes.unwrap_or(usize::MAX);
     terminal.title_report = config.title_report;
     let palette: Vec<_> = config
@@ -1387,6 +1450,7 @@ mod tests {
             input,
             events,
             pending_input: Arc::new(PendingInput::default()),
+            compression_pending: Arc::new(AtomicBool::new(false)),
             restored: Arc::new(Mutex::new(Some(RestoredOutput {
                 history,
                 first_output: Some(Instant::now()),
@@ -2098,6 +2162,76 @@ mod tests {
                 .is_ok()
         );
         assert_eq!(idle_checks, 1, "an idle child must not be polled");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scrollback_compression_config_runs_after_pty_output_and_disarms_when_idle() {
+        let mut config = Config::default();
+        config.scrollback_compression = false;
+        let wakes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let observed = wakes.clone();
+        let session = Session::spawn(&config, SessionOptions {
+            rows: 4,
+            command: Some(Command::Direct(vec!["/bin/sh".into(), "-c".into(),
+                "i=0; while [ $i -lt 2400 ]; do printf 'retained line %04d\\r\\n' $i; i=$((i+1)); done; printf '\\033]2;compression-ready\\007'; exec cat".into()])),
+            ..SessionOptions::default()
+        }, Arc::new(move || { observed.fetch_add(1, Ordering::Relaxed); })).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while session.terminal().unwrap().title != "compression-ready" {
+            session.events().for_each(drop);
+            assert!(Instant::now() < deadline, "child output did not finish");
+            thread::sleep(Duration::from_millis(5));
+        }
+        let before = session.terminal().unwrap().screen().owned_bytes();
+        let rows = session.terminal().unwrap().screen().history_len();
+        assert!(!session.compression_pending.load(Ordering::Acquire));
+        config.scrollback_compression = true;
+        session.apply_config(&config).unwrap();
+        let mut compressed = false;
+        while !compressed || session.compression_pending.load(Ordering::Acquire) {
+            compressed = session.terminal().unwrap().screen().owned_bytes() < before / 2;
+            assert!(
+                Instant::now() < deadline,
+                "idle compression did not complete"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(session.terminal().unwrap().screen().history_len(), rows);
+        let settled_wakes = wakes.load(Ordering::Relaxed);
+        thread::sleep(Duration::from_millis(150));
+        assert!(!session.compression_pending.load(Ordering::Acquire));
+        assert_eq!(wakes.load(Ordering::Relaxed), settled_wakes);
+        session.snapshot().unwrap();
+        assert!(!session.compression_pending.load(Ordering::Acquire));
+        session.capture_visual_state().unwrap();
+        assert!(session.compression_pending.load(Ordering::Acquire));
+        while session.compression_pending.load(Ordering::Acquire) {
+            assert!(
+                Instant::now() < deadline,
+                "capture recompression did not finish"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(session.terminal().unwrap().screen().owned_bytes() < before / 2);
+        session.write(b"responsive\n").unwrap();
+        while !session
+            .terminal()
+            .unwrap()
+            .plain_text()
+            .contains("responsive")
+        {
+            session.events().for_each(drop);
+            assert!(
+                Instant::now() < deadline,
+                "compressed history blocked input"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(session.compression_pending.load(Ordering::Acquire));
+        config.scrollback_compression = false;
+        session.apply_config(&config).unwrap();
+        assert!(!session.terminal().unwrap().scrollback_compression());
     }
 
     #[test]

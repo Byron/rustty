@@ -120,10 +120,10 @@ impl Screen {
         for page in &self.pages.pages {
             let rows = page.headers.capacity() * size_of::<RowHeader>()
                 + (page.row_ids.capacity() + page.row_revisions.capacity()) * size_of::<u64>();
-            let cells = page.cells.capacity() * size_of::<Cell>();
+            let cells = page.cells.storage_bytes();
             parts[0] += page.headers.capacity();
             parts[1] += rows;
-            parts[2] += page.cells.capacity();
+            parts[2] += page.cells.slots();
             parts[3] += cells;
             parts[4] += 1;
             parts[5] += page.storage_bytes() - rows - cells;

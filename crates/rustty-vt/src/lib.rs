@@ -7,6 +7,7 @@ pub mod allocation_probe;
 pub mod agent;
 pub mod clipboard;
 pub mod color;
+mod compression;
 pub mod dnd;
 pub mod formatter;
 pub mod glyph;

@@ -47,6 +47,10 @@ test = true
 name = "allocations"
 path = "../../test/rustty/allocations.rs"
 
+[[example]]
+name = "scrollback-compression"
+path = "../../test/rustty/scrollback-compression.rs"
+
 [[bench]]
 name = "primitives"
 harness = false
