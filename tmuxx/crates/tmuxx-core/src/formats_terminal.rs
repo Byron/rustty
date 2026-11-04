@@ -101,4 +101,96 @@ mod tests {
             Some("0")
         );
     }
+
+    #[test]
+    fn program_status_formats_enumerate_rustty_extensions_without_changing_c_registry() {
+        let mut engine = Engine::default();
+        let mut context = ClientContext::default();
+        let command = |source| tmuxx_command::parse(source).unwrap().remove(0);
+        engine
+            .execute(&command(b"new-session -d ''"), &mut context)
+            .unwrap();
+        engine.feed(0, b"\x1b]7501;state=working:app=builder\x07\x1b]7501;state=blocked:id=job:kind=permission:progress=47:title=Sm9i:msg=QXBwcm92ZT8\x07");
+        let query = b"#{pane_program_state}|#{pane_program_progress}|#{pane_program_app}|#{pane_program_title}|#{pane_program_message}";
+        assert_eq!(
+            engine
+                .expand(query, Some(0), Some(0), Some(0), &context)
+                .unwrap(),
+            b"blocked|47|builder|Job|Approve?"
+        );
+        assert_eq!(
+            engine.panes[&0].terminal.program_status().activity(),
+            serde_json::from_value(serde_json::json!("needs_input")).unwrap()
+        );
+        assert!(engine.panes[&0].terminal.agent_status().snapshot.is_none());
+        let output = engine
+            .execute(&command(b"display-message -a -t %0"), &mut context)
+            .unwrap()
+            .output;
+        let output = String::from_utf8(output).unwrap();
+        for key in tmuxx_terminal::PROGRAM_STATUS_FORMATS {
+            assert_eq!(
+                output
+                    .lines()
+                    .filter(|line| line.starts_with(&format!("{key}=")))
+                    .count(),
+                1,
+                "{key}"
+            );
+            assert!(!crate::format_metadata::FORMAT_KEYS.contains(key));
+        }
+        let records: serde_json::Value = serde_json::from_str(
+            output
+                .lines()
+                .find_map(|line| line.strip_prefix("pane_program_status="))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(records[1]["app"], "builder");
+        assert_eq!(records[1]["kind"], "permission");
+        engine.feed(0, b"\x1b]7501;state=clear\x07");
+        assert_eq!(
+            engine.panes[&0]
+                .terminal
+                .format_value("pane_program_status")
+                .as_deref(),
+            Some("[]")
+        );
+        assert_eq!(
+            engine.panes[&0].terminal.format_value("pane_program_state"),
+            None
+        );
+    }
+
+    #[test]
+    fn program_status_exit_keeps_unseen_results_until_acknowledged() {
+        let mut engine = Engine::default();
+        let mut context = ClientContext::default();
+        for source in [
+            b"new-session -d ''".as_slice(),
+            b"set-option -w remain-on-exit on",
+        ] {
+            engine
+                .execute(&tmuxx_command::parse(source).unwrap()[0], &mut context)
+                .unwrap();
+        }
+        engine.feed(
+            0,
+            b"\x1b]7501;state=done:id=result\x07\x1b]7501;state=working:id=work\x07",
+        );
+        engine.record_exit(0, 0, None);
+        assert_eq!(engine.panes[&0].terminal.program_status().len(), 2);
+        engine.feed(0, b"\x1b]7501;state=blocked:id=last\x07");
+        assert!(engine.exited_with_signal(0, 0, None).changed);
+        assert_eq!(engine.panes[&0].terminal.program_status().len(), 1);
+        assert!(
+            engine.panes[&0]
+                .terminal
+                .program_status()
+                .get(Some("result"))
+                .is_some()
+        );
+        assert!(engine.acknowledge_native_input([0]));
+        assert!(engine.panes[&0].terminal.program_status().is_empty());
+    }
 }

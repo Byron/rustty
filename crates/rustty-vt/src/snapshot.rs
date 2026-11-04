@@ -29,6 +29,9 @@ const MAGIC: &[u8; 10] = b"GHOSTSNP\x01\x00";
 const POINTER_SHAPES: u16 = 0x8001;
 const SAVED_MOUSE: u16 = 0x8002;
 const ATTRIBUTE_EXTENT: u16 = 0x8003;
+const PROGRAM_STATUS: u16 = 0x8004;
+// Covers 256 maximum-length reports even with JSON string escaping.
+const MAX_PROGRAM_STATUS_BYTES: usize = 2 * 1024 * 1024;
 
 pub(crate) fn invalid(message: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
@@ -521,6 +524,14 @@ fn encode_inner(
     if terminal.metadata.rectangular_attributes {
         record(destination, ATTRIBUTE_EXTENT, &[1, 2])?;
     }
+    if !terminal.program_status.is_empty() {
+        let mut payload = vec![1];
+        serde_json::to_writer(&mut payload, &terminal.program_status).map_err(invalid)?;
+        if payload.len() > MAX_PROGRAM_STATUS_BYTES {
+            return Err(invalid("program status exceeds snapshot limit"));
+        }
+        record(destination, PROGRAM_STATUS, &payload)?;
+    }
     let screens = [Some(&terminal.primary), terminal.alternate.as_ref()];
     let mut plans = screens
         .iter()
@@ -857,6 +868,8 @@ impl<R: Read> Decoder<R> {
             let len = u32::from_le_bytes(header[2..6].try_into().unwrap()) as usize;
             let limit = if tag == kitty::PAYLOAD {
                 400 * 1024 * 1024 + 18
+            } else if tag == PROGRAM_STATUS {
+                self.options.max_record_bytes.min(MAX_PROGRAM_STATUS_BYTES)
             } else {
                 self.options.max_record_bytes
             };
@@ -864,7 +877,10 @@ impl<R: Read> Decoder<R> {
                 return Err(invalid("snapshot record exceeds allocation policy"));
             }
             if (1..=10).contains(&tag)
-                || matches!(tag, POINTER_SHAPES | SAVED_MOUSE | ATTRIBUTE_EXTENT)
+                || matches!(
+                    tag,
+                    POINTER_SHAPES | SAVED_MOUSE | ATTRIBUTE_EXTENT | PROGRAM_STATUS
+                )
             {
                 return Ok((header, len));
             }
@@ -1075,6 +1091,13 @@ impl<R: Read> Decoder<R> {
                 return Err(invalid("invalid attribute extent record"));
             }
             terminal.metadata.rectangular_attributes = true;
+        }
+        if self.peek_tag()? == PROGRAM_STATUS {
+            let payload = self.record(PROGRAM_STATUS)?;
+            if payload.first() != Some(&1) {
+                return Err(invalid("invalid program status record version"));
+            }
+            terminal.program_status = serde_json::from_slice(&payload[1..]).map_err(invalid)?;
         }
         let mut seen = [false; 2];
         for _ in 0..screen_count {

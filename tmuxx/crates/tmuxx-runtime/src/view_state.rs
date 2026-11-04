@@ -89,7 +89,19 @@ impl Host {
         {
             session.activity = self.engine.now;
         }
+        let acknowledged = if input.acknowledges_program_status() {
+            out.effects
+                .iter()
+                .filter_map(|effect| match effect {
+                    Effect::Write { pane, .. } => Some(*pane),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         self.effects(std::mem::take(&mut out.effects))?;
+        out.changed |= self.engine.acknowledge_native_input(acknowledged);
         Ok(out)
     }
     pub(super) fn view_state(
@@ -123,6 +135,8 @@ impl Host {
         if !self.engine.panes.contains_key(&pane) {
             return Ok(Outcome::default());
         }
+        let gained_focus =
+            state.focused && state.visible && !self.view_states.focused(client, pane);
         if state.focused && state.visible {
             self.client_became_latest(client, self.engine.panes[&pane].window);
         }
@@ -148,12 +162,25 @@ impl Host {
                 .into(),
             );
         }
+        let record_count = self.engine.panes[&pane].terminal.program_status().len();
         let generation = self.engine.panes[&pane].terminal.generation();
+        // A second view can gain real focus while aggregate focus stays true.
+        if gained_focus {
+            self.engine
+                .panes
+                .get_mut(&pane)
+                .unwrap()
+                .terminal
+                .program_status_seen();
+        }
         self.apply_view_state(pane)?;
-        let changed = self.engine.panes[&pane].terminal.generation() != generation;
+        let status_changed =
+            self.engine.panes[&pane].terminal.program_status().len() != record_count;
+        let changed =
+            status_changed || self.engine.panes[&pane].terminal.generation() != generation;
         Ok(Outcome {
             changed,
-            selection_only: changed,
+            selection_only: changed && !status_changed,
             ..Outcome::default()
         })
     }
@@ -248,5 +275,150 @@ mod tests {
         states.states.remove(&(2, 7));
         let state = states.aggregate(7);
         assert!(!state.focused && !state.visible);
+    }
+
+    fn program_status_host() -> (Host, Receiver<Event>, Vec<Receiver<ServerMessage>>) {
+        let (events, receiver) = mpsc::sync_channel(32);
+        let mut host = Host::new(events, &Options::new("/unused"), BTreeMap::new());
+        let mut clients = Vec::new();
+        for id in [1, 2] {
+            let (tx, rx) = mpsc::sync_channel(32);
+            host.clients.insert(
+                id,
+                Client {
+                    tx,
+                    context: ClientContext {
+                        host_effects: true,
+                        ..Default::default()
+                    },
+                    subscribed: true,
+                    control: false,
+                    delivery_bytes: Arc::new(AtomicUsize::new(0)),
+                },
+            );
+            clients.push(rx);
+        }
+        host.engine
+            .execute(
+                &tmuxx_command::parse(b"new-session -d ''").unwrap()[0],
+                &mut ClientContext::default(),
+            )
+            .unwrap();
+        (host, receiver, clients)
+    }
+
+    #[test]
+    fn program_status_each_real_view_focus_requires_full_metadata() {
+        let (mut host, _events, _clients) = program_status_host();
+        let command = &tmuxx_command::parse(b"tmuxx-host-state -t %0").unwrap()[0];
+        let state = |focused| {
+            Some(
+                serde_json::to_vec(
+                    &serde_json::json!({"focused":focused,"visible":true,"color_scheme":null}),
+                )
+                .unwrap(),
+            )
+        };
+        let mut context = host.clients[&1].context.clone();
+        host.engine.feed(0, b"\x1b]7501;state=done\x07");
+        let out = host
+            .view_state(1, command, state(true), &mut context)
+            .unwrap();
+        assert!(out.changed && !out.selection_only);
+        assert!(host.engine.panes[&0].terminal.program_status().is_empty());
+        host.engine.feed(0, b"\x1b]7501;state=error\x07");
+        let out = host
+            .view_state(1, command, state(true), &mut context)
+            .unwrap();
+        assert!(!out.changed);
+        assert_eq!(host.engine.panes[&0].terminal.program_status().len(), 1);
+        // Aggregate focus remains true, but another user view newly gained it.
+        let out = host
+            .view_state(2, command, state(true), &mut context)
+            .unwrap();
+        assert!(out.changed && !out.selection_only);
+        assert!(host.engine.panes[&0].terminal.program_status().is_empty());
+        assert!(host.view_states.aggregate(0).focused);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn program_status_input_queue_rejection_retains_all_synchronized_records() {
+        let (mut host, _events, _clients) = program_status_host();
+        for source in [
+            b"split-window -d ''".as_slice(),
+            b"set-window-option synchronize-panes on",
+        ] {
+            host.engine
+                .execute(
+                    &tmuxx_command::parse(source).unwrap()[0],
+                    &mut ClientContext::default(),
+                )
+                .unwrap();
+        }
+        for pane in [0, 1] {
+            host.spawn(
+                pane,
+                "/bin/sh".into(),
+                ["/bin/sh", "-c", "read wait"]
+                    .map(|s| s.as_bytes().to_vec())
+                    .into(),
+                None,
+                std::env::vars().collect(),
+                (80, 24),
+            )
+            .unwrap();
+            host.engine.panes.get_mut(&pane).unwrap().empty = false;
+            host.engine.feed(pane, b"\x1b]7501;state=done\x07");
+        }
+        let command = &tmuxx_command::parse(b"tmuxx-input -t %0").unwrap()[0];
+        let text =
+            || Some(serde_json::to_vec(&tmuxx_terminal::Input::Text(b"x".to_vec())).unwrap());
+        let sequence = host.engine.sequence;
+        host.processes[&1]
+            .input_bytes
+            .store(MAX_REQUEST_BYTES, Ordering::Release);
+        assert!(
+            host.native_input(1, command, text())
+                .unwrap_err()
+                .contains("byte budget")
+        );
+        assert_eq!(host.engine.sequence, sequence);
+        for pane in [0, 1] {
+            assert_eq!(host.engine.panes[&pane].terminal.program_status().len(), 1);
+        }
+        host.processes[&1].input_bytes.store(0, Ordering::Release);
+        let out = host.native_input(1, command, text()).unwrap();
+        assert!(out.changed && !out.selection_only);
+        assert_eq!(host.engine.sequence, sequence + 1);
+        for pane in [0, 1] {
+            assert!(
+                host.engine.panes[&pane]
+                    .terminal
+                    .program_status()
+                    .is_empty()
+            );
+        }
+        host.engine.feed(0, b"\x1b]7501;state=done\x07");
+        let mut released = tmuxx_terminal::KeyEvent::new(tmuxx_terminal::Key::Enter);
+        released.action = tmuxx_terminal::KeyAction::Release;
+        for input in [
+            tmuxx_terminal::Input::Mouse(b"m".to_vec()),
+            tmuxx_terminal::Input::Reply(b"r".to_vec()),
+            tmuxx_terminal::Input::Paste(b"p".to_vec()),
+            tmuxx_terminal::Input::Key {
+                event: released,
+                options: Default::default(),
+            },
+        ] {
+            let out = host
+                .native_input(1, command, Some(serde_json::to_vec(&input).unwrap()))
+                .unwrap();
+            assert!(!out.changed);
+            assert_eq!(host.engine.panes[&0].terminal.program_status().len(), 1);
+        }
+        host.engine.panes.get_mut(&0).unwrap().input_disabled = true;
+        assert!(host.native_input(1, command, text()).is_err());
+        assert_eq!(host.engine.panes[&0].terminal.program_status().len(), 1);
     }
 }

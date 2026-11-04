@@ -30,6 +30,13 @@ pub enum Input {
     Reply(Vec<u8>),
 }
 impl Input {
+    fn acknowledges_program_status(&self) -> bool {
+        match self {
+            Self::Key { event, .. } => rustty_vt::program_status::acknowledges_key(event),
+            Self::Text(data) => !data.is_empty(),
+            Self::Paste(_) | Self::Mouse(_) | Self::Reply(_) => false,
+        }
+    }
     pub fn queue_bytes(&self) -> usize {
         match self {
             Self::Key { event, .. } => {
@@ -129,6 +136,7 @@ pub struct Snapshot {
 }
 
 pub struct Session {
+    wake: Arc<dyn Fn() + Send + Sync>,
     shell: ShellInfo,
     attached: Option<crate::tmuxx::PaneInput>,
     terminal: Arc<Mutex<Terminal>>,
@@ -251,6 +259,8 @@ impl Session {
         terminal.terminfo_name = terminfo_name;
         terminal.shell_command_events = true;
         terminal.agent_status_events = true;
+        terminal.program_status_events = true;
+        terminal.program_status_focus(options.visible && options.focused);
         terminal.linefeed_mode_events = true;
         terminal.query_defaults.color_scheme = options.color_scheme;
         terminal.query_defaults.focused = Some(options.focused);
@@ -484,11 +494,17 @@ impl Session {
                 {
                     let _ = read_events.send(SessionEvent::Error(e.to_string()));
                 }
+                // The waiter may observe exit before the final PTY report arrives.
+                // End transient records only once all remaining output was parsed.
+                if let Ok(mut terminal) = read_terminal.lock() {
+                    terminal.program_status_exited();
+                }
                 read_wake();
                 let _ = read_events.send(SessionEvent::OutputClosed);
                 read_wake();
             })?;
 
+        let session_wake = wake.clone();
         let wait_exited = exited.clone();
         #[cfg(windows)]
         let wait_input = input.clone();
@@ -540,6 +556,7 @@ impl Session {
             })??;
 
         Ok(Self {
+            wake: session_wake,
             attached: None,
             shell,
             terminal,
@@ -558,9 +575,10 @@ impl Session {
         pane: u64,
         wake: Arc<dyn Fn() + Send + Sync>,
     ) -> io::Result<Self> {
-        let attached = connection.attach(pane, wake)?;
+        let attached = connection.attach(pane, wake.clone())?;
         let (input, _) = mpsc::channel();
         Ok(Self {
+            wake,
             shell: ShellInfo::new(vec!["tmuxx".into()], "attached server pane".into()),
             attached: Some(attached.input),
             terminal: attached.terminal,
@@ -578,6 +596,11 @@ impl Session {
         self.terminal
             .lock()
             .map_err(|_| error("terminal worker panicked"))
+    }
+
+    /// Retained OSC 7501 metadata for a local child or an attached native pane.
+    pub fn program_status(&self) -> io::Result<rustty_vt::program_status::Records> {
+        Ok(self.terminal()?.program_status().clone())
     }
 
     fn schedule_compression(&self) {
@@ -634,14 +657,18 @@ impl Session {
             return enqueue(&self.input, &self.pending_input, data.clone(), false);
         }
         if let Input::Text(data) | Input::Mouse(data) | Input::Reply(data) = input {
-            return self.write(data);
+            return self.write_with_status_seen(data, input.acknowledges_program_status());
         }
         let bytes = input.encode(&*self.terminal()?);
-        self.write(&bytes)
+        self.write_with_status_seen(&bytes, input.acknowledges_program_status())
     }
 
     /// Queues the entire input or returns an error without sending any prefix.
     pub fn write(&self, bytes: &[u8]) -> io::Result<()> {
+        self.write_with_status_seen(bytes, !bytes.is_empty())
+    }
+
+    fn write_with_status_seen(&self, bytes: &[u8], seen: bool) -> io::Result<()> {
         if !self.accepts_input() {
             return Err(io::ErrorKind::BrokenPipe.into());
         }
@@ -654,7 +681,7 @@ impl Session {
                 "input exceeds the terminal queue budget",
             ));
         }
-        {
+        let changed = {
             let mut terminal = self.terminal()?;
             let mut restored = self.restored.lock().map_err(error)?;
             if restored
@@ -666,8 +693,13 @@ impl Session {
                     .wake_on_release
                     .store(true, Ordering::Release);
             }
+            enqueue(&self.input, &self.pending_input, bytes.to_owned(), false)?;
+            seen && terminal.program_status_seen()
+        };
+        if changed {
+            (self.wake)();
         }
-        enqueue(&self.input, &self.pending_input, bytes.to_owned(), false)
+        Ok(())
     }
 
     pub fn resize(&self, cols: u16, rows: u16, width_px: u16, height_px: u16) -> io::Result<()> {
@@ -741,6 +773,7 @@ impl Session {
             );
         }
         let mut terminal = self.terminal()?;
+        let status_changed = terminal.program_status_focus(visible && focused);
         let mut reply = Vec::new();
         if terminal.query_defaults.color_scheme != Some(scheme) {
             terminal.query_defaults.color_scheme = Some(scheme);
@@ -759,6 +792,9 @@ impl Session {
             reply.extend(terminal.encode_focus(focused));
         }
         drop(terminal);
+        if status_changed {
+            (self.wake)();
+        }
         if !reply.is_empty() {
             // Host changes produce at most three small reports. Like resize
             // reports, they must not block the UI on the user-input budget.
@@ -1446,6 +1482,7 @@ mod tests {
         let (input, received) = mpsc::channel();
         let (_, events) = mpsc::channel();
         let session = Session {
+            wake: Arc::new(|| {}),
             shell: ShellInfo::new(vec!["test-shell".into()], "test".into()),
             attached: None,
             terminal: Arc::new(Mutex::new(terminal)),
@@ -2541,5 +2578,138 @@ mod tests {
             matches!(receiver.recv_timeout(Duration::from_secs(2)), Ok(IoCommand::Write(bytes)) if bytes == b"reply")
         );
         producer.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn program_status_local_acknowledges_only_accepted_user_input_and_focus_edges() {
+        use rustty_vt::{Key, KeyAction, KeyEvent};
+        let (input, received) = mpsc::channel();
+        let (_, events) = mpsc::channel();
+        let wakes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let wake_counter = wakes.clone();
+        let mut terminal = Terminal::new(20, 4, 0);
+        terminal.program_status_events = true;
+        terminal.program_status_focus(true);
+        terminal.feed(b"\x1b]7501;state=done:id=result\x07");
+        let session = Session {
+            wake: Arc::new(move || {
+                wake_counter.fetch_add(1, Ordering::Relaxed);
+            }),
+            shell: ShellInfo::new(vec!["test-shell".into()], "test".into()),
+            attached: None,
+            terminal: Arc::new(Mutex::new(terminal)),
+            input,
+            events,
+            pending_input: Arc::new(PendingInput::default()),
+            compression_pending: Arc::new(AtomicBool::new(false)),
+            restored: Arc::new(Mutex::new(None)),
+            exited: Arc::new(AtomicBool::new(false)),
+            close_child: None,
+        };
+        let key = |event| Input::Key {
+            event,
+            options: Default::default(),
+        };
+        let mut release = KeyEvent::new(Key::Enter);
+        release.action = KeyAction::Release;
+        let mut composing = KeyEvent::new(Key::Char('a'));
+        composing.composing = true;
+        for input in [
+            Input::Reply(b"r".to_vec()),
+            Input::Mouse(b"m".to_vec()),
+            Input::Paste(b"p".to_vec()),
+            Input::Text(Vec::new()),
+            key(KeyEvent::new(Key::Shift)),
+            key(KeyEvent::new(Key::CapsLock)),
+            key(release),
+            key(composing),
+        ] {
+            session.write_input(&input).unwrap();
+            assert_eq!(session.program_status().unwrap().len(), 1);
+        }
+        for item in received.try_iter() {
+            if let IoCommand::Write(bytes) = item {
+                session.pending_input.release(bytes.len());
+            }
+        }
+        *session.pending_input.used.lock().unwrap() = Some(MAX_PENDING_INPUT);
+        assert!(
+            session
+                .write_input(&key(KeyEvent::new(Key::Enter)))
+                .is_err()
+        );
+        assert_eq!(session.program_status().unwrap().len(), 1);
+        *session.pending_input.used.lock().unwrap() = Some(0);
+        session
+            .write_input(&key(KeyEvent::new(Key::Enter)))
+            .unwrap();
+        assert!(session.program_status().unwrap().is_empty());
+        assert_eq!(wakes.load(Ordering::Relaxed), 1);
+        session
+            .terminal()
+            .unwrap()
+            .feed(b"\x1b]7501;state=error\x07");
+        session
+            .set_host_state(true, true, query::ColorScheme::Dark)
+            .unwrap();
+        assert_eq!(session.program_status().unwrap().len(), 1);
+        session
+            .set_host_state(false, true, query::ColorScheme::Dark)
+            .unwrap();
+        assert_eq!(session.program_status().unwrap().len(), 1);
+        session
+            .set_host_state(true, true, query::ColorScheme::Dark)
+            .unwrap();
+        assert!(session.program_status().unwrap().is_empty());
+        assert_eq!(wakes.load(Ordering::Relaxed), 2);
+        session
+            .terminal()
+            .unwrap()
+            .feed(b"\x1b]7501;state=done\x07");
+        session.write_input(&Input::Text(b"text".to_vec())).unwrap();
+        assert!(session.program_status().unwrap().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn program_status_local_query_and_final_reports_follow_drained_pty_exit() {
+        let script = r#"import os,tty
+ tty.setraw(0)
+ os.write(1,b'\x1b]7501;?\x1b\\')
+ reply=b''
+ while not reply.endswith(b'\x1b\\'): reply+=os.read(0,1)
+ assert reply==b'\x1b]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\x1b\\',reply
+ os.write(1,b'\x1b]7501;state=working:id=w\x07\x1b]7501;state=done:id=d:title=RG9uZQ\x07\x1b]7501;state=blocked:id=last\x07')
+ "#.replace("\n ", "\n");
+        let session = Session::spawn(
+            &Config::default(),
+            SessionOptions {
+                command: Some(Command::Direct(vec!["python3".into(), "-c".into(), script])),
+                focused: true,
+                ..Default::default()
+            },
+            Arc::new(|| {}),
+        )
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let (mut exited, mut closed) = (false, false);
+        while !(exited && closed) {
+            for event in session.events() {
+                match event {
+                    SessionEvent::Exited { code, .. } => {
+                        assert_eq!(code, 0, "{}", session.terminal().unwrap().plain_text());
+                        exited = true;
+                    }
+                    SessionEvent::OutputClosed => closed = true,
+                    SessionEvent::Error(error) => panic!("{error}"),
+                    _ => {}
+                }
+            }
+            assert!(Instant::now() < deadline, "status child did not exit");
+            thread::sleep(Duration::from_millis(2));
+        }
+        let records = session.program_status().unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records.get(Some("d")).unwrap().title, "Done");
     }
 }

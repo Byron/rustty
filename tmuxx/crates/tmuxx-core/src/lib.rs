@@ -530,7 +530,7 @@ impl Engine {
         };
         let mut out = Outcome::default();
         let mut total = 0usize;
-        for pane in targets {
+        for &pane in &targets {
             let data = self.encode_pane_input(pane, input);
             total = total.checked_add(data.len()).ok_or("input too large")?;
             if total > 16 * 1024 * 1024 {
@@ -539,6 +539,21 @@ impl Engine {
             out.effects.push(Effect::Write { pane, data });
         }
         Ok(out)
+    }
+
+    /// A native user-input request was successfully queued to every target PTY.
+    /// Queue failure leaves records intact, including partial synchronized writes.
+    pub fn acknowledge_native_input(&mut self, panes: impl IntoIterator<Item = Id>) -> bool {
+        let mut changed = false;
+        for pane in panes {
+            if let Some(pane) = self.panes.get_mut(&pane) {
+                changed |= pane.terminal.program_status_seen();
+            }
+        }
+        if changed {
+            self.sequence = self.sequence.wrapping_add(1);
+        }
+        changed
     }
 
     fn input_targets(&self, pid: Id) -> Vec<Id> {
@@ -1239,7 +1254,10 @@ impl Engine {
                     .map(|(sid, index, _)| self.winlink_context(&format_client, sid, index));
                 let ctx = context.as_ref().unwrap_or(&format_client);
                 if a.has(b'a') && !a.has(b'j') {
-                    for key in format_metadata::FORMAT_KEYS {
+                    for key in format_metadata::FORMAT_KEYS
+                        .iter()
+                        .chain(tmuxx_terminal::PROGRAM_STATUS_FORMATS)
+                    {
                         if let Some(value) = self.enumerated_format(key, sid, wid, pid, ctx) {
                             out.output.extend(key.as_bytes());
                             out.output.push(b'=');
@@ -2358,6 +2376,7 @@ impl Engine {
         if let Some(p) = self.panes.get_mut(&pane) {
             p.status = Some(status);
             p.terminal.clear_agent_status();
+            p.terminal.program_status_exited();
             let remain = p
                 .options
                 .get("remain-on-exit")

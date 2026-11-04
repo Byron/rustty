@@ -378,3 +378,68 @@ impl Records {
             .collect()
     }
 }
+
+/// Only physical, non-modifier key presses acknowledge unseen records. Hosts
+/// handle committed text separately; mouse, paste, replies and releases do not.
+pub fn acknowledges_key(event: &crate::KeyEvent) -> bool {
+    use crate::{Key, KeyAction};
+    event.action != KeyAction::Release
+        && !event.composing
+        && !matches!(
+            event.key,
+            Key::Shift
+                | Key::Control
+                | Key::Alt
+                | Key::Super
+                | Key::ShiftRight
+                | Key::ControlRight
+                | Key::AltRight
+                | Key::SuperRight
+                | Key::CapsLock
+                | Key::NumLock
+                | Key::ScrollLock
+        )
+}
+
+impl crate::Terminal {
+    pub(crate) fn osc_program_status(
+        &mut self,
+        data: &[u8],
+        bell: bool,
+        effects: &mut Vec<crate::Effect>,
+    ) {
+        if !self.program_status_events {
+            return;
+        }
+        if data == b"?" {
+            let mut reply = QUERY_REPLY.to_vec();
+            reply.extend_from_slice(if bell { b"\x07" } else { b"\x1b\\" });
+            effects.push(crate::Effect::Write(reply));
+        } else if let Some(report) = Report::parse(data) {
+            let _ = self.program_status.apply(report.clone());
+            effects.push(crate::Effect::ProgramStatus(report));
+        }
+    }
+    /// Retained metadata is independent of screen selection and host actions.
+    pub fn program_status(&self) -> &Records {
+        &self.program_status
+    }
+
+    /// Called after real child output has drained, or at a new primary prompt.
+    pub fn program_status_exited(&mut self) -> bool {
+        self.program_status.on_process_exit_or_prompt()
+    }
+
+    /// A real non-modifier key or committed text was accepted by the owner.
+    pub fn program_status_seen(&mut self) -> bool {
+        self.program_status.on_seen_by_user()
+    }
+
+    /// Actual effective focus is independent of application focus-report policy.
+    /// Repeated host updates must not acknowledge reports produced while focused.
+    pub fn program_status_focus(&mut self, focused: bool) -> bool {
+        let gained = focused && !self.program_status_focused;
+        self.program_status_focused = focused;
+        gained && self.program_status_seen()
+    }
+}

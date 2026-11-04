@@ -169,6 +169,8 @@ pub struct Terminal {
     /// Accept OSC 7501 reports and answer support queries. Disabled by default;
     /// retained through reset, but not persisted in terminal snapshots.
     pub program_status_events: bool,
+    pub(crate) program_status: crate::program_status::Records,
+    pub(crate) program_status_focused: bool,
     /// Report ANSI mode 20 changes to the PTY writer, including RIS. Retained
     /// through reset, but not snapshots; standalone VT clients opt in.
     pub linefeed_mode_events: bool,
@@ -269,6 +271,8 @@ impl Terminal {
             tmux_image_quota: None,
             agent_status_events: false,
             program_status_events: false,
+            program_status: Default::default(),
+            program_status_focused: false,
             linefeed_mode_events: false,
             visible: true,
             clipboard_write_limit: 64 * 1024 * 1024,
@@ -904,6 +908,7 @@ impl Terminal {
         }
         let agent_status_events = self.agent_status_events;
         let program_status_events = self.program_status_events;
+        let program_status_focused = self.program_status_focused;
         let linefeed_mode_events = self.linefeed_mode_events;
         let synchronized_output_generation = self.synchronized_output_generation;
         let visible = self.visible;
@@ -974,6 +979,7 @@ impl Terminal {
         }
         self.agent_status_events = agent_status_events;
         self.program_status_events = program_status_events;
+        self.program_status_focused = program_status_focused;
         self.linefeed_mode_events = linefeed_mode_events;
         self.synchronized_output_generation = synchronized_output_generation;
         self.visible = visible;
@@ -996,6 +1002,7 @@ impl Terminal {
 
     // tmux RIS resets the pen and visible grid, retaining the existing screens.
     fn reset_tmux(&mut self) {
+        self.program_status.clear();
         self.reset_pointer_shapes();
         self.metadata.saved_mouse = None;
         self.metadata.rectangular_attributes = false;
@@ -3368,18 +3375,7 @@ impl Terminal {
             _ => {}
         }
         match number {
-            7501 => {
-                if !self.program_status_events {
-                    return;
-                }
-                if data == b"?" {
-                    let mut reply = crate::program_status::QUERY_REPLY.to_vec();
-                    reply.extend_from_slice(if bell { b"\x07" } else { b"\x1b\\" });
-                    effects.push(Effect::Write(reply));
-                } else if let Some(report) = crate::program_status::Report::parse(data) {
-                    effects.push(Effect::ProgramStatus(report));
-                }
-            }
+            7501 => self.osc_program_status(data, bell, effects),
             0 | 2 => {
                 // The stream validates the full title before the host handler
                 // keeps its first 1024 bytes, even across a UTF-8 boundary.
@@ -3575,6 +3571,16 @@ impl Terminal {
     }
 
     fn osc133(&mut self, data: &[u8], effects: &mut Vec<Effect>) {
+        if matches!(data.split(|&b| b == b';').next(), Some(b"A" | b"N"))
+            && !matches!(
+                data.split(|&b| b == b';')
+                    .skip(1)
+                    .find_map(|part| part.strip_prefix(b"k=")),
+                Some(b"c" | b"s")
+            )
+        {
+            self.program_status_exited();
+        }
         if self.shell_command_events {
             match data.split(|&b| b == b';').next() {
                 Some(b"A" | b"N" | b"D") => self.clear_command_input(),
@@ -3802,6 +3808,12 @@ impl Terminal {
                     && let Some(event) = crate::agent::Event::decode(payload)
                 {
                     effects.push(Effect::AgentStatus(event));
+                } else if self.program_status_events
+                    && let Some(payload) = payload.strip_prefix(b"7501;")
+                    && payload.len() <= 4087
+                {
+                    let payload = payload.to_vec();
+                    self.osc_program_status(&payload, bell, effects);
                 } else if self.tmux_clipboard
                     && let Some(payload) = payload.strip_prefix(b"52;")
                 {
