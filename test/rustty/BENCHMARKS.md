@@ -5958,3 +5958,14 @@ to 16.93 MB and same-process RSS from 744.7 to 209.0 MB; all 24 later old/final
 text checks pass. This exposes memory reuse across persistent panes, unlike
 the single-pane RSS sample. Corpus, CPU, creation times and raw results are
 retained in the same owner report.
+
+## 2026-11-05 — Full-history search traversal
+
+The [search report](HISTORY_SEARCH.md) preserves three adjacent pairs for each
+20k/100k/250k ASCII and Unicode corpus, measured independently after the shared
+navigation prerequisite. Reusing the known history page and skipping repeated
+active matching during synchronous `run` lowers cold search time by 44–67%.
+At 250k rows, ASCII falls 1576.12 → 548.47 ms and Unicode 1117.76 → 365.37 ms.
+Both variants restore identical historical cells and recompress to the same
+owned size. The report retains raw cold/warm samples, provenance and 94 passing
+focused tests; these core API timings make no renderer, PTY or RSS claim.

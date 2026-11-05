@@ -1,0 +1,49 @@
+{
+  "source_commit": "247ad8119a670c6c7c7967cb298437f494809fb6",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "uname": {
+    "system": "Linux",
+    "node": "cr1",
+    "release": "7.0.0-1019-azure",
+    "version": "#20-Ubuntu SMP PREEMPT Mon Oct 19 23:06:15 UTC 2026",
+    "machine": "aarch64",
+    "processor": ""
+  },
+  "profile": "release, thin LTO, codegen-units=1, no RUSTFLAGS",
+  "protocol": "3 adjacent pairs per corpus/case, orders AB,BA,AB; each operation cold then warm on clone of freshly prepared cold history; setup and clone excluded from operation times",
+  "scope": "Terminal core only; no PTY, render, visible latency, or RSS claims",
+  "binaries": {
+    "metadata": {
+      "path": "/tmp/rustty-history-metadata-bin",
+      "sha256": "ce815dca2678b87b08f9de816b6fcf729cdf3b7635cefc3c3b008db4cd2f4561"
+    },
+    "search": {
+      "path": "/tmp/rustty-history-search-bin",
+      "sha256": "d5938bde1360d23a455d0b64a7d5b563730a712cb06334795fbb48a5a5294396"
+    }
+  },
+  "operations": {
+    "search": [
+      "search_run_rare"
+    ]
+  },
+  "corpora": {
+    "ascii": "INFO line={i:06} task={i%1000:04} file=src/terminal.rs result=complete\\r\\n",
+    "unicode": "SGR31+i%6 + line={i:06} \u754c\u9762 e\u0301 \ud83d\udc69\u200d\ud83d\udcbb \u4fdd\u5b58 completed + SGRreset + CRLF"
+  },
+  "rows": [
+    20000,
+    100000,
+    250000
+  ],
+  "source_sha256": "33c48c62a0519cb0477857cc4c402d25415331c9c4a23c26339f0afb8342617f",
+  "cargo_lock_sha256": "5fd62b0c5a248a3af68c2577eecf15f03e53777770c9d498ee05148764ddf74a",
+  "execution_count": 36,
+  "validation": {
+    "prototype": "15 search-filtered library tests and55 integration tests passed after measurements"
+  },
+  "baseline": "source_commit plus ../navigation-2026-11-05/metadata.patch (same cold-navigation prerequisite in both variants)",
+  "candidate": "baseline plus search.patch",
+  "build_inputs": "matching workspace/VT Cargo manifests and Cargo.lock in ../navigation-2026-11-05, with this identical history-probe.rs harness",
+  "production_port": "Rechecked unchanged search gaps at1d9a51623; same production patch plus regression, no new timing claim on owner step"
+}

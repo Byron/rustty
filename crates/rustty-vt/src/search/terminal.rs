@@ -156,7 +156,9 @@ impl TerminalSearch {
                 Status::Running => {
                     self.tick();
                 }
-                Status::FeedRequired => self.feed(terminal, true),
+                // The exclusive terminal borrow prevents active content changes
+                // during this synchronous run; only the next history window is new.
+                Status::FeedRequired => self.feed(terminal, false),
                 Status::Complete => return,
             }
         }
@@ -317,16 +319,9 @@ struct Window {
 
 impl Window {
     fn append(&mut self, screen: &Screen, index: usize, reverse: bool) -> usize {
-        let start: usize = screen
-            .pages
-            .pages
-            .iter()
-            .take(index)
-            .map(|page| usize::from(page.rows))
-            .sum();
-        let count = usize::from(screen.pages.pages[index].rows);
-        let rows: Vec<_> = (start..start + count)
-            .map(|row| screen_row(screen, row))
+        let page = &screen.pages.pages[index];
+        let rows: Vec<_> = (0..usize::from(page.rows))
+            .map(|row| page.row(row))
             .collect();
         let line = literal_text(screen, &rows);
         let len = line.text.len();
@@ -464,10 +459,6 @@ impl Window {
             chunks,
         }
     }
-}
-
-fn screen_row(screen: &Screen, row: usize) -> crate::Row<'_> {
-    screen.physical_row(row)
 }
 
 fn row_index(screen: &Screen, point: GridPoint) -> Option<usize> {
@@ -866,6 +857,36 @@ mod tests {
         drop(terminal);
         assert_eq!(search.tick(), Tick::Progress);
         assert!(search.total_matches() > before);
+    }
+
+    #[test]
+    fn synchronous_search_refreshes_between_runs_and_preserves_cold_page_matches() {
+        let mut terminal = history();
+        terminal.feed(b"active A");
+        terminal.set_scrollback_compression(true);
+        let resident = terminal.screen().owned_bytes();
+        while terminal.compress_scrollback_step() {}
+        assert!(terminal.screen().owned_bytes() < resident);
+
+        fn check(search: &mut TerminalSearch, terminal: &mut Terminal) {
+            // The independent full-screen path preserves native overlap and
+            // match ordering. Its clone leaves the source's cold pages alone.
+            let expected = terminal.clone().screen().search_literal(b"A");
+            search.run(terminal);
+            assert_eq!(search.status(), Status::Complete);
+            assert_eq!(search.matches().collect::<Vec<_>>(), expected);
+        }
+
+        let mut search = TerminalSearch::new(b"A");
+        check(&mut search, &mut terminal);
+        terminal.feed(b"\x1b[2J\x1b[Hupdated A A");
+        check(&mut search, &mut terminal);
+        terminal.resize(512, 6);
+        check(&mut search, &mut terminal);
+        terminal.feed(b"\x1b[?1049halternate A");
+        check(&mut search, &mut terminal);
+        terminal.feed(b"\x1b[?1049l");
+        check(&mut search, &mut terminal);
     }
 
     #[test]

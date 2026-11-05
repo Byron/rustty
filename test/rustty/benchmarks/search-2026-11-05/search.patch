@@ -1,0 +1,44 @@
+--- a/crates/rustty-vt/src/search/terminal.rs
++++ b/crates/rustty-vt/src/search/terminal.rs
+@@ -156,7 +156,9 @@
+                 Status::Running => {
+                     self.tick();
+                 }
+-                Status::FeedRequired => self.feed(terminal, true),
++                // The exclusive terminal borrow prevents active content changes
++                // during this synchronous run; only the next history window is new.
++                Status::FeedRequired => self.feed(terminal, false),
+                 Status::Complete => return,
+             }
+         }
+@@ -317,17 +319,8 @@
+ 
+ impl Window {
+     fn append(&mut self, screen: &Screen, index: usize, reverse: bool) -> usize {
+-        let start: usize = screen
+-            .pages
+-            .pages
+-            .iter()
+-            .take(index)
+-            .map(|page| usize::from(page.rows))
+-            .sum();
+-        let count = usize::from(screen.pages.pages[index].rows);
+-        let rows: Vec<_> = (start..start + count)
+-            .map(|row| screen_row(screen, row))
+-            .collect();
++        let page = &screen.pages.pages[index];
++        let rows: Vec<_> = (0..usize::from(page.rows)).map(|row| page.row(row)).collect();
+         let line = literal_text(screen, &rows);
+         let len = line.text.len();
+         if len == 0 {
+@@ -466,10 +459,6 @@
+     }
+ }
+ 
+-fn screen_row(screen: &Screen, row: usize) -> crate::Row<'_> {
+-    screen.physical_row(row)
+-}
+-
+ fn row_index(screen: &Screen, point: GridPoint) -> Option<usize> {
+     screen.row_index_by_id(point.row)
+ }

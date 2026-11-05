@@ -1,0 +1,23 @@
+{
+  "toolchain": "Rust1.95.0",
+  "source_base": "1d9a51623",
+  "commands": [
+    {
+      "command": "cargo +1.95.0 test --locked --offline -p rustty-vt --lib search",
+      "passed": 16
+    },
+    {
+      "command": "cargo +1.95.0 test --locked --offline -p rustty-vt --test search --test selection --test selection_format --test snapshot --test snapshot_continuation --test snapshot_graphics",
+      "passed": 78,
+      "suites": {
+        "search": 6,
+        "selection": 6,
+        "selection_format": 18,
+        "snapshot": 33,
+        "snapshot_continuation": 1,
+        "snapshot_graphics": 14
+      }
+    }
+  ],
+  "total_passed": 94
+}
