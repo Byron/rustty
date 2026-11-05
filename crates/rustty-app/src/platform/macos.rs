@@ -930,13 +930,17 @@ impl Platform {
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (),
             Err(e) => return Err(e.to_string()),
         }
+        self.open_text_file(path)
+    }
+
+    pub fn open_text_file(&self, path: &Path) -> Result<(), String> {
         // Legacy Ghostty/Rustty extensions may have no Launch Services handler.
         // `-t` selects the user's default text editor instead of the file type.
         let status = std::process::Command::new("/usr/bin/open")
             .arg("-t")
             .arg(path)
             .status()
-            .map_err(|error| format!("Could not open settings in a text editor: {error}"))?;
+            .map_err(|error| format!("Could not open the file in a text editor: {error}"))?;
         if status.success() {
             Ok(())
         } else {

@@ -387,6 +387,19 @@ fn actions() -> Vec<(&'static str, Action)> {
         ("Find", Action::StartSearch),
         ("Open Link with Keyboard Hints", Action::ShowLinkHints),
         ("Copy Link with Keyboard Hints", Action::CopyLinkHints),
+        ("Copy Last Command Output", Action::CopyLastCommandOutput),
+        (
+            "Open Last Command Output in Editor",
+            Action::OpenLastCommandOutputInEditor,
+        ),
+        (
+            "Open Terminal Selection in Editor",
+            Action::OpenSelectionInEditor,
+        ),
+        (
+            "Open Screen and Scrollback in Editor",
+            Action::OpenScrollbackInEditor,
+        ),
         ("Open Configuration", Action::OpenConfig),
         ("Open Saved Layout", Action::OpenLayout),
         ("Reload Configuration", Action::ReloadConfig),
@@ -919,15 +932,9 @@ mod tests {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert!(labels.contains(&"Find"), "{labels:?}");
-        assert!(
-            labels.contains(&if cfg!(windows) {
-                "Ctrl+Shift+F"
-            } else {
-                "⌘F"
-            }),
-            "{labels:?}"
-        );
+        assert!(labels.contains(&"Equalize Splits"), "{labels:?}");
+        let shortcut = shortcut_label(&config.keybinds, &Action::EqualizeSplits).unwrap();
+        assert!(labels.contains(&shortcut.as_str()), "{labels:?}");
         draw(
             &context,
             &mut palette,
@@ -1173,20 +1180,20 @@ mod tests {
                 "o",
                 vec![
                     "Connect to tmuxx Server…",
+                    "Copy Last Command Output",
                     "Copy Link with Keyboard Hints",
                     "Copy Window to Persistent tmuxx Session",
                     "New Floating Panel",
-                    "New Persistent tmuxx Window",
                 ],
             ),
             (
                 "",
                 vec![
                     "Connect to tmuxx Server…",
+                    "Copy Last Command Output",
                     "Copy Link with Keyboard Hints",
                     "Copy Window to Persistent tmuxx Session",
                     "Equalize Splits",
-                    "Find",
                 ],
             ),
         ] {

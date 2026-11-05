@@ -4383,6 +4383,25 @@ impl App {
             Action::ShowLinkHints | Action::CopyLinkHints => {
                 return self.show_link_hints(host, action == Action::CopyLinkHints);
             }
+            Action::CopyLastCommandOutput
+            | Action::OpenLastCommandOutputInEditor
+            | Action::OpenSelectionInEditor
+            | Action::OpenScrollbackInEditor => {
+                let result = self.output_action(host, &action, |path| {
+                    self.platform
+                        .as_ref()
+                        .ok_or_else(|| "Text editor service is unavailable".to_owned())?
+                        .open_text_file(path)
+                });
+                host.repaint();
+                return match result {
+                    Ok(performed) => performed,
+                    Err(error) => {
+                        self.errors.push(error);
+                        true
+                    }
+                };
+            }
             Action::PasteFromClipboard | Action::PasteFromSelection => {
                 if let Some(id) = focused {
                     let location = if action == Action::PasteFromSelection {
@@ -4783,6 +4802,46 @@ impl App {
             current.repaint();
         }
     }
+    fn output_action(
+        &self,
+        host: &mut Host,
+        action: &Action,
+        open: impl FnOnce(&Path) -> std::result::Result<(), String>,
+    ) -> std::result::Result<bool, String> {
+        let Some(pane) = self.focused(host.id).and_then(|id| self.panes.get(&id)) else {
+            return Ok(false);
+        };
+        let data = {
+            let terminal = pane.session.terminal().map_err(|error| error.to_string())?;
+            match action {
+                Action::CopyLastCommandOutput | Action::OpenLastCommandOutputInEditor => {
+                    terminal.last_command_output_text().map(String::into_bytes)
+                }
+                Action::OpenSelectionInEditor => {
+                    terminal.screen().selection_text().map(String::into_bytes)
+                }
+                Action::OpenScrollbackInEditor => {
+                    let mut formatter = terminal.screen().formatter(vt::formatter::Format::Plain);
+                    formatter.options.unwrap = true;
+                    formatter.format()
+                }
+                _ => return Ok(false),
+            }
+        };
+        let Some(data) = data else {
+            return Ok(false);
+        };
+        if *action == Action::CopyLastCommandOutput {
+            host.egui
+                .egui_ctx()
+                .copy_text(String::from_utf8(data).map_err(|error| error.to_string())?);
+        } else {
+            // Export and launch only after the terminal lock has been released.
+            rustty_app::handoff::open_text(&data, open)?;
+        }
+        Ok(true)
+    }
+
     fn hint_geometry(&self, host: &Host, pane: Id) -> Option<(egui::Rect, Vec2)> {
         let rect = *host.rects.get(&pane)?;
         let config = self.window_config(host.id);

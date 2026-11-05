@@ -4,6 +4,8 @@ use std::fs;
 
 #[path = "hints_smoke.rs"]
 mod hints_smoke;
+#[path = "output_smoke.rs"]
+mod output_smoke;
 #[path = "../../../test/rustty/frame_workloads.rs"]
 mod workload;
 
@@ -213,6 +215,7 @@ impl Smoke {
             cfg!(target_os = "macos") && std::env::var_os("RUSTTY_SMOKE_CURSOR_LAYER").is_some();
         let deck_only = std::env::var("RUSTTY_SMOKE_DECK").as_deref() == Ok("only");
         let hints_only = std::env::var_os("RUSTTY_SMOKE_HINTS").is_some();
+        let output_only = std::env::var_os("RUSTTY_SMOKE_OUTPUT").is_some();
         let outliner = std::env::var_os("RUSTTY_SMOKE_OUTLINER").is_some();
         if timing || cursor_benchmark {
             let renderer = loaded.config.renderer;
@@ -227,7 +230,13 @@ impl Smoke {
             loaded.config.font_size = 13.0;
         }
         #[cfg(not(target_os = "windows"))]
-        let command = if timing || cursor_benchmark || deck_only || hints_only || outliner {
+        let command = if timing
+            || cursor_benchmark
+            || deck_only
+            || hints_only
+            || output_only
+            || outliner
+        {
             config::Command::Direct(vec!["/bin/sleep".into(), "120".into()])
         } else {
             config::Command::Direct(vec!["/bin/sh".into(),"-c".into(),r"printf '\033[2J\033[H\033[30;107m  ✔️\033[5G  > selected row\033[0m\n\033[1;36mRustty native smoke\033[0m\n\033]7;file://localhost/tmp\007\033]9;4;1;65\007'; exec /bin/sh -i".into()])
@@ -247,7 +256,7 @@ impl Smoke {
                     )
                     .join("Git/bin/bash.exe")
                 });
-            if timing || deck_only || hints_only || outliner {
+            if timing || deck_only || hints_only || output_only || outliner {
                 config::Command::Direct(vec![
                     shell.to_string_lossy().into_owned(),
                     "--noprofile".into(),
@@ -374,6 +383,10 @@ impl Smoke {
         }
         if std::env::var_os("RUSTTY_SMOKE_HINTS").is_some() {
             hints_smoke::check(app, event_loop, &self.directory)?;
+            return Ok(true);
+        }
+        if std::env::var_os("RUSTTY_SMOKE_OUTPUT").is_some() {
+            output_smoke::check(app, &self.directory)?;
             return Ok(true);
         }
         if self.interactive_deck {

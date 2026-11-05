@@ -471,6 +471,23 @@ cancel when the content, viewport, pane, or window focus changes. Paths containi
 spaces need explicit OSC 8 links; matching stays within visible content and
 bounded context for wrapped links.
 
+The command palette can copy the last command's output or open it in the default
+text editor. It can also open the terminal selection or the current screen and
+retained scrollback. These actions have no default shortcuts and can be bound as:
+
+- `copy_last_command_output`
+- `open_last_command_output_in_editor`
+- `open_selection_in_editor`
+- `open_scrollback_in_editor`
+
+Command output uses shell-integration boundaries, including native tmuxx markers.
+An empty latest command leaves the clipboard unchanged. Missing or evicted prompt
+boundaries cannot identify output reliably, and alternate-screen TUIs have no
+last-command output. Screen and selection exports remain available there. Exports
+preserve selection and scroll position, and join soft-wrapped lines. Editor
+exports use private files in the OS temporary directory, retained after launch
+so the editor can read them asynchronously.
+
 File → Open Saved Layout lists the last saved layouts from Ghostty Local,
 Ghostty and Rustty, and can browse for another Rustty workspace JSON or Ghostty
 saved-state folder. Imported tabs and panes open in new windows with fresh shells
@@ -545,6 +562,9 @@ Set `RUSTTY_SMOKE_HINTS=1` with the offscreen smoke to run keyboard-hint checks
 only. It writes `keyboard-hints-result.json` and captures the labels and IME
 restoration. It intercepts clipboard output and avoids external launches while
 checking Find handoff, selection, key releases, IME, and stale-target cancellation.
+`RUSTTY_SMOKE_OUTPUT=1` checks command-output, selection, and scrollback actions
+with an injected editor opener and writes `output-actions-result.json`. It verifies
+export contents and cleanup without opening an editor or changing the clipboard.
 
 The macOS session import regression runs five hidden debug instances in sequence
 with isolated configuration, disposable `/bin/sh` shells, and state. Each

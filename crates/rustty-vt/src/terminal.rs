@@ -1204,6 +1204,59 @@ impl Terminal {
         result
     }
 
+    /// Extract the latest command's output at the active cursor, independent of
+    /// the viewport and without changing the selection. A prompt being edited
+    /// is skipped; an empty latest command never falls back to an older one.
+    /// Local output requires a retained primary OSC 133 prompt. Alternate
+    /// screens have no command output; native tmux retains its own boundaries.
+    pub fn last_command_output_text(&self) -> Option<String> {
+        if self.is_alternate_screen() {
+            return None;
+        }
+        let screen = self.screen();
+        let cursor = GridPoint {
+            row: screen.row(screen.cursor.row).id,
+            col: screen.cursor.col,
+        };
+        if screen.tmux_shell.is_some() {
+            return screen.tmux_output_text(cursor);
+        }
+        let is_prompt = |y| {
+            let (page, row) = screen.pages.page_at(y);
+            page.headers[row].semantic() == SemanticContent::Prompt
+        };
+        let mut prompts = (0..=screen.history_len() + screen.cursor.row)
+            .rev()
+            .filter(|&y| is_prompt(y));
+        let latest = prompts.next()?;
+        let (start, end) = if screen.cursor.semantic == SemanticContent::Output {
+            let total = screen.history_len() + screen.height();
+            let end = (latest + 1..total).find(|&y| is_prompt(y)).unwrap_or(total);
+            (latest, end)
+        } else {
+            (prompts.next()?, latest)
+        };
+        let point = (start..end).find_map(|y| {
+            let row = screen.physical_row(y);
+            row.cells
+                .iter()
+                .position(|cell| {
+                    cell.semantic() == SemanticContent::Output && cell.codepoint().is_some()
+                })
+                .map(|col| GridPoint { row: row.id, col })
+        })?;
+        let selection = screen.select_output(point)?;
+        let bytes = screen.format_selection(
+            selection,
+            crate::formatter::Options {
+                trim: false,
+                ..Default::default()
+            },
+        )?;
+        (!bytes.is_empty())
+            .then(|| String::from_utf8(bytes).expect("plain cell formatting is valid UTF-8"))
+    }
+
     pub fn resolve_color(&self, color: Color, default: [u8; 3]) -> [u8; 3] {
         match color {
             Color::Default => default,

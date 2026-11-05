@@ -210,6 +210,142 @@ fn output_selection_uses_prompt_groups_and_retains_explicit_spaces() {
 }
 
 #[test]
+fn last_command_output_preserves_spaces_wraps_and_selection_in_history() {
+    let mut terminal = Terminal::new(8, 3, 100);
+    terminal.feed(
+        concat!(
+            "\x1b]133;A\x07$ \x1b]133;B\x07first\r\n\x1b]133;C\x07old\r\n",
+            "\x1b]133;D;0\x07\x1b]133;A\x07$ \x1b]133;B\x07second\r\n",
+            "\x1b]133;C\x07  12345界abcdefgh \r\nlast  \r\n\x1b]133;D;0\x07",
+            "\x1b]133;A\x07$ \x1b]133;B\x07editing"
+        )
+        .as_bytes(),
+    );
+    let selection = terminal.screen().select_all();
+    terminal.screen_mut().selection = selection;
+    terminal.screen_mut().scroll_viewport(isize::MAX);
+    assert_eq!(
+        terminal.last_command_output_text().as_deref(),
+        Some("  12345界abcdefgh \nlast  "),
+    );
+    assert_eq!(terminal.screen().selection, selection);
+    assert!(terminal.screen().viewport_offset > 0);
+}
+
+#[test]
+fn last_command_output_uses_only_the_latest_executed_prompt_group() {
+    let mut terminal = Terminal::new(20, 5, 100);
+    terminal.feed(b"\x1b]133;A\x07$ \x1b]133;B\x07first");
+    assert_eq!(terminal.last_command_output_text(), None);
+    terminal.feed(b"\r\n\x1b]133;C\x07old\r\n\x1b]133;D;0\x07");
+    assert_eq!(terminal.last_command_output_text().as_deref(), Some("old"));
+    terminal.feed(b"\x1b]133;A\x07$ ");
+    assert_eq!(terminal.last_command_output_text().as_deref(), Some("old"));
+    terminal.feed(b"\x1b]133;B\x07empty\r\n\x1b]133;C\x07\x1b]133;D;0\x07");
+    assert_eq!(terminal.last_command_output_text(), None);
+    terminal.feed(b"\x1b]133;A\x07$ \x1b]133;B\x07editing");
+    assert_eq!(terminal.last_command_output_text(), None);
+    terminal.feed(b"\r\n\x1b]133;C\x07   ");
+    assert_eq!(terminal.last_command_output_text().as_deref(), Some("   "));
+}
+
+#[test]
+fn last_command_output_handles_same_row_output_and_secondary_prompts() {
+    let mut terminal = Terminal::new(40, 6, 100);
+    terminal.feed(
+        concat!(
+            "\x1b]133;A\x07$ \x1b]133;B\x07command\r\n",
+            "\x1b]133;P;k=s\x07> \x1b]133;B\x07continued",
+            "\x1b]133;C\x07  output  \x1b]133;D;0\x07"
+        )
+        .as_bytes(),
+    );
+    assert_eq!(
+        terminal.last_command_output_text().as_deref(),
+        Some("  output  ")
+    );
+    terminal.feed(
+        concat!(
+            "\x1b]133;A\x07$ \x1b]133;B\x07editing\r\n",
+            "\x1b]133;P;k=s\x07> \x1b]133;B\x07continued"
+        )
+        .as_bytes(),
+    );
+    assert_eq!(
+        terminal.last_command_output_text().as_deref(),
+        Some("  output  ")
+    );
+}
+
+#[test]
+fn last_command_output_requires_a_retained_prompt_and_primary_screen() {
+    let mut terminal = Terminal::with_limits(10, 2, rustty_vt::ScrollbackLimits::NONE);
+    terminal.feed(b"unmarked\r\n\x1b]133;A\x07$ ");
+    assert_eq!(terminal.last_command_output_text(), None);
+    terminal.feed(b"\x1b]133;B\x07cmd\r\n\x1b]133;C\x07out");
+    assert_eq!(terminal.last_command_output_text().as_deref(), Some("out"));
+    terminal.feed(b"\x1b[?1049h\x1b]133;A\x07$ \x1b]133;C\x07alt");
+    assert_eq!(terminal.last_command_output_text(), None);
+    terminal.feed(b"\x1b[?1049l");
+    assert_eq!(terminal.last_command_output_text().as_deref(), Some("out"));
+    terminal.feed(b"\r\nmore\r\nlast");
+    assert_eq!(terminal.last_command_output_text(), None);
+}
+
+#[test]
+fn last_command_output_follows_cursor_groups_without_including_later_commands() {
+    let mut terminal = Terminal::new(20, 8, 100);
+    terminal.feed(
+        concat!(
+            "\x1b]133;A\x07$ \x1b]133;B\x07first\r\n",
+            "\x1b]133;C\x07first line\r\nsecond line\r\n\x1b]133;D;0\x07",
+            "\x1b]133;A\x07$ \x1b]133;B\x07empty\r\n\x1b]133;C\x07\x1b]133;D;0\x07",
+            "\x1b]133;A\x07$ \x1b]133;B\x07last\r\n\x1b]133;C\x07later"
+        )
+        .as_bytes(),
+    );
+    assert_eq!(
+        terminal.last_command_output_text().as_deref(),
+        Some("later")
+    );
+    terminal.feed(b"\x1b[2;1H");
+    assert_eq!(
+        terminal.last_command_output_text().as_deref(),
+        Some("first line\nsecond line"),
+    );
+    terminal.feed(b"\x1b[4;1H");
+    assert_eq!(terminal.last_command_output_text(), None);
+}
+
+#[test]
+fn last_command_output_delegates_native_tmux_boundaries() {
+    let mut terminal = Terminal::new(8, 5, 100);
+    terminal.set_tmux_strings(true);
+    terminal.feed(
+        concat!(
+            "\x1b]133;A\x07$ \x1b]133;B\x07cmd\r\n\x1b]133;C\x07",
+            "12345678wide界\r\n\r\n\x1b]133;D;0\x07\x1b]133;A\x07$ "
+        )
+        .as_bytes(),
+    );
+    let screen = terminal.screen();
+    let cursor = rustty_vt::GridPoint {
+        row: screen.row(screen.cursor.row).id,
+        col: screen.cursor.col,
+    };
+    assert_eq!(
+        terminal.last_command_output_text(),
+        screen.tmux_output_text(cursor)
+    );
+    assert_eq!(
+        terminal.last_command_output_text().as_deref(),
+        Some("12345678wide界\n\n"),
+    );
+    terminal.feed(b"\x1b]133;B\x07empty\r\n\x1b]133;C\x07\x1b]133;D;0\x07");
+    assert_eq!(terminal.last_command_output_text(), None);
+}
+
+#[test]
 fn selection_preserves_native_whitespace_wrap_and_wide_cell_boundaries() {
     for (text, start, end, rectangular, expected) in [
         ("", (1, 0), (6, 1), false, ""),

@@ -470,6 +470,10 @@ impl Platform {
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => (),
             Err(error) => return Err(error.to_string()),
         }
+        self.open_text_file(path)
+    }
+
+    pub fn open_text_file(&self, path: &Path) -> Result<(), String> {
         shell_open(path.as_os_str(), w!("edit")).or_else(|_| {
             std::process::Command::new("notepad.exe")
                 .arg(path)

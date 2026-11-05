@@ -1,4 +1,4 @@
-//! Private session dumps in temporary storage or application data across reboots.
+//! Private terminal exports and session dumps in temporary or application storage.
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -23,6 +23,37 @@ const MAX_METADATA: u64 = 64 * 1024;
 pub const MAX_DUMP_BYTES: u64 = 512 * 1024 * 1024;
 const DUMP_EXTENSION: &str = "rustty-state.lz4";
 const METADATA_EXTENSION: &str = "session.json";
+
+/// Keep successful exports for the external editor, which may open them asynchronously.
+pub fn open_text(
+    data: &[u8],
+    open: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<(), String> {
+    let directory = user_temporary_directory()
+        .map_err(|error| error.to_string())?
+        .join(format!("rustty-output-{}", unique_id()));
+    private_directory(&directory).map_err(|error| error.to_string())?;
+    let path = directory.join("output.txt");
+    let mut output = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|error| {
+            let _ = fs::remove_dir(&directory);
+            error.to_string()
+        })?;
+    let result = (|| {
+        protect_file(&output).map_err(|error| error.to_string())?;
+        output.write_all(data).map_err(|error| error.to_string())?;
+        drop(output);
+        open(&path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_dir(&directory);
+    }
+    result
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedDump {
@@ -343,6 +374,42 @@ fn decode_dump_with_limit(input: impl Read, limit: u64) -> io::Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_exports_are_private_complete_and_retained_for_the_editor() {
+        let data = "output 界面\ntrailing spaces  \n".as_bytes();
+        let mut exported = None;
+        open_text(data, |path| {
+            check_private_directory(path.parent().unwrap()).unwrap();
+            let mut read = Vec::new();
+            open_private_file(path, data.len() as u64)
+                .unwrap()
+                .read_to_end(&mut read)
+                .unwrap();
+            assert_eq!(read, data);
+            exported = Some(path.to_owned());
+            Ok(())
+        })
+        .unwrap();
+        let path = exported.unwrap();
+        assert_eq!(fs::read(&path).unwrap(), data);
+        fs::remove_file(&path).unwrap();
+        fs::remove_dir(path.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn text_exports_are_removed_when_the_editor_cannot_open_them() {
+        let mut exported = None;
+        let result = open_text(b"private output", |path| {
+            assert_eq!(fs::read(path).unwrap(), b"private output");
+            exported = Some(path.to_owned());
+            Err("editor unavailable".into())
+        });
+        assert_eq!(result, Err("editor unavailable".into()));
+        let path = exported.unwrap();
+        assert!(!path.exists());
+        assert!(!path.parent().unwrap().exists());
+    }
 
     struct TestDirectory(PathBuf);
 

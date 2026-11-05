@@ -230,6 +230,10 @@ pub enum Action {
     GotoTab(usize),
     MoveTab(i32),
     CopyToClipboard,
+    CopyLastCommandOutput,
+    OpenLastCommandOutputInEditor,
+    OpenSelectionInEditor,
+    OpenScrollbackInEditor,
     PasteFromClipboard,
     PasteFromSelection,
     SelectAll,
@@ -357,6 +361,10 @@ impl Action {
             "previous_tab" => Self::PreviousTab,
             "last_tab" => Self::LastTab,
             "paste_from_clipboard" => Self::PasteFromClipboard,
+            "copy_last_command_output" => Self::CopyLastCommandOutput,
+            "open_last_command_output_in_editor" => Self::OpenLastCommandOutputInEditor,
+            "open_selection_in_editor" => Self::OpenSelectionInEditor,
+            "open_scrollback_in_editor" => Self::OpenScrollbackInEditor,
             "paste_from_selection" => Self::PasteFromSelection,
             "select_all" => Self::SelectAll,
             "clear_screen" => Self::ClearScreen,
@@ -796,6 +804,23 @@ mod platform_defaults_tests {
             ("copy_link_hints", Action::CopyLinkHints),
         ] {
             let binding = KeyBinding::parse(&format!("super+shift+h={name}")).unwrap();
+            assert_eq!(binding.actions, [action]);
+            assert!(Action::parse(&format!("{name}:argument")).is_err());
+        }
+    }
+
+    #[test]
+    fn output_actions_are_bindable_without_arguments() {
+        for (name, action) in [
+            ("copy_last_command_output", Action::CopyLastCommandOutput),
+            (
+                "open_last_command_output_in_editor",
+                Action::OpenLastCommandOutputInEditor,
+            ),
+            ("open_selection_in_editor", Action::OpenSelectionInEditor),
+            ("open_scrollback_in_editor", Action::OpenScrollbackInEditor),
+        ] {
+            let binding = KeyBinding::parse(&format!("super+shift+o={name}")).unwrap();
             assert_eq!(binding.actions, [action]);
             assert!(Action::parse(&format!("{name}:argument")).is_err());
         }
