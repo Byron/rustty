@@ -1,0 +1,23 @@
+{
+  "base": "162fd86419c547115cdc08bc4f630d01b3cdb265",
+  "compiler": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "profile": "release; thin LTO; codegen-units=1; default generic aarch64 target",
+  "host": "Linux ARM64; Neoverse-N2;16 logical CPUs; no concurrent builds or measurements",
+  "source_patch_sha256": "af4d8ba56f48ebd5306a7d7f600aedb824c1d57990b9dff87727630d0022f412",
+  "source_sha256": {
+    "crates/rustty-vt/src/screen/view_metadata.rs": "6efc9ccb180e702e838d36e7b25c1b9eddf18e15d45842c8fbdf2feff1b9035e",
+    "crates/rustty-vt/src/snapshot.rs": "8c95f82e543a0f944159ade353c618f9d327a9541d769b2735a2f9506c7880bd",
+    "crates/rustty-vt/tests/snapshot.rs": "394be7e4c65b172668639c0605db4eadee1fc41deac61f6d7c5c531a88e350da",
+    "crates/rustty/src/tmuxx.rs": "85b056ae2b94a9e30024a949f31c9ebca7de7a1cc09001d7f9215b3ba3fa8a1e",
+    "tmuxx/crates/tmuxx-terminal/src/lib.rs": "df6288b2e3b139bcf0f7b3e27eecef696ca37688d94de7203bbdb05fadf1ab36"
+  },
+  "pressure_source": "../delivery-2026-11-05/pressure-owner/pressure.rs",
+  "pressure_source_sha256": "a9fa1a94188c65e6618f53c2a9d2c185ca98f575b718f20aad4bd5b04ba1673f",
+  "pressure_lock_sha256": "a2771da75bd72109145400f889491445fe54d4ad57eb56dca28e3703f468dbf5",
+  "three_burst_binary_sha256": "f39333c8816c4423bf9d504d220e8feb5da9d4da3e1cd33e8ef830628aa12878",
+  "note": "source patch includes final regression additions; cfg(test)-only edits after release compilation do not affect production code; data follows original three-burst workload; native blocked interval exceeded existing10s write timeout; two-burst recovery validation recorded separately.",
+  "two_burst_source_sha256": "0b878eb3a24252e9804cf68a92c1e19068d6bf646ab5a867fb7a5a53f3595f2f",
+  "two_burst_binary_sha256": "42366ab7a6bdea851fee98e7c341417973a0447741c24f17d61cea9d7b2e9288",
+  "percentile": "nearest-rank p99; median from all sequential samples, not an average of burst medians",
+  "two_burst_change": "Only0..3\u21920..2 loop bound and done-2\u2192done-1 final titles; archived exact source and original path manifest. Same lockfile as pressure-harness."
+}

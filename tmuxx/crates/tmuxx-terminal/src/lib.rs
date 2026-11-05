@@ -173,20 +173,67 @@ pub struct Snapshot<S = Screen> {
 /// Exact terminal contents once, with only native metadata alongside the checkpoint.
 pub type CheckpointSnapshot = Snapshot<rustty_vt::ViewMetadata>;
 
+/// Native restore admits at most 8 GiB of packed cells, independently of wire
+/// size. This is not a total memory bound: metadata, images, existing terminals,
+/// and attached views have separate allocations. Use u64 on 32-bit hosts too.
+pub const MAX_RESTORED_CELLS: u64 =
+    (8u64 * 1024 * 1024 * 1024) / size_of::<rustty_vt::Cell>() as u64;
+
+fn restored_cell_count(primary: u64, alternate: Option<u64>) -> io::Result<u64> {
+    primary
+        .checked_add(alternate.unwrap_or(0))
+        .filter(|count| *count <= MAX_RESTORED_CELLS)
+        .ok_or_else(|| io::Error::other("excessive native snapshot cell count"))
+}
+
 impl Snapshot {
+    pub fn restored_cell_count(&self) -> io::Result<u64> {
+        restored_cell_count(
+            self.primary
+                .physical_cell_count()
+                .map_err(io::Error::other)?,
+            self.alternate
+                .as_ref()
+                .map(Screen::physical_cell_count)
+                .transpose()
+                .map_err(io::Error::other)?,
+        )
+    }
+
     pub fn restore(&self) -> io::Result<Terminal> {
         self.restore_with_image_limit(1024 * 1024 * 1024)
     }
     /// Reject oversized image state before replacing the receiving terminal.
     pub fn restore_with_image_limit(&self, max_image_bytes: usize) -> io::Result<Terminal> {
-        self.restore_with_metadata(1, max_image_bytes, self.primary.tmux_history, |terminal| {
-            terminal.restore_view_row_identity(&self.primary, self.alternate.as_ref())?;
-            terminal.restore_tmux_capture_metadata(&self.primary, self.alternate.as_ref())
-        })
+        self.restore_with_metadata(
+            1,
+            max_image_bytes,
+            self.restored_cell_count()?,
+            self.primary.tmux_history,
+            |terminal| {
+                terminal.restore_view_row_identity(&self.primary, self.alternate.as_ref())?;
+                terminal.restore_tmux_capture_metadata(&self.primary, self.alternate.as_ref())
+            },
+        )
     }
 }
 
 impl CheckpointSnapshot {
+    /// Validate physical row widths and bound the cells needed for this pane.
+    /// Graph receivers must also bound the sum before restoring any pane.
+    pub fn restored_cell_count(&self) -> io::Result<u64> {
+        restored_cell_count(
+            self.primary
+                .physical_cell_count()
+                .map_err(io::Error::other)?,
+            self.alternate
+                .as_ref()
+                .map(rustty_vt::ViewMetadata::physical_cell_count)
+                .transpose()
+                .map_err(io::Error::other)?,
+        )
+    }
+
     pub fn restore(&self) -> io::Result<Terminal> {
         self.restore_with_image_limit(1024 * 1024 * 1024)
     }
@@ -194,6 +241,7 @@ impl CheckpointSnapshot {
         self.restore_with_metadata(
             2,
             max_image_bytes,
+            self.restored_cell_count()?,
             self.primary.tmux_history(),
             |terminal| terminal.restore_view_metadata(&self.primary, self.alternate.as_ref()),
         )
@@ -205,6 +253,7 @@ impl<S> Snapshot<S> {
         &self,
         version: u32,
         max_image_bytes: usize,
+        cells: u64,
         history: Option<rustty_vt::screen::TmuxHistory>,
         restore_metadata: impl FnOnce(&mut rustty_vt::Terminal) -> Result<(), &'static str>,
     ) -> io::Result<Terminal> {
@@ -227,6 +276,17 @@ impl<S> Snapshot<S> {
             },
         );
         let mut inner = decoder.ready()?;
+        if (inner.cols, inner.rows, inner.is_alternate_screen())
+            != (self.cols, self.rows, self.alternate_active)
+        {
+            return Err(io::Error::other("snapshot metadata mismatch"));
+        }
+        // Keep the generic active-grid limit through ready(), including its
+        // untrusted checkpoint header. Only history gets the native allowance.
+        decoder.set_history_cell_budget(
+            usize::try_from(cells)
+                .map_err(|_| io::Error::other("excessive native snapshot cell count"))?,
+        )?;
         // Reflow can retain more rows than tmux's live line limit until new output.
         if let Some(history) = history {
             inner.set_tmux_history_limit(history.limit);
@@ -237,11 +297,6 @@ impl<S> Snapshot<S> {
                 io::ErrorKind::InvalidData,
                 "trailing snapshot data",
             ));
-        }
-        if (inner.cols, inner.rows, inner.is_alternate_screen())
-            != (self.cols, self.rows, self.alternate_active)
-        {
-            return Err(io::Error::other("snapshot metadata mismatch"));
         }
         if self
             .extended_keys
@@ -837,6 +892,231 @@ impl Terminal {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn native_snapshots_restore_beyond_the_generic_history_cell_limit() {
+        for rows in [8_000, 8_300] {
+            let mut owner = Terminal::new(128, 24, rows + 100);
+            owner.feed(&b"line\r\n".repeat(rows));
+            owner.feed(b"\x1b[?1049halternate\x1b[?1049l\x1b[3");
+            let snapshot = owner.checkpoint_snapshot();
+            let count = snapshot.restored_cell_count().unwrap();
+            assert_eq!(count > 1024 * 1024, rows == 8_300);
+            assert_eq!(
+                rustty_vt::snapshot::decode_exact(
+                    snapshot.checkpoint.as_ref().unwrap().as_slice(),
+                    rustty_vt::snapshot::DecodeOptions {
+                        tmux_strings: true,
+                        ..Default::default()
+                    },
+                )
+                .is_err(),
+                rows == 8_300,
+            );
+            let mut restored = [
+                owner.snapshot().restore().unwrap(),
+                snapshot.restore().unwrap(),
+            ];
+            owner.feed(b"1mcontinued\r\n");
+            for terminal in &mut restored {
+                terminal.feed(b"1mcontinued\r\n");
+                assert_eq!(
+                    terminal.capture_lines(Some(i32::MIN), None, false),
+                    owner.capture_lines(Some(i32::MIN), None, false)
+                );
+                let capture = CaptureOptions {
+                    start: Some(i32::MIN),
+                    escape_sequences: true,
+                    ..Default::default()
+                };
+                assert_eq!(
+                    terminal.capture_with(capture).unwrap(),
+                    owner.capture_with(capture).unwrap()
+                );
+                assert_eq!(
+                    terminal.inner.primary_screen().cursor,
+                    owner.inner.primary_screen().cursor
+                );
+                assert_eq!(
+                    terminal.inner.alternate_screen().unwrap().cursor,
+                    owner.inner.alternate_screen().unwrap().cursor
+                );
+                let actual = serde_json::to_value(terminal.checkpoint_snapshot()).unwrap();
+                let expected = serde_json::to_value(owner.checkpoint_snapshot()).unwrap();
+                for (key, value) in expected.as_object().unwrap() {
+                    // Live output can split a restored page differently; its
+                    // record boundaries are not terminal state.
+                    if key == "checkpoint" {
+                        continue;
+                    }
+                    assert!(actual.get(key) == Some(value), "field {key}, rows {rows}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_cell_policy_checks_physical_widths_and_allocation_ceiling() {
+        assert_eq!(
+            restored_cell_count(MAX_RESTORED_CELLS, None).unwrap(),
+            MAX_RESTORED_CELLS
+        );
+        assert!(restored_cell_count(MAX_RESTORED_CELLS, Some(1)).is_err());
+        assert!(restored_cell_count(u64::MAX, Some(1)).is_err());
+        let terminal = Terminal::new(16, 3, 100);
+        let original = terminal.checkpoint_snapshot();
+        original.restore().unwrap(); // No history still has a post-ready phase.
+        let mut value = serde_json::to_value(&original).unwrap();
+        let mut remaining = MAX_RESTORED_CELLS;
+        let mut rows = Vec::new();
+        while remaining != 0 {
+            let width = remaining.min(u64::from(u16::MAX));
+            rows.push((rows.len(), width));
+            remaining -= width;
+        }
+        value["primary"]["rows"] = serde_json::json!(rows);
+        value["checkpoint"] = serde_json::Value::Null;
+        let snapshot: CheckpointSnapshot = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(snapshot.restored_cell_count().unwrap(), MAX_RESTORED_CELLS);
+        assert!(
+            snapshot
+                .restore()
+                .unwrap_err()
+                .to_string()
+                .contains("missing terminal checkpoint")
+        );
+        value["primary"]["rows"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!([rows.len(), 1]));
+        let snapshot: CheckpointSnapshot = serde_json::from_value(value).unwrap();
+        assert!(
+            snapshot
+                .restore()
+                .unwrap_err()
+                .to_string()
+                .contains("excessive native snapshot cell count")
+        );
+        for width in [0, 65_536, usize::MAX] {
+            let mut value = serde_json::to_value(&original).unwrap();
+            value["primary"]["rows"][0][1] = serde_json::json!(width);
+            let snapshot: CheckpointSnapshot = serde_json::from_value(value).unwrap();
+            assert!(snapshot.restored_cell_count().is_err());
+            assert!(snapshot.restore().is_err());
+        }
+        let mut value = serde_json::to_value(&original).unwrap();
+        value["primary"]["rows"] = serde_json::json!([[0, 16]]);
+        let snapshot: CheckpointSnapshot = serde_json::from_value(value).unwrap();
+        assert!(
+            snapshot
+                .restore()
+                .unwrap_err()
+                .to_string()
+                .contains("below decoded cells")
+        );
+
+        // Mixed-width metadata is valid to count, but must still match the checkpoint.
+        let mut value = serde_json::to_value(&original).unwrap();
+        value["primary"]["rows"] = serde_json::json!([[0, 8], [1, 16], [2, 24]]);
+        let snapshot: CheckpointSnapshot = serde_json::from_value(value).unwrap();
+        assert_eq!(snapshot.restored_cell_count().unwrap(), 48);
+        assert!(
+            snapshot
+                .restore()
+                .unwrap_err()
+                .to_string()
+                .contains("row width mismatch")
+        );
+
+        let mut value = serde_json::to_value(&original).unwrap();
+        value["primary"]["rows"][0][1] = serde_json::json!(17);
+        let snapshot: CheckpointSnapshot = serde_json::from_value(value).unwrap();
+        assert!(
+            snapshot
+                .restore()
+                .unwrap_err()
+                .to_string()
+                .contains("row width mismatch")
+        );
+
+        // A valid large checkpoint transplanted into benign outer dimensions
+        // must still hit the original active-grid guard before allocation.
+        let mut forged = Terminal::new(1025, 1024, 0).checkpoint_snapshot();
+        forged.cols = original.cols;
+        forged.rows = original.rows;
+        assert!(forged.restored_cell_count().unwrap() > 1024 * 1024);
+        assert!(
+            forged
+                .restore()
+                .unwrap_err()
+                .to_string()
+                .contains("excessive snapshot dimensions")
+        );
+    }
+
+    #[test]
+    fn native_history_budget_uses_physical_rows_after_nonreflow_resize() {
+        let mut owner = Terminal::new(128, 3, 8_400);
+        owner.feed(&b"a long historical line\r\n".repeat(8_300));
+        owner.feed(b"\x1b[?7l");
+        owner.resize(32, 3);
+        owner.feed(b"narrow\r\n");
+        let snapshot = owner.checkpoint_snapshot();
+        assert_eq!(
+            snapshot.restored_cell_count().unwrap(),
+            (owner.history_len() + 3) as u64 * 32
+        );
+        assert_eq!(
+            snapshot.restored_cell_count().unwrap(),
+            owner.snapshot().restored_cell_count().unwrap()
+        );
+        for restored in [
+            owner.snapshot().restore().unwrap(),
+            snapshot.restore().unwrap(),
+        ] {
+            assert!(
+                serde_json::to_value(restored.checkpoint_snapshot()).unwrap()
+                    == serde_json::to_value(owner.checkpoint_snapshot()).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn native_cell_budget_accepts_mixed_physical_row_widths() {
+        let mut owner = Terminal::new(8, 2, 0);
+        owner.feed(b"abcd\r\nxy");
+        // Build the valid mixed-width screen that can arrive from a portable
+        // checkpoint. Normal input widens a narrow row only when editing it.
+        let mut screen = serde_json::to_value(owner.inner.screen()).unwrap();
+        let mut narrow = screen["pages"]["pages"][0].clone();
+        narrow["rows"] = 1.into();
+        narrow["columns"] = 4.into();
+        let mut wide = narrow.clone();
+        wide["columns"] = 8.into();
+        wide["serial"] = 1.into();
+        screen["pages"]["pages"] = serde_json::json!([narrow, wide]);
+        screen["pages"]["next_serial"] = 2.into();
+        screen["rows"][0]["cells"]
+            .as_array_mut()
+            .unwrap()
+            .truncate(4);
+        *owner.inner.screen_mut() = serde_json::from_value(screen).unwrap();
+        let checkpoint = owner.checkpoint_snapshot();
+        assert_eq!(checkpoint.restored_cell_count().unwrap(), 12);
+        assert_eq!(owner.snapshot().restored_cell_count().unwrap(), 12);
+        for restored in [
+            owner.snapshot().restore().unwrap(),
+            checkpoint.restore().unwrap(),
+        ] {
+            assert_eq!(restored.inner.screen().row(0).cells.len(), 4);
+            assert_eq!(restored.inner.screen().row(1).cells.len(), 8);
+            assert_eq!(restored.capture(), owner.capture());
+            assert!(
+                serde_json::to_value(restored.checkpoint_snapshot().primary).unwrap()
+                    == serde_json::to_value(&checkpoint.primary).unwrap()
+            );
+        }
+    }
+
     #[test]
     fn snapshots_restore_reflowed_history_beyond_the_live_limit() {
         let mut terminal = Terminal::new(80, 4, 2000);

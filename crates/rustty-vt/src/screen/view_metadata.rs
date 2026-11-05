@@ -24,6 +24,20 @@ pub struct ViewMetadata {
 }
 
 impl ViewMetadata {
+    /// Packed cells described by the physical rows, without loading cell data.
+    /// Historical rows may have different widths after resizing.
+    pub fn physical_cell_count(&self) -> Result<u64, &'static str> {
+        self.rows.iter().try_fold(0u64, |total, &(_, width)| {
+            let width = u16::try_from(width)
+                .ok()
+                .filter(|width| *width != 0)
+                .ok_or("invalid view row width")?;
+            total
+                .checked_add(u64::from(width))
+                .ok_or("excessive view cell count")
+        })
+    }
+
     /// History policy needed before loading checkpoint history pages.
     pub fn tmux_history(&self) -> Option<TmuxHistory> {
         self.tmux_history
@@ -31,6 +45,15 @@ impl ViewMetadata {
 }
 
 impl Screen {
+    /// Packed cells in the retained physical rows, without decompressing them.
+    pub fn physical_cell_count(&self) -> Result<u64, &'static str> {
+        self.pages.pages.iter().try_fold(0u64, |total, page| {
+            total
+                .checked_add(u64::from(page.columns) * u64::from(page.rows))
+                .ok_or("excessive screen cell count")
+        })
+    }
+
     pub fn view_metadata(&self) -> ViewMetadata {
         let mut cell_runs = Vec::new();
         for (absolute, row) in self.all_rows().enumerate() {
@@ -296,6 +319,21 @@ mod tests {
                 restored.alternate_screen().unwrap(),
                 terminal.alternate_screen().unwrap(),
             );
+        }
+    }
+
+    #[test]
+    fn physical_cell_counts_validate_widths_without_reading_cells() {
+        let terminal = Terminal::new(80, 3, 100);
+        let screen = terminal.primary_screen();
+        let mut metadata = screen.view_metadata();
+        assert_eq!(screen.physical_cell_count(), Ok(240));
+        assert_eq!(metadata.physical_cell_count(), Ok(240));
+        metadata.rows = vec![(0, 80), (1, 20), (2, 120)];
+        assert_eq!(metadata.physical_cell_count(), Ok(220));
+        for width in [0, usize::from(u16::MAX) + 1, usize::MAX] {
+            metadata.rows[0].1 = width;
+            assert!(metadata.physical_cell_count().is_err());
         }
     }
 

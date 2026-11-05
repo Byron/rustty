@@ -85,6 +85,65 @@ fn frame(records: &[(u16, Vec<u8>)]) -> Vec<u8> {
 }
 
 #[test]
+fn history_budget_can_change_only_after_active_screen_validation() {
+    let mut terminal = Terminal::new(128, 2, 1000);
+    terminal.feed(&b"line\r\n".repeat(1000));
+    let bytes = encode_to_vec(&terminal).unwrap();
+    let cells = terminal.primary_screen().physical_cell_count().unwrap() as usize;
+    let active_cells = records(&bytes)
+        .iter()
+        .take_while(|(tag, _)| *tag != 5)
+        .filter(|(tag, _)| *tag == 3)
+        .map(|(_, page)| {
+            usize::from(u16::from_le_bytes(page[..2].try_into().unwrap()))
+                * usize::from(u16::from_le_bytes(page[2..4].try_into().unwrap()))
+        })
+        .sum();
+    assert!(cells > active_cells);
+    let options = DecodeOptions {
+        max_cells: active_cells,
+        ..Default::default()
+    };
+    assert!(decode_exact(bytes.as_slice(), options).is_err());
+    let mut decoder = Decoder::new(bytes.as_slice(), options);
+    assert!(decoder.set_history_cell_budget(cells).is_err());
+    let mut restored = decoder.ready().unwrap();
+    assert!(decoder.set_history_cell_budget(0).is_err());
+    decoder.set_history_cell_budget(cells).unwrap();
+    while decoder.next_history(&mut restored).unwrap().is_some() {}
+    assert_eq!(encode_to_vec(&restored).unwrap(), bytes);
+    assert!(decoder.set_history_cell_budget(cells).is_err());
+
+    // An insufficient history budget remains enforced, even after ready().
+    let mut decoder = Decoder::new(bytes.as_slice(), options);
+    let mut restored = decoder.ready().unwrap();
+    decoder.set_history_cell_budget(cells - 1).unwrap();
+    while let Ok(Some(_)) = decoder.next_history(&mut restored) {}
+    assert!(decoder.next_history(&mut restored).is_err());
+    assert!(decoder.set_history_cell_budget(cells).is_err());
+}
+
+#[test]
+fn history_budget_cannot_bypass_forged_header_or_active_page_limits() {
+    let original = records(&encode_to_vec(&Terminal::new(8, 2, 0)).unwrap());
+    for tag in [1, 3] {
+        let mut parts = original.clone();
+        let payload = &mut parts
+            .iter_mut()
+            .find(|(record, _)| *record == tag)
+            .unwrap()
+            .1;
+        payload[..2].copy_from_slice(&2048u16.to_le_bytes());
+        payload[2..4].copy_from_slice(&1024u16.to_le_bytes());
+        let bytes = frame(&parts);
+        let mut decoder = Decoder::new(bytes.as_slice(), DecodeOptions::default());
+        assert!(decoder.set_history_cell_budget(usize::MAX).is_err());
+        assert!(decoder.ready().is_err(), "record {tag}");
+        assert!(decoder.set_history_cell_budget(usize::MAX).is_err());
+    }
+}
+
+#[test]
 fn snapshot_skips_unknown_records_at_every_boundary() {
     let original = records(&fixture());
     let expected =
