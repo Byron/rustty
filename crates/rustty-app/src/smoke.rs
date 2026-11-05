@@ -921,7 +921,7 @@ impl Smoke {
                     .current_monitor()
                     .and_then(|monitor| monitor.refresh_rate_millihertz())
                     .map(|rate| f64::from(rate) / 1000.0);
-                let report = serde_json::json!({"passed":true,"renderer":app.painter.description(),"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","native-rendered-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","zoom-animation-endpoint-grids","zoom-animation-disable","quad-peek-animation","quad-peek-focused-label","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","text-drop-targeting","osc-pointer","command-hover-links","double-click-selection","drag-selection-scrolling","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
+                let report = serde_json::json!({"passed":true,"renderer":app.painter.description(),"capture_mode":if self.offscreen { "offscreen" } else { "surface" },"checks":["native-window","native-rendered-frame","pty-input-output","unicode-grapheme-width","four-splits","tab-creation","quadrant-focus-and-zoom","zoom-animation-endpoint-grids","zoom-animation-disable","quad-peek-animation","quad-peek-focused-label","quad-peek-numbered-targets","quad-peek-numbered-roots","quad-peek-key-tails","cwd-uri-decoding","osc-progress","progress-animation","passive-pointer-motion","hover-scrolling","alternate-scrolling","file-drop-targeting","text-drop-targeting","osc-pointer","command-hover-links","double-click-selection","drag-selection-scrolling","focus-hint-click-dismissal","reverse-video","dec-column-mode","text-blink","synchronized-output","per-pane-find","find-transparency","hidden-tab-titles","active-masked-titles","retained-pane-content","workspace-roundtrip","undo-keeps-pty","idle-rendering"],"frames":host.frames,"idle_frames":host.frames-self.idle_frames,"hidden_title_frames":self.hidden_title_frames,"header_updates":{"frames":self.header_frames,"pane_prepares":self.header_prepares},"active_title_updates":{"count":50,"rate_hz":25,"frames":self.active_title_frames,"pane_prepares":self.active_title_prepares},"progress_animation":{"frames":self.progress_frames,"seconds":self.progress_seconds,"fps":self.progress_frames as f64/self.progress_seconds,"monitor_refresh_hz":refresh_hz},"panes":app.panes.len(),"idle_phase_events":self.events,"hover_required":self.hover,"pointer":self.pointer.map(|position|[position.x,position.y])});
                 self.report = Some(report);
                 return Ok(true);
             }
@@ -1388,6 +1388,7 @@ fn check_zoom_animations(
                 },
             )?;
         }
+        check_quad_peek_numbers(app, event_loop, host, directory)?;
         check_closed_split_animation(app, event_loop, host, directory)?;
         Ok(())
     })();
@@ -1416,6 +1417,349 @@ fn check_zoom_animations(
     result?;
     eprintln!(
         "Native smoke: configured pane, quad, nested zoom and Quad Peek animations kept endpoint grids and partially visible neighbors throughout the slide; quarter/midpoint/three-quarter captures saved"
+    );
+    Ok(())
+}
+
+fn check_quad_peek_numbers(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    host: &mut Host,
+    directory: &Path,
+) -> Result<()> {
+    use winit::event::DeviceId;
+    use winit::keyboard::{KeyCode, ModifiersState};
+
+    let original = app.tab(host.id).unwrap().clone();
+    let animations = app.loaded.config.window_animations;
+    let pointer = (host.mouse, host.mouse_button, host.modifiers);
+    let pointer_in_window = host.egui.is_pointer_in_window();
+    let scale = host.window.scale_factor();
+    let motion = |position: Pos2| WindowEvent::CursorMoved {
+        device_id: DeviceId::dummy(),
+        position: LogicalPosition::new(position.x, position.y).to_physical(scale),
+    };
+    let consumed = app.consumed_global_keys.clone();
+    let before_input = original
+        .pane_ids()
+        .into_iter()
+        .map(|id| Ok((id, queued_input(&app.panes[&id])?)))
+        .collect::<Result<BTreeMap<_, _>>>()?;
+    let outer = original
+        .pane_ids()
+        .into_iter()
+        .filter_map(|id| original.root.quadrant(id))
+        .find(|id| original.root.node(*id).unwrap().panes().len() > 1)
+        .ok_or("numbered Quad Peek fixture needs a split quad")?;
+    let nested = original.root.node(outer).unwrap().panes()[0];
+    let mut fixture = original.clone();
+    fixture.quad_roots.insert(nested);
+    fixture.focused = nested;
+    fixture.quadrant_zoom = Some(outer);
+    fixture.zoom = Some(nested);
+    let chord = config::Modifiers {
+        control: true,
+        super_key: true,
+        ..Default::default()
+    };
+    let begin = |app: &mut App, host: &mut Host| -> Result<()> {
+        *app.tab_mut(host.id).unwrap() = fixture.clone();
+        host.modifiers = (ModifiersState::CONTROL | ModifiersState::SUPER).into();
+        host.peek = app.tab_mut(host.id).unwrap().begin_peek(chord);
+        if host.peek.is_none() {
+            return Err("numbered fixture could not enter Quad Peek".into());
+        }
+        app.draw(event_loop, host)
+    };
+    let key_tail = |app: &mut App, key: KeyCode| {
+        let key = PhysicalKey::Code(key);
+        input::global_key_is_consumed(
+            &mut app.consumed_global_keys,
+            key,
+            ElementState::Pressed,
+            true,
+        ) && input::global_key_is_consumed(
+            &mut app.consumed_global_keys,
+            key,
+            ElementState::Released,
+            false,
+        ) && !input::global_key_is_consumed(
+            &mut app.consumed_global_keys,
+            key,
+            ElementState::Pressed,
+            false,
+        )
+    };
+    let digits = [
+        KeyCode::Digit1,
+        KeyCode::Digit2,
+        KeyCode::Digit3,
+        KeyCode::Digit4,
+        KeyCode::Digit5,
+        KeyCode::Digit6,
+        KeyCode::Digit7,
+        KeyCode::Digit8,
+        KeyCode::Digit9,
+    ];
+    let result = (|| -> Result<()> {
+        app.loaded.config.window_animations = Some(false);
+        host.mouse_button = None;
+        let positions = Arc::new(std::sync::Mutex::new(Vec::<(usize, egui::Rect)>::new()));
+        let probe = Arc::downgrade(&positions);
+        let viewport = host.viewport;
+        app.context.on_end_pass(
+            "quad-peek-number-badges",
+            Arc::new(move |ui| {
+                if ui.ctx().viewport_id() != viewport {
+                    return;
+                }
+                let Some(positions) = probe.upgrade() else {
+                    return;
+                };
+                *positions.lock().unwrap() = ui.ctx().graphics(|graphics| {
+                    graphics
+                        .get(ui.layer_id())
+                        .into_iter()
+                        .flat_map(|list| list.all_entries())
+                        .filter_map(|shape| match &shape.shape {
+                            egui::Shape::Text(text) => text
+                                .galley
+                                .job
+                                .text
+                                .parse::<usize>()
+                                .ok()
+                                .filter(|number| (1..=9).contains(number))
+                                .map(|number| {
+                                    (
+                                        number,
+                                        egui::Rect::from_min_size(text.pos, text.galley.size()),
+                                    )
+                                }),
+                            _ => None,
+                        })
+                        .collect()
+                });
+            }),
+        );
+        begin(app, host)?;
+        let targets = app
+            .tab(host.id)
+            .unwrap()
+            .peek_targets(host.content, app.split_minimum(host));
+        if targets.len() != 5 {
+            return Err(format!(
+                "expected four quads plus a nested root, got {}",
+                targets.len()
+            )
+            .into());
+        }
+        capture_window(
+            app,
+            event_loop,
+            host,
+            &directory.join("quad-peek-numbers.png"),
+        )?;
+        let mut badges = positions.lock().unwrap().clone();
+        badges.sort_by_key(|(number, _)| *number);
+        if badges.iter().map(|(number, _)| *number).collect::<Vec<_>>() != [1, 2, 3, 4, 5] {
+            return Err(format!("Quad Peek painted the wrong badges: {badges:?}").into());
+        }
+        for (index, target) in targets.iter().enumerate() {
+            let bounds = app
+                .tab(host.id)
+                .unwrap()
+                .root
+                .node(target.root)
+                .unwrap()
+                .panes()
+                .iter()
+                .filter_map(|id| host.rects.get(id).copied())
+                .reduce(|a, b| a.union(b))
+                .ok_or("numbered target has no displayed panes")?;
+            let badge = badges[index].1;
+            if !bounds.contains_rect(badge)
+                || badge.min.x > bounds.min.x + 80.0
+                || badge.min.y > bounds.min.y + 80.0
+                || badges[..index]
+                    .iter()
+                    .any(|(_, other)| other.intersects(badge))
+            {
+                return Err(format!("badge {} is not distinct at its target's top-left: {badge:?}, target {bounds:?}", index + 1).into());
+            }
+            let key = digits[index];
+            // Leaving a quad records its last focused pane, so its representative
+            // can change while the root's number remains fixed.
+            let current = app
+                .tab(host.id)
+                .unwrap()
+                .peek_targets(host.content, app.split_minimum(host))[index];
+            if !app.peek_key(host, PhysicalKey::Code(key), ElementState::Pressed, false)
+                || host.peek.is_none_or(|peek| {
+                    peek.selected_quad != Some(target.root) || peek.target != current.target
+                })
+                || app.focused(host.id) != Some(current.target)
+                || !key_tail(app, key)
+            {
+                return Err(format!(
+                    "digit {} did not select its displayed target or consumed key tail",
+                    index + 1
+                )
+                .into());
+            }
+        }
+        let selected = host.peek.unwrap().selected_quad;
+        if !app.peek_key(
+            host,
+            PhysicalKey::Code(KeyCode::Digit9),
+            ElementState::Pressed,
+            false,
+        ) || host.peek.unwrap().selected_quad != selected
+            || !key_tail(app, KeyCode::Digit9)
+        {
+            return Err("unassigned Quad Peek digit changed selection or leaked input".into());
+        }
+        let nested_index = targets
+            .iter()
+            .position(|target| target.root == nested)
+            .unwrap();
+        let nested_key = digits[nested_index];
+        app.peek_key(
+            host,
+            PhysicalKey::Code(nested_key),
+            ElementState::Pressed,
+            false,
+        );
+        capture_window(
+            app,
+            event_loop,
+            host,
+            &directory.join("quad-peek-selected-root.png"),
+        )?;
+        host.modifiers = ModifiersState::empty().into();
+        app.finish_peek(host);
+        if app.tab(host.id).unwrap().quadrant_zoom != Some(nested)
+            || app.tab(host.id).unwrap().zoom != Some(nested)
+            || !key_tail(app, nested_key)
+        {
+            return Err(
+                "prefix release did not enter the numbered nested root or consumed key tail".into(),
+            );
+        }
+
+        begin(app, host)?;
+        app.peek_key(
+            host,
+            PhysicalKey::Code(nested_key),
+            ElementState::Pressed,
+            false,
+        );
+        key_tail(app, nested_key);
+        let direction = [
+            Direction::QuadrantRight,
+            Direction::QuadrantLeft,
+            Direction::QuadrantDown,
+            Direction::QuadrantUp,
+        ]
+        .into_iter()
+        .find(|direction| {
+            app.tab(host.id)
+                .unwrap()
+                .target_for_view(nested, *direction, true)
+                .is_some_and(|id| id != nested)
+        })
+        .ok_or("numbered fixture has no directional neighbor")?;
+        if !app.action(event_loop, host, Action::GotoSplit(direction), true)
+            || host
+                .peek
+                .is_none_or(|peek| peek.selected_quad.is_some() || peek.target == nested)
+        {
+            return Err("arrow navigation did not override a numbered root".into());
+        }
+        let arrow_target = host.peek.unwrap().target;
+        app.finish_peek(host);
+        if app.focused(host.id) != Some(arrow_target) {
+            return Err("prefix release lost the arrow override".into());
+        }
+
+        begin(app, host)?;
+        app.peek_key(
+            host,
+            PhysicalKey::Code(nested_key),
+            ElementState::Pressed,
+            false,
+        );
+        key_tail(app, nested_key);
+        let clicked = targets
+            .iter()
+            .find(|target| target.root != outer && target.root != nested)
+            .unwrap()
+            .target;
+        // The centered CWD label is its own UI hit target during Peek.
+        let rect = host.rects[&clicked];
+        host.mouse = rect.min + rect.size() * 0.75;
+        let events = host.egui.egui_input_mut().events.len();
+        let _ = host.egui.on_window_event(&host.window, &motion(host.mouse));
+        host.egui.egui_input_mut().events.truncate(events);
+        app.mouse(host, vt::MouseAction::Press, Some(vt::MouseButton::Left));
+        if host
+            .peek
+            .is_none_or(|peek| peek.selected_quad.is_some() || peek.target != clicked)
+        {
+            return Err(format!("click did not override a numbered root: expected {clicked}, peek {:?}, hit {:?}, UI {}", host.peek, host.hovered_pane(), host.ui_areas.contains(host.mouse)).into());
+        }
+        app.finish_peek(host);
+        if app.focused(host.id) != Some(clicked) {
+            return Err("prefix release lost the click override".into());
+        }
+
+        begin(app, host)?;
+        app.peek_key(
+            host,
+            PhysicalKey::Code(nested_key),
+            ElementState::Pressed,
+            false,
+        );
+        key_tail(app, nested_key);
+        if !app.tab_mut(host.id).unwrap().close(nested) {
+            return Err("numbered fixture could not close its selected pane".into());
+        }
+        app.finish_peek(host);
+        let tab = app.tab(host.id).unwrap();
+        if !tab.root.contains(tab.focused)
+            || tab.zoom.is_some_and(|id| tab.root.node(id).is_none())
+            || tab
+                .quadrant_zoom
+                .is_some_and(|id| tab.root.node(id).is_none())
+        {
+            return Err("closing numbered target left stale Quad Peek focus or zoom".into());
+        }
+        for (id, before) in &before_input {
+            if queued_input(&app.panes[id])? != *before {
+                return Err("Quad Peek number/navigation reached a terminal input queue".into());
+            }
+        }
+        Ok(())
+    })();
+    *app.tab_mut(host.id).unwrap() = original;
+    app.loaded.config.window_animations = animations;
+    (host.mouse, host.mouse_button, host.modifiers) = pointer;
+    let restore_pointer = if pointer_in_window {
+        motion(host.mouse)
+    } else {
+        WindowEvent::CursorLeft {
+            device_id: DeviceId::dummy(),
+        }
+    };
+    let events = host.egui.egui_input_mut().events.len();
+    let _ = host.egui.on_window_event(&host.window, &restore_pointer);
+    host.egui.egui_input_mut().events.truncate(events);
+    app.consumed_global_keys = consumed;
+    host.peek = None;
+    host.zoom_animation.finish();
+    app.draw(event_loop, host)?;
+    result?;
+    eprintln!(
+        "Native smoke: numbered Quad Peek badges matched spatial targets, nested roots, prefix release, arrow/click overrides, removed targets and consumed key tails"
     );
     Ok(())
 }

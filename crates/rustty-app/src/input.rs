@@ -264,6 +264,22 @@ pub fn key_is_consumed(
     }
 }
 
+/// Numbered Quad Peek targets use the same physical row/keypad keys on every layout.
+pub fn peek_digit(key: PhysicalKey) -> Option<usize> {
+    Some(match key {
+        PhysicalKey::Code(KeyCode::Digit1 | KeyCode::Numpad1) => 0,
+        PhysicalKey::Code(KeyCode::Digit2 | KeyCode::Numpad2) => 1,
+        PhysicalKey::Code(KeyCode::Digit3 | KeyCode::Numpad3) => 2,
+        PhysicalKey::Code(KeyCode::Digit4 | KeyCode::Numpad4) => 3,
+        PhysicalKey::Code(KeyCode::Digit5 | KeyCode::Numpad5) => 4,
+        PhysicalKey::Code(KeyCode::Digit6 | KeyCode::Numpad6) => 5,
+        PhysicalKey::Code(KeyCode::Digit7 | KeyCode::Numpad7) => 6,
+        PhysicalKey::Code(KeyCode::Digit8 | KeyCode::Numpad8) => 7,
+        PhysicalKey::Code(KeyCode::Digit9 | KeyCode::Numpad9) => 8,
+        _ => return None,
+    })
+}
+
 /// Hint chords retain their release even when no target opened an overlay.
 pub fn shortcut_tracks_release(actions: &[config::Action], ui_input: bool) -> bool {
     ui_input
@@ -763,6 +779,80 @@ pub fn chord_held(chord: config::Modifiers, current: config::Modifiers) -> bool 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn quad_peek_digits_share_targets_and_consume_tails_after_prefix_release() {
+        use crate::workspace::{Rect, Tab};
+        for (index, pair) in [
+            [KeyCode::Digit1, KeyCode::Numpad1],
+            [KeyCode::Digit2, KeyCode::Numpad2],
+            [KeyCode::Digit3, KeyCode::Numpad3],
+            [KeyCode::Digit4, KeyCode::Numpad4],
+            [KeyCode::Digit5, KeyCode::Numpad5],
+            [KeyCode::Digit6, KeyCode::Numpad6],
+            [KeyCode::Digit7, KeyCode::Numpad7],
+            [KeyCode::Digit8, KeyCode::Numpad8],
+            [KeyCode::Digit9, KeyCode::Numpad9],
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            for key in pair {
+                assert_eq!(peek_digit(PhysicalKey::Code(key)), Some(index));
+            }
+        }
+        for key in [KeyCode::Digit0, KeyCode::Numpad0, KeyCode::KeyA] {
+            assert_eq!(peek_digit(PhysicalKey::Code(key)), None);
+        }
+        for key in [KeyCode::Digit2, KeyCode::Numpad2].map(PhysicalKey::Code) {
+            let mut tab = Tab::new(1, 10, "/tmp".into());
+            tab.root.split(10, 20, 100, config::Direction::Right);
+            tab.root.split(10, 30, 101, config::Direction::Down);
+            tab.root.split(20, 40, 102, config::Direction::Down);
+            tab.zoom = Some(10);
+            tab.quadrant_zoom = Some(10);
+            let mut peek = tab
+                .begin_peek(config::Modifiers {
+                    control: true,
+                    alt: true,
+                    ..Default::default()
+                })
+                .unwrap();
+            let mut consumed = HashSet::from([key]);
+            let target = tab.select_peek_target(
+                &mut peek,
+                peek_digit(key).unwrap(),
+                Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 800.0,
+                    height: 600.0,
+                },
+                [50.0, 50.0],
+            );
+            assert_eq!(target, Some(20));
+            assert_eq!(tab.finish_peek(peek), 20);
+            assert_eq!(tab.quadrant_zoom, Some(20));
+            assert!(global_key_is_consumed(
+                &mut consumed,
+                key,
+                ElementState::Pressed,
+                true
+            ));
+            assert!(global_key_is_consumed(
+                &mut consumed,
+                key,
+                ElementState::Released,
+                false
+            ));
+            assert!(!global_key_is_consumed(
+                &mut consumed,
+                key,
+                ElementState::Pressed,
+                false
+            ));
+        }
+    }
+
     #[test]
     fn empty_hint_shortcuts_consume_repeats_and_release_without_ui_focus() {
         for action in [config::Action::ShowLinkHints, config::Action::CopyLinkHints] {

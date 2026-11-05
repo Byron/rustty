@@ -411,6 +411,12 @@ original inferred quads; releasing it restores the nested zoom when staying in t
 root. Designations survive undo, saved state, and layout imports, and follow surviving
 subtrees when panels close. They are unavailable in server-owned tmuxx tabs.
 
+Quad Peek shows numbered keycaps at the top-left of the first nine quads and
+quad roots, ordered top-to-bottom then left-to-right. Roots have a double outline;
+labels sharing a corner are offset so both remain readable. While holding the
+Peek chord, press **1–9** (or the numeric keypad) to select that target, then
+release the chord to enter it. Arrow and click navigation remains available.
+
 The action has no default shortcut. For example:
 
 ```ini

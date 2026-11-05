@@ -1136,6 +1136,170 @@ fn visible_hover_pane(tab: &Tab, id: Id) -> bool {
         || tab.zoom.is_none() && tab.overlays.iter().any(|overlay| overlay.pane == id)
 }
 
+struct PeekBadge {
+    number: usize,
+    root: Id,
+    pane: Id,
+    bounds: egui::Rect,
+    rect: egui::Rect,
+}
+
+fn peek_badges(
+    tab: &Tab,
+    panes: &[zoom_animation::Pane],
+    content: Rect,
+    minimum: [f32; 2],
+    obstacles: &[egui::Rect],
+) -> Vec<PeekBadge> {
+    let mut badges: Vec<_> = tab
+        .peek_targets(content, minimum)
+        .into_iter()
+        .take(9)
+        .enumerate()
+        .filter_map(|(index, target)| {
+            let node = tab.root.node(target.root)?;
+            let mut members = panes.iter().filter(|pane| node.contains(pane.id));
+            let first = members.next()?;
+            let bounds = members.fold(first.rect, |bounds, pane| bounds.union(pane.rect));
+            if !bounds.is_positive() {
+                return None;
+            }
+            Some(PeekBadge {
+                number: index + 1,
+                root: target.root,
+                pane: first.id,
+                bounds,
+                rect: egui::Rect::NOTHING,
+            })
+        })
+        .collect();
+    // Place inner roots first so their enclosing roots can use the space beside them.
+    let mut occupied = obstacles.to_vec();
+    for badge in badges.iter_mut().rev() {
+        let margin = 4.0_f32
+            .min(badge.bounds.width() / 4.0)
+            .min(badge.bounds.height() / 4.0);
+        let bounds = badge.bounds.shrink(margin);
+        let mut size = 28.0_f32.min(bounds.width()).min(bounds.height());
+        let mut xs = vec![bounds.left()];
+        let mut ys = vec![bounds.top()];
+        for rect in &occupied {
+            xs.push(rect.right() + 4.0);
+            ys.push(rect.bottom() + 4.0);
+        }
+        xs.sort_by(f32::total_cmp);
+        ys.sort_by(f32::total_cmp);
+        let place = |size| {
+            ys.iter()
+                .flat_map(|&y| {
+                    xs.iter().map(move |&x| {
+                        egui::Rect::from_min_size(Pos2::new(x, y), Vec2::splat(size))
+                    })
+                })
+                .filter(|rect| {
+                    bounds.contains_rect(*rect)
+                        && occupied
+                            .iter()
+                            .all(|old| !old.expand(2.0).intersects(*rect))
+                })
+                .min_by(|a, b| {
+                    a.min
+                        .distance_sq(bounds.min)
+                        .total_cmp(&b.min.distance_sq(bounds.min))
+                        .then(a.top().total_cmp(&b.top()))
+                        .then(a.left().total_cmp(&b.left()))
+                })
+        };
+        let rect = loop {
+            if let Some(rect) = place(size) {
+                break rect;
+            }
+            if size <= 1.0 {
+                break egui::Rect::from_min_size(bounds.min, Vec2::splat(size));
+            }
+            size = (size - 2.0).max(1.0);
+        };
+        badge.rect = rect;
+        occupied.push(rect);
+    }
+    badges
+}
+
+fn paint_peek_badge(
+    ui: &egui::Ui,
+    badge: &PeekBadge,
+    root: bool,
+    selected: bool,
+    accent: TabAccent,
+) {
+    let color = Color32::from_rgb(
+        accent.background[0],
+        accent.background[1],
+        accent.background[2],
+    );
+    let text = if selected {
+        Color32::from_rgb(
+            accent.foreground[0],
+            accent.foreground[1],
+            accent.foreground[2],
+        )
+    } else {
+        Color32::WHITE
+    };
+    let painter = ui.painter();
+    painter.rect_filled(
+        badge.rect.translate(Vec2::new(0.0, 2.0)),
+        4.0,
+        Color32::from_black_alpha(180),
+    );
+    painter.rect_filled(
+        badge.rect,
+        4.0,
+        if selected {
+            color
+        } else {
+            Color32::from_gray(24)
+        },
+    );
+    painter.rect_stroke(
+        badge.rect,
+        4.0,
+        egui::Stroke::new(1.5, if selected { text } else { color }),
+        egui::StrokeKind::Inside,
+    );
+    if root {
+        painter.rect_stroke(
+            badge.rect.expand(2.0),
+            5.0,
+            egui::Stroke::new(1.0, color),
+            egui::StrokeKind::Inside,
+        );
+    }
+    painter.text(
+        badge.rect.center(),
+        egui::Align2::CENTER_CENTER,
+        badge.number.to_string(),
+        egui::FontId::monospace(badge.rect.height() * 0.65),
+        text,
+    );
+    ui.interact(
+        badge.rect,
+        egui::Id::new(("peek-number", badge.root)),
+        Sense::hover(),
+    )
+    .widget_info(|| {
+        egui::WidgetInfo::labeled(
+            egui::WidgetType::Label,
+            true,
+            format!(
+                "{} shortcut {}",
+                if root { "Quad root" } else { "Quad" },
+                badge.number
+            ),
+        )
+    });
+}
+
 struct DirectoryBadge {
     label: DirectoryLabel,
     bounds: egui::Rect,
@@ -4374,6 +4538,9 @@ impl App {
                 }
             }
             Action::GotoSplit(direction) => {
+                if let Some(peek) = &mut host.peek {
+                    peek.selected_quad = None;
+                }
                 let from = focused;
                 let quadrant = matches!(
                     direction,
@@ -5741,6 +5908,59 @@ impl App {
         }
     }
 
+    fn peek_key(
+        &mut self,
+        host: &mut Host,
+        physical: PhysicalKey,
+        state: ElementState,
+        repeat: bool,
+    ) -> bool {
+        let Some(index) = input::peek_digit(physical) else {
+            return false;
+        };
+        if input::global_key_is_consumed(&mut self.consumed_global_keys, physical, state, repeat) {
+            return true;
+        }
+        if host.ui_input()
+            || host.composing
+            || !host.peek.is_some_and(|peek| {
+                input::chord_held(peek.chord, input::modifiers(host.modifiers.state()))
+            })
+        {
+            return false;
+        }
+        if state != ElementState::Pressed {
+            return true;
+        }
+        // A prefix can be released before this key, or focus can move to another window.
+        self.consumed_global_keys.insert(physical);
+        if repeat {
+            return true;
+        }
+        host.sequence.clear();
+        host.sequence_len = 0;
+        let minimum = self.split_minimum(host);
+        if let Some(tab) = self.tab(host.id)
+            && let Some(peek) = &mut host.peek
+            && let Some(target) = tab.select_peek_target(peek, index, host.content, minimum)
+        {
+            host.navigation_warning = None;
+            self.focus_pane(host.id, target);
+            host.repaint();
+        }
+        true
+    }
+
+    fn finish_peek(&mut self, host: &mut Host) {
+        if let Some(peek) = host.peek.take()
+            && let Some(tab) = self.tab_mut(host.id)
+        {
+            let target = tab.finish_peek(peek);
+            self.focus_pane(host.id, target);
+        }
+        host.repaint();
+    }
+
     fn keyboard(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -5754,6 +5974,9 @@ impl App {
             key.state,
             key.repeat,
         ) {
+            return true;
+        }
+        if self.peek_key(host, key.physical_key, key.state, key.repeat) {
             return true;
         }
         let ui_input = host.ui_input();
@@ -7008,7 +7231,7 @@ impl App {
                         let representative = members.iter().find(|id| zoom_panes.iter().any(|pane| pane.id == **id)).copied().unwrap_or(id);
                         zoom_chrome(ui, &zoom_panes, representative, bounds, rgb(config.background), |ui| {
                             if let Some(peek) = peek {
-                                let selected = active.root.quadrant(peek.target);
+                                let selected = peek.selected_quad.or_else(|| active.root.quadrant(peek.target));
                                 if !peek.navigation_used && Some(id) != selected {
                                     ui.painter().rect_filled(
                                         bounds,
@@ -7099,6 +7322,10 @@ impl App {
                         });
                     }
                 });
+            let displayed_peek = host.zoom_animation.display_zoom()
+                .filter(|mode| mode.2)
+                .and_then(|_| host.peek.or(host.presented_peek));
+            let mut peek_obstacles = Vec::new();
             #[cfg(target_os = "macos")]
             let mut controls_right = root_ui.max_rect().right() - 8.0;
             if state.tabs.len() == 1 && let Some((label, tooltip)) = &tmuxx_tag {
@@ -7113,6 +7340,7 @@ impl App {
                 let mut tag_ui = root_ui.new_child(egui::UiBuilder::new().id_salt("tmuxx-window-tag").max_rect(rect));
                 tag_ui.painter().rect_filled(rect.expand(3.0), 4, rgb(config.background));
                 outliner_ui::tmuxx_tag(&mut tag_ui, label, tooltip, width);
+                if displayed_peek.is_some() { peek_obstacles.push(rect.expand(3.0)); }
             }
             #[cfg(target_os = "macos")]
             if state.tabs.len() == 1 {
@@ -7120,7 +7348,7 @@ impl App {
                     egui::Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, height))
                 });
                 if buttons.is_some() || host.window.fullscreen().is_some() {
-                    outline_selection = paint_window_controls_background(
+                    let (selection, bounds) = paint_window_controls_background(
                         root_ui,
                         buttons,
                         &breadcrumb,
@@ -7128,6 +7356,8 @@ impl App {
                         rgb(config.background),
                         rgb(config.foreground),
                     );
+                    outline_selection = selection;
+                    if displayed_peek.is_some() { peek_obstacles.push(bounds); }
                 }
             }
             self.validate_hints(host);
@@ -7190,6 +7420,21 @@ impl App {
                     }
                 }
             });
+            if host.hints.is_none()
+                && !modal_input
+                && let Some(peek) = displayed_peek
+            {
+                peek_obstacles.extend(host.search_rects.values().copied());
+                let selected = peek.selected_quad.or_else(|| active.root.quadrant(peek.target));
+                for badge in peek_badges(active, &zoom_panes, host.content, self.split_minimum(host), &peek_obstacles) {
+                    zoom_chrome(root_ui, &zoom_panes, badge.pane, badge.bounds, rgb(config.background), |ui| {
+                        if selected == Some(badge.root) && selected != active.root.quadrant(peek.target) {
+                            paint_pane_frame(ui.painter(), badge.bounds, accent);
+                        }
+                        paint_peek_badge(ui, &badge, active.quad_roots.contains(&badge.root), selected == Some(badge.root), panel_accent);
+                    });
+                }
+            }
             if !modal_input {
                 host.search_focus = requested_search.or(search_focus);
                 if let Some(id) = host.search_focus
@@ -8430,6 +8675,8 @@ impl App {
                 && button == Some(vt::MouseButton::Left)
                 && let Some(target) = hit.and_then(|id| self.tab(host.id)?.activate_quadrant(id))
             {
+                peek.selected_quad = None;
+                peek.navigation_used = true;
                 peek.target = target;
                 self.focus_pane(host.id, target);
                 host.repaint();
@@ -9173,11 +9420,7 @@ impl ApplicationHandler<Event> for App {
                 if let Some(peek) = host.peek
                     && !input::chord_held(peek.chord, current)
                 {
-                    host.peek = None;
-                    if let Some(tab) = self.tab_mut(host.id) {
-                        let target = tab.finish_peek(peek);
-                        self.focus_pane(host.id, target);
-                    }
+                    self.finish_peek(&mut host);
                 } else if host.peek.is_none()
                     && !host.ui_input()
                     && self
@@ -10094,7 +10337,7 @@ fn paint_window_controls_background(
     max_width: f32,
     background: Color32,
     foreground: Color32,
-) -> Option<outliner::Target> {
+) -> (Option<outliner::Target>, egui::Rect) {
     let shape = ui.painter().add(egui::Shape::Noop);
     let origin = buttons.map_or(Pos2::new(10.0, 4.0), |buttons| {
         Pos2::new(buttons.right() + 12.0, buttons.center().y - 13.0)
@@ -10114,16 +10357,17 @@ fn paint_window_controls_background(
     } else {
         buttons.map_or(origin.x, |buttons| buttons.right())
     };
+    let bounds = egui::Rect::from_min_max(
+        Pos2::ZERO,
+        Pos2::new(
+            right + 12.0,
+            buttons.map_or(34.0, |buttons| buttons.bottom() + 10.0),
+        ),
+    );
     ui.painter().set(
         shape,
         egui::Shape::rect_filled(
-            egui::Rect::from_min_max(
-                Pos2::ZERO,
-                Pos2::new(
-                    right + 12.0,
-                    buttons.map_or(34.0, |buttons| buttons.bottom() + 10.0),
-                ),
-            ),
+            bounds,
             egui::CornerRadius {
                 nw: 14,
                 se: 14,
@@ -10134,7 +10378,7 @@ fn paint_window_controls_background(
                 .gamma_multiply(0.85),
         ),
     );
-    selected
+    (selected, bounds)
 }
 
 fn centered_tab_strip_rect(window: egui::Rect, available: egui::Rect, width: f32) -> egui::Rect {
@@ -11799,6 +12043,71 @@ mod tests {
     }
 
     #[test]
+    fn peek_badges_keep_shared_corners_readable_and_numbered_in_model_order() {
+        let mut tab = Tab::new(1, 1, "/tmp".into());
+        tab.root.split(1, 2, 10, Direction::Right);
+        tab.root.split(1, 3, 11, Direction::Down);
+        tab.root.split(2, 4, 12, Direction::Down);
+        tab.root.split(1, 5, 13, Direction::Right);
+        tab.quad_roots.insert(1);
+        for (width, height) in [(800.0, 600.0), (48.0, 44.0)] {
+            let content = Rect {
+                x: 0.0,
+                y: 0.0,
+                width,
+                height,
+            };
+            let minimum = [12.0, 22.0];
+            let panes: Vec<_> = tab
+                .root
+                .layout_with_minimum(content, minimum)
+                .into_iter()
+                .map(|(id, rect)| {
+                    let rect = egui::Rect::from_min_size(
+                        Pos2::new(rect.x, rect.y),
+                        Vec2::new(rect.width, rect.height),
+                    )
+                    .shrink(1.0);
+                    zoom_animation::Pane {
+                        id,
+                        layout: rect,
+                        label_quadrant: None,
+                        rect,
+                        opacity: 1.0,
+                        background_opacity: 1.0,
+                        moving: false,
+                        resize: None,
+                    }
+                })
+                .collect();
+            let obstacles = if content.width > 100.0 {
+                vec![egui::Rect::from_min_size(
+                    Pos2::ZERO,
+                    Vec2::new(300.0, 34.0),
+                )]
+            } else {
+                Vec::new()
+            };
+            let badges = peek_badges(&tab, &panes, content, minimum, &obstacles);
+            assert_eq!(badges.len(), 5);
+            for (index, (badge, target)) in badges
+                .iter()
+                .zip(tab.peek_targets(content, minimum))
+                .enumerate()
+            {
+                assert_eq!((badge.number, badge.root), (index + 1, target.root));
+                assert!(badge.bounds.contains_rect(badge.rect));
+                assert!(obstacles.iter().all(|rect| !rect.intersects(badge.rect)));
+                assert!(
+                    badges[..index]
+                        .iter()
+                        .all(|old| !old.rect.expand(2.0).intersects(badge.rect))
+                );
+            }
+        }
+    }
+
+    #[test]
     fn zoom_chrome_mixes_once_on_parent_and_search_layers_preserving_alpha() {
         let bounds = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(100.0, 80.0));
         for separate_layer in [false, true] {
@@ -12493,7 +12802,8 @@ mod tests {
                             width,
                             Color32::BLACK,
                             Color32::WHITE,
-                        );
+                        )
+                        .0;
                         assert_eq!(ui.available_rect_before_wrap(), available);
                     },
                 );

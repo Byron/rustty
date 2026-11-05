@@ -534,6 +534,14 @@ pub struct Peek {
     pub full_zoom: Option<Id>,
     pub quadrant: Id,
     pub navigation_used: bool,
+    /// A numbered choice enters this exact root when the prefix is released.
+    pub selected_quad: Option<Id>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PeekTarget {
+    pub root: Id,
+    pub target: Id,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -807,6 +815,7 @@ impl Tab {
             full_zoom: self.zoom.filter(|zoom| Some(*zoom) != self.quadrant_zoom),
             quadrant,
             navigation_used: false,
+            selected_quad: None,
         };
         self.zoom = None;
         self.quadrant_zoom = None;
@@ -815,6 +824,14 @@ impl Tab {
     pub fn finish_peek(&mut self, peek: Peek) -> Id {
         if self.zoom.is_some() || self.quadrant_zoom.is_some() || !self.root.contains(peek.target) {
             return self.focused;
+        }
+        if let Some(quad) = peek
+            .selected_quad
+            .filter(|quad| self.quad_path(peek.target).contains(quad))
+        {
+            self.quadrant_zoom = Some(quad);
+            self.zoom = Some(quad);
+            return peek.target;
         }
         let quadrant = self.root.quadrant(peek.target);
         let target = peek
@@ -841,6 +858,51 @@ impl Tab {
             self.quadrant_zoom
         };
         target
+    }
+    /// All inferred quads and designated roots in full-peek reading order.
+    /// Stable ties keep enclosing roots before children at the same top-left.
+    pub fn peek_targets(&self, bounds: Rect, minimum: [f32; 2]) -> Vec<PeekTarget> {
+        let roots: BTreeSet<_> = self
+            .root
+            .panes()
+            .into_iter()
+            .filter_map(|pane| self.root.quadrant(pane))
+            .chain(self.quad_roots.iter().copied())
+            .collect();
+        let mut layout = Vec::new();
+        self.root.layout_into(bounds, &mut layout, true, minimum);
+        layout.retain(|(root, _)| roots.contains(root));
+        layout.sort_by(|(_, a), (_, b)| a.y.total_cmp(&b.y).then(a.x.total_cmp(&b.x)));
+        layout
+            .into_iter()
+            .filter_map(|(root, _)| {
+                let node = self.root.node(root)?;
+                let target = self
+                    .remembered
+                    .get(&root)
+                    .copied()
+                    .filter(|pane| node.contains(*pane))
+                    .or_else(|| node.panes().first().copied())?;
+                Some(PeekTarget { root, target })
+            })
+            .collect()
+    }
+    /// Number keys address the first nine entries of the same list as badges.
+    pub fn select_peek_target(
+        &self,
+        peek: &mut Peek,
+        index: usize,
+        bounds: Rect,
+        minimum: [f32; 2],
+    ) -> Option<Id> {
+        if index >= 9 {
+            return None;
+        }
+        let target = *self.peek_targets(bounds, minimum).get(index)?;
+        peek.target = target.target;
+        peek.selected_quad = Some(target.root);
+        peek.navigation_used = true;
+        Some(target.target)
     }
     pub fn remembered_for(&self, pane: Id) -> Option<Id> {
         let quadrant = self.root.node(self.root.quadrant(pane)?)?;
@@ -1795,6 +1857,178 @@ mod tests {
             })
             .collect();
         tab
+    }
+    #[test]
+    fn peek_targets_order_quads_and_roots_once_and_validate_remembered_panes() {
+        let mut tab = quadrants();
+        tab.focus(2);
+        tab.split(9, 10, Direction::Right, "/tmp".into());
+        tab.quad_roots.extend([10, 2, 999]);
+        tab.remembered.insert(10, 9);
+        tab.remembered.insert(2, 3); // A remembered pane outside this root is stale.
+        assert_eq!(
+            tab.peek_targets(Rect::UNIT, [0.0; 2]),
+            [
+                PeekTarget {
+                    root: 10,
+                    target: 9
+                },
+                PeekTarget { root: 2, target: 2 },
+                PeekTarget { root: 3, target: 3 },
+                PeekTarget { root: 7, target: 7 },
+                PeekTarget { root: 5, target: 5 },
+            ]
+        );
+    }
+
+    #[test]
+    fn peek_target_order_uses_the_actual_minimum_constrained_layout() {
+        let mut tab = quadrants();
+        tab.focus(2);
+        tab.split(9, 10, Direction::Down, "/tmp".into());
+        let bounds = Rect {
+            x: 10.0,
+            y: 20.0,
+            width: 100.0,
+            height: 100.0,
+        };
+        let roots = |minimum| {
+            tab.peek_targets(bounds, minimum)
+                .into_iter()
+                .map(|target| target.root)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(roots([0.0; 2]), [10, 3, 7, 5]);
+        // Two panes above the lower-left quad need 60 pixels; the lower-right
+        // quad starts earlier and therefore receives the preceding number.
+        assert_eq!(roots([10.0, 30.0]), [10, 3, 5, 7]);
+    }
+
+    #[test]
+    fn peek_targets_reject_remembered_internal_split_ids() {
+        let mut tab = recursive_quads(3);
+        let root = tab.root.quadrant(tab.focused).unwrap();
+        let Node::Split { first, .. } = &tab.root.node(root).unwrap().kind else {
+            panic!("expected an inferred quad with nested splits");
+        };
+        assert!(matches!(first.kind, Node::Split { .. }));
+        tab.remembered.insert(root, first.id);
+        let target = tab
+            .peek_targets(Rect::UNIT, [0.0; 2])
+            .into_iter()
+            .find(|target| target.root == root)
+            .unwrap();
+        assert_eq!(target.target, tab.focused);
+        assert!(tab.panes.contains_key(&target.target));
+    }
+
+    #[test]
+    fn numbered_peek_enters_the_exact_root_instead_of_restoring_full_zoom() {
+        let mut original = recursive_quads(3);
+        original.toggle_quadrant_zoom();
+        let outer = original.quadrant_zoom.unwrap();
+        assert!(original.toggle_quad_root());
+        let child = original.quadrant_zoom.unwrap();
+        for root in [outer, child] {
+            let mut tab = original.clone();
+            let wanted = *tab.root.node(root).unwrap().panes().last().unwrap();
+            assert_ne!(wanted, tab.focused);
+            tab.remembered.insert(root, wanted);
+            tab.toggle_zoom();
+            let mut peek = tab
+                .begin_peek(Modifiers {
+                    alt: true,
+                    ..Default::default()
+                })
+                .unwrap();
+            assert!(peek.full_zoom.is_some());
+            let index = tab
+                .peek_targets(Rect::UNIT, [0.0; 2])
+                .iter()
+                .position(|target| target.root == root)
+                .unwrap();
+            assert_eq!(
+                tab.select_peek_target(&mut peek, index, Rect::UNIT, [0.0; 2]),
+                Some(wanted)
+            );
+            assert!(peek.navigation_used);
+            assert_eq!(peek.selected_quad, Some(root));
+            assert_eq!((tab.zoom, tab.quadrant_zoom), (None, None));
+            assert_eq!(tab.finish_peek(peek), wanted);
+            assert_eq!((tab.zoom, tab.quadrant_zoom), (Some(root), Some(root)));
+        }
+    }
+
+    #[test]
+    fn numbered_peek_limits_digits_but_retains_all_targets() {
+        let mut tab = recursive_quads(8);
+        tab.toggle_quadrant_zoom();
+        for _ in 0..7 {
+            assert!(tab.toggle_quad_root());
+        }
+        let mut peek = tab
+            .begin_peek(Modifiers {
+                alt: true,
+                ..Default::default()
+            })
+            .unwrap();
+        let targets = tab.peek_targets(Rect::UNIT, [0.0; 2]);
+        assert_eq!(targets.len(), 11);
+        for (index, target) in targets.iter().take(9).enumerate() {
+            assert_eq!(
+                tab.select_peek_target(&mut peek, index, Rect::UNIT, [0.0; 2]),
+                Some(target.target)
+            );
+            assert_eq!(peek.selected_quad, Some(target.root));
+        }
+        let selected = (peek.target, peek.selected_quad, peek.navigation_used);
+        for index in [9, usize::MAX] {
+            assert_eq!(
+                tab.select_peek_target(&mut peek, index, Rect::UNIT, [0.0; 2]),
+                None
+            );
+            assert_eq!(
+                (peek.target, peek.selected_quad, peek.navigation_used),
+                selected
+            );
+        }
+    }
+
+    #[test]
+    fn numbered_peek_ignores_removed_roots_and_closed_targets() {
+        let mut original = recursive_quads(3);
+        original.toggle_quadrant_zoom();
+        let outer = original.quadrant_zoom.unwrap();
+        assert!(original.toggle_quad_root());
+        let child = original.quadrant_zoom.unwrap();
+        original.zoom = Some(outer);
+        original.quadrant_zoom = Some(outer);
+        for close_pane in [false, true] {
+            let mut tab = original.clone();
+            let mut peek = tab
+                .begin_peek(Modifiers {
+                    alt: true,
+                    ..Default::default()
+                })
+                .unwrap();
+            let index = tab
+                .peek_targets(Rect::UNIT, [0.0; 2])
+                .iter()
+                .position(|target| target.root == child)
+                .unwrap();
+            tab.select_peek_target(&mut peek, index, Rect::UNIT, [0.0; 2])
+                .unwrap();
+            if close_pane {
+                tab.close(peek.target);
+                let focused = tab.focused;
+                assert_eq!(tab.finish_peek(peek), focused);
+                assert!(tab.zoom.is_none_or(|root| tab.root.node(root).is_some()));
+            } else {
+                tab.quad_roots.remove(&child);
+                assert_eq!(tab.finish_peek(peek), peek.target);
+                assert_eq!((tab.zoom, tab.quadrant_zoom), (Some(outer), Some(outer)));
+            }
+        }
     }
     #[test]
     fn quad_roots_repeat_inference_and_toggle_between_parent_and_child() {
