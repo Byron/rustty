@@ -120,6 +120,8 @@ struct PaneState {
     terminal: Terminal,
     agent_status: tmuxx_terminal::AgentStatus,
     views: Vec<View>,
+    drag_identity: u64,
+    drag_view: Option<Arc<rustty_vt::dnd::View>>,
 }
 struct View {
     terminal: Weak<Mutex<Terminal>>,
@@ -336,6 +338,69 @@ impl PaneInput {
     }
     pub fn is_native(&self) -> bool {
         self.native
+    }
+    pub(crate) fn drag_identity(&self) -> io::Result<u64> {
+        let shared = self.connection()?;
+        let model = shared.model.lock().map_err(err)?;
+        let pane = model
+            .panes
+            .get(&self.pane)
+            .filter(|pane| Arc::ptr_eq(&pane.owners, &self.owners))
+            .ok_or(io::ErrorKind::BrokenPipe)?;
+        Ok(pane.drag_identity)
+    }
+    pub(crate) fn drag_view(&self) -> io::Result<Option<Arc<rustty_vt::dnd::View>>> {
+        let shared = self.connection()?;
+        let model = shared.model.lock().map_err(err)?;
+        let pane = model
+            .panes
+            .get(&self.pane)
+            .filter(|pane| Arc::ptr_eq(&pane.owners, &self.owners))
+            .ok_or(io::ErrorKind::BrokenPipe)?;
+        Ok(pane.drag_view.clone())
+    }
+    pub(crate) fn drag(&self, command: rustty_vt::dnd::Command) -> io::Result<()> {
+        command.validate().map_err(err)?;
+        let shared = self.connection()?;
+        {
+            let model = shared.model.lock().map_err(err)?;
+            let pane = model
+                .panes
+                .get(&self.pane)
+                .filter(|pane| Arc::ptr_eq(&pane.owners, &self.owners))
+                .ok_or(io::ErrorKind::BrokenPipe)?;
+            if pane
+                .drag_view
+                .as_ref()
+                .is_none_or(|view| view.registration != command.registration)
+            {
+                return Err(err("drag registration has expired"));
+            }
+        }
+        let bytes = rmp_serde::to_vec_named(&command).map_err(err)?;
+        if bytes.len() > 16 * 1024 * 1024 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "drag request exceeds sixteen MiB",
+            ));
+        }
+        shared
+            .requests
+            .try_send(Request {
+                request_id: shared.next.fetch_add(1, Ordering::Relaxed),
+                argv: vec![
+                    b"tmuxx-dnd".to_vec(),
+                    b"-t".to_vec(),
+                    format!("%{}", self.pane).into_bytes(),
+                ],
+                stdin: Some(bytes),
+                subscribe: false,
+                control: false,
+            })
+            .map_err(|error| match error {
+                mpsc::TrySendError::Full(_) => io::Error::from(io::ErrorKind::WouldBlock),
+                mpsc::TrySendError::Disconnected(_) => io::Error::from(io::ErrorKind::BrokenPipe),
+            })
     }
     pub fn write_input(&self, input: &Input) -> io::Result<()> {
         if input.queue_bytes() > 1024 * 1024 {
@@ -1696,7 +1761,15 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
                     terminal: terminal.clone(),
                     agent_status: tmuxx_terminal::AgentStatus::default(),
                     views: Vec::new(),
+                    drag_identity: 0,
+                    drag_view: None,
                 });
+                pane.drag_identity = crate::session::new_drag_identity();
+                pane.drag_view = remote
+                    .terminal
+                    .as_ref()
+                    .and_then(|terminal| terminal.dnd.clone())
+                    .map(Arc::new);
                 let agent_event = if replaced && agent_status.snapshot.is_some() {
                     agent_status.event_since(&tmuxx_terminal::AgentStatus::default())
                 } else {
@@ -1880,9 +1953,35 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
         ServerMessage::SnapshotStart { .. }
         | ServerMessage::SnapshotChunk { .. }
         | ServerMessage::SnapshotEnd { .. } => return Err(err("unassembled tmuxx snapshot")),
-        ServerMessage::Control { .. }
-        | ServerMessage::ClientFlags { .. }
-        | ServerMessage::Stdin { .. } => {}
+        ServerMessage::Control { data } => {
+            if let Some(data) = data.strip_prefix(tmuxx_protocol::native::DND_CONTROL_PREFIX) {
+                if !shared.subscribe {
+                    return Ok(());
+                }
+                if data.len() > 2 * rustty_vt::dnd::MAX_MIME_LIST_BYTES + 4096 {
+                    return Err(err("drag metadata exceeds its byte limit"));
+                }
+                let update: tmuxx_protocol::native::DragUpdate =
+                    tmuxx_protocol::native::decode(data)?;
+                if update.instance_id != model.instance {
+                    return Err(err("drag metadata owner incarnation changed"));
+                }
+                if update.sequence <= model.sequence {
+                    return Ok(());
+                }
+                model.sequence = update.sequence;
+                if let Some(pane) = model.panes.get_mut(&update.pane_id) {
+                    pane.drag_view = update.view.map(Arc::new);
+                    for view in &pane.views {
+                        (view.wake)();
+                    }
+                } else {
+                    model.request_refresh(shared)?;
+                }
+                (shared.wake)();
+            }
+        }
+        ServerMessage::ClientFlags { .. } | ServerMessage::Stdin { .. } => {}
     }
     Ok(())
 }
@@ -1973,6 +2072,131 @@ mod focus_tests {
         )
         .unwrap();
     }
+    #[test]
+    fn native_drag_registration_without_owner_metadata_blocks_paste_fallback() {
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        snapshot(&connection, 1, state());
+        let session = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        assert!(session.drag_view().unwrap().is_none());
+        apply(
+            &connection.shared,
+            ServerMessage::PaneOutput {
+                sequence: 2,
+                pane_id: 7,
+                data: b"\x1b]72;t=a:i=77;\x1b\\".to_vec(),
+            },
+        )
+        .unwrap();
+        let view = session.drag_view().unwrap().unwrap();
+        assert!(!view.ready);
+        assert!(view.accepted.is_none());
+        assert!(Arc::ptr_eq(&view, &session.drag_view().unwrap().unwrap()));
+    }
+
+    #[test]
+    fn native_drag_views_receive_metadata_without_owning_dropped_bytes() {
+        use rustty_vt::dnd;
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);
+        owner.feed(b"\x1b]72;t=a:i=77;\x1b\\");
+        let checkpoint = |owner: &tmuxx_terminal::Terminal| {
+            let mut state = state();
+            state["panes"][0]["terminal"] =
+                serde_json::to_value(owner.checkpoint_snapshot()).unwrap();
+            state
+        };
+        snapshot(&connection, 1, checkpoint(&owner));
+        let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let identity = first.drag_identity().unwrap();
+        let view = first.drag_view().unwrap().unwrap();
+        assert!(view.ready && view.registered_mimes.is_empty());
+        assert!(Arc::ptr_eq(&view, &second.drag_view().unwrap().unwrap()));
+        let position = dnd::MoveEvent {
+            cell_x: 2,
+            cell_y: 1,
+            pixel_x: 20,
+            pixel_y: 18,
+            operations: dnd::Operations {
+                copy: true,
+                move_: false,
+            },
+        };
+        let command = |action| dnd::Command {
+            registration: view.registration,
+            offer: 42,
+            action,
+        };
+        let update = |sequence, owner: &tmuxx_terminal::Terminal| {
+            let value = tmuxx_protocol::native::DragUpdate {
+                instance_id: "owner".into(),
+                sequence,
+                pane_id: 7,
+                view: owner.drag_view(),
+            };
+            let mut data = tmuxx_protocol::native::DND_CONTROL_PREFIX.to_vec();
+            data.extend(rmp_serde::to_vec_named(&value).unwrap());
+            ServerMessage::Control { data }
+        };
+        first
+            .drag(command(dnd::Action::Move {
+                event: position,
+                mimes: vec![b"text/plain".to_vec()],
+            }))
+            .unwrap();
+        let request = requests
+            .try_iter()
+            .find(|request| request.argv[0] == b"tmuxx-dnd")
+            .unwrap();
+        assert_eq!(request.argv[2], b"%7");
+        owner
+            .drag(rmp_serde::from_slice(&request.stdin.unwrap()).unwrap())
+            .unwrap();
+        owner.feed(b"\x1b]72;t=m:i=77:o=1;text/plain\x1b\\");
+        apply(&connection.shared, update(2, &owner)).unwrap();
+        assert_eq!(
+            first.drag_view().unwrap().unwrap().accepted,
+            Some(dnd::Operation::Copy)
+        );
+        first
+            .drag(command(dnd::Action::Drop {
+                event: position,
+                items: vec![dnd::Item {
+                    mime: b"text/plain".to_vec(),
+                    data: b"owner-only bytes".to_vec(),
+                }],
+            }))
+            .unwrap();
+        let request = requests.try_recv().unwrap();
+        owner
+            .drag(rmp_serde::from_slice(&request.stdin.unwrap()).unwrap())
+            .unwrap();
+        let delivered = update(3, &owner);
+        apply(&connection.shared, delivered.clone()).unwrap();
+        for view in [&first, &second] {
+            assert!(view.drag_view().unwrap().unwrap().dropped);
+            assert!(view.terminal().unwrap().kitty_dnd.is_none());
+            assert_eq!(identity, view.drag_identity().unwrap());
+        }
+        snapshot(&connection, 4, checkpoint(&owner));
+        assert_ne!(identity, first.drag_identity().unwrap());
+        assert_eq!(
+            first.drag_identity().unwrap(),
+            second.drag_identity().unwrap()
+        );
+        let retained = first.drag_view().unwrap().unwrap();
+        apply(&connection.shared, delivered).unwrap();
+        assert!(Arc::ptr_eq(&retained, &first.drag_view().unwrap().unwrap()));
+        drop(first);
+        let reopened = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        assert!(reopened.drag_view().unwrap().unwrap().dropped);
+        assert!(reopened.terminal().unwrap().kitty_dnd.is_none());
+        let responses = owner.feed(b"\x1b]72;t=r:x=1\x1b\\");
+        let encoded = b"b3duZXItb25seSBieXRlcw==";
+        assert!(responses.iter().any(|effect| matches!(effect, Effect::Write(bytes) if bytes.windows(encoded.len()).any(|part| part == encoded))));
+        assert!(connection.errors().is_empty());
+    }
+
     #[test]
     fn native_views_preserve_extra_cursors_and_pending_commands_across_reconnect() {
         use rustty_vt::extra_cursors::{Color, Colors};
@@ -3675,6 +3899,8 @@ mod tests {
                 terminal: tmuxx_terminal::Terminal::new(20, 4, 20).into_backend(),
                 agent_status: tmuxx_terminal::AgentStatus::default(),
                 views: Vec::new(),
+                drag_identity: crate::session::new_drag_identity(),
+                drag_view: None,
             },
         );
         let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();

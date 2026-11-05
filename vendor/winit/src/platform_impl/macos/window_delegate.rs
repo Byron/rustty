@@ -39,6 +39,7 @@ use crate::dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize, P
 use crate::error::{ExternalError, NotSupportedError, OsError as RootOsError};
 use crate::event::{InnerSizeWriter, WindowEvent};
 use crate::platform::macos::{OptionAsAlt, WindowExtMacOS};
+use crate::platform::drag::{DragEvent, DragHandler, DragOperations, DragPhase, DragResult, DragSource};
 use crate::window::{
     Cursor, CursorGrabMode, Icon, ImePurpose, ResizeDirection, Theme, UserAttentionType,
     WindowAttributes, WindowButtons, WindowLevel,
@@ -89,6 +90,8 @@ pub(crate) struct State {
     window: Retained<NSWindow>,
     nonactivating_panel: bool,
     text_drop_handler: RefCell<Option<Arc<dyn Fn(String, LogicalPosition<f64>) + Send + Sync>>>,
+    drag_handler: RefCell<Option<DragHandler>>,
+    drag_types: RefCell<Vec<String>>,
 
     // During `windowDidResize`, we use this to only send Moved if the position changed.
     //
@@ -375,6 +378,12 @@ declare_class!(
         fn dragging_entered(&self, sender: &NSObject) -> NSDragOperation {
             trace_scope!("draggingEntered:");
 
+            match self.drag_event(DragPhase::Enter, Some(sender)) {
+                DragResult::Copy => return NSDragOperation::Copy,
+                DragResult::Reject => return NSDragOperation::None,
+                DragResult::Default => {},
+            }
+
             use std::path::PathBuf;
 
             let pb: Retained<NSPasteboard> = unsafe { msg_send_id![sender, draggingPasteboard] };
@@ -402,6 +411,33 @@ declare_class!(
             NSDragOperation::Copy
         }
 
+        #[method(draggingUpdated:)]
+        fn dragging_updated(&self, sender: &NSObject) -> NSDragOperation {
+            match self.drag_event(DragPhase::Update, Some(sender)) {
+                DragResult::Copy => NSDragOperation::Copy,
+                DragResult::Reject => NSDragOperation::None,
+                DragResult::Default => {
+                    let pb: Retained<NSPasteboard> =
+                        unsafe { msg_send_id![sender, draggingPasteboard] };
+                    let types = unsafe { pb.types() };
+                    if types.is_some_and(|types| unsafe {
+                        types.containsObject(NSFilenamesPboardType)
+                            || (self.ivars().text_drop_handler.borrow().is_some()
+                                && types.containsObject(NSPasteboardTypeString))
+                    }) {
+                        NSDragOperation::Copy
+                    } else {
+                        NSDragOperation::None
+                    }
+                }
+            }
+        }
+
+        #[method(wantsPeriodicDraggingUpdates)]
+        fn wants_periodic_dragging_updates(&self) -> bool {
+            true
+        }
+
         /// Invoked when the image is released
         #[method(prepareForDragOperation:)]
         fn prepare_for_drag_operation(&self, _sender: &NSObject) -> bool {
@@ -413,6 +449,12 @@ declare_class!(
         #[method(performDragOperation:)]
         fn perform_drag_operation(&self, sender: &NSObject) -> bool {
             trace_scope!("performDragOperation:");
+
+            match self.drag_event(DragPhase::Drop, Some(sender)) {
+                DragResult::Copy => return true.into(),
+                DragResult::Reject => return false.into(),
+                DragResult::Default => {},
+            }
 
             use std::path::PathBuf;
 
@@ -449,8 +491,9 @@ declare_class!(
 
         /// Invoked when the dragging operation is cancelled
         #[method(draggingExited:)]
-        fn dragging_exited(&self, _sender: Option<&NSObject>) {
+        fn dragging_exited(&self, sender: Option<&NSObject>) {
             trace_scope!("draggingExited:");
+            self.drag_event(DragPhase::Leave, sender);
             self.queue_event(WindowEvent::HoveredFileCancelled);
         }
     }
@@ -763,6 +806,8 @@ impl WindowDelegate {
             window: window.retain(),
             nonactivating_panel: attrs.platform_specific.nonactivating_panel,
             text_drop_handler: RefCell::new(None),
+            drag_handler: RefCell::new(None),
+            drag_types: RefCell::new(Vec::new()),
             previous_position: Cell::new(flip_window_screen_coordinates(window.frame())),
             previous_scale_factor: Cell::new(scale_factor),
             resize_increments: Cell::new(resize_increments),
@@ -1774,16 +1819,73 @@ fn restore_and_release_display(monitor: &MonitorHandle) {
     }
 }
 
+impl WindowDelegate {
+    fn register_drag_types(&self) {
+        let mut types = vec![unsafe { NSFilenamesPboardType }.copy()];
+        if self.ivars().text_drop_handler.borrow().is_some()
+            || self.ivars().drag_handler.borrow().is_some()
+        {
+            types.push(unsafe { NSPasteboardTypeString }.copy());
+        }
+        for name in self.ivars().drag_types.borrow().iter() {
+            let value = NSString::from_str(name);
+            if !types.iter().any(|kind| kind == &value) {
+                types.push(value);
+            }
+        }
+        self.window().registerForDraggedTypes(&NSArray::from_id_slice(&types));
+    }
+
+    fn drag_event(&self, phase: DragPhase, sender: Option<&NSObject>) -> DragResult {
+        let Some(handler) = self.ivars().drag_handler.borrow().clone() else {
+            return DragResult::Default;
+        };
+        let Some(sender) = sender.filter(|_| phase != DragPhase::Leave) else {
+            return handler(DragEvent {
+                phase,
+                position: LogicalPosition::new(0.0, 0.0),
+                operations: DragOperations::default(),
+                source: None,
+            });
+        };
+        let pb: Retained<NSPasteboard> = unsafe { msg_send_id![sender, draggingPasteboard] };
+        let position: NSPoint = unsafe { msg_send![sender, draggingLocation] };
+        let position = self.view().convertPoint_fromView(position, None);
+        let operations: NSDragOperation = unsafe { msg_send![sender, draggingSourceOperationMask] };
+        let result = handler(DragEvent {
+            phase,
+            position: LogicalPosition::new(position.x, position.y),
+            operations: DragOperations {
+                copy: operations.contains(NSDragOperation::Copy),
+                move_: operations.contains(NSDragOperation::Move),
+            },
+            source: unsafe { DragSource::new((&*pb as *const NSPasteboard).cast_mut().cast()) },
+        });
+        if result == DragResult::Copy && !operations.contains(NSDragOperation::Copy) {
+            DragResult::Reject
+        } else {
+            result
+        }
+    }
+}
+
 impl WindowExtMacOS for WindowDelegate {
+    fn set_drag_handler(&self, handler: DragHandler) {
+        *self.ivars().drag_handler.borrow_mut() = Some(handler);
+        self.register_drag_types();
+    }
+
+    fn set_drag_types(&self, types: Vec<String>) {
+        *self.ivars().drag_types.borrow_mut() = types;
+        self.register_drag_types();
+    }
+
     fn set_text_drop_handler(
         &self,
         handler: Arc<dyn Fn(String, LogicalPosition<f64>) + Send + Sync>,
     ) {
         *self.ivars().text_drop_handler.borrow_mut() = Some(handler);
-        self.window().registerForDraggedTypes(&NSArray::from_id_slice(&[
-            unsafe { NSFilenamesPboardType }.copy(),
-            unsafe { NSPasteboardTypeString }.copy(),
-        ]));
+        self.register_drag_types();
     }
 
     #[inline]

@@ -252,6 +252,10 @@ impl<T> EventLoopBuilderExtWindows for EventLoopBuilder<T> {
 
 /// Additional methods on `Window` that are specific to Windows.
 pub trait WindowExtWindows {
+    /// Install an incoming drag callback. `Default` preserves normal file drop events.
+    /// Do not wait for application replies or retain the borrowed native source.
+    fn set_drag_handler(&self, handler: crate::platform::drag::DragHandler);
+
     /// Enables or disables mouse and keyboard input to the specified window.
     ///
     /// A window must be enabled before it can be activated.
@@ -359,6 +363,10 @@ pub trait WindowExtWindows {
 }
 
 impl WindowExtWindows for Window {
+    fn set_drag_handler(&self, handler: crate::platform::drag::DragHandler) {
+        self.window.set_drag_handler(handler)
+    }
+
     #[inline]
     fn set_enable(&self, enabled: bool) {
         self.window.set_enable(enabled)

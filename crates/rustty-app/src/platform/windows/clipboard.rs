@@ -60,25 +60,44 @@ fn format(mime: &[u8]) -> Option<u32> {
         name => register(name),
     }
 }
-fn mime(format: u32) -> Option<Vec<u8>> {
+pub(super) fn mime(format: u32) -> Option<Vec<u8>> {
     if format == TEXT {
         return Some(b"text/plain".to_vec());
     }
     if format == DIB || format == DIBV5 {
         return Some(b"image/png".to_vec());
     }
-    let mut name = [0u16; 1025];
-    let len = unsafe { GetClipboardFormatNameW(format, &mut name) };
-    if len <= 0 {
-        return None;
-    }
-    let name = String::from_utf16_lossy(&name[..len as usize]);
+    let name = format_name(format)?;
     let name = name.strip_prefix(EXACT).unwrap_or(&name);
     match name {
         "PNG" => Some(b"image/png".to_vec()),
         "HTML Format" => Some(b"text/html".to_vec()),
         name => valid(name.as_bytes()).map(|s| normalize(s.as_bytes())),
     }
+}
+
+fn format_name(format: u32) -> Option<String> {
+    let mut name = [0u16; 1025];
+    let len = unsafe { GetClipboardFormatNameW(format, &mut name) };
+    (len > 0).then(|| String::from_utf16_lossy(&name[..len as usize]))
+}
+
+/// Decode an IDataObject representation without opening the global clipboard.
+pub(super) fn drag_bytes(native: u32, mime: &[u8], bytes: &[u8], limit: usize) -> Option<Vec<u8>> {
+    let exact = format_name(native).is_some_and(|name| name.starts_with(EXACT));
+    let data = if exact {
+        let length = usize::try_from(u64::from_le_bytes(bytes.get(..8)?.try_into().ok()?)).ok()?;
+        bytes.get(8..8usize.checked_add(length)?)?.to_vec()
+    } else if native == TEXT {
+        decode_text(bytes)?
+    } else if native == DIB || native == DIBV5 {
+        dib_png_limit(bytes, limit)?
+    } else if mime == b"text/html" {
+        decode_html(bytes)?
+    } else {
+        bytes.to_vec()
+    };
+    (data.len() <= limit).then_some(data)
 }
 fn normalize(mime: &[u8]) -> Vec<u8> {
     if is_text_mime(mime) {
@@ -359,6 +378,10 @@ fn word(bytes: &[u8], at: usize) -> Option<u32> {
     Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
 }
 fn dib_png(bytes: &[u8]) -> Option<Vec<u8>> {
+    dib_png_limit(bytes, LIMIT)
+}
+
+fn dib_png_limit(bytes: &[u8], limit: usize) -> Option<Vec<u8>> {
     let header = word(bytes, 0)? as usize;
     if header < 40 {
         return None;
@@ -384,7 +407,7 @@ fn dib_png(bytes: &[u8]) -> Option<Vec<u8>> {
     let width = width as usize;
     let rows = height.unsigned_abs() as usize;
     let size = width.checked_mul(rows)?.checked_mul(4)?;
-    if size > LIMIT {
+    if size > limit {
         return None;
     }
     let stride = width.checked_mul(bits as usize)?.checked_add(31)? / 32 * 4;

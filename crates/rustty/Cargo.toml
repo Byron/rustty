@@ -9,13 +9,14 @@ description = "Public Rustty API, configuration, and terminal sessions."
 
 [features]
 default = []
-sessions = ["dep:portable-pty", "dep:libc", "dep:serde_json", "dep:serde", "dep:tmuxx-runtime", "dep:tmuxx-terminal", "dep:tmuxx-protocol", "dep:tmuxx-layout", "dep:tmuxx-client", "dep:tmuxx-command", "dep:getrandom"]
+sessions = ["dep:portable-pty", "dep:libc", "dep:serde_json", "dep:serde", "dep:rmp-serde", "dep:tmuxx-runtime", "dep:tmuxx-terminal", "dep:tmuxx-protocol", "dep:tmuxx-layout", "dep:tmuxx-client", "dep:tmuxx-command", "dep:getrandom"]
 
 [dependencies]
 rustty-parser.workspace = true
 rustty-vt.workspace = true
 portable-pty = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+rmp-serde = { workspace = true, optional = true }
 
 serde = { workspace = true, optional = true }
 tmuxx-terminal = { workspace = true, optional = true }

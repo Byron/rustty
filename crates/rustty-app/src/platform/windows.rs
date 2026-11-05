@@ -35,6 +35,7 @@ use winit::{
 
 mod clipboard;
 mod conpty;
+mod drag;
 mod keys;
 mod menu;
 mod notifications;
@@ -90,6 +91,14 @@ impl Drop for Runtime {
 }
 
 impl Platform {
+    pub fn install_drag_handler(window: &Window, handler: super::DragHandler) {
+        drag::install(window, handler);
+    }
+
+    pub fn update_drag_registration(_window: &Window, _mimes: &[Vec<u8>]) {
+        // IDataObject advertises exact registered formats without destination registration.
+    }
+
     pub fn option_pressed() -> bool {
         use ::windows::Win32::UI::Input::KeyboardAndMouse::{
             GetAsyncKeyState, VK_CONTROL, VK_MENU,

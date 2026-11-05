@@ -24,6 +24,11 @@ impl ViewStates {
     pub(super) fn has_view(&self, client: u64, pane: Id) -> bool {
         self.states.contains_key(&(client, pane))
     }
+    pub(super) fn visible(&self, client: u64, pane: Id) -> bool {
+        self.states
+            .get(&(client, pane))
+            .is_some_and(|(state, _)| state.visible)
+    }
     pub(super) fn focused(&self, client: u64, pane: Id) -> bool {
         self.states
             .get(&(client, pane))
@@ -174,6 +179,9 @@ impl Host {
                 .program_status_seen();
         }
         self.apply_view_state(pane)?;
+        if !state.visible {
+            self.release_drag(client, pane);
+        }
         let status_changed =
             self.engine.panes[&pane].terminal.program_status().len() != record_count;
         let changed =
@@ -203,6 +211,7 @@ impl Host {
         self.effects(effects)
     }
     pub(super) fn refresh_view_states(&mut self) -> Result<(), String> {
+        self.prune_drags();
         self.view_states
             .states
             .retain(|(_, pane), _| self.engine.panes.contains_key(pane));
@@ -218,6 +227,7 @@ impl Host {
         Ok(())
     }
     pub(super) fn release_view_state(&mut self, client: u64, pane: Id) {
+        self.release_drag(client, pane);
         if self.view_states.states.remove(&(client, pane)).is_some()
             && let Err(error) = self.apply_view_state(pane)
         {
@@ -225,6 +235,7 @@ impl Host {
         }
     }
     pub(super) fn disconnect_view_states(&mut self, client: u64) {
+        self.drags.forget_client(client);
         let panes = self
             .view_states
             .states

@@ -40,7 +40,7 @@ pub fn mouse_reporting(
 /// Preserve a window's hit regions when another viewport renders on the shared context.
 #[derive(Default)]
 pub struct UiAreas {
-    hit_test: Option<Box<dyn Fn(egui::Pos2) -> bool>>,
+    hit_test: Option<std::sync::Arc<dyn Fn(egui::Pos2) -> bool + Send + Sync>>,
 }
 
 impl UiAreas {
@@ -48,7 +48,7 @@ impl UiAreas {
         let (areas, transforms) =
             context.memory(|memory| (memory.areas().clone(), memory.to_global.clone()));
         // egui exposes Areas through Memory but does not export its type.
-        self.hit_test = Some(Box::new(move |position| {
+        self.hit_test = Some(std::sync::Arc::new(move |position| {
             areas
                 .layer_id_at(position, &transforms)
                 .is_some_and(|layer| layer.order != egui::Order::Background)
@@ -59,6 +59,10 @@ impl UiAreas {
         self.hit_test
             .as_ref()
             .is_some_and(|hit_test| hit_test(position))
+    }
+
+    pub fn snapshot(&self) -> Option<std::sync::Arc<dyn Fn(egui::Pos2) -> bool + Send + Sync>> {
+        self.hit_test.clone()
     }
 }
 
@@ -960,9 +964,11 @@ mod tests {
             areas
         };
         let first_areas = draw(first);
+        let first_snapshot = first_areas.snapshot().unwrap();
         let second_areas = draw(second);
         let point = egui::pos2(40.0, 40.0);
         assert!(first_areas.contains(point));
+        assert!(first_snapshot(point));
         assert!(!first_areas.contains(egui::pos2(180.0, 40.0)));
         assert!(!second_areas.contains(point));
         let _ = draw(first);

@@ -2,6 +2,9 @@
 //!
 //! Only the modules corresponding to the platform you're compiling to will be available.
 
+#[cfg(any(macos_platform, windows_platform, docsrs))]
+pub mod drag;
+
 #[cfg(any(android_platform, docsrs))]
 pub mod android;
 #[cfg(any(ios_platform, docsrs))]

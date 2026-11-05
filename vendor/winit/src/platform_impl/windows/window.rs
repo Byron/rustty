@@ -86,6 +86,10 @@ pub(crate) struct Window {
 }
 
 impl Window {
+    pub fn set_drag_handler(&self, handler: crate::platform::drag::DragHandler) {
+        self.window_state_lock().drag_handler = Some(handler);
+    }
+
     pub(crate) fn new(
         event_loop: &ActiveEventLoop,
         w_attr: WindowAttributes,
@@ -1181,6 +1185,7 @@ impl InitData<'_> {
             let file_drop_runner = self.event_loop.runner_shared.clone();
             let file_drop_handler = FileDropHandler::new(
                 win.window,
+                win.window_state.clone(),
                 Box::new(move |event| {
                     if let Ok(e) = event.map_nonuser_event() {
                         file_drop_runner.send_event(e)

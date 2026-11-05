@@ -11,8 +11,10 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
+mod drag;
 mod read;
 mod shell;
+pub(crate) use drag::new_identity as new_drag_identity;
 pub use shell::{ShellInfo, ShellKind, default_shell, resolve_shell};
 
 const MAX_PENDING_INPUT: usize = 16 * 1024 * 1024;
@@ -147,6 +149,7 @@ pub struct Session {
     compression_pending: Arc<AtomicBool>,
     restored: Arc<Mutex<Option<RestoredOutput>>>,
     exited: Arc<AtomicBool>,
+    drag: Mutex<drag::Cache>,
     #[cfg(target_os = "macos")]
     close_child: Option<std::os::unix::net::UnixStream>,
     #[cfg(not(target_os = "macos"))]
@@ -570,6 +573,7 @@ impl Session {
             restored,
             exited,
             close_child: Some(close_child),
+            drag: Default::default(),
         })
     }
 
@@ -592,6 +596,7 @@ impl Session {
             restored: Arc::new(Mutex::new(None)),
             exited: attached.exited,
             close_child: None,
+            drag: Default::default(),
         })
     }
 
@@ -1498,6 +1503,7 @@ mod tests {
             }))),
             exited: Arc::new(AtomicBool::new(false)),
             close_child: None,
+            drag: Default::default(),
         };
         session
             .write_input(&Input::Reply(b"reply".to_vec()))
@@ -2606,6 +2612,7 @@ mod tests {
             restored: Arc::new(Mutex::new(None)),
             exited: Arc::new(AtomicBool::new(false)),
             close_child: None,
+            drag: Default::default(),
         };
         let key = |event| Input::Key {
             event,

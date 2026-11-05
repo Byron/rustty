@@ -745,8 +745,19 @@ retention and both snapshot encodings. Callback records include state at each
 event, so multiple registrations in one input read cannot hide lost metadata.
 `EffectHandler::drag_and_drop` borrows that state synchronously; deferred `feed`
 returns event tags. The 8 MiB capture boundary is compared for queries and pending
-registration/status chunks; allocation failures and direct utility APIs remain
-unverified.
+registration/status chunks. Rustty's native host path additionally guards
+registration and offer identities, source views, pane bounds and queued input.
+It invalidates acceptance on partial updates and source changes, suppresses
+unchanged MIME reports, and limits data reads to 64 requests and 8 MiB cumulative
+raw data per drop. These lifecycle and resource limits extend the reference and
+are covered by Rust tests; the older differential cases are not a claim of
+identical native drag behavior. Allocation failures remain unverified.
+The desktop integration check retained all 185 conversations: 477 of 555
+comparisons matched, while 78 variants of 26 conversations differed because of
+MIME suppression, acceptance invalidation, `EPERM` before a drop, or mandatory
+cleanup after a data error. Each implementation produced identical base, scalar
+and chunked responses. These intentional differences remain visible in the
+comparison fixtures.
 
 Mode fixtures read the available ANSI/DEC entries from the original source.
 `observe_modes` selects mode tags (`number`, `private`) whose current, saved,

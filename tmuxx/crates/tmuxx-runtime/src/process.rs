@@ -400,6 +400,7 @@ impl Host {
             .iter()
             .map(|(&id, pane)| (id, pane.terminal.graphics_generation()))
             .collect::<BTreeMap<_, _>>();
+        let drag_before = self.engine.panes[&pane].terminal.drag_revision();
         let effects = self.engine.feed(pane, data);
         let graphics_changed = self.engine.panes.iter().any(|(id, pane)| {
             graphics_before.get(id) != Some(&pane.terminal.graphics_generation())
@@ -433,6 +434,9 @@ impl Host {
                 self.send(id, ServerMessage::Changed { sequence });
             }
         }
+        // Projection metadata follows its raw output, never outrunning the
+        // sequence number used by attached terminal views for replay.
+        self.publish_drag_if_changed(pane, drag_before);
     }
 }
 

@@ -13,6 +13,7 @@ tmuxx-format = { path = "../tmuxx-format" }
 tmuxx-protocol = { path = "../tmuxx-protocol", features = ["native"] }
 portable-pty.workspace = true
 serde_json.workspace = true
+rmp-serde.workspace = true
 serde.workspace = true
 tmuxx-terminal = { path = "../tmuxx-terminal" }
 libc.workspace = true

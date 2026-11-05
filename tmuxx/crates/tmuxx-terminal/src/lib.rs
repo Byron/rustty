@@ -18,6 +18,7 @@ pub use agent::AgentStatus;
 mod capture;
 mod capture_raw;
 pub use capture::CaptureOptions;
+pub use rustty_vt::dnd;
 
 /// Rustty extensions to C tmux's generated format registry.
 pub const PROGRAM_STATUS_FORMATS: &[&str] = &[
@@ -131,6 +132,9 @@ impl Default for TerminalSettings {
 pub struct Snapshot<S = Screen> {
     #[serde(default)]
     pub agent_status: AgentStatus,
+    /// Native drag metadata; dropped representations remain in the live owner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dnd: Option<rustty_vt::dnd::View>,
     pub version: u32,
     pub cols: u16,
     pub rows: u16,
@@ -308,6 +312,66 @@ impl<S> Snapshot<S> {
 }
 
 impl Terminal {
+    pub fn drag_revision(&self) -> Option<u64> {
+        self.inner
+            .kitty_dnd
+            .as_ref()
+            .map(rustty_vt::dnd::State::revision)
+    }
+
+    pub fn drag_view(&self) -> Option<rustty_vt::dnd::View> {
+        self.inner
+            .kitty_dnd
+            .as_ref()
+            .map(rustty_vt::dnd::State::view)
+    }
+
+    pub fn drag(&mut self, command: rustty_vt::dnd::Command) -> io::Result<Vec<u8>> {
+        let mut reply = Vec::new();
+        self.drag_with(command, |bytes| {
+            reply = bytes;
+            Ok(())
+        })?;
+        Ok(reply)
+    }
+
+    /// Stage only drag state, so a full or disconnected PTY queue cannot commit
+    /// a drop whose notification was never delivered. The incoming data moves once.
+    pub fn drag_with(
+        &mut self,
+        command: rustty_vt::dnd::Command,
+        send: impl FnOnce(Vec<u8>) -> io::Result<()>,
+    ) -> io::Result<()> {
+        use rustty_vt::dnd::Action;
+        command.validate().map_err(io::Error::other)?;
+        if let Action::Move { event, .. } | Action::Drop { event, .. } = &command.action
+            && (event.cell_x >= u32::from(self.inner.cols)
+                || event.cell_y >= u32::from(self.inner.rows))
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "drag position is outside the pane",
+            ));
+        }
+        let mut state = self
+            .inner
+            .kitty_dnd
+            .as_ref()
+            .ok_or_else(|| io::Error::other("drag target is no longer registered"))?
+            .clone();
+        let reply = state.apply_host(command).map_err(io::Error::other)?;
+        send(reply)?;
+        self.inner.kitty_dnd = Some(state);
+        Ok(())
+    }
+
+    pub fn cancel_drag(&mut self, offer: u64) -> Vec<u8> {
+        self.inner
+            .kitty_dnd
+            .as_mut()
+            .map_or_else(Vec::new, |state| state.cancel_offer(offer))
+    }
+
     /// Pull retained history into unused rows below the cursor for resize-pane -T.
     pub fn trim_history_below_cursor(&mut self) {
         self.inner.trim_tmux_history_below_cursor();
@@ -772,6 +836,7 @@ impl Terminal {
             };
         Snapshot {
             agent_status: self.agent_status.clone(),
+            dnd: terminal.kitty_dnd.as_ref().map(rustty_vt::dnd::State::view),
             version: 1,
             cols: terminal.cols,
             rows: terminal.rows,

@@ -15,6 +15,17 @@ pub use snapshot::{
 
 pub const VERSION: u32 = 2;
 
+pub const DND_CONTROL_PREFIX: &[u8] = b"%rustty-dnd ";
+
+/// Optional GUI notification carried by the existing Control message.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DragUpdate {
+    pub instance_id: String,
+    pub sequence: u64,
+    pub pane_id: u64,
+    pub view: Option<tmuxx_terminal::dnd::View>,
+}
+
 /// The first record in each direction, before requests or server messages.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Hello {

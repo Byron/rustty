@@ -4,6 +4,8 @@ mod clipboard_preview;
 mod command_palette;
 #[path = "deck_host.rs"]
 mod deck_host;
+#[path = "drag_controller.rs"]
+mod drag;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 #[path = "handoff_ui.rs"]
 mod handoff_ui;
@@ -36,7 +38,7 @@ use rustty::{
 use rustty_app::{
     accessibility::TerminalText,
     hints, input, outliner, outliner_ui,
-    platform::{Platform, PlatformEvent},
+    platform::{DragResult, Platform, PlatformEvent},
     presentation::{
         Activity, CompletionFlash, DirectoryLabel, FocusHint, Progress, TabAccent, common_label,
         cursor_blink_phase, directory_labels, paint_zoom_icon, zoom_label,
@@ -53,7 +55,7 @@ use std::{
     num::NonZeroU32,
     path::{Path, PathBuf},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
@@ -86,6 +88,7 @@ enum Event {
         std::result::Result<rustty_app::tmuxx_copy::CopiedWindow, String>,
     ),
     Output(Id),
+    Drag(WindowId, Vec<drag::Dispatch>),
     Platform(PlatformEvent),
     Repaint(egui::RequestRepaintInfo, Instant),
     Access(egui_winit::accesskit_winit::Event),
@@ -907,6 +910,8 @@ struct Host {
     tmuxx_theme: Option<String>,
     viewport: ViewportId,
     window: Arc<Window>,
+    drag: Arc<Mutex<drag::Controller>>,
+    drag_mimes: Vec<Vec<u8>>,
     egui: egui_winit::State,
     accesskit_active: bool,
     fonts: rustty_render::Renderer,
@@ -2334,6 +2339,26 @@ impl App {
         #[cfg(target_os = "windows")]
         let attributes = attributes.with_skip_taskbar(quick);
         let window = Arc::new(event_loop.create_window(attributes)?);
+        let drag = Arc::new(Mutex::new(drag::Controller::default()));
+        let handler = drag.clone();
+        let proxy = self.proxy.clone();
+        let window_id = window.id();
+        Platform::install_drag_handler(
+            &window,
+            Arc::new(move |event| {
+                let Ok(mut controller) = handler.lock() else {
+                    return DragResult::Reject;
+                };
+                let (reply, commands) = controller.handle(event);
+                drop(controller);
+                if !commands.is_empty()
+                    && proxy.send_event(Event::Drag(window_id, commands)).is_err()
+                {
+                    return DragResult::Reject;
+                }
+                reply
+            }),
+        );
         #[cfg(target_os = "macos")]
         if self.smoke.is_some()
             && !self.background_smoke
@@ -2387,6 +2412,8 @@ impl App {
             tmuxx_theme: self.tmuxx_theme(id).map(str::to_owned),
             viewport,
             window: window.clone(),
+            drag,
+            drag_mimes: Vec::new(),
             egui,
             accesskit_active: false,
             fonts,
@@ -2647,6 +2674,135 @@ impl App {
         };
         self.paste(host, PendingPaste { pane, data }, true);
     }
+
+    fn refresh_drag_views(&mut self) {
+        let active: BTreeMap<_, _> = self
+            .windows
+            .values()
+            .map(|host| {
+                (
+                    host.id,
+                    self.tab(host.id)
+                        .map(|tab| tab.visible_panes(host.peek.is_some()))
+                        .unwrap_or_default(),
+                )
+            })
+            .collect();
+        for host in self.windows.values_mut() {
+            let scale = host.window.scale_factor() as f32;
+            let metrics = host.fonts.metrics();
+            let content = egui::Rect::from_min_size(
+                Pos2::new(host.content.x, host.content.y),
+                Vec2::new(host.content.width, host.content.height),
+            );
+            let enabled = host.visible
+                && !host.modal_input()
+                && host.peek.is_none()
+                && !host.zoom_animation.is_running();
+            let mut targets = Vec::new();
+            for id in &host.pane_order {
+                let Some(pane) = self.panes.get(id) else {
+                    continue;
+                };
+                let Some(bounds) = host.rects.get(id) else {
+                    continue;
+                };
+                let Some(prepared) = host.prepared.get(id) else {
+                    continue;
+                };
+                // No terminal guard spans these calls. A reconnect between reads
+                // invalidates the publication instead of mixing owner incarnations.
+                let before = pane.session.drag_identity().ok();
+                let view = pane.session.drag_view().ok().flatten();
+                let after = pane.session.drag_identity().ok();
+                let identity = before.filter(|_| before == after);
+                let dimensions = prepared
+                    .key
+                    .view
+                    .dimensions
+                    .map(|value| u16::try_from(value).unwrap_or(0));
+                targets.push(drag::Target {
+                    pane: *id,
+                    identity,
+                    view,
+                    enabled: enabled
+                        && !pane.exited
+                        && pane.session.accepts_input()
+                        && active.get(&host.id).is_some_and(|panes| panes.contains(id))
+                        && host.modal_pane.is_none_or(|modal| modal == *id)
+                        && prepared.key.rect == *bounds
+                        && prepared.key.scale == scale
+                        && prepared.frame.generation == host.fonts.generation(),
+                    geometry: drag::Geometry {
+                        bounds: bounds.intersect(content),
+                        origin: bounds.min,
+                        padding: prepared.key.options.padding,
+                        cell: [metrics.cell_width as f32, metrics.cell_height as f32],
+                        scale,
+                        dimensions,
+                    },
+                });
+            }
+            let Ok(mut controller) = host.drag.lock() else {
+                continue;
+            };
+            let commands = controller.publish(targets, host.ui_areas.snapshot());
+            let mimes = controller
+                .take_registration_change()
+                .then(|| controller.registrations());
+            drop(controller);
+            if let Some(mimes) = mimes
+                && mimes != host.drag_mimes
+            {
+                Platform::update_drag_registration(&host.window, &mimes);
+                host.drag_mimes = mimes;
+            }
+            if !commands.is_empty() {
+                let _ = self
+                    .proxy
+                    .send_event(Event::Drag(host.window.id(), commands));
+            }
+        }
+    }
+
+    fn dispatch_drag(&mut self, window: WindowId, commands: Vec<drag::Dispatch>) {
+        self.refresh_drag_views();
+        for dispatch in commands {
+            let dropped = matches!(dispatch.command.action, vt::dnd::Action::Drop { .. });
+            let valid = self.windows.get(&window).is_some_and(|host| {
+                host.drag
+                    .lock()
+                    .is_ok_and(|controller| controller.validates(&dispatch))
+            }) && self.panes.get(&dispatch.target.pane).is_some_and(|pane| {
+                pane.session.drag_identity().ok() == Some(dispatch.target.identity)
+            });
+            if !valid {
+                if dropped {
+                    self.errors
+                        .push("Drop target changed before delivery".into());
+                    if let Some(host) = self.windows.get(&window) {
+                        host.repaint();
+                    }
+                }
+                continue;
+            }
+            let host = &self.windows[&window];
+            let pane = &self.panes[&dispatch.target.pane];
+            let offer = dispatch.command.offer;
+            if let Err(error) = pane.session.drag(dispatch.command) {
+                if let Ok(mut controller) = host.drag.lock() {
+                    controller.failed(offer);
+                }
+                if dropped {
+                    self.errors
+                        .push(format!("Could not deliver dropped data: {error}"));
+                    host.repaint();
+                }
+            }
+        }
+        self.refresh_drag_views();
+    }
+
     fn drop_text(&mut self, host: &mut Host, position: Pos2, text: String) {
         if host.modal_input() || host.ui_areas.contains(position) {
             return;
@@ -8261,6 +8417,7 @@ impl ApplicationHandler<Event> for App {
                 }
                 self.drain(event_loop, id);
             }
+            Event::Drag(window, commands) => self.dispatch_drag(window, commands),
             Event::Repaint(info, deadline) => {
                 let current_pass = self.context.cumulative_pass_nr_for(info.viewport_id);
                 if !repaint_is_current(info.current_cumulative_pass_nr, current_pass) {
@@ -8887,6 +9044,7 @@ impl ApplicationHandler<Event> for App {
         }
         let now = Instant::now();
         self.retry_tmuxx(now);
+        self.refresh_drag_views();
         if self.workspace.windows.is_empty() && !self.errors.is_empty() && !self.tmuxx.is_empty() {
             self.add_window(false);
             self.reconcile(event_loop);

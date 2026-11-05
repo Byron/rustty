@@ -1336,6 +1336,10 @@ impl Host {
             }
             return result;
         }
+        if name == b"tmuxx-dnd" {
+            let input = self.request_stdin.take();
+            return self.native_drag(id, command, input).map(Step::Done);
+        }
         if name == b"tmuxx-host-state" {
             let input = self.request_stdin.take();
             return self.view_state(id, command, input, context).map(Step::Done);
@@ -1776,6 +1780,7 @@ impl Host {
                 matches!(
                     name.as_slice(),
                     b"tmuxx-input"
+                        | b"tmuxx-dnd"
                         | b"tmuxx-cell-size"
                         | b"tmuxx-view-size"
                         | b"tmuxx-host-state"

@@ -22,6 +22,7 @@ use tmuxx_protocol::native::{
 mod client_commands;
 mod control;
 mod defaults;
+mod drag;
 mod files;
 mod format_jobs;
 mod hooks;
@@ -175,6 +176,33 @@ struct PendingHostAction {
     pane: Id,
     action: HostAction,
     deadline: Instant,
+}
+
+impl Process {
+    fn write_input(&self, data: Vec<u8>) -> Result<(), String> {
+        let size = data.len();
+        let mut pending = self.input_bytes.load(Ordering::Acquire);
+        loop {
+            let total = pending
+                .checked_add(size)
+                .filter(|total| *total <= MAX_REQUEST_BYTES)
+                .ok_or("pane input queue exceeds byte budget")?;
+            match self.input_bytes.compare_exchange_weak(
+                pending,
+                total,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(actual) => pending = actual,
+            }
+        }
+        if let Err(error) = self.input.try_send(data) {
+            self.input_bytes.fetch_sub(size, Ordering::AcqRel);
+            return Err(format!("pane input unavailable: {error}"));
+        }
+        Ok(())
+    }
 }
 
 impl Drop for Process {
@@ -1076,6 +1104,7 @@ struct Host {
     retired_pipes: Vec<process::PipeProcess>,
     control: control::Controls,
     view_states: view_state::ViewStates,
+    drags: drag::Bindings,
     hooks: hooks::Hooks,
     scheduler: scheduler::Scheduler,
     messages: std::collections::VecDeque<(u64, Vec<u8>)>,
@@ -1178,6 +1207,7 @@ impl Host {
             scheduler: scheduler::Scheduler::default(),
             messages: std::collections::VecDeque::new(),
             view_states: view_state::ViewStates::default(),
+            drags: drag::Bindings::default(),
             engine,
             format_jobs: BTreeMap::new(),
             processes: BTreeMap::new(),
@@ -1617,6 +1647,7 @@ impl Host {
             self.processes.remove(&pane);
             self.close_pipe(pane);
             let out = self.engine.exited_with_signal(pane, status, signal);
+            self.prune_drags();
             self.reconcile_destroyed_sessions(policies, None);
             self.process_exit_hooks(pane, before);
             if let Err(error) = self.effects(out.effects) {
@@ -1983,27 +2014,7 @@ impl Host {
                         .processes
                         .get(&pane)
                         .ok_or_else(|| format!("pane %{pane} is not running"))?;
-                    let size = data.len();
-                    let mut pending = process.input_bytes.load(Ordering::Acquire);
-                    loop {
-                        let total = pending
-                            .checked_add(size)
-                            .filter(|total| *total <= MAX_REQUEST_BYTES)
-                            .ok_or("pane input queue exceeds byte budget")?;
-                        match process.input_bytes.compare_exchange_weak(
-                            pending,
-                            total,
-                            Ordering::AcqRel,
-                            Ordering::Acquire,
-                        ) {
-                            Ok(_) => break,
-                            Err(actual) => pending = actual,
-                        }
-                    }
-                    if let Err(error) = process.input.try_send(data) {
-                        process.input_bytes.fetch_sub(size, Ordering::AcqRel);
-                        return Err(format!("pane input unavailable: {error}"));
-                    }
+                    process.write_input(data)?;
                 }
                 Effect::Resize { pane, cols, rows } => {
                     let cell = self

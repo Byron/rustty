@@ -96,6 +96,13 @@ use crate::window::{Window, WindowAttributes};
 
 /// Additional methods on [`Window`] that are specific to MacOS.
 pub trait WindowExtMacOS {
+    /// Install an incoming drag callback. `Default` preserves normal drop events.
+    /// Do not wait for application replies or retain the borrowed native source.
+    fn set_drag_handler(&self, handler: crate::platform::drag::DragHandler);
+
+    /// Additional native pasteboard identifiers, merged with file and text defaults.
+    fn set_drag_types(&self, types: Vec<String>);
+
     /// Accept plain-text drops in addition to file drops.
     ///
     /// The handler runs on the main thread with the text and drop position in logical
@@ -187,6 +194,14 @@ pub trait WindowExtMacOS {
 }
 
 impl WindowExtMacOS for Window {
+    fn set_drag_handler(&self, handler: crate::platform::drag::DragHandler) {
+        self.window.maybe_queue_on_main(move |w| w.set_drag_handler(handler))
+    }
+
+    fn set_drag_types(&self, types: Vec<String>) {
+        self.window.maybe_queue_on_main(move |w| w.set_drag_types(types))
+    }
+
     #[inline]
     fn set_text_drop_handler(
         &self,

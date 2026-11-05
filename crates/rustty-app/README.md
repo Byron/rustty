@@ -638,6 +638,16 @@ On macOS, drag emoji or plain text into a terminal pane to paste it there.
 File drops insert shell-quoted paths. Text drops use the same bracketed-paste
 handling and paste protection as clipboard text.
 
+TUIs can register for Kitty OSC 72 incoming drops on macOS and Windows. Rustty
+negotiates Copy with the hovered pane and reads only its accepted MIME formats
+when the drop occurs. Text is UTF-8; files are offered as `text/uri-list`, without
+reading file contents. Each drop is limited to 16 representations and 8 MiB.
+Unaccepted or stale drops onto registered TUIs are rejected. Local sessions and
+native tmuxx keep dropped bytes with the pane owner, even after the delivering
+view closes, until the TUI concludes or replaces the drop. Other views receive
+metadata only. Stock tmux, outgoing drags, Move and remote-file transfers are not
+supported by this handshake.
+
 The native text-input regression runs with
 `cargo test -p rustty-app --test native_text_input --offline -- --ignored`.
 It checks external text commits (including split UTF-16 surrogates), composition
@@ -648,8 +658,11 @@ window focus changes, including when the character picker takes focus.
 
 The native drag-and-drop regression runs with
 `cargo test -p rustty-app --test native_drag_drop --offline -- --ignored`.
-It checks text drops, file precedence, and drop coordinates through a hidden
-native window and a private pasteboard.
+It checks text drops, file precedence, drop coordinates, deferred provider reads,
+accepted-format filtering, UTF-16 conversion and rejected-drop handling through
+a hidden native window and a private pasteboard. The app smoke can run just the
+two-pane OSC 72 handshake with `RUSTTY_SMOKE_DND=1` and the smoke environment
+below; it checks pane crossings, acceptance, stale targets and owner-held data.
 
 The opt-in native smoke check starts disposable `/bin/sh` sessions, checks input,
 four split panes, tabs, quadrant focus and zoom, URI directory reports, restoration,

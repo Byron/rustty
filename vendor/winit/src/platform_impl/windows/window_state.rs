@@ -22,6 +22,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 /// Contains information about states and the window that the callback is going to use.
 pub(crate) struct WindowState {
+    pub drag_handler: Option<crate::platform::drag::DragHandler>,
     pub mouse: MouseProperties,
 
     /// Used by `WM_GETMINMAXINFO`.
@@ -143,6 +144,7 @@ impl WindowState {
         preferred_theme: Option<Theme>,
     ) -> WindowState {
         WindowState {
+            drag_handler: None,
             mouse: MouseProperties {
                 selected_cursor: SelectedCursor::default(),
                 capture_count: 0,

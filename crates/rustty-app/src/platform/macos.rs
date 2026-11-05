@@ -86,6 +86,9 @@ pub enum PlatformEvent {
 
 type EventSink = Arc<dyn Fn(PlatformEvent) + Send + Sync>;
 
+#[path = "macos/drag.rs"]
+mod drag;
+
 /// Own once, on the event-loop thread, after winit initializes NSApplication.
 pub struct Platform {
     mtm: MainThreadMarker,
@@ -106,6 +109,14 @@ pub struct Platform {
 }
 
 impl Platform {
+    pub fn install_drag_handler(window: &Window, handler: super::DragHandler) {
+        drag::install(window, handler);
+    }
+
+    pub fn update_drag_registration(window: &Window, mimes: &[Vec<u8>]) {
+        drag::register(window, mimes);
+    }
+
     pub fn option_pressed() -> bool {
         NSEvent::modifierFlags_class().contains(NSEventModifierFlags::Option)
     }
