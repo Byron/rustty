@@ -82,6 +82,17 @@ fn observe(event: Event<'_>) -> Value {
             value["byte"] = json!(final_byte);
             "dcs_hook"
         }
+        Event::CsiExtended {
+            intermediates,
+            params,
+            final_byte,
+        } => {
+            value["intermediates"] = json!(super::hex(intermediates));
+            value["params"] = json!(params.iter().map(|p| p.value).collect::<Vec<_>>());
+            value["colon_after"] = json!(params.iter().map(|p| p.colon_after).collect::<Vec<_>>());
+            value["byte"] = json!(final_byte);
+            "csi_extended"
+        }
         Event::DcsPut(byte) => {
             value["byte"] = json!(byte);
             "dcs_put"

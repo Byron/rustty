@@ -1974,6 +1974,77 @@ mod focus_tests {
         .unwrap();
     }
     #[test]
+    fn native_views_preserve_extra_cursors_and_pending_commands_across_reconnect() {
+        use rustty_vt::extra_cursors::{Color, Colors};
+
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);
+        owner.feed(b"unchanged\x1b[?25l\x1b[>40;2:12:34:56 q\x1b[>30;5:2 q\x1b[>1;2:2:3 q\x1b[>29;2:4:10 q");
+        let pending = format!(
+            "\x1b[>2;2:{}",
+            (0..12)
+                .map(|i| format!("3:{}", i % 10 + 1))
+                .collect::<Vec<_>>()
+                .join(":")
+        );
+        owner.feed(pending.as_bytes());
+        let checkpoint = |owner: &tmuxx_terminal::Terminal| {
+            let mut state = state();
+            state["panes"][0]["terminal"] =
+                serde_json::to_value(owner.checkpoint_snapshot()).unwrap();
+            state
+        };
+        let check = |view: &Session, completed: bool| {
+            let terminal = view.terminal().unwrap();
+            let screen = terminal.screen();
+            let cursors = screen.extra_cursors();
+            assert_eq!(cursors.count(), if completed { 12 } else { 2 });
+            assert_eq!(
+                cursors.colors(),
+                Colors {
+                    cursor: Color::Rgb(12, 34, 56),
+                    text: Color::Indexed(2)
+                }
+            );
+            assert_eq!(cursors.row(1).unwrap().shapes[2], 1);
+            assert_eq!(cursors.row(3).unwrap().shapes[9], 29);
+            if completed {
+                assert_eq!(cursors.row(2).unwrap().shapes, &[2; 10]);
+            } else {
+                assert!(cursors.row(2).is_none());
+            }
+            assert!(terminal.plain_text().starts_with("unchanged"));
+        };
+        snapshot(&connection, 1, checkpoint(&owner));
+        let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        for view in [&first, &second] {
+            check(view, false);
+        }
+        owner.feed(b" q");
+        apply(
+            &connection.shared,
+            ServerMessage::PaneOutput {
+                sequence: 2,
+                pane_id: 7,
+                data: b" q".to_vec(),
+            },
+        )
+        .unwrap();
+        for view in [&first, &second] {
+            check(view, true);
+        }
+        snapshot(&connection, 3, checkpoint(&owner));
+        for view in [&first, &second] {
+            check(view, true);
+        }
+        drop(first);
+        let reopened = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        check(&reopened, true);
+        assert!(connection.errors().is_empty());
+    }
+
+    #[test]
     fn native_views_preserve_explicit_text_spans_across_reconnect() {
         let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
         let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);

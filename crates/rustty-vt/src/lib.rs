@@ -9,6 +9,7 @@ pub mod clipboard;
 pub mod color;
 mod compression;
 pub mod dnd;
+pub mod extra_cursors;
 pub mod formatter;
 pub mod glyph;
 pub mod graphics;

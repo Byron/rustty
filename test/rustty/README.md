@@ -818,6 +818,13 @@ smoke. These cover atomic widths, whole-payload copying and search, wrapping,
 edits, rendering, and snapshot continuation. Font scaling is not implemented.
 The direct OSC parser corpus remains independent of these terminal semantics.
 
+Kitty multiple cursors (`CSI > ... SPACE q`) also extend the Ghostty reference.
+Rust tests cover bounded parameter lists, color and position queries, resets,
+resizing, snapshots, and continued commands across native-session reconnects.
+Renderer and desktop smoke checks cover wide text, blink phases, IME, history,
+and synchronized output. Ordinary CSI retains its 24-parameter inline storage;
+only this extension consumes the optional 256-parameter buffer.
+
 Six large capture cases still fill invalid metadata and keep the payload short.
 Native OSC 66
 reserves a trailing NUL, accepting at most 8,388,607 captured input bytes; OSC 99

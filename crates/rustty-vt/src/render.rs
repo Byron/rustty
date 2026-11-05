@@ -13,6 +13,7 @@ pub struct ViewKey {
     pub viewport_offset: usize,
     pub selection: Option<Selection>,
     pub cursor: CursorAppearance,
+    pub extra_cursors_revision: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -122,6 +123,7 @@ impl Screen {
             dimensions: [self.columns, self.height()],
             viewport_offset: self.viewport_offset,
             selection: self.selection,
+            extra_cursors_revision: self.extra_cursors().revision(),
             cursor: CursorAppearance {
                 x: cursor.col,
                 y: cursor.row,

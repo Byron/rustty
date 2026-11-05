@@ -561,6 +561,15 @@ are ignored; `w=0` or an omitted width prints ordinary text. The CPR width probe
 advances two cells and the scale probe advances one. Older snapshot readers
 display a replacement character and padding in place of explicit spans.
 
+Kitty's multiple-cursor protocol lets TUIs show secondary edit positions without
+changing the text in those cells. It supports block, beam, underline, and
+follow-main shapes, shared cursor/text colors, and support/state queries. Extra
+cursors blink with the main cursor's setting, remain visible when the main cursor
+is hidden or replaced by IME composition, and stay at their viewport coordinates
+while scrolling history. Reconnects preserve them; clearing the display or
+switching screens removes the positions. Resizing keeps positions still inside
+the new grid. Older snapshot readers ignore extra cursors.
+
 For CLI compatibility, sessions advertise `TERM_PROGRAM=ghostty` and the
 bundled `TERM=xterm-ghostty`; XTVersion replies also identify as `ghostty`,
 with Rustty's package version. An existing shell can enable Cargo progress
@@ -599,6 +608,10 @@ including palette changes without retransmission. It writes
 search, accessibility, physical IME placement, cursor phases, and cached frames.
 It writes `explicit-width-result.json`, `explicit-width.png`, and
 `explicit-width-hints.png` without changing the native clipboard or opening links.
+`RUSTTY_SMOKE_CURSORS=1` checks multiple-cursor rendering, blinking, IME,
+scrollback, synchronized output, and restoration of the single-cursor redraw
+path after clearing extras. It writes `multiple-cursors-result.json`,
+`multiple-cursors.png`, and `multiple-cursors-updated.png`.
 
 The macOS session import regression runs five hidden debug instances in sequence
 with isolated configuration, disposable `/bin/sh` shells, and state. Each

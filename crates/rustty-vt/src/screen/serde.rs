@@ -269,6 +269,14 @@ impl<'de> Deserialize<'de> for Screen {
             return Err(D::Error::custom("invalid screen dimensions"));
         }
         screen.height = wire.rows.len();
+        if !screen
+            .extra_cursors
+            .valid_dimensions(screen.columns, screen.height)
+        {
+            return Err(D::Error::custom(
+                "extra cursor grid differs from screen dimensions",
+            ));
+        }
         let total = wire
             .history
             .len()

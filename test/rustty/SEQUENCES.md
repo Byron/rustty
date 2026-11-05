@@ -50,6 +50,7 @@ significant. Values describe the recognized operations, not arbitrary parameters
 | `s` | Left/right margins while mode 69 is enabled; otherwise saves the cursor. |
 | `u` | Restore the saved cursor, attributes, origin, and character-set state. |
 | `0 q` through `6 q` | Default/blinking/steady block, underline, or bar cursor; rendered by the desktop. |
+| `>... q` | Kitty multiple cursors: shapes 0/1/2/3/29, point/rectangle groups, shared text/cursor colors 30/40, support query and state queries 100/101. Coordinates are physical viewport cells; replies preserve FIFO order. Commands accept up to 256 parameters without expanding the ordinary CSI parameter path. Optional snapshots preserve positions/colors; ED 2/3/22 and screen switches clear positions, hard/soft resets also clear colors. |
 | `0"q`, `1"q`, `2"q` | Character protection for subsequent writes and selective erasure. |
 | `Ps$p`, `?Ps$p` | ANSI/DEC mode status replies, including unknown and permanently-reset states. Query identifiers retain the full parser range without aliasing supported modes. |
 | `5n`, `6n` | Device status and current cursor-position replies. |

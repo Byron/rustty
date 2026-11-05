@@ -31,6 +31,7 @@ const SAVED_MOUSE: u16 = 0x8002;
 const ATTRIBUTE_EXTENT: u16 = 0x8003;
 const PROGRAM_STATUS: u16 = 0x8004;
 const TEXT_SPANS: u16 = 0x8007;
+const EXTRA_CURSORS: u16 = 0x8008;
 const TEXT_SPAN_CHUNK_BYTES: usize = 1024 * 1024;
 // Covers 256 maximum-length reports even with JSON string escaping.
 const MAX_PROGRAM_STATUS_BYTES: usize = 2 * 1024 * 1024;
@@ -440,6 +441,39 @@ fn encode_text_spans(out: &mut impl Write, rows: &[Row<'_>]) -> io::Result<()> {
     Ok(())
 }
 
+fn encode_extra_cursor_color(out: &mut Vec<u8>, color: crate::extra_cursors::Color) {
+    use crate::extra_cursors::Color;
+    out.extend_from_slice(&match color {
+        Color::Default => [0, 0, 0, 0],
+        Color::Special => [1, 0, 0, 0],
+        Color::Rgb(r, g, b) => [2, r, g, b],
+        Color::Indexed(index) => [5, index, 0, 0],
+    });
+}
+
+fn decode_extra_cursor_color(value: [u8; 4]) -> io::Result<crate::extra_cursors::Color> {
+    use crate::extra_cursors::Color;
+    match value {
+        [0, 0, 0, 0] => Ok(Color::Default),
+        [1, 0, 0, 0] => Ok(Color::Special),
+        [2, r, g, b] => Ok(Color::Rgb(r, g, b)),
+        [5, index, 0, 0] => Ok(Color::Indexed(index)),
+        _ => Err(invalid("invalid extra cursor color")),
+    }
+}
+
+fn encode_extra_cursors(out: &mut impl Write, screen: &Screen, key: usize) -> io::Result<()> {
+    let state = screen.extra_cursors();
+    if state.is_default() {
+        return Ok(());
+    }
+    let mut header = vec![1, key as u8];
+    encode_extra_cursor_color(&mut header, state.colors().cursor);
+    encode_extra_cursor_color(&mut header, state.colors().text);
+    u32_bytes(&mut header, state.shape_bytes().len())?;
+    record_parts(out, EXTRA_CURSORS, &[&header, state.shape_bytes()])
+}
+
 fn encode_page(rows: &[Row<'_>], page: &Page) -> io::Result<Vec<u8>> {
     let capacity = page.capacity;
     let columns = page.columns;
@@ -615,6 +649,7 @@ fn encode_inner(
             let mut shapes = vec![1, key as u8];
             shapes.extend_from_slice(&screen.pointer_shapes.0);
             record(destination, POINTER_SHAPES, &shapes)?;
+            encode_extra_cursors(destination, screen, key)?;
         }
     }
     record(destination, 7, &continuation)?;
@@ -927,6 +962,10 @@ impl<R: Read> Decoder<R> {
                 self.options.max_record_bytes.min(MAX_PROGRAM_STATUS_BYTES)
             } else if tag == TEXT_SPANS {
                 self.options.max_record_bytes.min(TEXT_SPAN_CHUNK_BYTES)
+            } else if tag == EXTRA_CURSORS {
+                self.options
+                    .max_record_bytes
+                    .min(self.options.max_cells.saturating_add(14))
             } else {
                 self.options.max_record_bytes
             };
@@ -941,6 +980,7 @@ impl<R: Read> Decoder<R> {
                         | ATTRIBUTE_EXTENT
                         | PROGRAM_STATUS
                         | TEXT_SPANS
+                        | EXTRA_CURSORS
                         | kitty::INDEXED
                         | kitty::INDEXED_PAYLOAD
                 )
@@ -1340,6 +1380,30 @@ impl<R: Read> Decoder<R> {
             // with that value so switching screens preserves the old behavior.
             crate::input::PointerShapes(vec![legacy_mouse_shape])
         };
+        if self.peek_tag()? == EXTRA_CURSORS {
+            let payload = self.record(EXTRA_CURSORS)?;
+            let mut data = Slice::new(&payload);
+            if data.u8()? != 1 || usize::from(data.u8()?) != key {
+                return Err(invalid("invalid extra cursor record"));
+            }
+            let colors = crate::extra_cursors::Colors {
+                cursor: decode_extra_cursor_color(data.array()?)?,
+                text: decode_extra_cursor_color(data.array()?)?,
+            };
+            let count = data.u32()? as usize;
+            if count != 0 && Some(count) != screen.columns.checked_mul(screen.height()) {
+                return Err(invalid("invalid extra cursor grid length"));
+            }
+            let bytes = data.take(count)?.to_vec();
+            data.finish()?;
+            screen.extra_cursors = crate::extra_cursors::State::from_bytes(
+                screen.columns,
+                screen.height(),
+                colors,
+                bytes,
+            )
+            .map_err(invalid)?;
+        }
         Ok((key, screen, extent))
     }
 

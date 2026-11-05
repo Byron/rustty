@@ -581,6 +581,9 @@ fn palette(out: &mut Vec<u8>, terminal: &Terminal, emit: Format) {
 fn screen_extra(out: &mut Vec<u8>, screen: &Screen, options: Options<'_>, extra: ScreenExtra) {
     let cursor = &screen.cursor;
     if extra.cursor {
+        if !screen.extra_cursors().is_default() {
+            screen.extra_cursors().write_replay(out);
+        }
         let wrapped = cursor.pending_wrap && cursor.col == screen.columns - 1;
         let col = if wrapped {
             screen.row(cursor.row).cell_span(cursor.col).start

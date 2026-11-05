@@ -458,6 +458,75 @@ fn explicit_width_prepared_text_clips_before_the_neighboring_cell() {
 }
 
 #[test]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn extra_cursor_prepared_frames_recolor_text_draw_strokes_and_replay() {
+    let mut prepare = rustty_render::Renderer::new(Default::default()).unwrap();
+    let metrics = prepare.metrics();
+    let (w, h) = (metrics.cell_width as f32, metrics.cell_height as f32);
+    let size = [metrics.cell_width * 4, metrics.cell_height * 2];
+    let mut options = rustty_render::RenderOptions {
+        size,
+        padding: [0.0; 2],
+        cursor_visible: false,
+        ..Default::default()
+    };
+    let mut terminal = rustty_vt::Terminal::new(4, 2, 0);
+    terminal.feed(b"AB\x1b[?25l");
+    terminal.screen_mut().cursor.blink = true;
+    let plain = prepare.prepare(terminal.screen(), &options).unwrap();
+    terminal.feed(b"\x1b[>40;2:230:120:45 q\x1b[>30;2:30:240:70 q\x1b[>1;2:1:1 q\x1b[>2;2:2:2 q\x1b[>3;2:2:3 q");
+    let actual = prepare.prepare(terminal.screen(), &options).unwrap();
+    let mut reference = terminal.clone();
+    reference.feed(b"\x1b[>0;4 q");
+    let mut style = reference.screen().row(0).style(0);
+    style.foreground = rustty_vt::Color::Rgb(30, 240, 70);
+    style.background = rustty_vt::Color::Rgb(230, 120, 45);
+    reference.screen_mut().set_cell_style(0, 0, style);
+    let mut expected = prepare.prepare(reference.screen(), &options).unwrap();
+    expected.quads.extend([
+        Quad::solid([w, h, 2.0, h], Color::rgb([230, 120, 45])),
+        Quad::solid([2.0 * w, 2.0 * h - 2.0, w, 2.0], Color::rgb([230, 120, 45])),
+    ]);
+    options.blink_visible = false;
+    let hidden = prepare.prepare(terminal.screen(), &options).unwrap();
+    let mut renderer = Renderer::default();
+    let mut delta = TexturesDelta::default();
+    let mut raster = |frame| {
+        let pixels = render(
+            &mut renderer,
+            size,
+            1.0,
+            &[callback(
+                frame,
+                9,
+                rect(0.0, 0.0, size[0] as f32, size[1] as f32),
+                Rect::EVERYTHING,
+            )],
+            &mut delta,
+        );
+        renderer.free_window(9);
+        pixels
+    };
+    let expected = raster(expected);
+    assert_eq!(raster(actual.clone()), expected);
+    assert_eq!(raster(hidden), raster(plain));
+    assert_eq!(
+        raster(actual),
+        expected,
+        "retained cursor frame stays replayable after hiding"
+    );
+    assert!(
+        (0..metrics.cell_height as usize).any(|y| {
+            (0..metrics.cell_width as usize).any(|x| {
+                let [r, g, b, _] = pixel(&expected, size[0] as usize, x, y);
+                g > r && g > b
+            })
+        }),
+        "text under the extra block cursor uses its requested foreground"
+    );
+}
+
+#[test]
 fn terminal_masks_colors_srgb_filtering_and_callback_viewport_match_wgsl() {
     let mut renderer = Renderer::default();
     let mut delta = TexturesDelta::default();

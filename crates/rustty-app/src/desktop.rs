@@ -738,11 +738,12 @@ impl PreparedPane {
         let options = &mut self.key.options;
         let cursor = &self.screen.cursor;
         let blinking_cursor = options.focused
-            && options.cursor_visible
-            && cursor.visible
             && cursor.blink
-            && self.screen.viewport_offset == 0
-            && options.preedit.as_ref().is_none_or(|p| p.text.is_empty());
+            && ((options.cursor_visible
+                && cursor.visible
+                && self.screen.viewport_offset == 0
+                && options.preedit.as_ref().is_none_or(|p| p.text.is_empty()))
+                || (options.extra_cursor_visible && self.screen.has_extra_cursors()));
         if !blinking_cursor && !self.frame.blinking_text {
             // Only normalize the retained key. New content may introduce blink
             // and must still be prepared with the incoming, actual phase.
@@ -998,6 +999,7 @@ impl Host {
             || prepared.frame.blinking_text
             || prepared.frame.cursor_row_bounds.is_none()
             || !prepared.screen.graphics.images.is_empty()
+            || prepared.screen.has_extra_cursors()
         {
             return None;
         }
@@ -6323,14 +6325,12 @@ impl App {
                             needs_blink |= !synchronized
                                 && is_focused
                                 && !pane.exited
-                                && !host.composing
-                                && terminal.screen().cursor.visible
-                                && terminal
-                                    .screen()
-                                    .cursor
-                                    .row
-                                    .saturating_add(terminal.screen().viewport_offset)
-                                    < terminal.rows as usize
+                                && (terminal.screen().has_extra_cursors()
+                                    || (!host.composing
+                                        && terminal.screen().cursor.visible
+                                        && terminal.screen().cursor.row
+                                            .saturating_add(terminal.screen().viewport_offset)
+                                            < terminal.rows as usize))
                                 && terminal.screen().cursor.blink;
                             let (foreground, background) = if terminal.modes.dec(5) {
                                 (terminal.background, terminal.foreground)
@@ -6373,6 +6373,7 @@ impl App {
                                     .unwrap_or([[0; 3]; 256]),
                                 focused: is_focused,
                                 cursor_visible: accepts_input && (id != focused || !host.composing),
+                                extra_cursor_visible: accepts_input,
                                 blink_visible: blink_on || !is_focused,
                                 background_opacity: config.background_opacity,
                                 preedit: (is_focused && !host.preedit.is_empty()).then(|| {
@@ -11789,6 +11790,51 @@ mod tests {
         )
         .unwrap();
         assert_ne!(prepared.frame.quads, shown.frame.quads);
+    }
+
+    #[test]
+    fn prepared_extra_cursors_blink_without_the_main_cursor_or_during_preedit() {
+        let mut fonts = rustty_render::Renderer::new(FontConfig::default()).unwrap();
+        let mut terminal = vt::Terminal::new(20, 3, 64);
+        terminal.feed(b"history\r\nmore\r\ncontent\r\n\x1b[1 q\x1b[?25l\x1b[>1;2:2:3 q");
+        assert!(terminal.screen().has_extra_cursors());
+        for offset in [0, 1] {
+            terminal.screen_mut().viewport_offset = offset;
+            for (focused, visible, composing) in [
+                (true, true, false),
+                (true, true, true),
+                (false, true, false),
+                (true, false, false),
+            ] {
+                let key = |blink_visible| {
+                    PaneRenderKey::new(
+                        &terminal,
+                        RenderOptions {
+                            size: [320, 160],
+                            focused,
+                            blink_visible,
+                            cursor_visible: false,
+                            extra_cursor_visible: visible,
+                            preedit: composing.then(|| rustty_render::Preedit {
+                                text: "input 日".into(),
+                                selection: None,
+                            }),
+                            ..Default::default()
+                        },
+                        egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(320.0, 160.0)),
+                        1.0,
+                    )
+                };
+                let mut prepared = PreparedPane::new(
+                    key(true),
+                    terminal.screen().snapshot_viewport(),
+                    &mut fonts,
+                    Default::default(),
+                )
+                .unwrap();
+                assert_eq!(prepared.matches(&key(false), &fonts), !(focused && visible));
+            }
+        }
     }
 
     #[test]

@@ -805,6 +805,11 @@ pub struct Screen {
     pub(crate) metadata: crate::snapshot::ScreenMetadata,
     #[serde(default)]
     pub(crate) pointer_shapes: crate::input::PointerShapes,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::extra_cursors::State::is_default"
+    )]
+    pub(crate) extra_cursors: crate::extra_cursors::State,
     #[serde(skip)]
     pub graphics: crate::graphics::Graphics,
     /// Logical width. Restored physical rows retain their own width until a
@@ -916,6 +921,7 @@ impl Screen {
         Self {
             metadata: crate::snapshot::ScreenMetadata::default(),
             pointer_shapes: Default::default(),
+            extra_cursors: Default::default(),
             graphics: crate::graphics::Graphics::default(),
             columns: cols,
             height: rows,
@@ -948,6 +954,12 @@ impl Screen {
 
     pub fn height(&self) -> usize {
         self.height
+    }
+    pub fn extra_cursors(&self) -> &crate::extra_cursors::State {
+        &self.extra_cursors
+    }
+    pub fn has_extra_cursors(&self) -> bool {
+        self.extra_cursors.count() != 0
     }
     pub fn history_len(&self) -> usize {
         self.pages.total_rows().saturating_sub(self.height)
@@ -1062,6 +1074,7 @@ impl Screen {
             tmux_shell: self.tmux_shell.clone(),
             metadata: self.metadata.clone(),
             pointer_shapes: self.pointer_shapes.clone(),
+            extra_cursors: self.extra_cursors.clone(),
             graphics: self.graphics.snapshot(self),
             columns: self.columns,
             height: self.height,

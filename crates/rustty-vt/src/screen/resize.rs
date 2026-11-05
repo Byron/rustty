@@ -196,6 +196,7 @@ impl Screen {
     }
 
     pub(crate) fn resize(&mut self, cols: usize, rows: usize, reflow: bool, tmux: bool) {
+        self.extra_cursors.resize(cols, rows);
         if cols != self.columns {
             if reflow && let Some(history) = &mut self.tmux_history {
                 history.generation = history.generation.wrapping_add(1);

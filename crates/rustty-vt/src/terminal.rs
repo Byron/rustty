@@ -1002,6 +1002,7 @@ impl Terminal {
 
     // tmux RIS resets the pen and visible grid, retaining the existing screens.
     fn reset_tmux(&mut self) {
+        self.reset_extra_cursors();
         self.program_status.clear();
         self.reset_pointer_shapes();
         self.metadata.saved_mouse = None;
@@ -1057,6 +1058,7 @@ impl Terminal {
     /// DECSTR resets application modes and the pen without clearing content or
     /// moving the cursor. Dynamic colors and modes outside DECSTR stay intact.
     pub fn soft_reset(&mut self) {
+        self.reset_extra_cursors();
         self.reset_pointer_shapes();
         self.metadata.rectangular_attributes = false;
         for (private, mode) in [
@@ -1323,6 +1325,15 @@ impl Terminal {
                 effects,
                 clipboard_read_enabled,
             ),
+            Event::CsiExtended {
+                intermediates,
+                params,
+                final_byte,
+            } => {
+                if intermediates == b"> " && final_byte == b'q' {
+                    self.multiple_cursors(params, effects);
+                }
+            }
             Event::Osc {
                 data,
                 terminated_by_bell,
@@ -2520,6 +2531,9 @@ impl Terminal {
     }
 
     pub fn erase_display(&mut self, mode: u16, protected: bool) {
+        if matches!(mode, 2 | 3 | 22) {
+            self.screen_mut().extra_cursors.clear(false);
+        }
         if matches!(mode, 0..=2 | 22) {
             self.ensure_active_columns();
         }
@@ -2873,6 +2887,11 @@ impl Terminal {
             return;
         }
         let old_cursor = self.screen().cursor.clone();
+        let extra_colors = self.screen().extra_cursors.colors();
+        self.primary.extra_cursors.clear(false);
+        if let Some(screen) = &mut self.alternate {
+            screen.extra_cursors.clear(false);
+        }
         let tmux_link = self
             .tmux_graphics
             .then(|| old_cursor.hyperlink.clone())
@@ -2891,6 +2910,7 @@ impl Terminal {
         }
         self.synchronize_tmux_sources();
         self.alternate_active = enabled;
+        self.screen_mut().extra_cursors.set_colors(extra_colors);
         self.screen_mut().charset = charset;
         self.screen_mut().selection = None;
         if mode == 1049 && enabled {
@@ -3061,6 +3081,102 @@ impl Terminal {
         }
     }
 
+    fn reset_extra_cursors(&mut self) {
+        self.primary.extra_cursors.clear(true);
+        if let Some(screen) = &mut self.alternate {
+            screen.extra_cursors.clear(true);
+        }
+    }
+
+    fn multiple_cursors(&mut self, params: &[rustty_parser::CsiParam], effects: &mut Vec<Effect>) {
+        use crate::extra_cursors::Color;
+        let Some(command) = params.first() else {
+            effects.push(Effect::Write(b"\x1b[>1;2;3;29;30;40;100;101 q".to_vec()));
+            return;
+        };
+        if command.colon_after {
+            return;
+        }
+        if params.len() == 1 {
+            match command.value {
+                100 => effects.push(Effect::Write(self.screen().extra_cursors.positions_reply())),
+                101 => effects.push(Effect::Write(self.screen().extra_cursors.colors_reply())),
+                _ => {}
+            }
+            return;
+        }
+        if !matches!(command.value, 0..=3 | 29 | 30 | 40) {
+            return;
+        }
+        let dimensions = [usize::from(self.cols), usize::from(self.rows)];
+        let cursor = [
+            self.screen().cursor.row as u32 + 1,
+            self.screen().cursor.col as u32 + 1,
+        ];
+        let mut changed = false;
+        let mut start = 1;
+        while start < params.len() {
+            let mut end = start + 1;
+            while end < params.len() && params[end - 1].colon_after {
+                end += 1;
+            }
+            let group = &params[start..end];
+            let state = &mut self.screen_mut().extra_cursors;
+            if command.value == 30 || command.value == 40 {
+                let byte = |index: usize| {
+                    group
+                        .get(index)
+                        .and_then(|param| u8::try_from(param.value).ok())
+                };
+                let color = match group[0].value {
+                    0 => Some(Color::Default),
+                    1 => Some(Color::Special),
+                    2 => byte(1)
+                        .zip(byte(2))
+                        .zip(byte(3))
+                        .map(|((r, g), b)| Color::Rgb(r, g, b)),
+                    5 => byte(1).map(Color::Indexed),
+                    _ => None,
+                };
+                if let Some(color) = color {
+                    changed |= state.set_color(command.value == 30, color);
+                }
+            } else {
+                let shape = command.value as u8;
+                match group[0].value {
+                    0 => changed |= state.set_point(dimensions, shape, cursor[0], cursor[1]),
+                    2 => {
+                        for pair in group[1..].chunks_exact(2) {
+                            changed |=
+                                state.set_point(dimensions, shape, pair[0].value, pair[1].value);
+                        }
+                    }
+                    4 if group.len() == 1 && !group[0].colon_after => {
+                        changed |= state.set_rectangle(
+                            dimensions,
+                            shape,
+                            [1, 1, dimensions[1] as u32, dimensions[0] as u32],
+                        );
+                    }
+                    4 => {
+                        for rect in group[1..].chunks_exact(4) {
+                            changed |= state.set_rectangle(
+                                dimensions,
+                                shape,
+                                [rect[0].value, rect[1].value, rect[2].value, rect[3].value],
+                            );
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            start = end;
+        }
+        if changed {
+            self.changed();
+        }
+    }
+
     fn csi(
         &mut self,
         i: &[u8],
@@ -3070,6 +3186,20 @@ impl Terminal {
         effects: &mut Vec<Effect>,
         clipboard_read_enabled: bool,
     ) {
+        if i == b"> " && byte == b'q' {
+            let mut params = [rustty_parser::CsiParam {
+                value: 0,
+                colon_after: false,
+            }; rustty_parser::MAX_PARAMS];
+            for (index, &value) in p.iter().enumerate() {
+                params[index] = rustty_parser::CsiParam {
+                    value: u32::from(value),
+                    colon_after: sep & (1 << index) != 0,
+                };
+            }
+            self.multiple_cursors(&params[..p.len()], effects);
+            return;
+        }
         if sep != 0 && byte != b'm' && (i != b"$" || byte != b'r') {
             return;
         }

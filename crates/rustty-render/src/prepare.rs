@@ -6,6 +6,7 @@ use rustty_font::{
     BitmapFormat, FontConfig, FontError, FontId, FontMetrics, FontStyle, FontSystem, GlyphBitmap,
     ShapedGlyph, sprite,
 };
+use rustty_vt::extra_cursors::{Color as ExtraColor, Colors as ExtraColors};
 use rustty_vt::render::{CursorKey, RowKey, ViewKey};
 use rustty_vt::screen::{Color as TerminalColor, CursorShape, RowView, Screen, Style, Underline};
 use std::{
@@ -43,6 +44,8 @@ pub struct RenderOptions {
     pub indexed_colors: Option<[[u8; 3]; 8]>,
     pub focused: bool,
     pub cursor_visible: bool,
+    /// Host visibility for extra cursors, independent of main-cursor hiding and IME.
+    pub extra_cursor_visible: bool,
     pub blink_visible: bool,
     pub background_opacity: f32,
     pub preedit: Option<Preedit>,
@@ -90,6 +93,7 @@ impl Default for RenderOptions {
             indexed_colors: None,
             focused: true,
             cursor_visible: true,
+            extra_cursor_visible: true,
             blink_visible: true,
             background_opacity: 1.0,
             preedit: None,
@@ -117,15 +121,41 @@ struct Page {
 #[derive(Default)]
 struct RowScratch {
     paints: Vec<Color>,
+    cursors: Vec<Option<ExtraCursorCell>>,
     search: Vec<Option<bool>>,
     text: String,
     sources: Vec<(usize, usize)>,
     anchors: Vec<Option<f32>>,
 }
 
+#[derive(Clone, Copy)]
+struct ExtraCursorCell {
+    strokes: u8,
+    color: [u8; 3],
+}
+
+impl ExtraCursorCell {
+    const BLOCK: u8 = 1;
+    const BAR: u8 = 2;
+    const UNDERLINE: u8 = 4;
+    const TOP: u8 = 8;
+    const BOTTOM: u8 = 16;
+    const LEFT: u8 = 32;
+    const RIGHT: u8 = 64;
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct ExtraCursorKey {
+    revision: u64,
+    colors: ExtraColors,
+    shape: CursorShape,
+    visible: bool,
+}
+
 struct CachedRow {
     key: RowKey,
     cursor: Option<(CursorKey, bool)>,
+    extra_cursors: Option<ExtraCursorKey>,
     blink_visible: bool,
     background: Vec<Quad>,
     foreground: Vec<Quad>,
@@ -349,6 +379,18 @@ impl Renderer {
                 .filter(|span| span.explicit);
             let cursor_col = cursor_span.map_or(screen.cursor.col, |span| span.start);
             let cursor_width = cursor_span.map_or(1, |span| usize::from(span.width));
+            let extra_row = options
+                .extra_cursor_visible
+                .then(|| screen.extra_cursors().row(row_index))
+                .flatten();
+            let extra_colors = screen.extra_cursors().colors();
+            let extra_visible = !options.focused || !screen.cursor.blink || options.blink_visible;
+            let extra_key = extra_row.as_ref().map(|extra| ExtraCursorKey {
+                revision: extra.revision,
+                colors: extra_colors,
+                shape: screen.cursor.shape,
+                visible: extra_visible,
+            });
             let mut cache_row = false;
             if let Some(cached) = cache
                 .as_deref_mut()
@@ -359,6 +401,7 @@ impl Renderer {
                     cached.valid
                         && cache_row
                         && cached.cursor == cursor_key
+                        && cached.extra_cursors == extra_key
                         && (!cached.blinking_text || cached.blink_visible == options.blink_visible)
                 })
             {
@@ -388,7 +431,59 @@ impl Renderer {
             let visible_cols = ((options.size[0] as f32 - options.padding[0]).max(0.0)
                 / metrics.cell_width as f32)
                 .ceil() as usize;
-            let visible_cols = visible_cols.min(row.cells().len());
+            let visible_cols = visible_cols.min(screen.columns);
+            let physical_cols = visible_cols.min(row.cells().len());
+            scratch.cursors.clear();
+            if let Some(extra) = extra_row.filter(|_| extra_visible) {
+                scratch.cursors.resize(visible_cols, None);
+                for (col, &shape) in extra.shapes.iter().take(visible_cols).enumerate() {
+                    let shape = match shape {
+                        1 => CursorShape::Block,
+                        2 => CursorShape::Bar,
+                        3 => CursorShape::Underline,
+                        29 if !options.focused => CursorShape::HollowBlock,
+                        29 => screen.cursor.shape,
+                        _ => continue,
+                    };
+                    let (start, end) = if col < physical_cols {
+                        let span = row.cell_span(col);
+                        (span.start, span.start + usize::from(span.width))
+                    } else {
+                        (col, col + 1)
+                    };
+                    for x in start..end.min(visible_cols) {
+                        // A visible main cursor takes precedence over extra cursors.
+                        if cursor && (cursor_col..cursor_col + cursor_width).contains(&x) {
+                            continue;
+                        }
+                        let strokes = match shape {
+                            CursorShape::Block => ExtraCursorCell::BLOCK,
+                            CursorShape::Bar if x == start => ExtraCursorCell::BAR,
+                            CursorShape::Bar => 0,
+                            CursorShape::Underline => ExtraCursorCell::UNDERLINE,
+                            CursorShape::HollowBlock => {
+                                ExtraCursorCell::TOP
+                                    | ExtraCursorCell::BOTTOM
+                                    | if x == start { ExtraCursorCell::LEFT } else { 0 }
+                                    | if x + 1 == end {
+                                        ExtraCursorCell::RIGHT
+                                    } else {
+                                        0
+                                    }
+                            }
+                        };
+                        if strokes != 0 {
+                            // Several positions can share a span. Keep all requested shapes
+                            // while drawing each overlapping stroke once.
+                            let cell = scratch.cursors[x].get_or_insert(ExtraCursorCell {
+                                strokes: 0,
+                                color: options.cursor_color,
+                            });
+                            cell.strokes |= strokes;
+                        }
+                    }
+                }
+            }
             scratch.search.clear();
             for highlight in options.search_highlights.iter().filter(|h| h.row == row.id) {
                 scratch.search.resize(visible_cols, None);
@@ -401,41 +496,52 @@ impl Renderer {
                 }
             }
             // Raw-zero tails have no text, background, blink or decorations.
-            let text_cols = row.cells()[..visible_cols]
+            let text_cols = row.cells()[..physical_cols]
                 .iter()
                 .rposition(|cell| cell.bits() != 0)
                 .map_or(0, |col| col + 1);
             // ponytail: keep full rows for cursor/selection/search painting; bound
             // their ranges if those redraws become a bottleneck.
-            let paint_cols = if cursor || selection.is_some() || !scratch.search.is_empty() {
+            let paint_cols = if cursor
+                || !scratch.cursors.is_empty()
+                || selection.is_some()
+                || !scratch.search.is_empty()
+            {
                 visible_cols
             } else {
                 text_cols
             };
             scratch.paints.clear();
             scratch.paints.reserve(paint_cols);
-            for (col, cell) in row.cells().iter().take(paint_cols).enumerate() {
-                let span = row.cell_span(col);
-                blinking_text |= row.style(col).blink
-                    && !row.style(col).invisible
+            for col in 0..paint_cols {
+                let cell = row.cells().get(col);
+                let span = cell.map(|_| row.cell_span(col));
+                let style = cell.map_or_else(Style::default, |_| row.style(col));
+                if style.blink
+                    && !style.invisible
+                    && let Some(cell) = cell
+                    && let Some(span) = span
                     && span.start == col
                     && !cell.spacer_head()
-                    && (row.style(col).underline != Underline::None
-                        || row.style(col).strikethrough
-                        || row.style(col).overline
+                    && (style.underline != Underline::None
+                        || style.strikethrough
+                        || style.overline
                         || cell.codepoint() != Some(graphics::PLACEHOLDER)
-                            && row.text(col).chars().any(|ch| !ch.is_whitespace()));
+                            && row.text(col).chars().any(|ch| !ch.is_whitespace()))
+                {
+                    blinking_text = true;
+                }
                 let selected = selection.as_ref().is_some_and(|range| range.contains(&col));
-                let mut fg = resolve(row.style(col).foreground, options.foreground, options);
-                let mut bg = resolve(row.style(col).background, options.background, options);
-                if row.style(col).inverse {
+                let mut fg = resolve(style.foreground, options.foreground, options);
+                let mut bg = resolve(style.background, options.background, options);
+                if style.inverse {
                     std::mem::swap(&mut fg, &mut bg);
                 }
                 if selected {
                     bg = options.selection_background;
                     fg = options.selection_foreground.unwrap_or(fg);
                 }
-                let search_col = span.start;
+                let search_col = span.map_or(col, |span| span.start);
                 let search = scratch.search.get(search_col).copied().flatten();
                 if let Some(selected) = search {
                     bg = if selected {
@@ -445,6 +551,17 @@ impl Renderer {
                     };
                     fg = [0; 3];
                 }
+                let mut extra_block = false;
+                if let Some(Some(extra)) = scratch.cursors.get_mut(col) {
+                    let (background, foreground) =
+                        extra_cursor_colors(extra_colors, fg, bg, options);
+                    extra.color = background;
+                    extra_block = extra.strokes & ExtraCursorCell::BLOCK != 0;
+                    if extra_block {
+                        bg = background;
+                        fg = foreground;
+                    }
+                }
                 let block_cursor = cursor
                     && options.focused
                     && screen.cursor.shape == CursorShape::Block
@@ -453,7 +570,12 @@ impl Renderer {
                     bg = options.cursor_color;
                     fg = options.cursor_text;
                 }
-                if bg != options.background || selected || search.is_some() || block_cursor {
+                if bg != options.background
+                    || selected
+                    || search.is_some()
+                    || block_cursor
+                    || extra_block
+                {
                     frame.quads.push(Quad::solid(
                         [
                             options.padding[0] + col as f32 * metrics.cell_width as f32,
@@ -464,7 +586,7 @@ impl Renderer {
                         Color::rgb(bg),
                     ));
                 }
-                let fg = Color::rgb(fg).opacity(if row.style(col).faint { 0.5 } else { 1.0 });
+                let fg = Color::rgb(fg).opacity(if style.faint { 0.5 } else { 1.0 });
                 scratch.paints.push(fg);
             }
             scratch.paints.truncate(text_cols);
@@ -495,6 +617,32 @@ impl Renderer {
                         paints[col],
                         line_color,
                     );
+                }
+            }
+            for (col, extra) in scratch.cursors.iter().enumerate() {
+                let Some(extra) = extra else { continue };
+                let x = options.padding[0] + col as f32 * metrics.cell_width as f32;
+                let w = metrics.cell_width as f32;
+                let h = metrics.cell_height as f32;
+                let color = Color::rgb(extra.color);
+                let has = |stroke| extra.strokes & stroke != 0;
+                for (draw, rect) in [
+                    (has(ExtraCursorCell::BAR), [x, top, 2.0, h]),
+                    (has(ExtraCursorCell::UNDERLINE), [x, top + h - 2.0, w, 2.0]),
+                    (has(ExtraCursorCell::TOP), [x, top, w, 1.0]),
+                    (
+                        has(ExtraCursorCell::BOTTOM) && !has(ExtraCursorCell::UNDERLINE),
+                        [x, top + h - 1.0, w, 1.0],
+                    ),
+                    (
+                        has(ExtraCursorCell::LEFT) && !has(ExtraCursorCell::BAR),
+                        [x, top, 1.0, h],
+                    ),
+                    (has(ExtraCursorCell::RIGHT), [x + w - 1.0, top, 1.0, h]),
+                ] {
+                    if draw {
+                        foreground.quads.push(Quad::solid(rect, color));
+                    }
                 }
             }
             if cursor && !(options.focused && screen.cursor.shape == CursorShape::Block) {
@@ -542,6 +690,7 @@ impl Renderer {
                 let cached = cache.rows.entry(row.id).or_insert_with(|| CachedRow {
                     key: row_key,
                     cursor: cursor_key,
+                    extra_cursors: extra_key,
                     blink_visible: options.blink_visible,
                     background: Vec::new(),
                     foreground: Vec::new(),
@@ -553,6 +702,7 @@ impl Renderer {
                 });
                 cached.key = row_key;
                 cached.cursor = cursor_key;
+                cached.extra_cursors = extra_key;
                 cached.blink_visible = options.blink_visible;
                 cached.quad_counts = [
                     frame.quads.len() - background_start,
@@ -640,7 +790,13 @@ impl Renderer {
             }
             let style = row.style(col);
             let color = paints[col];
+            let span_end = (span.start + usize::from(span.width)).min(paints.len());
+            let split_colors = span.width > 1
+                && paints[span.start..span_end]
+                    .iter()
+                    .any(|&paint| paint != color);
             if !span.explicit
+                && !split_colors
                 && let Some(cp) = self.sprite_codepoint(&row.text(col))
             {
                 let cached = self.sprite(cp, cell.width())?;
@@ -661,7 +817,7 @@ impl Renderer {
             }
             text.clear();
             sources.clear();
-            let clip = if span.explicit {
+            let clip = if span.explicit || split_colors {
                 sources.push((0, col));
                 text.push_str(&row.text(col));
                 col += usize::from(span.width);
@@ -680,6 +836,8 @@ impl Renderer {
                 && row.style(col) == style
                 && paints[col] == color
                 && !row.cell_span(col).explicit
+                && (row.cells()[col].width() != 2
+                    || paints.get(col + 1).is_none_or(|&paint| paint == color))
                 && !row.cells()[col].spacer_head()
                 && self.sprite_codepoint(&row.text(col)).is_none()
                 && row.cells()[col].codepoint() != Some(graphics::PLACEHOLDER)
@@ -709,7 +867,7 @@ impl Renderer {
             };
             // Source indices are dense within this run, including wide cells.
             anchors.clear();
-            anchors.resize(sources.len(), clip.map(|_| 0.0));
+            anchors.resize(sources.len(), span.explicit.then_some(0.0));
             for glyph in glyphs.iter() {
                 if glyph.advance > 0.0 {
                     anchors[source(glyph)].get_or_insert(glyph.x);
@@ -740,7 +898,30 @@ impl Renderer {
                     atlas: cached.atlas,
                 };
                 if let Some(clip) = clip {
-                    frame.quads.extend(quad.clipped([0.0; 2], clip));
+                    let end = (span.start + usize::from(span.width)).min(paints.len());
+                    if paints[span.start..end].iter().all(|&paint| paint == color) {
+                        frame.quads.extend(quad.clipped([0.0; 2], clip));
+                    } else {
+                        // Keep atomic text shaped once, but honor cell-local cursor colors.
+                        let mut start = span.start;
+                        while start < end {
+                            let color = paints[start];
+                            let mut next = start + 1;
+                            while next < end && paints[next] == color {
+                                next += 1;
+                            }
+                            let left =
+                                options.padding[0] + start as f32 * metrics.cell_width as f32;
+                            let right =
+                                options.padding[0] + next as f32 * metrics.cell_width as f32;
+                            let mut colored = quad.clone();
+                            colored.color = color;
+                            frame
+                                .quads
+                                .extend(colored.clipped([0.0; 2], [left, clip[1], right, clip[3]]));
+                            start = next;
+                        }
+                    }
                 } else {
                     frame.quads.push(quad);
                 }
@@ -950,6 +1131,27 @@ fn resolve(color: TerminalColor, default: [u8; 3], options: &RenderOptions) -> [
     }
 }
 
+fn extra_cursor_colors(
+    colors: ExtraColors,
+    foreground: [u8; 3],
+    background: [u8; 3],
+    options: &RenderOptions,
+) -> ([u8; 3], [u8; 3]) {
+    if colors.cursor == ExtraColor::Special {
+        return (foreground, background);
+    }
+    let resolve = |color, default, special| match color {
+        ExtraColor::Default => default,
+        ExtraColor::Special => special,
+        ExtraColor::Indexed(index) => options.palette[usize::from(index)],
+        ExtraColor::Rgb(r, g, b) => [r, g, b],
+    };
+    (
+        resolve(colors.cursor, options.cursor_color, foreground),
+        resolve(colors.text, options.cursor_text, background),
+    )
+}
+
 fn decorations(
     frame: &mut Frame,
     style: &Style,
@@ -1039,6 +1241,316 @@ mod tests {
         assert_eq!(cached.cursor_row_bounds, rebuilt.cursor_row_bounds);
         assert_eq!(cached.blinking_text, rebuilt.blinking_text);
         cached
+    }
+
+    fn extra_rects(frame: &Frame) -> Vec<[f32; 4]> {
+        frame
+            .quads
+            .iter()
+            .filter(|q| q.paint == Paint::Solid && q.color == Color::rgb([230, 120, 45]))
+            .map(|q| q.rect)
+            .collect()
+    }
+
+    fn extra_color(terminal: &mut Terminal) {
+        terminal.feed(b"\x1b[>40;2:230:120:45 q");
+    }
+
+    #[test]
+    fn extra_cursor_shapes_blink_and_host_visibility_ignore_main_visibility_and_preedit() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let metrics = renderer.metrics();
+        let (w, h) = (metrics.cell_width as f32, metrics.cell_height as f32);
+        let mut terminal = Terminal::new(4, 2, 0);
+        terminal.screen_mut().cursor.visible = false;
+        terminal.screen_mut().cursor.shape = CursorShape::Bar;
+        terminal.screen_mut().cursor.blink = true;
+        extra_color(&mut terminal);
+        terminal.feed(b"\x1b[>1;2:1:1 q\x1b[>2;2:1:3 q\x1b[>3;2:2:2 q\x1b[>29;2:2:4 q");
+        let mut options = RenderOptions {
+            padding: [0.0; 2],
+            cursor_visible: false,
+            ..Default::default()
+        };
+        let mut cache = RowCache::default();
+        let frame = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(
+            extra_rects(&frame),
+            vec![
+                [0.0, 0.0, w, h],
+                [2.0 * w, 0.0, 2.0, h],
+                [w, 2.0 * h - 2.0, w, 2.0],
+                [3.0 * w, h, 2.0, h]
+            ]
+        );
+        options.preedit = Some(Preedit {
+            text: "compose".into(),
+            selection: None,
+        });
+        let composed = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(extra_rects(&composed), extra_rects(&frame));
+        options.blink_visible = false;
+        assert!(
+            extra_rects(&cached_matches_rebuild(
+                &mut renderer,
+                &terminal,
+                &options,
+                &mut cache
+            ))
+            .is_empty()
+        );
+        options.focused = false;
+        let unfocused = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(
+            extra_rects(&unfocused).len(),
+            7,
+            "explicit shapes remain; follow-main becomes hollow"
+        );
+        options.extra_cursor_visible = false;
+        assert!(
+            extra_rects(&cached_matches_rebuild(
+                &mut renderer,
+                &terminal,
+                &options,
+                &mut cache
+            ))
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn cached_extra_cursors_rebuild_only_affected_rows_and_main_cursor_wins_overlap() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let mut terminal = Terminal::new(10, 4, 20);
+        terminal.feed(b"first\r\nsecond\r\nthird\r\nfourth\x1b[?25l");
+        extra_color(&mut terminal);
+        terminal.feed(b"\x1b[>1;2:1:2;2:3:4 q");
+        let options = RenderOptions::default();
+        let mut cache = RowCache::default();
+        for _ in 0..3 {
+            cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        }
+        assert_eq!(cache.prepared_rows, 8);
+        terminal.feed(b"\x1b[>2;2:1:2 q");
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 9);
+        terminal.feed(b"\x1b[>30;2:1:2:3 q");
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 11);
+        terminal.feed(b"\x1b[?25h\x1b[1;2H");
+        for shape in [
+            CursorShape::Block,
+            CursorShape::Bar,
+            CursorShape::Underline,
+            CursorShape::HollowBlock,
+        ] {
+            terminal.screen_mut().cursor.shape = shape;
+            let with_extra = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+            let mut without = terminal.clone();
+            without.feed(b"\x1b[>0;2:1:2 q");
+            let main_only = renderer.prepare(without.screen(), &options).unwrap();
+            assert_eq!(with_extra.quads, main_only.quads, "main shape {shape:?}");
+        }
+        let mut second = Terminal::new(10, 4, 0);
+        second.feed(b"different\x1b[>3;4 q");
+        let mut second_cache = RowCache::default();
+        cached_matches_rebuild(&mut renderer, &second, &options, &mut second_cache);
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+    }
+
+    #[test]
+    fn extra_cursors_cover_wide_and_explicit_tails_and_deduplicate_adjacent_shapes() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let options = RenderOptions {
+            padding: [0.0; 2],
+            cursor_visible: false,
+            ..Default::default()
+        };
+        for (source, width) in [("界Z", 2), ("\x1b]66;w=3;abcdef\x1b\\Z", 3)] {
+            let mut terminal = Terminal::new(8, 2, 0);
+            terminal.feed(source.as_bytes());
+            extra_color(&mut terminal);
+            let mut cache = RowCache::default();
+            for shape in [1, 2, 3] {
+                terminal.feed(format!("\x1b[>0;4 q\x1b[>{shape};2:1:1 q").as_bytes());
+                let head = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+                for col in 2..=width {
+                    terminal.feed(format!("\x1b[>0;4 q\x1b[>{shape};2:1:{col} q").as_bytes());
+                    let tail =
+                        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+                    assert_eq!(
+                        head.quads, tail.quads,
+                        "source={source:?} shape={shape} col={col}"
+                    );
+                }
+                terminal.feed(format!("\x1b[>{shape};4:1:1:1:{width} q").as_bytes());
+                let adjacent =
+                    cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+                assert_eq!(
+                    head.quads, adjacent.quads,
+                    "duplicate positions in one span do not overdraw"
+                );
+                terminal.feed(format!("\x1b[>{shape};2:1:{} q", width + 1).as_bytes());
+                let neighbor =
+                    cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+                assert_eq!(extra_rects(&neighbor).len(), extra_rects(&head).len() + 1);
+            }
+            terminal.feed(b"\x1b[>0;4 q\x1b[>1;2:1:1 q\x1b[>2;2:1:2 q");
+            let mixed = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+            assert_eq!(
+                extra_rects(&mixed).len(),
+                width + 1,
+                "overlapping block and beam both survive"
+            );
+        }
+    }
+
+    #[test]
+    fn extra_cursor_recolors_a_wide_tail_when_the_main_beam_covers_its_head() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let mut terminal = Terminal::new(8, 2, 0);
+        terminal.feed("A界\x1b[1;2H\x1b[>1;2:1:3 q".as_bytes());
+        terminal.screen_mut().cursor.shape = CursorShape::Bar;
+        let options = RenderOptions {
+            padding: [0.0; 2],
+            ..Default::default()
+        };
+        let mut cache = RowCache::default();
+        let frame = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        let w = renderer.metrics().cell_width as f32;
+        let tail: Vec<_> = frame
+            .quads
+            .iter()
+            .filter(|q| q.paint == Paint::Mask && q.color == Color::rgb(options.cursor_text))
+            .collect();
+        assert!(!tail.is_empty());
+        assert!(
+            tail.iter()
+                .all(|q| q.rect[0] >= 2.0 * w && q.rect[0] + q.rect[2] <= 3.0 * w)
+        );
+        assert!(frame.quads.contains(&Quad::solid(
+            [w, 0.0, 2.0, renderer.metrics().cell_height as f32],
+            Color::rgb(options.cursor_color)
+        )));
+    }
+
+    #[test]
+    fn extra_cursor_colors_follow_defaults_palette_and_cell_local_reverse_video() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let options = RenderOptions {
+            padding: [0.0; 2],
+            cursor_visible: false,
+            ..Default::default()
+        };
+        let mut terminal = Terminal::new(8, 2, 0);
+        terminal.feed(b"\x1b]66;w=3;MMMM\x1b\\");
+        let natural = renderer.prepare(terminal.screen(), &options).unwrap();
+        let backgrounds = [[3, 60, 100], [50, 4, 110], [80, 90, 5]];
+        let foregrounds = [[210, 11, 12], [13, 220, 14], [15, 16, 230]];
+        for col in 0..3 {
+            let mut style = terminal.screen().row(0).style(col);
+            let [r, g, b] = foregrounds[col];
+            style.foreground = TerminalColor::Rgb(r, g, b);
+            let [r, g, b] = backgrounds[col];
+            style.background = TerminalColor::Rgb(r, g, b);
+            terminal.screen_mut().set_cell_style(0, col, style);
+        }
+        terminal.feed(b"\x1b[>40;1 q\x1b[>30;2:255:0:255 q\x1b[>1;2:1:2 q");
+        let mut cache = RowCache::default();
+        let reversed = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        let metrics = renderer.metrics();
+        let w = metrics.cell_width as f32;
+        let h = metrics.cell_height as f32;
+        for (col, color) in foregrounds.into_iter().enumerate() {
+            assert!(
+                reversed
+                    .quads
+                    .contains(&Quad::solid([col as f32 * w, 0.0, w, h], Color::rgb(color)))
+            );
+        }
+        let expected: Vec<_> = natural
+            .quads
+            .iter()
+            .filter(|q| q.paint != Paint::Solid)
+            .flat_map(|quad| {
+                backgrounds
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(move |(col, color)| {
+                        let mut colored = quad.clone();
+                        colored.color = Color::rgb(color);
+                        colored.clipped([0.0; 2], [col as f32 * w, 0.0, (col + 1) as f32 * w, h])
+                    })
+            })
+            .collect();
+        assert_eq!(
+            reversed
+                .quads
+                .iter()
+                .filter(|q| q.paint != Paint::Solid)
+                .cloned()
+                .collect::<Vec<_>>(),
+            expected
+        );
+        for (colors, expected) in [
+            (
+                ExtraColors {
+                    cursor: ExtraColor::Default,
+                    text: ExtraColor::Default,
+                },
+                (options.cursor_color, options.cursor_text),
+            ),
+            (
+                ExtraColors {
+                    cursor: ExtraColor::Indexed(1),
+                    text: ExtraColor::Indexed(2),
+                },
+                (options.palette[1], options.palette[2]),
+            ),
+            (
+                ExtraColors {
+                    cursor: ExtraColor::Rgb(1, 2, 3),
+                    text: ExtraColor::Special,
+                },
+                ([1, 2, 3], backgrounds[0]),
+            ),
+        ] {
+            assert_eq!(
+                extra_cursor_colors(colors, foregrounds[0], backgrounds[0], &options),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn extra_cursors_stay_in_viewport_coordinates_and_cover_short_history_rows() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let mut terminal = Terminal::new(8, 2, 20);
+        terminal.feed(b"old\r\nsecond\r\nthird\r\nfourth");
+        extra_color(&mut terminal);
+        terminal.feed(b"\x1b[>1;2:1:7 q");
+        let options = RenderOptions {
+            padding: [0.0; 2],
+            cursor_visible: false,
+            ..Default::default()
+        };
+        let mut cache = RowCache::default();
+        let live = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        terminal.screen_mut().viewport_offset = 2;
+        let scrolled = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(extra_rects(&scrolled), extra_rects(&live));
+
+        // Imported/partially reflowed history can have fewer physical cells than
+        // the logical viewport. A cursor beyond those cells overlays a blank.
+        let mut short = Terminal::new(4, 2, 0);
+        short.feed(b"short");
+        *terminal.screen_mut() = short.screen().snapshot_viewport();
+        terminal.screen_mut().columns = 8;
+        extra_color(&mut terminal);
+        terminal.feed(b"\x1b[>1;2:1:7 q");
+        assert_eq!(terminal.screen().row(0).cells.len(), 4);
+        let frame = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(extra_rects(&frame), extra_rects(&live));
     }
 
     #[test]

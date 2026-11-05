@@ -12,6 +12,7 @@ mod boundary;
 pub use boundary::{Boundaries, BoundaryStop, StringEnd, StringIntroducer, StringKind};
 
 pub const MAX_PARAMS: usize = 24;
+pub const MAX_EXTENDED_PARAMS: usize = 256;
 pub const MAX_INTERMEDIATES: usize = 4;
 pub const MAX_OSC_BYTES: usize = 8 * 1024 * 1024;
 
@@ -157,6 +158,13 @@ enum TransitionAction {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CsiParam {
+    pub value: u32,
+    /// The next parameter belongs to the same colon-separated group.
+    pub colon_after: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Event<'a> {
     Print(char),
     Execute(u8),
@@ -194,6 +202,63 @@ pub enum Event<'a> {
     TmuxStringEnd,
     /// A complete OSC exceeded the configured capture limit and was discarded.
     OscOverflow,
+    /// Kitty multiple-cursor commands exceeding the ordinary parameter range.
+    CsiExtended {
+        intermediates: &'a [u8],
+        params: &'a [CsiParam],
+        final_byte: u8,
+    },
+}
+
+#[derive(Clone, Debug, Default)]
+struct ExtendedParams {
+    params: Vec<CsiParam>,
+    accumulator: u32,
+    digits: bool,
+    active: bool,
+    overflow: bool,
+}
+
+impl ExtendedParams {
+    fn clear(&mut self) {
+        if !self.active {
+            return;
+        }
+        self.params.clear();
+        self.accumulator = 0;
+        self.digits = false;
+        self.active = false;
+        self.overflow = false;
+    }
+
+    fn advance(&mut self, byte: u8) {
+        if self.overflow {
+            return;
+        }
+        if self.params.len() == MAX_EXTENDED_PARAMS {
+            self.overflow = true;
+        } else if matches!(byte, b';' | b':') {
+            self.params.push(CsiParam {
+                value: self.accumulator,
+                colon_after: byte == b':',
+            });
+            self.accumulator = 0;
+            self.digits = false;
+        } else {
+            self.accumulator = self
+                .accumulator
+                .saturating_mul(10)
+                .saturating_add(u32::from(byte - b'0'));
+            self.digits = true;
+        }
+    }
+
+    fn finish(&mut self) -> bool {
+        if self.digits {
+            self.advance(b';');
+        }
+        !self.overflow
+    }
 }
 
 /// Parser events with text and APC payload runs borrowed directly from the input.
@@ -218,6 +283,7 @@ pub struct Parser {
     colon_separators: u32,
     accumulator: u16,
     digits: bool,
+    extended: ExtendedParams,
     osc: Vec<u8>,
     osc_limit: usize,
     osc_overflow: bool,
@@ -249,6 +315,7 @@ impl Parser {
             colon_separators: 0,
             accumulator: 0,
             digits: false,
+            extended: ExtendedParams::default(),
             osc: Vec::new(),
             osc_limit: MAX_OSC_BYTES,
             osc_overflow: false,
@@ -666,6 +733,30 @@ impl Parser {
         self.colon_separators = 0;
         self.accumulator = 0;
         self.digits = false;
+        self.extended.clear();
+    }
+
+    fn promote_params(&mut self) {
+        self.extended.params.reserve(MAX_EXTENDED_PARAMS);
+        self.extended.active = true;
+        self.extended.accumulator = u32::from(self.accumulator);
+        self.extended.digits = self.digits;
+        self.extended
+            .params
+            .extend(
+                self.params[..self.param_count]
+                    .iter()
+                    .enumerate()
+                    .map(|(index, &value)| CsiParam {
+                        value: u32::from(value),
+                        colon_after: self.colon_separators & (1 << index) != 0,
+                    }),
+            );
+    }
+
+    fn extended_candidate(&self) -> bool {
+        matches!(self.state, State::CsiEntry | State::CsiParam)
+            && self.intermediates[..self.intermediate_count] == *b">"
     }
 
     fn finalize_params(&mut self) -> bool {
@@ -744,6 +835,20 @@ impl Parser {
                 }
             }
             TransitionAction::Param => {
+                if !self.extended.active
+                    && self.extended_candidate()
+                    && (if matches!(byte, b';' | b':') {
+                        self.param_count == MAX_PARAMS - 1
+                    } else {
+                        self.accumulator > (u16::MAX - u16::from(byte - b'0')) / 10
+                    })
+                {
+                    self.promote_params();
+                }
+                if self.extended.active {
+                    self.extended.advance(byte);
+                }
+                // Preserve legacy saturation and limits for other CSI and DCS commands.
                 if byte == b';' || byte == b':' {
                     if self.param_count < MAX_PARAMS {
                         self.params[self.param_count] = self.accumulator;
@@ -767,9 +872,21 @@ impl Parser {
                 final_byte: byte,
             }),
             TransitionAction::CsiDispatch => {
+                let multiple_cursors =
+                    byte == b'q' && self.intermediates[..self.intermediate_count] == *b"> ";
                 let rendition = byte == b'm'
                     || (byte == b'r' && self.intermediates[..self.intermediate_count] == *b"$");
-                if self.finalize_params() && (rendition || self.colon_separators == 0) {
+                if multiple_cursors && self.extended.active {
+                    if self.extended.finish() {
+                        handler(Event::CsiExtended {
+                            intermediates: &self.intermediates[..self.intermediate_count],
+                            params: &self.extended.params,
+                            final_byte: byte,
+                        });
+                    }
+                } else if self.finalize_params()
+                    && (rendition || multiple_cursors || self.colon_separators == 0)
+                {
                     handler(Event::Csi {
                         intermediates: &self.intermediates[..self.intermediate_count],
                         params: &self.params[..self.param_count],
@@ -793,6 +910,7 @@ impl Parser {
         }
         if changed {
             match next {
+                State::Ground => self.extended.clear(),
                 State::Escape | State::DcsEntry | State::CsiEntry => self.clear(),
                 State::OscString => {
                     self.osc.clear();
@@ -1120,6 +1238,21 @@ mod tests {
         assert!(events(&[b"\x1b[1:2H"]).is_empty());
         assert!(events(&[format!("\x1b[{}m", "1;".repeat(24)).as_bytes()]).is_empty());
         assert!(events(&[b"\x1b[1;m"])[0].contains("params: [1]"));
+    }
+
+    #[test]
+    fn extended_scratch_is_lazy_bounded_and_reused() {
+        let mut parser = Parser::new();
+        parser.advance(b"\x1b[38:2::1:2:3mtext\x1b[999999m\x1b[>1;2:3:4 q", |_| {});
+        assert_eq!(parser.extended.params.capacity(), 0);
+        let command = format!("\x1b[>1;2:{} q", "1:".repeat(254));
+        parser.advance(command.as_bytes(), |_| {});
+        let capacity = parser.extended.params.capacity();
+        assert!(capacity > 0 && capacity <= MAX_EXTENDED_PARAMS);
+        assert!(!parser.extended.active);
+        parser.reset();
+        parser.advance(command.as_bytes(), |_| {});
+        assert_eq!(parser.extended.params.capacity(), capacity);
     }
 
     #[test]
