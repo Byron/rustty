@@ -1573,11 +1573,9 @@ fn replace_view(view: &mut Terminal, source: &Terminal, appearance: Option<&Conf
         let screen = view.screen_mut();
         screen.viewport_offset = offset.min(screen.history_len());
         screen.selection = selection.filter(|s| {
-            [s.start, s.end].iter().all(|point| {
-                screen
-                    .all_rows()
-                    .any(|r| r.id == point.row && point.col < r.cells.len())
-            })
+            [s.start, s.end]
+                .iter()
+                .all(|&point| screen.contains_point(point))
         });
     }
 }
@@ -3417,6 +3415,36 @@ mod focus_tests {
             assert_eq!(graph.windows[0].panes, [7, 8]);
             assert!(graph.panes.iter().all(|pane| pane.terminal.is_none()));
         }
+    }
+
+    #[test]
+    fn replacing_selected_view_keeps_cold_history_compressed() {
+        let mut source = Terminal::with_limits(80, 4, rustty_vt::ScrollbackLimits::default());
+        source.feed(&b"history line\r\n".repeat(2000));
+        let uncompressed = source.screen().owned_bytes();
+        source.set_scrollback_compression(true);
+        while source.compress_scrollback_step() {}
+        let owned = source.screen().owned_bytes();
+        assert!(owned < uncompressed);
+        let start = source.screen().point(2, 0).unwrap();
+        let selection = rustty_vt::Selection {
+            start,
+            end: rustty_vt::GridPoint { col: 6, ..start },
+            rectangular: false,
+        };
+        let mut view = source.clone();
+        view.screen_mut().selection = Some(selection);
+        view.screen_mut().viewport_offset = 10;
+        replace_view(&mut view, &source, None);
+        assert_eq!(view.screen().selection, Some(selection));
+        assert_eq!(view.screen().viewport_offset, 10);
+        assert_eq!(view.screen().owned_bytes(), owned);
+        assert_eq!(source.screen().owned_bytes(), owned);
+
+        view.screen_mut().selection.as_mut().unwrap().end.row = u64::MAX;
+        replace_view(&mut view, &source, None);
+        assert!(view.screen().selection.is_none());
+        assert_eq!(view.screen().owned_bytes(), owned);
     }
 
     #[test]

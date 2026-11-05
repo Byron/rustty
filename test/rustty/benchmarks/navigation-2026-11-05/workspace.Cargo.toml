@@ -1,0 +1,56 @@
+[workspace]
+members = ["crates/rustty-vt", "crates/rustty-parser"]
+exclude = ["vendor/winit", "tmuxx/vendor/portable-pty", "tmuxx/vendor/posix-regex"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+
+[workspace.dependencies]
+rustty-parser = { path = "crates/rustty-parser" }
+rustty-vt = { path = "crates/rustty-vt" }
+tmuxx-cli = { path = "tmuxx/crates/tmuxx-cli" }
+tmuxx-terminal = { path = "tmuxx/crates/tmuxx-terminal" }
+tmuxx-runtime = { path = "tmuxx/crates/tmuxx-runtime" }
+tmuxx-protocol = { path = "tmuxx/crates/tmuxx-protocol" }
+tmuxx-layout = { path = "tmuxx/crates/tmuxx-layout" }
+tmuxx-client = { path = "tmuxx/crates/tmuxx-client" }
+tmuxx-command = { path = "tmuxx/crates/tmuxx-command" }
+rustty-font = { path = "crates/rustty-font" }
+rustty-render = { path = "crates/rustty-render" }
+rustty-render-wgpu = { path = "crates/rustty-render-wgpu" }
+rustty-render-software = { path = "crates/rustty-render-software" }
+rustty = { path = "crates/rustty", default-features = false }
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+rmp-serde = "1.3"
+serde_bytes = "0.11"
+regex = "1.13"
+base64 = "0.22"
+png = "0.18"
+flate2 = "1.1"
+lz4_flex = "0.13"
+crc32c = "0.6"
+portable-pty = "0.9"
+clap = { version = "4.6", features = ["derive"] }
+libc = "0.2"
+toml = "0.9"
+egui = "0.36.2"
+egui-winit = { version = "0.36.2", default-features = false, features = ["accesskit", "clipboard", "links"] }
+egui-wgpu = { version = "0.36.2", default-features = false, features = ["winit", "macos-window-resize-jitter-fix"] }
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
+wgpu = { version = "30.0.1", default-features = false, features = ["std", "wgsl", "metal", "dx12"] }
+objc2 = "0.6"
+objc2-core-text = "0.3.2"
+objc2-core-graphics = "0.3.2"
+objc2-core-foundation = "0.3.2"
+objc2-foundation = "0.3.2"
+objc2-app-kit = "0.3.2"
+objc2-user-notifications = "0.3.2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

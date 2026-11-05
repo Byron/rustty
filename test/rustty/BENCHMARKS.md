@@ -6028,3 +6028,13 @@ python3 test/rustty/frame_compare.py --kind app --offscreen \
   --before /tmp/before-rustty --after /tmp/after-rustty \
   --output /tmp/row-app-comparison
 ```
+
+## 2026-11-05 — Preserve cold history during navigation
+
+The [navigation report](HISTORY_NAVIGATION.md) records three adjacent pairs at
+20,000 / 100,000 / 250,000 rows on Linux ARM64 with Rust 1.95.0. At 250k ASCII rows,
+viewport reads improve from 21.97 ms to 3.8 µs, short selections from 24.54 ms to 0.36 ms,
+and first-search feed from 33.87 ms to 3.80 ms. Each operation now leaves cold owned
+memory unchanged instead of decoding 239.6 MB of cell storage. First-search setup
+still includes linear metadata scans and active-page formatting. These are
+terminal-core access timings, independent of PTY delivery or rendered latency.

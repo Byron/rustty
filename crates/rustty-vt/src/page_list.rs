@@ -79,6 +79,20 @@ impl PageList {
         self.allocations().map(|page| page.allocation_bytes).sum()
     }
 
+    /// Locate a retained ID using row metadata, without opening its cell buffer.
+    /// Returns page index, local row, and absolute row.
+    pub(crate) fn locate_id(&self, id: u64) -> Option<(usize, usize, usize)> {
+        let mut offset = 0;
+        for (index, page) in self.pages.iter().enumerate() {
+            let rows = usize::from(page.rows);
+            if let Some(row) = page.row_ids[..rows].iter().position(|&value| value == id) {
+                return Some((index, row, offset + row));
+            }
+            offset += rows;
+        }
+        None
+    }
+
     pub fn page_at(&self, row: usize) -> (&Page, usize) {
         let (index, row) = self.locate(row);
         (&self.pages[index], row)
