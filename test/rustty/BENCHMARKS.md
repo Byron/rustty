@@ -6,6 +6,14 @@ window. Criterion is a development dependency only. No application build is
 needed. Timing excludes terminal construction and input generation; the `feed`
 and `stream` workloads include UTF-8 decoding and VT parsing.
 
+The [November 5 assembly-guided follow-up](benchmarks/hot-path-2026-11-05/README.md)
+reduces styled ASCII scrolling by a further 16.2%, cutting the excess time over
+Ghostty in half. Its 18-workload comparison completes in about 130 seconds.
+
+The [November 5 styled-scrolling follow-up](benchmarks/styled-csi-2026-11-05/README.md)
+batches CSI parameters, improving styled ASCII scrolling by 4.7–7.9% in two
+bounded comparisons. It records the remaining Ghostty gap and 18-workload controls.
+
 The [Catnip Kitty graphics comparison](KITTY_BENCHMARKS.md) measures warmed
 sprite placement updates against Ghostty and checks live POSIX shared-memory uploads.
 

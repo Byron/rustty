@@ -52,6 +52,12 @@ A file for [guiding coding agents](https://agents.md/).
 - After completing and validating each semantic change, create a commit
   before starting the next semantic change.
 - Keep distinct semantic changes in separate commits.
+- Keep benchmark reports and generated measurement, profiling, and assembly
+  artifacts out of code-change commits. Collect them during an optimization
+  session and commit them together, including report-index updates, in a
+  separate documentation commit at the end of the session, after the code
+  changes are validated and committed. Benchmark harness changes and regression
+  tests belong with their related code changes.
 - Amend follow-up work that belongs to the same semantic change into its
   existing commit instead of creating another commit.
 - Use Conventional Commit subjects: `type(scope): summary`, for example

@@ -1,0 +1,57 @@
+Styled ASCII scrolling, production tree 1d78160
+Binary SHA-256: f67b3468d3e54cc60d8e701f15e1386e7a396264f3cbd11e64eb44738409c54f
+Four seconds sampled at 1 ms during a seven-second Criterion profiling run.
+Collected separately from all performance measurements. Counts are sampled
+self stacks, not exact per-function elapsed times; entries below five omitted.
+
+Sort by top of stack, same collapsed (when >= 5):
+        _RNvMNtCsaO64Y4R4Hfb_9rustty_vt8terminalNtB2_8Terminal11print_ascii  (in final)        486
+        _RINvMs2_CslAlwn7krtR6_13rustty_parserNtB6_6Parser20advance_complete_csiNCNvMNtCsaO64Y4R4Hfb_9rustty_vt8terminalNtB1c_8Terminal10feed_until0EB1e_  (in final)        199
+        _RNvMsh_NtCsaO64Y4R4Hfb_9rustty_vt6screenNtB5_6Screen8grow_row  (in final)        164
+        _RINvMs1_NtCslAlwn7krtR6_13rustty_parser8boundaryNtB8_6Parser21advance_batched_untilNCNvMNtCsaO64Y4R4Hfb_9rustty_vt8terminalNtB1o_8Terminal10feed_until0EB1q_  (in final)        158
+        _RNvMsh_NtCsaO64Y4R4Hfb_9rustty_vt6screenNtB5_6Screen21sync_cursor_resources  (in final)        135
+        _RNvMsh_NtCsaO64Y4R4Hfb_9rustty_vt6screenNtB5_6Screen16set_cursor_style  (in final)        122
+        _RNvMNtCsaO64Y4R4Hfb_9rustty_vt8terminalNtB2_8Terminal6handle  (in final)        118
+        __bzero  (in libsystem_platform.dylib)        114
+        _RNvNtNtCsaO64Y4R4Hfb_9rustty_vt8printing6scalar11store_ascii  (in final)        113
+        _RNvMs0_NtCsaO64Y4R4Hfb_9rustty_vt9page_listNtB5_8PageList5prune  (in final)        109
+        _RNvMsh_NtCsaO64Y4R4Hfb_9rustty_vt6screenNtB5_6Screen11discard_ids  (in final)        87
+        _RNvMs0_NtCsaO64Y4R4Hfb_9rustty_vt6screenNtB5_5Style11native_hash  (in final)        82
+        _RNvMs0_NtCsaO64Y4R4Hfb_9rustty_vt14page_resourcesINtB5_12SetAdmissionNtNtB7_6screen5StyleE7acquire  (in final)        81
+        _RNvMsh_NtCsaO64Y4R4Hfb_9rustty_vt6screenNtB5_6Screen10shift_rows  (in final)        81
+        _RNvMNtCsaO64Y4R4Hfb_9rustty_vt8terminalNtB2_8Terminal5index  (in final)        79
+        _RNCNvMNtCsaO64Y4R4Hfb_9rustty_vt8terminalNtB4_8Terminal10feed_until0B6_  (in final)        78
+        _RNvMsh_NtCsaO64Y4R4Hfb_9rustty_vt6screenNtB5_6Screen20install_cursor_style  (in final)        77
+        _RNvMs0_NtNtCsaO64Y4R4Hfb_9rustty_vt8graphics5sixelNtB7_8Graphics15overwrite_sixel  (in final)        76
+        _RNvMNtCsaO64Y4R4Hfb_9rustty_vt8terminalNtB2_8Terminal21ensure_active_columns  (in final)        69
+        _RNvMNtCsaO64Y4R4Hfb_9rustty_vt8terminalNtB2_8Terminal9scroll_up  (in final)        64
+        _RNvMsh_NtCsaO64Y4R4Hfb_9rustty_vt6screenNtB5_6Screen20release_cursor_style  (in final)        62
+        _RNvNtCsaO64Y4R4Hfb_9rustty_vt8terminal3sgr  (in final)        59
+        _RNvMsh_NtCsaO64Y4R4Hfb_9rustty_vt6screenNtB5_6Screen14row_header_mut  (in final)        55
+        _RNvMs1_NtCsaO64Y4R4Hfb_9rustty_vt4pageNtB5_4Page9mark_cell  (in final)        53
+        _RINvMsi_NtNtNtCs8Hh7wWMBHrQ_5alloc11collections5btree3mapINtB6_8BTreeMapyTjjEE6removeyECsaO64Y4R4Hfb_9rustty_vt  (in final)        43
+        _RNvMsh_NtCsaO64Y4R4Hfb_9rustty_vt6screenNtB5_6Screen11discard_row  (in final)        43
+        _RNvXsH_NtCsaO64Y4R4Hfb_9rustty_vt6screenNtB5_5ColorNtNtCs3bJEMBXHbwl_4core3cmp9PartialEq2eq  (in final)        41
+        _RNvMsc_NtCsaO64Y4R4Hfb_9rustty_vt6screenNtB5_13TrackedPoints5prune  (in final)        37
+        _RNvMNtCsaO64Y4R4Hfb_9rustty_vt8terminalNtB2_8Terminal12clamp_cursor  (in final)        33
+        _RNvMsh_NtCsaO64Y4R4Hfb_9rustty_vt6screenNtB5_6Screen13acquire_style  (in final)        32
+        _RNvMs1_NtCsaO64Y4R4Hfb_9rustty_vt4pageNtB5_4Page21replace_simple_styles  (in final)        31
+        _RNvMsh_NtCsaO64Y4R4Hfb_9rustty_vt6screenNtB5_6Screen23tmux_capture_background  (in final)        31
+        _RNvMNtCsaO64Y4R4Hfb_9rustty_vt8terminalNtB2_8Terminal15carriage_return  (in final)        25
+        _RNvMs2_CslAlwn7krtR6_13rustty_parserNtB5_6Parser14retain_pending  (in final)        25
+        _RNvMsh_NtCsaO64Y4R4Hfb_9rustty_vt6screenNtB5_6Screen15remap_grid_rows  (in final)        25
+        _RINvMsi_NtNtNtCs8Hh7wWMBHrQ_5alloc11collections5btree3mapINtB6_8BTreeMapyyE6removeyECsaO64Y4R4Hfb_9rustty_vt  (in final)        23
+        _RNvMNtCsaO64Y4R4Hfb_9rustty_vt8terminalNtB2_8Terminal10print_wrap  (in final)        20
+        _RNvMs1_NtCsaO64Y4R4Hfb_9rustty_vt4pageNtB5_4Page5style  (in final)        20
+        _RINvNtCs3bJEMBXHbwl_4core3ptr9drop_glueINtNtNtCs8Hh7wWMBHrQ_5alloc3vec5drain5DrainNtNtCsaO64Y4R4Hfb_9rustty_vt8terminal6EffectEEB1m_  (in final)        19
+        _RNvMNtNtCsaO64Y4R4Hfb_9rustty_vt6screen7historyNtB4_6Screen20tmux_collect_history  (in final)        19
+        _RINvMsi_NtNtNtCs8Hh7wWMBHrQ_5alloc11collections5btree3mapINtB6_8BTreeMapytE6removeyECsaO64Y4R4Hfb_9rustty_vt  (in final)        14
+        _RNvMNtCsaO64Y4R4Hfb_9rustty_vt8terminalNtB2_8Terminal20scrolls_above_cursor  (in final)        13
+        _platform_memmove  (in libsystem_platform.dylib)        13
+        _tlv_get_addr  (in libdyld.dylib)        12
+        _RNvMNtCsaO64Y4R4Hfb_9rustty_vt8terminalNtB2_8Terminal7changed  (in final)        10
+        _RNvMs1_NtCsaO64Y4R4Hfb_9rustty_vt4pageNtB5_4Page3new  (in final)        8
+        _RNvMNtCsaO64Y4R4Hfb_9rustty_vt8terminalNtB2_8Terminal10feed_until  (in final)        6
+        _RNvMs1_NtCsaO64Y4R4Hfb_9rustty_vt14page_resourcesINtB5_12SetAdmissionNtNtB7_6screen5StyleE11delete_itemB7_  (in final)        6
+        _RNvMNtNtCsaO64Y4R4Hfb_9rustty_vt6screen7historyNtB4_6Screen18tmux_history_added  (in final)        5
+

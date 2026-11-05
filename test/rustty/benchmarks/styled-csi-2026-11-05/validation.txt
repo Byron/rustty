@@ -1,0 +1,41 @@
+timeout --kill-after=5s 120s cargo test --offline --locked -p rustty-parser
+Exit status: 0
+Running unittests src/lib.rs (target/debug/deps/rustty_parser-7ae7e06fe174d37d)
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.02s
+Running tests/boundaries.rs (target/debug/deps/boundaries-fa57a6eedad75bc8)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+Running tests/continuation.rs (target/debug/deps/continuation-45feba43a04523aa)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+Running tests/corpus.rs (target/debug/deps/corpus-d14004d32e209878)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.42s
+Running tests/extended_csi.rs (target/debug/deps/extended_csi-253d44689328c795)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+Doc-tests rustty_parser
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+timeout --kill-after=5s 120s cargo test --offline --locked -p rustty-vt --lib --test batched_input --test sgr
+Exit status: 0
+Running unittests src/lib.rs (target/debug/deps/rustty_vt-a31a62e60efb6a93)
+test result: ok. 187 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.79s
+Running tests/batched_input.rs (target/debug/deps/batched_input-8c17c4054fe2a9b7)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+Running tests/sgr.rs (target/debug/deps/sgr-face1c1b381d768b)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+timeout --kill-after=5s 120s cargo test --offline --locked -p rustty-vt --test extra_cursors
+Exit status: 0
+Running tests/extra_cursors.rs (target/debug/deps/extra_cursors-6a6fd33ae9f48b80)
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+cargo fmt -p rustty-parser --check
+Exit status: 0
+
+git diff --check
+Exit status: 0
+
+cargo fmt --all --check
+Exit status: 1
+Existing formatting differences in crates/rustty-vt/src/lib.rs and tmuxx/crates/tmuxx-terminal/src/lib.rs; neither file changed by this work.
+
+timeout --kill-after=5s 120s cargo clippy --offline --locked -p rustty-parser --all-targets -- -D warnings
+Exit status: 0

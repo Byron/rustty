@@ -1,0 +1,17 @@
+{
+  "source_commit": "3a37a05276ee93d46367b5d5500e2542cab0e3da",
+  "baseline_production_commit": "ea1765151e78030c8b40220da61ee877a83eb407",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "rustflags": [
+    "-C",
+    "target-cpu=native"
+  ],
+  "profile": "release, thin LTO, codegen-units=1",
+  "machine": "Apple M4 Max, macOS27.2",
+  "ghostty": "Zig0.17.0 ReleaseFast",
+  "source_commit_role": "parent of this optimization; before parser/VT source is identical to baseline_production_commit",
+  "after_source": "Parser source at original b879380960f40527b13b8462f7e05fbd19ec8f5c (Tix change noslpsr; rewritten as 5e2dcc63b99fb0f77a4c9bd340e9e1d839af3fd0)",
+  "parser_sha256": "530de8b6505a3d6014bf52e8cedccd2fe04bff6622b8bbd03f3faa60608168c0",
+  "harness": "Unchanged crates/rustty-vt/benches/primitives.rs and test/rustty/bench_compare.py",
+  "final_and_qualification_binary_identical": true
+}

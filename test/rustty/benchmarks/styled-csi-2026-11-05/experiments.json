@@ -1,0 +1,176 @@
+[
+  {
+    "candidate": "reverse",
+    "change": "Search style owners from newest page first",
+    "retained": false,
+    "results": [
+      {
+        "case": "stream/ascii",
+        "median_ns": {
+          "before": 7339.228683760684,
+          "simd": 7272.072537878788,
+          "ghostty": 5702.788333915473
+        },
+        "after_before_by_order": {
+          "forward": 1.0060425928237202,
+          "reverse": 0.9804984487971627
+        }
+      },
+      {
+        "case": "stream_styled/ascii",
+        "median_ns": {
+          "before": 12376.050375939849,
+          "simd": 12587.649165649165,
+          "ghostty": 8549.176240763285
+        },
+        "after_before_by_order": {
+          "forward": 1.0213625553604622,
+          "reverse": 1.0166520301079893
+        }
+      }
+    ]
+  },
+  {
+    "candidate": "inline",
+    "change": "Manually inline equivalent Color equality",
+    "retained": false,
+    "results": [
+      {
+        "case": "stream/ascii",
+        "median_ns": {
+          "before": 7279.73062754065,
+          "simd": 7665.404170856376,
+          "ghostty": 5393.234274839744
+        },
+        "after_before_by_order": {
+          "forward": 1.0462952053475572,
+          "reverse": 1.059202069774663
+        }
+      },
+      {
+        "case": "stream_styled/ascii",
+        "median_ns": {
+          "before": 12114.34764739229,
+          "simd": 12510.768983004386,
+          "ghostty": 7317.429845066594
+        },
+        "after_before_by_order": {
+          "forward": 1.0333850408379306,
+          "reverse": 1.0273064095919224
+        }
+      }
+    ]
+  },
+  {
+    "candidate": "deferred",
+    "change": "Compute absolute row only on rare style-page split",
+    "retained": false,
+    "results": [
+      {
+        "case": "stream/ascii",
+        "median_ns": {
+          "before": 7262.749550980934,
+          "simd": 7274.839555893279,
+          "ghostty": 5309.265388285314
+        },
+        "after_before_by_order": {
+          "forward": 1.00853129650289,
+          "reverse": 0.9999403875274075
+        }
+      },
+      {
+        "case": "stream_styled/ascii",
+        "median_ns": {
+          "before": 12196.858974358975,
+          "simd": 12512.357877718989,
+          "ghostty": 8413.96423809842
+        },
+        "after_before_by_order": {
+          "forward": 1.0203374962301686,
+          "reverse": 1.0320566943841534
+        }
+      }
+    ]
+  },
+  {
+    "candidate": "pending",
+    "change": "Inline hint on pending-input capture",
+    "retained": false,
+    "results": [
+      {
+        "case": "stream/ascii",
+        "median_ns": {
+          "before": 7215.520516717325,
+          "simd": 7256.9017982456135,
+          "ghostty": 5323.301145339652
+        },
+        "after_before_by_order": {
+          "forward": 0.9963367694791752,
+          "reverse": 1.010504737595337
+        }
+      },
+      {
+        "case": "stream_styled/ascii",
+        "median_ns": {
+          "before": 12081.049342814047,
+          "simd": 12119.010533675246,
+          "ghostty": 7541.614970645793
+        },
+        "after_before_by_order": {
+          "forward": 0.9970739304897808,
+          "reverse": 1.0115549088071152
+        }
+      }
+    ]
+  },
+  {
+    "candidate": "dispatch",
+    "change": "Dispatch standard SGR directly from Terminal::handle",
+    "retained": false,
+    "results": [
+      {
+        "case": "stream/ascii",
+        "median_ns": {
+          "before": 7225.979796072508,
+          "simd": 7176.591314935065,
+          "ghostty": 5319.009810692767
+        },
+        "after_before_by_order": {
+          "forward": 0.9864846985445173,
+          "reverse": 1.0075654434275392
+        }
+      },
+      {
+        "case": "stream_styled/ascii",
+        "median_ns": {
+          "before": 12274.618326822918,
+          "simd": 12017.203936348407,
+          "ghostty": 7704.359186391041
+        },
+        "after_before_by_order": {
+          "forward": 0.9950506627861333,
+          "reverse": 0.9542825742513499
+        }
+      }
+    ]
+  },
+  {
+    "candidate": "dispatch-repeat",
+    "change": "Repeat direct SGR dispatch",
+    "retained": false,
+    "results": [
+      {
+        "case": "stream_styled/ascii",
+        "median_ns": {
+          "before": 12329.269510713812,
+          "simd": 12191.23267278407,
+          "ghostty": 7742.365018427518
+        },
+        "after_before_by_order": {
+          "forward": 0.9897852267492661,
+          "reverse": 0.9896370243221726
+        }
+      }
+    ]
+  }
+]
