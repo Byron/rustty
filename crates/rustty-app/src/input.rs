@@ -265,6 +265,21 @@ pub fn key_is_consumed(
     }
 }
 
+/// Hint chords retain their release even when no target opened an overlay.
+pub fn shortcut_tracks_release(actions: &[config::Action], ui_input: bool) -> bool {
+    ui_input
+        || actions.iter().any(|action| {
+            matches!(
+                action,
+                config::Action::ToggleSplitZoom
+                    | config::Action::ToggleQuadrantZoom
+                    | config::Action::ToggleQuadRoot
+                    | config::Action::ShowLinkHints
+                    | config::Action::CopyLinkHints
+            )
+        })
+}
+
 /// Focus-changing shortcuts may release in another window, bypassing local key cleanup.
 pub fn consume_shortcut_key(
     local: &mut HashSet<PhysicalKey>,
@@ -302,6 +317,8 @@ pub fn search_shortcut(action: &config::Action) -> bool {
     matches!(
         action,
         StartSearch
+            | ShowLinkHints
+            | CopyLinkHints
             | EndSearch
             | SearchSelection
             | NavigateSearch { .. }
@@ -747,6 +764,39 @@ pub fn chord_held(chord: config::Modifiers, current: config::Modifiers) -> bool 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn empty_hint_shortcuts_consume_repeats_and_release_without_ui_focus() {
+        for action in [config::Action::ShowLinkHints, config::Action::CopyLinkHints] {
+            let key = PhysicalKey::Code(winit::keyboard::KeyCode::KeyH);
+            let mut local = HashSet::new();
+            let mut global = HashSet::new();
+            consume_shortcut_key(
+                &mut local,
+                &mut global,
+                key,
+                false,
+                shortcut_tracks_release(&[action], false),
+            );
+            assert!(key_is_consumed(
+                &mut local,
+                key,
+                ElementState::Pressed,
+                false
+            ));
+            assert!(key_is_consumed(
+                &mut local,
+                key,
+                ElementState::Released,
+                false
+            ));
+            assert!(!key_is_consumed(
+                &mut local,
+                key,
+                ElementState::Pressed,
+                false
+            ));
+        }
+    }
 
     #[test]
     fn popup_escape_alias_preserves_key_lifecycle_and_other_shortcuts() {

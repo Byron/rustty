@@ -8,6 +8,7 @@ pub mod deck_device;
 pub mod deck_render;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub mod handoff;
+pub mod hints;
 pub mod input;
 pub mod outliner;
 pub mod outliner_ui;

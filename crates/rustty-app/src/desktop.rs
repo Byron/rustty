@@ -35,7 +35,7 @@ use rustty::{
 };
 use rustty_app::{
     accessibility::TerminalText,
-    input, outliner, outliner_ui,
+    hints, input, outliner, outliner_ui,
     platform::{Platform, PlatformEvent},
     presentation::{
         Activity, CompletionFlash, DirectoryLabel, FocusHint, Progress, TabAccent, common_label,
@@ -932,6 +932,8 @@ struct Host {
     deferred_pointer: Option<Pos2>,
     link_hit: Option<(Id, u64, usize, vt::GridPoint, egui::Rect, Vec2)>,
     hovered_link: Option<HoveredLink>,
+    hints: Option<hints::Hints>,
+    hints_ime: bool,
     mouse_button: Option<vt::MouseButton>,
     selection_drag: Option<(Id, input::SelectionDrag)>,
     focused: bool,
@@ -1072,7 +1074,8 @@ impl Host {
         )
     }
     fn ui_input(&self) -> bool {
-        self.search_focus.is_some()
+        self.hints.is_some()
+            || self.search_focus.is_some()
             || self.modal_input()
             || self.messages_open && self.messages_focused
     }
@@ -2408,6 +2411,8 @@ impl App {
             deferred_pointer: None,
             link_hit: None,
             hovered_link: None,
+            hints: None,
+            hints_ime: false,
             mouse_button: None,
             selection_drag: None,
             focused: false,
@@ -3841,6 +3846,9 @@ impl App {
         action: Action,
         approved: bool,
     ) -> bool {
+        if !matches!(action, Action::ShowLinkHints | Action::CopyLinkHints) {
+            host.hints = None;
+        }
         let ui_input = host.ui_input();
         let clipboard = if ui_input {
             match action {
@@ -4372,6 +4380,9 @@ impl App {
                 };
                 host.egui.set_clipboard_text(text);
             }
+            Action::ShowLinkHints | Action::CopyLinkHints => {
+                return self.show_link_hints(host, action == Action::CopyLinkHints);
+            }
             Action::PasteFromClipboard | Action::PasteFromSelection => {
                 if let Some(id) = focused {
                     let location = if action == Action::PasteFromSelection {
@@ -4772,6 +4783,169 @@ impl App {
             current.repaint();
         }
     }
+    fn hint_geometry(&self, host: &Host, pane: Id) -> Option<(egui::Rect, Vec2)> {
+        let rect = *host.rects.get(&pane)?;
+        let config = self.window_config(host.id);
+        let text = egui::Rect::from_min_max(
+            rect.min + Vec2::new(config.window_padding_x.start, config.window_padding_y.start),
+            rect.max - Vec2::new(config.window_padding_x.end, config.window_padding_y.end),
+        );
+        let metrics = host.fonts.metrics();
+        let cell = Vec2::new(metrics.cell_width as f32, metrics.cell_height as f32)
+            / host.window.scale_factor() as f32;
+        Some((text, cell))
+    }
+
+    fn hints_valid(&self, host: &Host) -> bool {
+        let Some(hints) = &host.hints else {
+            return false;
+        };
+        if !host.focused
+            || host.peek.is_some()
+            || host.zoom_animation.is_running()
+            || host.modal_input()
+            || host.search_focus.is_some()
+            || host.messages_open && host.messages_focused
+            || self.focused(host.id) != Some(hints.pane)
+            || self.hint_geometry(host, hints.pane) != Some((hints.rect, hints.cell))
+        {
+            return false;
+        }
+        let Some(pane) = self.panes.get(&hints.pane) else {
+            return false;
+        };
+        let Some(prepared) = host.prepared.get(&hints.pane) else {
+            return false;
+        };
+        let Ok(terminal) = pane.session.terminal() else {
+            return false;
+        };
+        !terminal.modes.dec(2026)
+            && pane.cwd == hints.cwd
+            && hints.source.matches(&terminal)
+            && prepared.key.generation == hints.source.generation
+            && prepared.key.view.identity == hints.source.identity
+            && prepared.key.view.dimensions == hints.source.dimensions
+            && prepared.key.view.viewport_offset == hints.source.viewport_offset
+            && Some(&prepared.key.rect) == host.rects.get(&hints.pane)
+            && prepared.key.scale == host.window.scale_factor() as f32
+            && hints.source.matches_rows(&prepared.screen)
+    }
+
+    fn validate_hints(&self, host: &mut Host) {
+        if host.hints.is_some() && !self.hints_valid(host) {
+            host.hints = None;
+            host.repaint();
+        }
+    }
+
+    fn show_link_hints(&mut self, host: &mut Host, copy: bool) -> bool {
+        let Some(id) = self.focused(host.id) else {
+            return false;
+        };
+        let Some((rect, cell)) = self.hint_geometry(host, id) else {
+            return false;
+        };
+        let Some(pane) = self.panes.get_mut(&id) else {
+            return false;
+        };
+        let Ok(terminal) = pane.session.terminal() else {
+            return false;
+        };
+        let targets = pane.links.viewport_hints(terminal.screen());
+        host.hints = hints::Hints::new(id, &terminal, targets, rect, cell, pane.cwd.clone(), copy);
+        drop(terminal);
+        let search_focus = host.search_focus.take();
+        self.validate_hints(host);
+        if host.hints.is_none() {
+            host.search_focus = search_focus;
+            return false;
+        }
+        host.focus_text_input = false;
+        host.unfocus_text_input = true;
+        self.cancel_selection_drag(host);
+        host.sequence.clear();
+        host.sequence_len = 0;
+        host.hovered_link = None;
+        host.composing = false;
+        host.preedit.clear();
+        host.preedit_selection = None;
+        host.hints_ime = true;
+        host.egui.set_allow_ime(false);
+        host.window.set_ime_allowed(false);
+        host.repaint();
+        true
+    }
+
+    fn hint_key(
+        &mut self,
+        host: &mut Host,
+        key: &winit::keyboard::Key,
+        physical: PhysicalKey,
+        state: ElementState,
+        repeat: bool,
+    ) -> bool {
+        if host.hints.is_none() {
+            return false;
+        }
+        let consumed = input::key_is_consumed(&mut host.consumed_keys, physical, state, false);
+        if state == ElementState::Pressed {
+            self.consumed_global_keys.insert(physical);
+        }
+        self.validate_hints(host);
+        if state != ElementState::Pressed || repeat || consumed {
+            return true;
+        }
+        let Some(hints) = &mut host.hints else {
+            return true;
+        };
+        use winit::keyboard::{Key, NamedKey};
+        let result = match key {
+            Key::Named(NamedKey::Escape) => hints::Result::Cancel,
+            Key::Named(NamedKey::Backspace) => {
+                hints.backspace();
+                hints::Result::Pending
+            }
+            Key::Character(text)
+                if !host.modifiers.state().intersects(
+                    winit::keyboard::ModifiersState::CONTROL
+                        | winit::keyboard::ModifiersState::SUPER
+                        | winit::keyboard::ModifiersState::ALT,
+                ) =>
+            {
+                hints.text(text)
+            }
+            _ => hints::Result::Pending,
+        };
+        match result {
+            hints::Result::Cancel => host.hints = None,
+            hints::Result::Select(index) => {
+                let mut hints = host.hints.take().unwrap();
+                let entry = hints.entries.swap_remove(index);
+                if hints.copy {
+                    host.egui.egui_ctx().copy_text(entry.target.link.uri);
+                } else {
+                    self.open_url(host, entry.target.open_target, hints.cwd, false);
+                }
+            }
+            hints::Result::Pending => {}
+        }
+        host.repaint();
+        true
+    }
+
+    fn hint_ime(&self, host: &mut Host, ime: &Ime) -> bool {
+        if host.hints.is_none() && (!host.hints_ime || matches!(ime, Ime::Enabled)) {
+            host.hints_ime = false;
+            return false;
+        }
+        self.validate_hints(host);
+        host.composing = false;
+        host.preedit.clear();
+        host.preedit_selection = None;
+        true
+    }
+
     fn search_action(&mut self, host: &mut Host, id: Id, action: Action) -> bool {
         if !self
             .tab(host.id)
@@ -5191,6 +5365,15 @@ impl App {
         host: &mut Host,
         key: &winit::event::KeyEvent,
     ) -> bool {
+        if self.hint_key(
+            host,
+            &key.logical_key,
+            key.physical_key,
+            key.state,
+            key.repeat,
+        ) {
+            return true;
+        }
         let ui_input = host.ui_input();
         let search_input =
             host.search_focus.is_some() && !host.modal_input() && !host.messages_focused;
@@ -5286,6 +5469,7 @@ impl App {
                     .actions
                     .iter()
                     .any(|action| matches!(action, Action::GotoPin(_)));
+                let tracks_release = input::shortcut_tracks_release(&binding.actions, ui_input);
                 let performed = self.host_binding(event_loop, host, binding);
                 if flags.consumed && (!flags.performable || performed) {
                     let ui_input = ui_input || host.ui_input();
@@ -5294,7 +5478,7 @@ impl App {
                         &mut self.consumed_global_keys,
                         key.physical_key,
                         pin_navigation,
-                        ui_input || zoom_toggle,
+                        ui_input || tracks_release,
                     );
                     return true;
                 }
@@ -5492,6 +5676,7 @@ impl App {
         let Some(index) = self.index(host.id) else {
             return Ok(());
         };
+        self.validate_hints(host);
         let config = self.window_config(host.id).clone();
         let state = self.workspace.windows[index].clone();
         if let Some(Confirmation::Paste(paste)) = &host.confirm
@@ -6549,6 +6734,10 @@ impl App {
                     );
                 }
             }
+            self.validate_hints(host);
+            if let Some(hints) = &host.hints {
+                hints.paint(root_ui);
+            }
             host.search_rects.clear();
             let modal_input = host.modal_input();
             let requested_search = host.search_focus.filter(|_| host.focus_text_input);
@@ -6955,6 +7144,9 @@ impl App {
                     pane.accessibility(id).append_to(update);
                 }
             }
+        }
+        if host.hints.is_some() {
+            output.platform_output.ime = None;
         }
         if !self.background_smoke {
             host.egui.handle_platform_output_with_event_loop(
@@ -7402,6 +7594,7 @@ impl App {
             if !input::link_modifier(host.modifiers.state())
                 || !self.config().link_url
                 || host.modal_input()
+                || host.hints.is_some()
                 || host.peek.is_some()
                 || host.divider_drag.is_some()
                 || self.platform.is_none()
@@ -7548,6 +7741,9 @@ impl App {
     }
 
     fn mouse(&mut self, host: &mut Host, action: vt::MouseAction, button: Option<vt::MouseButton>) {
+        if host.hints.is_some() {
+            return;
+        }
         if host.zoom_animation.is_running()
             && host.peek.is_none()
             && action != vt::MouseAction::Release
@@ -8206,6 +8402,28 @@ impl ApplicationHandler<Event> for App {
             return;
         };
         host.messages_open = !self.errors.is_empty();
+        if let WindowEvent::Ime(ime) = &event
+            && self.hint_ime(&mut host, ime)
+        {
+            self.windows.insert(window, host);
+            return;
+        }
+        if matches!(
+            event,
+            WindowEvent::Focused(false)
+                | WindowEvent::Occluded(true)
+                | WindowEvent::Resized(_)
+                | WindowEvent::ScaleFactorChanged { .. }
+                | WindowEvent::MouseInput {
+                    state: ElementState::Pressed,
+                    ..
+                }
+                | WindowEvent::MouseWheel { .. }
+                | WindowEvent::Touch(_)
+        ) && host.hints.take().is_some()
+        {
+            host.repaint();
+        }
         if matches!(
             event,
             WindowEvent::MouseInput {

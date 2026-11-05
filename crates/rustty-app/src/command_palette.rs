@@ -385,6 +385,8 @@ fn actions() -> Vec<(&'static str, Action)> {
         ("Toggle Quad Root", Action::ToggleQuadRoot),
         ("Equalize Splits", Action::EqualizeSplits),
         ("Find", Action::StartSearch),
+        ("Open Link with Keyboard Hints", Action::ShowLinkHints),
+        ("Copy Link with Keyboard Hints", Action::CopyLinkHints),
         ("Open Configuration", Action::OpenConfig),
         ("Open Saved Layout", Action::OpenLayout),
         ("Reload Configuration", Action::ReloadConfig),
@@ -1171,20 +1173,20 @@ mod tests {
                 "o",
                 vec![
                     "Connect to tmuxx Server…",
+                    "Copy Link with Keyboard Hints",
                     "Copy Window to Persistent tmuxx Session",
                     "New Floating Panel",
                     "New Persistent tmuxx Window",
-                    "New Temporary tmuxx Window",
                 ],
             ),
             (
                 "",
                 vec![
                     "Connect to tmuxx Server…",
+                    "Copy Link with Keyboard Hints",
                     "Copy Window to Persistent tmuxx Session",
                     "Equalize Splits",
                     "Find",
-                    "New Floating Panel",
                 ],
             ),
         ] {

@@ -3,6 +3,7 @@ use crate::{GridPoint, PageCapacity, Row, Screen};
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
+use std::sync::LazyLock;
 
 mod terminal;
 pub use terminal::{Direction, SelectScroll, Status, TerminalSearch, Tick};
@@ -170,6 +171,16 @@ pub struct Link {
     pub start: GridPoint,
     pub end: GridPoint,
     pub uri: String,
+}
+
+/// A keyboard hint with inclusive, viewport-clipped cell endpoints.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LinkHint {
+    /// Copy this target verbatim, retaining diagnostic line and column numbers.
+    pub link: Link,
+    /// Open this target with the normal link safety checks. Diagnostic locations
+    /// open the file; the platform opener does not navigate to a line or column.
+    pub open_target: String,
 }
 
 #[derive(Default)]
@@ -489,6 +500,184 @@ impl LinkMatcher {
         self.links_in_rows(screen.all_rows())
     }
 
+    /// Visible links and diagnostic paths in physical screen order.
+    ///
+    /// Reads only visible rows and up to 64K cells of wrapped context at each
+    /// edge, avoiding a scan or decompression of unrelated scrollback. Inferred
+    /// links on an incomplete logical line are omitted rather than opening a
+    /// truncated target; visible OSC 8 links remain available.
+    pub fn viewport_hints(&mut self, screen: &Screen) -> Vec<LinkHint> {
+        const EDGE_CELLS: usize = 64 * 1024;
+        static DIAGNOSTICS: LazyLock<Regex> = LazyLock::new(|| {
+            // shortcut: paths stop at spaces; quoted/escaped paths need a parser.
+            Regex::new(concat!(
+                r"(?P<path>(?:[A-Za-z]:[\\/]|\\\\|~?/|\.{1,2}[\\/])?",
+                r"[\w.@%+~=-]*[\w@%+~=-](?:[\\/][\w.@%+~=-]*[\w@%+~=-])*)",
+                r"(?P<location>:[0-9]+(?::[0-9]+)?)?",
+            ))
+            .unwrap()
+        });
+        let top = screen.history_len().saturating_sub(screen.viewport_offset);
+        let bottom = top + screen.height();
+        let total = screen.history_len() + screen.height();
+        let metadata = |y| {
+            let (page, row) = screen.pages.page_at(y);
+            (page.headers[row], usize::from(page.columns))
+        };
+        let wrapped = |y| metadata(y).0.has(crate::packed::RowHeader::WRAPPED);
+        let mut start = top;
+        let mut remaining = EDGE_CELLS;
+        while start > 0 && wrapped(start - 1) {
+            let width = metadata(start - 1).1;
+            if width > remaining {
+                break;
+            }
+            remaining -= width;
+            start -= 1;
+        }
+        let mut end = bottom;
+        remaining = EDGE_CELLS;
+        while end < total && wrapped(end - 1) {
+            let width = metadata(end).1;
+            if width > remaining {
+                break;
+            }
+            remaining -= width;
+            end += 1;
+        }
+        let rows: Vec<_> = (start..end).map(|y| screen.physical_row(y)).collect();
+        let positions: HashMap<_, _> = rows
+            .iter()
+            .enumerate()
+            .map(|(index, row)| (row.id, index))
+            .collect();
+        let mut complete = 0..rows.len();
+        if (start > 0 && wrapped(start - 1)) || rows[0].wrap_continuation {
+            while complete.start < complete.end {
+                let row = rows[complete.start];
+                complete.start += 1;
+                if !row.wrapped {
+                    break;
+                }
+            }
+        }
+        if rows.last().is_some_and(|row| row.wrapped) {
+            while complete.end > complete.start {
+                complete.end -= 1;
+                if complete.end == 0 || !rows[complete.end - 1].wrapped {
+                    break;
+                }
+            }
+        }
+        let explicit = |link: &Link| {
+            rows[positions[&link.start.row]]
+                .hyperlink(link.start.col)
+                .is_some()
+        };
+        let overlap = |a: &Link, b: &Link| {
+            (positions[&a.start.row], a.start.col) <= (positions[&b.end.row], b.end.col)
+                && (positions[&b.start.row], b.start.col) <= (positions[&a.end.row], a.end.col)
+        };
+        let mut hints: Vec<_> = self
+            .links_in_rows(rows.iter().copied())
+            .into_iter()
+            .filter(|link| {
+                explicit(link)
+                    || (complete.contains(&positions[&link.start.row])
+                        && complete.contains(&positions[&link.end.row]))
+            })
+            .map(|link| LinkHint {
+                open_target: link.uri.clone(),
+                link,
+            })
+            .collect();
+        for line in logical_lines(rows[complete].iter().copied()) {
+            for found in DIAGNOSTICS.captures_iter(&line.text) {
+                let target = found.get(0).unwrap();
+                let path = &found["path"];
+                let location = found.name("location").is_some();
+                let windows = path.contains('\\')
+                    || (path.as_bytes().get(1) == Some(&b':') && path.contains('/'));
+                let filename = path.rsplit(['/', '\\']).next().unwrap();
+                let has_extension = filename
+                    .rsplit_once('.')
+                    .is_some_and(|(name, extension)| !name.is_empty() && !extension.is_empty());
+                if !(windows || (location && (path.contains('/') || has_extension)))
+                    || line.text[target.end()..]
+                        .chars()
+                        .next()
+                        .is_some_and(|c| c.is_alphanumeric() || c == '_')
+                {
+                    continue;
+                }
+                let Some((start, end)) = line.cells(target.range()) else {
+                    continue;
+                };
+                let link = Link {
+                    start,
+                    end,
+                    uri: target.as_str().to_owned(),
+                };
+                if hints.iter().any(|hint| {
+                    overlap(&link, &hint.link)
+                        && (explicit(&hint.link) || hint.link.uri.contains("://"))
+                }) {
+                    continue;
+                }
+                hints.retain(|hint| !overlap(&link, &hint.link));
+                hints.push(LinkHint {
+                    link,
+                    open_target: path.to_owned(),
+                });
+            }
+        }
+        hints.retain_mut(|hint| {
+            let first = positions[&hint.link.start.row];
+            let last = positions[&hint.link.end.row];
+            let mut visible_first = first.max(top - start);
+            let visible_last = last.min(bottom - start - 1);
+            let mut col = if visible_first == first {
+                hint.link.start.col
+            } else {
+                0
+            };
+            if visible_first > visible_last {
+                return false;
+            }
+            if col >= rows[visible_first].cells.len().min(screen.columns) {
+                visible_first += 1;
+                col = 0;
+            }
+            if visible_first > visible_last {
+                return false;
+            }
+            hint.link.start = GridPoint {
+                row: rows[visible_first].id,
+                col,
+            };
+            hint.link.end = GridPoint {
+                row: rows[visible_last].id,
+                col: (if visible_last == last {
+                    hint.link.end.col
+                } else {
+                    usize::MAX
+                })
+                .min(rows[visible_last].cells.len().min(screen.columns) - 1),
+            };
+            true
+        });
+        hints.sort_by_key(|hint| {
+            (
+                positions[&hint.link.start.row],
+                hint.link.start.col,
+                positions[&hint.link.end.row],
+                hint.link.end.col,
+            )
+        });
+        hints.dedup();
+        hints
+    }
+
     /// Match only the clicked logical line, including wraps beyond the viewport.
     pub fn link_at(&mut self, screen: &Screen, point: GridPoint) -> Option<Link> {
         let clicked = screen
@@ -794,6 +983,143 @@ mod tests {
         assert_ne!(link.start.row, point.row, "path starts above the viewport");
         assert_eq!(matcher.cache.len(), 1);
         assert_eq!(matcher.cache[&link.start.row].0, format!("see {path} now"));
+    }
+
+    #[test]
+    fn viewport_hints_keep_diagnostics_separate_from_open_targets_and_urls() {
+        let mut terminal = Terminal::new(200, 3, 100);
+        terminal.feed(
+            concat!(
+                "main.rs:10:2 src/lib.rs:42 /tmp/mod.rs:9 ~/test.rs:3 ",
+                "C:\\src\\main.rs:12:4 src\\other.rs:8 C:/work/test.rs:5 ",
+                "https://example.org:8080/path.rs:12 error:10 plain.rs\r\n",
+                "\\\\server\\share\\log.txt C:\\src\\plain.rs ",
+                "\x1b]8;;custom:123\x07main.rs:99\x1b]8;;\x07"
+            )
+            .as_bytes(),
+        );
+        let hints = LinkMatcher::default().viewport_hints(terminal.screen());
+        assert_eq!(
+            hints
+                .iter()
+                .map(|hint| (hint.link.uri.as_str(), hint.open_target.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("main.rs:10:2", "main.rs"),
+                ("src/lib.rs:42", "src/lib.rs"),
+                ("/tmp/mod.rs:9", "/tmp/mod.rs"),
+                ("~/test.rs:3", "~/test.rs"),
+                ("C:\\src\\main.rs:12:4", "C:\\src\\main.rs"),
+                ("src\\other.rs:8", "src\\other.rs"),
+                ("C:/work/test.rs:5", "C:/work/test.rs"),
+                (
+                    "https://example.org:8080/path.rs:12",
+                    "https://example.org:8080/path.rs:12"
+                ),
+                ("\\\\server\\share\\log.txt", "\\\\server\\share\\log.txt"),
+                ("C:\\src\\plain.rs", "C:\\src\\plain.rs"),
+                ("custom:123", "custom:123"),
+            ],
+        );
+        // Hints must not expand the existing mouse-link behavior.
+        assert!(
+            !LinkMatcher::default()
+                .links(terminal.screen())
+                .iter()
+                .any(|link| link.uri == "main.rs:10:2")
+        );
+    }
+
+    #[test]
+    fn viewport_hints_clip_wrapped_edges_and_preserve_complete_targets() {
+        let mut terminal = Terminal::new(10, 2, 100);
+        let target = "https://example.org/quite/a/long/path";
+        terminal.feed(format!("{target}\r\nlast row").as_bytes());
+        terminal.screen_mut().scroll_viewport(2);
+        let screen = terminal.screen();
+        let top = screen.history_len() - screen.viewport_offset;
+        let hints = LinkMatcher::default().viewport_hints(screen);
+        assert_eq!(hints.len(), 1);
+        assert_eq!(hints[0].link.uri, target);
+        assert_eq!(hints[0].open_target, target);
+        assert_eq!(
+            hints[0].link.start,
+            GridPoint {
+                row: screen.physical_row(top).id,
+                col: 0
+            }
+        );
+        assert_eq!(
+            hints[0].link.end,
+            GridPoint {
+                row: screen.physical_row(top + 1).id,
+                col: 9
+            }
+        );
+    }
+
+    #[test]
+    fn viewport_hints_sort_physical_rows_and_deduplicate_only_repeated_spans() {
+        let mut terminal = Terminal::new(40, 3, 100);
+        terminal.feed(b"https://one https://one\r\nhttps://two\r\nhttps://three");
+        terminal.screen_mut().pages.pages[0].row_ids[..3].copy_from_slice(&[90, 4, 25]);
+        let pattern = r"https://\w+".to_owned();
+        let hints = LinkMatcher::new([pattern.clone(), pattern])
+            .unwrap()
+            .viewport_hints(terminal.screen());
+        assert_eq!(
+            hints
+                .iter()
+                .map(|hint| hint.link.start.row)
+                .collect::<Vec<_>>(),
+            [90, 90, 4, 25]
+        );
+        assert_eq!(
+            hints
+                .iter()
+                .map(|hint| hint.link.uri.as_str())
+                .collect::<Vec<_>>(),
+            ["https://one", "https://one", "https://two", "https://three"]
+        );
+    }
+
+    #[test]
+    fn viewport_hints_leave_unrelated_compressed_history_cold() {
+        let mut terminal = Terminal::new(80, 2, 11_000);
+        terminal.feed("old /unrelated/path\r\n".repeat(10_000).as_bytes());
+        terminal.feed(b"main.rs:42\r\nhttps://example.org");
+        let warm_bytes = terminal.screen().owned_bytes();
+        terminal.set_scrollback_compression(true);
+        while terminal.compress_scrollback_step() {}
+        let cold_bytes = terminal.screen().owned_bytes();
+        assert!(cold_bytes < warm_bytes);
+        let mut matcher = LinkMatcher::default();
+        let hints = matcher.viewport_hints(terminal.screen());
+        assert_eq!(hints.len(), 2);
+        assert_eq!(terminal.screen().owned_bytes(), cold_bytes);
+        assert_eq!(matcher.cache.len(), 2);
+    }
+
+    #[test]
+    fn viewport_hints_skip_incomplete_wrapped_targets_but_keep_visible_osc8() {
+        let mut terminal = Terminal::new(1000, 2, 1000);
+        terminal.feed(b"\x1b]8;;https://first:456\x07first\x1b]8;;\x07 main.rs:8 ");
+        terminal.feed(format!("https://example.org{}", "/a".repeat(70_000)).as_bytes());
+        terminal.feed(b" main.rs:9 \x1b]8;;https://actual:123\x07visible\x1b]8;;\x07");
+        let hints = LinkMatcher::default().viewport_hints(terminal.screen());
+        assert_eq!(hints.len(), 1);
+        assert_eq!(hints[0].link.uri, "https://actual:123");
+        assert_eq!(hints[0].open_target, "https://actual:123");
+        assert_eq!(hints[0].link.start.row, terminal.screen().row(1).id);
+        terminal.screen_mut().scroll_viewport(isize::MAX);
+        let hints = LinkMatcher::default().viewport_hints(terminal.screen());
+        assert_eq!(hints.len(), 1);
+        assert_eq!(hints[0].link.uri, "https://first:456");
+        assert_eq!(hints[0].open_target, "https://first:456");
+        assert_eq!(
+            hints[0].link.start.row,
+            terminal.screen().physical_row(0).id
+        );
     }
 
     #[test]

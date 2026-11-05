@@ -459,6 +459,18 @@ links, detected URLs and file paths without spaces. Command-click opens the
 highlighted target with its default application. Relative paths use the pane's
 working directory, and `~/` paths use the home directory.
 
+Press Command+Shift+H (Ctrl+Shift+H on Windows), or choose **Open Link with
+Keyboard Hints** in the command palette, to label links and paths in the focused
+pane's visible content. Type a label to open its target with the default
+application. **Copy Link with Keyboard Hints** copies the chosen target instead;
+it is also bindable as `copy_link_hints`. Diagnostic locations such as
+`src/main.rs:42:7` open the file, while copying preserves the line and column.
+The open action is bindable as `show_link_hints`. Escape cancels, and Backspace
+removes a typed label character. Hints leave the terminal's selection intact and
+cancel when the content, viewport, pane, or window focus changes. Paths containing
+spaces need explicit OSC 8 links; matching stays within visible content and
+bounded context for wrapped links.
+
 File → Open Saved Layout lists the last saved layouts from Ghostty Local,
 Ghostty and Rustty, and can browse for another Rustty workspace JSON or Ghostty
 saved-state folder. Imported tabs and panes open in new windows with fresh shells
@@ -528,6 +540,11 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo +1.95.0 run --release --offline -p rustty-vt --example parity-runner
 RUSTTY_SMOKE_DIR=/tmp/rustty-native-smoke RUSTTY_SMOKE_OFFSCREEN=1 target/debug/Rustty.app/Contents/MacOS/rustty
 ```
+
+Set `RUSTTY_SMOKE_HINTS=1` with the offscreen smoke to run keyboard-hint checks
+only. It writes `keyboard-hints-result.json` and captures the labels and IME
+restoration. It intercepts clipboard output and avoids external launches while
+checking Find handoff, selection, key releases, IME, and stale-target cancellation.
 
 The macOS session import regression runs five hidden debug instances in sequence
 with isolated configuration, disposable `/bin/sh` shells, and state. Each

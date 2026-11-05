@@ -235,6 +235,8 @@ pub enum Action {
     SelectAll,
     ClearScreen,
     StartSearch,
+    ShowLinkHints,
+    CopyLinkHints,
     EndSearch,
     SearchSelection,
     NavigateSearch { next: bool },
@@ -359,6 +361,8 @@ impl Action {
             "select_all" => Self::SelectAll,
             "clear_screen" => Self::ClearScreen,
             "start_search" => Self::StartSearch,
+            "show_link_hints" => Self::ShowLinkHints,
+            "copy_link_hints" => Self::CopyLinkHints,
             "end_search" => Self::EndSearch,
             "search_selection" => Self::SearchSelection,
             "reload_config" => Self::ReloadConfig,
@@ -573,6 +577,7 @@ const WINDOWS_DEFAULTS: &[&str] = &[
     "ctrl+alt+8=goto_tab:8",
     "ctrl+alt+9=last_tab",
     "performable:ctrl+shift+f=start_search",
+    "ctrl+shift+h=show_link_hints",
     "performable:ctrl+shift+e=search_selection",
     "performable:escape=end_search",
     "performable:f3=navigate_search:next",
@@ -647,6 +652,7 @@ const MACOS_DEFAULTS: &[&str] = &[
     "super+shift+8=goto_pin:8",
     "super+shift+9=goto_pin:9",
     "performable:super+f=start_search",
+    "super+shift+h=show_link_hints",
     "performable:super+e=search_selection",
     "performable:super+shift+f=end_search",
     "performable:escape=end_search",
@@ -781,5 +787,17 @@ mod platform_defaults_tests {
         let binding = KeyBinding::parse("ctrl+shift+g=toggle_quad_root").unwrap();
         assert_eq!(binding.actions, vec![Action::ToggleQuadRoot]);
         assert!(Action::parse("toggle_quad_root:child").is_err());
+    }
+
+    #[test]
+    fn link_hint_actions_are_bindable_without_arguments() {
+        for (name, action) in [
+            ("show_link_hints", Action::ShowLinkHints),
+            ("copy_link_hints", Action::CopyLinkHints),
+        ] {
+            let binding = KeyBinding::parse(&format!("super+shift+h={name}")).unwrap();
+            assert_eq!(binding.actions, [action]);
+            assert!(Action::parse(&format!("{name}:argument")).is_err());
+        }
     }
 }
