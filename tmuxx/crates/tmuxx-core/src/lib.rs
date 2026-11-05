@@ -1359,26 +1359,25 @@ impl Engine {
                         }
                     })
                 };
-                let mut data =
-                    self.panes[&pid]
-                        .terminal
-                        .capture_with(tmuxx_terminal::CaptureOptions {
-                            raw: a.has(b'R'),
-                            start: bound(b'S', i32::MIN),
-                            end: bound(b'E', i32::MAX),
-                            join: a.has(b'J'),
-                            escape: a.has(b'e'),
-                            escape_sequences: a.has(b'C'),
-                            alternate: a.has(b'a'),
-                            pending: a.has(b'P'),
-                            preserve_trailing: a.has(b'N'),
-                            trim_unused: a.has(b'T'),
-                            quiet: a.has(b'q'),
-                            number_lines: a.has(b'L'),
-                            hyperlinks: a.has(b'H'),
-                            timestamps: a.has(b'I'),
-                            flags: a.has(b'F'),
-                        })?;
+                let options = tmuxx_terminal::CaptureOptions {
+                    raw: a.has(b'R'),
+                    start: bound(b'S', i32::MIN),
+                    end: bound(b'E', i32::MAX),
+                    join: a.has(b'J'),
+                    escape: a.has(b'e'),
+                    escape_sequences: a.has(b'C'),
+                    alternate: a.has(b'a'),
+                    pending: a.has(b'P'),
+                    preserve_trailing: a.has(b'N'),
+                    trim_unused: a.has(b'T'),
+                    quiet: a.has(b'q'),
+                    number_lines: a.has(b'L'),
+                    hyperlinks: a.has(b'H'),
+                    timestamps: a.has(b'I'),
+                    flags: a.has(b'F'),
+                };
+                let terminal = &mut self.panes.get_mut(&pid).unwrap().terminal;
+                let mut data = terminal.capture_for_owner(options)?;
                 if a.has(b'p') {
                     if data.last() != Some(&b'\n') {
                         data.push(b'\n');

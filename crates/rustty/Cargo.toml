@@ -33,3 +33,8 @@ libc = { version = "0.2", optional = true }
 name = "pty-bench"
 path = "../../test/rustty/pty-bench.rs"
 required-features = ["sessions"]
+
+[[example]]
+name = "owner-history"
+path = "../../test/rustty/owner-history.rs"
+required-features = ["sessions"]

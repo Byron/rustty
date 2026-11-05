@@ -1,0 +1,16 @@
+{
+  "mode": "detached-multi",
+  "rows": 100000,
+  "kind": "unicode",
+  "order": "AB,BA,AB",
+  "binaries": {
+    "before": {
+      "path": "/tmp/rustty-owner-multi-before-bin",
+      "sha256": "0521dae80b010ba6a5e669ac55d3ee5aeffccbd34658ea2b88cebdeee8304984"
+    },
+    "after": {
+      "path": "/tmp/rustty-owner-multi-after-bin",
+      "sha256": "b82cb9cc5917e0c84f264f9a2a232a244de746f71b607da40a61399550486da7"
+    }
+  }
+}

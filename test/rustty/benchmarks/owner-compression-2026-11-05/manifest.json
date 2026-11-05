@@ -1,0 +1,35 @@
+{
+  "base_commit": "2b508ce4d088c83f25d663138a576a58c85e5e6a",
+  "candidate_patch_sha256": "4813c1e85802ef46095c8d73965204ac194a094d45402c27c3303535a2d1e788",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "uname": {
+    "system": "Linux",
+    "node": "cr1",
+    "release": "7.0.0-1019-azure",
+    "version": "#20-Ubuntu SMP PREEMPT Mon Oct 19 23:06:15 UTC 2026",
+    "machine": "aarch64",
+    "processor": ""
+  },
+  "profile": "release, thin LTO, codegen-units=1, no RUSTFLAGS",
+  "source_sha256": "b3ed08ea8c5ed68ed6687141418418da256aaa88219deb5fcd63eac80eb076ef",
+  "cargo_lock_sha256": "2da68acb42cc6fd39d913556d14a38269f0d1f08d44cd0d000e3f5460e1ae2c6",
+  "order": "three adjacent pairs AB,BA,AB for each corpus/transport; no concurrent compilers or timed jobs",
+  "corpora": {
+    "ascii": "line={row:06} file=src/terminal.rs task={row%1000:04} result=complete CRLF",
+    "unicode": "SGR1;32 Build SGR22;39 : line={row:06} \u65e5\u672c\u8a9e \ud83d\ude00 caf\u00e9 output abcdefghijklmnopqrstuvwxyz CRLF"
+  },
+  "scope": "Linux real PTYs; detached owner via ServerHandle and non-subscribing LocalClientSender; remote views plus separate native_commands observer; no rendered/visible latency",
+  "settle": "owner history_bytes unchanged for100ms, sampled every2ms; internal tests separately establish finite pass completion",
+  "rss": "/proc/self/status sampled at owner-owned stability: embedded owner, controller, in-process view/model state and allocator retention; excludes PTY children; not owner-only or total-process steady state",
+  "admission": "Local observer uses existing bounded send_wait and includes admission wait in command latency",
+  "binaries": {
+    "before": {
+      "path": "/tmp/rustty-owner-before-bin",
+      "sha256": "206c048db2be9268ef2840b8e791d29173708289def9f6384f59af1684953046"
+    },
+    "after": {
+      "path": "/tmp/rustty-owner-after-bin",
+      "sha256": "3d0947ad8d46ecb845af3371d4cbc7801a9f751935dc0612bffd0e976f31c674"
+    }
+  }
+}

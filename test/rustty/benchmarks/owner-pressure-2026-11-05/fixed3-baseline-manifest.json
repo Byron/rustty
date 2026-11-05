@@ -1,0 +1,24 @@
+{
+  "baseline": "2b508ce4d088c83f25d663138a576a58c85e5e6a",
+  "frozen_source": "/tmp/rustty-owner-policy-base",
+  "source_sha256": "5292a90c9c68f511ed52fd001a47cdd56808ac6586e4b0c0157632d35e3f2a9b",
+  "binary": "/tmp/rustty-owner-pressure-before-bin",
+  "binary_sha256": "8f17715e49979a15b8ad1bd7ff363b6027ac01ce7a239739033434bd3f7030c2",
+  "lock_sha256": "a2771da75bd72109145400f889491445fe54d4ad57eb56dca28e3703f468dbf5",
+  "compiler": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "profile": "release thin LTO,codegen-units1; default generic aarch64 target",
+  "smoke": "native1024, real PTYs, functional validation only; no latency/throughput claims",
+  "viewport_and_full_history": {
+    "recovery": {
+      "complete": true,
+      "equal_text": true,
+      "resume_to_final_ns": 170964341
+    },
+    "reconnect_equal": true,
+    "retained_rows": 1045,
+    "recovery_history_equal": true,
+    "reconnect_history_equal": true,
+    "history_verification": "all retained row IDs and text; after latency samples"
+  },
+  "verification_boundary": "Full row IDs/text comparison happens after all latency samples. Whole-job RSS, if sampled later, includes this verification; owner storage probe remains separate."
+}

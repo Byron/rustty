@@ -1,0 +1,61 @@
+{
+  "baseline": "2b508ce4d088c83f25d663138a576a58c85e5e6a",
+  "candidate_patch_sha256": "4813c1e85802ef46095c8d73965204ac194a094d45402c27c3303535a2d1e788",
+  "source_sha256": "08ffcf579f144f4f63f874fc7047022921bdb91a265c2050c22ab8e27213702a",
+  "cargo_lock_sha256": "a2771da75bd72109145400f889491445fe54d4ad57eb56dca28e3703f468dbf5",
+  "binaries": {
+    "before": {
+      "path": "/tmp/rustty-owner-pressure-bursts-before-bin",
+      "sha256": "5e8084652aa6355be1d7252223a9a2b94f5b21cc444c8e66b045466185532c4a"
+    },
+    "after": {
+      "path": "/tmp/rustty-owner-pressure-bursts-after-bin",
+      "sha256": "ddf5375ca1f3643ee4448b3d46417f5b3997fd441b5536275694565f0966cb16"
+    }
+  },
+  "previous_fixed3_baseline_preserved": {
+    "path": "/tmp/rustty-owner-pressure-before-bin",
+    "sha256": "8f17715e49979a15b8ad1bd7ff363b6027ac01ce7a239739033434bd3f7030c2"
+  },
+  "compiler": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "profile": "release; thin LTO;codegen-units1;default generic aarch64 target;locked offline dependencies",
+  "order": "native2 before/after; embedded3 after/before; native3 before/after; each fresh process/output path; no concurrent builds or timed jobs",
+  "workload_change": "root full-history variant plusoptional BURSTS2|3 (default3); same16MiB corpus,32KiB/4ms pacing,viewport comparisons and independent observer. Original archival3-burst source unchanged.",
+  "history_verification": "all retained row IDs/text after catch-up latency sampling; separate from viewport equality; actual retained count subject to existing tmux10% collection hysteresis",
+  "rss": "/usr/bin/time -v whole-job maximumRSS,including post-latency full-history verification; not summedprocess-tree memory or owner-only owned bytes",
+  "statistical_scope": "single stress comparison pair per scenario; report sampled latencies and semantic outcomes, no standalone throughput/latency speedup claim",
+  "fixed3_source_sha256": "5292a90c9c68f511ed52fd001a47cdd56808ac6586e4b0c0157632d35e3f2a9b",
+  "portable_manifest": "harness/Cargo.toml; only dependency/source paths and standalone workspace differ from recorded absolute manifests",
+  "artifact_sha256": {
+    "Cargo.after.toml": "6c62538320bab18feb234b87d0fb331704fd17cc5554f32cb806fc32e3eaf448",
+    "Cargo.before.toml": "e7c0ddf774974bef18a2bab56b3cb8d670e791a11deae25a6519cd9ef489b636",
+    "Cargo.lock": "a2771da75bd72109145400f889491445fe54d4ad57eb56dca28e3703f468dbf5",
+    "after-build.log": "461b0936cf6f631efaae97c4a6a853bc693d2605f98e95833a9f27f24f5955f2",
+    "after-embedded-three-100k.json": "2d32d6637ff390f769cc19b2f5c4b3f369c324032e5afc59687cdc77e266ad8b",
+    "after-embedded-three-100k.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after-embedded-three-100k.time": "ac07f022b6539663a8e74c1dde8aff6b5e211c609337e95dc72a5b7ef90f46f4",
+    "after-native-three-100k.json": "9880e107e8648bf591a6f242457592538fa4685ebf88b4cbbafa4126bda42091",
+    "after-native-three-100k.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after-native-three-100k.time": "4f8018e7a90e89e071bec339f0cb291767e79a69b1147873e3463f421575dc60",
+    "after-native-two-100k.json": "b710994b8c15b0f0e866f97ddd599390d78b856fd48367235c87d5f6c2b6ce80",
+    "after-native-two-100k.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after-native-two-100k.time": "1dc16cf9a23d9c36de555c6210cb0337ccccdf00226b08c85d80287ae3433559",
+    "before-build.log": "67c7e76ad0d6a90f7d440d0161a883e362eeb5caa189dd453646bb9fc699cfdc",
+    "before-embedded-three-100k.json": "f84a6244d0eb63f40acb1d681cab7c94fb87b498a34a81686a411327660c42c9",
+    "before-embedded-three-100k.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before-embedded-three-100k.time": "bca797fe51c0f3e192425a0fcda33bee7c21d7d987279e6617394362e019162b",
+    "before-native-three-100k.json": "cd2ce374610fb8620b2e06897d7a7aade53aa2988c468038177fda02dc3698e4",
+    "before-native-three-100k.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before-native-three-100k.time": "f0a52ab003b79495fcd0e10844b54388ad4fe9bb3f4dd97d2026705d22302737",
+    "before-native-two-100k.json": "a9a9e663e730cbe00c58bf0051aeb6406e4f7daeb03a4bdf48c5ead1eb63d2ac",
+    "before-native-two-100k.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before-native-two-100k.time": "dc01900bd78e4e3f3d7281b6744894237a01f6b556a8426339378c79119c698a",
+    "candidate.patch": "4813c1e85802ef46095c8d73965204ac194a094d45402c27c3303535a2d1e788",
+    "fixed3-baseline-manifest.json": "0f469781e430e62800cf99e38141b1b3c397ade9263179f0f898418518c8d6c4",
+    "fixed3-smoke-native-1024.json": "ad86d103e81758ca6c65966fe0891b06a4c9aacd6d3da167148878d0ced4caba",
+    "pressure-fixed3-baseline.rs": "5292a90c9c68f511ed52fd001a47cdd56808ac6586e4b0c0157632d35e3f2a9b",
+    "pressure.rs": "08ffcf579f144f4f63f874fc7047022921bdb91a265c2050c22ab8e27213702a",
+    "summarize.py": "c13854c224708ed0fb9183f8d29f962849bfda651f642b5ca49940f67c1c8768",
+    "summary.json": "dc373b1f7fbb3f1e5bbd126881fa64e0607dfa316873a02432577f57387facfb"
+  }
+}

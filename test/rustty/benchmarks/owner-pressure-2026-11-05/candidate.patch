@@ -1,0 +1,694 @@
+diff --git a/crates/rustty-vt/src/compression.rs b/crates/rustty-vt/src/compression.rs
+index 98d3b6d75..71f3171a8 100644
+--- a/crates/rustty-vt/src/compression.rs
++++ b/crates/rustty-vt/src/compression.rs
+@@ -241,6 +241,11 @@ impl Terminal {
+         self.scrollback_compression
+     }
+ 
++    /// Whether an idle pass remains armed. Reading this never restarts a pass.
++    pub fn scrollback_compression_pending(&self) -> bool {
++        self.scrollback_compression && self.primary.pages.compression.pending
++    }
++
+     /// Arm another pass after output or a host operation that read cold history.
+     pub fn request_scrollback_compression(&mut self) {
+         if self.scrollback_compression {
+diff --git a/tmuxx/crates/tmuxx-core/src/lib.rs b/tmuxx/crates/tmuxx-core/src/lib.rs
+index 2ac987064..1e3ce0da4 100644
+--- a/tmuxx/crates/tmuxx-core/src/lib.rs
++++ b/tmuxx/crates/tmuxx-core/src/lib.rs
+@@ -1359,26 +1359,25 @@ impl Engine {
+                         }
+                     })
+                 };
+-                let mut data =
+-                    self.panes[&pid]
+-                        .terminal
+-                        .capture_with(tmuxx_terminal::CaptureOptions {
+-                            raw: a.has(b'R'),
+-                            start: bound(b'S', i32::MIN),
+-                            end: bound(b'E', i32::MAX),
+-                            join: a.has(b'J'),
+-                            escape: a.has(b'e'),
+-                            escape_sequences: a.has(b'C'),
+-                            alternate: a.has(b'a'),
+-                            pending: a.has(b'P'),
+-                            preserve_trailing: a.has(b'N'),
+-                            trim_unused: a.has(b'T'),
+-                            quiet: a.has(b'q'),
+-                            number_lines: a.has(b'L'),
+-                            hyperlinks: a.has(b'H'),
+-                            timestamps: a.has(b'I'),
+-                            flags: a.has(b'F'),
+-                        })?;
++                let options = tmuxx_terminal::CaptureOptions {
++                    raw: a.has(b'R'),
++                    start: bound(b'S', i32::MIN),
++                    end: bound(b'E', i32::MAX),
++                    join: a.has(b'J'),
++                    escape: a.has(b'e'),
++                    escape_sequences: a.has(b'C'),
++                    alternate: a.has(b'a'),
++                    pending: a.has(b'P'),
++                    preserve_trailing: a.has(b'N'),
++                    trim_unused: a.has(b'T'),
++                    quiet: a.has(b'q'),
++                    number_lines: a.has(b'L'),
++                    hyperlinks: a.has(b'H'),
++                    timestamps: a.has(b'I'),
++                    flags: a.has(b'F'),
++                };
++                let terminal = &mut self.panes.get_mut(&pid).unwrap().terminal;
++                let mut data = terminal.capture_for_owner(options)?;
+                 if a.has(b'p') {
+                     if data.last() != Some(&b'\n') {
+                         data.push(b'\n');
+diff --git a/tmuxx/crates/tmuxx-runtime/src/delivery.rs b/tmuxx/crates/tmuxx-runtime/src/delivery.rs
+index 4c3198aa8..4aff15656 100644
+--- a/tmuxx/crates/tmuxx-runtime/src/delivery.rs
++++ b/tmuxx/crates/tmuxx-runtime/src/delivery.rs
+@@ -245,6 +245,7 @@ impl Host {
+             pane.terminal.program_status_exited();
+         }
+         let state = self.engine.native_snapshot();
++        self.request_history_compression();
+         let bytes = match native::snapshot_bytes(&state, self.snapshot_limit.min(BYTE_LIMIT as u64))
+         {
+             Ok(bytes) => bytes as usize,
+@@ -356,6 +357,43 @@ mod tests {
+         })
+     }
+ 
++    #[test]
++    fn rejected_final_barrier_rearms_surviving_owner_histories() {
++        let (mut host, _received) = host(1);
++        host.engine
++            .execute(
++                &tmuxx_command::parse(b"new-window -d ''").unwrap()[0],
++                &mut ClientContext::default(),
++            )
++            .unwrap();
++        for pane in host.engine.panes.values_mut() {
++            pane.terminal.set_history_limit(5000);
++            pane.terminal.feed(&b"retained history\r\n".repeat(2000));
++        }
++        while host.compress_history_step() {}
++        let owned = |host: &Host| {
++            host.engine.panes[&1]
++                .terminal
++                .format_value("history_bytes")
++                .unwrap()
++        };
++        let cold = owned(&host);
++        host.send(1, ServerMessage::Changed { sequence: 1 });
++        host.send(1, ServerMessage::Changed { sequence: 2 });
++        host.snapshot_limit = 1;
++        host.final_native_barrier(0, 0);
++        assert!(!host.clients.contains_key(&1));
++        assert!(
++            host.engine.panes[&1]
++                .terminal
++                .scrollback_compression_pending()
++        );
++        assert_ne!(owned(&host), cold);
++        host.engine.panes.remove(&0);
++        while host.compress_history_step() {}
++        assert_eq!(owned(&host), cold);
++    }
++
+     #[test]
+     fn lagging_view_recovers_current_checkpoint_and_keeps_critical_order() {
+         let (mut host, rx) = host(2);
+diff --git a/tmuxx/crates/tmuxx-runtime/src/lib.rs b/tmuxx/crates/tmuxx-runtime/src/lib.rs
+index b65372d4d..05a849cc5 100644
+--- a/tmuxx/crates/tmuxx-runtime/src/lib.rs
++++ b/tmuxx/crates/tmuxx-runtime/src/lib.rs
+@@ -25,6 +25,7 @@ mod defaults;
+ mod delivery;
+ mod files;
+ mod format_jobs;
++mod history;
+ mod hooks;
+ mod lifecycle;
+ mod messages;
+@@ -1070,6 +1071,7 @@ struct Host {
+     snapshots_requested: BTreeSet<u64>,
+     native_delivery: BTreeMap<u64, delivery::Pending>,
+     native_recovery_cursor: u64,
++    compression_cursor: Option<Id>,
+     checking_sessions: bool,
+     wait_pane_target: Option<Id>,
+     pane_waiters: BTreeMap<u64, (Id, bool)>,
+@@ -1171,6 +1173,7 @@ impl Host {
+             snapshots_requested: BTreeSet::new(),
+             native_delivery: BTreeMap::new(),
+             native_recovery_cursor: 0,
++            compression_cursor: None,
+             checking_sessions: false,
+             wait_pane_target: None,
+             pane_waiters: BTreeMap::new(),
+@@ -1260,18 +1263,10 @@ impl Host {
+             self.check_window_names();
+             self.start_format_jobs();
+             let did_work = self.scheduled_work();
+-            let event = if did_work {
+-                match rx.try_recv() {
+-                    Ok(event) => event,
+-                    Err(mpsc::TryRecvError::Empty) => continue,
+-                    Err(mpsc::TryRecvError::Disconnected) => break,
+-                }
+-            } else {
+-                match rx.recv_timeout(Duration::from_millis(50)) {
+-                    Ok(event) => event,
+-                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
+-                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
+-                }
++            let event = match self.next_event(&rx, did_work) {
++                Ok(Some(event)) => event,
++                Ok(None) | Err(mpsc::RecvTimeoutError::Timeout) => continue,
++                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+             };
+             match event {
+                 Event::SnapshotSent(id) => {
+@@ -1495,6 +1490,7 @@ impl Host {
+     }
+     fn snapshot_now(&mut self, id: u64) -> bool {
+         let state = self.engine.native_snapshot();
++        self.request_history_compression();
+         if let Err(error) = tmuxx_protocol::native::snapshot_bytes(&state, self.snapshot_limit) {
+             self.send(
+                 id,
+diff --git a/tmuxx/crates/tmuxx-terminal/src/capture.rs b/tmuxx/crates/tmuxx-terminal/src/capture.rs
+index 3a6839694..395eb8ac4 100644
+--- a/tmuxx/crates/tmuxx-terminal/src/capture.rs
++++ b/tmuxx/crates/tmuxx-terminal/src/capture.rs
+@@ -23,6 +23,15 @@ pub struct CaptureOptions {
+ }
+ 
+ impl Terminal {
++    /// Owner commands rearm idle reclamation even when a shared read fails.
++    pub fn capture_for_owner(&mut self, options: CaptureOptions) -> Result<Vec<u8>, String> {
++        let result = self.capture_with(options);
++        if options.raw || !options.pending || options.hyperlinks {
++            self.request_scrollback_compression();
++        }
++        result
++    }
++
+     /// Return bytes to store in a buffer. Printing adds a final newline when
+     /// absent, including empty captures and pending input.
+     pub fn capture_with(&self, options: CaptureOptions) -> Result<Vec<u8>, String> {
+diff --git a/tmuxx/crates/tmuxx-terminal/src/lib.rs b/tmuxx/crates/tmuxx-terminal/src/lib.rs
+index c52e1229e..09b97a9a1 100644
+--- a/tmuxx/crates/tmuxx-terminal/src/lib.rs
++++ b/tmuxx/crates/tmuxx-terminal/src/lib.rs
+@@ -17,6 +17,8 @@ mod agent;
+ pub use agent::AgentStatus;
+ mod capture;
+ mod capture_raw;
++#[cfg(test)]
++mod history_tests;
+ pub use capture::CaptureOptions;
+ 
+ /// Rustty extensions to C tmux's generated format registry.
+@@ -363,6 +365,20 @@ impl<S> Snapshot<S> {
+ }
+ 
+ impl Terminal {
++    pub fn scrollback_compression_pending(&self) -> bool {
++        self.inner.scrollback_compression_pending()
++    }
++
++    /// Rearm owner maintenance after reading cold history through a shared view.
++    pub fn request_scrollback_compression(&mut self) {
++        self.inner.request_scrollback_compression();
++    }
++
++    /// Reclaim at most one historical page before servicing owner events again.
++    pub fn compress_scrollback_step(&mut self) -> bool {
++        self.inner.compress_scrollback_step()
++    }
++
+     /// Pull retained history into unused rows below the cursor for resize-pane -T.
+     pub fn trim_history_below_cursor(&mut self) {
+         self.inner.trim_tmux_history_below_cursor();
+@@ -371,6 +387,7 @@ impl Terminal {
+     /// Reset pane input parsing and the visible screen for send-keys -R.
+     pub fn reset_from_host(&mut self) {
+         self.inner.reset_from_host();
++        self.inner.request_scrollback_compression();
+     }
+ 
+     pub fn application_color(&self, index: usize) -> Option<[u8; 3]> {
+@@ -618,6 +635,8 @@ impl Terminal {
+     pub fn new(cols: u16, rows: u16, history_limit: usize) -> Self {
+         let mut inner = rustty_vt::Terminal::new(cols, rows, history_limit);
+         inner.set_tmux_history_limit(history_limit);
++        // Owner storage policy is independent of attached-view configuration.
++        inner.set_scrollback_compression(true);
+         inner.set_tmux_strings(true);
+         inner.terminfo_name = Some(b"tmux-256color".to_vec());
+         inner.shell_command_events = true;
+@@ -682,9 +701,13 @@ impl Terminal {
+         );
+     }
+     pub fn resize(&mut self, cols: u16, rows: u16) {
++        let changed = self.size() != (cols.max(1), rows.max(1));
+         let cell = self.cell_size();
+         self.inner.resize(cols.max(1), rows.max(1));
+         self.set_cell_size(cell.0, cell.1);
++        if changed {
++            self.inner.request_scrollback_compression();
++        }
+     }
+ 
+     pub fn size(&self) -> (u16, u16) {
+@@ -909,7 +932,11 @@ mod tests {
+         let owned = terminal.inner.primary_screen().owned_bytes();
+         assert!(owned < resident);
+         let screen = terminal.active_screen();
+-        assert!(screen.row_text(screen.row(0)).starts_with("active界 e\u{301}"));
++        assert!(
++            screen
++                .row_text(screen.row(0))
++                .starts_with("active界 e\u{301}")
++        );
+         assert!(screen.row_text(screen.row(1)).starts_with("second"));
+         assert_eq!(terminal.inner.primary_screen().owned_bytes(), owned);
+ 
+--- /dev/null
++++ b/tmuxx/crates/tmuxx-runtime/src/history.rs
+@@ -0,0 +1,276 @@
++//! Idle owner storage maintenance; input and scheduled commands always win.
++use super::*;
++use std::ops::Bound::{Excluded, Unbounded};
++
++impl Host {
++    pub(super) fn next_event(
++        &mut self,
++        rx: &Receiver<Event>,
++        command_work: bool,
++    ) -> Result<Option<Event>, mpsc::RecvTimeoutError> {
++        match rx.try_recv() {
++            Ok(event) => return Ok(Some(event)),
++            Err(mpsc::TryRecvError::Disconnected) => {
++                return Err(mpsc::RecvTimeoutError::Disconnected);
++            }
++            Err(mpsc::TryRecvError::Empty) => {}
++        }
++        if command_work || self.compress_history_step() {
++            // Return to the event check after each bounded page; do not sleep
++            // once per page or drain a whole history while holding up input.
++            return Ok(None);
++        }
++        rx.recv_timeout(Duration::from_millis(50)).map(Some)
++    }
++
++    /// Select one pending pane, including retained panes without a live PTY.
++    pub(super) fn compress_history_step(&mut self) -> bool {
++        let pending =
++            |(_, pane): &(&Id, &tmuxx_core::Pane)| pane.terminal.scrollback_compression_pending();
++        let next = self
++            .compression_cursor
++            .and_then(|cursor| {
++                self.engine
++                    .panes
++                    .range((Excluded(cursor), Unbounded))
++                    .find(pending)
++            })
++            .or_else(|| self.engine.panes.iter().find(pending))
++            .map(|(&id, _)| id);
++        let Some(id) = next else {
++            return false;
++        };
++        self.compression_cursor = Some(id);
++        self.engine
++            .panes
++            .get_mut(&id)
++            .unwrap()
++            .terminal
++            .compress_scrollback_step();
++        true
++    }
++
++    /// Full snapshots read every pane, even if later delivery is rejected.
++    pub(super) fn request_history_compression(&mut self) {
++        for pane in self.engine.panes.values_mut() {
++            pane.terminal.request_scrollback_compression();
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn command(host: &mut Host, source: &[u8]) -> Result<Outcome, String> {
++        host.engine.execute(
++            &tmuxx_command::parse(source).unwrap()[0],
++            &mut ClientContext::default(),
++        )
++    }
++
++    fn host() -> (Host, Receiver<Event>, Receiver<ServerMessage>) {
++        let (events, rx) = mpsc::sync_channel(32);
++        let mut host = Host::new(events, &Options::new("/unused"), BTreeMap::new());
++        command(&mut host, b"new-session -d -x 80 -y 4 ''").unwrap();
++        command(&mut host, b"new-window -d ''").unwrap();
++        for pane in host.engine.panes.values_mut() {
++            pane.terminal.set_history_limit(5000);
++            pane.terminal.feed(&b"Build history\r\n".repeat(2000));
++        }
++        let (tx, received) = mpsc::sync_channel(32);
++        host.clients.insert(
++            1,
++            Client {
++                tx,
++                context: ClientContext::default(),
++                subscribed: true,
++                control: false,
++                delivery_bytes: Arc::new(AtomicUsize::new(0)),
++            },
++        );
++        (host, rx, received)
++    }
++
++    fn owned(host: &Host, id: Id) -> usize {
++        host.engine.panes[&id]
++            .terminal
++            .format_value("history_bytes")
++            .unwrap()
++            .parse()
++            .unwrap()
++    }
++
++    fn finish(host: &mut Host) {
++        for _ in 0..1000 {
++            if !host.compress_history_step() {
++                assert!(
++                    host.engine
++                        .panes
++                        .values()
++                        .all(|pane| !pane.terminal.scrollback_compression_pending())
++                );
++                return;
++            }
++        }
++        panic!("owner idle pass did not finish");
++    }
++
++    #[test]
++    fn queued_events_and_scheduled_commands_preempt_each_idle_page() {
++        let (mut host, rx, _) = host();
++        let resident = [owned(&host, 0), owned(&host, 1)];
++        assert!(host.next_event(&rx, true).unwrap().is_none());
++        assert_eq!([owned(&host, 0), owned(&host, 1)], resident);
++        host.tx
++            .send(Event::Request {
++                id: 1,
++                request: Request {
++                    request_id: 7,
++                    argv: vec![b"display-message".to_vec()],
++                    stdin: None,
++                    subscribe: false,
++                    control: false,
++                },
++            })
++            .unwrap();
++        assert!(matches!(
++            host.next_event(&rx, false).unwrap(),
++            Some(Event::Request {
++                request: Request { request_id: 7, .. },
++                ..
++            })
++        ));
++        assert_eq!([owned(&host, 0), owned(&host, 1)], resident);
++        assert!(host.next_event(&rx, false).unwrap().is_none());
++        let after_page = [owned(&host, 0), owned(&host, 1)];
++        assert!(after_page[0] < resident[0]);
++        assert_eq!(after_page[1], resident[1]);
++        host.tx.send(Event::Shutdown).unwrap();
++        assert!(matches!(
++            host.next_event(&rx, false).unwrap(),
++            Some(Event::Shutdown)
++        ));
++        assert_eq!([owned(&host, 0), owned(&host, 1)], after_page);
++    }
++
++    #[test]
++    fn owner_idle_is_fair_finite_and_handles_exited_removed_and_respawned_panes() {
++        let (mut host, _, _) = host();
++        host.engine.panes.get_mut(&1).unwrap().status = Some(0);
++        let resident = [owned(&host, 0), owned(&host, 1)];
++        assert!(host.compress_history_step());
++        host.engine
++            .panes
++            .get_mut(&0)
++            .unwrap()
++            .terminal
++            .request_scrollback_compression();
++        assert!(host.compress_history_step());
++        assert!(owned(&host, 0) < resident[0] && owned(&host, 1) < resident[1]);
++        finish(&mut host);
++        let cold = [owned(&host, 0), owned(&host, 1)];
++        let sequence = host.engine.sequence;
++        for _ in 0..4 {
++            command(
++                &mut host,
++                b"display-message -p -t %0 '#{C:Build}:#{history_bytes}'",
++            )
++            .unwrap();
++            assert!(!host.compress_history_step());
++            assert_eq!([owned(&host, 0), owned(&host, 1)], cold);
++        }
++        assert_eq!(host.engine.sequence, sequence);
++        command(&mut host, b"kill-pane -t %1").unwrap();
++        command(&mut host, b"respawn-pane -k -t %0 ''").unwrap();
++        assert!(
++            host.engine.panes[&0]
++                .terminal
++                .scrollback_compression_pending()
++        );
++        finish(&mut host);
++        command(&mut host, b"new-window -d ''").unwrap();
++        assert!(
++            host.engine.panes[&2]
++                .terminal
++                .scrollback_compression_pending()
++        );
++        finish(&mut host);
++    }
++
++    #[test]
++    fn capture_rearms_only_its_target_and_pending_input_is_inert() {
++        let (mut host, _, _) = host();
++        finish(&mut host);
++        let cold = [owned(&host, 0), owned(&host, 1)];
++        command(&mut host, b"capture-pane -p -P -t %0").unwrap();
++        assert!(
++            !host.engine.panes[&0]
++                .terminal
++                .scrollback_compression_pending()
++        );
++        let result = command(&mut host, b"capture-pane -p -S - -t %0").unwrap();
++        assert!(result.output.starts_with(b"Build history"));
++        assert!(
++            host.engine.panes[&0]
++                .terminal
++                .scrollback_compression_pending()
++        );
++        assert!(
++            !host.engine.panes[&1]
++                .terminal
++                .scrollback_compression_pending()
++        );
++        assert!(owned(&host, 0) > cold[0]);
++        assert_eq!(owned(&host, 1), cold[1]);
++        finish(&mut host);
++        assert_eq!([owned(&host, 0), owned(&host, 1)], cold);
++    }
++
++    #[test]
++    fn snapshot_rejection_reclaims_sources_and_success_keeps_queued_state_immutable() {
++        let (mut host, _, received) = host();
++        let expected = host.engine.panes[&0].terminal.capture();
++        finish(&mut host);
++        let cold = [owned(&host, 0), owned(&host, 1)];
++        let sequence = host.engine.sequence;
++        host.snapshot_limit = 1;
++        assert!(!host.snapshot_now(1));
++        assert!(matches!(
++            received.recv().unwrap(),
++            ServerMessage::SnapshotAborted { .. }
++        ));
++        assert!(
++            host.engine
++                .panes
++                .values()
++                .all(|pane| pane.terminal.scrollback_compression_pending())
++        );
++        assert!(owned(&host, 0) > cold[0] && owned(&host, 1) > cold[1]);
++        finish(&mut host);
++        assert_eq!([owned(&host, 0), owned(&host, 1)], cold);
++        assert_eq!(host.engine.sequence, sequence);
++        host.snapshot_limit = tmuxx_protocol::native::MAX_SNAPSHOT_BYTES;
++        assert!(host.snapshot_now(1));
++        finish(&mut host);
++        host.engine
++            .panes
++            .get_mut(&0)
++            .unwrap()
++            .terminal
++            .feed(b"later live output");
++        let ServerMessage::Snapshot { state, .. } = received.recv().unwrap() else {
++            panic!("missing snapshot")
++        };
++        assert_eq!(
++            state.panes[0]
++                .terminal
++                .as_ref()
++                .unwrap()
++                .restore()
++                .unwrap()
++                .capture(),
++            expected
++        );
++    }
++}
+--- /dev/null
++++ b/tmuxx/crates/tmuxx-terminal/src/history_tests.rs
+@@ -0,0 +1,133 @@
++use super::*;
++
++fn filled() -> Terminal {
++    let mut terminal = Terminal::new(80, 4, 5000);
++    terminal.feed(b"\x1b_Ga=T,i=7,f=32,s=1,v=1;/////w==\x1b\\");
++    for _ in 0..2000 {
++        terminal.feed(b"\x1b[1;32mBuild\x1b[m\t\x1b]8;id=test;https://example.org\x07wide \xe7\x95\x8c e\xcc\x81\x1b]8;;\x07\r\n");
++    }
++    terminal.feed(b"\x1b_Ga=T,i=8,f=32,s=1,v=1;/////w==\x1b\\\r\n");
++    terminal
++}
++
++fn finish(terminal: &mut Terminal) {
++    for _ in 0..1000 {
++        if !terminal.compress_scrollback_step() {
++            assert!(!terminal.scrollback_compression_pending());
++            return;
++        }
++    }
++    panic!("idle compression did not finish");
++}
++
++#[test]
++fn owner_history_lifecycle_rearms_only_real_changes() {
++    let mut terminal = filled();
++    assert!(terminal.scrollback_compression_pending());
++    let resident = terminal.inner.primary_screen().owned_bytes();
++    let point = terminal.inner.primary_screen().point(2, 0).unwrap();
++    terminal.inner.screen_mut().selection = Some(rustty_vt::Selection {
++        start: point,
++        end: rustty_vt::GridPoint { col: 3, ..point },
++        rectangular: false,
++    });
++    let before = terminal.checkpoint_snapshot();
++    let generation = terminal.inner.generation;
++    finish(&mut terminal);
++    let cold = terminal.inner.primary_screen().owned_bytes();
++    assert!(cold < resident);
++    assert_eq!(terminal.inner.generation, generation);
++    assert_eq!(terminal.inner.screen().selection.unwrap().start, point);
++    assert!(terminal.inner.screen().contains_point(point));
++    assert_eq!(
++        serde_json::to_value(terminal.checkpoint_snapshot()).unwrap(),
++        serde_json::to_value(&before).unwrap()
++    );
++    terminal.request_scrollback_compression();
++    finish(&mut terminal);
++    for _ in 0..3 {
++        terminal.format_value("history_bytes").unwrap();
++        terminal
++            .active_screen()
++            .row_text(terminal.active_screen().row(0));
++        terminal.resize(80, 4);
++        terminal.set_history_limit(5000);
++        assert!(!terminal.scrollback_compression_pending());
++        assert_eq!(terminal.inner.primary_screen().owned_bytes(), cold);
++    }
++    let restored = before.restore().unwrap();
++    assert!(!restored.inner.scrollback_compression());
++    assert!(!restored.scrollback_compression_pending());
++    assert_eq!(restored.capture(), terminal.capture());
++    terminal.request_scrollback_compression();
++    finish(&mut terminal);
++    assert_eq!(terminal.inner.primary_screen().owned_bytes(), cold);
++
++    terminal.resize(60, 4);
++    assert!(terminal.scrollback_compression_pending());
++    finish(&mut terminal);
++    terminal.set_history_limit(1000);
++    assert!(terminal.scrollback_compression_pending());
++    assert!(terminal.history_len() <= 1000);
++    finish(&mut terminal);
++    terminal.feed(b"\x1b[1;1Hactive");
++    finish(&mut terminal);
++    terminal.set_history_limit(5000);
++    let old_history = terminal.history_len();
++    terminal.reset_from_host();
++    assert!(terminal.scrollback_compression_pending());
++    assert!(terminal.history_len() >= old_history);
++    finish(&mut terminal);
++    terminal.trim_history_below_cursor();
++    assert!(terminal.scrollback_compression_pending());
++    finish(&mut terminal);
++    terminal.feed(b"more\r\n");
++    assert!(terminal.scrollback_compression_pending());
++}
++
++#[test]
++fn owner_capture_reclaims_shared_reads_even_after_allocation_metadata_error() {
++    let mut terminal = filled();
++    // Imported history can lack native allocation metadata. Its capture error
++    // occurs after the shared row traversal has restored compressed cells.
++    let mut metadata =
++        serde_json::to_value(terminal.inner.primary_screen().view_metadata()).unwrap();
++    metadata["tmux_capture_known"] = false.into();
++    terminal
++        .inner
++        .restore_view_metadata(&serde_json::from_value(metadata).unwrap(), None)
++        .unwrap();
++    finish(&mut terminal);
++    let cold = terminal.inner.primary_screen().owned_bytes();
++    assert!(
++        terminal
++            .capture_for_owner(CaptureOptions {
++                start: Some(i32::MIN),
++                preserve_trailing: true,
++                ..Default::default()
++            })
++            .unwrap_err()
++            .contains("allocation metadata")
++    );
++    assert!(terminal.scrollback_compression_pending());
++    assert!(terminal.inner.primary_screen().owned_bytes() > cold);
++    finish(&mut terminal);
++    assert_eq!(terminal.inner.primary_screen().owned_bytes(), cold);
++    let captured = terminal
++        .capture_for_owner(CaptureOptions {
++            start: Some(i32::MIN),
++            ..Default::default()
++        })
++        .unwrap();
++    assert!(captured.windows(5).any(|bytes| bytes == b"Build"));
++    assert!(terminal.scrollback_compression_pending());
++    finish(&mut terminal);
++    assert_eq!(terminal.inner.primary_screen().owned_bytes(), cold);
++    terminal
++        .capture_for_owner(CaptureOptions {
++            pending: true,
++            ..Default::default()
++        })
++        .unwrap();
++    assert!(!terminal.scrollback_compression_pending());
++}

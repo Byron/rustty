@@ -245,6 +245,7 @@ impl Host {
             pane.terminal.program_status_exited();
         }
         let state = self.engine.native_snapshot();
+        self.request_history_compression();
         let bytes = match native::snapshot_bytes(&state, self.snapshot_limit.min(BYTE_LIMIT as u64))
         {
             Ok(bytes) => bytes as usize,
@@ -354,6 +355,43 @@ mod tests {
             output: vec![b'x'],
             error: None,
         })
+    }
+
+    #[test]
+    fn rejected_final_barrier_rearms_surviving_owner_histories() {
+        let (mut host, _received) = host(1);
+        host.engine
+            .execute(
+                &tmuxx_command::parse(b"new-window -d ''").unwrap()[0],
+                &mut ClientContext::default(),
+            )
+            .unwrap();
+        for pane in host.engine.panes.values_mut() {
+            pane.terminal.set_history_limit(5000);
+            pane.terminal.feed(&b"retained history\r\n".repeat(2000));
+        }
+        while host.compress_history_step() {}
+        let owned = |host: &Host| {
+            host.engine.panes[&1]
+                .terminal
+                .format_value("history_bytes")
+                .unwrap()
+        };
+        let cold = owned(&host);
+        host.send(1, ServerMessage::Changed { sequence: 1 });
+        host.send(1, ServerMessage::Changed { sequence: 2 });
+        host.snapshot_limit = 1;
+        host.final_native_barrier(0, 0);
+        assert!(!host.clients.contains_key(&1));
+        assert!(
+            host.engine.panes[&1]
+                .terminal
+                .scrollback_compression_pending()
+        );
+        assert_ne!(owned(&host), cold);
+        host.engine.panes.remove(&0);
+        while host.compress_history_step() {}
+        assert_eq!(owned(&host), cold);
     }
 
     #[test]

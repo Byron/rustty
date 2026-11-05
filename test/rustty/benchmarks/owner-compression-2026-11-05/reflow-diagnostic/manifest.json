@@ -1,0 +1,42 @@
+{
+  "source_commit": "247ad8119a670c6c7c7967cb298437f494809fb6",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "uname": {
+    "system": "Linux",
+    "node": "cr1",
+    "release": "7.0.0-1019-azure",
+    "version": "#20-Ubuntu SMP PREEMPT Mon Oct 19 23:06:15 UTC 2026",
+    "machine": "aarch64",
+    "processor": ""
+  },
+  "profile": "release, thin LTO, codegen-units=1, no RUSTFLAGS",
+  "cases": [
+    [
+      20000,
+      "ascii"
+    ],
+    [
+      20000,
+      "unicode"
+    ],
+    [
+      100000,
+      "ascii"
+    ],
+    [
+      100000,
+      "unicode"
+    ],
+    [
+      250000,
+      "ascii"
+    ],
+    [
+      250000,
+      "unicode"
+    ]
+  ],
+  "source_sha256": "33c48c62a0519cb0477857cc4c402d25415331c9c4a23c26339f0afb8342617f",
+  "binary_sha256": "1c5fa7e130495cfbdfdb31a579deae3f6604f00374da6d7764f37e2fec030a2d",
+  "notes": "Single diagnostic baseline per case, cold then warm; no before/after speedup claim. Compiler jobs paused for recorded cases. Owned bytes authoritative, operation results checked for count; no renderer/PT Y."
+}

@@ -17,6 +17,8 @@ mod agent;
 pub use agent::AgentStatus;
 mod capture;
 mod capture_raw;
+#[cfg(test)]
+mod history_tests;
 pub use capture::CaptureOptions;
 
 /// Rustty extensions to C tmux's generated format registry.
@@ -363,6 +365,20 @@ impl<S> Snapshot<S> {
 }
 
 impl Terminal {
+    pub fn scrollback_compression_pending(&self) -> bool {
+        self.inner.scrollback_compression_pending()
+    }
+
+    /// Rearm owner maintenance after reading cold history through a shared view.
+    pub fn request_scrollback_compression(&mut self) {
+        self.inner.request_scrollback_compression();
+    }
+
+    /// Reclaim at most one historical page before servicing owner events again.
+    pub fn compress_scrollback_step(&mut self) -> bool {
+        self.inner.compress_scrollback_step()
+    }
+
     /// Pull retained history into unused rows below the cursor for resize-pane -T.
     pub fn trim_history_below_cursor(&mut self) {
         self.inner.trim_tmux_history_below_cursor();
@@ -371,6 +387,7 @@ impl Terminal {
     /// Reset pane input parsing and the visible screen for send-keys -R.
     pub fn reset_from_host(&mut self) {
         self.inner.reset_from_host();
+        self.inner.request_scrollback_compression();
     }
 
     pub fn application_color(&self, index: usize) -> Option<[u8; 3]> {
@@ -618,6 +635,8 @@ impl Terminal {
     pub fn new(cols: u16, rows: u16, history_limit: usize) -> Self {
         let mut inner = rustty_vt::Terminal::new(cols, rows, history_limit);
         inner.set_tmux_history_limit(history_limit);
+        // Owner storage policy is independent of attached-view configuration.
+        inner.set_scrollback_compression(true);
         inner.set_tmux_strings(true);
         inner.terminfo_name = Some(b"tmux-256color".to_vec());
         inner.shell_command_events = true;
@@ -682,9 +701,13 @@ impl Terminal {
         );
     }
     pub fn resize(&mut self, cols: u16, rows: u16) {
+        let changed = self.size() != (cols.max(1), rows.max(1));
         let cell = self.cell_size();
         self.inner.resize(cols.max(1), rows.max(1));
         self.set_cell_size(cell.0, cell.1);
+        if changed {
+            self.inner.request_scrollback_compression();
+        }
     }
 
     pub fn size(&self) -> (u16, u16) {

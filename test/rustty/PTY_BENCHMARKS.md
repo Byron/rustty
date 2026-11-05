@@ -242,3 +242,14 @@ catch-up in the follow-up change. [Delivery recovery measurements](DELIVERY_RECO
 record current paired PTY results, pressure tests, resource bounds and the
 distinction between authoritative state recovery and replay of every output byte.
 Earlier failure artifacts above remain the historical baseline.
+
+## 2026-11-05 — Large-history owner maintenance
+
+The separate [owner-compression report](OWNER_COMPRESSION.md) measures detached
+and remote owners at 20k/100k rows with real PTYs. It records primary-page
+storage and process RSS independently, owner feed completion, cold full capture
+and fresh native attach, and latency samples during later capture/reclamation.
+Unlike the small-history throughput cases above, these measurements expose the
+cold-access cost of compressing persistent owners. The `owner-history` example
+and paired runner preserve raw samples, maxima, exact compiler/revision and
+corpus information. No rendered or visible latency is claimed.

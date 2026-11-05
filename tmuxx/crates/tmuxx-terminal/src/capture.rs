@@ -23,6 +23,15 @@ pub struct CaptureOptions {
 }
 
 impl Terminal {
+    /// Owner commands rearm idle reclamation even when a shared read fails.
+    pub fn capture_for_owner(&mut self, options: CaptureOptions) -> Result<Vec<u8>, String> {
+        let result = self.capture_with(options);
+        if options.raw || !options.pending || options.hyperlinks {
+            self.request_scrollback_compression();
+        }
+        result
+    }
+
     /// Return bytes to store in a buffer. Printing adds a final newline when
     /// absent, including empty captures and pending input.
     pub fn capture_with(&self, options: CaptureOptions) -> Result<Vec<u8>, String> {

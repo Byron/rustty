@@ -241,6 +241,11 @@ impl Terminal {
         self.scrollback_compression
     }
 
+    /// Whether an idle pass remains armed. Reading this never restarts a pass.
+    pub fn scrollback_compression_pending(&self) -> bool {
+        self.scrollback_compression && self.primary.pages.compression.pending
+    }
+
     /// Arm another pass after output or a host operation that read cold history.
     pub fn request_scrollback_compression(&mut self) {
         if self.scrollback_compression {

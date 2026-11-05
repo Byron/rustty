@@ -1,0 +1,138 @@
+{
+  "before": {
+    "stages": [
+      {
+        "creation_ns": 2047946,
+        "ready_ns": 9962523,
+        "feed_to_owner_done_ns": 860051617,
+        "sum_owned_bytes": 105337056,
+        "process_rss_bytes": 135000064
+      },
+      {
+        "creation_ns": 46560832,
+        "ready_ns": 51309914,
+        "feed_to_owner_done_ns": 824094724,
+        "sum_owned_bytes": 210674112,
+        "process_rss_bytes": 258572288
+      },
+      {
+        "creation_ns": 85626240,
+        "ready_ns": 89209677,
+        "feed_to_owner_done_ns": 826025643,
+        "sum_owned_bytes": 316011168,
+        "process_rss_bytes": 504737792
+      },
+      {
+        "creation_ns": 94527723,
+        "ready_ns": 95888463,
+        "feed_to_owner_done_ns": 824852040,
+        "sum_owned_bytes": 421348224,
+        "process_rss_bytes": 744706048
+      }
+    ],
+    "whole_job": {
+      "User time (seconds)": 4.11,
+      "System time (seconds)": 0.4,
+      "Maximum resident set size (kbytes)": 732916.0
+    }
+  },
+  "after": {
+    "stages": [
+      {
+        "creation_ns": 2117196,
+        "ready_ns": 8991202,
+        "feed_to_owner_done_ns": 842700186,
+        "sum_owned_bytes": 4231280,
+        "process_rss_bytes": 142262272
+      },
+      {
+        "creation_ns": 7718993,
+        "ready_ns": 13546130,
+        "feed_to_owner_done_ns": 812444224,
+        "sum_owned_bytes": 8462560,
+        "process_rss_bytes": 166567936
+      },
+      {
+        "creation_ns": 14055650,
+        "ready_ns": 17748955,
+        "feed_to_owner_done_ns": 813012018,
+        "sum_owned_bytes": 12693840,
+        "process_rss_bytes": 186437632
+      },
+      {
+        "creation_ns": 20117872,
+        "ready_ns": 22616744,
+        "feed_to_owner_done_ns": 813115804,
+        "sum_owned_bytes": 16925120,
+        "process_rss_bytes": 208977920
+      }
+    ],
+    "whole_job": {
+      "User time (seconds)": 4.28,
+      "System time (seconds)": 0.27,
+      "Maximum resident set size (kbytes)": 224892.0
+    }
+  },
+  "paired_ratios": {
+    "creation_ns": [
+      [
+        0.9806287022022502,
+        0.15939456935870275,
+        0.15547126474532197,
+        0.20820319602115137
+      ],
+      [
+        1.0159765649134436,
+        0.1649312237375827,
+        0.16538163641843268,
+        0.2170279668251062
+      ],
+      [
+        1.054218226457143,
+        0.1680759750679879,
+        0.16415119944540366,
+        0.21276034544913347
+      ]
+    ],
+    "feed_to_owner_done_ns": [
+      [
+        0.9787620386509894,
+        0.9849063182883219,
+        0.9823829836958805,
+        0.987093115511965
+      ],
+      [
+        0.9819054537411366,
+        0.9845219967661573,
+        0.9835479356362362,
+        0.9860308017035672
+      ],
+      [
+        0.980049377521374,
+        0.9858626688647506,
+        0.9842454951486295,
+        0.9832581218889047
+      ]
+    ],
+    "process_rss_bytes": [
+      [
+        1.054552625989866,
+        0.6445792675199594,
+        0.3695780957095442,
+        0.28821921424760605
+      ],
+      [
+        1.06644559076394,
+        0.6483117048751714,
+        0.3752339183697023,
+        0.28280677566586426
+      ],
+      [
+        1.0125910194174756,
+        0.6176872672417857,
+        0.35685482241706734,
+        0.2798207655308203
+      ]
+    ]
+  }
+}

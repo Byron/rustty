@@ -1,0 +1,210 @@
+[
+  {
+    "case": "before-native-two-100k",
+    "bursts": 2,
+    "recovery": {
+      "complete": true,
+      "equal_text": true,
+      "resume_to_final_ns": 657099440
+    },
+    "reconnect_equal": true,
+    "retained_rows": 90185,
+    "recovery_history_equal": true,
+    "reconnect_history_equal": true,
+    "blocked_interval_s": 7.719124186,
+    "bulk_command": {
+      "count": 55,
+      "median_ms": 1.177934,
+      "p99_ms": 416.010817,
+      "max_ms": 416.010817
+    },
+    "bulk_echo": {
+      "count": 55,
+      "median_ms": 2.722872,
+      "p99_ms": 2508.074232,
+      "max_ms": 2508.074232
+    },
+    "catchup_command": {
+      "count": 468,
+      "median_ms": 0.133828,
+      "p99_ms": 0.30357,
+      "max_ms": 98.289846
+    },
+    "user_s": 21.01,
+    "system_s": 0.82,
+    "rss_kib": 1424412.0
+  },
+  {
+    "case": "after-native-two-100k",
+    "bursts": 2,
+    "recovery": {
+      "complete": true,
+      "equal_text": true,
+      "resume_to_final_ns": 692158414
+    },
+    "reconnect_equal": true,
+    "retained_rows": 90185,
+    "recovery_history_equal": true,
+    "reconnect_history_equal": true,
+    "blocked_interval_s": 7.896512015,
+    "bulk_command": {
+      "count": 58,
+      "median_ms": 1.1701625,
+      "p99_ms": 355.684473,
+      "max_ms": 355.684473
+    },
+    "bulk_echo": {
+      "count": 58,
+      "median_ms": 2.562019,
+      "p99_ms": 2727.128071,
+      "max_ms": 2727.128071
+    },
+    "catchup_command": {
+      "count": 471,
+      "median_ms": 0.13858,
+      "p99_ms": 0.257608,
+      "max_ms": 127.624289
+    },
+    "user_s": 21.3,
+    "system_s": 0.79,
+    "rss_kib": 1421768.0
+  },
+  {
+    "case": "before-embedded-three-100k",
+    "bursts": 3,
+    "recovery": {
+      "complete": true,
+      "equal_text": true,
+      "resume_to_final_ns": 464920656
+    },
+    "reconnect_equal": true,
+    "retained_rows": 95277,
+    "recovery_history_equal": true,
+    "reconnect_history_equal": true,
+    "blocked_interval_s": 11.538141859,
+    "bulk_command": {
+      "count": 71,
+      "median_ms": 1.190158,
+      "p99_ms": 1173.581847,
+      "max_ms": 1173.581847
+    },
+    "bulk_echo": {
+      "count": 71,
+      "median_ms": 2.33622,
+      "p99_ms": 1961.709251,
+      "max_ms": 1961.709251
+    },
+    "catchup_command": {
+      "count": 304,
+      "median_ms": 0.1399685,
+      "p99_ms": 0.287777,
+      "max_ms": 100.681023
+    },
+    "user_s": 21.99,
+    "system_s": 0.88,
+    "rss_kib": 1312068.0
+  },
+  {
+    "case": "after-embedded-three-100k",
+    "bursts": 3,
+    "recovery": {
+      "complete": true,
+      "equal_text": true,
+      "resume_to_final_ns": 502771324
+    },
+    "reconnect_equal": true,
+    "retained_rows": 95277,
+    "recovery_history_equal": true,
+    "reconnect_history_equal": true,
+    "blocked_interval_s": 11.909323196,
+    "bulk_command": {
+      "count": 70,
+      "median_ms": 1.115012,
+      "p99_ms": 703.76688,
+      "max_ms": 703.76688
+    },
+    "bulk_echo": {
+      "count": 70,
+      "median_ms": 2.3224955,
+      "p99_ms": 2526.98081,
+      "max_ms": 2526.98081
+    },
+    "catchup_command": {
+      "count": 309,
+      "median_ms": 0.1351,
+      "p99_ms": 0.299722,
+      "max_ms": 134.085476
+    },
+    "user_s": 22.42,
+    "system_s": 0.88,
+    "rss_kib": 1324784.0
+  },
+  {
+    "case": "before-native-three-100k",
+    "bursts": 3,
+    "recovery": {
+      "complete": false,
+      "error": "[\"tmuxx disconnected\"]"
+    },
+    "reconnect_equal": true,
+    "retained_rows": 95277,
+    "recovery_history_equal": false,
+    "reconnect_history_equal": true,
+    "blocked_interval_s": 11.95103779,
+    "bulk_command": {
+      "count": 62,
+      "median_ms": 1.351712,
+      "p99_ms": 1204.060066,
+      "max_ms": 1204.060066
+    },
+    "bulk_echo": {
+      "count": 62,
+      "median_ms": 2.8054155,
+      "p99_ms": 2022.397712,
+      "max_ms": 2022.397712
+    },
+    "catchup_command": {
+      "count": 83,
+      "median_ms": 0.159541,
+      "p99_ms": 0.387437,
+      "max_ms": 0.387437
+    },
+    "user_s": 31.06,
+    "system_s": 0.87,
+    "rss_kib": 1222488.0
+  },
+  {
+    "case": "after-native-three-100k",
+    "bursts": 3,
+    "recovery": {
+      "complete": false,
+      "error": "[\"tmuxx disconnected\"]"
+    },
+    "reconnect_equal": true,
+    "retained_rows": 95277,
+    "recovery_history_equal": false,
+    "reconnect_history_equal": true,
+    "blocked_interval_s": 11.945592852,
+    "bulk_command": {
+      "count": 61,
+      "median_ms": 1.246049,
+      "p99_ms": 1200.973938,
+      "max_ms": 1200.973938
+    },
+    "bulk_echo": {
+      "count": 61,
+      "median_ms": 2.180824,
+      "p99_ms": 1661.227362,
+      "max_ms": 1661.227362
+    },
+    "catchup_command": {
+      "count": 87,
+      "median_ms": 0.136517,
+      "p99_ms": 0.477024,
+      "max_ms": 0.477024
+    },
+    "user_s": 31.09,
+    "system_s": 0.81,
+    "rss_kib": 1182816.0
+  }
+]

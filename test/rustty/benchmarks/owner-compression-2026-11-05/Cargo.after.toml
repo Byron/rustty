@@ -1,0 +1,16 @@
+[package]
+name = "owner-compression-probe"
+version = "0.1.0"
+edition = "2024"
+[dependencies]
+rustty = { path = "/home/byron/dev/rustty/crates/rustty", features = ["sessions"] }
+tmuxx-runtime = { path = "/home/byron/dev/rustty/tmuxx/crates/tmuxx-runtime" }
+tmuxx-protocol = { path = "/home/byron/dev/rustty/tmuxx/crates/tmuxx-protocol", features = ["native"] }
+serde_json = "1.0"
+libc = "0.2"
+[patch.crates-io]
+portable-pty = { path = "/home/byron/dev/rustty/tmuxx/vendor/portable-pty" }
+winit = { path = "/home/byron/dev/rustty/vendor/winit" }
+[profile.release]
+lto = "thin"
+codegen-units = 1

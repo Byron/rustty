@@ -25,6 +25,7 @@ mod defaults;
 mod delivery;
 mod files;
 mod format_jobs;
+mod history;
 mod hooks;
 mod lifecycle;
 mod messages;
@@ -1070,6 +1071,7 @@ struct Host {
     snapshots_requested: BTreeSet<u64>,
     native_delivery: BTreeMap<u64, delivery::Pending>,
     native_recovery_cursor: u64,
+    compression_cursor: Option<Id>,
     checking_sessions: bool,
     wait_pane_target: Option<Id>,
     pane_waiters: BTreeMap<u64, (Id, bool)>,
@@ -1171,6 +1173,7 @@ impl Host {
             snapshots_requested: BTreeSet::new(),
             native_delivery: BTreeMap::new(),
             native_recovery_cursor: 0,
+            compression_cursor: None,
             checking_sessions: false,
             wait_pane_target: None,
             pane_waiters: BTreeMap::new(),
@@ -1260,18 +1263,10 @@ impl Host {
             self.check_window_names();
             self.start_format_jobs();
             let did_work = self.scheduled_work();
-            let event = if did_work {
-                match rx.try_recv() {
-                    Ok(event) => event,
-                    Err(mpsc::TryRecvError::Empty) => continue,
-                    Err(mpsc::TryRecvError::Disconnected) => break,
-                }
-            } else {
-                match rx.recv_timeout(Duration::from_millis(50)) {
-                    Ok(event) => event,
-                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
-                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                }
+            let event = match self.next_event(&rx, did_work) {
+                Ok(Some(event)) => event,
+                Ok(None) | Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
             };
             match event {
                 Event::SnapshotSent(id) => {
@@ -1495,6 +1490,7 @@ impl Host {
     }
     fn snapshot_now(&mut self, id: u64) -> bool {
         let state = self.engine.native_snapshot();
+        self.request_history_compression();
         if let Err(error) = tmuxx_protocol::native::snapshot_bytes(&state, self.snapshot_limit) {
             self.send(
                 id,

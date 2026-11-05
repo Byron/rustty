@@ -5937,3 +5937,24 @@ and first-search feed from 33.87 ms to 3.80 ms. Each operation now leaves cold o
 memory unchanged instead of decoding 239.6 MB of cell storage. First-search setup
 still includes linear metadata scans and active-page formatting. These are
 terminal-core access timings, independent of PTY delivery or rendered latency.
+
+## 2026-11-05 — Idle compression in persistent tmuxx owners
+
+The [owner report](OWNER_COMPRESSION.md) and
+[raw artifacts](benchmarks/owner-compression-2026-11-05) use Rust 1.95.0 on Linux
+ARM64 to compare the immediate pre-policy revision with fair per-page owner
+maintenance. Three adjacent pairs per detached/remote corpus record real PTY
+feed completion, cold capture/native attach, owned primary-page storage, RSS
+and command/child-DSR/parsed-view latency. At 100k rows, owned primary-page
+storage decreases 95–96%; single-pane RSS is similar. Cold full capture is
+33–37% slower and native attach 5–9% slower, with feed medians within +2.3%.
+The report retains latency maxima and distinguishes allocator/view overhead
+from the page-storage metric. The permanent `owner-history` example and fresh
+output-directory driver reproduce the workloads without a desktop renderer.
+
+A separate three-pair workload creates four 100k Unicode panes sequentially in
+one detached owner before capturing anything. Page storage falls from 421.35
+to 16.93 MB and same-process RSS from 744.7 to 209.0 MB; all 24 later old/final
+text checks pass. This exposes memory reuse across persistent panes, unlike
+the single-pane RSS sample. Corpus, CPU, creation times and raw results are
+retained in the same owner report.
