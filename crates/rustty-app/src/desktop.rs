@@ -9420,13 +9420,12 @@ impl ApplicationHandler<Event> for App {
                 if let Some(peek) = host.peek
                     && !input::chord_held(peek.chord, current)
                 {
-                    self.finish_peek(&mut host);
-                } else if host.peek.is_none()
-                    && !host.ui_input()
-                    && self
-                        .tab(host.id)
-                        .is_some_and(|tab| tab.quadrant_zoom.is_some())
-                {
+                    if host.window.has_focus() {
+                        self.finish_peek(&mut host);
+                    } else {
+                        host.peek = None;
+                    }
+                } else if host.peek.is_none() && !host.ui_input() {
                     let trigger = self
                         .config()
                         .keybinds

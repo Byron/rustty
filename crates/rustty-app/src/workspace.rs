@@ -532,7 +532,7 @@ pub struct Peek {
     pub chord: Modifiers,
     pub target: Id,
     pub full_zoom: Option<Id>,
-    pub quadrant: Id,
+    pub quadrant: Option<Id>,
     pub navigation_used: bool,
     /// A numbered choice enters this exact root when the prefix is released.
     pub selected_quad: Option<Id>,
@@ -798,11 +798,14 @@ impl Tab {
         }
     }
     pub fn begin_peek(&mut self, chord: Modifiers) -> Option<Peek> {
-        let quadrant = self.quadrant_zoom?;
+        self.quadrant_zoom
+            .or_else(|| self.root.quadrant(self.focused))?;
         if chord == Modifiers::default() {
             return None;
         }
-        if let Some(outer) = self.root.quadrant(self.focused) {
+        if let Some(quadrant) = self.quadrant_zoom
+            && let Some(outer) = self.root.quadrant(self.focused)
+        {
             if quadrant != outer {
                 self.remembered_quad_zoom.insert(outer, quadrant);
             } else {
@@ -813,7 +816,7 @@ impl Tab {
             chord,
             target: self.focused,
             full_zoom: self.zoom.filter(|zoom| Some(*zoom) != self.quadrant_zoom),
-            quadrant,
+            quadrant: self.quadrant_zoom,
             navigation_used: false,
             selected_quad: None,
         };
@@ -842,9 +845,9 @@ impl Tab {
                     && self.root.contains(*original)
             })
             .unwrap_or(peek.target);
-        self.quadrant_zoom = self
-            .root
-            .node(peek.quadrant)
+        self.quadrant_zoom = peek
+            .quadrant
+            .and_then(|quad| self.root.node(quad))
             .filter(|node| node.contains(target))
             .map(|node| node.id)
             .or_else(|| {
@@ -1435,10 +1438,15 @@ impl Workspace {
             })?;
         let source = self.windows.iter_mut().find(|window| window.id == from)?;
         let source = source.tabs.get_mut(source.active_tab)?;
-        let quad_zoom = source.quadrant_zoom.is_some() || peek.is_some();
+        let quad_zoom =
+            source.quadrant_zoom.is_some() || peek.is_some_and(|peek| peek.quadrant.is_some());
         if let Some(peek) = peek.take() {
-            let target = source.finish_peek(peek);
-            source.focus(target);
+            if peek.quadrant.is_some() {
+                let target = source.finish_peek(peek);
+                source.focus(target);
+            } else if source.zoom.is_none() && source.quadrant_zoom.is_none() {
+                source.zoom = peek.full_zoom.filter(|pane| source.root.contains(*pane));
+            }
         }
         let destination = &mut self.windows[window].tabs[tab];
         if destination.quadrant_zoom.is_some() != quad_zoom {
@@ -2585,6 +2593,48 @@ mod tests {
         }
     }
     #[test]
+    fn peek_without_quad_zoom_enters_the_current_or_numbered_quad() {
+        let chord = Modifiers {
+            super_key: true,
+            ..Modifiers::default()
+        };
+        for pane_zoom in [false, true] {
+            for numbered in [false, true] {
+                let mut tab = quadrants();
+                tab.focus(2);
+                tab.split(9, 10, Direction::Right, "/tmp".into());
+                if pane_zoom {
+                    tab.toggle_zoom();
+                }
+                let mut peek = tab.begin_peek(chord).expect("peek without quad zoom");
+                assert_eq!((tab.zoom, tab.quadrant_zoom), (None, None));
+                assert_eq!(tab.visible_panes(true).len(), 5);
+                let (target, quad) = if numbered {
+                    let targets = tab.peek_targets(Rect::UNIT, [0.0; 2]);
+                    let index = targets.iter().position(|target| target.root == 5).unwrap();
+                    assert_eq!(
+                        tab.select_peek_target(&mut peek, index, Rect::UNIT, [0.0; 2]),
+                        Some(5)
+                    );
+                    (5, 5)
+                } else {
+                    (9, 10)
+                };
+                assert_eq!(tab.finish_peek(peek), target);
+                assert_eq!(tab.quadrant_zoom, Some(quad));
+                assert_eq!(
+                    tab.zoom,
+                    Some(if pane_zoom && !numbered { target } else { quad })
+                );
+            }
+        }
+        let mut tab = quadrants();
+        assert!(tab.begin_peek(Modifiers::default()).is_none());
+        let mut single = Tab::new(1, 2, "/tmp".into());
+        assert!(single.begin_peek(chord).is_none());
+    }
+
+    #[test]
     fn peek_restores_full_zoom_only_within_original_quadrant() {
         let mut tab = quadrants();
         tab.focus(2);
@@ -2613,10 +2663,9 @@ mod tests {
         assert!(tab.unzoom_after_blocked_navigation());
         assert_eq!((tab.zoom, tab.quadrant_zoom), (None, None));
         tab.toggle_zoom();
-        assert!(
-            tab.begin_peek(chord).is_none(),
-            "full zoom alone does not trigger peek"
-        );
+        let peek = tab.begin_peek(chord).unwrap();
+        assert_eq!(tab.finish_peek(peek), 5);
+        assert_eq!((tab.zoom, tab.quadrant_zoom), (Some(5), Some(5)));
         assert!(tab.unzoom_after_blocked_navigation());
         tab.focus(2);
         tab.toggle_quadrant_zoom();
@@ -3176,7 +3225,7 @@ mod tests {
                             } else {
                                 None
                             };
-                            assert_eq!(peek.is_some(), overlap && source_mode >= 2);
+                            assert_eq!(peek.is_some(), overlap);
                             let (window, tab, resolved) =
                                 state.prepare_pin_navigation(1, 20, &mut peek).unwrap();
                             assert_eq!(resolved, pane);
@@ -3210,6 +3259,34 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn pin_navigation_does_not_restore_a_closed_peek_pane() {
+        let mut tab = quadrants();
+        tab.toggle_zoom();
+        let closed = tab.focused;
+        let mut peek = tab.begin_peek(Modifiers {
+            super_key: true,
+            ..Modifiers::default()
+        });
+        assert!(peek.is_some());
+        assert!(tab.close(closed));
+        let mut state = Workspace {
+            next_id: 21,
+            windows: vec![WindowState {
+                id: 20,
+                tabs: vec![tab],
+                active_tab: 0,
+                frame: [0.0, 0.0, 800.0, 600.0],
+                quick: false,
+            }],
+            pinned_panes: vec![2],
+            ..Workspace::default()
+        };
+        assert!(state.prepare_pin_navigation(1, 20, &mut peek).is_some());
+        assert_eq!(state.windows[0].tabs[0].zoom, None);
+        state.validate().unwrap();
     }
 
     #[test]

@@ -558,6 +558,7 @@ impl Smoke {
         let done = result?;
         if stage == 3 && self.stage == 7 {
             // Dispatch through the window handler with the host back in its map.
+            check_quad_peek_prefix(app, event_loop, key)?;
             check_passive_pointer_motion(app, event_loop, key)?;
             check_focus_hint_clicks(app, event_loop, key)?;
         }
@@ -1421,6 +1422,56 @@ fn check_zoom_animations(
     Ok(())
 }
 
+fn check_quad_peek_prefix(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    key: WindowId,
+) -> Result<()> {
+    use winit::keyboard::ModifiersState;
+
+    let window = app.windows[&key].id;
+    let original = app.tab(window).unwrap().clone();
+    let modifiers = app.windows[&key].modifiers;
+    app.loaded.config.keybinds.push(config::KeyBinding::parse(
+        "super+ctrl+h=goto_split:quadrant_left",
+    )?);
+    let result = (|| -> Result<()> {
+        let tab = app.tab_mut(window).unwrap();
+        tab.zoom = None;
+        tab.quadrant_zoom = None;
+        app.window_event(
+            event_loop,
+            key,
+            WindowEvent::ModifiersChanged((ModifiersState::CONTROL | ModifiersState::SUPER).into()),
+        );
+        if app.windows[&key].peek.is_none() {
+            return Err("Quad Peek prefix did not activate from an unzoomed view".into());
+        }
+        let focused = app.windows[&key].window.has_focus();
+        app.window_event(
+            event_loop,
+            key,
+            WindowEvent::ModifiersChanged(ModifiersState::empty().into()),
+        );
+        let tab = app.tab(window).unwrap();
+        let expected = focused.then(|| tab.root.quadrant(tab.focused)).flatten();
+        if app.windows[&key].peek.is_some() || (tab.zoom, tab.quadrant_zoom) != (expected, expected)
+        {
+            return Err("Quad Peek release did not respect native window focus".into());
+        }
+        Ok(())
+    })();
+    app.loaded.config.keybinds.pop();
+    *app.tab_mut(window).unwrap() = original;
+    let host = app.windows.get_mut(&key).unwrap();
+    host.modifiers = modifiers;
+    host.peek = None;
+    host.repaint();
+    result?;
+    eprintln!("Native smoke: unzoomed Quad Peek prefix and native-focus release check passed");
+    Ok(())
+}
+
 fn check_quad_peek_numbers(
     app: &mut App,
     event_loop: &ActiveEventLoop,
@@ -1455,8 +1506,8 @@ fn check_quad_peek_numbers(
     let mut fixture = original.clone();
     fixture.quad_roots.insert(nested);
     fixture.focused = nested;
-    fixture.quadrant_zoom = Some(outer);
-    fixture.zoom = Some(nested);
+    fixture.quadrant_zoom = None;
+    fixture.zoom = None;
     let chord = config::Modifiers {
         control: true,
         super_key: true,
