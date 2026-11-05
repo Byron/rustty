@@ -630,7 +630,7 @@ impl Parser {
     }
 
     /// Like [`Self::advance`], but emit printable text and APC data as borrowed runs.
-    /// CSI parameter runs share capture bookkeeping; other controls keep their scalar path.
+    /// Complete ordinary CSI commands and parameter runs share capture bookkeeping.
     pub fn advance_batched(&mut self, bytes: &[u8], mut handler: impl FnMut(BatchEvent<'_>)) {
         let mut remaining = bytes;
         while let Some(&byte) = remaining.first() {
@@ -644,6 +644,11 @@ impl Parser {
                     BatchEvent::PrintAscii(&remaining[..len])
                 });
                 self.retain_pending(&remaining[..len]);
+                remaining = &remaining[len..];
+            } else if byte == 0x1b
+                && self.is_ground()
+                && let Some(len) = self.advance_complete_csi(remaining, &mut handler)
+            {
                 remaining = &remaining[len..];
             } else if (self.state == State::CsiParam && matches!(byte, b'0'..=b'9' | b':' | b';'))
                 || (self.state == State::CsiEntry && matches!(byte, b'0'..=b'9' | b';'))
@@ -675,15 +680,57 @@ impl Parser {
         self.retain_continuation(bytes);
     }
 
+    #[inline]
+    fn advance_complete_csi(
+        &mut self,
+        bytes: &[u8],
+        handler: &mut impl FnMut(BatchEvent<'_>),
+    ) -> Option<usize> {
+        debug_assert!(self.is_ground());
+        let tail = bytes.strip_prefix(b"\x1b[")?;
+        if tail.first() == Some(&b':') {
+            return None;
+        }
+        let end = tail
+            .iter()
+            .position(|&byte| !matches!(byte, b'0'..=b'9' | b':' | b';'))?;
+        if !(0x40..=0x7e).contains(&tail[end]) {
+            return None;
+        }
+        // Complete ordinary CSI has no observable intermediate capture.
+        self.clear();
+        self.state = if end == 0 {
+            State::CsiEntry
+        } else {
+            State::CsiParam
+        };
+        for &byte in &tail[..end] {
+            self.param(byte);
+        }
+        self.csi_dispatch(tail[end], &mut |event| handler(BatchEvent::Event(event)));
+        self.extended.clear();
+        self.state = State::Ground;
+        self.capture_pending.clear();
+        self.capture_pending_broken = false;
+        Some(end + 3)
+    }
+
     fn advance_valid_utf8(&mut self, text: &str, handler: &mut impl FnMut(BatchEvent<'_>)) {
         // Consume the validated prefix completely, including control sequences,
         // so a stream of short runs never revalidates overlapping suffixes.
         let mut offset = 0;
         while offset < text.len() {
+            let byte = text.as_bytes()[offset];
             if self.is_ground()
                 // Raw VT parsing can reach ground inside a UTF-8 codepoint.
                 && let Some(remaining) = text.get(offset..)
             {
+                if byte == 0x1b
+                    && let Some(len) = self.advance_complete_csi(remaining.as_bytes(), handler)
+                {
+                    offset += len;
+                    continue;
+                }
                 let len = printable_utf8_prefix(remaining);
                 if len > 0 {
                     handler(BatchEvent::PrintUtf8(&remaining[..len]));
@@ -691,9 +738,7 @@ impl Parser {
                     continue;
                 }
             }
-            self.advance_byte(text.as_bytes()[offset], &mut |event| {
-                handler(BatchEvent::Event(event))
-            });
+            self.advance_byte(byte, &mut |event| handler(BatchEvent::Event(event)));
             offset += 1;
         }
     }
@@ -819,6 +864,32 @@ impl Parser {
         }
     }
 
+    #[inline]
+    fn csi_dispatch(&mut self, byte: u8, handler: &mut impl FnMut(Event<'_>)) {
+        let multiple_cursors =
+            byte == b'q' && self.intermediates[..self.intermediate_count] == *b"> ";
+        let rendition = byte == b'm'
+            || (byte == b'r' && self.intermediates[..self.intermediate_count] == *b"$");
+        if multiple_cursors && self.extended.active {
+            if self.extended.finish() {
+                handler(Event::CsiExtended {
+                    intermediates: &self.intermediates[..self.intermediate_count],
+                    params: &self.extended.params,
+                    final_byte: byte,
+                });
+            }
+        } else if self.finalize_params()
+            && (rendition || multiple_cursors || self.colon_separators == 0)
+        {
+            handler(Event::Csi {
+                intermediates: &self.intermediates[..self.intermediate_count],
+                params: &self.params[..self.param_count],
+                colon_separators: self.colon_separators,
+                final_byte: byte,
+            });
+        }
+    }
+
     fn control(&mut self, byte: u8, handler: &mut impl FnMut(Event<'_>)) {
         if self.tmux_strings && self.state == State::DcsPassthrough {
             if self.tmux_dcs_escape {
@@ -888,30 +959,7 @@ impl Parser {
                 intermediates: &self.intermediates[..self.intermediate_count],
                 final_byte: byte,
             }),
-            TransitionAction::CsiDispatch => {
-                let multiple_cursors =
-                    byte == b'q' && self.intermediates[..self.intermediate_count] == *b"> ";
-                let rendition = byte == b'm'
-                    || (byte == b'r' && self.intermediates[..self.intermediate_count] == *b"$");
-                if multiple_cursors && self.extended.active {
-                    if self.extended.finish() {
-                        handler(Event::CsiExtended {
-                            intermediates: &self.intermediates[..self.intermediate_count],
-                            params: &self.extended.params,
-                            final_byte: byte,
-                        });
-                    }
-                } else if self.finalize_params()
-                    && (rendition || multiple_cursors || self.colon_separators == 0)
-                {
-                    handler(Event::Csi {
-                        intermediates: &self.intermediates[..self.intermediate_count],
-                        params: &self.params[..self.param_count],
-                        colon_separators: self.colon_separators,
-                        final_byte: byte,
-                    });
-                }
-            }
+            TransitionAction::CsiDispatch => self.csi_dispatch(byte, handler),
             TransitionAction::OscPut => {
                 if !self.osc_overflow {
                     if self.osc.len() < self.osc_limit && self.osc.try_reserve(1).is_ok() {
@@ -1107,12 +1155,14 @@ mod tests {
         let bytes = [
             b"hello\x7f world\x80\xc2\x9b\xf0\x9fASCII\xed\xa0\x80\xf0\x9f\x1b[31mred\x1b[0m\x07\x1b]2;title\x07\x1bP1;2qraw ascii\x1b\\\x1b_Ga=t;AAAA\x1b\\end".as_slice(),
             "世界 café العربية e\u{301} 👩\u{200d}💻\u{85}after C1\u{7f}".as_bytes(),
+            "世界\x1b[31m紅\x1b[0m文字\x1b[1;2H次\x1b[m".as_bytes(),
             // ST inside these valid codepoints leaves raw ESC/APC parsing in
             // ground, where the remaining continuation byte must decode alone.
             b"\x1b\xe2\x9c\x80ground\x1b_\xe2\x9c\x80after APC",
             b"\x1b[;31m\x1b[:31m\x1b[1;m\x1b[1:2H\x1b[1\x07;2\x7f:3m\x1b[1;2$r\x1b[1;2$3m",
             b"\x1b[1;2\x18\x1b[3;4\x1a\x1b[5;6\x1b[7;8m\x1b[9;0\x9b1;2m",
             b"\x1b[999999999999m\x1b[>65536;4294967296:2 q",
+            b"\x1b[m\x1b[H\x1b[1;2H\x1b[?25l\x1b[1 q\x1b[:m",
             format!("\x1b[{}m\x1b[>{} q\x1b[>{} q", "1;".repeat(MAX_PARAMS),
                 "1:".repeat(MAX_PARAMS), "1:".repeat(MAX_EXTENDED_PARAMS + 1)).as_bytes(),
             b"\xe0\xa0\xf0\x9f\x98\x84\x1b[38:2::1:2",
