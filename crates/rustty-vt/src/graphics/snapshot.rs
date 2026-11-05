@@ -13,6 +13,10 @@ pub(crate) fn has_state(screen: &Screen) -> bool {
 pub(crate) const STORAGE: u16 = 8;
 pub(crate) const PAYLOAD: u16 = 9;
 pub(crate) const PAGE_PLACEMENTS: u16 = 10;
+pub(crate) const INDEXED: u16 = 0x8005;
+pub(crate) const INDEXED_PAYLOAD: u16 = 0x8006;
+pub(crate) const INDEXED_CHUNK_BYTES: usize = 1024 * 1024;
+pub(crate) const INDEXED_HEADER_BYTES: usize = 15;
 
 fn word(out: &mut Vec<u8>, value: u32) {
     out.extend_from_slice(&value.to_le_bytes());
@@ -37,6 +41,12 @@ fn wire_len(width: u32, height: u32, format: u8) -> Option<usize> {
         _ => return None,
     };
     rgba_len(width, height)?.checked_div(4)?.checked_mul(bpp)
+}
+fn indexed_len(width: u32, height: u32, bpp: u8) -> Option<usize> {
+    matches!(bpp, 1 | 2).then_some(())?;
+    rgba_len(width, height)?
+        .checked_div(4)?
+        .checked_mul(usize::from(bpp))
 }
 fn placement_key(out: &mut Vec<u8>, image: u32, id: PlacementId) {
     word(out, image);
@@ -241,7 +251,46 @@ impl<'a> Plan<'a> {
         if let Some(loading) = &graphics.loading {
             encode_loading(&mut data, loading)?;
         }
-        record(out, STORAGE, &data)
+        record(out, STORAGE, &data)?;
+        let indexed: Vec<_> = self
+            .images
+            .iter()
+            .filter_map(|image| image.indexed.as_ref().map(|source| (*image, source)))
+            .collect();
+        let loading_bpp =
+            graphics
+                .loading
+                .as_ref()
+                .map_or(0, |loading| match loading.command.n(b'f') {
+                    8 => 1,
+                    16 => 2,
+                    _ => 0,
+                });
+        if indexed.is_empty() && loading_bpp == 0 {
+            return Ok(());
+        }
+        let mut data = vec![1];
+        u16_bytes(&mut data, self.key)?;
+        u32_bytes(&mut data, indexed.len())?;
+        for (image, source) in indexed {
+            let length = indexed_len(image.width, image.height, source.bytes_per_pixel)
+                .ok_or_else(|| invalid("invalid indexed snapshot dimensions"))?;
+            if (!source.data.is_empty() && source.data.len() != length)
+                || !image.frames.is_empty()
+                || image.animation_state != 1
+                || image.current_frame != 0
+                || image.root_gap_ms != 0
+                || image.max_loops != 0
+                || image.completed_loops != 0
+            {
+                return Err(invalid("invalid indexed snapshot image"));
+            }
+            word(&mut data, image.id);
+            data.push(source.bytes_per_pixel);
+            long(&mut data, length);
+        }
+        data.push(loading_bpp);
+        record(out, INDEXED, &data)
     }
     fn encode_placement(
         &self,
@@ -293,6 +342,17 @@ impl<'a> Plan<'a> {
             u32_bytes(&mut header, payload.frame)?;
             long(&mut header, pixels.len());
             record_parts(out, PAYLOAD, &[&header, pixels])?;
+            if payload.frame == 1
+                && let Some(source) = &payload.image.indexed
+            {
+                for (index, chunk) in source.data.chunks(INDEXED_CHUNK_BYTES).enumerate() {
+                    let mut header = vec![1];
+                    u16_bytes(&mut header, self.key)?;
+                    word(&mut header, payload.image.id);
+                    long(&mut header, index * INDEXED_CHUNK_BYTES);
+                    record_parts(out, INDEXED_PAYLOAD, &[&header, chunk])?;
+                }
+            }
         }
         Ok(())
     }
@@ -319,15 +379,35 @@ pub(crate) struct Target {
     format: u8,
     // Frame deletion must not redirect a payload to the new frame at that index.
     pending: Vec<Weak<Vec<u8>>>,
+    indexed: Option<IndexedTarget>,
+}
+struct IndexedTarget {
+    pending: Weak<Vec<u8>>,
+    expected: usize,
+    data: Vec<u8>,
 }
 pub(crate) type Targets = HashMap<u32, Target>;
+
+pub(crate) fn indexed_complete(targets: &Targets) -> bool {
+    targets.values().all(|target| {
+        target
+            .indexed
+            .as_ref()
+            .is_none_or(|pending| pending.data.is_empty())
+    })
+}
 
 pub(crate) fn decode_storage(
     data: &[u8],
     screen: &mut Screen,
     key: usize,
     limit: usize,
+    indexed: Option<&[u8]>,
 ) -> io::Result<Targets> {
+    let (mut indexed, loading_bpp) = indexed
+        .map(|data| decode_indexed(data, key))
+        .transpose()?
+        .unwrap_or_default();
     let mut r = Slice::new(data);
     if usize::from(r.u16()?) != key {
         return Err(invalid("unexpected snapshot graphics screen"));
@@ -359,6 +439,7 @@ pub(crate) fn decode_storage(
             width,
             height,
             pixels: Arc::new(Vec::new()),
+            indexed: None,
             generation: 0,
             identity: 0,
             frames: Vec::new(),
@@ -404,6 +485,24 @@ pub(crate) fn decode_storage(
                 image.current_frame = 0;
             }
         }
+        if let Some((bpp, length)) = indexed.remove(&id) {
+            let expected = indexed_len(width, height, bpp)
+                .ok_or_else(|| invalid("invalid indexed snapshot dimensions"))?;
+            if length != expected as u64
+                || !image.frames.is_empty()
+                || image.animation_state != 1
+                || image.current_frame != 0
+                || image.root_gap_ms != 0
+                || image.max_loops != 0
+                || image.completed_loops != 0
+            {
+                return Err(invalid("invalid indexed snapshot image"));
+            }
+            image.indexed = Some(IndexedPixels {
+                bytes_per_pixel: bpp,
+                data: Arc::new(Vec::new()),
+            });
+        }
         if !valid || bytes.is_none_or(|bytes| bytes > screen.graphics.limit) {
             continue;
         }
@@ -424,9 +523,17 @@ pub(crate) fn decode_storage(
                     .chain(image.frames.iter().map(|frame| &frame.pixels))
                     .map(Arc::downgrade)
                     .collect(),
+                indexed: image.indexed.as_ref().map(|source| IndexedTarget {
+                    pending: Arc::downgrade(&source.data),
+                    expected: indexed_len(width, height, source.bytes_per_pixel).unwrap(),
+                    data: Vec::new(),
+                }),
             },
         );
         graphics.images.insert(id, image);
+    }
+    if !indexed.is_empty() {
+        return Err(invalid("unknown indexed snapshot image"));
     }
     let pages: Vec<_> = screen
         .pages
@@ -450,10 +557,135 @@ pub(crate) fn decode_storage(
     if loading {
         decode_loading(&mut r, &mut screen.graphics)?;
     }
+    if loading_bpp != 0
+        && let Some(loading) = &mut screen.graphics.loading
+    {
+        if loading.command.action() == b'f' || loading.command.n(b'f') != 32 {
+            return Err(invalid("invalid indexed snapshot loading state"));
+        }
+        loading
+            .command
+            .values
+            .insert(b'f', i64::from(loading_bpp) * 8);
+    }
     r.finish()?;
     screen.graphics.next_image = next_image;
     screen.graphics.next_placement = next_placement;
     Ok(targets)
+}
+
+type IndexedMetadata = (HashMap<u32, (u8, u64)>, u8);
+
+fn decode_indexed(data: &[u8], key: usize) -> io::Result<IndexedMetadata> {
+    let mut r = Slice::new(data);
+    if r.u8()? != 1 || usize::from(r.u16()?) != key {
+        return Err(invalid("invalid indexed snapshot metadata"));
+    }
+    let count = r.u32()? as usize;
+    let entries = r.take(
+        count
+            .checked_mul(13)
+            .ok_or_else(|| invalid("indexed snapshot count overflow"))?,
+    )?;
+    let loading_bpp = r.u8()?;
+    if loading_bpp > 2 {
+        return Err(invalid("invalid indexed snapshot loading format"));
+    }
+    r.finish()?;
+    let mut entries = Slice::new(entries);
+    let mut images = HashMap::new();
+    for _ in 0..count {
+        let id = entries.u32()?;
+        let bpp = entries.u8()?;
+        let length = entries.u64()?;
+        if id == 0
+            || images.insert(id, (bpp, length)).is_some()
+            || !matches!(bpp, 1 | 2)
+            || length > MAX_DATA as u64
+        {
+            return Err(invalid("invalid indexed snapshot source"));
+        }
+    }
+    Ok((images, loading_bpp))
+}
+
+pub(crate) fn decode_indexed_payload(
+    data: &[u8],
+    terminal: &mut Terminal,
+    identities: &[Option<u64>; 2],
+    targets: &mut [Targets; 2],
+) -> io::Result<crate::snapshot::ImageProgress> {
+    let mut r = Slice::new(data);
+    if r.u8()? != 1 {
+        return Err(invalid("invalid indexed snapshot payload version"));
+    }
+    let key = usize::from(r.u16()?);
+    let id = r.u32()?;
+    let offset = r.u64()?;
+    if key > 1
+        || identities[key].is_none()
+        || data.len() <= INDEXED_HEADER_BYTES
+        || data.len() > INDEXED_HEADER_BYTES + INDEXED_CHUNK_BYTES
+    {
+        return Err(invalid("invalid indexed snapshot payload"));
+    }
+    let bytes = &data[INDEXED_HEADER_BYTES..];
+    let mut progress = crate::snapshot::ImageProgress {
+        screen: key as u8,
+        image_id: id,
+        frame: 1,
+        bytes: 0,
+    };
+    let Some(target) = targets[key].get_mut(&id) else {
+        return Ok(progress);
+    };
+    let Some(screen) = (if key == 0 {
+        Some(&mut terminal.primary)
+    } else {
+        terminal.alternate.as_mut()
+    })
+    .filter(|screen| Some(screen.metadata.identity) == identities[key]) else {
+        target.indexed = None;
+        return Ok(progress);
+    };
+    let Some(image) = screen.graphics.images.get_mut(&id) else {
+        target.indexed = None;
+        return Ok(progress);
+    };
+    if target.storage != screen.graphics.identity || target.identity != image.identity {
+        target.indexed = None;
+        return Ok(progress);
+    }
+    let Some(pending) = &mut target.indexed else {
+        return Err(invalid("unexpected indexed snapshot payload"));
+    };
+    let Some(source) = &image.indexed else {
+        target.indexed = None;
+        return Ok(progress);
+    };
+    if !Weak::ptr_eq(&pending.pending, &Arc::downgrade(&source.data)) {
+        target.indexed = None;
+        return Ok(progress);
+    }
+    if offset != pending.data.len() as u64 || bytes.len() > pending.expected - pending.data.len() {
+        return Err(invalid(
+            "indexed snapshot payload offset or length mismatch",
+        ));
+    }
+    pending
+        .data
+        .try_reserve_exact(bytes.len())
+        .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+    pending.data.extend_from_slice(bytes);
+    progress.bytes = bytes.len();
+    if pending.data.len() == pending.expected {
+        image.indexed.as_mut().unwrap().data =
+            pixels::intern(image.width, image.height, std::mem::take(&mut pending.data));
+        screen.graphics.generation = screen.graphics.generation.wrapping_add(1);
+        image.generation = screen.graphics.generation;
+        terminal.generation = terminal.generation.wrapping_add(1);
+    }
+    Ok(progress)
 }
 fn read_key(r: &mut Slice<'_>) -> io::Result<Option<(u32, PlacementId)>> {
     let image = r.u32()?;
@@ -702,7 +934,9 @@ pub(crate) fn decode_payload(
 fn encode_format(command: &Command) -> io::Result<u8> {
     match command.values.get(&b'f').copied().unwrap_or(32) {
         24 => Ok(0),
-        32 => Ok(1),
+        // Older peers retain the pending bytes but cannot finish an indexed
+        // upload; the optional metadata restores its format for newer peers.
+        8 | 16 | 32 => Ok(1),
         100 => Ok(2),
         _ => Err(invalid("unsupported snapshot loading format")),
     }

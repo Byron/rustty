@@ -98,6 +98,284 @@ fn kitty_snapshots_roundtrip_and_resume_interrupted_transmissions() {
 }
 
 #[test]
+fn indexed_snapshots_stage_sources_and_preserve_rgba_for_older_peers() {
+    for format in [8, 16] {
+        let raw = if format == 8 {
+            vec![248, 249]
+        } else {
+            vec![248, 0, 249, 128]
+        };
+        let mut source = Terminal::new(10, 3, 100);
+        source.feed(
+            format!(
+                "\x1b_Ga=T,i=1,f={format},s=2,v=1,C=1;{}\x1b\\",
+                STANDARD.encode(&raw)
+            )
+            .as_bytes(),
+        );
+        let fallback = source.graphics().images[&1].pixels.clone();
+        let encoded = snapshot::encode_to_vec(&source).unwrap();
+        let mut decoder = Decoder::new(encoded.as_slice(), DecodeOptions::default());
+        let mut restored = decoder.ready().unwrap();
+        assert_eq!(restored.graphics().bytes_used(), 8 + raw.len());
+        assert!(restored.graphics().images[&1].has_pending_pixels());
+        assert!(
+            restored.graphics().images[&1]
+                .indexed
+                .as_ref()
+                .unwrap()
+                .data
+                .is_empty()
+        );
+        decoder.next(&mut restored).unwrap().unwrap();
+        assert_eq!(restored.graphics().images[&1].pixels, fallback);
+        assert!(restored.graphics().images[&1].has_pending_pixels());
+        decoder.next(&mut restored).unwrap().unwrap();
+        assert_eq!(
+            restored.graphics().images[&1]
+                .indexed
+                .as_ref()
+                .unwrap()
+                .data
+                .as_slice(),
+            raw
+        );
+        assert!(!restored.graphics().images[&1].has_pending_pixels());
+        while decoder.next(&mut restored).unwrap().is_some() {}
+        assert_eq!(snapshot::encode_to_vec(&restored).unwrap(), encoded);
+        let old = frame(
+            &records(&encoded)
+                .into_iter()
+                .filter(|(tag, _)| !matches!(tag, 0x8005 | 0x8006))
+                .collect::<Vec<_>>(),
+        );
+        let old = snapshot::decode(old.as_slice(), DecodeOptions::default()).unwrap();
+        assert!(old.graphics().images[&1].indexed.is_none());
+        assert_eq!(old.graphics().images[&1].pixels, fallback);
+    }
+}
+
+#[test]
+fn indexed_snapshots_resume_compressed_and_plain_protocol_chunks() {
+    use std::io::Write;
+    for format in [8, 16] {
+        for compressed in [false, true] {
+            let raw = if format == 8 {
+                vec![1, 249]
+            } else {
+                vec![1, 128, 249, 255]
+            };
+            let bytes = if compressed {
+                let mut encoder =
+                    flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+                encoder.write_all(&raw).unwrap();
+                encoder.finish().unwrap()
+            } else {
+                raw.clone()
+            };
+            let split = bytes.len() / 2;
+            let mut source = Terminal::new(10, 3, 100);
+            source.feed(
+                format!(
+                    "\x1b_Ga=T,i=1,f={format},s=2,v=1,C=1,m=1{};{}\x1b\\",
+                    if compressed { ",o=z" } else { "" },
+                    STANDARD.encode(&bytes[..split])
+                )
+                .as_bytes(),
+            );
+            let encoded = snapshot::encode_to_vec(&source).unwrap();
+            let mut restored =
+                snapshot::decode(encoded.as_slice(), DecodeOptions::default()).unwrap();
+            restored
+                .feed(format!("\x1b_Gm=0;{}\x1b\\", STANDARD.encode(&bytes[split..])).as_bytes());
+            assert_eq!(
+                restored.graphics().images[&1]
+                    .indexed
+                    .as_ref()
+                    .unwrap()
+                    .data
+                    .as_slice(),
+                raw
+            );
+            assert_eq!(restored.graphics().placements.len(), 1);
+            let old = frame(
+                &records(&encoded)
+                    .into_iter()
+                    .filter(|(tag, _)| *tag != 0x8005)
+                    .collect::<Vec<_>>(),
+            );
+            let mut old = snapshot::decode(old.as_slice(), DecodeOptions::default()).unwrap();
+            old.feed(format!("\x1b_Gm=0;{}\x1b\\", STANDARD.encode(&bytes[split..])).as_bytes());
+            assert!(old.graphics().images.is_empty());
+        }
+    }
+}
+
+#[test]
+fn indexed_snapshot_sources_obey_combined_limits_and_cannot_overwrite_live_images() {
+    let mut source = Terminal::new(10, 3, 100);
+    source.feed(b"\x1b_Ga=T,i=1,f=16,s=1,v=1,C=1;Af8=\x1b\\");
+    let bytes = snapshot::encode_to_vec(&source).unwrap();
+    for limit in [0, 4, 5, 6] {
+        let restored = snapshot::decode(
+            bytes.as_slice(),
+            DecodeOptions {
+                max_graphics_bytes: limit,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(restored.graphics().images.len(), usize::from(limit == 6));
+        assert!(restored.graphics().bytes_used() <= limit);
+        assert_eq!(
+            restored.graphics().placements.len(),
+            usize::from(limit == 6)
+        );
+    }
+    let mut decoder = Decoder::new(bytes.as_slice(), DecodeOptions::default());
+    let mut restored = decoder.ready().unwrap();
+    decoder.next(&mut restored).unwrap();
+    restored.feed(b"\x1b_Gi=1,f=32,s=1,v=1;AQID/w==\x1b\\");
+    while decoder.next(&mut restored).unwrap().is_some() {}
+    assert!(restored.graphics().images[&1].indexed.is_none());
+    assert_eq!(
+        restored.graphics().images[&1].pixels.as_slice(),
+        [1, 2, 3, 255]
+    );
+}
+
+#[test]
+fn indexed_snapshot_admission_uses_combined_bytes_before_evicting_older_images() {
+    for formats in [
+        vec![(8, 1), (32, 1)],
+        vec![(32, 1), (8, 1)],
+        vec![(32, 1), (32, 1), (16, 2)],
+    ] {
+        let mut source = Terminal::new(10, 3, 100);
+        for (index, &(format, width)) in formats.iter().enumerate() {
+            let data = vec![1; width * format / 8];
+            source.feed(
+                format!(
+                    "\x1b_Gi={},f={format},s={width},v=1;{}\x1b\\",
+                    index + 1,
+                    STANDARD.encode(data)
+                )
+                .as_bytes(),
+            );
+        }
+        let encoded = snapshot::encode_to_vec(&source).unwrap();
+        let restored = snapshot::decode(
+            encoded.as_slice(),
+            DecodeOptions {
+                max_graphics_bytes: 8,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let mut ids = restored
+            .graphics()
+            .images
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
+        ids.sort_unstable();
+        assert_eq!(
+            ids,
+            if formats.len() == 2 {
+                vec![2]
+            } else {
+                vec![1, 2]
+            }
+        );
+        assert!(restored.graphics().bytes_used() <= 8);
+    }
+}
+
+#[test]
+fn indexed_snapshot_chunks_are_bounded_and_validate_metadata_offsets_and_crc() {
+    let mut source = Terminal::new(10, 3, 100);
+    source.feed(b"\x1b_Gi=1,f=8,s=1,v=1;AQ==\x1b\\");
+    let image = source.screen_mut().graphics.images.get_mut(&1).unwrap();
+    image.width = 1024;
+    image.height = 1025;
+    image.pixels = std::sync::Arc::new([1, 2, 3, 255].repeat(1024 * 1025));
+    image.indexed.as_mut().unwrap().data = std::sync::Arc::new(vec![1; 1024 * 1025]);
+    let bytes = snapshot::encode_to_vec(&source).unwrap();
+    let pieces = records(&bytes);
+    let chunks = pieces
+        .iter()
+        .filter(|(tag, _)| *tag == 0x8006)
+        .collect::<Vec<_>>();
+    assert_eq!(chunks.len(), 2);
+    assert!(
+        chunks
+            .iter()
+            .all(|(_, data)| data.len() <= 1024 * 1024 + 15)
+    );
+    let last_chunk = pieces.iter().rposition(|(tag, _)| *tag == 0x8006).unwrap();
+    let mut incomplete = pieces.clone();
+    incomplete.remove(last_chunk);
+    assert!(snapshot::decode(frame(&incomplete).as_slice(), DecodeOptions::default()).is_err());
+    let mut decoder = Decoder::new(bytes.as_slice(), DecodeOptions::default());
+    let mut restored = decoder.ready().unwrap();
+    decoder.next(&mut restored).unwrap(); // RGBA fallback.
+    let generation = restored.generation;
+    let image_generation = restored.graphics().images[&1].generation;
+    decoder.next(&mut restored).unwrap(); // First indexed source chunk.
+    assert_eq!(restored.generation, generation);
+    assert_eq!(restored.graphics().images[&1].generation, image_generation);
+    assert!(
+        restored.graphics().images[&1]
+            .indexed
+            .as_ref()
+            .unwrap()
+            .data
+            .is_empty()
+    );
+    decoder.next(&mut restored).unwrap(); // Final source chunk becomes visible.
+    assert_ne!(restored.generation, generation);
+    assert_ne!(restored.graphics().images[&1].generation, image_generation);
+    while decoder.next(&mut restored).unwrap().is_some() {}
+    assert_eq!(
+        restored.graphics().images[&1]
+            .indexed
+            .as_ref()
+            .unwrap()
+            .data
+            .len(),
+        1024 * 1025
+    );
+    for (tag, offset, value) in [(0x8005, 11, 3), (0x8005, 12, 1), (0x8006, 7, 1)] {
+        let mut malformed = pieces.clone();
+        malformed
+            .iter_mut()
+            .find(|(found, _)| *found == tag)
+            .unwrap()
+            .1[offset] = value;
+        assert!(snapshot::decode(frame(&malformed).as_slice(), DecodeOptions::default()).is_err());
+    }
+    let mut damaged = bytes;
+    let mut position = 10;
+    for (tag, data) in &pieces {
+        if *tag == 0x8006 {
+            damaged[position + 10 + 15] ^= 1;
+            break;
+        }
+        position += 10 + data.len();
+    }
+    assert!(
+        snapshot::decode(
+            damaged.as_slice(),
+            DecodeOptions {
+                max_graphics_bytes: 0,
+                ..Default::default()
+            }
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn staged_images_reserve_memory_and_display_before_the_animation_can_play() {
     let bytes = fixture("kitty-animation");
     let mut decoder = Decoder::new(bytes.as_slice(), DecodeOptions::default());

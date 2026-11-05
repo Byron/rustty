@@ -1974,6 +1974,70 @@ mod focus_tests {
         .unwrap();
     }
     #[test]
+    fn native_views_preserve_indexed_images_and_pending_uploads_across_reconnect() {
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);
+        owner.feed(b"\x1b_Ga=T,i=7,f=8,s=2,v=1,C=1;Afk=\x1b\\");
+        let state_with_images = |owner: &tmuxx_terminal::Terminal| {
+            let mut state = state();
+            state["panes"][0]["terminal"] =
+                serde_json::to_value(owner.checkpoint_snapshot()).unwrap();
+            state
+        };
+        let check = |view: &Session, completed: bool| {
+            let terminal = view.terminal().unwrap();
+            let image = &terminal.graphics().images[&7];
+            let source = image.indexed.as_ref().unwrap();
+            assert_eq!(source.bytes_per_pixel, 1);
+            assert_eq!(source.data.as_slice(), [1, 249]);
+            assert_eq!(image.pixels.len(), 8);
+            if completed {
+                let image = &terminal.graphics().images[&8];
+                let source = image.indexed.as_ref().unwrap();
+                assert_eq!(source.bytes_per_pixel, 2);
+                assert_eq!(source.data.as_slice(), [248, 0, 252, 128]);
+                assert_eq!(image.pixels.len(), 8);
+            }
+        };
+        snapshot(&connection, 1, state_with_images(&owner));
+        let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        for view in [&first, &second] {
+            check(view, false);
+        }
+        for (sequence, data, completed) in [
+            (
+                2,
+                b"\x1b_Ga=T,i=8,f=16,s=2,v=1,C=1,m=1;+AA=\x1b\\".as_slice(),
+                false,
+            ),
+            (4, b"\x1b_Gm=0;/IA=\x1b\\".as_slice(), true),
+        ] {
+            owner.feed(data);
+            apply(
+                &connection.shared,
+                ServerMessage::PaneOutput {
+                    sequence,
+                    pane_id: 7,
+                    data: data.to_vec(),
+                },
+            )
+            .unwrap();
+            for view in [&first, &second] {
+                check(view, completed);
+            }
+            snapshot(&connection, sequence + 1, state_with_images(&owner));
+            for view in [&first, &second] {
+                check(view, completed);
+            }
+        }
+        drop(first);
+        let reopened = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        check(&reopened, true);
+        assert!(connection.errors().is_empty());
+    }
+
+    #[test]
     fn native_cwd_survives_attach_live_output_snapshot_and_reopen() {
         {
             let (connection, _requests) = Connection::base(Arc::new(|| {}), true);

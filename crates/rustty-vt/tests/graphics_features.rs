@@ -16,7 +16,11 @@ fn reports_only_implemented_actions_keys_and_values() {
         let mut t = Terminal::new(10, 3, 100);
         t.tmux_graphics = tmux;
         for (body, keys) in [
-            ("e=T,C=1,U=1,N=1,f=16,t=f", ",e=T,C=1"),
+            ("e=T,C=1,U=1,N=1,f=16,t=f", ",e=T,C=1,f=16"),
+            ("e=t,f=8", ",e=t,f=8"),
+            ("e=q,f=16", ",e=q,f=16"),
+            ("e=f,f=8", ",e=f"),
+            ("e=f,f=16", ",e=f"),
             ("e=f,r=1,X=1,f=24,o=z", ",e=f,X=1,f=24,o=z,r=1"),
             ("e=a,s=3,v=2,z=-1", ",e=a,s=3,v=2,z=-1"),
             ("e=a,s=4,C=1", ",e=a"),
@@ -48,14 +52,14 @@ fn reports_only_implemented_actions_keys_and_values() {
             assert!(query(&mut t, body).is_empty(), "{body}");
         }
         t.set_graphics_limit(0);
-        assert_eq!(query(&mut t, "a=q,i=31,e=T,C=1"), reply(""));
+        assert_eq!(query(&mut t, "a=q,i=31,e=T,C=1,f=8"), reply(""));
     }
 }
 
 #[test]
 fn discovery_preserves_images_pending_chunks_and_terminal_state_at_every_split() {
     for tmux in [false, true] {
-        let input = b"\x1b_Ga=q,i=31,e=T,C=1,m=1;invalid-payload\x1b\\";
+        let input = b"\x1b_Ga=q,i=31,e=T,C=1,f=8,m=1;invalid-payload\x1b\\";
         for split in 0..=input.len() {
             let mut t = Terminal::new(10, 3, 100);
             t.tmux_graphics = tmux;
@@ -64,7 +68,7 @@ fn discovery_preserves_images_pending_chunks_and_terminal_state_at_every_split()
             let generation = t.generation;
             let mut effects = t.feed(&input[..split]);
             effects.extend(t.feed(&input[split..]));
-            assert_eq!(effects, reply(",e=T,C=1"));
+            assert_eq!(effects, reply(",e=T,C=1,f=8"));
             assert_eq!(t.generation, generation);
             assert_eq!(rustty_vt::snapshot::encode_to_vec(&t).unwrap(), snapshot);
             query(&mut t, "m=0;");

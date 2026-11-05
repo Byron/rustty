@@ -537,6 +537,18 @@ red errors, orange pauses and animated indeterminate progress. Reports disappear
 when removed or after 15 seconds without an update. Ghostty's `progress-style = false`
 setting disables them. Determinate bars do not schedule animation frames.
 
+Kitty indexed images (`f=8` and `f=16`) let TUIs draw charts, diagrams, and icons
+using the pane's current terminal colors. Palette and theme changes recolor them
+without another image transmission. `f=8` sends one palette index per pixel;
+`f=16` adds an alpha byte for transparency and smooth edges. Both use the same
+graphics rendering paths as RGBA images. Indexed animation and frame composition
+are unsupported.
+
+Snapshots retain indices alongside an RGBA fallback for older peers. The fallback
+uses colors from transmission time; older peers cannot resume an interrupted
+indexed upload. Both retained buffers count toward the existing graphics quota,
+so the smaller transmitted payload does not imply lower retained memory use.
+
 For CLI compatibility, sessions advertise `TERM_PROGRAM=ghostty` and the
 bundled `TERM=xterm-ghostty`; XTVersion replies also identify as `ghostty`,
 with Rustty's package version. An existing shell can enable Cargo progress
@@ -568,6 +580,9 @@ export contents and cleanup without opening an editor or changing the clipboard.
 `RUSTTY_SMOKE_ROWS=1` compares two native panes with uncached frame preparation,
 including detached snapshots, selection, cursor phases, preedit, and atlas recovery
 for a closing pane. It writes `row-cache-result.json` and captures the panes.
+`RUSTTY_SMOKE_INDEXED=1` checks indexed-image colors and alpha in two panes,
+including palette changes without retransmission. It writes
+`indexed-graphics-result.json` and captures the images before and after recoloring.
 
 The macOS session import regression runs five hidden debug instances in sequence
 with isolated configuration, disposable `/bin/sh` shells, and state. Each

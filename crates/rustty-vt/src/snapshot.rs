@@ -628,7 +628,7 @@ pub struct DecodeOptions {
     /// Bounds incoming replay bytes; the restored parser keeps its normal limit.
     pub max_continuation_bytes: usize,
     pub max_cells: usize,
-    /// Maximum decoded RGBA image and animation storage per screen.
+    /// Maximum decoded RGBA, indexed source, and animation storage per screen.
     pub max_graphics_bytes: usize,
 }
 impl Default for DecodeOptions {
@@ -868,6 +868,10 @@ impl<R: Read> Decoder<R> {
             let len = u32::from_le_bytes(header[2..6].try_into().unwrap()) as usize;
             let limit = if tag == kitty::PAYLOAD {
                 400 * 1024 * 1024 + 18
+            } else if tag == kitty::INDEXED_PAYLOAD {
+                self.options
+                    .max_record_bytes
+                    .min(kitty::INDEXED_CHUNK_BYTES + kitty::INDEXED_HEADER_BYTES)
             } else if tag == PROGRAM_STATUS {
                 self.options.max_record_bytes.min(MAX_PROGRAM_STATUS_BYTES)
             } else {
@@ -879,7 +883,12 @@ impl<R: Read> Decoder<R> {
             if (1..=10).contains(&tag)
                 || matches!(
                     tag,
-                    POINTER_SHAPES | SAVED_MOUSE | ATTRIBUTE_EXTENT | PROGRAM_STATUS
+                    POINTER_SHAPES
+                        | SAVED_MOUSE
+                        | ATTRIBUTE_EXTENT
+                        | PROGRAM_STATUS
+                        | kitty::INDEXED
+                        | kitty::INDEXED_PAYLOAD
                 )
             {
                 return Ok((header, len));
@@ -1253,8 +1262,18 @@ impl<R: Read> Decoder<R> {
         screen.sync_cursor_resources();
         if self.peek_tag()? == kitty::STORAGE {
             let payload = self.record(kitty::STORAGE)?;
-            self.images[key] =
-                kitty::decode_storage(&payload, &mut screen, key, self.options.max_graphics_bytes)?;
+            let indexed = if self.peek_tag()? == kitty::INDEXED {
+                Some(self.record(kitty::INDEXED)?)
+            } else {
+                None
+            };
+            self.images[key] = kitty::decode_storage(
+                &payload,
+                &mut screen,
+                key,
+                self.options.max_graphics_bytes,
+                indexed.as_deref(),
+            )?;
         }
         screen.pointer_shapes = if self.peek_tag()? == POINTER_SHAPES {
             let payload = self.record(POINTER_SHAPES)?;
@@ -1480,6 +1499,12 @@ impl<R: Read> Decoder<R> {
     }
     fn next_inner(&mut self, t: &mut Terminal) -> io::Result<Option<Progress>> {
         loop {
+            if self.peek_tag()? == kitty::INDEXED_PAYLOAD {
+                let payload = self.record(kitty::INDEXED_PAYLOAD)?;
+                let progress =
+                    kitty::decode_indexed_payload(&payload, t, &self.identities, &mut self.images)?;
+                return Ok(Some(Progress::Image(progress)));
+            }
             if self.peek_tag()? == kitty::PAYLOAD {
                 let header = self.header.take().unwrap().0;
                 let progress = kitty::decode_payload(
@@ -1569,6 +1594,9 @@ impl<R: Read> Decoder<R> {
             }
             if self.history_remaining == 0 {
                 self.marker(6)?;
+                if !self.images.iter().all(kitty::indexed_complete) {
+                    return Err(invalid("incomplete indexed snapshot payload"));
+                }
                 self.finished = true;
                 return Ok(None);
             }

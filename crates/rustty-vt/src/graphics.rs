@@ -49,6 +49,9 @@ pub struct Image {
     /// Unassociated RGBA8, independent of the renderer's target color space.
     #[serde(with = "pixels::serde_rgba")]
     pub pixels: Arc<Vec<u8>>,
+    /// Palette indices retained alongside the static RGBA fallback for old peers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub indexed: Option<IndexedPixels>,
     pub generation: u64,
     identity: u64,
     pub frames: Vec<AnimationFrame>,
@@ -61,6 +64,15 @@ pub struct Image {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct IndexedPixels {
+    /// One byte is an opaque index; two bytes are an index followed by alpha.
+    pub bytes_per_pixel: u8,
+    /// Empty only while a staged snapshot source is pending.
+    #[serde(with = "pixels::serde_rgba")]
+    pub data: Arc<Vec<u8>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AnimationFrame {
     #[serde(with = "pixels::serde_rgba")]
     pub pixels: Arc<Vec<u8>>,
@@ -70,7 +82,12 @@ pub struct AnimationFrame {
 impl Image {
     /// Empty buffers reserve their full dimensions until snapshot pixels arrive.
     pub fn has_pending_pixels(&self) -> bool {
-        self.pixels.is_empty() || self.frames.iter().any(|frame| frame.pixels.is_empty())
+        self.pixels.is_empty()
+            || self.frames.iter().any(|frame| frame.pixels.is_empty())
+            || self
+                .indexed
+                .as_ref()
+                .is_some_and(|source| source.data.is_empty())
     }
     pub fn display_pixels(&self) -> &[u8] {
         if self.current_frame == 0 {
@@ -528,15 +545,23 @@ impl Graphics {
                     .iter()
                     .any(|frame| !frame.pixels.is_empty() && frame.pixels.len() != length)
                 || image.current_frame > image.frames.len()
+                || image.indexed.as_ref().is_some_and(|source| {
+                    !matches!(source.bytes_per_pixel, 1 | 2)
+                        || (!source.data.is_empty()
+                            && source.data.len()
+                                != length / 4 * usize::from(source.bytes_per_pixel))
+                        || !image.frames.is_empty()
+                        || image.animation_state != 1
+                        || image.current_frame != 0
+                        || image.root_gap_ms != 0
+                        || image.max_loops != 0
+                        || image.completed_loops != 0
+                })
             {
                 return Err("invalid graphics image");
             }
             used = used
-                .checked_add(
-                    length
-                        .checked_mul(image.frames.len() + 1)
-                        .ok_or("image allocation overflow")?,
-                )
+                .checked_add(images::checked_bytes(&image).ok_or("image allocation overflow")?)
                 .ok_or("image allocation overflow")?;
             if used > max_bytes || result.images.contains_key(&image.id) {
                 return Err("excessive or duplicate graphics image");
@@ -1371,7 +1396,7 @@ impl Terminal {
             if matches!(action, b't' | b'T')
                 && !matches!(
                     command.values.get(&b'f').copied().unwrap_or(32),
-                    24 | 32 | 100
+                    8 | 16 | 24 | 32 | 100
                 )
             {
                 command.reply(id, 0, "EINVAL: unsupported format", effects);
@@ -1412,6 +1437,22 @@ impl Terminal {
                 }
             }
         }
+        if command.action() == b'f'
+            && (matches!(command.n(b'f'), 8 | 16)
+                || self
+                    .graphics()
+                    .images
+                    .get(&id)
+                    .is_some_and(|image| image.indexed.is_some()))
+        {
+            command.reply(
+                id,
+                command.n(b'r') as usize,
+                "EINVAL: indexed images cannot animate",
+                effects,
+            );
+            return;
+        }
         if (action != b'q' || self.tmux_graphics) && command.n(b'm') != 0 {
             self.screen_mut().graphics.loading = Some(Loading {
                 command,
@@ -1421,18 +1462,56 @@ impl Terminal {
             });
             return;
         }
-        let (width, height, pixels) = match decode_image(&command, data) {
+        let (width, height, mut pixels, indexed) = match decode_image(&command, data) {
             Ok(decoded) => decoded,
             Err(error) => {
                 command.reply(command.n(b'i'), 0, error, effects);
                 return;
             }
         };
+        if let Some(source) = &indexed {
+            let (foreground, background) = if self.modes.dec(5) {
+                (self.background, self.foreground)
+            } else {
+                (self.foreground, self.background)
+            };
+            // Old peers see static colors; live renderers resolve host-only
+            // selection and cursor-text colors from their current pane options.
+            let special = [
+                background,
+                foreground,
+                foreground,
+                background,
+                self.cursor_color.unwrap_or(foreground),
+                background,
+                foreground,
+                foreground,
+            ];
+            pixels = source
+                .data
+                .chunks_exact(usize::from(source.bytes_per_pixel))
+                .flat_map(|pixel| {
+                    let index = usize::from(pixel[0]);
+                    let color = if index < 248 {
+                        self.palette[index]
+                    } else {
+                        special[index - 248]
+                    };
+                    [
+                        color[0],
+                        color[1],
+                        color[2],
+                        pixel.get(1).copied().unwrap_or(255),
+                    ]
+                })
+                .collect();
+        }
+        let stored_bytes = pixels.len() + indexed.as_ref().map_or(0, |source| source.data.len());
         if command.action() == b'q' {
             let storage = &mut self.screen_mut().graphics;
             let result = if let Some(quota) = &storage.quota {
                 quota
-                    .reserve(storage.quota_owner, None, pixels.len())
+                    .reserve(storage.quota_owner, None, stored_bytes)
                     .map(|token| quota.release(token))
             } else {
                 Ok(())
@@ -1453,7 +1532,7 @@ impl Terminal {
         let implicit = command.n(b'i') == 0 && command.n(b'I') == 0;
         let storage = &mut self.screen_mut().graphics;
         let token = if let Some(quota) = &storage.quota {
-            let result = quota.reserve(storage.quota_owner, None, pixels.len());
+            let result = quota.reserve(storage.quota_owner, None, stored_bytes);
             storage.prune_quota();
             match result {
                 Ok(token) => Some(token),
@@ -1464,7 +1543,7 @@ impl Terminal {
             }
         } else {
             let old_size = storage.images.get(&id).map_or(0, Image::bytes);
-            if let Err(error) = storage.reserve(pixels.len().saturating_sub(old_size), id) {
+            if let Err(error) = storage.reserve(stored_bytes.saturating_sub(old_size), id) {
                 command.reply(command.n(b'i'), 0, error, effects);
                 return;
             }
@@ -1492,6 +1571,7 @@ impl Terminal {
                 width,
                 height,
                 pixels: pixels::intern(width, height, pixels),
+                indexed,
                 generation: storage.generation,
                 identity: storage.generation,
                 frames: Vec::new(),
@@ -1671,6 +1751,9 @@ impl Terminal {
         if generation.is_some_and(|g| g != image.identity) {
             return Err("ENOENT: image not found");
         }
+        if image.indexed.is_some() {
+            return Err("EINVAL: indexed images cannot animate");
+        }
         if width > image.width || height > image.height {
             return Err("EINVAL: frame dimensions exceed image");
         }
@@ -1750,6 +1833,9 @@ impl Terminal {
             .images
             .get_mut(&id)
             .ok_or("ENOENT: image not found")?;
+        if image.indexed.is_some() {
+            return Err("EINVAL: indexed images cannot animate");
+        }
         let mut changed = false;
         let frame = cmd.n(b'r') as usize;
         if frame > 0 && frame <= image.frames.len() + 1 && cmd.signed(b'z') != 0 {
@@ -1797,6 +1883,9 @@ impl Terminal {
             .images
             .get_mut(&id)
             .ok_or("ENOENT: image not found")?;
+        if image.indexed.is_some() {
+            return Err("EINVAL: indexed images cannot compose");
+        }
         let source = image
             .frame(cmd.n(b'r') as usize)
             .ok_or("ENOENT: source frame not found")?
@@ -2030,7 +2119,10 @@ impl Terminal {
     }
 }
 
-fn decode_image(cmd: &Command, mut data: Vec<u8>) -> Result<(u32, u32, Vec<u8>), &'static str> {
+type DecodedImage = (u32, u32, Vec<u8>, Option<IndexedPixels>);
+
+fn decode_image(cmd: &Command, mut data: Vec<u8>) -> Result<DecodedImage, &'static str> {
+    let mut indexed = None;
     let limit = cmd.limit();
     if data.len() > limit {
         return Err("EINVAL: invalid data");
@@ -2133,10 +2225,15 @@ fn decode_image(cmd: &Command, mut data: Vec<u8>) -> Result<(u32, u32, Vec<u8>),
             return Err("EINVAL: invalid data");
         }
         let bpp = match format {
+            8 => 1,
+            16 => 2,
             24 => 3,
             32 => 4,
             _ => return Err("EINVAL: unsupported format"),
         };
+        if bpp <= 2 && u64::from(width) * u64::from(height) > limit as u64 / (4 + bpp as u64) {
+            return Err("EINVAL: invalid data");
+        }
         let expected = width as usize * height as usize * bpp;
         if cmd.action() == b'f' {
             if data.len() < expected {
@@ -2154,9 +2251,14 @@ fn decode_image(cmd: &Command, mut data: Vec<u8>) -> Result<(u32, u32, Vec<u8>),
                 .iter()
                 .flat_map(|p| [p[0], p[1], p[2], 255])
                 .collect();
+        } else if bpp <= 2 {
+            indexed = Some(IndexedPixels {
+                bytes_per_pixel: bpp as u8,
+                data: pixels::intern(width, height, std::mem::take(&mut data)),
+            });
         }
     }
-    Ok((width, height, data))
+    Ok((width, height, data, indexed))
 }
 
 fn png_ends_after_idat(data: &[u8]) -> bool {
@@ -2859,7 +2961,9 @@ mod tests {
         for length in 0..=encoded.len() {
             let decoded = decode_image(&command, encoded[..length].to_vec());
             if length >= idat_end {
-                assert_eq!(decoded.unwrap(), (1, 1, vec![12, 34, 56, 78]));
+                let (width, height, pixels, indexed) = decoded.unwrap();
+                assert_eq!((width, height, pixels), (1, 1, vec![12, 34, 56, 78]));
+                assert!(indexed.is_none());
             } else {
                 assert!(decoded.is_err(), "accepted truncated PNG at {length}");
             }

@@ -115,6 +115,49 @@ fn shared_memory_accepts_platform_names_without_a_leading_slash() {
 }
 
 #[test]
+fn indexed_shared_memory_ranges_queries_and_compression() {
+    use std::io::Write;
+    for bpp in [1, 2] {
+        for compressed in [false, true] {
+            let raw = [1, 128].repeat(bpp);
+            let bytes = if compressed {
+                let mut encoder =
+                    flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+                encoder.write_all(&raw).unwrap();
+                encoder.finish().unwrap()
+            } else {
+                raw.clone()
+            };
+            let mut memory = vec![99; 3];
+            memory.extend_from_slice(&bytes);
+            memory.extend_from_slice(&[88; 4]);
+            let shm = SharedMemory::new(&memory);
+            let mut terminal = Terminal::new(10, 3, 100);
+            let options = format!(
+                "i=1,f={},s=2,v=1,O=3,S={},m=1{}",
+                bpp * 8,
+                bytes.len(),
+                if compressed { ",o=z" } else { "" }
+            );
+            assert_eq!(
+                terminal.feed(&shm.command(&options)),
+                [Effect::Write(b"\x1b_Gi=1;OK\x1b\\".to_vec())]
+            );
+            shm.assert_consumed();
+            assert_eq!(
+                terminal.graphics().images[&1]
+                    .indexed
+                    .as_ref()
+                    .unwrap()
+                    .data
+                    .as_slice(),
+                raw
+            );
+        }
+    }
+}
+
+#[test]
 fn catnip_shared_memory_upload_place_and_verify() {
     let mut terminal = Terminal::new(80, 24, 100);
     terminal.set_pixel_size(800, 480);

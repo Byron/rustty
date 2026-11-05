@@ -337,6 +337,59 @@ fn terminal_quad(paint: Paint, rect: [f32; 4], uv: [f32; 4], color: Color) -> Qu
 }
 
 #[test]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn indexed_prepared_frames_recolor_and_replay_with_straight_alpha() {
+    let mut terminal = rustty_vt::Terminal::new(4, 1, 0);
+    terminal.feed(b"\x1b_Ga=T,f=16,s=2,v=1,i=1,C=1;Af8CgA==\x1b\\");
+    assert!(terminal.graphics().images[&1].indexed.is_some());
+    let mut prepare = rustty_render::Renderer::new(Default::default()).unwrap();
+    let mut options = rustty_render::RenderOptions {
+        size: [2, 1],
+        padding: [0.0; 2],
+        cursor_visible: false,
+        background_opacity: 0.0,
+        ..Default::default()
+    };
+    options.palette[1] = [255, 0, 0];
+    options.palette[2] = [0, 255, 0];
+    let before = prepare.prepare(terminal.screen(), &options).unwrap();
+    options.palette[1] = [0, 0, 255];
+    options.palette[2] = [255; 3];
+    let after = prepare.prepare(terminal.screen(), &options).unwrap();
+    prepare.retain_images(
+        terminal
+            .graphics()
+            .images
+            .values()
+            .map(|image| (image, &options)),
+    );
+
+    let mut renderer = Renderer::default();
+    let mut delta = TexturesDelta::default();
+    for (frame, expected) in [
+        (before.clone(), [255, 0, 0, 255, 0, 128, 0, 128]),
+        (after, [0, 0, 255, 255, 128, 128, 128, 128]),
+        (before, [255, 0, 0, 255, 0, 128, 0, 128]),
+    ] {
+        let pixels = render(
+            &mut renderer,
+            [2, 1],
+            1.0,
+            &[callback(
+                frame,
+                1,
+                rect(0.0, 0.0, 2.0, 1.0),
+                Rect::EVERYTHING,
+            )],
+            &mut delta,
+        );
+        assert_eq!(pixels, expected);
+        // Rebuild solely from each retained frame's uploads, including the old palette.
+        renderer.free_window(1);
+    }
+}
+
+#[test]
 fn terminal_masks_colors_srgb_filtering_and_callback_viewport_match_wgsl() {
     let mut renderer = Renderer::default();
     let mut delta = TexturesDelta::default();

@@ -139,7 +139,7 @@ pub(super) fn checked_bytes(image: &Image) -> Option<usize> {
     let pending = (image.width as usize)
         .checked_mul(image.height as usize)
         .and_then(|length| length.checked_mul(4));
-    std::iter::once(&image.pixels)
+    let rgba = std::iter::once(&image.pixels)
         .chain(image.frames.iter().map(|frame| &frame.pixels))
         .try_fold(0usize, |used, pixels| {
             used.checked_add(if pixels.is_empty() {
@@ -147,7 +147,14 @@ pub(super) fn checked_bytes(image: &Image) -> Option<usize> {
             } else {
                 pixels.len()
             })
-        })
+        })?;
+    rgba.checked_add(match &image.indexed {
+        Some(source) if source.data.is_empty() => pending?
+            .checked_div(4)?
+            .checked_mul(usize::from(source.bytes_per_pixel))?,
+        Some(source) => source.data.len(),
+        None => 0,
+    })
 }
 
 #[cfg(test)]

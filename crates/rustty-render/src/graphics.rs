@@ -4,7 +4,7 @@ use crate::Paint;
 use rustty_font::FontMetrics;
 use rustty_vt::{
     Row, Screen,
-    graphics::{Image, Placement, PlacementId, unicode},
+    graphics::{Image, IndexedPixels, Placement, PlacementId, unicode},
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -15,7 +15,18 @@ pub(super) use unicode::PLACEHOLDER;
 // One neighboring pixel on each side prevents seams under bilinear filtering;
 // the atlas then adds its own one-pixel gutter, fitting a 1024px page.
 const TILE: u32 = 1020;
-pub(super) type TileKey = (usize, u32, u32, u32, u32);
+type Palette = Arc<[[u8; 3]; 256]>;
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub(super) struct ImageKey {
+    source: usize,
+    width: u32,
+    height: u32,
+    bytes_per_pixel: u8,
+    palette: Option<Palette>,
+}
+
+pub(super) type TileKey = (ImageKey, u32, u32);
 pub(super) struct CachedTile {
     // Retain the source so allocator reuse cannot collide with a cached pointer.
     _source: Arc<Vec<u8>>,
@@ -59,9 +70,13 @@ struct Geometry {
 }
 
 impl Renderer {
-    /// Release cached images absent from all visible panes. Call after refreshing
-    /// every pane's snapshot; retained frames remain independently replayable.
-    pub fn retain_images<'a>(&mut self, images: impl IntoIterator<Item = &'a Image>) {
+    /// Release cached images and palettes absent from all visible panes. Pass
+    /// each snapshot's retained options after refreshing all panes; retained
+    /// frames remain independently replayable.
+    pub fn retain_images<'a>(
+        &mut self,
+        images: impl IntoIterator<Item = (&'a Image, &'a RenderOptions)>,
+    ) {
         if self.images.is_empty() {
             return;
         }
@@ -77,7 +92,7 @@ impl Renderer {
 
     pub(super) fn image_pages<'a>(
         &self,
-        images: impl IntoIterator<Item = &'a Image>,
+        images: impl IntoIterator<Item = (&'a Image, &'a RenderOptions)>,
     ) -> HashSet<usize> {
         let sources = image_sources(images);
         self.images
@@ -97,6 +112,12 @@ impl Renderer {
         if screen.graphics.placements.is_empty() {
             return Ok(layers);
         }
+        let palette = screen
+            .graphics
+            .images
+            .values()
+            .any(|image| completed_indexed(image).is_some())
+            .then(|| indexed_palette(options));
         let metrics = self.metrics();
         let mut placements = geometry(screen, metrics, options, &mut self.placeholders);
         placements.sort_by_key(|p| (p.z, p.order, p.placement));
@@ -112,7 +133,7 @@ impl Renderer {
             let Some(image) = screen.graphics.images.get(&placement.image) else {
                 continue;
             };
-            if image.display_pixels().is_empty() {
+            if display_source(image).0.is_empty() {
                 continue;
             }
             if !clip_image(&mut placement.source, &mut placement.rect, clip) {
@@ -137,7 +158,7 @@ impl Renderer {
                             ..=(((sx + sw).ceil() as u32).saturating_sub(1) / TILE)
                                 .max(sx as u32 / TILE)
                         {
-                            let cached = match self.image_tile(image, tx, ty) {
+                            let cached = match self.image_tile(image, tx, ty, palette.as_ref()) {
                                 Ok(cached) => cached,
                                 Err(RenderError::AtlasCapacity) if omit_excess => {
                                     // ponytail: a 320 MiB image atlas is separate from text;
@@ -198,9 +219,15 @@ impl Renderer {
         Ok(layers)
     }
 
-    fn image_tile(&mut self, image: &Image, tx: u32, ty: u32) -> Result<CachedGlyph, RenderError> {
-        let pixels = image.displayed_pixels();
-        let key = (pixels.as_ptr() as usize, image.width, image.height, tx, ty);
+    fn image_tile(
+        &mut self,
+        image: &Image,
+        tx: u32,
+        ty: u32,
+        palette: Option<&Palette>,
+    ) -> Result<CachedGlyph, RenderError> {
+        let (pixels, bytes_per_pixel) = display_source(image);
+        let key = (image_key(image, pixels, bytes_per_pixel, palette), tx, ty);
         if let Some(tile) = self.images.get(&key) {
             return Ok(tile.glyph.clone());
         }
@@ -213,8 +240,18 @@ impl Renderer {
             for x in -1..=width as i32 {
                 let x = (i64::from(tx * TILE) + i64::from(x)).clamp(0, i64::from(image.width) - 1)
                     as usize;
-                let index = (y * image.width as usize + x) * 4;
-                data.extend_from_slice(&pixels[index..index + 4]);
+                let index = (y * image.width as usize + x) * usize::from(bytes_per_pixel);
+                if let Some(palette) = &key.0.palette {
+                    let [r, g, b] = palette[usize::from(pixels[index])];
+                    let alpha = if bytes_per_pixel == 2 {
+                        pixels[index + 1]
+                    } else {
+                        255
+                    };
+                    data.extend_from_slice(&[r, g, b, alpha]);
+                } else {
+                    data.extend_from_slice(&pixels[index..index + 4]);
+                }
             }
         }
         let mut cached = self.cache_pixels([width + 2, height + 2], data.into(), true)?;
@@ -227,7 +264,7 @@ impl Renderer {
         self.images.insert(
             key,
             CachedTile {
-                _source: pixels,
+                _source: Arc::clone(pixels),
                 glyph: cached.clone(),
             },
         );
@@ -235,14 +272,86 @@ impl Renderer {
     }
 }
 
-fn image_sources<'a>(images: impl IntoIterator<Item = &'a Image>) -> HashSet<usize> {
-    images
-        .into_iter()
-        .flat_map(|image| {
-            std::iter::once(&image.pixels).chain(image.frames.iter().map(|frame| &frame.pixels))
-        })
-        .map(|pixels| pixels.as_ptr() as usize)
-        .collect()
+fn completed_indexed(image: &Image) -> Option<&IndexedPixels> {
+    image.indexed.as_ref().filter(|indexed| {
+        matches!(indexed.bytes_per_pixel, 1 | 2)
+            && !indexed.data.is_empty()
+            && (image.width as usize)
+                .checked_mul(image.height as usize)
+                .and_then(|pixels| pixels.checked_mul(usize::from(indexed.bytes_per_pixel)))
+                == Some(indexed.data.len())
+    })
+}
+
+fn display_source(image: &Image) -> (&Arc<Vec<u8>>, u8) {
+    if image.current_frame != 0 {
+        (&image.frames[image.current_frame - 1].pixels, 4)
+    } else if let Some(indexed) = completed_indexed(image) {
+        (&indexed.data, indexed.bytes_per_pixel)
+    } else {
+        (&image.pixels, 4)
+    }
+}
+
+fn indexed_palette(options: &RenderOptions) -> Palette {
+    let mut palette = options.palette;
+    palette[248..].copy_from_slice(&options.indexed_colors.unwrap_or([
+        options.background,
+        options.foreground,
+        options.selection_background,
+        options.selection_foreground.unwrap_or(options.background),
+        options.cursor_color,
+        options.cursor_text,
+        options.foreground,
+        options.foreground,
+    ]));
+    Arc::new(palette)
+}
+
+fn image_key(
+    image: &Image,
+    pixels: &Arc<Vec<u8>>,
+    bytes_per_pixel: u8,
+    palette: Option<&Palette>,
+) -> ImageKey {
+    ImageKey {
+        source: pixels.as_ptr() as usize,
+        width: image.width,
+        height: image.height,
+        bytes_per_pixel,
+        palette: (bytes_per_pixel != 4)
+            .then(|| Arc::clone(palette.expect("indexed image palette"))),
+    }
+}
+
+fn image_sources<'a>(
+    images: impl IntoIterator<Item = (&'a Image, &'a RenderOptions)>,
+) -> HashSet<ImageKey> {
+    let mut sources = HashSet::new();
+    let mut previous_palette: Option<(&RenderOptions, Palette)> = None;
+    for (image, options) in images {
+        if let Some(indexed) = completed_indexed(image) {
+            // Prepared-pane images arrive together; share their palette across tiny tiles.
+            if previous_palette
+                .as_ref()
+                .is_none_or(|(old, _)| !std::ptr::eq(*old, options))
+            {
+                previous_palette = Some((options, indexed_palette(options)));
+            }
+            sources.insert(image_key(
+                image,
+                &indexed.data,
+                indexed.bytes_per_pixel,
+                previous_palette.as_ref().map(|(_, palette)| palette),
+            ));
+        } else {
+            sources.insert(image_key(image, &image.pixels, 4, None));
+        }
+        for frame in &image.frames {
+            sources.insert(image_key(image, &frame.pixels, 4, None));
+        }
+    }
+    sources
 }
 
 fn geometry(
@@ -358,8 +467,12 @@ fn valid_image(image: &Image) -> bool {
         && image.width <= 10000
         && image.height <= 10000
         && image.current_frame <= image.frames.len()
-        && (image.display_pixels().is_empty()
-            || image.display_pixels().len() == image.width as usize * image.height as usize * 4)
+        && {
+            let (pixels, bytes_per_pixel) = display_source(image);
+            pixels.is_empty()
+                || pixels.len()
+                    == image.width as usize * image.height as usize * usize::from(bytes_per_pixel)
+        }
 }
 
 fn clipped_source(p: &Placement, image: &Image) -> [f32; 4] {
@@ -488,6 +601,301 @@ mod tests {
                 .as_bytes(),
         );
         assert!(t.screen().graphics.images.contains_key(&id));
+    }
+
+    fn indexed_image(terminal: &mut Terminal, width: u32, bytes_per_pixel: u8, data: Vec<u8>) {
+        transmit(terminal, 1, "");
+        let image = terminal.screen_mut().graphics.images.get_mut(&1).unwrap();
+        image.width = width;
+        image.pixels = [255, 0, 0, 128].repeat(width as usize).into();
+        image.indexed = Some(IndexedPixels {
+            bytes_per_pixel,
+            data: data.into(),
+        });
+    }
+
+    fn image_pixel(frame: &crate::Frame) -> [u8; 4] {
+        let quad = frame
+            .quads
+            .iter()
+            .find(|q| q.paint == Paint::Color)
+            .unwrap();
+        let size = frame
+            .atlas_uploads
+            .iter()
+            .find(|u| u.page == quad.atlas)
+            .unwrap()
+            .page_size as f32;
+        let position = [
+            (quad.uv[0] * size).round() as u32,
+            (quad.uv[1] * size).round() as u32,
+        ];
+        let upload = frame
+            .atlas_uploads
+            .iter()
+            .rev()
+            .find(|u| {
+                u.page == quad.atlas
+                    && (0..2).all(|i| {
+                        position[i] >= u.origin[i] && position[i] < u.origin[i] + u.size[i]
+                    })
+            })
+            .unwrap();
+        let offset = ((position[1] - upload.origin[1]) * upload.size[0] + position[0]
+            - upload.origin[0]) as usize
+            * 4;
+        upload.pixels[offset..offset + 4].try_into().unwrap()
+    }
+
+    #[test]
+    fn indexed_tiles_resolve_every_color_alpha_and_neighbor_texel() {
+        for bytes_per_pixel in [1, 2] {
+            for override_specials in [false, true] {
+                let mut terminal = Terminal::new(400, 2, 0);
+                let width = TILE + 2;
+                let data = (0..width)
+                    .flat_map(|x| {
+                        let index = x as u8;
+                        [index, 255 - index]
+                            .into_iter()
+                            .take(usize::from(bytes_per_pixel))
+                    })
+                    .collect();
+                indexed_image(&mut terminal, width, bytes_per_pixel, data);
+                let (mut renderer, mut options) = renderer();
+                options.size = [5000, 100];
+                options.background_opacity = 0.25;
+                for (index, color) in options.palette.iter_mut().enumerate() {
+                    *color = [index as u8, 255 - index as u8, index as u8 ^ 85];
+                }
+                options.background = [1, 2, 3];
+                options.foreground = [4, 5, 6];
+                options.selection_background = [7, 8, 9];
+                options.selection_foreground = None;
+                options.cursor_color = [10, 11, 12];
+                options.cursor_text = [13, 14, 15];
+                let specials = if override_specials {
+                    std::array::from_fn(|i| [i as u8 + 20, i as u8 + 40, i as u8 + 60])
+                } else {
+                    [
+                        [1, 2, 3],
+                        [4, 5, 6],
+                        [7, 8, 9],
+                        [1, 2, 3],
+                        [10, 11, 12],
+                        [13, 14, 15],
+                        [4, 5, 6],
+                        [4, 5, 6],
+                    ]
+                };
+                options.indexed_colors = override_specials.then_some(specials);
+                let frame = renderer.prepare(terminal.screen(), &options).unwrap();
+                assert_eq!(frame.atlas_uploads.len(), 2);
+                for (tile, upload) in frame.atlas_uploads.iter().enumerate() {
+                    assert_eq!(upload.size, [if tile == 0 { TILE + 2 } else { 4 }, 3]);
+                    for pixel in 0..upload.pixels.len() / 4 {
+                        let x = (tile as i64 * i64::from(TILE)
+                            + (pixel % upload.size[0] as usize) as i64
+                            - 1)
+                        .clamp(0, i64::from(width) - 1);
+                        let index = x as u8;
+                        let rgb = if index < 248 {
+                            [index, 255 - index, index ^ 85]
+                        } else {
+                            specials[usize::from(index - 248)]
+                        };
+                        let alpha = if bytes_per_pixel == 1 {
+                            255
+                        } else {
+                            255 - index
+                        };
+                        assert_eq!(
+                            &upload.pixels[pixel * 4..pixel * 4 + 4],
+                            &[rgb[0], rgb[1], rgb[2], alpha]
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn indexed_palette_variants_follow_retained_panes_and_old_frames_still_replay() {
+        let mut first = Terminal::new(10, 3, 0);
+        indexed_image(&mut first, 1, 1, vec![248]);
+        let second = first.clone();
+        let source = Arc::downgrade(&first.graphics().images[&1].indexed.as_ref().unwrap().data);
+        let (mut renderer, mut first_options) = renderer();
+        first_options.indexed_colors = Some([[17, 31, 43]; 8]);
+        let mut second_options = first_options.clone();
+        second_options.indexed_colors = Some([[53, 67, 79]; 8]);
+        let mut first_cache = crate::RowCache::default();
+        let mut second_cache = crate::RowCache::default();
+        let prepare = |renderer: &mut Renderer,
+                       terminal: &Terminal,
+                       options: &RenderOptions,
+                       cache: &mut crate::RowCache| {
+            renderer
+                .prepare_cached(
+                    &terminal.screen().snapshot_viewport(),
+                    terminal.screen().render_key(),
+                    options,
+                    cache,
+                )
+                .unwrap()
+        };
+        prepare(&mut renderer, &first, &first_options, &mut first_cache);
+        let first_frame = prepare(&mut renderer, &first, &first_options, &mut first_cache);
+        let old_page = first_frame.atlas_uploads[0].page;
+        let old_upload = Arc::downgrade(&first_frame.atlas_uploads[0].pixels);
+        let fill_pages = |renderer: &mut Renderer| {
+            for page in renderer.pages.values_mut().filter(|page| page.image) {
+                page.x = page.size;
+                page.y = page.size;
+                page.row_height = page.size;
+            }
+        };
+        // Separate pages make obsolete-palette retirement observable without large images.
+        fill_pages(&mut renderer);
+        prepare(&mut renderer, &second, &second_options, &mut second_cache);
+        let second_frame = prepare(&mut renderer, &second, &second_options, &mut second_cache);
+        assert_eq!(image_pixel(&first_frame), [17, 31, 43, 255]);
+        assert_eq!(image_pixel(&second_frame), [53, 67, 79, 255]);
+        assert_eq!(renderer.images.len(), 2);
+        assert_eq!(first_frame.atlas_uploads.len(), 1);
+        assert_eq!(second_frame.atlas_uploads.len(), 1);
+        let again = prepare(&mut renderer, &first, &first_options, &mut first_cache);
+        assert_eq!(again.quads, first_frame.quads);
+        assert_eq!(again.atlas_uploads, first_frame.atlas_uploads);
+        drop(again);
+        renderer.retain_images([
+            (&first.graphics().images[&1], &first_options),
+            (&second.graphics().images[&1], &second_options),
+        ]);
+        assert_eq!(renderer.images.len(), 2);
+
+        let rows_prepared = first_cache.prepared_rows;
+        first_options.indexed_colors = Some([[83, 97, 109]; 8]);
+        fill_pages(&mut renderer);
+        let changed = prepare(&mut renderer, &first, &first_options, &mut first_cache);
+        assert_eq!(image_pixel(&changed), [83, 97, 109, 255]);
+        assert_eq!(
+            first_cache.prepared_rows, rows_prepared,
+            "graphics-only colors reuse text geometry"
+        );
+        renderer.retain_images([
+            (&first.graphics().images[&1], &first_options),
+            (&second.graphics().images[&1], &second_options),
+        ]);
+        assert_eq!(renderer.images.len(), 2);
+        assert_eq!(renderer.pages.len(), 2);
+        assert!(!renderer.pages.contains_key(&old_page));
+        assert_eq!(image_pixel(&first_frame), [17, 31, 43, 255]);
+        assert_eq!(
+            old_upload.strong_count(),
+            1,
+            "the old frame owns its replayable upload"
+        );
+        let unchanged = prepare(&mut renderer, &second, &second_options, &mut second_cache);
+        assert_eq!(unchanged.quads, second_frame.quads);
+        assert_eq!(unchanged.atlas_uploads, second_frame.atlas_uploads);
+        drop(first);
+        drop(second);
+        assert!(
+            source.upgrade().is_some(),
+            "cached pointers retain their raw source"
+        );
+        renderer.retain_images(std::iter::empty());
+        assert_eq!(source.strong_count(), 0);
+        assert!(renderer.pages.is_empty());
+        assert_eq!(image_pixel(&changed), [83, 97, 109, 255]);
+    }
+
+    #[test]
+    fn staged_or_malformed_indexed_sources_use_the_static_rgba_fallback() {
+        let mut terminal = Terminal::new(10, 3, 0);
+        indexed_image(&mut terminal, 1, 1, Vec::new());
+        let (mut renderer, mut options) = renderer();
+        options.palette[1] = [23, 45, 67];
+        let mut check = |terminal: &Terminal, expected: [u8; 4]| {
+            let frame = renderer.prepare(terminal.screen(), &options).unwrap();
+            assert_eq!(image_pixel(&frame), expected);
+            renderer.retain_images(
+                terminal
+                    .graphics()
+                    .images
+                    .values()
+                    .map(|image| (image, &options)),
+            );
+            assert_eq!(renderer.images.len(), 1);
+        };
+        check(&terminal, [255, 0, 0, 128]);
+        for (bytes_per_pixel, data) in [
+            (1, vec![1]),
+            (2, vec![1]),
+            (3, vec![1, 2, 3]),
+            (1, vec![1, 2]),
+            (255, vec![1]),
+            (2, vec![1, 29]),
+        ] {
+            terminal
+                .screen_mut()
+                .graphics
+                .images
+                .get_mut(&1)
+                .unwrap()
+                .indexed = Some(IndexedPixels {
+                bytes_per_pixel,
+                data: data.clone().into(),
+            });
+            let expected = match (bytes_per_pixel, data.len()) {
+                (1, 1) => [23, 45, 67, 255],
+                (2, 2) => [23, 45, 67, 29],
+                _ => [255, 0, 0, 128],
+            };
+            check(&terminal, expected);
+        }
+        terminal
+            .screen_mut()
+            .graphics
+            .images
+            .get_mut(&1)
+            .unwrap()
+            .pixels = Vec::new().into();
+        check(&terminal, [23, 45, 67, 29]);
+        let image = terminal.screen_mut().graphics.images.get_mut(&1).unwrap();
+        image.pixels = vec![255; 3].into();
+        image.indexed.as_mut().unwrap().data = Vec::new().into();
+        let frame = renderer.prepare(terminal.screen(), &options).unwrap();
+        assert!(frame.quads.iter().all(|quad| quad.paint != Paint::Color));
+        let image = terminal.screen_mut().graphics.images.get_mut(&1).unwrap();
+        image.width = u32::MAX;
+        image.height = u32::MAX;
+        image.indexed.as_mut().unwrap().data = vec![1].into();
+        let frame = renderer.prepare(terminal.screen(), &options).unwrap();
+        assert!(frame.quads.iter().all(|quad| quad.paint != Paint::Color));
+    }
+
+    #[test]
+    fn rgba_tiles_are_independent_of_indexed_palette_changes() {
+        let mut terminal = Terminal::new(10, 3, 0);
+        transmit(&mut terminal, 1, "");
+        let (mut renderer, mut options) = renderer();
+        let before = renderer.prepare(terminal.screen(), &options).unwrap();
+        options.palette[1] = [11, 22, 33];
+        options.indexed_colors = Some([[44, 55, 66]; 8]);
+        let after = renderer.prepare(terminal.screen(), &options).unwrap();
+        renderer.retain_images(
+            terminal
+                .graphics()
+                .images
+                .values()
+                .map(|image| (image, &options)),
+        );
+        assert_eq!(renderer.images.len(), 1);
+        assert_eq!(before.quads, after.quads);
+        assert_eq!(before.atlas_uploads, after.atlas_uploads);
+        assert_eq!(image_pixel(&after), [255, 0, 0, 128]);
     }
 
     fn placeholders() -> Terminal {
@@ -667,8 +1075,8 @@ mod tests {
         images.sort_by_key(|image| image.tmux_order);
         assert_eq!(images.len(), 2);
         assert!(images[0].id > images[1].id);
-        let before = renderer.image_tile(images[0], 0, 0).unwrap().uv;
-        let after = renderer.image_tile(images[1], 0, 0).unwrap().uv;
+        let before = renderer.image_tile(images[0], 0, 0, None).unwrap().uv;
+        let after = renderer.image_tile(images[1], 0, 0, None).unwrap().uv;
         let frame = renderer.prepare(terminal.screen(), &options).unwrap();
         let sprites = frame
             .quads
@@ -825,7 +1233,13 @@ mod tests {
             let prepare = |renderer: &mut Renderer, terminal: &Terminal| {
                 let snapshot = terminal.screen().snapshot_viewport();
                 let frame = renderer.prepare(&snapshot, &options).unwrap();
-                renderer.retain_images(snapshot.graphics.images.values());
+                renderer.retain_images(
+                    snapshot
+                        .graphics
+                        .images
+                        .values()
+                        .map(|image| (image, &options)),
+                );
                 frame
             };
             let before = prepare(&mut renderer, &terminal);
@@ -939,7 +1353,13 @@ mod tests {
         terminal.feed(b"\x1b_Ga=d,d=A,q=2\x1b\\\x1b[?1049l");
         assert!(terminal.graphics().images.is_empty());
         let shell = renderer.prepare(terminal.screen(), &options).unwrap();
-        renderer.retain_images(terminal.graphics().images.values());
+        renderer.retain_images(
+            terminal
+                .graphics()
+                .images
+                .values()
+                .map(|image| (image, &options)),
+        );
         assert!(shell.atlas_uploads.is_empty());
         assert_eq!(pixels.strong_count(), 0);
         assert!(renderer.images.is_empty());
@@ -991,7 +1411,8 @@ mod tests {
             game.graphics()
                 .images
                 .values()
-                .chain(other.graphics().images.values()),
+                .chain(other.graphics().images.values())
+                .map(|image| (image, &options)),
         );
         assert_eq!(source.strong_count(), 0);
         assert!(!renderer.pages.contains_key(&game_page));
@@ -1030,7 +1451,13 @@ mod tests {
         assert_eq!(two.atlas_uploads.len(), 2);
         assert_eq!(two.atlas_uploads[0], one.atlas_uploads[0]);
         first.feed(b"\x1b_Ga=d,d=A\x1b\\");
-        renderer.retain_images(second.graphics().images.values());
+        renderer.retain_images(
+            second
+                .graphics()
+                .images
+                .values()
+                .map(|image| (image, &options)),
+        );
         assert_eq!(source.strong_count(), 0);
         assert_eq!(renderer.images.len(), 1);
         assert_eq!(
@@ -1041,7 +1468,13 @@ mod tests {
             two.atlas_uploads
         );
         second.feed(b"\x1b_Ga=d,d=A\x1b\\");
-        renderer.retain_images(second.graphics().images.values());
+        renderer.retain_images(
+            second
+                .graphics()
+                .images
+                .values()
+                .map(|image| (image, &options)),
+        );
         assert!(renderer.pages.is_empty());
         assert!(renderer.uploads.is_empty());
     }
@@ -1103,7 +1536,8 @@ mod tests {
                 .graphics()
                 .images
                 .values()
-                .chain(second.graphics().images.values()),
+                .chain(second.graphics().images.values())
+                .map(|image| (image, &options)),
         );
         assert!(source.upgrade().is_some());
         assert_eq!(renderer.images.len(), 1);
@@ -1112,7 +1546,13 @@ mod tests {
         assert_eq!(survivor.atlas_uploads, moved.atlas_uploads);
 
         second.feed(b"\x1b_Ga=d,d=I,i=8,q=2\x1b\\");
-        renderer.retain_images(second.graphics().images.values());
+        renderer.retain_images(
+            second
+                .graphics()
+                .images
+                .values()
+                .map(|image| (image, &options)),
+        );
         assert!(renderer.images.is_empty());
         assert!(renderer.pages.is_empty());
         assert!(renderer.uploads.is_empty());
@@ -1195,7 +1635,13 @@ mod tests {
             last_page = upload.page;
             last_revision = upload.revision;
             terminal.feed(b"\x1b_Ga=d,d=A\x1b\\");
-            renderer.retain_images(terminal.graphics().images.values());
+            renderer.retain_images(
+                terminal
+                    .graphics()
+                    .images
+                    .values()
+                    .map(|image| (image, &options)),
+            );
             assert!(renderer.images.is_empty());
             assert_eq!(renderer.pages.len(), pages);
             assert_eq!(renderer.uploads, text.atlas_uploads);
@@ -1336,7 +1782,13 @@ mod tests {
         let (mut renderer, options) = renderer();
         let mut check = |terminal: &Terminal, expected: Option<[u8; 4]>, uploads: usize| {
             let frame = renderer.prepare(terminal.screen(), &options).unwrap();
-            renderer.retain_images(terminal.graphics().images.values());
+            renderer.retain_images(
+                terminal
+                    .graphics()
+                    .images
+                    .values()
+                    .map(|image| (image, &options)),
+            );
             assert_eq!(frame.atlas_uploads.len(), uploads);
             let images: Vec<_> = frame
                 .quads

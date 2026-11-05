@@ -4,6 +4,8 @@ use std::fs;
 
 #[path = "hints_smoke.rs"]
 mod hints_smoke;
+#[path = "indexed_smoke.rs"]
+mod indexed_smoke;
 #[path = "output_smoke.rs"]
 mod output_smoke;
 #[path = "rows_smoke.rs"]
@@ -219,6 +221,7 @@ impl Smoke {
         let hints_only = std::env::var_os("RUSTTY_SMOKE_HINTS").is_some();
         let output_only = std::env::var_os("RUSTTY_SMOKE_OUTPUT").is_some();
         let rows_only = std::env::var_os("RUSTTY_SMOKE_ROWS").is_some();
+        let indexed_only = std::env::var_os("RUSTTY_SMOKE_INDEXED").is_some();
         let outliner = std::env::var_os("RUSTTY_SMOKE_OUTLINER").is_some();
         if timing || cursor_benchmark {
             let renderer = loaded.config.renderer;
@@ -239,6 +242,7 @@ impl Smoke {
             || hints_only
             || output_only
             || rows_only
+            || indexed_only
             || outliner
         {
             config::Command::Direct(vec!["/bin/sleep".into(), "120".into()])
@@ -260,7 +264,14 @@ impl Smoke {
                     )
                     .join("Git/bin/bash.exe")
                 });
-            if timing || deck_only || hints_only || output_only || rows_only || outliner {
+            if timing
+                || deck_only
+                || hints_only
+                || output_only
+                || rows_only
+                || indexed_only
+                || outliner
+            {
                 config::Command::Direct(vec![
                     shell.to_string_lossy().into_owned(),
                     "--noprofile".into(),
@@ -395,6 +406,10 @@ impl Smoke {
         }
         if std::env::var_os("RUSTTY_SMOKE_ROWS").is_some() {
             rows_smoke::check(app, event_loop, &self.directory)?;
+            return Ok(true);
+        }
+        if std::env::var_os("RUSTTY_SMOKE_INDEXED").is_some() {
+            indexed_smoke::check(app, event_loop, &self.directory)?;
             return Ok(true);
         }
         if self.interactive_deck {

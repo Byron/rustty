@@ -33,6 +33,8 @@ pub(super) fn read(cmd: &Command, name: &[u8]) -> Result<Vec<u8>, &'static str> 
     } else {
         check_dimensions(cmd.n(b's'), cmd.n(b'v'))?;
         let bpp = match format {
+            8 => 1,
+            16 => 2,
             24 => 3,
             32 => 4,
             _ => return Err("EINVAL: unsupported format"),

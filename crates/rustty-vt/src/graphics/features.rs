@@ -36,7 +36,10 @@ impl Command {
                             && cfg!(all(unix, not(target_os = "android"))));
                 }
                 b'o' => return value == i64::from(b'z'),
-                b'f' => return matches!(value, 24 | 32 | 100),
+                b'f' => {
+                    return matches!(value, 24 | 32 | 100)
+                        || action != b'f' && matches!(value, 8 | 16);
+                }
                 b's' | b'v' => return (1..=i64::from(MAX_DIMENSION)).contains(&value),
                 b'S' | b'O' => return true,
                 _ => {}

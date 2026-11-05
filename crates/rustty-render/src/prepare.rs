@@ -39,6 +39,8 @@ pub struct RenderOptions {
     pub selection_foreground: Option<[u8; 3]>,
     pub search_highlights: Vec<SearchHighlight>,
     pub palette: [[u8; 3]; 256],
+    /// Indexed graphics colors 248..255; omitted values use the resolved text colors.
+    pub indexed_colors: Option<[[u8; 3]; 8]>,
     pub focused: bool,
     pub cursor_visible: bool,
     pub blink_visible: bool,
@@ -85,6 +87,7 @@ impl Default for RenderOptions {
             selection_foreground: None,
             search_highlights: Vec::new(),
             palette,
+            indexed_colors: None,
             focused: true,
             cursor_visible: true,
             blink_visible: true,
@@ -159,6 +162,7 @@ impl RowCache {
         // These affect individual rows or the separately prepared IME overlay.
         settings.blink_visible = true;
         settings.preedit = None;
+        settings.indexed_colors = None;
         if self.generation != generation
             || self.view.is_none_or(|old| !old.same_row_layout(&view))
             || self.options.as_ref() != Some(&settings)
@@ -581,7 +585,13 @@ impl Renderer {
         frame.quads.extend(foreground.quads);
         frame.quads.extend(above_text);
         self.preedit(screen, options, &mut frame)?;
-        let image_pages = self.image_pages(screen.graphics.images.values());
+        let image_pages = self.image_pages(
+            screen
+                .graphics
+                .images
+                .values()
+                .map(|image| (image, options)),
+        );
         frame.atlas_uploads = self
             .uploads
             .iter()

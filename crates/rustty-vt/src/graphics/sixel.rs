@@ -260,6 +260,7 @@ impl Terminal {
             width,
             height,
             pixels: pixels::intern(width, height, rgba),
+            indexed: None,
             generation: storage.generation,
             identity: storage.generation,
             frames: Vec::new(),

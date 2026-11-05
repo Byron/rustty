@@ -6355,6 +6355,12 @@ impl App {
                                     .map(resolve)
                                     .unwrap_or([65, 85, 120]),
                                 selection_foreground: config.selection_foreground.map(resolve),
+                                indexed_colors: Some(indexed_colors(
+                                    &config,
+                                    foreground,
+                                    background,
+                                    cursor_color,
+                                )),
                                 search_highlights: pane
                                     .search
                                     .as_mut()
@@ -6463,7 +6469,13 @@ impl App {
                         host.fonts.retain_images(
                             host.prepared
                                 .values()
-                                .flat_map(|pane| pane.screen.graphics.images.values()),
+                                .flat_map(|pane| {
+                                    pane.screen
+                                        .graphics
+                                        .images
+                                        .values()
+                                        .map(|image| (image, &pane.key.options))
+                                }),
                         );
                         let size = [size.width, size.height];
                         if let Some(retained) = &host.composed
@@ -8154,6 +8166,32 @@ fn link_bounds(
 
 fn rgb(color: config::Rgb) -> Color32 {
     Color32::from_rgb(color.r, color.g, color.b)
+}
+
+/// Kitty's cell-derived special colors refer to terminal defaults, independent
+/// of which cell happens to be selected or under the cursor.
+fn indexed_colors(
+    config: &Config,
+    foreground: [u8; 3],
+    background: [u8; 3],
+    cursor: [u8; 3],
+) -> [[u8; 3]; 8] {
+    let fixed = |color, fallback| match color {
+        Some(config::TerminalColor::Rgb(color)) => [color.r, color.g, color.b],
+        _ => fallback,
+    };
+    [
+        background,
+        foreground,
+        config
+            .selection_background
+            .map_or([65, 85, 120], |color| fixed(Some(color), foreground)),
+        fixed(config.selection_foreground, background),
+        cursor,
+        fixed(config.cursor_text, background),
+        foreground,
+        foreground,
+    ]
 }
 
 impl ApplicationHandler<Event> for App {
@@ -10019,6 +10057,40 @@ fn ui_theme(config: &Config) -> egui::ThemePreference {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn indexed_colors_preserve_fixed_and_cell_derived_settings() {
+        let mut config = Config::default();
+        let fg = [10, 20, 30];
+        let bg = [40, 50, 60];
+        let cursor = [70, 80, 90];
+        config.selection_background = None;
+        config.selection_foreground = None;
+        config.cursor_text = None;
+        assert_eq!(
+            indexed_colors(&config, fg, bg, cursor),
+            [bg, fg, [65, 85, 120], bg, cursor, bg, fg, fg]
+        );
+        for cell in [
+            config::TerminalColor::CellForeground,
+            config::TerminalColor::CellBackground,
+        ] {
+            config.selection_background = Some(cell);
+            config.selection_foreground = Some(cell);
+            config.cursor_text = Some(cell);
+            assert_eq!(
+                indexed_colors(&config, fg, bg, cursor),
+                [bg, fg, fg, bg, cursor, bg, fg, fg]
+            );
+        }
+        config.selection_background = Some(config::TerminalColor::Rgb(config::Rgb::new(1, 2, 3)));
+        config.selection_foreground = Some(config::TerminalColor::Rgb(config::Rgb::new(4, 5, 6)));
+        config.cursor_text = Some(config::TerminalColor::Rgb(config::Rgb::new(7, 8, 9)));
+        assert_eq!(
+            indexed_colors(&config, fg, bg, cursor),
+            [bg, fg, [1, 2, 3], [4, 5, 6], cursor, [7, 8, 9], fg, fg]
+        );
+    }
 
     #[test]
     fn starting_pane_input_is_ordered_and_bounded() {
