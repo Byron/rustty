@@ -1155,14 +1155,18 @@ impl Terminal {
         self.changed();
     }
 
+    /// Configured appearance, independent of the application's current cursor.
+    pub fn default_cursor(&self) -> (CursorShape, Option<bool>) {
+        (
+            crate::snapshot::decode_shape(self.metadata.cursor_default_shape),
+            self.metadata.cursor_default_blink,
+        )
+    }
+
     /// Configuration changes apply immediately while the cursor follows its
-    /// default; an application-selected shape persists until CSI 0 SP q/reset.
+    /// default, even when the configured values are unchanged. An application-
+    /// selected shape persists until CSI 0 SP q/reset.
     pub fn set_default_cursor(&mut self, shape: CursorShape, blink: Option<bool>) {
-        if self.metadata.cursor_default_shape == crate::snapshot::cursor_shape(shape)
-            && self.metadata.cursor_default_blink == blink
-        {
-            return;
-        }
         self.metadata.cursor_default_shape = crate::snapshot::cursor_shape(shape);
         self.metadata.cursor_default_blink = blink;
         if self.metadata.cursor_is_default {

@@ -208,4 +208,70 @@ mod tests {
             tmuxx_terminal::CursorShape::Block
         );
     }
+    #[test]
+    fn unchanged_cursor_options_preserve_application_blink_across_commands_and_snapshots() {
+        let mut engine = Engine::default();
+        let mut context = ClientContext::default();
+        command(&mut engine, &mut context, "new-session -d ''");
+        assert!(engine.panes[&0].terminal.mode(true, 12));
+        assert!(engine.panes[&0].terminal.snapshot().primary.cursor.blink);
+        engine.feed(0, b"\x1b[?12l");
+        for source in [
+            "rename-window unchanged",
+            "set-option -p cursor-style blinking-block",
+            "set-option -p cursor-style default",
+        ] {
+            command(&mut engine, &mut context, source);
+            assert!(!engine.panes[&0].terminal.mode(true, 12));
+            assert!(!engine.panes[&0].terminal.snapshot().primary.cursor.blink);
+            assert_eq!(
+                engine.panes[&0]
+                    .terminal
+                    .format_value("cursor_blinking")
+                    .as_deref(),
+                Some("0")
+            );
+        }
+        for compact in [false, true] {
+            let restored = if compact {
+                engine.panes[&0]
+                    .terminal
+                    .checkpoint_snapshot()
+                    .restore()
+                    .unwrap()
+            } else {
+                engine.panes[&0].terminal.snapshot().restore().unwrap()
+            };
+            engine.panes.get_mut(&0).unwrap().terminal = restored;
+            command(&mut engine, &mut context, "rename-window restored");
+            assert!(!engine.panes[&0].terminal.mode(true, 12));
+            assert!(!engine.panes[&0].terminal.snapshot().primary.cursor.blink);
+        }
+        command(
+            &mut engine,
+            &mut context,
+            "set-option -p cursor-style blinking-bar",
+        );
+        assert!(engine.panes[&0].terminal.mode(true, 12));
+        assert_eq!(
+            engine.panes[&0].terminal.snapshot().primary.cursor.shape,
+            tmuxx_terminal::CursorShape::Bar
+        );
+        engine.feed(0, b"\x1b[2 q");
+        command(
+            &mut engine,
+            &mut context,
+            "set-option -p cursor-style underline",
+        );
+        assert_eq!(
+            engine.panes[&0].terminal.snapshot().primary.cursor.shape,
+            tmuxx_terminal::CursorShape::Block
+        );
+        assert!(!engine.panes[&0].terminal.mode(true, 12));
+        engine.feed(0, b"\x1b[0 q");
+        assert_eq!(
+            engine.panes[&0].terminal.snapshot().primary.cursor.shape,
+            tmuxx_terminal::CursorShape::Underline
+        );
+    }
 }

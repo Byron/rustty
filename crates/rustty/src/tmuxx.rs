@@ -3,7 +3,7 @@
 //! The server owns PTYs and application replies. Views own selection, scroll,
 //! and rendering. Closing a view never kills its server-side pane.
 use crate::config::Config;
-use crate::session::{Input, SessionEvent, apply_appearance};
+use crate::session::{Input, SessionEvent, restore_appearance};
 use rustty_vt::{Effect, Terminal};
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -1481,7 +1481,7 @@ fn replace_view(view: &mut Terminal, source: &Terminal, appearance: Option<&Conf
     let pixels = (view.width_px, view.height_px);
     *view = source.clone();
     if let Some(config) = appearance {
-        apply_appearance(view, config);
+        restore_appearance(view, config);
     }
     view.set_pixel_size(pixels.0, pixels.1);
     if same_screen {
@@ -2649,6 +2649,62 @@ mod focus_tests {
             assert_eq!(graph.sessions[0].name, "one");
             assert_eq!(graph.windows[0].panes, [7, 8]);
             assert!(graph.panes.iter().all(|pane| pane.terminal.is_none()));
+        }
+    }
+
+    #[test]
+    fn snapshot_appearance_preserves_application_blink_with_unchanged_defaults() {
+        use crate::session::Session;
+
+        for blink in [false, true] {
+            let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+            let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);
+            owner.set_cursor_options(if blink { 1 } else { 2 }, None, &[]);
+            let refresh = |owner: &tmuxx_terminal::Terminal, sequence| {
+                let mut state = state();
+                state["panes"][0]["terminal"] =
+                    serde_json::to_value(owner.checkpoint_snapshot()).unwrap();
+                snapshot(&connection, sequence, state);
+            };
+            refresh(&owner, 1);
+            let view = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+            let mut config = Config::default();
+            config.cursor_style_blink = Some(blink);
+            view.apply_appearance(&config).unwrap();
+            let bytes: &[u8] = if blink { b"\x1b[?12l" } else { b"\x1b[?12h" };
+            owner.feed(bytes);
+            apply(
+                &connection.shared,
+                ServerMessage::PaneOutput {
+                    sequence: 2,
+                    pane_id: 7,
+                    data: bytes.to_vec(),
+                },
+            )
+            .unwrap();
+            for sequence in 3..=4 {
+                assert_eq!(view.terminal().unwrap().screen().cursor.blink, !blink);
+                refresh(&owner, sequence);
+                let terminal = view.terminal().unwrap();
+                assert_eq!(terminal.default_cursor().1, Some(blink));
+                assert_eq!(terminal.screen().cursor.blink, !blink);
+                assert_eq!(terminal.modes.dec(12), !blink);
+            }
+            // Explicit host configuration still reapplies unchanged defaults.
+            view.apply_appearance(&config).unwrap();
+            assert_eq!(view.terminal().unwrap().screen().cursor.blink, blink);
+            apply(
+                &connection.shared,
+                ServerMessage::PaneOutput {
+                    sequence: 5,
+                    pane_id: 7,
+                    data: bytes.to_vec(),
+                },
+            )
+            .unwrap();
+            assert_eq!(view.terminal().unwrap().screen().cursor.blink, !blink);
+            view.apply_config(&config).unwrap();
+            assert_eq!(view.terminal().unwrap().screen().cursor.blink, blink);
         }
     }
 
