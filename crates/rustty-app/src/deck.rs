@@ -17,6 +17,114 @@ pub const PAGE_SIZE: usize = 9;
 pub const ACK_HISTORY: usize = 64;
 pub const GROUPS: [State; 4] = [State::NeedsInput, State::Working, State::Done, State::Idle];
 
+/// A presentation of the owner's most urgent OSC 7501 record, including restored state.
+#[derive(Default)]
+pub struct ProgramReport {
+    report: Option<rustty::vt::program_status::Report>,
+    app: String,
+    tooltip: String,
+    generation: u64,
+    last_activity: Option<Instant>,
+}
+impl ProgramReport {
+    pub fn update(
+        &mut self,
+        records: &rustty::vt::program_status::Records,
+        generation: u64,
+        now: Instant,
+    ) -> bool {
+        let report = records.most_urgent();
+        let app = report.map_or("", |record| records.app_for(record));
+        if report == self.report.as_ref() && app == self.app {
+            return false;
+        }
+        // Keep a captured button press valid while this registration reports progress.
+        if self.report.is_none() {
+            self.generation = generation;
+        }
+        self.report = report.cloned();
+        self.app.clear();
+        self.app.push_str(app);
+        self.last_activity = Some(now);
+        self.tooltip.clear();
+        if let Some(report) = &self.report {
+            use rustty::vt::program_status::{Kind, State};
+            let state = match report.state {
+                State::Idle => "Idle",
+                State::Working => "Working",
+                State::Done => "Done",
+                State::Blocked => match report.kind {
+                    Some(Kind::Permission) => "Waiting for permission",
+                    Some(Kind::Question) => "Waiting for an answer",
+                    Some(Kind::Auth) => "Waiting for authentication",
+                    None => "Waiting for input",
+                },
+                State::Error => "Failed",
+                State::Clear => unreachable!("clear records are not retained"),
+            };
+            if !self.app.is_empty() {
+                self.tooltip.push_str(&self.app);
+                self.tooltip.push_str(" — ");
+            }
+            self.tooltip.push_str(state);
+            if let Some(progress) = report.progress {
+                self.tooltip.push_str(&format!(" ({progress}%)"));
+            }
+            for text in [&report.title, &report.message] {
+                if !text.is_empty() {
+                    self.tooltip.push('\n');
+                    self.tooltip.push_str(text);
+                }
+            }
+        }
+        true
+    }
+    pub fn state(&self) -> Option<State> {
+        self.report.as_ref()?.state.activity()
+    }
+    pub fn tooltip(&self) -> Option<&str> {
+        self.report.as_ref().map(|_| self.tooltip.as_str())
+    }
+    pub fn unseen(&self) -> bool {
+        matches!(
+            self.state(),
+            Some(State::NeedsInput | State::Done | State::Error)
+        )
+    }
+    pub fn progress(&self) -> Option<crate::presentation::Progress> {
+        let report = self.report.as_ref()?;
+        let state = match self.state()? {
+            State::Working => {
+                if report.progress.is_some() {
+                    1
+                } else {
+                    3
+                }
+            }
+            State::NeedsInput => 4,
+            State::Error => 2,
+            _ => return None,
+        };
+        Some(crate::presentation::Progress {
+            state,
+            value: report.progress.or((state == 2).then_some(100)),
+        })
+    }
+    pub fn view(&self, pane: Id, label: &str) -> Option<PaneView> {
+        Some(PaneView {
+            target: Target {
+                pane,
+                generation: self.generation,
+            },
+            state: self.state()?,
+            last_activity: self.last_activity,
+            label: label.to_owned(),
+            unseen: self.unseen(),
+            remote: false,
+        })
+    }
+}
+
 fn in_group(state: State, group: usize) -> bool {
     GROUPS.get(group).is_some_and(|expected| {
         state == *expected || group == 0 && matches!(state, State::Error | State::Paused)
@@ -788,6 +896,106 @@ impl Dashboard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn program_status_projects_urgency_inherited_names_progress_and_attention() {
+        use rustty::vt::program_status::{Kind, Records, Report as Status, State as StatusState};
+        let mut records = Records::default();
+        let mut report = ProgramReport::default();
+        let now = Instant::now();
+        assert!(!report.update(&records, 1, now));
+        records
+            .apply(Status {
+                state: StatusState::Working,
+                app: "Builder".into(),
+                ..Status::default()
+            })
+            .unwrap();
+        assert!(report.update(&records, 2, now));
+        assert_eq!(report.state(), Some(State::Working));
+        assert!(!report.unseen());
+        assert_eq!(report.progress().unwrap().state, 3);
+        records
+            .apply(Status {
+                state: StatusState::Blocked,
+                id: Some("job".into()),
+                kind: Some(Kind::Permission),
+                progress: Some(42),
+                title: "Approve changes".into(),
+                message: "Waiting for your review".into(),
+                ..Status::default()
+            })
+            .unwrap();
+        assert!(report.update(&records, 3, now));
+        assert_eq!(report.state(), Some(State::NeedsInput));
+        assert!(report.unseen());
+        assert_eq!(report.progress().unwrap().percentage(), Some(42));
+        assert_eq!(
+            report.tooltip(),
+            Some(
+                "Builder — Waiting for permission (42%)\nApprove changes\nWaiting for your review"
+            )
+        );
+        assert!(!report.update(&records, 4, now + Duration::from_secs(1)));
+        let view = report.view(17, "project").unwrap();
+        assert_eq!(view.target.generation, 2);
+        assert_eq!(view.last_activity, Some(now));
+        records
+            .apply(Status {
+                state: StatusState::Working,
+                app: "Compiler".into(),
+                ..Status::default()
+            })
+            .unwrap();
+        assert!(report.update(&records, 4, now));
+        assert!(report.tooltip().unwrap().starts_with("Compiler —"));
+    }
+
+    #[test]
+    fn program_status_retains_exited_results_until_owner_acknowledges_without_effects() {
+        use rustty::vt::program_status::{Records, Report as Status, State as StatusState};
+        let mut records = Records::default();
+        let mut report = ProgramReport::default();
+        let now = Instant::now();
+        for (id, state) in [
+            ("work", StatusState::Working),
+            ("done", StatusState::Done),
+            ("error", StatusState::Error),
+        ] {
+            records
+                .apply(Status {
+                    id: Some(id.into()),
+                    state,
+                    ..Status::default()
+                })
+                .unwrap();
+        }
+        report.update(&records, 1, now);
+        records.on_process_exit_or_prompt();
+        assert!(!report.update(&records, 2, now));
+        assert_eq!(report.view(1, "retained pane").unwrap().state, State::Error);
+        assert!(report.unseen());
+        records
+            .apply(Status {
+                id: Some("error".into()),
+                state: StatusState::Clear,
+                ..Status::default()
+            })
+            .unwrap();
+        assert!(report.update(&records, 3, now));
+        assert_eq!(report.state(), Some(State::Done));
+        assert!(report.progress().is_none());
+        let restored: Records =
+            serde_json::from_slice(&serde_json::to_vec(&records).unwrap()).unwrap();
+        let mut reconnected = ProgramReport::default();
+        assert!(reconnected.update(&restored, 4, now));
+        assert_eq!(reconnected.state(), Some(State::Done));
+        records.on_seen_by_user();
+        assert!(report.update(&records, 5, now));
+        assert!(report.view(1, "retained pane").is_none());
+        assert!(report.tooltip().is_none());
+        assert!(!report.unseen());
+    }
     use crate::workspace::{Tab, WindowState};
     use std::path::PathBuf;
     fn setup(count: usize) -> (Workspace, HashMap<Id, PaneView>) {

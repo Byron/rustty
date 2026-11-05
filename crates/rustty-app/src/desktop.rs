@@ -109,6 +109,7 @@ fn dispatch_binding(
 
 struct Pane {
     agent: rustty_app::deck::Report,
+    program: rustty_app::deck::ProgramReport,
     deck_progress: rustty_app::deck::ProgressReport,
     deck_command: rustty_app::deck::CommandReport,
     session: Session,
@@ -147,27 +148,66 @@ struct PaneStartup {
 
 impl Pane {
     fn has_agent(&self) -> bool {
-        !self.exited && self.agent.is_registered()
+        !self.exited && self.agent.is_registered() || self.program.state().is_some()
     }
 
     fn reported_active(&self) -> bool {
+        if !self.agent.is_registered()
+            && let Some(state) = self.program.state()
+        {
+            return state == vt::agent::State::Working;
+        }
         !self.exited && self.agent.reported_active(&self.activity)
     }
 
+    fn is_active(&self) -> bool {
+        if !self.agent.is_registered()
+            && let Some(state) = self.program.state()
+        {
+            return matches!(
+                state,
+                vt::agent::State::Working | vt::agent::State::NeedsInput
+            );
+        }
+        self.activity.is_active()
+    }
+
+    fn has_unseen(&self) -> bool {
+        self.unseen || !self.agent.is_registered() && self.program.unseen()
+    }
+
+    fn program_tooltip(&self) -> Option<&str> {
+        (!self.agent.is_registered())
+            .then(|| self.program.tooltip())
+            .flatten()
+    }
+
+    fn progress(&self) -> Option<Progress> {
+        if !self.agent.is_registered() && self.program.state().is_some() {
+            self.program.progress()
+        } else {
+            self.activity.progress()
+        }
+    }
+
     fn has_deck_report(&self) -> bool {
-        !self.exited
-            && (self.agent.is_registered()
-                || self.deck_command.is_registered()
-                || self.deck_progress.state().is_some())
+        self.program.state().is_some()
+            || !self.exited
+                && (self.agent.is_registered()
+                    || self.deck_command.is_registered()
+                    || self.deck_progress.state().is_some())
     }
 
     fn deck_view(&self, id: Id, label: &str) -> Option<rustty_app::deck::PaneView> {
-        if self.exited {
-            return None;
-        }
-        self.agent
-            .view(id, label, &self.activity)
-            .or_else(|| self.deck_command.view(id, label))
+        (!self.exited)
+            .then(|| self.agent.view(id, label, &self.activity))
+            .flatten()
+            .or_else(|| self.program.view(id, label))
+            .or_else(|| {
+                (!self.exited)
+                    .then(|| self.deck_command.view(id, label))
+                    .flatten()
+            })
     }
 
     fn reset_selection_gesture(&mut self) {
@@ -1079,7 +1119,7 @@ struct DirectoryBadge {
     accent: TabAccent,
 }
 impl DirectoryBadge {
-    fn paint(self, ui: &egui::Ui) {
+    fn paint(self, ui: &egui::Ui) -> egui::Rect {
         let [r, g, b] = self.accent.background;
         let accent = Color32::from_rgb(r, g, b);
         let color = if self.label.focused {
@@ -1175,6 +1215,7 @@ impl DirectoryBadge {
             galley,
             color,
         );
+        bounds
     }
 }
 
@@ -1859,7 +1900,7 @@ impl App {
             if !state.0 {
                 pane.activity.reset_progress_animation();
             }
-            if !pane.exited && pane.session.accepts_input() && pane.host_state != state {
+            if (pane.exited || pane.session.accepts_input()) && pane.host_state != state {
                 match pane.session.set_host_state(state.0, state.1, state.2) {
                     Ok(()) => pane.host_state = state,
                     Err(error) => self.errors.push(error.to_string()),
@@ -2172,10 +2213,19 @@ impl App {
         let directory = session
             .directory_from_report(&directory_report)
             .unwrap_or(directory);
+        let mut program = rustty_app::deck::ProgramReport::default();
+        if program.update(
+            &session.program_status()?,
+            self.deck.report_generation + 1,
+            Instant::now(),
+        ) {
+            self.deck.report_generation += 1;
+        }
         self.panes.insert(
             id,
             Pane {
                 agent: rustty_app::deck::Report::default(),
+                program,
                 deck_progress: rustty_app::deck::ProgressReport::default(),
                 deck_command: rustty_app::deck::CommandReport::default(),
                 session,
@@ -2831,6 +2881,13 @@ impl App {
         for row in &mut rows {
             row.has_agent = matches!(row.target, outliner::Target::Pane { pane, .. }
                 if self.panes.get(&pane).is_some_and(Pane::has_agent));
+            if let outliner::Target::Pane { pane, .. } = row.target
+                && let Some(pane) = self.panes.get(&pane)
+                && let Some(tooltip) = pane.program_tooltip()
+                && let Some(state) = pane.program.state()
+            {
+                row.program_status = Some((state, tooltip.to_owned()));
+            }
         }
         rows
     }
@@ -3092,11 +3149,11 @@ impl App {
         let attention = tab
             .panes
             .keys()
-            .any(|id| self.panes.get(id).is_some_and(|p| p.unseen));
+            .any(|id| self.panes.get(id).is_some_and(Pane::has_unseen));
         let is_active = tab
             .panes
             .keys()
-            .any(|id| self.panes.get(id).is_some_and(|p| p.activity.is_active()));
+            .any(|id| self.panes.get(id).is_some_and(Pane::is_active));
         let suffix = format!(
             "{}{}",
             if attention { " ●" } else { "" },
@@ -3172,6 +3229,34 @@ impl App {
             }
             pane.last_directory_report = report;
         }
+        // Snapshots and acknowledgments change owner records without replaying effects.
+        let was_registered = pane.has_deck_report();
+        let program_changed = pane.session.terminal().ok().is_some_and(|terminal| {
+            pane.program.update(
+                terminal.program_status(),
+                self.deck.report_generation + 1,
+                Instant::now(),
+            )
+        });
+        if program_changed {
+            self.deck.report_generation += 1;
+            if pane.program.state().is_some() {
+                pane.deck_command.suppress();
+                pane.deck_progress.clear();
+            }
+            let registered = pane.has_deck_report();
+            if live && registered != was_registered {
+                let was_empty = deck_panes == 0;
+                if registered {
+                    deck_panes += 1;
+                } else {
+                    deck_panes -= 1;
+                }
+                if was_empty != (deck_panes == 0) {
+                    self.deck.registration_transition();
+                }
+            }
+        }
         let events = pane.session.events().collect::<Vec<_>>();
         for event in events {
             let was_registered = pane.has_deck_report();
@@ -3180,6 +3265,7 @@ impl App {
                 && let SessionEvent::Effect(effect) = &event
             {
                 if pane.agent.is_registered()
+                    || pane.program.state().is_some()
                     || pane.deck_command.has_agent_report()
                     || matches!(effect, vt::Effect::AgentStatus(vt::agent::Event::Begin(_)))
                 {
@@ -3196,7 +3282,12 @@ impl App {
             }
             content_changed |= !matches!(
                 &event,
-                SessionEvent::Effect(vt::Effect::Title(_) | vt::Effect::AgentStatus(_))
+                SessionEvent::Effect(
+                    vt::Effect::Title(_)
+                        | vt::Effect::AgentStatus(_)
+                        | vt::Effect::ProgramStatus(_)
+                        | vt::Effect::ProgramStatusReset
+                )
             );
             match event {
                 SessionEvent::Effect(vt::Effect::AgentStatus(event)) if live && !pane.exited => {
@@ -3232,6 +3323,13 @@ impl App {
                         }
                     }
                 }
+                SessionEvent::Effect(vt::Effect::ProgramStatus(report))
+                    if live && !pane.exited && report.state != vt::program_status::State::Clear =>
+                {
+                    // Retain explicit ownership even when a later clear/prompt removes the record.
+                    pane.deck_command.agent_reported();
+                    pane.deck_progress.clear();
+                }
                 SessionEvent::Effect(vt::Effect::Title(title)) => {
                     let title = String::from_utf8_lossy(&title);
                     pane.activity.title_changed(&title);
@@ -3260,7 +3358,7 @@ impl App {
                         if config.command_finish_excluded(command_line.as_deref()) {
                             pane.deck_command.suppress();
                         }
-                        if pane.agent.is_registered() {
+                        if pane.agent.is_registered() || pane.program.state().is_some() {
                             pane.deck_command.agent_reported();
                         }
                     }
@@ -3296,7 +3394,10 @@ impl App {
                 }
                 SessionEvent::NotificationObserved { title, body } if live && !pane.exited => {
                     pane.deck_command.suppress();
-                    if !pane.agent.is_registered() && !pane.deck_command.has_agent_report() {
+                    if !pane.agent.is_registered()
+                        && pane.program.state().is_none()
+                        && !pane.deck_command.has_agent_report()
+                    {
                         pane.deck_progress.apply(
                             &vt::Effect::Notification { title, body },
                             pane.running.is_some(),
@@ -3375,13 +3476,15 @@ impl App {
         }
         // Only a change in the rendered tab label/underline warrants a hidden-tab
         // repaint. Raw titles can be masked by a custom title or another pane.
-        let indicators_changed = stopped || previous_tab_label != self.pane_tab_label(id);
+        let indicators_changed =
+            program_changed || stopped || previous_tab_label != self.pane_tab_label(id);
         let directory_changed =
             previous_directory.as_ref() != self.panes.get(&id).map(|pane| &pane.cwd);
         if directory_changed {
             self.refresh_directory_labels();
         }
-        if directory_changed
+        if program_changed
+            || directory_changed
             || title_changed
             || previously_working != self.panes.get(&id).is_some_and(Pane::reported_active)
             || previously_agent != self.panes.get(&id).is_some_and(Pane::has_agent)
@@ -3419,7 +3522,7 @@ impl App {
                     .iter()
                     .flat_map(|window| &window.tabs)
                     .flat_map(|tab| tab.panes.keys())
-                    .filter(|id| self.panes.get(id).is_some_and(|pane| pane.unseen))
+                    .filter(|id| self.panes.get(id).is_some_and(Pane::has_unseen))
                     .count(),
             );
         }
@@ -5698,7 +5801,12 @@ impl App {
                                                 tab_selection = Some(index);
                                                 commands.push(Action::CloseTab);
                                             }
-                                            if let Some(zoom) = zoom_label(tab) {
+                                            let status = tab.pane_ids().into_iter()
+                                                .filter_map(|id| self.panes.get(&id)?.program_tooltip())
+                                                .collect::<Vec<_>>().join("\n\n");
+                                            if !status.is_empty() {
+                                                response.on_hover_text(status);
+                                            } else if let Some(zoom) = zoom_label(tab) {
                                                 response.on_hover_text(zoom);
                                             }
                                         }
@@ -6205,9 +6313,9 @@ impl App {
                             }
                             if config.progress_style
                                 && let Some(pane) = self.panes.get_mut(&id)
-                                && let Some(progress) = pane.activity.progress()
+                                && let Some(progress) = pane.progress()
                             {
-                                let offset = pane.activity.progress_offset(now);
+                                let offset = pane.activity.progress_offset_for(Some(progress), now);
                                 let native_started = (native_progress && zoom_panes.iter().all(|pane| {
                                     !pane.moving && pane.opacity == 1.0 && pane.background_opacity == 1.0
                                 })).then(|| pane.activity.progress_started()).flatten();
@@ -6315,7 +6423,7 @@ impl App {
                             && members.iter().all(|id| zoom_panes.iter().any(|pane| pane.id == *id && !pane.moving));
                         let attention = members
                             .iter()
-                            .any(|id| self.panes.get(id).is_some_and(|pane| pane.unseen));
+                            .any(|id| self.panes.get(id).is_some_and(Pane::has_unseen));
                         let representative = members.iter().find(|id| zoom_panes.iter().any(|pane| pane.id == **id)).copied().unwrap_or(id);
                         zoom_chrome(ui, &zoom_panes, representative, bounds, rgb(config.background), |ui| {
                             if let Some(peek) = peek {
@@ -6354,7 +6462,7 @@ impl App {
                                     active: members.iter().any(|id| {
                                         self.panes
                                             .get(id)
-                                            .is_some_and(|pane| pane.activity.is_active())
+                                            .is_some_and(Pane::is_active)
                                     }),
                                     flash: self.flash_opacity(id, now, &mut animation_deadline),
                                 }
@@ -6385,7 +6493,7 @@ impl App {
                                 } else {
                                     0.0
                                 };
-                                DirectoryBadge {
+                                let badge = DirectoryBadge {
                                     label,
                                     bounds,
                                     centered,
@@ -6393,10 +6501,14 @@ impl App {
                                     pinned,
                                     flash,
                                     accent: panel_accent,
-                                    active: pane.activity.is_active(),
-                                    attention: pane.unseen,
+                                    active: pane.is_active(),
+                                    attention: pane.has_unseen(),
                                 }
                                 .paint(ui);
+                                if let Some(tooltip) = pane.program_tooltip() {
+                                    ui.interact(badge, egui::Id::new(("program-status", id)), Sense::hover())
+                                        .on_hover_text(tooltip);
+                                }
                             } else if pinned {
                                 paint_panel_pin(ui, id, bounds);
                             }

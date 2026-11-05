@@ -282,10 +282,7 @@ impl App {
             .flat_map(|w| &w.tabs)
             .flat_map(|tab| tab.pane_ids())
             .filter_map(|id| {
-                let pane = self.panes.get(&id).filter(|pane| {
-                    !pane.exited
-                        && (pane.agent.is_registered() || pane.deck_command.is_registered())
-                })?;
+                let pane = self.panes.get(&id).filter(|pane| pane.has_deck_report())?;
                 let label = task_label(&pane.title, &pane.cwd);
                 pane.deck_view(id, &label).map(|mut view| {
                     view.remote = self.tmuxx_pane(id).is_some();
@@ -319,10 +316,8 @@ impl App {
             .flat_map(|w| &w.tabs)
             .any(|t| t.panes.contains_key(&target.pane))
             && self.panes.get(&target.pane).is_some_and(|pane| {
-                !pane.exited
-                    && pane
-                        .deck_view(target.pane, "")
-                        .is_some_and(|r| r.target == target)
+                pane.deck_view(target.pane, "")
+                    .is_some_and(|r| r.target == target)
             })
     }
     /// Notification and physical dashboard actions share the exact native reveal path.
@@ -1343,6 +1338,7 @@ printf '\033]133;D;0\007'; exec sleep 120"#
         assert!(!app.panes[&second].unseen);
         app.platform = platform;
     }
+    check_native_program_status(app, event_loop, second)?;
     app.loaded.config.notify_on_command_finish = notification_policy;
     app.loaded.config.notify_on_command_finish_after = notification_after;
     app.loaded.config.notify_on_command_finish_action = notification_action;
@@ -1372,6 +1368,187 @@ printf '\033]133;D;0\007'; exec sleep 120"#
         } else {
             "checked"
         },
+    );
+    Ok(())
+}
+
+fn check_native_program_status(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    pane: Id,
+) -> Result<()> {
+    use rustty::vt::agent::{Event, Snapshot, State};
+    app.drain(event_loop, pane);
+    app.panes.get_mut(&pane).unwrap().agent.clear();
+    #[cfg(unix)]
+    {
+        // Keep each complete command queued until one drain, then leave the retained
+        // Done record unchanged for the next command's start/end pair.
+        let session = Session::spawn(
+            app.config(),
+            SessionOptions {
+                command: Some(config::Command::Direct(vec![
+                    "/bin/sh".into(),
+                    "-c".into(),
+                    r#"printf '\033]133;C\007\033]7501;state=working:app=Builder\007\033]7501;state=done:app=Builder\007\033]133;D;0\007\033]0;status-batch-1\007'
+read -r stage
+printf '\033]133;C\007\033]133;D;0\007\033]0;status-batch-2\007'
+read -r stage
+printf '\033]133;C\007\033]7501;state=working:app=Builder\007\033]7501;state=clear\007\033]133;D;0\007\033]0;status-batch-3\007'
+exec sleep 120"#.into(),
+                ])),
+                ..SessionOptions::default()
+            },
+            Arc::new(|| {}),
+        )?;
+        let previous = std::mem::replace(&mut app.panes.get_mut(&pane).unwrap().session, session);
+        previous.close();
+        app.closing.push(previous);
+        let policy = app.loaded.config.notify_on_command_finish;
+        let after = app.loaded.config.notify_on_command_finish_after;
+        let platform = app.platform.take();
+        app.loaded.config.notify_on_command_finish = config::NotifyOnCommandFinish::Always;
+        app.loaded.config.notify_on_command_finish_after = Duration::ZERO;
+        assert!(!app.notification_focused(pane, None));
+        for stage in 1..=3 {
+            let title = format!("status-batch-{stage}");
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while app.panes[&pane].session.terminal()?.title != title {
+                assert!(
+                    Instant::now() < deadline,
+                    "program status command did not complete"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            // The reader publishes effects immediately after releasing its terminal lock.
+            std::thread::sleep(Duration::from_millis(10));
+            app.panes.get_mut(&pane).unwrap().unseen = false;
+            app.drain(event_loop, pane);
+            assert_eq!(app.panes[&pane].title, title);
+            assert!(app.panes[&pane].running.is_none());
+            assert!(!app.panes[&pane].deck_command.is_registered());
+            assert!(
+                !app.panes[&pane].unseen,
+                "explicit status must suppress generic completion"
+            );
+            assert_eq!(
+                app.panes[&pane].program.state(),
+                (stage < 3).then_some(State::Done)
+            );
+            if stage < 3 {
+                // A protocol reply advances the fixture without acknowledging Done.
+                app.panes[&pane]
+                    .session
+                    .write_input(&SessionInput::Reply(b"\n".to_vec()))?;
+            }
+        }
+        app.loaded.config.notify_on_command_finish = policy;
+        app.loaded.config.notify_on_command_finish_after = after;
+        app.platform = platform;
+    }
+    app.panes[&pane].session.terminal()?.feed(
+        b"\x1b]7501;state=working:app=Builder\x07\x1b]7501;state=blocked:id=build:kind=permission:progress=42:title=QXBwcm92ZQ:msg=UmV2aWV3IGNoYW5nZXM\x07",
+    );
+    // No effects are delivered: attachment and acknowledgment use this retained-state path too.
+    app.drain(event_loop, pane);
+    app.sync_deck();
+    let state = &app.panes[&pane];
+    assert_eq!(
+        state.deck_view(pane, "build").unwrap().state,
+        State::NeedsInput
+    );
+    assert!(!state.reported_active());
+    assert!(state.has_unseen());
+    assert_eq!(state.progress().unwrap().percentage(), Some(42));
+    assert_eq!(
+        state.program_tooltip(),
+        Some("Builder — Waiting for permission (42%)\nApprove\nReview changes")
+    );
+    assert!(app.pane_tab_label(pane).unwrap().0.contains('●'));
+    assert!(app.outline_rows().iter().any(|row| {
+        matches!(row.target, outliner::Target::Pane { pane: id, .. } if id == pane)
+            && row.has_agent
+            && row.program_status.as_ref().is_some_and(|(state, text)| {
+                *state == State::NeedsInput && text.contains("Review changes")
+            })
+    }));
+    if let Some(directory) = std::env::var_os("RUSTTY_SMOKE_DIR").map(PathBuf::from) {
+        app.reveal_pane(pane);
+        let key = app
+            .windows
+            .iter()
+            .find_map(|(&key, host)| (app.focused(host.id) == Some(pane)).then_some(key))
+            .ok_or("program-status pane has no window")?;
+        let mut host = app.windows.remove(&key).unwrap();
+        let capture = super::smoke::capture_window(
+            app,
+            event_loop,
+            &mut host,
+            &directory.join("program-status.png"),
+        );
+        app.windows.insert(key, host);
+        capture?;
+        let visible = app.outliner.as_ref().is_some_and(|host| host.visible);
+        if !visible {
+            app.toggle_outliner(event_loop);
+        }
+        app.draw_outliner(event_loop, None)?;
+        app.draw_outliner(
+            event_loop,
+            Some(&directory.join("program-status-outliner.png")),
+        )?;
+        if !visible {
+            app.hide_outliner();
+        }
+    }
+    app.panes.get_mut(&pane).unwrap().agent.apply(
+        Event::Begin(Snapshot {
+            state: State::Working,
+            label: None,
+            thread_id: None,
+            turn_id: None,
+        }),
+        1000,
+        false,
+    );
+    assert!(app.panes[&pane].reported_active());
+    assert!(app.panes[&pane].program_tooltip().is_none());
+    assert_eq!(
+        app.panes[&pane].deck_view(pane, "build").unwrap().state,
+        State::Working
+    );
+    app.panes.get_mut(&pane).unwrap().agent.clear();
+    {
+        let mut terminal = app.panes[&pane].session.terminal()?;
+        terminal.feed(b"\x1b]7501;state=clear\x07\x1b]7501;state=done:app=Builder\x07");
+        terminal.program_status_exited();
+    }
+    app.panes.get_mut(&pane).unwrap().exited = true;
+    app.drain(event_loop, pane);
+    app.sync_deck();
+    let target = app.panes[&pane].deck_view(pane, "build").unwrap().target;
+    assert!(app.live_deck_target(target));
+    assert_eq!(app.panes[&pane].program.state(), Some(State::Done));
+    assert!(app.panes[&pane].has_unseen());
+    app.panes[&pane].session.terminal()?.program_status_seen();
+    app.drain(event_loop, pane);
+    app.sync_deck();
+    assert!(!app.panes[&pane].has_deck_report());
+    assert!(!app.live_deck_target(target));
+    assert!(app.panes[&pane].program_tooltip().is_none());
+    app.panes.get_mut(&pane).unwrap().exited = false;
+    if let Some(directory) = std::env::var_os("RUSTTY_SMOKE_DIR").map(PathBuf::from) {
+        std::fs::write(
+            directory.join("program-status-result.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "passed": true,
+                "checks": ["single-drain-command-suppression", "unchanged-record-command-suppression", "cleared-record-command-suppression", "retained-state-without-effects", "tab-attention", "outliner-status", "progress", "tooltip", "osc777-precedence", "retained-exit", "owner-acknowledgment"],
+                "captures": ["program-status.png", "program-status-outliner.png"]
+            }))?,
+        )?;
+    }
+    eprintln!(
+        "Native program-status smoke: ordered command suppression, owner-state refresh, tab/outliner attention, progress, tooltip, agent precedence, exited results and acknowledgment passed"
     );
     Ok(())
 }

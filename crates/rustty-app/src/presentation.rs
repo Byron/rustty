@@ -214,10 +214,12 @@ impl Activity {
     /// Ghostty's bouncing view starts on appearance and retains its phase when
     /// another indeterminate report arrives. The result is a fraction of pane width.
     pub fn progress_offset(&mut self, now: Instant) -> f32 {
-        if self
-            .progress
-            .is_none_or(|progress| progress.percentage().is_some())
-        {
+        self.progress_offset_for(self.progress, now)
+    }
+
+    pub fn progress_offset_for(&mut self, progress: Option<Progress>, now: Instant) -> f32 {
+        if progress.is_none_or(|progress| progress.percentage().is_some()) {
+            self.reset_progress_animation();
             return 0.0;
         }
         let started = *self.progress_started.get_or_insert(now);

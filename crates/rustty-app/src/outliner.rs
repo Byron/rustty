@@ -35,6 +35,7 @@ pub struct Row {
     pub zoom: Zoom,
     pub working: usize,
     pub has_agent: bool,
+    pub program_status: Option<(rustty::vt::agent::State, String)>,
 }
 
 #[derive(Clone, Default)]
@@ -175,6 +176,7 @@ pub fn workspace_rows(
                 zoom: Zoom::None,
                 working: 0,
                 has_agent: false,
+                program_status: None,
             });
         }
         outline.extend(rows(window, labels, tab_labels).into_iter().map(|mut row| {
@@ -328,6 +330,7 @@ pub fn rows(
                 tmuxx: None,
                 working: 0,
                 has_agent: false,
+                program_status: None,
             });
         }
         rows.extend(tab_rows(tab, labels, usize::from(has_tabs), active));
@@ -425,6 +428,7 @@ fn quad_row(
         tmuxx: None,
         working: 0,
         has_agent: false,
+        program_status: None,
         zoom: if tab.quadrant_zoom == Some(node.id) {
             Zoom::Quad
         } else {
@@ -453,6 +457,7 @@ fn pane_row(
         tmuxx: None,
         working: 0,
         has_agent: false,
+        program_status: None,
         zoom: if tab.zoom == Some(pane) && tab.zoom != tab.quadrant_zoom {
             zoom(tab)
         } else {

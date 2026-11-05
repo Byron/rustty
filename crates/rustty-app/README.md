@@ -477,7 +477,16 @@ panes explicitly reporting work. Structured agent status takes precedence;
 otherwise, a leading activity spinner or progress report indicates work, excluding
 waiting-for-input titles. The outliner shows the same counts on panels and sums
 them through every quad, tab, and window row, including collapsed branches. Zero
-counts are hidden. Each pane can trigger a short completion flash even
+counts are hidden. Programs reporting Kitty OSC 7501 status also appear in these
+counts and on Stream Deck. Waiting, failed, and completed programs mark their
+tabs and outliner rows for attention; hovering a tab, panel label, or outliner
+row shows the reported application, title, message, and progress. Reported
+percentages use the existing progress bar. Explicit OSC 777 agent reports take
+precedence. Native tmuxx attachment and reconnect restore the owner's current
+status. Completed/failed results remain visible in retained exited panes until
+focus or accepted keyboard input acknowledges them; mouse motion and paste do
+not dismiss them. Status metadata is not saved into new-shell workspace imports.
+Each pane can trigger a short completion flash even
 while another pane remains busy. Directory labels normally use the basename.
 When different paths share that basename, labels include the shortest parent suffix
 that distinguishes them, such as `work/project` and `fork/project`. Names are shared

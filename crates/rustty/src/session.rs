@@ -798,7 +798,7 @@ impl Session {
         if status_changed {
             (self.wake)();
         }
-        if !reply.is_empty() {
+        if !reply.is_empty() && !self.has_exited() {
             // Host changes produce at most three small reports. Like resize
             // reports, they must not block the UI on the user-input budget.
             self.input
@@ -2668,6 +2668,20 @@ mod tests {
             .unwrap()
             .feed(b"\x1b]7501;state=done\x07");
         session.write_input(&Input::Text(b"text".to_vec())).unwrap();
+        assert!(session.program_status().unwrap().is_empty());
+
+        session
+            .set_host_state(false, false, query::ColorScheme::Dark)
+            .unwrap();
+        session
+            .terminal()
+            .unwrap()
+            .feed(b"\x1b[?1004h\x1b]7501;state=done\x07");
+        session.exited.store(true, Ordering::Release);
+        drop(received);
+        session
+            .set_host_state(true, true, query::ColorScheme::Dark)
+            .unwrap();
         assert!(session.program_status().unwrap().is_empty());
     }
 

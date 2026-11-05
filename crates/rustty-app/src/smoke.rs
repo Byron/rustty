@@ -6986,7 +6986,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
 
 /// Render the same host primitives to a texture when no drawable is available
 /// (e.g. a locked CI Mac). This does not claim visible surface presentation.
-fn capture_window(
+pub(super) fn capture_window(
     app: &mut App,
     event_loop: &ActiveEventLoop,
     host: &mut Host,

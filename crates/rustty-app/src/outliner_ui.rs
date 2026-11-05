@@ -500,6 +500,19 @@ pub fn contents(
                     label_rect.max.x -= 20.0;
                 }
                 label_rect.min.x = text_left.min(label_rect.right());
+                if let Some((state, _)) = &row.program_status {
+                    use rustty::vt::agent::State;
+                    let color = match state {
+                        State::NeedsInput => Some(Color32::from_rgb(255, 149, 0)),
+                        State::Error => Some(Color32::from_rgb(255, 59, 48)),
+                        State::Done => Some(Color32::from_rgb(52, 199, 89)),
+                        _ => None,
+                    };
+                    if let Some(color) = color {
+                        ui.painter().circle_filled(Pos2::new(label_rect.right() - 7.0, rect.center().y), 3.0, color);
+                        label_rect.max.x = (label_rect.right() - 18.0).max(label_rect.left());
+                    }
+                }
                 let label_rect = paint_working(ui.painter(), label_rect, row.working, if row.focused {
                     foreground
                 } else {
@@ -1390,6 +1403,10 @@ fn description(row: &Row) -> String {
         Target::Pane { .. } => "Panel",
     };
     let mut description = format!("{kind}: {}", row.label);
+    if let Some((_, status)) = &row.program_status {
+        description.push('\n');
+        description.push_str(status);
+    }
     if row.working > 0 {
         description.push_str(&format!(" · {} running", row.working));
     }
@@ -1509,6 +1526,7 @@ mod tests {
                 tmuxx: None,
                 working: 0,
                 has_agent: false,
+                program_status: None,
             },
             Row {
                 target: Target::Tab(1),
@@ -1523,6 +1541,7 @@ mod tests {
                 tmuxx: None,
                 working: 0,
                 has_agent: false,
+                program_status: None,
             },
             Row {
                 target: Target::Quad { tab: 1, node: 2 },
@@ -1541,6 +1560,7 @@ mod tests {
                 tmuxx: None,
                 working: 0,
                 has_agent: false,
+                program_status: None,
             },
             Row {
                 target: Target::Pane { tab: 1, pane: 3 },
@@ -1560,6 +1580,7 @@ mod tests {
                 tmuxx: None,
                 working: 0,
                 has_agent: false,
+                program_status: None,
             },
         ]
     }
