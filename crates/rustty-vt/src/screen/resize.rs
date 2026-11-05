@@ -286,7 +286,7 @@ impl Screen {
             let mut line = self.reflow_row_state();
             self.apply_reflow_row(line);
             let mut exposed_rows = 1;
-            let (mut x, mut pin_x, mut written_rows) = (0usize, 0usize, 0usize);
+            let (mut x, mut written_rows) = (0usize, 0usize);
             let mut spare = None;
             while let Some(source_page) = source_pages.pages.pop_front() {
                 let capacity = source_page.adjusted_capacity(cols as u16, true);
@@ -309,6 +309,9 @@ impl Screen {
                     if tmux {
                         used = used.max(1);
                     }
+                    // Hard breaks already reset x; pending wrap also starts
+                    // the next source row at destination column zero.
+                    let pin_x = if x == cols { 0 } else { x };
                     let mut keep_pin = |point: &mut GridPoint| {
                         if point.row == old.id {
                             if point.col >= used {
@@ -542,7 +545,6 @@ impl Screen {
                         );
                     }
                     if used > 0 {
-                        pin_x = x.min(cols - 1);
                         written_rows = output.len() + 1;
                     }
                     if !old.wrapped {

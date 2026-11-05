@@ -1,0 +1,41 @@
+{
+  "source_commit": "4d3a010ed693ad1e160bea885183963c73e90dc3",
+  "working_change": "saved-cursor destination-row pin clamp; three files in /tmp/rustty-saved-cursor.patch",
+  "focused_tests": {
+    "toolchain": "rustc1.99.0",
+    "passed": 109,
+    "suites": [
+      "terminal",
+      "resize_wrap",
+      "reflow_semantics",
+      "selection",
+      "selection_adjust",
+      "selection_format",
+      "snapshot",
+      "snapshot_continuation",
+      "snapshot_graphics"
+    ]
+  },
+  "build_command": "cargo +1.95.0 build --locked --offline --release -p rustty-vt --example parity",
+  "differential_command": "target/release/examples/parity-runner --no-build --case terminal/resize/ --artifacts /tmp/rustty-saved-cursor-final-4d3a010ed",
+  "sha256": {
+    "rust_oracle": "2bc48d9b46bc1fe6ea502cf208a360daa9d47043c17d73a7fa3c1560b8b672aa",
+    "runner": "58b9fd80c08b6b34c5941c6ce8754d3f0ac8f3591e233173de270ae7d3d47d37",
+    "zig_oracle": "315372bd88132e7520437702152fce0f3f4f41befab8e6a32136b5266386d410"
+  },
+  "differential": {
+    "aborted": false,
+    "checked": 21,
+    "coverage_gaps": [],
+    "covered": [
+      "terminal.cursor",
+      "terminal.resize"
+    ],
+    "error": null,
+    "failures": 0,
+    "full_parity": false,
+    "mode": "smoke"
+  },
+  "reference": "src/terminal/PageList.zig:1689 dst_x=0 after deferred hard break or pending wrap; existing PageList resize reflow pin in blank cells after line break test",
+  "limits": "Semantic headless comparison only. Kitty extension regressions preserved by focused suites; full Ghostty parity remains unestablished."
+}

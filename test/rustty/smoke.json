@@ -1040,5 +1040,83 @@
     "generated_sources": [
       "generated/2/979"
     ]
+  },
+  {
+    "request": {
+      "id": "terminal/resize/blank-pin/hard-break",
+      "cols": 6,
+      "rows": 4,
+      "operations": [
+        {
+          "op": "write",
+          "data": "6162631b5b323b36481b371b5b313b3148"
+        },
+        {
+          "op": "resize",
+          "cols": 8,
+          "rows": 4
+        },
+        {
+          "op": "write",
+          "data": "1b38"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.resize",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "terminal/resize/blank-pin/soft-continuation",
+      "cols": 6,
+      "rows": 4,
+      "operations": [
+        {
+          "op": "write",
+          "data": "616263646566671b5b323b34481b371b5b313b3148"
+        },
+        {
+          "op": "resize",
+          "cols": 8,
+          "rows": 4
+        },
+        {
+          "op": "write",
+          "data": "1b38"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.resize",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "terminal/resize/blank-pin/pending-wrap",
+      "cols": 6,
+      "rows": 4,
+      "operations": [
+        {
+          "op": "write",
+          "data": "616263646566671b5b323b33481b371b5b313b3148"
+        },
+        {
+          "op": "resize",
+          "cols": 3,
+          "rows": 4
+        },
+        {
+          "op": "write",
+          "data": "1b38"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.resize",
+      "terminal.cursor"
+    ]
   }
 ]
