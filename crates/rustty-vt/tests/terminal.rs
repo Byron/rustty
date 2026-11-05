@@ -274,19 +274,18 @@ fn resize_retains_blank_cells_copied_from_a_wrapped_source_row() {
 }
 
 #[test]
-fn resize_remaps_saved_cursor_separately_from_the_live_cursor() {
+fn resize_saved_cursor_blank_columns_begin_after_a_hard_line_break() {
     let mut t = Terminal::new(12, 4, 100);
     t.feed(b"abcdefghi\n\x1b[?1049h");
     t.resize(17, 4);
     assert_eq!(t.primary_screen().cursor.col, 9);
     t.feed(b"\x1b[?1049l");
-    // Ghostty clamps saved positions in blank columns using the preceding
-    // reflow row's remaining width; the live cursor preserves its blanks.
-    assert_eq!((t.screen().cursor.col, t.screen().cursor.row), (7, 1));
+    // A hard line break starts the destination row at column zero.
+    assert_eq!((t.screen().cursor.col, t.screen().cursor.row), (9, 1));
 }
 
 #[test]
-fn resize_retains_the_inactive_viewport_pin_before_saved_and_external_pins() {
+fn resize_clamps_saved_and_external_pins_after_a_hard_line_break() {
     for track in [false, true] {
         let mut terminal = Terminal::new(12, 4, 100);
         terminal.feed(b"\t\n");
@@ -295,12 +294,12 @@ fn resize_retains_the_inactive_viewport_pin_before_saved_and_external_pins() {
         terminal.feed(b"\x1b[?1049h");
         terminal.resize(6, 4);
         if let Some(pin) = pin {
-            assert_eq!(terminal.primary_screen().resolve(pin).unwrap().col, 4);
+            assert_eq!(terminal.primary_screen().resolve(pin).unwrap().col, 5);
         }
         terminal.feed(b"\x1b[?1049l");
         assert_eq!(
             (terminal.screen().cursor.col, terminal.screen().cursor.row),
-            (4, 1)
+            (5, 1)
         );
         invariant(&terminal);
     }
@@ -534,5 +533,39 @@ fn zero_line_limit_keeps_history_but_zero_bytes_disables_it() {
         assert!(terminal.screen().history().next().is_none());
         terminal.feed(b"\r\nf\r\ng");
         assert!(terminal.screen().history().next().is_none());
+    }
+}
+
+#[test]
+fn resize_blank_pins_follow_hard_breaks_soft_continuations_and_pending_wrap() {
+    for (text, pin_col, columns, expected) in [
+        ("abc", 5, 8, (5, 1)),
+        ("abcdefg", 3, 8, (7, 0)),
+        ("abcdefg", 2, 3, (2, 2)),
+    ] {
+        let mut terminal = Terminal::new(6, 4, 100);
+        terminal.feed(text.as_bytes());
+        terminal.feed(format!("\x1b[2;{}H\x1b7\x1b[1;1H", pin_col + 1).as_bytes());
+        let point = terminal.screen().point(1, pin_col).unwrap();
+        let pin = terminal.screen_mut().track(point);
+        terminal.screen_mut().selection = Some(Selection {
+            start: point,
+            end: point,
+            rectangular: false,
+        });
+        terminal.resize(columns, 4);
+        let resolved = terminal.screen().resolve(pin).unwrap();
+        assert_eq!(
+            resolved,
+            terminal.screen().point(expected.1, expected.0).unwrap()
+        );
+        assert_eq!(terminal.screen().selection.unwrap().end, resolved);
+        terminal.feed(b"\x1b8");
+        assert_eq!(
+            (terminal.screen().cursor.col, terminal.screen().cursor.row),
+            expected
+        );
+        assert!(!terminal.screen().cursor.pending_wrap);
+        invariant(&terminal);
     }
 }
