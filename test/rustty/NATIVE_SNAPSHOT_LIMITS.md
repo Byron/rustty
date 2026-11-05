@@ -86,6 +86,10 @@ process-tree memory or owned terminal storage. Failed earlier 100k runs provide
 no comparable completed throughput baseline. This change fixes restoration;
 large-history snapshot/owner responsiveness remains separate performance work.
 
+The subsequent [receiver metadata optimization](SNAPSHOT_RESTORE_PERFORMANCE.md)
+measures and reduces the style/tab restoration portion separately from owner
+checkpoint construction and PTY delivery.
+
 ## Reproduce
 
 Use the portable manifest from the earlier delivery report, then pass `100000`

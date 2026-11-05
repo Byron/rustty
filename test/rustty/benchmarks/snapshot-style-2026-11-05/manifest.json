@@ -1,0 +1,29 @@
+{
+  "baseline": "e982fc4c0f424b6ce3c025cfeee8ffcac6cd0fec",
+  "scope": "Isolated snapshot receiver style metadata optimization, independent of later navigation/C-format commits. No PTY/renderer path in phase harness.",
+  "compiler": "Rust1.95.0 aarch64-unknown-linux-gnu; release thinLTO codegen-units1; generic default target",
+  "source_patch_sha256": "12858e9e8c0710601af63d4acf3e41645b3c03a453d650e1ef5786df094c9755",
+  "base_sha256": {
+    "crates/rustty-vt/src/screen.rs": "41fc7ad552a24284a66f2c2e2f49f20800a26d02b0a9ccc0f9734ee57d7560f6",
+    "crates/rustty-vt/src/screen/view_metadata.rs": "6efc9ccb180e702e838d36e7b25c1b9eddf18e15d45842c8fbdf2feff1b9035e",
+    "crates/rustty-vt/src/screen/tests.rs": "04d5746f76ea03cddc269e1915b18a9a070a273cb1e146ce6cfe5c8c0b9e6637"
+  },
+  "candidate_sha256": {
+    "crates/rustty-vt/src/screen.rs": "4265c4f32b72f9320560a95e2835b3f35363d2ae40ccaef6045d2151ad69cdfc",
+    "crates/rustty-vt/src/screen/view_metadata.rs": "8409a161e541e454fb12d60475fda9a08eb1ac60ecfd0587b1fcde76fe34cd06",
+    "crates/rustty-vt/src/screen/tests.rs": "f8675378757d96ad45a6fa52be7df49fd4b105563e6c50c574ed5f63f807ef75"
+  },
+  "before_binary_sha256": "d84298bb55afaaeccc00fc33bd0cf73e1c424c3c513ebc824c80050f56a72d7c",
+  "after_binary_sha256": "80507f6cfd72305b0e25ef62e46f5e2455a2a0728fb69fe3b1c54acc36936ecc",
+  "probe_source_sha256": "325c9741ecbbd1f8b8d0bff1fb3ae05466657073e50b29ebd092b216829d3d90",
+  "probe_lock_sha256": "ed7ebd509954fe5be7ff5983ba825b81ee803cdb5836cb5b52b57ecee4e12b03",
+  "validation": "172VTlib +33portable snapshot +21native terminal +8region attributes =234 passed; includes forced style-table rebuild failure/page split with resource-reference checks, sparse tabs, repeated same-row runs, legacy/current carrier, continuation, and image regressions. Portable standalone manifest resolved locked/offline.",
+  "production_base": "a7b84bb16cc94eee193f4b987b8a899eb0d60cee",
+  "production_patch_sha256": "506719ddc5c33bfa219184bc04bbad30be10103b377b7454de2352b7232968b1",
+  "production_sha256": {
+    "crates/rustty-vt/src/screen.rs": "cb33863da6399f4071f7a6f1f94a27ff603208e91cecd2e06cf23291f69734e1",
+    "crates/rustty-vt/src/screen/view_metadata.rs": "8409a161e541e454fb12d60475fda9a08eb1ac60ecfd0587b1fcde76fe34cd06",
+    "crates/rustty-vt/src/screen/tests.rs": "14db4a9be2cae35efc86b38a285d9faba2c0473f082da58f2b5f1c328bad2312"
+  },
+  "production_note": "Identical approved helper/forward-walk logic, repository formatting and one method comment; navigation and C-format commits are preserved in the production tree but excluded from the isolated A/B comparison."
+}

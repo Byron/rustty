@@ -1343,6 +1343,17 @@ impl Screen {
 
     fn set_absolute_cell_style(&mut self, absolute: usize, col: usize, style: Style) {
         let mut location = self.locate(absolute);
+        self.set_located_cell_style(absolute, &mut location, col, style);
+    }
+
+    /// The caller's known row location follows any resource-driven page split.
+    fn set_located_cell_style(
+        &mut self,
+        absolute: usize,
+        location: &mut (usize, usize),
+        col: usize,
+        style: Style,
+    ) {
         let page = &self.pages.pages[location.0];
         let cell = page.cells[page.slot(location.1, col)];
         let inline = cell.codepoint().is_none()
@@ -1356,10 +1367,10 @@ impl Screen {
         let id = if inline {
             0
         } else {
-            self.acquire_style(absolute, &mut location, style, None)
+            self.acquire_style(absolute, location, style, None)
                 .expect("cell style fits after growth")
         };
-        let (index, row) = location;
+        let (index, row) = *location;
         let page = &mut self.pages.pages[index];
         let slot = page.slot(row, col);
         page.styles.release(page.cells[slot].style_id());

@@ -924,3 +924,115 @@ fn exposed_rows_are_blank_after_truncation_rotation_and_recycling() {
         }
     }
 }
+
+#[test]
+fn native_metadata_sorted_runs_follow_style_page_splits() {
+    let rgb = |value: u32| Style {
+        foreground: Color::Rgb(value as u8, (value >> 8) as u8, (value >> 16) as u8),
+        ..Style::default()
+    };
+    let ordinary = (0..)
+        .map(rgb)
+        .find(|style| style.native_hash() & 127 > 32)
+        .unwrap();
+    let colliding: Vec<_> = (0..)
+        .map(rgb)
+        .filter(|style| style.native_hash() & 255 == 0)
+        .take(32)
+        .collect();
+    let capacity = PageCapacity {
+        cols: 80,
+        rows: 3,
+        ..PageCapacity::STANDARD
+    };
+    let mut original = Page::new(capacity, 3, 0);
+    let ordinary_id = original.styles.acquire(ordinary).unwrap();
+    for (col, style) in colliding.iter().copied().enumerate() {
+        let id = original.styles.acquire(style).unwrap();
+        original.cells[col].set_style_id(id);
+        original.cells[col].set_codepoint(Some('x'));
+        original.mark_cell(0, original.cells[col]);
+    }
+    original.cells[80].set_style_id(ordinary_id);
+    original.cells[80].set_codepoint(Some('y'));
+    original.mark_cell(1, original.cells[80]);
+    for row in 0..3 {
+        original.row_ids[row] = row as u64;
+    }
+    original.refresh_charge();
+    assert_eq!(
+        original.clone().rebuild(Some(PageResource::Styles)),
+        Err(SetFull::OutOfMemory)
+    );
+    let mut terminal = Terminal::new(80, 3, 10);
+    {
+        let screen = terminal.screen_mut();
+        screen.pages.pages.clear();
+        screen.pages.pages.push_back(original);
+        screen.pages.next_serial = 1;
+        screen.next_row = 3;
+    }
+    let runs = serde_json::json!([[1, 0, 3, 1, 0], [1, 5, 2, 2, 0], [2, 1, 3, 3, 0]]);
+    let mut value = serde_json::to_value(terminal.screen().view_metadata()).unwrap();
+    value["cell_runs"] = runs;
+    let metadata: crate::ViewMetadata = serde_json::from_value(value).unwrap();
+    terminal.restore_view_metadata(&metadata, None).unwrap();
+    assert!(terminal.screen().pages.pages.len() > 1);
+    assert_references(terminal.screen());
+    for (col, style) in colliding.into_iter().enumerate() {
+        assert_eq!(terminal.screen().row(0).style(col), style);
+    }
+    assert_eq!(
+        terminal.screen().row(1).style(0),
+        Style {
+            tmux_ansi: 1,
+            ..ordinary
+        }
+    );
+    assert!(
+        serde_json::to_value(terminal.screen().view_metadata()).unwrap()
+            == serde_json::to_value(&metadata).unwrap()
+    );
+    let bytes = snapshot::encode_to_vec(&terminal).unwrap();
+    let mut restored = snapshot::decode_exact(bytes.as_slice(), Default::default()).unwrap();
+    restored.restore_view_metadata(&metadata, None).unwrap();
+    assert_references(restored.screen());
+    restored.feed(b"\x1b[1;1Hcontinued\r\n");
+    terminal.feed(b"\x1b[1;1Hcontinued\r\n");
+    assert_references(restored.screen());
+    assert_references(terminal.screen());
+    assert!(
+        serde_json::to_value(restored.screen().view_metadata()).unwrap()
+            == serde_json::to_value(terminal.screen().view_metadata()).unwrap()
+    );
+}
+
+#[test]
+fn native_metadata_sparse_tabs_validate_forward_across_pages() {
+    let mut terminal = Terminal::new(80, 3, 10_000);
+    terminal.feed(&b"\r\n".repeat(5_000));
+    assert!(terminal.screen().pages.pages.len() > 3);
+    let mut source = serde_json::to_value(terminal.screen().view_metadata()).unwrap();
+    source["cell_runs"] = serde_json::json!([
+        [0, 0, 2, 1, 8],
+        [4000, 2, 2, 2, -1],
+        [4000, 6, 3, 3, 4],
+        [4999, 10, 1, 1, -1]
+    ]);
+    let metadata: crate::ViewMetadata = serde_json::from_value(source.clone()).unwrap();
+    terminal.restore_view_metadata(&metadata, None).unwrap();
+    assert!(serde_json::to_value(terminal.screen().view_metadata()).unwrap() == source);
+    assert_references(terminal.screen());
+    let screen = terminal.screen_mut();
+    let (index, row) = screen.locate(4000);
+    let page = &mut screen.pages.pages[index];
+    let slot = page.slot(row, 2);
+    page.cells[slot].set_codepoint(Some('x'));
+    let before = serde_json::to_value(screen.view_metadata()).unwrap();
+    assert_eq!(
+        terminal.restore_view_metadata(&metadata, None),
+        Err("invalid tab cell metadata")
+    );
+    assert!(serde_json::to_value(terminal.screen().view_metadata()).unwrap() == before);
+    assert_references(terminal.screen());
+}
