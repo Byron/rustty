@@ -125,6 +125,10 @@ or its owner latency. Failed baseline/candidate samples are retained. Snapshot
 construction remains synchronous and must be measured again after that gap is
 resolved.
 
+The subsequent [native snapshot allocation fix](NATIVE_SNAPSHOT_LIMITS.md)
+records successful large-history reconnects and the separate native write-timeout
+boundary, with new 100,000-row recovery and owner-latency measurements.
+
 The frozen active-workload measurements precede only the final correction to
 latest-size fallback when a closing transport awaits its final FIFO. That
 lifecycle transition was not exercised during the timed active workload. The

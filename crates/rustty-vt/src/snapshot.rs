@@ -1046,6 +1046,22 @@ impl<R: Read> Decoder<R> {
         self.failed = result.is_err();
         result
     }
+
+    /// Set the cumulative cell budget after the active screens have passed
+    /// `ready`'s original dimension and allocation limits. The budget includes
+    /// those active cells as well as all subsequently decoded history pages.
+    /// Other record, continuation, and graphics limits remain unchanged.
+    pub fn set_history_cell_budget(&mut self, max_cells: usize) -> io::Result<()> {
+        if !self.started || self.failed || self.finished {
+            return Err(invalid("snapshot decoder is not ready"));
+        }
+        if max_cells < self.cells {
+            return Err(invalid("snapshot cell budget is below decoded cells"));
+        }
+        self.options.max_cells = max_cells;
+        Ok(())
+    }
+
     fn ready_inner(&mut self) -> io::Result<Terminal> {
         let mut magic = [0u8; 10];
         self.source.read_exact(&mut magic)?;

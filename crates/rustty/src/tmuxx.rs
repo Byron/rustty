@@ -1748,6 +1748,20 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
             }
             let graph = state;
             validate_graph(&graph)?;
+            // Check the entire replacement before allocating even the first
+            // pane: individually bounded panes must not multiply the budget.
+            let mut cells = 0u64;
+            for pane in &graph.panes {
+                let count = pane
+                    .terminal
+                    .as_deref()
+                    .ok_or_else(|| err("missing terminal snapshot"))?
+                    .restored_cell_count()?;
+                cells = cells
+                    .checked_add(count)
+                    .filter(|total| *total <= tmuxx_terminal::MAX_RESTORED_CELLS)
+                    .ok_or_else(|| err("excessive tmuxx snapshot cell count"))?;
+            }
             let mut restored = BTreeMap::new();
             for pane in &graph.panes {
                 restored.insert(
@@ -3944,6 +3958,52 @@ mod tests {
     use super::*;
     use crate::session::Session;
     use std::time::Instant;
+
+    #[test]
+    fn snapshot_preflights_aggregate_cells_before_restoring_any_pane() {
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        let mut terminal =
+            serde_json::to_value(tmuxx_terminal::Terminal::new(16, 3, 0).checkpoint_snapshot())
+                .unwrap();
+        // Each pane is below the ceiling; together they exceed it. Poison the
+        // first checkpoint to prove no pane decoder runs before the preflight.
+        terminal["primary"]["rows"] =
+            serde_json::json!((0..10_000).map(|id| (id, 65_535)).collect::<Vec<_>>());
+        terminal["checkpoint"] = serde_json::Value::Null;
+        let graph = snapshot_state(serde_json::json!({
+            "sessions": [],
+            "windows": [
+                {"id": 1, "name": "one", "active": 7, "cols": 16, "rows": 3, "panes": [7], "layout": Layout::pane(7, 16, 3).to_legacy().unwrap()},
+                {"id": 2, "name": "two", "active": 8, "cols": 16, "rows": 3, "panes": [8], "layout": Layout::pane(8, 16, 3).to_legacy().unwrap()}
+            ],
+            "panes": [
+                {"id": 7, "window": 1, "cols": 16, "rows": 3, "status": null, "terminal": terminal},
+                {"id": 8, "window": 2, "cols": 16, "rows": 3, "status": null, "terminal": terminal}
+            ]
+        }));
+        for pane in &graph.panes {
+            assert!(
+                pane.terminal
+                    .as_ref()
+                    .unwrap()
+                    .restored_cell_count()
+                    .unwrap()
+                    < tmuxx_terminal::MAX_RESTORED_CELLS
+            );
+        }
+        let error = apply(
+            &connection.shared,
+            ServerMessage::Snapshot {
+                instance_id: "budget".into(),
+                sequence: 1,
+                state: graph,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.to_string(), "excessive tmuxx snapshot cell count");
+        let model = connection.shared.model.lock().unwrap();
+        assert!(model.panes.is_empty() && model.graph.is_none() && model.instance.is_empty());
+    }
 
     #[test]
     fn native_handshake_holds_requests_until_accepted_and_preserves_buffered_messages() {
