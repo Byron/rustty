@@ -630,7 +630,7 @@ impl Parser {
     }
 
     /// Like [`Self::advance`], but emit printable text and APC data as borrowed runs.
-    /// Pending UTF-8 and escape sequences keep their scalar path.
+    /// CSI parameter runs share capture bookkeeping; other controls keep their scalar path.
     pub fn advance_batched(&mut self, bytes: &[u8], mut handler: impl FnMut(BatchEvent<'_>)) {
         let mut remaining = bytes;
         while let Some(&byte) = remaining.first() {
@@ -643,6 +643,20 @@ impl Parser {
                 } else {
                     BatchEvent::PrintAscii(&remaining[..len])
                 });
+                self.retain_pending(&remaining[..len]);
+                remaining = &remaining[len..];
+            } else if (self.state == State::CsiParam && matches!(byte, b'0'..=b'9' | b':' | b';'))
+                || (self.state == State::CsiEntry && matches!(byte, b'0'..=b'9' | b';'))
+            {
+                self.state = State::CsiParam;
+                let mut len = 0;
+                for &byte in remaining {
+                    if !matches!(byte, b'0'..=b'9' | b':' | b';') {
+                        break;
+                    }
+                    self.param(byte);
+                    len += 1;
+                }
                 self.retain_pending(&remaining[..len]);
                 remaining = &remaining[len..];
             } else {
@@ -770,6 +784,41 @@ impl Parser {
         true
     }
 
+    #[inline]
+    fn param(&mut self, byte: u8) {
+        if !self.extended.active
+            && self.extended_candidate()
+            && (if matches!(byte, b';' | b':') {
+                self.param_count == MAX_PARAMS - 1
+            } else {
+                self.accumulator > (u16::MAX - u16::from(byte - b'0')) / 10
+            })
+        {
+            self.promote_params();
+        }
+        if self.extended.active {
+            self.extended.advance(byte);
+        }
+        // Preserve legacy saturation and limits for other CSI and DCS commands.
+        if byte == b';' || byte == b':' {
+            if self.param_count < MAX_PARAMS {
+                self.params[self.param_count] = self.accumulator;
+                if byte == b':' {
+                    self.colon_separators |= 1 << self.param_count;
+                }
+                self.param_count += 1;
+                self.accumulator = 0;
+                self.digits = false;
+            }
+        } else {
+            self.accumulator = self
+                .accumulator
+                .saturating_mul(10)
+                .saturating_add((byte - b'0') as u16);
+            self.digits = true;
+        }
+    }
+
     fn control(&mut self, byte: u8, handler: &mut impl FnMut(Event<'_>)) {
         if self.tmux_strings && self.state == State::DcsPassthrough {
             if self.tmux_dcs_escape {
@@ -834,39 +883,7 @@ impl Parser {
                     self.intermediate_count += 1;
                 }
             }
-            TransitionAction::Param => {
-                if !self.extended.active
-                    && self.extended_candidate()
-                    && (if matches!(byte, b';' | b':') {
-                        self.param_count == MAX_PARAMS - 1
-                    } else {
-                        self.accumulator > (u16::MAX - u16::from(byte - b'0')) / 10
-                    })
-                {
-                    self.promote_params();
-                }
-                if self.extended.active {
-                    self.extended.advance(byte);
-                }
-                // Preserve legacy saturation and limits for other CSI and DCS commands.
-                if byte == b';' || byte == b':' {
-                    if self.param_count < MAX_PARAMS {
-                        self.params[self.param_count] = self.accumulator;
-                        if byte == b':' {
-                            self.colon_separators |= 1 << self.param_count;
-                        }
-                        self.param_count += 1;
-                        self.accumulator = 0;
-                        self.digits = false;
-                    }
-                } else {
-                    self.accumulator = self
-                        .accumulator
-                        .saturating_mul(10)
-                        .saturating_add((byte - b'0') as u16);
-                    self.digits = true;
-                }
-            }
+            TransitionAction::Param => self.param(byte),
             TransitionAction::EscDispatch => handler(Event::Esc {
                 intermediates: &self.intermediates[..self.intermediate_count],
                 final_byte: byte,
@@ -1093,11 +1110,20 @@ mod tests {
             // ST inside these valid codepoints leaves raw ESC/APC parsing in
             // ground, where the remaining continuation byte must decode alone.
             b"\x1b\xe2\x9c\x80ground\x1b_\xe2\x9c\x80after APC",
+            b"\x1b[;31m\x1b[:31m\x1b[1;m\x1b[1:2H\x1b[1\x07;2\x7f:3m\x1b[1;2$r\x1b[1;2$3m",
+            b"\x1b[1;2\x18\x1b[3;4\x1a\x1b[5;6\x1b[7;8m\x1b[9;0\x9b1;2m",
+            b"\x1b[999999999999m\x1b[>65536;4294967296:2 q",
+            format!("\x1b[{}m\x1b[>{} q\x1b[>{} q", "1;".repeat(MAX_PARAMS),
+                "1:".repeat(MAX_PARAMS), "1:".repeat(MAX_EXTENDED_PARAMS + 1)).as_bytes(),
             b"\xe0\xa0\xf0\x9f\x98\x84\x1b[38:2::1:2",
         ].concat();
-        for limit in [MAX_OSC_BYTES, 4] {
+        for (tmux, limit) in [false, true]
+            .into_iter()
+            .flat_map(|tmux| [0, 4, MAX_OSC_BYTES].map(|limit| (tmux, limit)))
+        {
             for split in 0..=bytes.len() {
                 let mut scalar = Parser::new();
+                scalar.set_tmux_strings(tmux);
                 scalar.set_osc_limit(limit);
                 scalar.set_continuation_limit(limit);
                 let mut batched = scalar.clone();
@@ -1140,6 +1166,11 @@ mod tests {
                     assert_eq!(actual, expected, "split={split}");
                     assert_eq!(batched.state(), scalar.state(), "split={split}");
                     assert_eq!(batched.is_ground(), scalar.is_ground(), "split={split}");
+                    assert_eq!(
+                        batched.pending_input(),
+                        scalar.pending_input(),
+                        "split={split}"
+                    );
                     assert_eq!(
                         batched.continuation(),
                         scalar.continuation(),
