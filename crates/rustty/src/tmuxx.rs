@@ -5808,7 +5808,7 @@ mod tests {
                 },
                 if first { 15 } else { 3 },
                 if first {
-                    "take(9,b'MOUSE')\n take(1,b'REPLY')"
+                    "take(9,b'MOUSE')\n os.write(1,b'\\x1b[?1016hLEAVE-READY\\r\\n')\n take(11,b'LEAVE')\n take(1,b'REPLY')"
                 } else {
                     ""
                 }
@@ -5863,6 +5863,28 @@ mod tests {
         assert_eq!(mouse, b"\x1b[<0;3;2M");
         first.write_input(&Input::Mouse(mouse)).unwrap();
         wait_text(&connection, &first, "MOUSE:1b5b3c303b333b324d");
+        wait_text(&connection, &first, "LEAVE-READY");
+        let mut last = Some([2, 1]);
+        let leave = first.terminal().unwrap().encode_mouse(
+            rustty_vt::MouseEvent {
+                action: rustty_vt::MouseAction::Leave,
+                button: None,
+                x: f64::NAN,
+                y: f64::NAN,
+                modifiers: Default::default(),
+            },
+            rustty_vt::MouseEncodeOptions {
+                screen_size: [0.0; 2],
+                cell_size: [0; 2],
+                padding: [0.0; 4],
+                any_button_pressed: false,
+                last_cell: Some(&mut last),
+            },
+        );
+        assert_eq!(leave, b"\x1b[<288;0;0M");
+        assert_eq!(last, None);
+        first.write_input(&Input::Mouse(leave)).unwrap();
+        wait_text(&connection, &first, "LEAVE:1b5b3c3238383b303b304d");
         first.write_input(&Input::Reply(b"r".to_vec())).unwrap();
         wait_text(&connection, &first, "REPLY:72");
         first.write(b"z").unwrap();

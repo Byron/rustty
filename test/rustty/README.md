@@ -114,6 +114,10 @@ padding, zero/tiny surfaces and large UTF-8 coordinates. Mouse events accept
 renderer geometry may differ from terminal dimensions. `track_last_cell`
 retains the last cell across operations; `reset_mouse` explicitly clears it.
 Raw native tracking survives terminal resets, mode changes and screen switches.
+Rustty's additional Kitty mouse-leave event is covered by Rust encoder and app
+tests: only pixel format 1016 emits it, even without motion reporting, and leave
+clears the caller's last-cell cache. Session tests verify that the report stays
+with its originating pane when synchronized input is enabled.
 
 `--protocols --case protocol/paste` exercises the state-aware paste entry point:
 text versus clipboard sources, bracketed and Kitty modes, MIME selection and

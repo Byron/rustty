@@ -1324,7 +1324,7 @@ mod tests {
  os.read(0,1)
  "#,
                 if first {
-                    "take(9,b'MOUSE')\n take(3,b'REPLY')"
+                    "take(9,b'MOUSE')\n os.write(1,b'\\x1b[?1016hLEAVE-READY\\r\\n')\n take(11,b'LEAVE')\n take(3,b'REPLY')"
                 } else {
                     ""
                 }
@@ -1392,6 +1392,28 @@ mod tests {
             .write_input(&crate::session::Input::Mouse(mouse))
             .unwrap();
         wait_text(connection, first, "MOUSE:1b5b3c303b333b324d");
+        wait_text(connection, first, "LEAVE-READY");
+        let leave = first.terminal().unwrap().encode_mouse(
+            rustty_vt::MouseEvent {
+                action: rustty_vt::MouseAction::Leave,
+                button: None,
+                x: 0.0,
+                y: 0.0,
+                modifiers: Default::default(),
+            },
+            rustty_vt::MouseEncodeOptions {
+                screen_size: [0.0; 2],
+                cell_size: [0; 2],
+                padding: [0.0; 4],
+                any_button_pressed: false,
+                last_cell: None,
+            },
+        );
+        assert_eq!(leave, b"\x1b[<288;0;0M");
+        first
+            .write_input(&crate::session::Input::Mouse(leave))
+            .unwrap();
+        wait_text(connection, first, "LEAVE:1b5b3c3238383b303b304d");
         first
             .write_input(&crate::session::Input::Reply(b"r\n;".to_vec()))
             .unwrap();

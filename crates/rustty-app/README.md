@@ -673,6 +673,11 @@ view closes, until the TUI concludes or replaces the drop. Other views receive
 metadata only. Stock tmux, outgoing drags, Move and remote-file transfers are not
 supported by this handshake.
 
+TUIs using SGR pixel mouse mode (1016) receive Kitty mouse-leave reports when
+the pointer leaves their pane or enters app UI, so they can clear hover effects.
+Pointer motion follows the hovered pane without changing keyboard focus.
+Leave reports remain scoped to that pane with synchronized tmux input enabled.
+
 The native text-input regression runs with
 `cargo test -p rustty-app --test native_text_input --offline -- --ignored`.
 It checks external text commits (including split UTF-16 surrogates), composition
@@ -694,6 +699,10 @@ native notification sink, including buttons, replacement, callback scope,
 close/alive queries and failures. It does not post notifications or request OS
 permission. Separate native tests cover request construction, callback routing,
 category registration, and cleanup.
+
+`RUSTTY_SMOKE_MOUSE_LEAVE=1` checks pixel mouse reports across pane and app UI
+boundaries, repeated window-leave events, drag capture, layout changes, and
+hidden or closed panes in a two-pane native window.
 
 The opt-in native smoke check starts disposable `/bin/sh` sessions, checks input,
 four split panes, tabs, quadrant focus and zoom, URI directory reports, restoration,

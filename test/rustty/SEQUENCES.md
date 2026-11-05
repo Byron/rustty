@@ -98,7 +98,7 @@ identified explicitly.
 | DEC 66, 67 | Application keypad and Backspace/Delete encoding. |
 | DEC 69 | Left/right-margin interpretation and operations; disabling restores full-width margins. |
 | DEC 1004 | Current native focus is reported on enable/restore, then on host focus changes. |
-| DEC 1005, 1006, 1015, 1016 | UTF-8, SGR, urxvt, and pixel mouse-coordinate encoding. |
+| DEC 1005, 1006, 1015, 1016 | UTF-8, SGR, urxvt, and pixel mouse-coordinate encoding. Pixel mode also sends Kitty mouse-leave reports when the pointer leaves a terminal pane. |
 | DEC 1007 | Without mouse reporting, scrolling the hovered alternate-screen pane sends cursor keys; disabling sends none. |
 | DEC 1035, 1036 | NumLock/keypad policy and Alt escape-prefix encoding. |
 | DEC 1039 | Stored/reportable; there is no separate consumer in the reference or Rustty. |
@@ -239,6 +239,10 @@ acknowledgement belong to live application state, outside the VT.
 
 Shift overrides mouse reporting for local selection by default. XTSHIFTESCAPE
 can change that preference unless `mouse-shift-capture` is `always` or `never`.
+Kitty mouse-leave reports use `CSI < 288+modifiers ; 0 ; 0 M` whenever mode 1016
+is selected, including when motion reporting is disabled. Pane crossings and
+app UI transitions clear hover tracking without changing keyboard focus; reports
+are sent only to the pane being left, including with synchronized tmux input.
 This inventory does not equate arbitrary parser events, snapshot-only fields,
 or native parser recognition with Rustty support.
 

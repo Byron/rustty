@@ -154,6 +154,8 @@ pub enum MouseAction {
     Press,
     Release,
     Move,
+    /// The pointer left the terminal; only SGR-pixel mode reports this event.
+    Leave,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -389,6 +391,21 @@ impl Terminal {
     }
 
     pub fn encode_mouse(&self, event: MouseEvent, options: MouseEncodeOptions<'_>) -> Vec<u8> {
+        if event.action == MouseAction::Leave {
+            if let Some(last) = options.last_cell {
+                *last = None;
+            }
+            if self.mouse_format != 1016 {
+                return Vec::new();
+            }
+            // Leave has no meaningful coordinates and is independent of the
+            // tracking mode, button state, and the host's current geometry.
+            let code = 288
+                + u16::from(event.modifiers.shift) * 4
+                + u16::from(event.modifiers.alt) * 8
+                + u16::from(event.modifiers.control) * 16;
+            return format!("\x1b[<{code};0;0M").into_bytes();
+        }
         let mode = self.mouse_mode;
         if !event.x.is_finite()
             || !event.y.is_finite()
@@ -1148,6 +1165,78 @@ mod tests {
         t.feed(b"\x1b[?1003h\x1b[?1016h");
         assert_eq!(t.encode_mouse(e, mouse_options()), b"\x1b[<32;24;64M");
         assert_eq!(t.encode_focus(false), b"\x1b[O");
+    }
+
+    #[test]
+    fn mouse_leave_requires_only_pixel_format_and_resets_tracking_before_guards() {
+        let mut terminal = Terminal::new(80, 24, 0);
+        for format in [0, 1005, 1006, 1015, 1016] {
+            terminal.mouse_format = format;
+            for mode in [0, 9, 1000, 1002, 1003] {
+                terminal.mouse_mode = mode;
+                for bits in 0..8 {
+                    let mut last = Some([7, 9]);
+                    let output = terminal.encode_mouse(
+                        MouseEvent {
+                            action: MouseAction::Leave,
+                            button: Some(MouseButton::Extra(255)),
+                            x: f64::NAN,
+                            y: f64::INFINITY,
+                            modifiers: Modifiers {
+                                shift: bits & 1 != 0,
+                                alt: bits & 2 != 0,
+                                control: bits & 4 != 0,
+                                super_key: true,
+                                caps_lock: true,
+                                num_lock: true,
+                            },
+                        },
+                        MouseEncodeOptions {
+                            screen_size: [-1.0, f64::NAN],
+                            cell_size: [0, 0],
+                            padding: [f64::INFINITY; 4],
+                            any_button_pressed: false,
+                            last_cell: Some(&mut last),
+                        },
+                    );
+                    assert_eq!(last, None);
+                    if format == 1016 {
+                        assert_eq!(output, format!("\x1b[<{};0;0M", 288 + bits * 4).as_bytes());
+                    } else {
+                        assert!(output.is_empty(), "format={format}, mode={mode}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn mouse_leave_allows_motion_when_reentering_the_same_cell() {
+        let mut terminal = Terminal::new(80, 24, 0);
+        terminal.feed(b"\x1b[?1003h\x1b[?1006h");
+        let mut last = None;
+        let mut event = MouseEvent {
+            action: MouseAction::Move,
+            button: None,
+            x: 8.0,
+            y: 16.0,
+            modifiers: Modifiers::default(),
+        };
+        let encode = |event, last: &mut _| {
+            terminal.encode_mouse(
+                event,
+                MouseEncodeOptions {
+                    last_cell: Some(last),
+                    ..mouse_options()
+                },
+            )
+        };
+        assert_eq!(encode(event, &mut last), b"\x1b[<35;2;2M");
+        assert!(encode(event, &mut last).is_empty());
+        event.action = MouseAction::Leave;
+        assert!(encode(event, &mut last).is_empty());
+        event.action = MouseAction::Move;
+        assert_eq!(encode(event, &mut last), b"\x1b[<35;2;2M");
     }
     #[test]
     fn mouse_drag_bounds_pixel_rounding_and_extra_buttons() {

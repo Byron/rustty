@@ -940,6 +940,7 @@ struct Host {
     presented_peek: Option<Peek>,
     navigation_warning: Option<(Id, Instant)>,
     mouse: Pos2,
+    mouse_hover: Option<Id>,
     deferred_pointer: Option<Pos2>,
     link_hit: Option<(Id, u64, usize, vt::GridPoint, egui::Rect, Vec2)>,
     hovered_link: Option<HoveredLink>,
@@ -1120,6 +1121,19 @@ fn topmost_pane(
         modal.is_none_or(|modal| modal == *id)
             && rects.get(id).is_some_and(|rect| rect.contains(position))
     })
+}
+
+fn visible_hover_pane(tab: &Tab, id: Id) -> bool {
+    if let Some(view) = &tab.server_view {
+        return view.iter().any(|rect| rect.pane == id);
+    }
+    if let Some(zoom) = tab.zoom
+        && tab.overlays.iter().any(|overlay| overlay.pane == zoom)
+    {
+        return id == zoom;
+    }
+    tab.visible_tree(false).contains(id)
+        || tab.zoom.is_none() && tab.overlays.iter().any(|overlay| overlay.pane == id)
 }
 
 struct DirectoryBadge {
@@ -1874,6 +1888,7 @@ impl App {
         visible
     }
     fn sync_host_state(&mut self) {
+        self.invalidate_mouse_hovers();
         self.deck.dirty = true;
         let now = Instant::now();
         let mut focused_panes = HashSet::new();
@@ -2444,6 +2459,7 @@ impl App {
             presented_peek: None,
             navigation_warning: None,
             mouse: Pos2::ZERO,
+            mouse_hover: None,
             deferred_pointer: None,
             link_hit: None,
             hovered_link: None,
@@ -2509,6 +2525,7 @@ impl App {
                 host.visible = visible;
                 host.quick_used |= visible;
                 if !visible {
+                    self.clear_mouse_hover(host);
                     self.cancel_selection_drag(host);
                 }
                 self.remember_quick_frame(host);
@@ -5358,6 +5375,7 @@ impl App {
         if self.import_selector {
             return;
         }
+        self.invalidate_mouse_hovers();
         if self.workspace.reconcile_pinned_panes() {
             self.changed();
         }
@@ -7516,6 +7534,7 @@ impl App {
         if let Some(command) = layout_command {
             self.layout_command(host, command);
         }
+        self.update_mouse_hover(host);
         if let Some(update) = &mut output.platform_output.accesskit_update {
             for (&id, pane) in &mut host.prepared {
                 if host.rects.contains_key(&id) {
@@ -8116,8 +8135,118 @@ impl App {
         pane.session.terminal().ok()?.mouse_shape().parse().ok()
     }
 
+    fn terminal_mouse_hover(&self, host: &Host) -> Option<Id> {
+        if !host.visible
+            || host.occluded
+            || host.modal_input()
+            || host.hints.is_some()
+            || host.peek.is_some()
+            || host.zoom_animation.is_running()
+            || host.divider_drag.is_some()
+            || host.ui_areas.contains(host.mouse)
+            || host
+                .search_rects
+                .values()
+                .any(|rect| rect.contains(host.mouse))
+        {
+            return None;
+        }
+        let id = host.hovered_pane()?;
+        let tab = self.tab(host.id)?;
+        // Retained rectangles can belong to the previous tab until its next draw.
+        if !visible_hover_pane(tab, id)
+            || host.modal_pane != tab.modal_overlay().map(|overlay| overlay.pane)
+            || !self
+                .panes
+                .get(&id)
+                .is_some_and(|pane| !pane.exited && pane.session.accepts_input())
+        {
+            return None;
+        }
+        if host.modal_pane.is_none()
+            && !host.overlay_panes.contains(&id)
+            && !host.rects.get(&id)?.shrink(3.0).contains(host.mouse)
+            && tab
+                .visible_tree(false)
+                .divider_at_with_minimum(
+                    host.content,
+                    [host.mouse.x, host.mouse.y],
+                    3.0,
+                    self.split_minimum(host),
+                )
+                .is_some()
+        {
+            return None;
+        }
+        Some(id)
+    }
+
+    fn update_mouse_hover(&mut self, host: &mut Host) {
+        let next = self.terminal_mouse_hover(host);
+        if host.mouse_hover != next {
+            self.clear_mouse_hover(host);
+            host.mouse_hover = next;
+        }
+    }
+
+    fn clear_mouse_hover(&mut self, host: &mut Host) {
+        if let Some(id) = host.mouse_hover.take() {
+            self.mouse_leave(id, host.modifiers.state());
+        }
+    }
+
+    fn invalidate_mouse_hovers(&mut self) {
+        let leaving: Vec<_> = self
+            .windows
+            .iter()
+            .filter_map(|(&window, host)| {
+                host.mouse_hover
+                    .filter(|id| self.terminal_mouse_hover(host) != Some(*id))
+                    .map(|id| (window, id, host.modifiers.state()))
+            })
+            .collect();
+        for (window, id, modifiers) in leaving {
+            self.windows.get_mut(&window).unwrap().mouse_hover = None;
+            self.mouse_leave(id, modifiers);
+        }
+    }
+
+    fn mouse_leave(&mut self, id: Id, modifiers: winit::keyboard::ModifiersState) {
+        let Some(pane) = self.panes.get_mut(&id) else {
+            return;
+        };
+        pane.mouse_cell = None;
+        if pane.exited || !pane.session.accepts_input() {
+            return;
+        }
+        let Ok(terminal) = pane.session.terminal() else {
+            return;
+        };
+        let bytes = terminal.encode_mouse(
+            vt::MouseEvent {
+                action: vt::MouseAction::Leave,
+                button: None,
+                x: 0.0,
+                y: 0.0,
+                modifiers: input::terminal_modifiers(modifiers),
+            },
+            vt::MouseEncodeOptions {
+                screen_size: [0.0; 2],
+                cell_size: [0; 2],
+                padding: [0.0; 4],
+                any_button_pressed: false,
+                last_cell: None,
+            },
+        );
+        drop(terminal);
+        if !bytes.is_empty() {
+            self.send_input(id, SessionInput::Mouse(bytes));
+        }
+    }
+
     fn mouse(&mut self, host: &mut Host, action: vt::MouseAction, button: Option<vt::MouseButton>) {
-        if host.hints.is_some() {
+        self.update_mouse_hover(host);
+        if host.hints.is_some() || host.modal_input() {
             return;
         }
         if host.zoom_animation.is_running()
@@ -8322,8 +8451,14 @@ impl App {
         {
             self.focus_pane(host.id, id);
         }
-        // Wheel reports follow the pointer without changing the keyboard target.
-        let Some(id) = (if wheel { hit } else { self.focused(host.id) }) else {
+        // Unpressed motion and wheel reports follow the pointer without changing focus.
+        let Some(id) = (if wheel {
+            hit
+        } else if action == vt::MouseAction::Move && host.mouse_button.is_none() {
+            host.mouse_hover
+        } else {
+            self.focused(host.id)
+        }) else {
             return;
         };
         let Some(rect) = host.rects.get(&id) else {
@@ -9146,12 +9281,15 @@ impl ApplicationHandler<Event> for App {
                 if !host.modal_input() {
                     let button = host.mouse_button;
                     self.mouse(&mut host, vt::MouseAction::Move, button);
+                } else {
+                    self.clear_mouse_hover(&mut host);
                 }
                 // Motion cannot add or remove windows or sessions. Even divider
                 // drags update their geometry directly, without reconciliation.
                 self.windows.insert(window, host);
                 return;
             }
+            WindowEvent::CursorLeft { .. } => self.clear_mouse_hover(&mut host),
             WindowEvent::MouseInput { state, button, .. } if !host.modal_input() => {
                 let button = match button {
                     MouseButton::Left => Some(vt::MouseButton::Left),
@@ -9185,6 +9323,7 @@ impl ApplicationHandler<Event> for App {
             },
             _ => {}
         }
+        self.update_mouse_hover(&mut host);
         self.windows.insert(window, host);
         self.reconcile(event_loop);
     }
@@ -9428,10 +9567,11 @@ impl App {
     fn shutdown(&mut self) {
         self.deck.stop();
         self.hide_outliner();
-        let windows = std::mem::take(&mut self.windows);
+        let mut windows = std::mem::take(&mut self.windows);
         let outliner = self.outliner.take();
         let remaining = egui::ViewportIdSet::default();
-        for host in windows.values() {
+        for host in windows.values_mut() {
+            self.clear_mouse_hover(host);
             host.window.set_visible(false);
             if let Some(platform) = &self.platform {
                 platform.forget_window(&host.window);
@@ -11006,6 +11146,45 @@ mod tests {
             sync.update(&mut terminal, later),
             Some(later + Duration::from_secs(1))
         );
+    }
+
+    #[test]
+    fn visible_hover_membership_rejects_hidden_zoomed_and_previous_tab_panes() {
+        use rustty_app::workspace::{Overlay, PaneRect};
+        let mut tab = Tab::new(1, 2, "/tmp".into());
+        tab.root.split(2, 3, 4, config::Direction::Right);
+        tab.overlays.push(Overlay {
+            pane: 5,
+            x: 0,
+            y: 0,
+            cols: 10,
+            rows: 5,
+            z: 1,
+            modal: true,
+            capture_keys: false,
+            close_click: false,
+            close_cancel: false,
+        });
+        assert!([2, 3, 5].into_iter().all(|id| visible_hover_pane(&tab, id)));
+        tab.zoom = Some(2);
+        assert!(visible_hover_pane(&tab, 2));
+        assert!(!visible_hover_pane(&tab, 3));
+        assert!(!visible_hover_pane(&tab, 5));
+        tab.zoom = Some(5);
+        assert!(visible_hover_pane(&tab, 5));
+        assert!(!visible_hover_pane(&tab, 2));
+        tab.server_view = Some(vec![PaneRect {
+            pane: 3,
+            x: 0,
+            y: 0,
+            cols: 10,
+            rows: 5,
+            reserved_top: 0,
+            reserved_bottom: 0,
+        }]);
+        assert!(visible_hover_pane(&tab, 3));
+        assert!(!visible_hover_pane(&tab, 5));
+        assert!(!visible_hover_pane(&Tab::new(6, 7, "/tmp".into()), 3));
     }
 
     #[test]
