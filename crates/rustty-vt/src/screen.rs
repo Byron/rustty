@@ -2026,10 +2026,16 @@ impl Screen {
         );
     }
 
-    pub(crate) fn write_cursor_ascii(&mut self, bytes: &[u8]) -> usize {
+    pub(crate) fn write_cursor_ascii(&mut self, bytes: &[u8], location: (usize, usize)) -> usize {
         use crate::printing;
+        debug_assert_eq!(location, self.cursor_location());
         let charset = self.charset.slots[self.charset.gl];
-        let (index, row) = self.sync_cursor_resources();
+        let (index, row) = if self.cursor_resources_match(location.0) {
+            location
+        } else {
+            self.sync_cursor_resources_slow();
+            self.cursor_location()
+        };
         let template = self.cursor_template(None, 1, false);
         let page = &mut self.pages.pages[index];
         if page.headers[row].has(RowHeader::TEXT_SPANS) {

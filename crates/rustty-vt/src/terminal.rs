@@ -1534,7 +1534,8 @@ impl Terminal {
             return;
         }
         while !bytes.is_empty() {
-            self.ensure_row_cells(self.screen().cursor.row, usize::from(self.cols));
+            let mut location =
+                self.ensure_row_cells(self.screen().cursor.row, usize::from(self.cols));
             let col = self.screen().cursor.col.min(usize::from(self.cols) - 1);
             self.screen_mut().cursor.col = col;
             if self.screen().cursor.pending_wrap {
@@ -1545,6 +1546,7 @@ impl Terminal {
                     continue;
                 }
                 self.print_wrap();
+                location = self.screen().cursor_location();
             }
             let col = self.screen().cursor.col;
             let right = if col > self.margins.right {
@@ -1553,7 +1555,9 @@ impl Terminal {
                 self.margins.right
             };
             let count = bytes.len().min(right - col + 1);
-            let written = self.screen_mut().write_cursor_ascii(&bytes[..count]);
+            let written = self
+                .screen_mut()
+                .write_cursor_ascii(&bytes[..count], location);
             if written == 0 {
                 // Wide cells, graphemes and links retain the scalar replacement rules.
                 self.print(char::from(bytes[0]));
