@@ -1885,7 +1885,7 @@ impl Screen {
             location
         };
         self.graphics.overwrite_sixel(
-            self.row(self.cursor.row).id,
+            self.pages.pages[location.0].row_ids[location.1],
             self.cursor.col,
             self.cursor.col + usize::from(width),
         );
@@ -2030,7 +2030,7 @@ impl Screen {
         }
         if count != 0 {
             self.graphics.overwrite_sixel(
-                self.row(self.cursor.row).id,
+                page.row_ids[row],
                 self.cursor.col,
                 self.cursor.col + count,
             );
@@ -2152,11 +2152,8 @@ impl Screen {
             marked.set_codepoint(Some(crate::graphics::unicode::PLACEHOLDER));
         }
         page.mark_cell(row, marked);
-        self.graphics.overwrite_sixel(
-            self.row(self.cursor.row).id,
-            self.cursor.col,
-            self.cursor.col + slots,
-        );
+        self.graphics
+            .overwrite_sixel(page.row_ids[row], self.cursor.col, self.cursor.col + slots);
         self.tmux_capture_write(self.cursor.row, self.cursor.col + slots);
         self.tmux_note_rendition(
             self.cursor.row,
