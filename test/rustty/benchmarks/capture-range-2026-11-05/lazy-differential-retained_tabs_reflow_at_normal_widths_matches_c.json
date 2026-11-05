@@ -1,0 +1,6940 @@
+[
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        10,
+        97,
+        9,
+        98,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        10,
+        97,
+        9,
+        98,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        10,
+        50,
+        32,
+        97,
+        9,
+        98,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        10,
+        50,
+        32,
+        97,
+        9,
+        98,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        10,
+        88,
+        10,
+        97,
+        9,
+        10,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        10,
+        88,
+        10,
+        97,
+        9,
+        10,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        10,
+        9,
+        10,
+        88,
+        32,
+        10,
+        97,
+        9,
+        10,
+        98,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        10,
+        9,
+        10,
+        88,
+        32,
+        10,
+        97,
+        9,
+        10,
+        98,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        10,
+        88,
+        10,
+        97,
+        9,
+        10,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        10,
+        88,
+        10,
+        97,
+        9,
+        10,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        45,
+        50,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        10,
+        45,
+        49,
+        32,
+        9,
+        10,
+        48,
+        32,
+        88,
+        32,
+        10,
+        49,
+        32,
+        97,
+        9,
+        10,
+        50,
+        32,
+        98,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        45,
+        50,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        10,
+        45,
+        49,
+        32,
+        9,
+        10,
+        48,
+        32,
+        88,
+        32,
+        10,
+        49,
+        32,
+        97,
+        9,
+        10,
+        50,
+        32,
+        98,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        97,
+        9,
+        98,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        97,
+        9,
+        98,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        50,
+        32,
+        97,
+        9,
+        98,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        50,
+        32,
+        97,
+        9,
+        98,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        10,
+        97,
+        9,
+        98,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        10,
+        97,
+        9,
+        98,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        10,
+        50,
+        32,
+        97,
+        9,
+        98,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        10,
+        50,
+        32,
+        97,
+        9,
+        98,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        97,
+        9,
+        98,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        97,
+        9,
+        98,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        97,
+        9,
+        98,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        50,
+        32,
+        97,
+        9,
+        98,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        50,
+        32,
+        97,
+        9,
+        98,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        32,
+        10,
+        9,
+        9,
+        89,
+        32,
+        32,
+        32,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        32,
+        10,
+        9,
+        9,
+        89,
+        32,
+        32,
+        32,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        50,
+        32,
+        65,
+        9,
+        88,
+        32,
+        10,
+        51,
+        32,
+        9,
+        9,
+        89,
+        32,
+        32,
+        32,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        50,
+        32,
+        65,
+        9,
+        88,
+        32,
+        10,
+        51,
+        32,
+        9,
+        9,
+        89,
+        32,
+        32,
+        32,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        10,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        10,
+        54,
+        55,
+        56,
+        57,
+        65,
+        10,
+        9,
+        88,
+        10,
+        9,
+        10,
+        9,
+        10,
+        89,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        10,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        10,
+        54,
+        55,
+        56,
+        57,
+        65,
+        10,
+        9,
+        88,
+        10,
+        9,
+        10,
+        9,
+        10,
+        89,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        10,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        10,
+        54,
+        55,
+        56,
+        57,
+        65,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        10,
+        9,
+        10,
+        9,
+        10,
+        89,
+        32,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        10,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        10,
+        54,
+        55,
+        56,
+        57,
+        65,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        10,
+        9,
+        10,
+        9,
+        10,
+        89,
+        32,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        10,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        10,
+        54,
+        55,
+        56,
+        57,
+        65,
+        10,
+        9,
+        88,
+        10,
+        9,
+        10,
+        9,
+        10,
+        89,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        10,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        10,
+        54,
+        55,
+        56,
+        57,
+        65,
+        10,
+        9,
+        88,
+        10,
+        9,
+        10,
+        9,
+        10,
+        89,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        45,
+        52,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        10,
+        45,
+        51,
+        32,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        10,
+        45,
+        50,
+        32,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        10,
+        45,
+        49,
+        32,
+        54,
+        55,
+        56,
+        57,
+        65,
+        32,
+        32,
+        32,
+        10,
+        48,
+        32,
+        9,
+        88,
+        10,
+        49,
+        32,
+        9,
+        10,
+        50,
+        32,
+        9,
+        10,
+        51,
+        32,
+        89,
+        32,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        45,
+        52,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        10,
+        45,
+        51,
+        32,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        10,
+        45,
+        50,
+        32,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        10,
+        45,
+        49,
+        32,
+        54,
+        55,
+        56,
+        57,
+        65,
+        32,
+        32,
+        32,
+        10,
+        48,
+        32,
+        9,
+        88,
+        10,
+        49,
+        32,
+        9,
+        10,
+        50,
+        32,
+        9,
+        10,
+        51,
+        32,
+        89,
+        32,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        32,
+        32,
+        32,
+        10,
+        9,
+        9,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        32,
+        32,
+        32,
+        10,
+        9,
+        9,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        32,
+        32,
+        32,
+        10,
+        50,
+        32,
+        9,
+        9,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        32,
+        32,
+        32,
+        10,
+        50,
+        32,
+        9,
+        9,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        10,
+        9,
+        10,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        10,
+        9,
+        10,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        32,
+        10,
+        9,
+        10,
+        9,
+        89,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        32,
+        10,
+        9,
+        10,
+        9,
+        89,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        10,
+        9,
+        10,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        10,
+        9,
+        10,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        45,
+        51,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        45,
+        50,
+        32,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        45,
+        49,
+        32,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        48,
+        32,
+        65,
+        9,
+        88,
+        32,
+        10,
+        49,
+        32,
+        9,
+        10,
+        50,
+        32,
+        9,
+        89,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        45,
+        51,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        45,
+        50,
+        32,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        45,
+        49,
+        32,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        48,
+        32,
+        65,
+        9,
+        88,
+        32,
+        10,
+        49,
+        32,
+        9,
+        10,
+        50,
+        32,
+        9,
+        89,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        32,
+        10,
+        9,
+        9,
+        89,
+        32,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        32,
+        10,
+        9,
+        9,
+        89,
+        32,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        65,
+        9,
+        88,
+        10,
+        9,
+        9,
+        89,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        45,
+        49,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        48,
+        32,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        49,
+        32,
+        65,
+        9,
+        88,
+        32,
+        10,
+        50,
+        32,
+        9,
+        9,
+        89,
+        32,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        45,
+        49,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        48,
+        32,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        10,
+        49,
+        32,
+        65,
+        9,
+        88,
+        32,
+        10,
+        50,
+        32,
+        9,
+        9,
+        89,
+        32,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        10,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        10,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        10,
+        50,
+        32,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        10,
+        50,
+        32,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        10,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        10,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        10,
+        9,
+        10,
+        88,
+        32,
+        10,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        10,
+        9,
+        10,
+        88,
+        32,
+        10,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        10,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        10,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        45,
+        49,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        10,
+        48,
+        32,
+        9,
+        10,
+        49,
+        32,
+        88,
+        32,
+        10,
+        50,
+        32,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        45,
+        49,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        10,
+        48,
+        32,
+        9,
+        10,
+        49,
+        32,
+        88,
+        32,
+        10,
+        50,
+        32,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      8,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        50,
+        32,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        50,
+        32,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      32,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        10,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        10,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        10,
+        50,
+        32,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        10,
+        50,
+        32,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      10,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-p",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: false, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        9,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pN",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNT",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: true, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-peNJ",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: true, escape: true, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: false, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        82,
+        69,
+        65,
+        68,
+        89,
+        10,
+        27,
+        91,
+        52,
+        52,
+        109,
+        9,
+        27,
+        91,
+        52,
+        57,
+        109,
+        88,
+        10,
+        101,
+        110,
+        100,
+        10,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        50,
+        32,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  },
+  {
+    "args": [
+      "capture-pane",
+      "-pNL",
+      "-S",
+      "-2147483648"
+    ],
+    "options": "CaptureOptions { raw: false, start: Some(-2147483648), end: None, join: false, escape: false, escape_sequences: false, alternate: false, pending: false, preserve_trailing: true, trim_unused: false, quiet: false, number_lines: true, hyperlinks: false, timestamps: false, flags: false }",
+    "result": {
+      "Ok": [
+        48,
+        32,
+        82,
+        69,
+        65,
+        68,
+        89,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        49,
+        32,
+        9,
+        88,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        10,
+        50,
+        32,
+        101,
+        110,
+        100,
+        32,
+        32,
+        10,
+        51,
+        32,
+        10
+      ]
+    },
+    "size": [
+      20,
+      4
+    ]
+  }
+]

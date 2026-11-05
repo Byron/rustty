@@ -13,3 +13,7 @@ serde_json.workspace = true
 
 [dev-dependencies]
 base64 = "0.22"
+
+[[example]]
+name = "capture-range-bench"
+path = "../../../test/rustty/capture-range.rs"

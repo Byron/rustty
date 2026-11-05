@@ -1,0 +1,63 @@
+{
+  "source_base_commit": "1d9a516238c7e526ce29627e658408537032beac",
+  "port_base_commit": "c6d5d73fa253bb63ca3302bd6e476b34567c9cc4",
+  "candidate": "Clip raw Rows to each selected source segment, collect only selected rows into an exactly preallocated vector, preserve the original formatter and owner rearm API.",
+  "machine": "aarch64",
+  "platform": "Linux-7.0.0-1019-azure-aarch64-with-glibc2.43",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "profile": "release; thin LTO; codegen-units=1; no custom RUSTFLAGS",
+  "harness": "test/rustty/capture-range.rs",
+  "harness_sha256": "c44d46056225dc07ec6588e31de4b7d56c1f06f448f0a7ea8698093c523af285",
+  "build_command": "cargo +1.95.0 build --locked --offline --release -p tmuxx-terminal --example capture-range-bench",
+  "isolation": "Both measured binaries built serially in /tmp/rustty-capture-1d9a51623 with identical isolated workspace, lock and compiler; only capture.rs changed between builds. The test module is cfg(test). Isolated workspace manifests are archived.",
+  "candidate_capture_sha256": "a9fa14ab5c3e83ae8a954ca90361291aea173143d03a0e9606049f9d392e1a4d",
+  "baseline_capture_sha256": "a8729321ae0867c963f48be0ef0517b8679c9effe1e9d3f2e74f4af575f7770c",
+  "binary_sha256": {
+    "before": "4aa95df327f3a790254e734cc7241227660608668ef767977a08f5c156ae1415",
+    "after": "df7f8284a1cef36eba809632ba288e6b2729408cf258fc7246547c054b08244c",
+    "lazy-rejected": "3d7546d00427696876c0f1eaaf20f82c728ff33ba5953a4c3eb6ee0a4d2ff71f"
+  },
+  "measure_command": "/usr/bin/time -v -o RUN.time BINARY ROWS 5 > RUN.json",
+  "order": "timing/order.json",
+  "summary": "timing/summary.json",
+  "quiet_window": "All binaries built before measurements; other agents held CPU-heavy work for each of the two 12-process windows.",
+  "rejected_trial": {
+    "source": "rejected-lazy-capture.rs",
+    "timing": "timing-lazy-rejected",
+    "reason": "Formatting directly from lazy row iterators consistently slowed full-history controls by about 7\u201310%; selected-range preallocated vector retained instead."
+  },
+  "validation": {
+    "focused_main_commands": [
+      "cargo +1.95.0 test --locked --offline -p tmuxx-terminal --lib --test capture_reference",
+      "cargo +1.95.0 check --locked --offline -p tmuxx-terminal --example capture-range-bench"
+    ],
+    "baseline_regression": "Both cold-ownership tests fail on unchanged capture; visible/alternate reads grow source page storage 549893\u21924249093 bytes. All 3 new regressions pass on candidate.",
+    "fixture_differential": {
+      "cases": 317,
+      "result": "exactly equal baseline/candidate Result<Vec<u8>, String>",
+      "source": "capture-reference-probe.rs",
+      "logs": "before-differential-* and after-differential-*",
+      "description": "Explicit probe copy of existing capture_reference.rs; RUSTTY_CAPTURE_DIFFERENTIAL records Rust output for every original selected fixture option, including modern flags unsupported by system tmux."
+    },
+    "older_c_reference": {
+      "binary": "/usr/bin/tmux",
+      "version": "tmux 3.6",
+      "sha256": "9b57a08b7f23618fe7f5d4604084160914295577fd0b6dd59c4cbee1039bd445",
+      "accepted_flags": "tmux36-capture-command.txt",
+      "direct_unmodified_pass": "capture_alternate_history_and_missing_screen_match_c",
+      "filtered_passes": {
+        "capture_sgr_color_origins_spaces_escaping_and_ranges_match_c": 30,
+        "capture_alternate_history_and_missing_screen_match_c": 8
+      },
+      "excluded_flags": "L,F,H,I explicitly skipped by the C 3.6 probe; original groups fail on unsupported flags. This is not a full modern C-reference pass.",
+      "preexisting_byte_differences": [
+        "Styled-tab overwrite -pe: Rustty retains background SGR that 3.6 omits.",
+        "Tab reflow -N: Rustty retains one allocated trailing blank that 3.6 omits."
+      ],
+      "baseline_proof": "Both byte differences reproduced directly with unchanged baseline binary; all corresponding Rust fixture bytes equal final candidate."
+    },
+    "unique_tests_passed": 34,
+    "example_check": "passed on main port with Rust1.95.0; pure library harness, no Unix-only APIs"
+  },
+  "limits": "Synchronous Terminal::capture_for_owner timings only, without runtime scheduling, PTY I/O or rendering. Cold storage growth counts primary page allocations; excludes returned capture bytes, transient row vectors, screen-level maps, graphics and process RSS. Full captures remain proportional to requested history and restore all selected cold cells."
+}

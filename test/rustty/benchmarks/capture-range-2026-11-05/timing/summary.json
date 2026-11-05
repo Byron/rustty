@@ -1,0 +1,391 @@
+{
+  "unit": "ns per synchronous Terminal::capture_for_owner; source storage growth bytes",
+  "pairs": 3,
+  "samples_per_case_per_run": 5,
+  "groups": [
+    {
+      "rows": 20000,
+      "state": "resident",
+      "case": "visible",
+      "before": {
+        "median_of_run_medians_ns": 263520,
+        "run_medians_ns": [
+          262138,
+          263520,
+          263705
+        ],
+        "median_restored_bytes": 0
+      },
+      "after": {
+        "median_of_run_medians_ns": 3392,
+        "run_medians_ns": [
+          3392,
+          3392,
+          3361
+        ],
+        "median_restored_bytes": 0
+      },
+      "after_over_before": 0.012871888281724347
+    },
+    {
+      "rows": 20000,
+      "state": "resident",
+      "case": "short_history",
+      "before": {
+        "median_of_run_medians_ns": 262448,
+        "run_medians_ns": [
+          262321,
+          265177,
+          262448
+        ],
+        "median_restored_bytes": 0
+      },
+      "after": {
+        "median_of_run_medians_ns": 3793,
+        "run_medians_ns": [
+          3640,
+          3856,
+          3793
+        ],
+        "median_restored_bytes": 0
+      },
+      "after_over_before": 0.014452386758519783
+    },
+    {
+      "rows": 20000,
+      "state": "resident",
+      "case": "history_boundary",
+      "before": {
+        "median_of_run_medians_ns": 261778,
+        "run_medians_ns": [
+          261778,
+          262489,
+          260473
+        ],
+        "median_restored_bytes": 0
+      },
+      "after": {
+        "median_of_run_medians_ns": 3032,
+        "run_medians_ns": [
+          3001,
+          3136,
+          3032
+        ],
+        "median_restored_bytes": 0
+      },
+      "after_over_before": 0.011582333121958301
+    },
+    {
+      "rows": 20000,
+      "state": "resident",
+      "case": "full_history",
+      "before": {
+        "median_of_run_medians_ns": 15977565,
+        "run_medians_ns": [
+          15949884,
+          16050575,
+          15977565
+        ],
+        "median_restored_bytes": 0
+      },
+      "after": {
+        "median_of_run_medians_ns": 15711972,
+        "run_medians_ns": [
+          15711972,
+          16596233,
+          15706758
+        ],
+        "median_restored_bytes": 0
+      },
+      "after_over_before": 0.9833771291182355
+    },
+    {
+      "rows": 20000,
+      "state": "cold",
+      "case": "visible",
+      "before": {
+        "median_of_run_medians_ns": 1346114,
+        "run_medians_ns": [
+          1346114,
+          1362292,
+          1287506
+        ],
+        "median_restored_bytes": 18947520
+      },
+      "after": {
+        "median_of_run_medians_ns": 3232,
+        "run_medians_ns": [
+          3232,
+          3208,
+          3288
+        ],
+        "median_restored_bytes": 0
+      },
+      "after_over_before": 0.00240098535488079
+    },
+    {
+      "rows": 20000,
+      "state": "cold",
+      "case": "short_history",
+      "before": {
+        "median_of_run_medians_ns": 1351882,
+        "run_medians_ns": [
+          1351882,
+          1361732,
+          1284529
+        ],
+        "median_restored_bytes": 18947520
+      },
+      "after": {
+        "median_of_run_medians_ns": 17944,
+        "run_medians_ns": [
+          17793,
+          18033,
+          17944
+        ],
+        "median_restored_bytes": 371520
+      },
+      "after_over_before": 0.013273347821777344
+    },
+    {
+      "rows": 20000,
+      "state": "cold",
+      "case": "history_boundary",
+      "before": {
+        "median_of_run_medians_ns": 1348483,
+        "run_medians_ns": [
+          1359491,
+          1348483,
+          1290474
+        ],
+        "median_restored_bytes": 18947520
+      },
+      "after": {
+        "median_of_run_medians_ns": 3104,
+        "run_medians_ns": [
+          3104,
+          3136,
+          3008
+        ],
+        "median_restored_bytes": 0
+      },
+      "after_over_before": 0.0023018458519684713
+    },
+    {
+      "rows": 20000,
+      "state": "cold",
+      "case": "full_history",
+      "before": {
+        "median_of_run_medians_ns": 21058489,
+        "run_medians_ns": [
+          21114947,
+          21058489,
+          21057779
+        ],
+        "median_restored_bytes": 18947520
+      },
+      "after": {
+        "median_of_run_medians_ns": 21322643,
+        "run_medians_ns": [
+          21322643,
+          21495783,
+          21158487
+        ],
+        "median_restored_bytes": 18947520
+      },
+      "after_over_before": 1.0125438249629402
+    },
+    {
+      "rows": 100000,
+      "state": "resident",
+      "case": "visible",
+      "before": {
+        "median_of_run_medians_ns": 1297691,
+        "run_medians_ns": [
+          1322059,
+          1294699,
+          1297691
+        ],
+        "median_restored_bytes": 0
+      },
+      "after": {
+        "median_of_run_medians_ns": 4544,
+        "run_medians_ns": [
+          4544,
+          4736,
+          4496
+        ],
+        "median_restored_bytes": 0
+      },
+      "after_over_before": 0.0035016040028018995
+    },
+    {
+      "rows": 100000,
+      "state": "resident",
+      "case": "short_history",
+      "before": {
+        "median_of_run_medians_ns": 1299074,
+        "run_medians_ns": [
+          1320275,
+          1293923,
+          1299074
+        ],
+        "median_restored_bytes": 0
+      },
+      "after": {
+        "median_of_run_medians_ns": 4712,
+        "run_medians_ns": [
+          4872,
+          4704,
+          4712
+        ],
+        "median_restored_bytes": 0
+      },
+      "after_over_before": 0.0036271990664119213
+    },
+    {
+      "rows": 100000,
+      "state": "resident",
+      "case": "history_boundary",
+      "before": {
+        "median_of_run_medians_ns": 1297531,
+        "run_medians_ns": [
+          1314274,
+          1291979,
+          1297531
+        ],
+        "median_restored_bytes": 0
+      },
+      "after": {
+        "median_of_run_medians_ns": 4008,
+        "run_medians_ns": [
+          4033,
+          4008,
+          4008
+        ],
+        "median_restored_bytes": 0
+      },
+      "after_over_before": 0.0030889435396919225
+    },
+    {
+      "rows": 100000,
+      "state": "resident",
+      "case": "full_history",
+      "before": {
+        "median_of_run_medians_ns": 80568104,
+        "run_medians_ns": [
+          80568104,
+          80220286,
+          81303395
+        ],
+        "median_restored_bytes": 0
+      },
+      "after": {
+        "median_of_run_medians_ns": 80258608,
+        "run_medians_ns": [
+          79722717,
+          80258608,
+          83672625
+        ],
+        "median_restored_bytes": 0
+      },
+      "after_over_before": 0.9961585790823624
+    },
+    {
+      "rows": 100000,
+      "state": "cold",
+      "case": "visible",
+      "before": {
+        "median_of_run_medians_ns": 6961228,
+        "run_medians_ns": [
+          7554813,
+          6961228,
+          6923203
+        ],
+        "median_restored_bytes": 95852160
+      },
+      "after": {
+        "median_of_run_medians_ns": 4584,
+        "run_medians_ns": [
+          4592,
+          4584,
+          4536
+        ],
+        "median_restored_bytes": 0
+      },
+      "after_over_before": 0.0006585045052395928
+    },
+    {
+      "rows": 100000,
+      "state": "cold",
+      "case": "short_history",
+      "before": {
+        "median_of_run_medians_ns": 6941043,
+        "run_medians_ns": [
+          7164889,
+          6941043,
+          6907339
+        ],
+        "median_restored_bytes": 95852160
+      },
+      "after": {
+        "median_of_run_medians_ns": 16544,
+        "run_medians_ns": [
+          16217,
+          16544,
+          18777
+        ],
+        "median_restored_bytes": 371520
+      },
+      "after_over_before": 0.0023835034590622764
+    },
+    {
+      "rows": 100000,
+      "state": "cold",
+      "case": "history_boundary",
+      "before": {
+        "median_of_run_medians_ns": 7010646,
+        "run_medians_ns": [
+          7183121,
+          7010646,
+          6895754
+        ],
+        "median_restored_bytes": 95852160
+      },
+      "after": {
+        "median_of_run_medians_ns": 4104,
+        "run_medians_ns": [
+          4104,
+          4064,
+          4136
+        ],
+        "median_restored_bytes": 0
+      },
+      "after_over_before": 0.0005853954114927498
+    },
+    {
+      "rows": 100000,
+      "state": "cold",
+      "case": "full_history",
+      "before": {
+        "median_of_run_medians_ns": 106854640,
+        "run_medians_ns": [
+          106835485,
+          106854640,
+          107426709
+        ],
+        "median_restored_bytes": 95852160
+      },
+      "after": {
+        "median_of_run_medians_ns": 107401383,
+        "run_medians_ns": [
+          107401383,
+          107367305,
+          108696878
+        ],
+        "median_restored_bytes": 95852160
+      },
+      "after_over_before": 1.005116698722676
+    }
+  ]
+}

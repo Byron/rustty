@@ -1,0 +1,74 @@
+[
+  {
+    "name": "before-20000-1",
+    "rows": 20000,
+    "variant": "before",
+    "pair": 1
+  },
+  {
+    "name": "after-20000-1",
+    "rows": 20000,
+    "variant": "after",
+    "pair": 1
+  },
+  {
+    "name": "after-20000-2",
+    "rows": 20000,
+    "variant": "after",
+    "pair": 2
+  },
+  {
+    "name": "before-20000-2",
+    "rows": 20000,
+    "variant": "before",
+    "pair": 2
+  },
+  {
+    "name": "before-20000-3",
+    "rows": 20000,
+    "variant": "before",
+    "pair": 3
+  },
+  {
+    "name": "after-20000-3",
+    "rows": 20000,
+    "variant": "after",
+    "pair": 3
+  },
+  {
+    "name": "before-100000-1",
+    "rows": 100000,
+    "variant": "before",
+    "pair": 1
+  },
+  {
+    "name": "after-100000-1",
+    "rows": 100000,
+    "variant": "after",
+    "pair": 1
+  },
+  {
+    "name": "after-100000-2",
+    "rows": 100000,
+    "variant": "after",
+    "pair": 2
+  },
+  {
+    "name": "before-100000-2",
+    "rows": 100000,
+    "variant": "before",
+    "pair": 2
+  },
+  {
+    "name": "before-100000-3",
+    "rows": 100000,
+    "variant": "before",
+    "pair": 3
+  },
+  {
+    "name": "after-100000-3",
+    "rows": 100000,
+    "variant": "after",
+    "pair": 3
+  }
+]

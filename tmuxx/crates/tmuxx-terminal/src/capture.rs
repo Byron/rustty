@@ -70,28 +70,25 @@ impl Terminal {
         }
         let primary = self.inner.primary_screen();
         let active = self.inner.screen();
-        let rows: Vec<(&Screen, Row<'_>)> = if options.alternate {
-            primary
-                .all_rows()
-                .skip(primary.history_len())
-                .map(|row| (primary, row))
-                .collect()
+        let segments = if options.alternate {
+            [
+                (primary, primary.history_len(), primary.height()),
+                (active, 0, 0),
+            ]
         } else if self.inner.is_alternate_screen() {
-            primary
-                .all_rows()
-                .take(primary.history_len())
-                .map(|row| (primary, row))
-                .chain(active.all_rows().map(|row| (active, row)))
-                .collect()
+            [
+                (primary, 0, primary.history_len()),
+                (active, 0, active.all_rows().len()),
+            ]
         } else {
-            active.all_rows().map(|row| (active, row)).collect()
+            [(active, 0, active.all_rows().len()), (active, 0, 0)]
         };
         let history = if options.alternate {
             0
         } else {
             primary.history_len()
         } as i64;
-        let last = rows.len() as i64 - 1;
+        let last = segments.iter().map(|(_, _, len)| len).sum::<usize>() as i64 - 1;
         let mut start = (history + i64::from(options.start.unwrap_or(0))).clamp(0, last);
         let mut end =
             (history + i64::from(options.end.unwrap_or(active.height() as i32 - 1))).clamp(0, last);
@@ -102,12 +99,27 @@ impl Terminal {
         let mut previous = Style::default();
         let mut previous_link = None;
         let mut links = Vec::<&HyperlinkData>::new();
-        for (index, (screen, row)) in rows
+        let mut base = 0;
+        let rows = segments
             .into_iter()
-            .enumerate()
-            .skip(start as usize)
-            .take((end - start + 1) as usize)
-        {
+            .flat_map(|(screen, source_start, len)| {
+                let first = (start as usize).saturating_sub(base).min(len);
+                let last = (end as usize + 1).saturating_sub(base).min(len);
+                base += len;
+                // Skip raw Rows before mapping/chaining: iterator adapters may
+                // otherwise visit every skipped row and restore its cold cells.
+                screen
+                    .all_rows()
+                    .skip(source_start + first)
+                    .take(last - first)
+                    .map(move |row| (screen, row))
+            });
+        // Keep the contiguous formatting path while allocating only the range
+        // requested by this capture, rather than every retained row.
+        let mut selected = Vec::with_capacity((end - start + 1) as usize);
+        selected.extend(rows);
+        for (offset, (screen, row)) in selected.into_iter().enumerate() {
+            let index = start as usize + offset;
             if options.hyperlinks {
                 let mut line = Vec::new();
                 for col in 0..row.cells.len() {

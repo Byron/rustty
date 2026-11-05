@@ -18,6 +18,8 @@ pub use agent::AgentStatus;
 mod capture;
 mod capture_raw;
 #[cfg(test)]
+mod capture_range_tests;
+#[cfg(test)]
 mod history_tests;
 pub use capture::CaptureOptions;
 
