@@ -1,0 +1,2 @@
+{"case":"setup","cold_owned":3589474,"compress_ns":2879198,"compress_step_max_ns":105371,"compress_steps":59,"feed_ns":49528948,"history_rows":19969,"input_bytes":1220000,"kind":"unicode","pages":52,"raw_owned":22259424,"rows":20000}
+{"after_owned":22536994,"again":0,"before_owned":3589474,"case":"search_first_feed","cold_ns":3426408,"recompress_ns":52210,"recompress_step_max_ns":41273,"recompress_steps":59,"recompressed_owned":3589474,"result":0,"warm_ns":1796835}

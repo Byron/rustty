@@ -262,7 +262,7 @@ impl Terminal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ScrollbackLimits, Selection, snapshot};
+    use crate::{GridPoint, ScrollbackLimits, Selection, snapshot};
 
     fn filled() -> Terminal {
         let mut terminal = Terminal::with_limits(80, 4, ScrollbackLimits::default());
@@ -491,5 +491,104 @@ mod tests {
                     .sum::<usize>()
             );
         }
+    }
+    #[test]
+    fn metadata_navigation_and_active_selection_keep_history_cold() {
+        let mut terminal = filled();
+        let last = terminal.screen().history_len() + terminal.screen().height() - 2;
+        let point = terminal.screen().point(last, 0).unwrap();
+        compress(&mut terminal);
+        let owned = terminal.screen().owned_bytes();
+        let pages = cold(&terminal);
+        assert!(pages > 0);
+        assert_eq!(terminal.screen().point(last, 0), Some(point));
+        assert!(terminal.screen().contains_point(point));
+        assert!(!terminal.screen().contains_point(GridPoint {
+            row: u64::MAX,
+            col: 0
+        }));
+        assert!(
+            !terminal
+                .screen()
+                .contains_point(GridPoint { col: 80, ..point })
+        );
+        let tracked = terminal.screen_mut().track(point);
+        assert_eq!(terminal.screen().resolve(tracked), Some(point));
+        terminal.screen_mut().untrack(tracked);
+        assert_eq!(terminal.screen().viewport().count(), 4);
+        terminal.screen_mut().selection = Some(Selection {
+            start: point,
+            end: GridPoint { col: 3, ..point },
+            rectangular: false,
+        });
+        assert_eq!(terminal.screen().selection_text().as_deref(), Some("line"));
+        assert!(terminal.screen().snapshot_viewport().selection.is_some());
+        let mut search = crate::search::TerminalSearch::new(b"not-found");
+        search.feed(&mut terminal, true);
+        assert_eq!(cold(&terminal), pages);
+        assert_eq!(terminal.screen().owned_bytes(), owned);
+    }
+
+    #[test]
+    fn skipped_rows_materialize_only_requested_page() {
+        let mut terminal = filled();
+        let ids = terminal
+            .screen()
+            .all_rows()
+            .map(|row| row.id)
+            .collect::<Vec<_>>();
+        let boundary = usize::from(terminal.primary.pages.pages[0].rows);
+        for index in [
+            0,
+            1,
+            boundary - 1,
+            boundary,
+            ids.len() - 1,
+            ids.len(),
+            usize::MAX,
+        ] {
+            compress(&mut terminal);
+            let expected = ids.get(index).copied();
+            assert_eq!(
+                terminal.screen().all_rows().nth(index).map(|r| r.id),
+                expected
+            );
+            compress(&mut terminal);
+            assert_eq!(
+                terminal.screen().all_rows().rev().nth(index).map(|r| r.id),
+                ids.iter().rev().nth(index).copied()
+            );
+        }
+        compress(&mut terminal);
+        let before = cold(&terminal);
+        assert_eq!(
+            terminal.screen().all_rows().nth(boundary).unwrap().id,
+            ids[boundary]
+        );
+        assert_eq!(cold(&terminal), before - 1);
+        let mut rows = terminal.screen().all_rows();
+        assert_eq!(rows.nth(7).unwrap().id, ids[7]);
+        assert_eq!(rows.nth_back(3).unwrap().id, ids[ids.len() - 4]);
+        assert_eq!(rows.len(), ids.len() - 12);
+        assert!(rows.nth(usize::MAX).is_none());
+        assert!(rows.next_back().is_none());
+    }
+
+    #[test]
+    fn short_historical_selection_restores_one_page() {
+        let mut terminal = filled();
+        let start = terminal.screen().point(2, 0).unwrap();
+        terminal.screen_mut().selection = Some(Selection {
+            start,
+            end: GridPoint { col: 3, ..start },
+            rectangular: false,
+        });
+        compress(&mut terminal);
+        let before = cold(&terminal);
+        let owned = terminal.screen().owned_bytes();
+        let cell_bytes = terminal.primary.pages.pages[0].cells.slots() * size_of::<Cell>();
+        assert_eq!(terminal.screen().selection_text().as_deref(), Some("line"));
+        assert_eq!(cold(&terminal), before - 1);
+        assert_eq!(terminal.screen().owned_bytes(), owned + cell_bytes);
     }
 }

@@ -472,10 +472,9 @@ impl Screen {
         options: Options<'_>,
         out: &mut Output<'_>,
     ) -> Option<()> {
-        let rows: Vec<_> = self.all_rows().collect();
         let position = |point: crate::GridPoint| {
-            let row = rows.iter().position(|row| row.id == point.row)?;
-            (point.col < rows[row].cells.len()).then_some((row, point.col))
+            let row = self.row_index_by_id(point.row)?;
+            self.point(row, point.col).map(|_| (row, point.col))
         };
         let mut start = position(selection.start)?;
         let mut end = position(selection.end)?;
@@ -509,10 +508,11 @@ impl Screen {
                 if let Some(map) = &mut out.map {
                     map.current_page = page_index;
                 }
+                let rows = (0..count).map(|row| page.row(row)).collect::<Vec<_>>();
                 trailing = format_page(
                     self,
                     out,
-                    &rows[offset..offset + count],
+                    &rows,
                     (top, bottom),
                     selection.rectangular,
                     options,

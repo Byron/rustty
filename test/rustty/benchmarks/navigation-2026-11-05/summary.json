@@ -1,0 +1,1010 @@
+[
+  {
+    "group": "metadata",
+    "rows": 20000,
+    "kind": "ascii",
+    "case": "viewport",
+    "variants": {
+      "baseline": {
+        "cold_ns": 1788658,
+        "warm_ns": 164230,
+        "before_owned": 1274702,
+        "after_owned": 20222222,
+        "recompressed_owned": 1274702,
+        "recompress_ns": 214616,
+        "recompress_step_max_ns": 204062,
+        "raw_cold_ns": [
+          1788658,
+          1677679,
+          1858325
+        ],
+        "raw_warm_ns": [
+          164230,
+          185774,
+          161709
+        ]
+      },
+      "metadata": {
+        "cold_ns": 1376,
+        "warm_ns": 496,
+        "before_owned": 1274702,
+        "after_owned": 1274702,
+        "recompressed_owned": 1274702,
+        "recompress_ns": 1096,
+        "recompress_step_max_ns": 336,
+        "raw_cold_ns": [
+          1376,
+          1128,
+          2016
+        ],
+        "raw_warm_ns": [
+          496,
+          448,
+          904
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.0007692918377912379,
+      0.0006723574652838833,
+      0.0010848479141162069
+    ],
+    "paired_warm_ratio": [
+      0.0030201546611459537,
+      0.0024115322919245966,
+      0.005590288728518512
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 20000,
+    "kind": "ascii",
+    "case": "selection_text_tail",
+    "variants": {
+      "baseline": {
+        "cold_ns": 1943368,
+        "warm_ns": 252320,
+        "before_owned": 1274702,
+        "after_owned": 20222222,
+        "recompressed_owned": 1274702,
+        "recompress_ns": 226783,
+        "recompress_step_max_ns": 216303,
+        "raw_cold_ns": [
+          1915432,
+          1943368,
+          1980505
+        ],
+        "raw_warm_ns": [
+          252320,
+          254689,
+          251792
+        ]
+      },
+      "metadata": {
+        "cold_ns": 28081,
+        "warm_ns": 19680,
+        "before_owned": 1274702,
+        "after_owned": 1274702,
+        "recompressed_owned": 1274702,
+        "recompress_ns": 1080,
+        "recompress_step_max_ns": 344,
+        "raw_cold_ns": [
+          30457,
+          27464,
+          28081
+        ],
+        "raw_warm_ns": [
+          22345,
+          19393,
+          19680
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.01590085160945416,
+      0.014132166424475446,
+      0.014178706945955704
+    ],
+    "paired_warm_ratio": [
+      0.08855818008877615,
+      0.07614384602397434,
+      0.0781597509055093
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 20000,
+    "kind": "ascii",
+    "case": "search_first_feed",
+    "variants": {
+      "baseline": {
+        "cold_ns": 4365840,
+        "warm_ns": 2495523,
+        "before_owned": 1274702,
+        "after_owned": 20222222,
+        "recompressed_owned": 1274702,
+        "recompress_ns": 233263,
+        "recompress_step_max_ns": 222327,
+        "raw_cold_ns": [
+          4337830,
+          4553430,
+          4365840
+        ],
+        "raw_warm_ns": [
+          2495523,
+          2761291,
+          2494138
+        ]
+      },
+      "metadata": {
+        "cold_ns": 2116806,
+        "warm_ns": 1937968,
+        "before_owned": 1274702,
+        "after_owned": 1274702,
+        "recompressed_owned": 1274702,
+        "recompress_ns": 2184,
+        "recompress_step_max_ns": 840,
+        "raw_cold_ns": [
+          1952177,
+          2118453,
+          2116806
+        ],
+        "raw_warm_ns": [
+          1636461,
+          1937968,
+          1954312
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.45003538635677287,
+      0.4652433440285675,
+      0.4848565224561596
+    ],
+    "paired_warm_ratio": [
+      0.6557587327385883,
+      0.7018340334285665,
+      0.7835620964036473
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 20000,
+    "kind": "unicode",
+    "case": "viewport",
+    "variants": {
+      "baseline": {
+        "cold_ns": 1623069,
+        "warm_ns": 161878,
+        "before_owned": 3589474,
+        "after_owned": 22536994,
+        "recompressed_owned": 3589474,
+        "recompress_ns": 48474,
+        "recompress_step_max_ns": 38585,
+        "raw_cold_ns": [
+          1623069,
+          1630125,
+          1551795
+        ],
+        "raw_warm_ns": [
+          161565,
+          161878,
+          162845
+        ]
+      },
+      "metadata": {
+        "cold_ns": 1272,
+        "warm_ns": 480,
+        "before_owned": 3589474,
+        "after_owned": 3589474,
+        "recompressed_owned": 3589474,
+        "recompress_ns": 1121,
+        "recompress_step_max_ns": 377,
+        "raw_cold_ns": [
+          1248,
+          1472,
+          1272
+        ],
+        "raw_warm_ns": [
+          520,
+          472,
+          480
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.0007689137060716458,
+      0.0009029982363315697,
+      0.0008196959005538747
+    ],
+    "paired_warm_ratio": [
+      0.0032185188623773714,
+      0.0029157760782811746,
+      0.002947588197365593
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 20000,
+    "kind": "unicode",
+    "case": "selection_text_tail",
+    "variants": {
+      "baseline": {
+        "cold_ns": 1718088,
+        "warm_ns": 253169,
+        "before_owned": 3589474,
+        "after_owned": 22536994,
+        "recompressed_owned": 3589474,
+        "recompress_ns": 52225,
+        "recompress_step_max_ns": 40953,
+        "raw_cold_ns": [
+          1718088,
+          1733745,
+          1714440
+        ],
+        "raw_warm_ns": [
+          252905,
+          255440,
+          253169
+        ]
+      },
+      "metadata": {
+        "cold_ns": 31137,
+        "warm_ns": 19145,
+        "before_owned": 3589474,
+        "after_owned": 3589474,
+        "recompressed_owned": 3589474,
+        "recompress_ns": 1080,
+        "recompress_step_max_ns": 320,
+        "raw_cold_ns": [
+          29257,
+          39202,
+          31137
+        ],
+        "raw_warm_ns": [
+          19145,
+          19504,
+          18985
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.017028813425156338,
+      0.02261116830906506,
+      0.018161615454609085
+    ],
+    "paired_warm_ratio": [
+      0.07570036179593127,
+      0.07635452552458503,
+      0.07498943393543443
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 20000,
+    "kind": "unicode",
+    "case": "search_first_feed",
+    "variants": {
+      "baseline": {
+        "cold_ns": 3294780,
+        "warm_ns": 1796835,
+        "before_owned": 3589474,
+        "after_owned": 22536994,
+        "recompressed_owned": 3589474,
+        "recompress_ns": 52210,
+        "recompress_step_max_ns": 41273,
+        "raw_cold_ns": [
+          3235506,
+          3426408,
+          3294780
+        ],
+        "raw_warm_ns": [
+          1797483,
+          1796835,
+          1788579
+        ]
+      },
+      "metadata": {
+        "cold_ns": 996480,
+        "warm_ns": 975272,
+        "before_owned": 3589474,
+        "after_owned": 3589474,
+        "recompressed_owned": 3589474,
+        "recompress_ns": 1761,
+        "recompress_step_max_ns": 464,
+        "raw_cold_ns": [
+          1000809,
+          992145,
+          996480
+        ],
+        "raw_warm_ns": [
+          958616,
+          978392,
+          975272
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.30932070594213085,
+      0.2895583363102117,
+      0.3024420446888715
+    ],
+    "paired_warm_ratio": [
+      0.533310189859932,
+      0.5445085386248598,
+      0.5452775639208556
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 100000,
+    "kind": "ascii",
+    "case": "viewport",
+    "variants": {
+      "baseline": {
+        "cold_ns": 8611507,
+        "warm_ns": 850316,
+        "before_owned": 4899213,
+        "after_owned": 100751373,
+        "recompressed_owned": 4899213,
+        "recompress_ns": 614828,
+        "recompress_step_max_ns": 540473,
+        "raw_cold_ns": [
+          8530848,
+          8916661,
+          8611507
+        ],
+        "raw_warm_ns": [
+          850316,
+          848188,
+          856309
+        ]
+      },
+      "metadata": {
+        "cold_ns": 1920,
+        "warm_ns": 1008,
+        "before_owned": 4899213,
+        "after_owned": 4899213,
+        "recompressed_owned": 4899213,
+        "recompress_ns": 6000,
+        "recompress_step_max_ns": 360,
+        "raw_cold_ns": [
+          1920,
+          2088,
+          1744
+        ],
+        "raw_warm_ns": [
+          968,
+          1024,
+          1008
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.00022506555034153698,
+      0.00023416837311634927,
+      0.00020251972157718737
+    ],
+    "paired_warm_ratio": [
+      0.0011384003123544658,
+      0.0012072795182200174,
+      0.0011771451660557112
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 100000,
+    "kind": "ascii",
+    "case": "selection_text_tail",
+    "variants": {
+      "baseline": {
+        "cold_ns": 10424334,
+        "warm_ns": 1428487,
+        "before_owned": 4899213,
+        "after_owned": 100751373,
+        "recompressed_owned": 4899213,
+        "recompress_ns": 354699,
+        "recompress_step_max_ns": 279785,
+        "raw_cold_ns": [
+          10424334,
+          10477768,
+          10331940
+        ],
+        "raw_warm_ns": [
+          1410951,
+          1458832,
+          1428487
+        ]
+      },
+      "metadata": {
+        "cold_ns": 142388,
+        "warm_ns": 118916,
+        "before_owned": 4899213,
+        "after_owned": 4899213,
+        "recompressed_owned": 4899213,
+        "recompress_ns": 8273,
+        "recompress_step_max_ns": 480,
+        "raw_cold_ns": [
+          133245,
+          142388,
+          144933
+        ],
+        "raw_warm_ns": [
+          115556,
+          118916,
+          119804
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.012782111547845646,
+      0.01358953548122081,
+      0.014027665665886561
+    ],
+    "paired_warm_ratio": [
+      0.08189937141686707,
+      0.08151452668984503,
+      0.08386775658441414
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 100000,
+    "kind": "ascii",
+    "case": "search_first_feed",
+    "variants": {
+      "baseline": {
+        "cold_ns": 13047708,
+        "warm_ns": 5158257,
+        "before_owned": 4899213,
+        "after_owned": 100751373,
+        "recompressed_owned": 4899213,
+        "recompress_ns": 409470,
+        "recompress_step_max_ns": 329355,
+        "raw_cold_ns": [
+          13040637,
+          13047708,
+          13186546
+        ],
+        "raw_warm_ns": [
+          5126336,
+          5158257,
+          5168666
+        ]
+      },
+      "metadata": {
+        "cold_ns": 1599285,
+        "warm_ns": 1445959,
+        "before_owned": 4899213,
+        "after_owned": 4899213,
+        "recompressed_owned": 4899213,
+        "recompress_ns": 9425,
+        "recompress_step_max_ns": 608,
+        "raw_cold_ns": [
+          1459640,
+          1599285,
+          1609276
+        ],
+        "raw_warm_ns": [
+          1206959,
+          1445959,
+          1471041
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.1119301150702991,
+      0.1225721023186601,
+      0.12203923605165447
+    ],
+    "paired_warm_ratio": [
+      0.23544281919874155,
+      0.2803193016555786,
+      0.2846074789897432
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 100000,
+    "kind": "unicode",
+    "case": "viewport",
+    "variants": {
+      "baseline": {
+        "cold_ns": 7998446,
+        "warm_ns": 853788,
+        "before_owned": 16424377,
+        "after_owned": 112276537,
+        "recompressed_owned": 16424377,
+        "recompress_ns": 198567,
+        "recompress_step_max_ns": 119443,
+        "raw_cold_ns": [
+          7814025,
+          7998446,
+          8093881
+        ],
+        "raw_warm_ns": [
+          864933,
+          846188,
+          853788
+        ]
+      },
+      "metadata": {
+        "cold_ns": 2008,
+        "warm_ns": 1024,
+        "before_owned": 16424377,
+        "after_owned": 16424377,
+        "recompressed_owned": 16424377,
+        "recompress_ns": 6216,
+        "recompress_step_max_ns": 544,
+        "raw_cold_ns": [
+          2681,
+          2008,
+          1792
+        ],
+        "raw_warm_ns": [
+          992,
+          1024,
+          1032
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.00034310102667959214,
+      0.0002510487662228388,
+      0.00022140182194425642
+    ],
+    "paired_warm_ratio": [
+      0.001146909645024528,
+      0.0012101329728145518,
+      0.0012087309730284333
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 100000,
+    "kind": "unicode",
+    "case": "selection_text_tail",
+    "variants": {
+      "baseline": {
+        "cold_ns": 9742119,
+        "warm_ns": 1436295,
+        "before_owned": 16424377,
+        "after_owned": 112276537,
+        "recompressed_owned": 16424377,
+        "recompress_ns": 256425,
+        "recompress_step_max_ns": 170845,
+        "raw_cold_ns": [
+          10040801,
+          8654147,
+          9742119
+        ],
+        "raw_warm_ns": [
+          1436295,
+          1434223,
+          1464840
+        ]
+      },
+      "metadata": {
+        "cold_ns": 156773,
+        "warm_ns": 121124,
+        "before_owned": 16424377,
+        "after_owned": 16424377,
+        "recompressed_owned": 16424377,
+        "recompress_ns": 8760,
+        "recompress_step_max_ns": 688,
+        "raw_cold_ns": [
+          155318,
+          164718,
+          156773
+        ],
+        "raw_warm_ns": [
+          117651,
+          122756,
+          121124
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.015468686213380786,
+      0.01903341831378644,
+      0.016092289572730532
+    ],
+    "paired_warm_ratio": [
+      0.08191283824005514,
+      0.08559059504693482,
+      0.0826875290134076
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 100000,
+    "kind": "unicode",
+    "case": "search_first_feed",
+    "variants": {
+      "baseline": {
+        "cold_ns": 12187079,
+        "warm_ns": 4815333,
+        "before_owned": 16424377,
+        "after_owned": 112276537,
+        "recompressed_owned": 16424377,
+        "recompress_ns": 216567,
+        "recompress_step_max_ns": 124964,
+        "raw_cold_ns": [
+          11959903,
+          12187079,
+          12250865
+        ],
+        "raw_warm_ns": [
+          4782517,
+          4815333,
+          4827326
+        ]
+      },
+      "metadata": {
+        "cold_ns": 827371,
+        "warm_ns": 791730,
+        "before_owned": 16424377,
+        "after_owned": 16424377,
+        "recompressed_owned": 16424377,
+        "recompress_ns": 9312,
+        "recompress_step_max_ns": 728,
+        "raw_cold_ns": [
+          819891,
+          830803,
+          827371
+        ],
+        "raw_warm_ns": [
+          791730,
+          791538,
+          804330
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.0685533151899309,
+      0.0681708061464113,
+      0.0675357209470515
+    ],
+    "paired_warm_ratio": [
+      0.16554671943664812,
+      0.16437866290867112,
+      0.16662019511423093
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 250000,
+    "kind": "ascii",
+    "case": "viewport",
+    "variants": {
+      "baseline": {
+        "cold_ns": 21972430,
+        "warm_ns": 2148126,
+        "before_owned": 11676555,
+        "after_owned": 251306955,
+        "recompressed_owned": 11676555,
+        "recompress_ns": 925318,
+        "recompress_step_max_ns": 653437,
+        "raw_cold_ns": [
+          21994655,
+          21178804,
+          21972430
+        ],
+        "raw_warm_ns": [
+          2154207,
+          2137534,
+          2148126
+        ]
+      },
+      "metadata": {
+        "cold_ns": 3808,
+        "warm_ns": 2280,
+        "before_owned": 11676555,
+        "after_owned": 11676555,
+        "recompressed_owned": 11676555,
+        "recompress_ns": 26665,
+        "recompress_step_max_ns": 584,
+        "raw_cold_ns": [
+          3865,
+          3537,
+          3808
+        ],
+        "raw_warm_ns": [
+          2320,
+          2280,
+          2224
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.00017572451125057428,
+      0.00016700659772855917,
+      0.0001733080956453155
+    ],
+    "paired_warm_ratio": [
+      0.0010769624274733116,
+      0.0010666497000749462,
+      0.001035321019344303
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 250000,
+    "kind": "ascii",
+    "case": "selection_text_tail",
+    "variants": {
+      "baseline": {
+        "cold_ns": 24543050,
+        "warm_ns": 3585157,
+        "before_owned": 11676555,
+        "after_owned": 251306955,
+        "recompressed_owned": 11676555,
+        "recompress_ns": 1117957,
+        "recompress_step_max_ns": 845220,
+        "raw_cold_ns": [
+          23727999,
+          38785748,
+          24543050
+        ],
+        "raw_warm_ns": [
+          3689352,
+          3585157,
+          3538427
+        ]
+      },
+      "metadata": {
+        "cold_ns": 360372,
+        "warm_ns": 322818,
+        "before_owned": 11676555,
+        "after_owned": 11676555,
+        "recompressed_owned": 11676555,
+        "recompress_ns": 29961,
+        "recompress_step_max_ns": 936,
+        "raw_cold_ns": [
+          360372,
+          366668,
+          360027
+        ],
+        "raw_warm_ns": [
+          324563,
+          301962,
+          322818
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.015187627072978214,
+      0.009453678706931217,
+      0.014669203705325947
+    ],
+    "paired_warm_ratio": [
+      0.08797290147429684,
+      0.08422560016200127,
+      0.09123206441732443
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 250000,
+    "kind": "ascii",
+    "case": "search_first_feed",
+    "variants": {
+      "baseline": {
+        "cold_ns": 33874859,
+        "warm_ns": 13409727,
+        "before_owned": 11676555,
+        "after_owned": 251306955,
+        "recompressed_owned": 11676555,
+        "recompress_ns": 935870,
+        "recompress_step_max_ns": 662174,
+        "raw_cold_ns": [
+          33874859,
+          32959753,
+          35734925
+        ],
+        "raw_warm_ns": [
+          13409727,
+          13379839,
+          13657304
+        ]
+      },
+      "metadata": {
+        "cold_ns": 3804253,
+        "warm_ns": 3325597,
+        "before_owned": 11676555,
+        "after_owned": 11676555,
+        "recompressed_owned": 11676555,
+        "recompress_ns": 32105,
+        "recompress_step_max_ns": 1136,
+        "raw_cold_ns": [
+          3873478,
+          3796684,
+          3804253
+        ],
+        "raw_warm_ns": [
+          3361062,
+          3325597,
+          3300308
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.11434668997441436,
+      0.11519151857721749,
+      0.10645756217481918
+    ],
+    "paired_warm_ratio": [
+      0.2506435813346536,
+      0.24855284133090091,
+      0.24165150017895187
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 250000,
+    "kind": "unicode",
+    "case": "viewport",
+    "variants": {
+      "baseline": {
+        "cold_ns": 31324732,
+        "warm_ns": 2176336,
+        "before_owned": 40479701,
+        "after_owned": 280110101,
+        "recompressed_owned": 40479701,
+        "recompress_ns": 588419,
+        "recompress_step_max_ns": 279513,
+        "raw_cold_ns": [
+          40702624,
+          31324732,
+          20008278
+        ],
+        "raw_warm_ns": [
+          2176336,
+          2156239,
+          2177128
+        ]
+      },
+      "metadata": {
+        "cold_ns": 4233,
+        "warm_ns": 2008,
+        "before_owned": 40479701,
+        "after_owned": 40479701,
+        "recompressed_owned": 40479701,
+        "recompress_ns": 23912,
+        "recompress_step_max_ns": 888,
+        "raw_cold_ns": [
+          4968,
+          3344,
+          4233
+        ],
+        "raw_warm_ns": [
+          2096,
+          2008,
+          1960
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.00012205601289980714,
+      0.0001067527090096094,
+      0.00021156243430843973
+    ],
+    "paired_warm_ratio": [
+      0.0009630865822189221,
+      0.0009312511275419839,
+      0.0009002686107569238
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 250000,
+    "kind": "unicode",
+    "case": "selection_text_tail",
+    "variants": {
+      "baseline": {
+        "cold_ns": 22399718,
+        "warm_ns": 3645271,
+        "before_owned": 40479701,
+        "after_owned": 280110101,
+        "recompressed_owned": 40479701,
+        "recompress_ns": 653750,
+        "recompress_step_max_ns": 331931,
+        "raw_cold_ns": [
+          22316881,
+          22399718,
+          23321803
+        ],
+        "raw_warm_ns": [
+          3627278,
+          3700521,
+          3645271
+        ]
+      },
+      "metadata": {
+        "cold_ns": 424653,
+        "warm_ns": 318234,
+        "before_owned": 40479701,
+        "after_owned": 40479701,
+        "recompressed_owned": 40479701,
+        "recompress_ns": 29761,
+        "recompress_step_max_ns": 968,
+        "raw_cold_ns": [
+          424653,
+          454855,
+          419582
+        ],
+        "raw_warm_ns": [
+          313514,
+          324835,
+          318234
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.019028331064721814,
+      0.020306282427305557,
+      0.01799097608362441
+    ],
+    "paired_warm_ratio": [
+      0.08643230543674899,
+      0.0877808827459701,
+      0.08730050522992666
+    ]
+  },
+  {
+    "group": "metadata",
+    "rows": 250000,
+    "kind": "unicode",
+    "case": "search_first_feed",
+    "variants": {
+      "baseline": {
+        "cold_ns": 30549304,
+        "warm_ns": 12431111,
+        "before_owned": 40479701,
+        "after_owned": 280110101,
+        "recompressed_owned": 40479701,
+        "recompress_ns": 762537,
+        "recompress_step_max_ns": 436654,
+        "raw_cold_ns": [
+          30657252,
+          30289184,
+          30549304
+        ],
+        "raw_warm_ns": [
+          12436095,
+          12380661,
+          12431111
+        ]
+      },
+      "metadata": {
+        "cold_ns": 2518746,
+        "warm_ns": 2368654,
+        "before_owned": 40479701,
+        "after_owned": 40479701,
+        "recompressed_owned": 40479701,
+        "recompress_ns": 34465,
+        "recompress_step_max_ns": 1408,
+        "raw_cold_ns": [
+          2518746,
+          2476865,
+          2587052
+        ],
+        "raw_warm_ns": [
+          2368654,
+          2368358,
+          2402758
+        ]
+      }
+    },
+    "paired_cold_ratio": [
+      0.08215824432013671,
+      0.0817739097890521,
+      0.08468448250081245
+    ],
+    "paired_warm_ratio": [
+      0.1904660586783874,
+      0.19129495589936596,
+      0.19328586157745675
+    ]
+  }
+]

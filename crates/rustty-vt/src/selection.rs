@@ -353,8 +353,8 @@ impl Grid<'_> {
     }
 
     fn position(&self, point: GridPoint) -> Option<Position> {
-        let y = self.0.all_rows().position(|row| row.id == point.row)?;
-        (point.col < self.row(y).cells.len()).then_some((y, point.col))
+        let y = self.0.row_index_by_id(point.row)?;
+        self.0.point(y, point.col).map(|_| (y, point.col))
     }
 
     fn next(&self, (y, x): Position) -> Option<Position> {

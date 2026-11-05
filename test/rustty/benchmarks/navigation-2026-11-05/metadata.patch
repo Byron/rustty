@@ -1,0 +1,310 @@
+--- a/crates/rustty-vt/src/compression.rs
++++ b/crates/rustty-vt/src/compression.rs
+@@ -262,7 +262,7 @@
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use crate::{ScrollbackLimits, Selection, snapshot};
++    use crate::{GridPoint, ScrollbackLimits, Selection, snapshot};
+ 
+     fn filled() -> Terminal {
+         let mut terminal = Terminal::with_limits(80, 4, ScrollbackLimits::default());
+@@ -492,4 +492,72 @@
+             );
+         }
+     }
+-}
++    #[test]
++    fn metadata_navigation_and_active_selection_keep_history_cold() {
++        let mut terminal = filled();
++        let last = terminal.screen().history_len() + terminal.screen().height() - 2;
++        let point = terminal.screen().point(last, 0).unwrap();
++        compress(&mut terminal);
++        let owned = terminal.screen().owned_bytes();
++        let pages = cold(&terminal);
++        assert!(pages > 0);
++        assert_eq!(terminal.screen().point(last, 0), Some(point));
++        assert!(terminal.screen().contains_point(point));
++        assert!(!terminal.screen().contains_point(GridPoint { row: u64::MAX, col: 0 }));
++        assert!(!terminal.screen().contains_point(GridPoint { col: 80, ..point }));
++        let tracked = terminal.screen_mut().track(point);
++        assert_eq!(terminal.screen().resolve(tracked), Some(point));
++        terminal.screen_mut().untrack(tracked);
++        assert_eq!(terminal.screen().viewport().count(), 4);
++        terminal.screen_mut().selection = Some(Selection {
++            start: point, end: GridPoint { col: 3, ..point }, rectangular: false,
++        });
++        assert_eq!(terminal.screen().selection_text().as_deref(), Some("line"));
++        assert!(terminal.screen().snapshot_viewport().selection.is_some());
++        let mut search = crate::search::TerminalSearch::new(b"not-found");
++        search.feed(&mut terminal, true);
++        assert_eq!(cold(&terminal), pages);
++        assert_eq!(terminal.screen().owned_bytes(), owned);
++    }
++
++    #[test]
++    fn skipped_rows_materialize_only_requested_page() {
++        let mut terminal = filled();
++        let ids = terminal.screen().all_rows().map(|row| row.id).collect::<Vec<_>>();
++        let boundary = usize::from(terminal.primary.pages.pages[0].rows);
++        for index in [0, 1, boundary - 1, boundary, ids.len() - 1, ids.len(), usize::MAX] {
++            compress(&mut terminal);
++            let expected = ids.get(index).copied();
++            assert_eq!(terminal.screen().all_rows().nth(index).map(|r| r.id), expected);
++            compress(&mut terminal);
++            assert_eq!(terminal.screen().all_rows().rev().nth(index).map(|r| r.id), ids.iter().rev().nth(index).copied());
++        }
++        compress(&mut terminal);
++        let before = cold(&terminal);
++        assert_eq!(terminal.screen().all_rows().nth(boundary).unwrap().id, ids[boundary]);
++        assert_eq!(cold(&terminal), before - 1);
++        let mut rows = terminal.screen().all_rows();
++        assert_eq!(rows.nth(7).unwrap().id, ids[7]);
++        assert_eq!(rows.nth_back(3).unwrap().id, ids[ids.len() - 4]);
++        assert_eq!(rows.len(), ids.len() - 12);
++        assert!(rows.nth(usize::MAX).is_none());
++        assert!(rows.next_back().is_none());
++    }
++
++    #[test]
++    fn short_historical_selection_restores_one_page() {
++        let mut terminal = filled();
++        let start = terminal.screen().point(2, 0).unwrap();
++        terminal.screen_mut().selection = Some(Selection {
++            start, end: GridPoint { col: 3, ..start }, rectangular: false,
++        });
++        compress(&mut terminal);
++        let before = cold(&terminal);
++        let owned = terminal.screen().owned_bytes();
++        let cell_bytes = terminal.primary.pages.pages[0].cells.slots() * size_of::<Cell>();
++        assert_eq!(terminal.screen().selection_text().as_deref(), Some("line"));
++        assert_eq!(cold(&terminal), before - 1);
++        assert_eq!(terminal.screen().owned_bytes(), owned + cell_bytes);
++    }
++
++}
+--- a/crates/rustty-vt/src/formatter.rs
++++ b/crates/rustty-vt/src/formatter.rs
+@@ -472,10 +472,9 @@
+         options: Options<'_>,
+         out: &mut Output<'_>,
+     ) -> Option<()> {
+-        let rows: Vec<_> = self.all_rows().collect();
+         let position = |point: crate::GridPoint| {
+-            let row = rows.iter().position(|row| row.id == point.row)?;
+-            (point.col < rows[row].cells.len()).then_some((row, point.col))
++            let row = self.row_index_by_id(point.row)?;
++            self.point(row, point.col).map(|_| (row, point.col))
+         };
+         let mut start = position(selection.start)?;
+         let mut end = position(selection.end)?;
+@@ -509,10 +508,11 @@
+                 if let Some(map) = &mut out.map {
+                     map.current_page = page_index;
+                 }
++                let rows = (0..count).map(|row| page.row(row)).collect::<Vec<_>>();
+                 trailing = format_page(
+                     self,
+                     out,
+-                    &rows[offset..offset + count],
++                    &rows,
+                     (top, bottom),
+                     selection.rectangular,
+                     options,
+--- a/crates/rustty-vt/src/page_list.rs
++++ b/crates/rustty-vt/src/page_list.rs
+@@ -77,6 +77,20 @@
+ 
+     pub fn allocation_bytes(&self) -> usize {
+         self.allocations().map(|page| page.allocation_bytes).sum()
++    }
++
++    /// Locate a retained ID using row metadata, without opening its cell buffer.
++    /// Returns page index, local row, and absolute row.
++    pub(crate) fn locate_id(&self, id: u64) -> Option<(usize, usize, usize)> {
++        let mut offset = 0;
++        for (index, page) in self.pages.iter().enumerate() {
++            let rows = usize::from(page.rows);
++            if let Some(row) = page.row_ids[..rows].iter().position(|&value| value == id) {
++                return Some((index, row, offset + row));
++            }
++            offset += rows;
++        }
++        None
+     }
+ 
+     pub fn page_at(&self, row: usize) -> (&Page, usize) {
+--- a/crates/rustty-vt/src/screen.rs
++++ b/crates/rustty-vt/src/screen.rs
+@@ -410,11 +410,46 @@
+         }
+         Some(row)
+     }
++    fn nth(&mut self, mut n: usize) -> Option<Self::Item> {
++        if n >= self.remaining {
++            self.remaining = 0;
++            return None;
++        }
++        self.remaining -= n;
++        while n > 0 {
++            let count = usize::from(self.pages.pages[self.front.0].rows) - self.front.1;
++            if n < count {
++                self.front.1 += n;
++                break;
++            }
++            n -= count;
++            self.front = (self.front.0 + 1, 0);
++        }
++        self.next()
++    }
+     fn size_hint(&self) -> (usize, Option<usize>) {
+         (self.remaining, Some(self.remaining))
+     }
+ }
+ impl DoubleEndedIterator for Rows<'_> {
++    fn nth_back(&mut self, mut n: usize) -> Option<Self::Item> {
++        if n >= self.remaining {
++            self.remaining = 0;
++            return None;
++        }
++        self.remaining -= n;
++        while n > 0 {
++            let count = self.back.1 + 1;
++            if n < count {
++                self.back.1 -= n;
++                break;
++            }
++            n -= count;
++            self.back.0 -= 1;
++            self.back.1 = usize::from(self.pages.pages[self.back.0].rows) - 1;
++        }
++        self.next_back()
++    }
+     fn next_back(&mut self) -> Option<Self::Item> {
+         if self.remaining == 0 {
+             return None;
+@@ -970,12 +1005,8 @@
+     pub fn snapshot_viewport(&self) -> Self {
+         let viewport_start = self.history_len().saturating_sub(self.viewport_offset);
+         let selection = self.selection.and_then(|mut selection| {
+-            let start = self
+-                .all_rows()
+-                .position(|row| row.id == selection.start.row)?;
+-            let end = self
+-                .all_rows()
+-                .position(|row| row.id == selection.end.row)?;
++            let start = self.row_index_by_id(selection.start.row)?;
++            let end = self.row_index_by_id(selection.end.row)?;
+             let viewport_end = viewport_start + self.height - 1;
+             if start.max(end) < viewport_start || start.min(end) > viewport_end {
+                 return None;
+@@ -2467,12 +2498,25 @@
+     }
+ 
+     pub fn row_by_id(&self, id: u64) -> Option<Row<'_>> {
+-        self.all_rows().find(|r| r.id == id)
++        let (page, row, _) = self.pages.locate_id(id)?;
++        Some(self.pages.pages[page].row(row))
++    }
++
++    pub(crate) fn row_index_by_id(&self, id: u64) -> Option<usize> {
++        self.pages.locate_id(id).map(|(_, _, absolute)| absolute)
++    }
++
++    /// Validate a retained cell coordinate without materializing cold history.
++    pub fn contains_point(&self, point: GridPoint) -> bool {
++        self.pages.locate_id(point.row).is_some_and(|(page, _, _)| {
++            point.col < usize::from(self.pages.pages[page].columns)
++        })
+     }
+ 
+     pub fn point(&self, row: usize, col: usize) -> Option<GridPoint> {
+-        let row = self.all_rows().nth(row)?;
+-        (col < row.cells.len()).then_some(GridPoint { row: row.id, col })
++        if row >= self.pages.total_rows() { return None; }
++        let (page, row) = self.pages.page_at(row);
++        (col < usize::from(page.columns)).then_some(GridPoint { row: page.row_ids[row], col })
+     }
+ 
+     pub fn track(&mut self, point: GridPoint) -> TrackedPoint {
+@@ -2483,9 +2527,7 @@
+         let id = NEXT_ID
+             .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+             .expect("tracked point IDs exhausted");
+-        let valid = self
+-            .row_by_id(point.row)
+-            .is_some_and(|r| point.col < r.cells.len());
++        let valid = self.contains_point(point);
+         self.tracked.0.insert(id, valid.then_some(point));
+         TrackedPoint(id)
+     }
+--- a/crates/rustty-vt/src/search/terminal.rs
++++ b/crates/rustty-vt/src/search/terminal.rs
+@@ -471,7 +471,7 @@
+ }
+ 
+ fn row_index(screen: &Screen, point: GridPoint) -> Option<usize> {
+-    screen.all_rows().position(|row| row.id == point.row)
++    screen.row_index_by_id(point.row)
+ }
+ 
+ fn point_page(screen: &Screen, point: &OwnedTrackedPoint) -> Option<usize> {
+@@ -483,20 +483,9 @@
+ }
+ 
+ fn page_point(screen: &Screen, index: usize, last: bool) -> GridPoint {
+-    let start: usize = screen
+-        .pages
+-        .pages
+-        .iter()
+-        .take(index)
+-        .map(|page| usize::from(page.rows))
+-        .sum();
+     let page = &screen.pages.pages[index];
+     GridPoint {
+-        row: screen_row(
+-            screen,
+-            start + if last { usize::from(page.rows) - 1 } else { 0 },
+-        )
+-        .id,
++        row: page.row_ids[if last { usize::from(page.rows) - 1 } else { 0 }],
+         col: if last {
+             usize::from(page.columns) - 1
+         } else {
+@@ -751,8 +740,8 @@
+             active.append(screen, index, false);
+         }
+         for index in (0..boundary).rev() {
+-            let end = page_point(screen, index, true);
+-            if !screen.row_by_id(end.row).unwrap().wrapped {
++            let page = &screen.pages.pages[index];
++            if !page.headers[usize::from(page.rows) - 1].has(crate::packed::RowHeader::WRAPPED) {
+                 break;
+             }
+             if active.append(screen, index, false) >= needle.len() - 1 {
+--- a/crates/rustty-vt/src/search.rs
++++ b/crates/rustty-vt/src/search.rs
+@@ -117,7 +117,9 @@
+             .sum();
+         let row = |y: usize| screen.physical_row(y);
+         let row_count = |index: usize| usize::from(pages.pages[index].rows);
+-        let wrapped = |index: usize, start: usize| row(start + row_count(index) - 1).wrapped;
++        let wrapped = |index: usize, _start: usize| {
++            pages.pages[index].headers[row_count(index) - 1].has(crate::packed::RowHeader::WRAPPED)
++        };
+         let page_text = |index: usize, start: usize| {
+             literal_text(
+                 screen,
+--- a/crates/rustty-vt/src/selection.rs
++++ b/crates/rustty-vt/src/selection.rs
+@@ -353,8 +353,8 @@
+     }
+ 
+     fn position(&self, point: GridPoint) -> Option<Position> {
+-        let y = self.0.all_rows().position(|row| row.id == point.row)?;
+-        (point.col < self.row(y).cells.len()).then_some((y, point.col))
++        let y = self.0.row_index_by_id(point.row)?;
++        self.0.point(y, point.col).map(|_| (y, point.col))
+     }
+ 
+     fn next(&self, (y, x): Position) -> Option<Position> {

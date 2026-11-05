@@ -117,7 +117,9 @@ impl ViewportSearch {
             .sum();
         let row = |y: usize| screen.physical_row(y);
         let row_count = |index: usize| usize::from(pages.pages[index].rows);
-        let wrapped = |index: usize, start: usize| row(start + row_count(index) - 1).wrapped;
+        let wrapped = |index: usize, _start: usize| {
+            pages.pages[index].headers[row_count(index) - 1].has(crate::packed::RowHeader::WRAPPED)
+        };
         let page_text = |index: usize, start: usize| {
             literal_text(
                 screen,

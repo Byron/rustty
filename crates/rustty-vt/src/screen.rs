@@ -410,11 +410,46 @@ impl<'a> Iterator for Rows<'a> {
         }
         Some(row)
     }
+    fn nth(&mut self, mut n: usize) -> Option<Self::Item> {
+        if n >= self.remaining {
+            self.remaining = 0;
+            return None;
+        }
+        self.remaining -= n;
+        while n > 0 {
+            let count = usize::from(self.pages.pages[self.front.0].rows) - self.front.1;
+            if n < count {
+                self.front.1 += n;
+                break;
+            }
+            n -= count;
+            self.front = (self.front.0 + 1, 0);
+        }
+        self.next()
+    }
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.remaining, Some(self.remaining))
     }
 }
 impl DoubleEndedIterator for Rows<'_> {
+    fn nth_back(&mut self, mut n: usize) -> Option<Self::Item> {
+        if n >= self.remaining {
+            self.remaining = 0;
+            return None;
+        }
+        self.remaining -= n;
+        while n > 0 {
+            let count = self.back.1 + 1;
+            if n < count {
+                self.back.1 -= n;
+                break;
+            }
+            n -= count;
+            self.back.0 -= 1;
+            self.back.1 = usize::from(self.pages.pages[self.back.0].rows) - 1;
+        }
+        self.next_back()
+    }
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.remaining == 0 {
             return None;
@@ -970,12 +1005,8 @@ impl Screen {
     pub fn snapshot_viewport(&self) -> Self {
         let viewport_start = self.history_len().saturating_sub(self.viewport_offset);
         let selection = self.selection.and_then(|mut selection| {
-            let start = self
-                .all_rows()
-                .position(|row| row.id == selection.start.row)?;
-            let end = self
-                .all_rows()
-                .position(|row| row.id == selection.end.row)?;
+            let start = self.row_index_by_id(selection.start.row)?;
+            let end = self.row_index_by_id(selection.end.row)?;
             let viewport_end = viewport_start + self.height - 1;
             if start.max(end) < viewport_start || start.min(end) > viewport_end {
                 return None;
@@ -2467,12 +2498,30 @@ impl Screen {
     }
 
     pub fn row_by_id(&self, id: u64) -> Option<Row<'_>> {
-        self.all_rows().find(|r| r.id == id)
+        let (page, row, _) = self.pages.locate_id(id)?;
+        Some(self.pages.pages[page].row(row))
+    }
+
+    pub(crate) fn row_index_by_id(&self, id: u64) -> Option<usize> {
+        self.pages.locate_id(id).map(|(_, _, absolute)| absolute)
+    }
+
+    /// Validate a retained cell coordinate without materializing cold history.
+    pub fn contains_point(&self, point: GridPoint) -> bool {
+        self.pages
+            .locate_id(point.row)
+            .is_some_and(|(page, _, _)| point.col < usize::from(self.pages.pages[page].columns))
     }
 
     pub fn point(&self, row: usize, col: usize) -> Option<GridPoint> {
-        let row = self.all_rows().nth(row)?;
-        (col < row.cells.len()).then_some(GridPoint { row: row.id, col })
+        if row >= self.pages.total_rows() {
+            return None;
+        }
+        let (page, row) = self.pages.page_at(row);
+        (col < usize::from(page.columns)).then_some(GridPoint {
+            row: page.row_ids[row],
+            col,
+        })
     }
 
     pub fn track(&mut self, point: GridPoint) -> TrackedPoint {
@@ -2483,9 +2532,7 @@ impl Screen {
         let id = NEXT_ID
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .expect("tracked point IDs exhausted");
-        let valid = self
-            .row_by_id(point.row)
-            .is_some_and(|r| point.col < r.cells.len());
+        let valid = self.contains_point(point);
         self.tracked.0.insert(id, valid.then_some(point));
         TrackedPoint(id)
     }

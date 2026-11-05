@@ -1,0 +1,64 @@
+[package]
+name = "rustty-vt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Headless terminal state and protocol handling."
+
+[features]
+allocation-probe = []
+# Use reference kernels without disabling normal compiler optimization.
+scalar-kernels = ["rustty-parser/scalar-kernels"]
+
+[dependencies]
+rustty-parser.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_bytes.workspace = true
+regex.workspace = true
+base64.workspace = true
+png.workspace = true
+flate2.workspace = true
+lz4_flex.workspace = true
+crc32c.workspace = true
+bytemuck = { version = "1.25", features = ["derive"] }
+
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+wide = "1.7"
+
+[target.'cfg(all(unix, not(target_os = "android")))'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+
+[[example]]
+name = "parity"
+path = "../../test/rustty/rust-oracle.rs"
+
+[[example]]
+name = "parity-runner"
+path = "../../test/rustty/parity-runner.rs"
+test = true
+
+[[example]]
+name = "allocations"
+path = "../../test/rustty/allocations.rs"
+
+[[example]]
+name = "scrollback-compression"
+path = "../../test/rustty/scrollback-compression.rs"
+
+[[bench]]
+name = "primitives"
+harness = false
+
+[[bench]]
+name = "page_spans"
+harness = false
+
+[[example]]
+name = "history-probe"
+path = "../../test/rustty/history-probe.rs"

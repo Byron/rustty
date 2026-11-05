@@ -471,7 +471,7 @@ fn screen_row(screen: &Screen, row: usize) -> crate::Row<'_> {
 }
 
 fn row_index(screen: &Screen, point: GridPoint) -> Option<usize> {
-    screen.all_rows().position(|row| row.id == point.row)
+    screen.row_index_by_id(point.row)
 }
 
 fn point_page(screen: &Screen, point: &OwnedTrackedPoint) -> Option<usize> {
@@ -483,20 +483,9 @@ fn point_page(screen: &Screen, point: &OwnedTrackedPoint) -> Option<usize> {
 }
 
 fn page_point(screen: &Screen, index: usize, last: bool) -> GridPoint {
-    let start: usize = screen
-        .pages
-        .pages
-        .iter()
-        .take(index)
-        .map(|page| usize::from(page.rows))
-        .sum();
     let page = &screen.pages.pages[index];
     GridPoint {
-        row: screen_row(
-            screen,
-            start + if last { usize::from(page.rows) - 1 } else { 0 },
-        )
-        .id,
+        row: page.row_ids[if last { usize::from(page.rows) - 1 } else { 0 }],
         col: if last {
             usize::from(page.columns) - 1
         } else {
@@ -751,8 +740,8 @@ impl ScreenSearch {
             active.append(screen, index, false);
         }
         for index in (0..boundary).rev() {
-            let end = page_point(screen, index, true);
-            if !screen.row_by_id(end.row).unwrap().wrapped {
+            let page = &screen.pages.pages[index];
+            if !page.headers[usize::from(page.rows) - 1].has(crate::packed::RowHeader::WRAPPED) {
                 break;
             }
             if active.append(screen, index, false) >= needle.len() - 1 {
