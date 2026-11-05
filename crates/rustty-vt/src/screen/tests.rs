@@ -1036,3 +1036,67 @@ fn native_metadata_sparse_tabs_validate_forward_across_pages() {
     assert!(serde_json::to_value(terminal.screen().view_metadata()).unwrap() == before);
     assert_references(terminal.screen());
 }
+
+#[test]
+fn grouped_style_comparison_matches_derived_equality() {
+    let colors = [
+        Color::Default,
+        Color::Indexed(0),
+        Color::Indexed(255),
+        Color::Rgb(0, 0, 0),
+        Color::Rgb(1, 2, 3),
+        Color::Rgb(255, 255, 255),
+    ];
+    let mut styles = Vec::new();
+    for flags in 0u16..256 {
+        styles.push(Style {
+            bold: flags & 1 != 0,
+            faint: flags & 2 != 0,
+            italic: flags & 4 != 0,
+            blink: flags & 8 != 0,
+            inverse: flags & 16 != 0,
+            invisible: flags & 32 != 0,
+            strikethrough: flags & 64 != 0,
+            overline: flags & 128 != 0,
+            ..Style::default()
+        });
+        styles.push(Style {
+            tmux_ansi: flags as u8,
+            ..Style::default()
+        });
+        styles.push(Style {
+            tmux_tab: flags as u8 as i8,
+            ..Style::default()
+        });
+    }
+    for foreground in colors {
+        for background in colors {
+            for underline_color in colors {
+                styles.push(Style {
+                    foreground,
+                    background,
+                    underline_color,
+                    ..Style::default()
+                });
+            }
+        }
+    }
+    for underline in [
+        Underline::None,
+        Underline::Single,
+        Underline::Double,
+        Underline::Curly,
+        Underline::Dotted,
+        Underline::Dashed,
+    ] {
+        styles.push(Style {
+            underline,
+            ..Style::default()
+        });
+    }
+    for left in &styles {
+        for right in &styles {
+            assert_eq!(left.same_as(right), left == right, "{left:?} vs {right:?}");
+        }
+    }
+}

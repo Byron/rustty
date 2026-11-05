@@ -178,6 +178,37 @@ pub struct Style {
 }
 
 impl Style {
+    // Group attributes to avoid a separate comparison branch for every flag.
+    #[inline(always)]
+    fn same_as(&self, other: &Self) -> bool {
+        #[inline(always)]
+        fn attributes(style: &Style) -> (u64, u32) {
+            (
+                u64::from_le_bytes([
+                    style.bold as u8,
+                    style.faint as u8,
+                    style.italic as u8,
+                    style.blink as u8,
+                    style.inverse as u8,
+                    style.invisible as u8,
+                    style.strikethrough as u8,
+                    style.overline as u8,
+                ]),
+                u32::from_le_bytes([
+                    style.underline as u8,
+                    style.tmux_ansi,
+                    style.tmux_tab as u8,
+                    0,
+                ]),
+            )
+        }
+
+        attributes(self) == attributes(other)
+            && self.foreground == other.foreground
+            && self.background == other.background
+            && self.underline_color == other.underline_color
+    }
+
     /// Hash the native packed representation used by page style admission.
     pub(crate) fn native_hash(self) -> u64 {
         let mut packed = 0u128;
@@ -2076,7 +2107,7 @@ impl Screen {
         }
         match self.cursor_style {
             Some((owner, id))
-                if owner == page.serial && *page.styles.get(id) == self.cursor.style => {}
+                if owner == page.serial && page.styles.get(id).same_as(&self.cursor.style) => {}
             None if self.cursor.style == Style::default() => {}
             _ => return 0,
         }
@@ -2928,7 +2959,7 @@ impl Screen {
                 None => self.cursor.style == Style::default(),
                 Some((owner, id)) => {
                     let page = &self.pages.pages[index];
-                    owner == page.serial && *page.styles.get(id) == self.cursor.style
+                    owner == page.serial && page.styles.get(id).same_as(&self.cursor.style)
                 }
             }
     }
@@ -2981,7 +3012,7 @@ impl Screen {
     }
 
     pub(crate) fn set_cursor_style(&mut self, value: Style) {
-        if self.cursor.style == value {
+        if self.cursor.style.same_as(&value) {
             return;
         }
         let old = self.cursor.style;
@@ -3019,7 +3050,7 @@ impl Screen {
         let page = &self.pages.pages[self.cursor_page_index()];
         if let Some((owner, id)) = self.cursor_style
             && owner == page.serial
-            && *page.styles.get(id) == self.cursor.style
+            && page.styles.get(id).same_as(&self.cursor.style)
         {
             return;
         }
