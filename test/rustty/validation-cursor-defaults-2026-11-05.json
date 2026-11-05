@@ -1,0 +1,68 @@
+{
+  "source_commit": "b74151c07e8813903034f482056a907794fd5087",
+  "working_change": "Reapply explicit cursor defaults; preserve application blink during unchanged tmuxx option synchronization and stored view-appearance restoration.",
+  "focused_tests": {
+    "toolchain": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "passed_unique": 67,
+    "passed_executions": 68,
+    "commands": [
+      {
+        "command": "cargo test --locked --offline -p rustty-vt --test cursor_defaults --test cursor_aliases --test modes --test soft_reset --test snapshot --test save_all_modes",
+        "passed": 54
+      },
+      {
+        "command": "cargo test --locked --offline -p tmuxx-core --lib terminal_options",
+        "passed": 2
+      },
+      {
+        "command": "cargo test --locked --offline -p tmuxx-terminal --test save_all_modes",
+        "passed": 1
+      },
+      {
+        "command": "cargo test --locked --offline -p rustty --features sessions --lib appearance",
+        "passed": 5
+      },
+      {
+        "command": "cargo test --locked --offline -p rustty --features sessions --lib native_snapshot",
+        "passed": 5,
+        "overlap_with_appearance": 1
+      },
+      {
+        "command": "target/debug/deps/rustty-9f984aa1d67be20f --exact tmuxx::tests::embedded_and_socket_views_share_panes_but_keep_selection_local --nocapture",
+        "passed": 1,
+        "note": "Equivalent cargo filter initially could not create Unix socket under sandbox (EPERM); already-built focused test passed outside sandbox."
+      }
+    ]
+  },
+  "build_command": "cargo +1.95.0 build --locked --offline --release -p rustty-vt --example parity",
+  "differential_command": "target/release/examples/parity-runner --no-build --protocols --case protocol/modes/ --artifacts /tmp/rustty-cursor-defaults-final-b74151c07",
+  "sha256": {
+    "rust_oracle": "18424d524b0b248e73cda43d3535723d97002af454bdf299d3f80ffde9eab38d",
+    "runner": "58b9fd80c08b6b34c5941c6ce8754d3f0ac8f3591e233173de270ae7d3d47d37",
+    "zig_oracle": "315372bd88132e7520437702152fce0f3f4f41befab8e6a32136b5266386d410"
+  },
+  "differential": {
+    "aborted": false,
+    "checked": 1035,
+    "coverage_gaps": [],
+    "covered": [
+      "effects.pty",
+      "terminal.cursor",
+      "terminal.modes",
+      "terminal.reset"
+    ],
+    "error": null,
+    "failures": 0,
+    "full_parity": false,
+    "mode": "smoke"
+  },
+  "reference": {
+    "implementation": "src/terminal/Terminal.zig:484-508 setDefaultCursorStyle/setDefaultCursorBlink always store configuration and reapply while cursor.is_default.",
+    "original_case": "protocol/modes/cursor-default/block/None/0",
+    "reproduction": "Baseline fails observation5 after DEC12l followed by identical host defaults; this happens before reset. Existing RIS observations already match.",
+    "scope": "Repeated VT/Session configuration is explicit reapplication; unchanged tmuxx policy synchronization and snapshot view restoration are idempotent.",
+    "negative_controls": "Isolated unguarded tmuxx wrapper fails new owner test after rename-window. Isolated unguarded view restore fails first full snapshot after DEC12; baseline setter passes snapshot-only probe; final guarded view passes explicit Session reapplication too."
+  },
+  "compatibility": "No snapshot fields or protocol version changes; explicit DECSCUSR application styles persist until default selection/reset.",
+  "limits": "Headless semantic comparison; no rendered or visible latency claim. Selected mode group passes; full Ghostty parity remains unestablished."
+}

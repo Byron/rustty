@@ -600,8 +600,12 @@ impl Terminal {
             5 | 6 => rustty_vt::CursorShape::Bar,
             _ => rustty_vt::CursorShape::Block,
         };
-        self.inner
-            .set_default_cursor(shape, Some(matches!(style, 0 | 1 | 3 | 5)));
+        let defaults = (shape, Some(matches!(style, 0 | 1 | 3 | 5)));
+        // Option synchronization also follows unrelated commands. Reapplying
+        // unchanged defaults would override a program's DEC 12 blink choice.
+        if self.inner.default_cursor() != defaults {
+            self.inner.set_default_cursor(defaults.0, defaults.1);
+        }
         self.inner.set_default_colors(None, None, color, palette);
     }
     pub fn default_palette() -> Vec<[u8; 3]> {

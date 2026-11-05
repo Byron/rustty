@@ -1218,6 +1218,14 @@ fn enqueue(
 }
 
 pub(crate) fn apply_appearance(terminal: &mut Terminal, config: &Config) {
+    apply_appearance_impl(terminal, config, true);
+}
+
+pub(crate) fn restore_appearance(terminal: &mut Terminal, config: &Config) {
+    apply_appearance_impl(terminal, config, false);
+}
+
+fn apply_appearance_impl(terminal: &mut Terminal, config: &Config, reapply_cursor: bool) {
     terminal.set_scrollback_compression(config.scrollback_compression);
     terminal.clipboard_write_limit = config.clipboard_write_limit_bytes.unwrap_or(usize::MAX);
     terminal.title_report = config.title_report;
@@ -1242,7 +1250,11 @@ pub(crate) fn apply_appearance(terminal: &mut Terminal, config: &Config) {
         CursorStyle::BlockHollow => CursorShape::HollowBlock,
         _ => CursorShape::Block,
     };
-    terminal.set_default_cursor(shape, config.cursor_style_blink);
+    // Restoring a snapshot reapplies stored view appearance, not a new host
+    // configuration event. Keep application DEC 12 changes when defaults match.
+    if reapply_cursor || terminal.default_cursor() != (shape, config.cursor_style_blink) {
+        terminal.set_default_cursor(shape, config.cursor_style_blink);
+    }
 }
 
 fn command(config: &Config, options: &SessionOptions) -> io::Result<(CommandBuilder, ShellInfo)> {
