@@ -1014,7 +1014,8 @@ impl Screen {
     }
     pub fn row(&self, row: usize) -> Row<'_> {
         assert!(row < self.height);
-        self.physical_row(self.history_len() + row)
+        let (index, row) = self.pages.locate_from_end(self.height - 1 - row);
+        self.pages.pages[index].row(row)
     }
     #[inline]
     pub(crate) fn row_columns(&self, y: usize) -> usize {
@@ -1148,7 +1149,7 @@ impl Screen {
         self.cursor_location().0
     }
     pub(crate) fn row_header_mut(&mut self, y: usize) -> &mut RowHeader {
-        let (index, row) = self.locate(self.history_len() + y);
+        let (index, row) = self.pages.locate_from_end(self.height - 1 - y);
         let page = &mut self.pages.pages[index];
         page.mark_row(row);
         &mut page.headers[row]
