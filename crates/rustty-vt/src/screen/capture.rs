@@ -115,11 +115,22 @@ mod tests {
         terminal.feed(b"x");
         let screen = terminal.screen();
         assert_eq!(screen.tmux_capture_bounds(screen.row(0).id), Some((1, 2)));
-        terminal.set_tmux_strings(false);
-        terminal.feed(b" ");
-        terminal.set_tmux_strings(true);
-        terminal.feed(b"y");
-        let screen = terminal.screen();
-        assert_eq!(screen.tmux_capture_bounds(screen.row(0).id), None);
+        for (input, scalar) in [(" ", false), ("é", false), (" ", true), ("é", true)] {
+            let mut terminal = terminal.clone();
+            terminal.set_tmux_strings(false);
+            if scalar {
+                terminal.print(input.chars().next().unwrap());
+            } else {
+                terminal.feed(input.as_bytes());
+            }
+            terminal.set_tmux_strings(true);
+            terminal.feed(b"y");
+            let screen = terminal.screen();
+            assert_eq!(
+                screen.tmux_capture_bounds(screen.row(0).id),
+                None,
+                "input={input:?}, scalar={scalar}"
+            );
+        }
     }
 }

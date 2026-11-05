@@ -1921,8 +1921,12 @@ impl Screen {
             self.cursor.col,
             self.cursor.col + usize::from(width),
         );
-        self.tmux_capture_write(self.cursor.row, self.cursor.col + usize::from(width));
-        self.tmux_note_rendition(self.cursor.row, codepoint.is_some_and(|cp| !cp.is_ascii()));
+        if self.tmux_capture_enabled {
+            self.tmux_capture_write(self.cursor.row, self.cursor.col + usize::from(width));
+            self.tmux_note_rendition(self.cursor.row, codepoint.is_some_and(|cp| !cp.is_ascii()));
+        } else {
+            self.tmux_capture_known = false;
+        }
         debug_assert_eq!(location, self.cursor_location());
         let (index, row) = if self.cursor_resources_match(location.0) {
             location
@@ -2066,8 +2070,12 @@ impl Screen {
                 self.cursor.col,
                 self.cursor.col + count,
             );
-            self.tmux_capture_write(self.cursor.row, self.cursor.col + count);
-            self.tmux_note_rendition(self.cursor.row, false);
+            if self.tmux_capture_enabled {
+                self.tmux_capture_write(self.cursor.row, self.cursor.col + count);
+                self.tmux_note_rendition(self.cursor.row, false);
+            } else {
+                self.tmux_capture_known = false;
+            }
         }
         count
     }
@@ -2186,11 +2194,15 @@ impl Screen {
         page.mark_cell(row, marked);
         self.graphics
             .overwrite_sixel(page.row_ids[row], self.cursor.col, self.cursor.col + slots);
-        self.tmux_capture_write(self.cursor.row, self.cursor.col + slots);
-        self.tmux_note_rendition(
-            self.cursor.row,
-            codepoints[..count].iter().any(|cp| !cp.is_ascii()),
-        );
+        if self.tmux_capture_enabled {
+            self.tmux_capture_write(self.cursor.row, self.cursor.col + slots);
+            self.tmux_note_rendition(
+                self.cursor.row,
+                codepoints[..count].iter().any(|cp| !cp.is_ascii()),
+            );
+        } else {
+            self.tmux_capture_known = false;
+        }
         *state = next_state;
         let col = self.cursor.col + slots;
         self.cursor.col = col.min(right);
