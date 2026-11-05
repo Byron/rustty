@@ -299,6 +299,62 @@ mod tests {
     }
 
     #[test]
+    fn viewport_reads_only_visible_rows_without_restoring_cold_history() {
+        let mut terminal = filled();
+        let expected = terminal
+            .primary
+            .all_rows()
+            .map(|row| (row.id, terminal.primary.row_text(row)))
+            .collect::<Vec<_>>();
+        let history = terminal.primary.history_len();
+        let height = terminal.primary.height();
+        for offset in [0, history / 2, history, history + height] {
+            terminal.primary.viewport_offset = offset;
+            compress(&mut terminal);
+            let start = history.saturating_sub(offset);
+            let mut row = 0;
+            let untouched = terminal
+                .primary
+                .pages
+                .pages
+                .iter()
+                .filter_map(|page| {
+                    let end = row + usize::from(page.rows);
+                    let outside = end <= start || row >= start + height;
+                    row = end;
+                    (outside
+                        && page
+                            .cells
+                            .cold
+                            .as_ref()
+                            .is_some_and(|cold| cold.restored.get().is_none()))
+                    .then_some(page.serial)
+                })
+                .collect::<Vec<_>>();
+            assert!(!untouched.is_empty());
+            let bytes = terminal.primary.owned_bytes();
+            let actual = terminal
+                .primary
+                .viewport()
+                .map(|row| (row.id, terminal.primary.row_text(row)))
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected[start..start + height], "offset {offset}");
+            for page in &terminal.primary.pages.pages {
+                if untouched.contains(&page.serial) {
+                    assert!(
+                        page.cells.cold.as_ref().unwrap().restored.get().is_none(),
+                        "viewport offset {offset} restored unrelated page {}",
+                        page.serial
+                    );
+                }
+            }
+            if offset == 0 {
+                assert_eq!(terminal.primary.owned_bytes(), bytes);
+            }
+        }
+    }
+
+    #[test]
     fn compression_preserves_words_and_reuses_immutable_restore_encoding() {
         let original: Vec<_> = (0..10000)
             .map(|n| Cell::from_bits((n % 100) << 2))

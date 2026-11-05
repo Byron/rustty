@@ -5927,3 +5927,29 @@ memory example three times. The original baseline checkout used only the VT
 and parser workspace members, with unused GUI patch entries removed; source,
 lockfile, release profile, and compiler matched the full candidate workspace.
 No Ghostty or Kitty production source was changed.
+
+## Cold viewport reads (2026-11-05)
+
+The `scrollback-compression` example now measures the first viewport read after
+compression and its additional owned storage. Viewport iteration starts directly
+at the visible range, preserving compressed pages outside it. Previously,
+`all_rows().skip(...)` read and decompressed every skipped row.
+
+```sh
+cargo run --release --offline -p rustty-vt --example scrollback-compression -- 20000
+```
+
+On macOS arm64, a 120×32 viewport with 19,969 history rows produced these medians:
+
+| Input | Before | After | Extra owned bytes, before → after |
+| --- | ---: | ---: | ---: |
+| ASCII | 4,364.604 µs | 1.000 µs | 19,008,000 → 0 |
+| Styled | 4,223.709 µs | 1.084 µs | 19,008,000 → 0 |
+| Unicode | 4,782.416 µs | 1.167 µs | 19,008,000 → 0 |
+
+The comparison uses frozen binaries with the same updated harness, Rust 1.99.1,
+release thin LTO, one codegen unit, and four fresh processes per binary in ABBA
+order twice. The baseline is `6fc409f7`; viewport checksums and complete snapshot
+CRCs match. The probe recompresses before its existing cold-row and whole-history
+measurements. These numbers measure isolated cold viewport access; they do not
+measure GUI latency, GPU work, or RSS. The regression also passes on Rust 1.95.0.

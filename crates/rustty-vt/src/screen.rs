@@ -952,9 +952,11 @@ impl Screen {
         result
     }
     pub fn viewport(&self) -> impl Iterator<Item = Row<'_>> {
-        self.all_rows()
-            .skip(self.history_len().saturating_sub(self.viewport_offset))
-            .take(self.height)
+        Rows::new(
+            &self.pages,
+            self.history_len().saturating_sub(self.viewport_offset),
+            self.height,
+        )
     }
     /// Runtime incarnation of the screen's row storage. Changes on replacement,
     /// decoding and cloning, including RIS even if row IDs/generations repeat.

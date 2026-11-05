@@ -16,6 +16,16 @@ fn rss_kib() -> Option<usize> {
         })
 }
 
+fn viewport_checksum(terminal: &Terminal) -> u64 {
+    terminal.screen().viewport().fold(0u64, |sum, row| {
+        row.cells
+            .iter()
+            .fold(sum.wrapping_add(row.id), |sum, cell| {
+                sum.wrapping_add(cell.bits())
+            })
+    })
+}
+
 fn main() {
     let lines: usize = std::env::args()
         .nth(1)
@@ -46,6 +56,7 @@ fn main() {
         terminal.feed(&input);
         let feed_ms = feed.elapsed().as_secs_f64() * 1000.0;
         let expected = crc32c::crc32c(&snapshot::encode_to_vec(&terminal).unwrap());
+        let expected_viewport = viewport_checksum(&terminal);
         let raw_bytes = terminal.screen().owned_bytes();
         let raw_rss = rss_kib();
         let rows = terminal.screen().history_len();
@@ -63,6 +74,14 @@ fn main() {
         let compressed_bytes = terminal.screen().owned_bytes();
         let compressed_rss = rss_kib();
         steps.sort_unstable();
+        let start = Instant::now();
+        let viewport = black_box(viewport_checksum(black_box(&terminal)));
+        let viewport_us = start.elapsed().as_secs_f64() * 1e6;
+        let viewport_growth = terminal.screen().owned_bytes() - compressed_bytes;
+        assert_eq!(viewport, expected_viewport);
+        // Keep the existing cold-read measurements independent of the viewport read.
+        terminal.request_scrollback_compression();
+        while terminal.compress_scrollback_step() {}
         let start = Instant::now();
         black_box(terminal.screen().physical_row(0).cells[0]);
         let first_row_us = start.elapsed().as_secs_f64() * 1e6;
@@ -86,6 +105,8 @@ fn main() {
                 "step_p50_us":steps[steps.len()/2] as f64 / 1000.0,
                 "step_p95_us":steps[steps.len()*95/100] as f64 / 1000.0,
                 "step_max_us":steps.last().unwrap().to_owned() as f64 / 1000.0,
+                "viewport_read_us":viewport_us, "viewport_owned_growth_bytes":viewport_growth,
+                "viewport_checksum":viewport,
                 "first_cold_row_us":first_row_us, "restore_all_ms":restore_all_ms,
                 "snapshot_crc32c":expected,
             })
