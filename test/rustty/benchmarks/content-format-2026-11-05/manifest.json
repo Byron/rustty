@@ -1,0 +1,38 @@
+{
+  "source_base_commit": "12919ae9f2287c46f9b601963ec27dc766ee8bda",
+  "candidate": "base plus borrowed active_screen accessor and C-format matching caller; focused regression only otherwise",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "machine": "aarch64",
+  "profile": "release; thin LTO; codegen-units=1",
+  "RUSTFLAGS": null,
+  "CARGO_ENCODED_RUSTFLAGS": null,
+  "harness": "test/rustty/content-format.rs",
+  "harness_sha256": "1243010d2c4e452e9080f1d2babc0fd1b8b4ae5503a209d87eb199dd4521feca",
+  "build_command": "cargo +1.95.0 build --locked --offline --release -p tmuxx-core --example content-format-bench",
+  "isolation": "Baseline and candidate built serially in /tmp/rustty-content-format-e982fc4c0, refreshed to 12919ae9f before either measured binary. Same lock, compiler and profile; candidate source matches repository files.",
+  "measure_command": "/usr/bin/time -v -o RUN.time BINARY ROWS 9 > RUN.json",
+  "order": "order.json",
+  "quiet_window": "No other agents compiled or tested during these 12 timed processes.",
+  "binary_sha256": {
+    "before": "37faa6c6e94497edbb7198416954ca95efbcc84901b058b71b9a76332809ea22",
+    "after": "8393d947a2ac74b2adfe128b6d8b3b3d22f858cccc81904a971f9bcd7e234a28"
+  },
+  "candidate_source_sha256": {
+    "tmuxx/crates/tmuxx-terminal/src/lib.rs": "f4c16c8d08124e5353401fa30d63f1efac4e31cea51f62f3257cafe357ce1032",
+    "tmuxx/crates/tmuxx-core/src/formats.rs": "7d3a95e04568d2aa51411b2b4cc63d0c7b5bb6fefeca7b4337530ffc9f3031a1"
+  },
+  "baseline_source_sha256": {
+    "tmuxx/crates/tmuxx-terminal/src/lib.rs": "df6288b2e3b139bcf0f7b3e27eecef696ca37688d94de7203bbdb05fadf1ab36",
+    "tmuxx/crates/tmuxx-core/src/formats.rs": "108d4f4ea76870f9d098e6647752d953889f592eb42bf6f668a1af226ea6a21c"
+  },
+  "validation": {
+    "focused_tests": 2,
+    "commands": [
+      "cargo test --locked --offline -p tmuxx-terminal --lib active_screen_text",
+      "cargo test --locked --offline -p tmuxx-core --lib pane_content_formats"
+    ],
+    "timed_assertions": "Every measured query has checked output; retained history count, owner bytes, and engine sequence remain stable.",
+    "toolchain": "rustc 1.99.0 (b940084d7 2026-09-28)"
+  },
+  "limits": "Warm resident owner history; cold source retention has a separate regression. Measures synchronous format expansion and process peak RSS, not PTY throughput, rendered or visible latency."
+}

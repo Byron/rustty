@@ -1,0 +1,195 @@
+{
+  "units": "nanoseconds per Engine::expand C-format lookup; peak RSS is KiB for the entire populated benchmark process",
+  "queries_per_run": 27,
+  "pairs_per_history_size": 3,
+  "groups": [
+    {
+      "rows": 20000,
+      "before": {
+        "median_of_run_medians_ns": 12317937,
+        "median_peak_rss_kib": 56192,
+        "run_medians_ns": [
+          12317937,
+          12116219,
+          12668333
+        ]
+      },
+      "after": {
+        "median_of_run_medians_ns": 11456,
+        "median_peak_rss_kib": 26968,
+        "run_medians_ns": [
+          11456,
+          11488,
+          11409
+        ]
+      },
+      "paired_speedups": [
+        1075.2389141061453,
+        1054.6848015320334,
+        1110.380664387764
+      ],
+      "median_paired_speedup": 1075.2389141061453
+    },
+    {
+      "rows": 100000,
+      "before": {
+        "median_of_run_medians_ns": 66493144,
+        "median_peak_rss_kib": 256100,
+        "run_medians_ns": [
+          66493144,
+          66961688,
+          66054522
+        ]
+      },
+      "after": {
+        "median_of_run_medians_ns": 11696,
+        "median_peak_rss_kib": 119276,
+        "run_medians_ns": [
+          11584,
+          11720,
+          11696
+        ]
+      },
+      "paired_speedups": [
+        5740.084944751381,
+        5713.454607508533,
+        5647.6164500684
+      ],
+      "median_paired_speedup": 5713.454607508533
+    }
+  ],
+  "runs": [
+    {
+      "name": "before-20000-1",
+      "rows": 20000,
+      "pair": 1,
+      "variant": "before",
+      "median_ns": 12317937,
+      "p95_ns": 12498615,
+      "peak_rss_kib": 57296,
+      "owned_bytes": 19866231,
+      "history_rows": 20000
+    },
+    {
+      "name": "after-20000-1",
+      "rows": 20000,
+      "pair": 1,
+      "variant": "after",
+      "median_ns": 11456,
+      "p95_ns": 20937,
+      "peak_rss_kib": 26952,
+      "owned_bytes": 19866231,
+      "history_rows": 20000
+    },
+    {
+      "name": "after-20000-2",
+      "rows": 20000,
+      "pair": 2,
+      "variant": "after",
+      "median_ns": 11488,
+      "p95_ns": 21137,
+      "peak_rss_kib": 26968,
+      "owned_bytes": 19866231,
+      "history_rows": 20000
+    },
+    {
+      "name": "before-20000-2",
+      "rows": 20000,
+      "pair": 2,
+      "variant": "before",
+      "median_ns": 12116219,
+      "p95_ns": 12194158,
+      "peak_rss_kib": 56192,
+      "owned_bytes": 19866231,
+      "history_rows": 20000
+    },
+    {
+      "name": "before-20000-3",
+      "rows": 20000,
+      "pair": 3,
+      "variant": "before",
+      "median_ns": 12668333,
+      "p95_ns": 13069523,
+      "peak_rss_kib": 54452,
+      "owned_bytes": 19866231,
+      "history_rows": 20000
+    },
+    {
+      "name": "after-20000-3",
+      "rows": 20000,
+      "pair": 3,
+      "variant": "after",
+      "median_ns": 11409,
+      "p95_ns": 21081,
+      "peak_rss_kib": 28224,
+      "owned_bytes": 19866231,
+      "history_rows": 20000
+    },
+    {
+      "name": "before-100000-1",
+      "rows": 100000,
+      "pair": 1,
+      "variant": "before",
+      "median_ns": 66493144,
+      "p95_ns": 67018610,
+      "peak_rss_kib": 256100,
+      "owned_bytes": 98948511,
+      "history_rows": 100000
+    },
+    {
+      "name": "after-100000-1",
+      "rows": 100000,
+      "pair": 1,
+      "variant": "after",
+      "median_ns": 11584,
+      "p95_ns": 27881,
+      "peak_rss_kib": 119336,
+      "owned_bytes": 98948511,
+      "history_rows": 100000
+    },
+    {
+      "name": "after-100000-2",
+      "rows": 100000,
+      "pair": 2,
+      "variant": "after",
+      "median_ns": 11720,
+      "p95_ns": 28136,
+      "peak_rss_kib": 118916,
+      "owned_bytes": 98948511,
+      "history_rows": 100000
+    },
+    {
+      "name": "before-100000-2",
+      "rows": 100000,
+      "pair": 2,
+      "variant": "before",
+      "median_ns": 66961688,
+      "p95_ns": 67354492,
+      "peak_rss_kib": 256184,
+      "owned_bytes": 98948511,
+      "history_rows": 100000
+    },
+    {
+      "name": "before-100000-3",
+      "rows": 100000,
+      "pair": 3,
+      "variant": "before",
+      "median_ns": 66054522,
+      "p95_ns": 66840740,
+      "peak_rss_kib": 254184,
+      "owned_bytes": 98948511,
+      "history_rows": 100000
+    },
+    {
+      "name": "after-100000-3",
+      "rows": 100000,
+      "pair": 3,
+      "variant": "after",
+      "median_ns": 11696,
+      "p95_ns": 27929,
+      "peak_rss_kib": 119276,
+      "owned_bytes": 98948511,
+      "history_rows": 100000
+    }
+  ]
+}
