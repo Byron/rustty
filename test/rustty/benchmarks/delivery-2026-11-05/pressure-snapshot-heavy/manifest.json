@@ -1,0 +1,12 @@
+{
+  "baseline": "247ad8119",
+  "candidate": "uncommitted delivery change on 247ad8119, frozen after final production validation",
+  "compiler": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "profile": "release; thin LTO; one codegen unit; default generic target",
+  "sha256": {
+    "/tmp/rustty-pressure-before-bin": "236b4de0d127f7f525f922654fe15c8135e24360156550eb267cb18e3f6d2853",
+    "/tmp/rustty-pressure-after-bin": "fef0fc9200246f9ef7a2a64614e549d5daba0d643a42c415cc648f0186a6b12d",
+    "/tmp/rustty-pressure-probe/src/main.rs": "27dc9648836f3b2a619541b348541e7484a0dfd92ba230185c5ec0ac87b7e3ee",
+    "/tmp/rustty-pressure-probe/Cargo.lock": "a2771da75bd72109145400f889491445fe54d4ad57eb56dca28e3703f468dbf5"
+  }
+}

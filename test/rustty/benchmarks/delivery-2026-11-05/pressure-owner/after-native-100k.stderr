@@ -1,0 +1,2 @@
+tmuxx: connection 1: Connection reset by peer (os error 104)
+Error: Kind(BrokenPipe)

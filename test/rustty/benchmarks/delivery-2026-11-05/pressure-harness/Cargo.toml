@@ -1,0 +1,23 @@
+[package]
+name = "rustty-pressure-probe"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[[bin]]
+name = "rustty-pressure-probe"
+path = "../pressure-owner/pressure.rs"
+
+[dependencies]
+rustty = { path = "../../../../../crates/rustty", features = ["sessions"] }
+serde_json = "1.0"
+libc = "0.2"
+
+[patch.crates-io]
+portable-pty = { path = "../../../../../tmuxx/vendor/portable-pty" }
+winit = { path = "../../../../../vendor/winit" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

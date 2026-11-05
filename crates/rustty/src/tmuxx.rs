@@ -4869,6 +4869,182 @@ mod tests {
         assert!(remote.fit_view_size(session).is_err());
     }
 
+    fn wait_view_title(connection: &Connection, view: &Session, title: &str) {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while view.terminal().unwrap().title != title {
+            assert!(connection.errors().is_empty(), "{:?}", connection.errors());
+            assert!(Instant::now() < deadline, "missing title {title}");
+            thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    #[test]
+    fn blocked_embedded_view_recovers_full_output_and_admitted_input() {
+        let owner = test_owner(
+            r#"import os,sys,tty
+tty.setraw(0)
+os.write(1,b'\x1b]2;ready\x07')
+count=0
+while True:
+ c=os.read(0,1)
+ if c==b'b':
+  sys.stdout.buffer.write((b'bulk-0123456789abcdefghijklmnopqrstuvwxyz\r\n' * 420000)); sys.stdout.buffer.flush()
+  os.write(1,b'\x1b[1;31mFINAL-OUTPUT\x1b[0m\x1b]2;bulk-done\x07')
+ elif c==b'x':
+  count+=1
+  os.write(1,('INPUT-'+str(count)+'\x1b]2;input-'+str(count)+'\x07').encode())
+"#,
+        );
+        let graph = wait(&owner, |g| !g.panes.is_empty());
+        let pane = graph.panes[0].id;
+        let Source::Unix(endpoint) = &owner.source else {
+            unreachable!()
+        };
+        let fast = Connection::native(endpoint, Arc::new(|| {})).unwrap();
+        wait(&fast, |g| !g.panes.is_empty());
+        let slow_view = Session::attach_tmuxx(&owner, pane, Arc::new(|| {})).unwrap();
+        let fast_view = Session::attach_tmuxx(&fast, pane, Arc::new(|| {})).unwrap();
+        wait_view_title(&fast, &fast_view, "ready");
+        wait_view_title(&owner, &slow_view, "ready");
+        let paused = slow_view.terminal().unwrap();
+        fast_view.write(b"b").unwrap();
+        // The connections have independent request workers. Establish owner
+        // admission of b before submitting x on the other connection.
+        fast.command_with_reply(vec![
+            b"display-message".to_vec(),
+            b"-p".to_vec(),
+            b"started".to_vec(),
+        ])
+        .unwrap()
+        .recv_timeout(Duration::from_secs(5))
+        .unwrap()
+        .unwrap();
+        // Input already admitted by the blocked view remains an owner request.
+        slow_view.write(b"x").unwrap();
+        wait_view_title(&fast, &fast_view, "input-1");
+        let reply = fast
+            .command_with_reply(vec![
+                b"display-message".to_vec(),
+                b"-p".to_vec(),
+                b"responsive".to_vec(),
+            ])
+            .unwrap();
+        assert_eq!(
+            reply.recv_timeout(Duration::from_secs(5)).unwrap().unwrap(),
+            b"responsive\n"
+        );
+        let expected = fast_view.terminal().unwrap().plain_text();
+        assert!(
+            expected.replace('\n', "").contains("FINAL-OUTPUTINPUT-1"),
+            "{expected:?}"
+        );
+        drop(paused);
+        wait_view_title(&owner, &slow_view, "input-1");
+        assert_eq!(slow_view.terminal().unwrap().plain_text(), expected);
+        assert!(owner.errors().is_empty());
+        let captured = fast
+            .command_with_reply(vec![
+                b"capture-pane".to_vec(),
+                b"-p".to_vec(),
+                b"-S".to_vec(),
+                b"-".to_vec(),
+                b"-t".to_vec(),
+                format!("%{pane}").into_bytes(),
+            ])
+            .unwrap()
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        let terminal = slow_view.terminal().unwrap();
+        let screen = terminal.screen();
+        let rows = screen
+            .all_rows()
+            .map(|row| screen.row_text(row))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(
+            rows.trim_end(),
+            std::str::from_utf8(&captured).unwrap().trim_end()
+        );
+        drop(terminal);
+        // Reconnect observes the same authoritative terminal after recovery.
+        let reconnected = Connection::native(endpoint, Arc::new(|| {})).unwrap();
+        wait(&reconnected, |g| !g.panes.is_empty());
+        let view = Session::attach_tmuxx(&reconnected, pane, Arc::new(|| {})).unwrap();
+        wait_view_title(&reconnected, &view, "input-1");
+        assert_eq!(view.terminal().unwrap().plain_text(), expected);
+    }
+
+    #[test]
+    fn blocked_view_retains_natural_exit_tail_before_removal_or_disconnect() {
+        for surviving_pane in [false, true] {
+            let owner = test_owner(
+                r#"import os,sys,tty
+tty.setraw(0)
+os.write(1,b'\x1b]2;ready\x07')
+os.read(0,1)
+sys.stdout.buffer.write(b'exit-tail-0123456789abcdefghijklmnopqrst\r\n' * 420000); sys.stdout.buffer.flush()
+os.write(1,b'\r\nFINAL-EXIT-TAIL\x1b]2;final-exit\x07')
+"#,
+            );
+            let graph = wait(&owner, |g| !g.panes.is_empty());
+            let pane = graph.panes[0].id;
+            if surviving_pane {
+                owner
+                    .command([
+                        "split-window",
+                        "-d",
+                        "python3",
+                        "-c",
+                        "import time; time.sleep(30)",
+                    ])
+                    .unwrap();
+                wait(&owner, |g| g.panes.len() == 2);
+            }
+            let Source::Unix(endpoint) = &owner.source else {
+                unreachable!()
+            };
+            let fast = Connection::native(endpoint, Arc::new(|| {})).unwrap();
+            wait(&fast, |g| {
+                g.panes.len() == if surviving_pane { 2 } else { 1 }
+            });
+            let slow_view = Session::attach_tmuxx(&owner, pane, Arc::new(|| {})).unwrap();
+            let fast_view = Session::attach_tmuxx(&fast, pane, Arc::new(|| {})).unwrap();
+            wait_view_title(&fast, &fast_view, "ready");
+            wait_view_title(&owner, &slow_view, "ready");
+            let paused = slow_view.terminal().unwrap();
+            fast_view.write(b"b").unwrap();
+            let deadline = Instant::now() + Duration::from_secs(30);
+            while !fast_view.has_exited() {
+                assert!(
+                    Instant::now() < deadline,
+                    "responsive view did not observe exit"
+                );
+                thread::sleep(Duration::from_millis(2));
+            }
+            drop(paused);
+            while !slow_view.has_exited() {
+                assert!(
+                    Instant::now() < deadline,
+                    "blocked view did not observe exit"
+                );
+                thread::sleep(Duration::from_millis(2));
+            }
+            assert!(
+                slow_view
+                    .terminal()
+                    .unwrap()
+                    .plain_text()
+                    .contains("FINAL-EXIT-TAIL")
+            );
+            assert_eq!(slow_view.terminal().unwrap().title, "final-exit");
+            if surviving_pane {
+                wait(&owner, |g| g.panes.len() == 1 && g.panes[0].id != pane);
+                assert!(owner.errors().is_empty());
+            }
+        }
+    }
+
     fn wait_local_workers_closed(workers: Weak<Shared>) {
         let deadline = Instant::now() + Duration::from_secs(5);
         while workers.upgrade().is_some() {

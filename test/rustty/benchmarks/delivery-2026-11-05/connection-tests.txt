@@ -1,0 +1,49 @@
+   Compiling tmuxx-runtime v0.1.0 (/home/byron/dev/rustty/tmuxx/crates/tmuxx-runtime)
+   Compiling rustty v0.1.0 (/home/byron/dev/rustty/crates/rustty)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.01s
+     Running unittests src/lib.rs (target/debug/deps/rustty-73ff6a2a43a07af1)
+
+running 40 tests
+test tmuxx::tests::native_command_reply_send_failure_leaves_no_pending_reply ... ok
+test tmuxx::tests::native_command_replies_end_on_failure_detach_and_drop ... ok
+test tmuxx::tests::native_command_replies_are_registered_before_delivery ... ok
+test tmuxx::tests::native_command_errors_keep_connection_and_transport_errors_keep_live_panes ... ok
+test tmuxx::tests::native_detach_closes_views_without_signalling_the_gui_parent ... ok
+test tmuxx::tests::native_interaction_keeps_output_subscription_without_requesting_snapshots ... ok
+test tmuxx::tests::native_agent_status_attach_live_and_resync_do_not_replay_host_actions ... ok
+test tmuxx::tests::native_host_actions_are_assigned_once_and_clipboard_replies_use_event_ids ... ok
+test tmuxx::tests::native_program_status_mirrors_owner_snapshots_without_replaying_replies ... ok
+test tmuxx::tests::native_release_updates_other_views_but_only_releases_the_last_view ... ok
+test tmuxx::tests::native_handshake_rejection_never_submits_queued_requests ... ok
+test tmuxx::tests::native_focus_snapshot_fallback_follows_server_negotiation ... ok
+test tmuxx::tests::native_snapshot_preserves_row_ids_and_image_anchors_after_resize ... ok
+test tmuxx::tests::native_snapshot_rejects_invalid_capture_metadata ... ok
+test tmuxx::tests::native_snapshot_restores_capture_lengths_after_non_reflow_shrink ... ok
+test tmuxx::tests::native_snapshot_restores_capture_rows_after_reflow ... ok
+test tmuxx::tests::native_handshake_holds_requests_until_accepted_and_preserves_buffered_messages ... ok
+test tmuxx::tests::native_notifications_are_observed_by_all_views_and_delivered_to_one_host ... ok
+test tmuxx::tests::native_views_preserve_pointer_stacks_across_output_and_reconnect ... ok
+test tmuxx::tests::native_views_preserve_wide_cells_viewports_sync_modes_and_stationary_cursor_changes ... ok
+test tmuxx::tests::embedded_requests_and_replies_keep_order_without_polling ... ok
+test tmuxx::tests::new_server_incarnation_closes_stale_views_and_resets_event_identity ... ok
+test tmuxx::tests::restored_native_views_search_and_select_shell_output_independently ... ok
+test tmuxx::tests::session_menu_metadata_keeps_tab_order_and_duplicate_links ... ok
+test tmuxx::tests::embedded_size_clients_use_the_owner_and_release_their_size_context ... ok
+test tmuxx::tests::embedded_configuration_applies_before_first_session_and_later_remote_panes ... ok
+test tmuxx::tests::embedded_and_socket_views_share_panes_but_keep_selection_local ... ok
+test tmuxx::tests::notification_observations_keep_command_order_across_split_reads ... ok
+test tmuxx::tests::native_size_views_keep_the_first_owner_until_fit_or_disconnect ... ok
+test tmuxx::tests::native_size_clients_reject_replaced_owners_with_reused_session_ids ... ok
+test tmuxx::tests::native_exit_and_respawn_replace_process_state_and_selection ... ok
+test tmuxx::tests::embedded_idle_and_busy_workers_release_on_close ... ok
+test tmuxx::tests::native_typed_keys_and_paste_follow_each_pane_modes_without_broadcasting_mouse ... ok
+test tmuxx::tests::native_focus_is_aggregated_across_views_and_connections_and_gated_by_server_option ... ok
+test tmuxx::tests::native_views_compress_independently_and_keep_policy_after_reconnect ... ok
+test tmuxx::tests::native_session_environment_reconnects_and_survives_size_attachments ... ok
+test tmuxx::tests::native_command_identity_is_required_before_mutations ... ok
+test tmuxx::tests::streamed_snapshot_restores_large_image_atomically_and_abort_keeps_live_view ... ok
+test tmuxx::tests::blocked_embedded_view_recovers_full_output_and_admitted_input ... ok
+test tmuxx::tests::blocked_view_retains_natural_exit_tail_before_removal_or_disconnect ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 141 filtered out; finished in 15.66s
+

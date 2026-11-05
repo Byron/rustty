@@ -1,0 +1,12 @@
+{
+  "baseline": "247ad8119",
+  "candidate": "final validated delivery implementation on 247ad8119; production unchanged since final67runtime/40Connectiontests",
+  "compiler": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "profile": "release; thin LTO; one codegen unit; default generic target",
+  "sha256": {
+    "/tmp/rustty-pressure-before-v2-bin": "baf4b28855a42a81b98989b1ae6b2aeb36f672e9a9097c81988bd4d7766a19a6",
+    "/tmp/rustty-pressure-after-v2-bin": "ae9983990fd0e38ffa43ca3884f92a027a47f1a98323bf6aa4e375ed73ac646a",
+    "/tmp/rustty-pressure-owner-20261105/pressure.rs": "a9fa1a94188c65e6618f53c2a9d2c185ca98f575b718f20aad4bd5b04ba1673f",
+    "/tmp/rustty-pressure-owner-20261105/Cargo.lock": "a2771da75bd72109145400f889491445fe54d4ad57eb56dca28e3703f468dbf5"
+  }
+}

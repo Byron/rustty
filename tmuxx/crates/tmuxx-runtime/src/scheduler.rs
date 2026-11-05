@@ -565,6 +565,7 @@ impl Host {
         control_guards: Option<u64>,
     ) {
         if !self.clients.contains_key(&id)
+            || self.native_closing(id)
             || self
                 .control
                 .clients
@@ -689,6 +690,7 @@ impl Host {
         self.management_clients.remove(&id);
         self.snapshots_pending.remove(&id);
         self.snapshots_requested.remove(&id);
+        self.native_delivery.remove(&id);
         self.pane_waiters.remove(&id);
         self.stdin_streams.remove(&id);
         self.file_clients.remove(&id);
@@ -797,6 +799,10 @@ impl Host {
     }
 
     fn drive(&mut self, id: u64) {
+        if self.native_closing(id) {
+            self.scheduler.lost(id);
+            return;
+        }
         let Some(mut client) = self.clients.get(&id).cloned() else {
             self.scheduler.lost(id);
             return;
@@ -816,7 +822,7 @@ impl Host {
         let mut detach_hangup = false;
         let mut budget = COMMAND_QUANTUM;
         while !queue.blocked && budget != 0 && !detach {
-            if !self.clients.contains_key(&id) {
+            if !self.clients.contains_key(&id) || self.native_closing(id) {
                 break;
             }
             let Some(batch) = queue.pending.front_mut() else {
@@ -1076,7 +1082,7 @@ impl Host {
         }
         let finished = queue.pending.is_empty();
         let blocked = queue.blocked;
-        if !self.clients.contains_key(&id) {
+        if !self.clients.contains_key(&id) || self.native_closing(id) {
             self.scheduler.lost(id);
             return;
         }

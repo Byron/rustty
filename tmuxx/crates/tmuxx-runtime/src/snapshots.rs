@@ -659,7 +659,7 @@ fn image_changes_refresh_native_graphs_including_other_pane_evictions() {
 }
 
 #[test]
-fn native_byte_backlog_disconnects_before_record_capacity() {
+fn native_byte_backlog_recovers_without_blocking_healthy_client() {
     let (mut host, _) = host();
     host.engine
         .execute(
@@ -683,11 +683,7 @@ fn native_byte_backlog_disconnects_before_record_capacity() {
     let output = vec![0; 32768];
     let mut sent = 0;
     let mut previous = 0;
-    while host.clients.contains_key(&1) {
-        assert!(
-            sent < 4096,
-            "byte budget must precede the enlarged record capacity"
-        );
+    while sent < 4096 {
         host.pane_output(0, &output);
         let message = healthy_rx.recv().unwrap();
         let cost = control::message_bytes(&message);
@@ -705,9 +701,29 @@ fn native_byte_backlog_disconnects_before_record_capacity() {
     let records = slow_rx.try_iter().collect::<Vec<_>>();
     let bytes = records.iter().map(control::message_bytes).sum::<usize>();
     let next = control::message_bytes(records.last().unwrap());
-    assert_eq!(records.len(), sent - 1);
+    assert!(records.len() < sent);
     assert!(bytes <= 64 * 1024 * 1024 && bytes + next > 64 * 1024 * 1024);
-    assert!(host.clients.contains_key(&2) && host.engine.panes.contains_key(&0));
+    assert!(
+        host.clients.contains_key(&1)
+            && host.clients.contains_key(&2)
+            && host.engine.panes.contains_key(&0)
+    );
     assert_eq!(host.engine.sequence, previous);
-    assert!(!host.snapshots_pending.contains(&1) && !host.snapshots_requested.contains(&1));
+    host.clients[&1]
+        .delivery_bytes
+        .fetch_sub(bytes, Ordering::AcqRel);
+    host.flush_native();
+    let ServerMessage::Snapshot {
+        sequence, state, ..
+    } = slow_rx.try_recv().unwrap()
+    else {
+        panic!("missing recovery snapshot");
+    };
+    assert_eq!(sequence, previous);
+    assert_eq!(
+        serde_json::to_value(state).unwrap(),
+        serde_json::to_value(host.engine.native_snapshot()).unwrap()
+    );
+    assert!(host.snapshots_pending.contains(&1));
+    assert!(!host.native_delivery.contains_key(&1));
 }

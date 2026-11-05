@@ -137,7 +137,7 @@ impl Host {
                             reason: "session destroyed".into(),
                         },
                     );
-                    self.disconnect(id);
+                    self.disconnect_after_native_delivery(id);
                 }
             }
         }
