@@ -12,6 +12,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 mod drag;
+mod notifications;
 mod read;
 mod shell;
 pub(crate) use drag::new_identity as new_drag_identity;
@@ -103,6 +104,8 @@ pub enum SessionEvent {
         title: Vec<u8>,
         body: Vec<u8>,
     },
+    /// An elected OSC 99 command, never reconstructed from view output.
+    DesktopNotificationDelivery(rustty_vt::notification::Command),
     Exited {
         code: u32,
         signal: Option<String>,
@@ -115,6 +118,7 @@ pub enum SessionEvent {
 
 enum IoCommand {
     Write(Vec<u8>),
+    Notification(notifications::QueuedReply),
     Linefeed(bool),
     HostReport(Vec<u8>),
     Resize { size: PtySize, reply: Vec<u8> },
@@ -146,6 +150,7 @@ pub struct Session {
     input: mpsc::Sender<IoCommand>,
     events: mpsc::Receiver<SessionEvent>,
     pending_input: Arc<PendingInput>,
+    notification_input: Arc<PendingInput>,
     compression_pending: Arc<AtomicBool>,
     restored: Arc<Mutex<Option<RestoredOutput>>>,
     exited: Arc<AtomicBool>,
@@ -264,6 +269,10 @@ impl Session {
         terminal.shell_command_events = true;
         terminal.agent_status_events = true;
         terminal.program_status_events = true;
+        terminal.notification_capabilities = Some(rustty_vt::notification::Capabilities {
+            buttons: true,
+            close_events: true,
+        });
         terminal.program_status_focus(options.visible && options.focused);
         terminal.linefeed_mode_events = true;
         terminal.query_defaults.color_scheme = options.color_scheme;
@@ -301,6 +310,7 @@ impl Session {
         let (input, input_rx) = mpsc::channel();
         let (events_tx, events) = mpsc::sync_channel(256);
         let pending_input = Arc::new(PendingInput::default());
+        let notification_input = Arc::new(PendingInput::default());
         let compression_pending = Arc::new(AtomicBool::new(false));
         let exited = Arc::new(AtomicBool::new(false));
         #[cfg(target_os = "macos")]
@@ -312,6 +322,7 @@ impl Session {
         let writer_events = events_tx.clone();
         let writer_wake = wake.clone();
         let writer_pending = pending_input.clone();
+        let writer_notifications = notification_input.clone();
         let writer_terminal = terminal.clone();
         let writer_restored = restored.clone();
         let writer_compression = compression_pending.clone();
@@ -389,6 +400,9 @@ impl Session {
                             notify = writer_pending.release(bytes.len());
                             result
                         }
+                        IoCommand::Notification(reply) => {
+                            write_pty(&mut writer, &reply.bytes, linefeed)
+                        }
                         IoCommand::Linefeed(enabled) => {
                             linefeed = enabled;
                             continue;
@@ -415,6 +429,7 @@ impl Session {
                     }
                 }
                 writer_pending.close();
+                writer_notifications.close();
             })?;
 
         // The slave is still held here; startup failure drops it and releases
@@ -569,6 +584,7 @@ impl Session {
             input,
             events,
             pending_input,
+            notification_input,
             compression_pending,
             restored,
             exited,
@@ -592,6 +608,7 @@ impl Session {
             input,
             events: attached.events,
             pending_input: Arc::new(PendingInput::default()),
+            notification_input: Arc::new(PendingInput::default()),
             compression_pending: Arc::new(AtomicBool::new(false)),
             restored: Arc::new(Mutex::new(None)),
             exited: attached.exited,
@@ -902,6 +919,7 @@ impl Session {
             return;
         }
         self.pending_input.close();
+        self.notification_input.close();
         let _ = self.input.send(IoCommand::Close);
         #[cfg(target_os = "macos")]
         if let Some(close) = &self.close_child {
@@ -1115,7 +1133,10 @@ impl Default for PendingInput {
 }
 impl PendingInput {
     fn reserve(&self, length: usize, wait: bool) -> io::Result<()> {
-        if length > MAX_PENDING_INPUT {
+        self.reserve_with_limit(length, wait, MAX_PENDING_INPUT)
+    }
+    fn reserve_with_limit(&self, length: usize, wait: bool, limit: usize) -> io::Result<()> {
+        if length > limit {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "input exceeds the terminal queue budget",
@@ -1124,7 +1145,7 @@ impl PendingInput {
         let mut used = self.used.lock().map_err(error)?;
         loop {
             let current = used.ok_or(io::ErrorKind::BrokenPipe)?;
-            if current <= MAX_PENDING_INPUT - length {
+            if current <= limit - length {
                 *used = Some(current + length);
                 return Ok(());
             }
@@ -1495,6 +1516,7 @@ mod tests {
             input,
             events,
             pending_input: Arc::new(PendingInput::default()),
+            notification_input: Arc::new(PendingInput::default()),
             compression_pending: Arc::new(AtomicBool::new(false)),
             restored: Arc::new(Mutex::new(Some(RestoredOutput {
                 history,
@@ -2608,6 +2630,7 @@ mod tests {
             input,
             events,
             pending_input: Arc::new(PendingInput::default()),
+            notification_input: Arc::new(PendingInput::default()),
             compression_pending: Arc::new(AtomicBool::new(false)),
             restored: Arc::new(Mutex::new(None)),
             exited: Arc::new(AtomicBool::new(false)),

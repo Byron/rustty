@@ -931,6 +931,8 @@ fn capture(shared: &Shared, pane_id: u64, data: Vec<u8>, cols: u32, rows: u32) -
         owners: Arc::new(AtomicUsize::new(0)),
         drag_identity: crate::session::new_drag_identity(),
         drag_view: None,
+        notification_identity: crate::session::new_drag_identity(),
+        notifications: BTreeMap::new(),
     });
     pane.terminal = terminal;
     pane.views.retain(|view| {

@@ -71,6 +71,14 @@ pub enum PlatformEvent {
     DumpSessions,
     Tmuxx(crate::tmuxx_menu::Command),
     NotificationClicked(u64),
+    TuiNotification {
+        token: u64,
+        event: super::TuiNotificationEvent,
+    },
+    TuiNotificationsAlive {
+        token: u64,
+        alive: Vec<u64>,
+    },
     ScreensAwake(bool),
     GlobalHotkey {
         id: u32,
@@ -88,6 +96,8 @@ type EventSink = Arc<dyn Fn(PlatformEvent) + Send + Sync>;
 
 #[path = "macos/drag.rs"]
 mod drag;
+#[path = "macos/notifications.rs"]
+mod tui_notifications;
 
 /// Own once, on the event-loop thread, after winit initializes NSApplication.
 pub struct Platform {
@@ -101,6 +111,7 @@ pub struct Platform {
     global_keys: Option<GlobalKeys>,
     notifications: Option<Retained<UNUserNotificationCenter>>,
     notification_state: Arc<NotificationState>,
+    tui_notifications: Arc<tui_notifications::State>,
     _notification_delegate: Retained<NotificationDelegate>,
     power_observers: Vec<Retained<ProtocolObject<dyn NSObjectProtocol>>>,
     wake_assertion: Cell<u32>,
@@ -321,7 +332,8 @@ impl Platform {
         }));
         menu.init_for_nsapp();
 
-        let delegate = NotificationDelegate::new(callback.clone());
+        let tui_notifications = Arc::new(tui_notifications::State::new(callback.clone())?);
+        let delegate = NotificationDelegate::new(callback.clone(), tui_notifications.clone());
         // UNUserNotificationCenter raises an Objective-C exception for an unbundled
         // command-line executable. The app still works when launched by cargo run.
         let notifications = NSBundle::mainBundle()
@@ -369,6 +381,7 @@ impl Platform {
             global_keys: None,
             notifications,
             notification_state: Arc::default(),
+            tui_notifications,
             _notification_delegate: delegate,
             power_observers,
             wake_assertion: Cell::new(0),
@@ -869,6 +882,31 @@ impl Platform {
         }
     }
 
+    pub fn notify_tui(
+        &self,
+        token: u64,
+        message: &rustty::vt::notification::Message,
+    ) -> Result<(), String> {
+        let center = self
+            .notifications
+            .as_ref()
+            .ok_or("notifications require the Rustty app bundle")?;
+        self.tui_notifications.notify(center, token, message)
+    }
+
+    pub fn close_tui(&self, token: u64) {
+        self.tui_notifications
+            .close(self.notifications.as_deref(), token);
+    }
+
+    pub fn query_tui_alive(&self, token: u64, tokens: &[u64]) -> Result<(), String> {
+        let center = self
+            .notifications
+            .as_ref()
+            .ok_or("notifications require the Rustty app bundle")?;
+        self.tui_notifications.query(center, token, tokens)
+    }
+
     pub fn set_badge(&self, count: usize) {
         let label = (count != 0).then(|| NSString::from_str(&count.to_string()));
         NSApplication::sharedApplication(self.mtm)
@@ -975,16 +1013,21 @@ impl Drop for Platform {
             // SAFETY: tokens came from this center and are still retained until removal completes.
             unsafe { center.removeObserver((*observer).as_ref()) };
         }
-        self.notification_state
+        let identifiers: Vec<_> = self
+            .notification_state
             .panes
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .clear();
+            .drain()
+            .map(|(pane, _)| NSString::from_str(&notification_id(pane)))
+            .collect();
+        self.tui_notifications.clear(self.notifications.as_deref());
         self.menu.remove_for_nsapp();
         if let Some(center) = &self.notifications {
             center.setDelegate(None);
-            center.removeAllPendingNotificationRequests();
-            center.removeAllDeliveredNotifications();
+            let identifiers = NSArray::from_retained_slice(&identifiers);
+            center.removePendingNotificationRequestsWithIdentifiers(&identifiers);
+            center.removeDeliveredNotificationsWithIdentifiers(&identifiers);
         }
     }
 }
@@ -1555,7 +1598,7 @@ fn notification_pane(id: &str) -> Option<u64> {
 
 define_class!(
     #[unsafe(super = NSObject)]
-    #[ivars = EventSink]
+    #[ivars = NotificationCallbacks]
     struct NotificationDelegate;
 
     unsafe impl NSObjectProtocol for NotificationDelegate {}
@@ -1581,13 +1624,20 @@ define_class!(
             completion: &DynBlock<dyn Fn()>,
         ) {
             // Dismissals must not steal focus from the user's current application.
+            if self.ivars().tui.received(
+                &response.notification().request().identifier().to_string(),
+                &response.actionIdentifier().to_string(),
+            ) {
+                completion.call(());
+                return;
+            }
             if response
                 .actionIdentifier()
                 .isEqualToString(unsafe { UNNotificationDefaultActionIdentifier })
                 && let Some(pane) =
                     notification_pane(&response.notification().request().identifier().to_string())
             {
-                (self.ivars())(PlatformEvent::NotificationClicked(pane));
+                (self.ivars().callback)(PlatformEvent::NotificationClicked(pane));
             }
             completion.call(());
         }
@@ -1595,11 +1645,21 @@ define_class!(
 );
 
 impl NotificationDelegate {
-    fn new(callback: EventSink) -> Retained<Self> {
+    fn new(callback: EventSink, tui: Arc<tui_notifications::State>) -> Retained<Self> {
         use objc2::AnyThread;
         // SAFETY: NSObject's initializer does not impose additional invariants.
-        unsafe { msg_send![super(Self::alloc().set_ivars(callback)), init] }
+        unsafe {
+            msg_send![
+                super(Self::alloc().set_ivars(NotificationCallbacks { callback, tui })),
+                init
+            ]
+        }
     }
+}
+
+struct NotificationCallbacks {
+    callback: EventSink,
+    tui: Arc<tui_notifications::State>,
 }
 
 fn make_menu(

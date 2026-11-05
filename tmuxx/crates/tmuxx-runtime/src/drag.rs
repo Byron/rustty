@@ -578,7 +578,7 @@ mod tests {
         assert!(
             send(&mut f.host, 1, 0, &drop)
                 .unwrap_err()
-                .contains("input unavailable")
+                .contains("byte budget")
         );
         assert_eq!(f.host.engine.panes[&0].terminal.drag_view(), before);
         assert_eq!(f.host.processes[&0].input_bytes.load(Ordering::Acquire), 0);

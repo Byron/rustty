@@ -24,6 +24,7 @@ pub use tmuxx_runtime::initialize_conpty;
 pub use tmuxx_runtime::windows::endpoint as windows_endpoint;
 
 mod environment;
+mod notifications;
 mod ssh;
 mod system;
 pub use environment::SessionEnvironment;
@@ -122,6 +123,13 @@ struct PaneState {
     views: Vec<View>,
     drag_identity: u64,
     drag_view: Option<Arc<rustty_vt::dnd::View>>,
+    notification_identity: u64,
+    notifications: BTreeMap<u64, PendingNotification>,
+}
+struct PendingNotification {
+    event_id: u64,
+    command: rustty_vt::notification::Command,
+    untracked: bool,
 }
 struct View {
     terminal: Weak<Mutex<Terminal>>,
@@ -138,6 +146,7 @@ struct View {
 struct Shared {
     model: Mutex<Model>,
     requests: mpsc::SyncSender<Request>,
+    deferred_requests: Mutex<notifications::DeferredRequests>,
     next: AtomicU64,
     wake: Arc<dyn Fn() + Send + Sync>,
     closed: AtomicBool,
@@ -241,14 +250,15 @@ impl PaneInput {
         if last {
             // Release is idempotent after kill-pane; a preceding host-state is not.
             pane.host_state = None;
-            let _ = send_with_snapshot(
+            pane.notifications.clear();
+            pane.notification_identity = crate::session::new_drag_identity();
+            let _ = notifications::lifecycle(
                 &shared,
                 vec![
                     b"tmuxx-release-pane".to_vec(),
                     b"-t".to_vec(),
                     format!("%{}", self.pane).into_bytes(),
                 ],
-                false,
             );
         } else {
             drop(model);
@@ -318,11 +328,11 @@ impl PaneInput {
             return Ok(());
         }
         let request_id = shared.next.fetch_add(1, Ordering::Relaxed);
-        shared.requests.try_send(Request {
+        notifications::queue_request(&shared, Request {
             request_id, argv: vec![b"tmuxx-host-state".to_vec(), b"-t".to_vec(), format!("%{}", self.pane).into_bytes()],
             stdin: Some(serde_json::to_vec(&serde_json::json!({"focused":focused,"visible":visible,"color_scheme":if dark { "dark" } else { "light" }})).map_err(err)?),
             subscribe: false, control: false,
-        }).map_err(err)?;
+        })?;
         pane.host_state = Some((focused, visible, dark));
         Ok(())
     }
@@ -384,9 +394,9 @@ impl PaneInput {
                 "drag request exceeds sixteen MiB",
             ));
         }
-        shared
-            .requests
-            .try_send(Request {
+        notifications::try_request(
+            &shared,
+            Request {
                 request_id: shared.next.fetch_add(1, Ordering::Relaxed),
                 argv: vec![
                     b"tmuxx-dnd".to_vec(),
@@ -396,11 +406,8 @@ impl PaneInput {
                 stdin: Some(bytes),
                 subscribe: false,
                 control: false,
-            })
-            .map_err(|error| match error {
-                mpsc::TrySendError::Full(_) => io::Error::from(io::ErrorKind::WouldBlock),
-                mpsc::TrySendError::Disconnected(_) => io::Error::from(io::ErrorKind::BrokenPipe),
-            })
+            },
+        )
     }
     pub fn write_input(&self, input: &Input) -> io::Result<()> {
         if input.queue_bytes() > 1024 * 1024 {
@@ -410,9 +417,9 @@ impl PaneInput {
             ));
         }
         let shared = self.connection()?;
-        shared
-            .requests
-            .try_send(Request {
+        notifications::try_request(
+            &shared,
+            Request {
                 request_id: shared.next.fetch_add(1, Ordering::Relaxed),
                 argv: vec![
                     b"tmuxx-input".to_vec(),
@@ -423,11 +430,8 @@ impl PaneInput {
                 // Subscription persists; requesting it again transfers every pane's snapshot.
                 subscribe: false,
                 control: false,
-            })
-            .map_err(|error| match error {
-                mpsc::TrySendError::Full(_) => io::Error::from(io::ErrorKind::WouldBlock),
-                mpsc::TrySendError::Disconnected(_) => io::Error::from(io::ErrorKind::BrokenPipe),
-            })
+            },
+        )
     }
     /// Stock tmux's send-keys synchronizes literal bytes; protocol reports must not.
     pub fn write_direct(&self, bytes: &[u8]) -> io::Result<()> {
@@ -447,9 +451,9 @@ impl PaneInput {
             return Ok(());
         }
         let shared = self.connection()?;
-        shared
-            .requests
-            .try_send(Request {
+        notifications::try_request(
+            &shared,
+            Request {
                 request_id: shared.next.fetch_add(1, Ordering::Relaxed),
                 argv: vec![
                     b"tmuxx-system-direct".to_vec(),
@@ -458,11 +462,8 @@ impl PaneInput {
                 stdin: Some(bytes.to_vec()),
                 subscribe: true,
                 control: false,
-            })
-            .map_err(|error| match error {
-                mpsc::TrySendError::Full(_) => io::Error::from(io::ErrorKind::WouldBlock),
-                mpsc::TrySendError::Disconnected(_) => io::Error::from(io::ErrorKind::BrokenPipe),
-            })
+            },
+        )
     }
     pub fn write(&self, bytes: &[u8]) -> io::Result<()> {
         if self.native {
@@ -510,16 +511,17 @@ fn send_with_snapshot(shared: &Shared, argv: Vec<Vec<u8>>, snapshot: bool) -> io
         return Err(err("tmuxx connection is closed"));
     }
     let request_id = shared.next.fetch_add(1, Ordering::Relaxed);
-    shared
-        .requests
-        .try_send(Request {
+    notifications::try_request(
+        shared,
+        Request {
             request_id,
             argv,
             stdin: None,
             subscribe: shared.subscribe && snapshot,
             control: !shared.subscribe,
-        })
-        .map_err(err)?;
+        },
+    )
+    .map_err(err)?;
     Ok(request_id)
 }
 impl Connection {
@@ -528,6 +530,7 @@ impl Connection {
         let shared = Arc::new(Shared {
             model: Mutex::new(Model::default()),
             requests,
+            deferred_requests: Default::default(),
             next: AtomicU64::new(1),
             wake,
             closed: AtomicBool::new(false),
@@ -567,6 +570,7 @@ impl Connection {
         let owner = tmuxx_runtime::start(options)?;
         let client = owner.connect_with_context(tmuxx_runtime::ClientContext {
             host_effects: true,
+            desktop_notifications: true,
             selection_updates: true,
             ..Default::default()
         })?;
@@ -623,6 +627,10 @@ impl Connection {
             .name("rustty-tmuxx-local-write".into())
             .spawn(move || {
                 while !shared_writer.closed.load(Ordering::Acquire) {
+                    if let Err(error) = notifications::flush_requests(&shared_writer) {
+                        fail(&shared_writer, error);
+                        return;
+                    }
                     // Shared owns a request sender, so a timeout is also needed
                     // to observe shutdown when this queue remains idle.
                     match requests.recv_timeout(Duration::from_millis(50)) {
@@ -980,6 +988,7 @@ impl Connection {
             &mut writer,
             &Hello {
                 host_effects,
+                desktop_notifications: host_effects,
                 selection_updates: true,
                 ..Default::default()
             },
@@ -1032,6 +1041,10 @@ impl Connection {
                         .name("rustty-tmuxx-write".into())
                         .spawn(move || {
                             while !shared_writer.closed.load(Ordering::Acquire) {
+                                if let Err(error) = notifications::flush_requests(&shared_writer) {
+                                    fail(&shared_writer, error);
+                                    return;
+                                }
                                 match requests.recv_timeout(Duration::from_millis(50)) {
                                     Ok(request) => {
                                         if let Err(error) = tmuxx_protocol::native::write_request(
@@ -1118,16 +1131,17 @@ impl Connection {
             return Err(err("tmuxx connection is closed"));
         }
         let request_id = self.shared.next.fetch_add(1, Ordering::Relaxed);
-        self.shared
-            .requests
-            .try_send(Request {
+        notifications::try_request(
+            &self.shared,
+            Request {
                 request_id,
                 argv: vec![b"tmuxx-server-status".to_vec()],
                 stdin: None,
                 subscribe: false,
                 control: false,
-            })
-            .map_err(err)?;
+            },
+        )
+        .map_err(err)?;
         // Older owners reject the optional watch; consume only this command's reply.
         let (reply, _) = mpsc::channel();
         model.pending_replies.insert(request_id, reply);
@@ -1149,9 +1163,9 @@ impl Connection {
             return Err(err("tmuxx connection is closed"));
         }
         let request_id = self.shared.next.fetch_add(1, Ordering::Relaxed);
-        self.shared
-            .requests
-            .try_send(Request {
+        notifications::try_request(
+            &self.shared,
+            Request {
                 request_id,
                 argv: tmuxx_runtime::command_argv(&[tmuxx_command::Command::new(
                     [b"source-file".to_vec(), b"--".to_vec()]
@@ -1163,8 +1177,9 @@ impl Connection {
                 subscribe: self.shared.subscribe,
                 // Native diagnostics must reach Reply even for a management observer.
                 control: false,
-            })
-            .map_err(err)?;
+            },
+        )
+        .map_err(err)?;
         Ok(request_id)
     }
     /// Live transports used by this view, including its separate sizing clients.
@@ -1320,16 +1335,19 @@ impl Connection {
             .ok_or_else(|| err("tmuxx pane has no snapshot"))?;
         let owners = pane_state.owners.clone();
         let native = self.system.is_none();
-        if owners.fetch_add(1, Ordering::AcqRel) == 0 && native {
-            send_with_snapshot(
+        if owners.fetch_add(1, Ordering::AcqRel) == 0
+            && native
+            && let Err(error) = notifications::lifecycle(
                 &self.shared,
                 vec![
                     b"tmuxx-claim-pane".to_vec(),
                     b"-t".to_vec(),
                     format!("%{pane}").into_bytes(),
                 ],
-                false,
-            )?;
+            )
+        {
+            owners.fetch_sub(1, Ordering::AcqRel);
+            return Err(error);
         }
         let terminal = Arc::new(Mutex::new(pane_state.terminal.clone()));
         let exited = Arc::new(AtomicBool::new(was_exited));
@@ -1379,6 +1397,7 @@ impl Connection {
 impl Drop for Connection {
     fn drop(&mut self) {
         self.shared.closed.store(true, Ordering::Release);
+        notifications::clear_requests(&self.shared);
         if let Ok(mut model) = self.shared.model.lock() {
             model.pending_focus.clear();
             model.fail_replies("tmuxx connection is closed");
@@ -1510,6 +1529,7 @@ fn fail(shared: &Shared, error: impl std::fmt::Display) {
     if shared.closed.swap(true, Ordering::AcqRel) {
         return;
     }
+    notifications::clear_requests(shared);
     if let Ok(mut model) = shared.model.lock() {
         model.pending_focus.clear();
         model.fail_replies(&error.to_string());
@@ -1763,7 +1783,13 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
                     views: Vec::new(),
                     drag_identity: 0,
                     drag_view: None,
+                    notification_identity: crate::session::new_drag_identity(),
+                    notifications: BTreeMap::new(),
                 });
+                if replaced {
+                    pane.notification_identity = crate::session::new_drag_identity();
+                    pane.notifications.clear();
+                }
                 pane.drag_identity = crate::session::new_drag_identity();
                 pane.drag_view = remote
                     .terminal
@@ -1866,9 +1892,16 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
             }
             model.last_host_event = Some(event_id);
             let action: HostAction = serde_json::from_value(action).map_err(err)?;
+            if let HostAction::Notification {
+                kitty: Some(command),
+                ..
+            } = action
+            {
+                return notifications::deliver(shared, &mut model, pane_id, event_id, command);
+            }
             let (effect, denied) = match action {
                 HostAction::Bell => (Effect::Bell, None),
-                HostAction::Notification { title, body } => {
+                HostAction::Notification { title, body, .. } => {
                     (Effect::Notification { title, body }, None)
                 }
                 HostAction::ClipboardRead(read) => (
@@ -1989,7 +2022,12 @@ fn apply(shared: &Shared, message: ServerMessage) -> io::Result<()> {
 #[derive(Deserialize)]
 enum HostAction {
     Bell,
-    Notification { title: Vec<u8>, body: Vec<u8> },
+    Notification {
+        title: Vec<u8>,
+        body: Vec<u8>,
+        #[serde(default)]
+        kitty: Option<rustty_vt::notification::Command>,
+    },
     ClipboardRead(rustty_vt::clipboard::Read),
     ClipboardWrite(rustty_vt::clipboard::Write),
 }
@@ -1997,22 +2035,26 @@ enum HostAction {
 pub enum HostResponse {
     Read(rustty_vt::clipboard::ReadResult),
     Write(rustty_vt::clipboard::WriteResult),
+    Notification(rustty_vt::notification::Reply),
 }
 fn host_reply(shared: &Shared, event_id: u64, response: HostResponse) -> io::Result<()> {
     let request_id = shared.next.fetch_add(1, Ordering::Relaxed);
-    shared
-        .requests
-        .try_send(Request {
-            request_id,
-            argv: vec![
-                b"tmuxx-host-reply".to_vec(),
-                event_id.to_string().into_bytes(),
-            ],
-            stdin: Some(serde_json::to_vec(&response).map_err(err)?),
-            subscribe: false,
-            control: false,
-        })
-        .map_err(err)
+    let notification = matches!(response, HostResponse::Notification(_));
+    let request = Request {
+        request_id,
+        argv: vec![
+            b"tmuxx-host-reply".to_vec(),
+            event_id.to_string().into_bytes(),
+        ],
+        stdin: Some(serde_json::to_vec(&response).map_err(err)?),
+        subscribe: false,
+        control: false,
+    };
+    if notification {
+        notifications::queue_request(shared, request)
+    } else {
+        notifications::try_request(shared, request).map_err(err)
+    }
 }
 
 fn view_event(effect: Effect) -> Option<SessionEvent> {
@@ -2020,6 +2062,15 @@ fn view_event(effect: Effect) -> Option<SessionEvent> {
         Effect::Notification { title, body } => {
             Some(SessionEvent::NotificationObserved { title, body })
         }
+        Effect::DesktopNotification(command) => match command.action {
+            rustty_vt::notification::Action::Show(message) => {
+                Some(SessionEvent::NotificationObserved {
+                    title: message.title.into_bytes(),
+                    body: message.body.into_bytes(),
+                })
+            }
+            _ => None,
+        },
         Effect::Write(_) | Effect::Bell | Effect::ClipboardRead(_) | Effect::ClipboardWrite(_) => {
             None
         }
@@ -2072,6 +2123,221 @@ mod focus_tests {
         )
         .unwrap();
     }
+    #[test]
+    fn desktop_notification_replies_share_scope_and_retire_old_callbacks() {
+        use rustty_vt::notification::{Command, Reply};
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);
+        let mut initial = state();
+        initial["panes"][0]["pid"] = serde_json::json!(123);
+        snapshot(&connection, 1, initial.clone());
+        let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let scope = first.notification_identity().unwrap();
+        assert_eq!(scope, second.notification_identity().unwrap());
+        let mut issue = || -> Command {
+            owner
+                .feed(b"\x1b]99;i=job:a=report:c=1;Finished\x1b\\")
+                .into_iter()
+                .find_map(|effect| match effect {
+                    Effect::DesktopNotification(command) => Some(command),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let deliver = |event_id, command: &Command| {
+            apply(
+                &connection.shared,
+                ServerMessage::HostEffect {
+                    sequence: 1,
+                    pane_id: 7,
+                    event_id,
+                    action: serde_json::to_value(tmuxx_terminal::HostAction::Notification {
+                        title: b"Finished".to_vec(),
+                        body: Vec::new(),
+                        kitty: Some(command.clone()),
+                    })
+                    .unwrap(),
+                },
+            )
+            .unwrap();
+        };
+        let replies = || {
+            requests
+                .try_iter()
+                .filter(|request| request.argv[0] == b"tmuxx-host-reply")
+                .collect::<Vec<_>>()
+        };
+        let original = issue();
+        deliver(1, &original);
+        assert_eq!(
+            first
+                .events()
+                .filter(|event| matches!(event, SessionEvent::DesktopNotificationDelivery(_)))
+                .count(),
+            1
+        );
+        assert!(
+            !second
+                .events()
+                .any(|event| matches!(event, SessionEvent::DesktopNotificationDelivery(_)))
+        );
+        assert!(
+            second
+                .reply_notification(&original, Reply::Activated { button: 1 })
+                .is_err()
+        );
+        assert!(replies().is_empty());
+        second
+            .reply_notification(&original, Reply::Untracked)
+            .unwrap();
+        second
+            .reply_notification(&original, Reply::Untracked)
+            .unwrap();
+        assert_eq!(replies().len(), 1);
+        snapshot(&connection, 2, initial.clone());
+        assert_eq!(scope, second.notification_identity().unwrap());
+        drop(first);
+        second
+            .reply_notification(&original, Reply::Activated { button: 0 })
+            .unwrap();
+        let sent = replies();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].argv[1], b"1");
+        assert!(second.reply_notification(&original, Reply::Closed).is_err());
+        let old = issue();
+        deliver(2, &old);
+        let replacement = issue();
+        deliver(3, &replacement);
+        assert!(
+            second
+                .reply_notification(&old, Reply::Activated { button: 0 })
+                .is_err()
+        );
+        second.reply_notification(&old, Reply::Finished).unwrap();
+        assert!(replies().is_empty());
+        second
+            .reply_notification(&replacement, Reply::Closed)
+            .unwrap();
+        assert_eq!(replies().len(), 1);
+        let stale = issue();
+        deliver(4, &stale);
+        initial["panes"][0]["pid"] = serde_json::json!(456);
+        snapshot(&connection, 3, initial);
+        assert_ne!(scope, second.notification_identity().unwrap());
+        assert!(second.reply_notification(&stale, Reply::Closed).is_err());
+        assert!(replies().is_empty());
+        connection.shared.closed.store(true, Ordering::Release);
+        assert!(second.notification_identity().is_err());
+    }
+
+    #[test]
+    fn notification_replies_survive_full_connection_queue_and_last_view_release() {
+        use rustty_vt::notification::Reply;
+        let (connection, requests) = Connection::base(Arc::new(|| {}), true);
+        snapshot(&connection, 1, state());
+        let session = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let identity = session.notification_identity().unwrap();
+        let command = tmuxx_terminal::Terminal::new(10, 4, 10)
+            .feed(b"\x1b]99;i=job:a=report:c=1;Finished\x1b\\")
+            .into_iter()
+            .find_map(|effect| match effect {
+                Effect::DesktopNotification(command) => Some(command),
+                _ => None,
+            })
+            .unwrap();
+        apply(
+            &connection.shared,
+            ServerMessage::HostEffect {
+                sequence: 1,
+                pane_id: 7,
+                event_id: 77,
+                action: serde_json::to_value(tmuxx_terminal::HostAction::Notification {
+                    title: b"Finished".to_vec(),
+                    body: Vec::new(),
+                    kitty: Some(command.clone()),
+                })
+                .unwrap(),
+            },
+        )
+        .unwrap();
+        assert!(
+            session
+                .events()
+                .any(|event| matches!(event, SessionEvent::DesktopNotificationDelivery(_)))
+        );
+        assert_eq!(requests.try_iter().count(), 1); // Initial claim.
+        for _ in 0..256 {
+            session.write(b"ordinary input").unwrap();
+        }
+        assert!(session.write(b"full").is_err());
+        session
+            .reply_notification(&command, Reply::Untracked)
+            .unwrap();
+        session
+            .reply_notification(&command, Reply::Untracked)
+            .unwrap();
+        session.reply_notification(&command, Reply::Closed).unwrap();
+        assert!(session.reply_notification(&command, Reply::Closed).is_err());
+        session.close();
+        // Accepted bytes belong to the connection, not the now-empty pane map.
+        assert!(
+            connection.shared.model.lock().unwrap().panes[&7]
+                .notifications
+                .is_empty()
+        );
+        let reopened = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        assert_ne!(identity, reopened.notification_identity().unwrap());
+        reopened
+            .set_host_state(true, true, rustty_vt::query::ColorScheme::Dark)
+            .unwrap();
+        // A newly freed slot is still behind the deferred replies and release.
+        requests.try_recv().unwrap();
+        assert_eq!(
+            reopened.write(b"after reopen").unwrap_err().kind(),
+            io::ErrorKind::WouldBlock
+        );
+        assert!(
+            connection
+                .command(["display-message", "after reopen"])
+                .is_err()
+        );
+        assert!(connection.watch_server().is_err());
+        assert_eq!(requests.try_iter().count(), 255);
+        notifications::flush_requests(&connection.shared).unwrap();
+        reopened.write(b"after reopen").unwrap();
+        connection
+            .command(["display-message", "after reopen"])
+            .unwrap();
+        let sent = requests.try_iter().collect::<Vec<_>>();
+        assert_eq!(sent.len(), 7);
+        for request in &sent[..2] {
+            assert_eq!(request.argv, [b"tmuxx-host-reply".to_vec(), b"77".to_vec()]);
+        }
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(sent[0].stdin.as_ref().unwrap()).unwrap(),
+            serde_json::json!({"Notification":"Untracked"})
+        );
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(sent[1].stdin.as_ref().unwrap()).unwrap(),
+            serde_json::json!({"Notification":"Closed"})
+        );
+        assert_eq!(
+            sent[2].argv,
+            [
+                b"tmuxx-release-pane".to_vec(),
+                b"-t".to_vec(),
+                b"%7".to_vec()
+            ]
+        );
+        assert_eq!(sent[3].argv[0], b"tmuxx-claim-pane");
+        assert_eq!(sent[4].argv[0], b"tmuxx-host-state");
+        assert_eq!(sent[5].argv[0], b"tmuxx-input");
+        assert_eq!(sent[6].argv[0], b"display-message");
+        notifications::flush_requests(&connection.shared).unwrap();
+        assert!(requests.try_recv().is_err());
+    }
+
     #[test]
     fn native_drag_registration_without_owner_metadata_blocks_paste_fallback() {
         let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
@@ -3871,11 +4137,10 @@ mod tests {
         for _ in 0..256 {
             view.write(b"x").unwrap();
         }
-        assert!(
-            view.set_host_state(false, false, rustty_vt::query::ColorScheme::Light)
-                .is_err()
-        );
+        view.set_host_state(false, false, rustty_vt::query::ColorScheme::Light)
+            .unwrap();
         assert_eq!(requests.try_iter().count(), 256);
+        notifications::flush_requests(&connection.shared).unwrap();
         view.set_host_state(false, false, rustty_vt::query::ColorScheme::Light)
             .unwrap();
         let retry = requests.try_recv().unwrap();
@@ -3901,6 +4166,8 @@ mod tests {
                 views: Vec::new(),
                 drag_identity: crate::session::new_drag_identity(),
                 drag_view: None,
+                notification_identity: crate::session::new_drag_identity(),
+                notifications: BTreeMap::new(),
             },
         );
         let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();

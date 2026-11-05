@@ -26,6 +26,8 @@ pub enum Effect {
         title: Vec<u8>,
         body: Vec<u8>,
     },
+    /// OSC 99 requests, enabled by `Terminal::notification_capabilities`.
+    DesktopNotification(crate::notification::Command),
     /// Private pane-local metadata, enabled by `Terminal::agent_status_events`.
     AgentStatus(crate::agent::Event),
     /// Validated OSC 7501 metadata, enabled by `Terminal::program_status_events`.
@@ -169,6 +171,10 @@ pub struct Terminal {
     /// Accept OSC 7501 reports and answer support queries. Disabled by default;
     /// retained through reset, but not persisted in terminal snapshots.
     pub program_status_events: bool,
+    /// OSC 99 host capabilities. Disabled by default and omitted from snapshots.
+    /// RIS clears multipart input while retaining this policy and command serials.
+    pub notification_capabilities: Option<crate::notification::Capabilities>,
+    pub(crate) notifications: crate::notification::State,
     pub(crate) program_status: crate::program_status::Records,
     pub(crate) program_status_focused: bool,
     /// Report ANSI mode 20 changes to the PTY writer, including RIS. Retained
@@ -271,6 +277,8 @@ impl Terminal {
             tmux_image_quota: None,
             agent_status_events: false,
             program_status_events: false,
+            notification_capabilities: None,
+            notifications: Default::default(),
             program_status: Default::default(),
             program_status_focused: false,
             linefeed_mode_events: false,
@@ -863,6 +871,7 @@ impl Terminal {
     /// Reset terminal state while preserving the input stream's pending bytes.
     /// A host reset does not cancel a partially received escape sequence.
     pub fn reset(&mut self) {
+        self.notifications.clear_pending();
         if self.tmux_graphics {
             self.reset_tmux();
             return;
@@ -908,6 +917,8 @@ impl Terminal {
         }
         let agent_status_events = self.agent_status_events;
         let program_status_events = self.program_status_events;
+        let notification_capabilities = self.notification_capabilities;
+        let notifications = std::mem::take(&mut self.notifications);
         let program_status_focused = self.program_status_focused;
         let linefeed_mode_events = self.linefeed_mode_events;
         let synchronized_output_generation = self.synchronized_output_generation;
@@ -979,6 +990,8 @@ impl Terminal {
         }
         self.agent_status_events = agent_status_events;
         self.program_status_events = program_status_events;
+        self.notification_capabilities = notification_capabilities;
+        self.notifications = notifications;
         self.program_status_focused = program_status_focused;
         self.linefeed_mode_events = linefeed_mode_events;
         self.synchronized_output_generation = synchronized_output_generation;
@@ -1419,6 +1432,9 @@ impl Terminal {
                 self.apc_graphics_rejected = false;
             }
             Event::OscOverflow => {
+                // The parser cannot retain an oversized chunk's prefix. A
+                // pending notification must not display with that chunk lost.
+                self.notifications.poison();
                 effects.push(Effect::UnknownSequence("OSC exceeded capture limit".into()))
             }
         }
@@ -3669,11 +3685,17 @@ impl Terminal {
             // Allocating captures count only bytes after the numeric prefix.
             // OSC 52 and 66 reserve a byte for the parser's trailing NUL.
             52 | 66 if !has_separator || data.len() >= MAX_OSC_BYTES => return,
-            72 | 99 | 5522 if !has_separator || data.len() > MAX_OSC_BYTES => return,
+            72 | 5522 if !has_separator || data.len() > MAX_OSC_BYTES => return,
+            // OSC 99 applies its tighter per-chunk limits while poisoning any
+            // unfinished transaction, including through the direct OSC API.
+            99 if !has_separator => return,
             _ => {}
         }
         match number {
             66 => self.osc_text_width(data),
+            99 => self
+                .notifications
+                .handle(data, self.notification_capabilities, effects),
             7501 => self.osc_program_status(data, bell, effects),
             0 | 2 => {
                 // The stream validates the full title before the host handler

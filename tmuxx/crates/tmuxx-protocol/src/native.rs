@@ -42,6 +42,9 @@ pub struct Hello {
     pub environment: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     pub host_effects: bool,
+    /// Opt into OSC 99 host requests and their lifecycle replies.
+    #[serde(default)]
+    pub desktop_notifications: bool,
     /// Tagged control requests preserve source blocks and per-command guards.
     #[serde(default)]
     pub control_commands: bool,
@@ -70,6 +73,7 @@ impl Default for Hello {
             cwd: None,
             environment: Default::default(),
             host_effects: false,
+            desktop_notifications: false,
             control_commands: true,
             stdin_file_stream: false,
             client_features: None,

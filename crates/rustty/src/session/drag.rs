@@ -11,7 +11,7 @@ pub(crate) fn new_identity() -> u64 {
 }
 
 pub(super) struct Cache {
-    identity: u64,
+    pub(super) identity: u64,
     view: Option<Arc<dnd::View>>,
 }
 
@@ -140,6 +140,7 @@ mod tests {
                 input,
                 events,
                 pending_input: Arc::new(PendingInput::default()),
+                notification_input: Arc::new(PendingInput::default()),
                 compression_pending: Arc::new(AtomicBool::new(false)),
                 restored: Arc::new(Mutex::new(None)),
                 exited: Arc::new(AtomicBool::new(false)),

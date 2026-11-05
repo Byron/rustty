@@ -113,8 +113,24 @@ impl Engine {
                     continue;
                 }
                 tmuxx_terminal::Effect::Bell => HostAction::Bell,
-                tmuxx_terminal::Effect::Notification { title, body } => {
-                    HostAction::Notification { title, body }
+                tmuxx_terminal::Effect::Notification { title, body } => HostAction::Notification {
+                    title,
+                    body,
+                    kitty: None,
+                },
+                tmuxx_terminal::Effect::DesktopNotification(command) => {
+                    let (title, body) = match &command.action {
+                        tmuxx_terminal::notification::Action::Show(message) => (
+                            message.title.as_bytes().to_vec(),
+                            message.body.as_bytes().to_vec(),
+                        ),
+                        _ => (Vec::new(), Vec::new()),
+                    };
+                    HostAction::Notification {
+                        title,
+                        body,
+                        kitty: Some(command),
+                    }
                 }
                 tmuxx_terminal::Effect::ClipboardWrite(request) => {
                     if request.is_osc52() {

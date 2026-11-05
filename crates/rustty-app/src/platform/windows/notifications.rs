@@ -27,10 +27,12 @@ use std::{
 
 const ACTIVATOR: GUID = GUID::from_u128(0x9cb270bb_cc8f_4c71_acf2_4d632a9a7e26);
 type Panes = Arc<Mutex<HashSet<u64>>>;
+mod tui;
 struct Bridge {
     callback: EventSink,
     panes: Panes,
     token: u64,
+    tui: Arc<tui::State>,
 }
 thread_local! { static BRIDGE:RefCell<Option<Bridge>>=const {RefCell::new(None)}; }
 fn activation_message() -> u32 {
@@ -38,6 +40,16 @@ fn activation_message() -> u32 {
     *MESSAGE.get_or_init(|| unsafe { RegisterWindowMessageW(w!("app.rustty.toast-activated.v1")) })
 }
 pub(super) fn message_hook(message: &MSG) -> bool {
+    if let Some(button) = tui::message_button(message.message) {
+        BRIDGE.with(|slot| {
+            if let Some(bridge) = slot.borrow().as_ref()
+                && message.lParam.0 as u64 == bridge.token
+            {
+                bridge.tui.activated(message.wParam.0 as u64, button);
+            }
+        });
+        return true;
+    }
     if message.message != activation_message() || message.message == 0 {
         return false;
     }
@@ -61,6 +73,7 @@ struct Activation {
     callback: EventSink,
     panes: Panes,
     token: u64,
+    tui: Arc<tui::State>,
     completed: Option<Arc<AtomicBool>>,
 }
 impl INotificationActivationCallback_Impl for Activation_Impl {
@@ -85,6 +98,33 @@ impl INotificationActivationCallback_Impl for Activation_Impl {
         }
         let app = unsafe { app.to_string() }?;
         let arguments = unsafe { arguments.to_string() }?;
+        if app == APP_USER_MODEL_ID
+            && let Some(target) = tui::Target::parse(&arguments)
+        {
+            if target.process == std::process::id() {
+                if target.nonce == self.token {
+                    self.tui.activated(target.token, target.button);
+                }
+            } else {
+                let hwnd = HWND(target.window as usize as _);
+                let mut process = 0;
+                unsafe {
+                    GetWindowThreadProcessId(hwnd, Some(&mut process));
+                }
+                let message = tui::activation_message(target.button);
+                if process == target.process && message != 0 {
+                    unsafe {
+                        PostMessageW(
+                            Some(hwnd),
+                            message,
+                            WPARAM(target.token as usize),
+                            LPARAM(target.nonce as isize),
+                        )
+                    }?;
+                }
+            }
+            return Ok(());
+        }
         if app == APP_USER_MODEL_ID
             && let Some(target) = notification_target(&arguments)
         {
@@ -126,6 +166,7 @@ struct Factory {
     callback: EventSink,
     panes: Panes,
     token: u64,
+    tui: Arc<tui::State>,
     completed: Option<Arc<AtomicBool>>,
 }
 impl IClassFactory_Impl for Factory_Impl {
@@ -148,6 +189,7 @@ impl IClassFactory_Impl for Factory_Impl {
             callback: self.callback.clone(),
             panes: self.panes.clone(),
             token: self.token,
+            tui: self.tui.clone(),
             completed: self.completed.clone(),
         }
         .into();
@@ -167,6 +209,7 @@ pub(super) struct Notifications {
     taskbar: Option<ITaskbarList3>,
     routing_window: MessageWindow,
     token: u64,
+    tui: Arc<tui::State>,
 }
 // A message-only HWND survives individual workspace windows and is never visible.
 struct MessageWindow(HWND);
@@ -181,6 +224,7 @@ impl Notifications {
         let mut entropy = [0u8; 8];
         super::Platform::secure_random(&mut entropy).map_err(err)?;
         let token = u64::from_ne_bytes(entropy);
+        let tui = Arc::new(tui::State::new(callback.clone(), token));
         if activation_message() == 0 {
             return Err("Could not register toast activation message".into());
         }
@@ -207,6 +251,7 @@ impl Notifications {
             callback: callback.clone(),
             panes: panes.clone(),
             token,
+            tui: tui.clone(),
             completed: None,
         }
         .into();
@@ -224,6 +269,7 @@ impl Notifications {
                 callback,
                 panes: panes.clone(),
                 token,
+                tui: tui.clone(),
             })
         });
         let (notifier, error) = match ToastNotificationManager::CreateToastNotifierWithId(
@@ -251,6 +297,7 @@ impl Notifications {
             taskbar,
             routing_window,
             token,
+            tui,
         })
     }
     pub fn notify(&self, pane: u64, title: &str, body: &str) -> Result<(), String> {
@@ -302,6 +349,28 @@ impl Notifications {
             );
         }
     }
+
+    pub fn notify_tui(
+        &self,
+        token: u64,
+        message: &rustty::vt::notification::Message,
+    ) -> Result<(), String> {
+        let notifier = self.notifier.as_ref().ok_or_else(|| {
+            self.error
+                .clone()
+                .unwrap_or_else(|| "Windows toast service is unavailable".into())
+        })?;
+        self.tui
+            .notify(notifier, self.routing_window.0, self.token, token, message)
+    }
+
+    pub fn close_tui(&self, token: u64) {
+        self.tui.close(token);
+    }
+
+    pub fn query_tui_alive(&self, token: u64, tokens: &[u64]) -> Result<(), String> {
+        self.tui.query(token, tokens)
+    }
     pub fn set_badge(&self, hwnd: HWND, count: usize) {
         let Some(taskbar) = &self.taskbar else {
             return;
@@ -339,6 +408,9 @@ impl Drop for Notifications {
             .collect::<Vec<_>>();
         for pane in panes {
             self.clear(pane);
+        }
+        for token in self.tui.tokens() {
+            self.tui.close(token);
         }
         let _ = unsafe { CoRevokeClassObject(self.registration) };
         BRIDGE.with(|slot| slot.borrow_mut().take());
@@ -386,6 +458,7 @@ pub(super) fn run_toast_activator() -> Result<(), String> {
         callback: Arc::new(|_| {}),
         panes: Panes::default(),
         token: 0,
+        tui: Arc::new(tui::State::new(Arc::new(|_| {}), 0)),
         completed: Some(completed.clone()),
     }
     .into();
@@ -516,6 +589,7 @@ mod tests {
         let callback: INotificationActivationCallback = Activation {
             panes: panes.clone(),
             token: 123,
+            tui: Arc::new(tui::State::new(Arc::new(|_| {}), 123)),
             completed: None,
             callback: Arc::new(move |event| {
                 if let PlatformEvent::NotificationClicked(pane) = event {
@@ -548,6 +622,7 @@ mod tests {
             *slot.borrow_mut() = Some(Bridge {
                 panes: panes.clone(),
                 token: 123,
+                tui: Arc::new(tui::State::new(Arc::new(|_| {}), 123)),
                 callback: Arc::new(move |event| {
                     if let PlatformEvent::NotificationClicked(pane) = event {
                         result.store(pane, Ordering::Relaxed);

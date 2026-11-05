@@ -53,6 +53,14 @@ pub enum PlatformEvent {
     Tmuxx(crate::tmuxx_menu::Command),
     GlobalHotkey(KeyBinding),
     NotificationClicked(u64),
+    TuiNotification {
+        token: u64,
+        event: super::TuiNotificationEvent,
+    },
+    TuiNotificationsAlive {
+        token: u64,
+        alive: Vec<u64>,
+    },
 }
 type EventSink = Arc<dyn Fn(PlatformEvent) + Send + Sync>;
 
@@ -448,6 +456,22 @@ impl Platform {
     }
     pub fn clear_notifications(&self, pane: u64) {
         self.notifications.clear(pane);
+    }
+
+    pub fn notify_tui(
+        &self,
+        token: u64,
+        message: &rustty::vt::notification::Message,
+    ) -> Result<(), String> {
+        self.notifications.notify_tui(token, message)
+    }
+
+    pub fn close_tui(&self, token: u64) {
+        self.notifications.close_tui(token);
+    }
+
+    pub fn query_tui_alive(&self, token: u64, tokens: &[u64]) -> Result<(), String> {
+        self.notifications.query_tui_alive(token, tokens)
     }
     pub fn set_badge(&self, count: usize) {
         *self.badge.borrow_mut() = count;

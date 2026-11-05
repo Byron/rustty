@@ -29,6 +29,7 @@ mod hooks;
 mod lifecycle;
 mod messages;
 mod names;
+mod notifications;
 mod process;
 mod reports;
 mod scheduler;
@@ -175,18 +176,32 @@ struct PendingHostAction {
     client: u64,
     pane: Id,
     action: HostAction,
-    deadline: Instant,
+    deadline: Option<Instant>,
+    process_generation: Option<u64>,
+    untracked: bool,
+    notification_reply: Option<notifications::PendingReply>,
 }
 
 impl Process {
     fn write_input(&self, data: Vec<u8>) -> Result<(), String> {
+        self.try_write_input(data)
+            .map_err(|(_, error)| match error {
+                io::ErrorKind::WouldBlock => "pane input queue exceeds byte budget".into(),
+                _ => "pane input unavailable: writer disconnected".into(),
+            })
+    }
+
+    /// Return ownership on congestion so acknowledged protocol replies can wait.
+    fn try_write_input(&self, data: Vec<u8>) -> Result<(), (Vec<u8>, io::ErrorKind)> {
         let size = data.len();
         let mut pending = self.input_bytes.load(Ordering::Acquire);
         loop {
-            let total = pending
+            let Some(total) = pending
                 .checked_add(size)
                 .filter(|total| *total <= MAX_REQUEST_BYTES)
-                .ok_or("pane input queue exceeds byte budget")?;
+            else {
+                return Err((data, io::ErrorKind::WouldBlock));
+            };
             match self.input_bytes.compare_exchange_weak(
                 pending,
                 total,
@@ -199,7 +214,10 @@ impl Process {
         }
         if let Err(error) = self.input.try_send(data) {
             self.input_bytes.fetch_sub(size, Ordering::AcqRel);
-            return Err(format!("pane input unavailable: {error}"));
+            return Err(match error {
+                TrySendError::Full(data) => (data, io::ErrorKind::WouldBlock),
+                TrySendError::Disconnected(data) => (data, io::ErrorKind::BrokenPipe),
+            });
         }
         Ok(())
     }
@@ -998,6 +1016,7 @@ fn serve_connection(
         cwd: hello.cwd,
         environment: hello.environment,
         host_effects: hello.host_effects,
+        desktop_notifications: hello.desktop_notifications,
         selection_updates: hello.selection_updates,
         ..ClientContext::default()
     };
@@ -1277,6 +1296,7 @@ impl Host {
             }
             let alerts = self.engine.alert_tick();
             let _ = self.effects(alerts);
+            self.flush_notification_replies();
             self.expire_host();
             self.reap_pipes();
             self.control_tick();
@@ -1663,6 +1683,9 @@ impl Host {
         }
     }
     fn dispatch_host(&mut self, pane: Id, action: HostAction) -> Result<(), String> {
+        if action.desktop_notification().is_some() {
+            return self.dispatch_notification(pane, action);
+        }
         let client = self
             .clients
             .iter()
@@ -1705,8 +1728,17 @@ impl Host {
                 PendingHostAction {
                     client,
                     pane,
+                    deadline: (!action.desktop_notification().is_some_and(|command| {
+                        matches!(
+                            command.action,
+                            tmuxx_terminal::notification::Action::Show(_)
+                        )
+                    }))
+                    .then(|| Instant::now() + Duration::from_secs(30)),
+                    process_generation: self.processes.get(&pane).map(|process| process.generation),
+                    untracked: false,
+                    notification_reply: None,
                     action,
-                    deadline: Instant::now() + Duration::from_secs(30),
                 },
             );
         }
@@ -1767,9 +1799,20 @@ impl Host {
         if pending.client != client {
             return Err("host event belongs to another client".into());
         }
+        if pending.action.desktop_notification().is_some()
+            && input.as_ref().is_some_and(|input| input.len() > 64 * 1024)
+        {
+            return Err("notification response exceeds sixty-four KiB".into());
+        }
         let response: HostResponse =
             serde_json::from_slice(input.as_deref().ok_or("missing host response")?)
                 .map_err(|e| e.to_string())?;
+        if pending.action.desktop_notification().is_some() {
+            let HostResponse::Notification(reply) = response else {
+                return Err("host response type mismatch".into());
+            };
+            return self.respond_notification(event, reply);
+        }
         if !matches!(
             (&pending.action, &response),
             (HostAction::ClipboardRead(_), HostResponse::Read(_))
@@ -1787,6 +1830,14 @@ impl Host {
 
     fn deny_host_events(&mut self, events: Vec<u64>) {
         for event in events {
+            if self
+                .host_actions
+                .get(&event)
+                .is_some_and(|pending| pending.action.desktop_notification().is_some())
+            {
+                self.retire_notification(event);
+                continue;
+            }
             if let Some(pending) = self.host_actions.remove(&event) {
                 let response = pending.action.denied().unwrap();
                 if let Ok(effects) =
@@ -1920,7 +1971,10 @@ impl Host {
             .host_actions
             .iter()
             .filter(|(_, pending)| {
-                pending.deadline <= now || !self.engine.panes.contains_key(&pending.pane)
+                pending.deadline.is_some_and(|deadline| deadline <= now)
+                    || !self.engine.panes.contains_key(&pending.pane)
+                    || pending.action.desktop_notification().is_some()
+                        && !self.notification_owner_alive(pending)
             })
             .map(|(id, _)| *id)
             .collect();

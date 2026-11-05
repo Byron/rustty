@@ -27,6 +27,8 @@ mod theme_preview;
 mod tmuxx_host;
 #[path = "tmuxx_theme.rs"]
 mod tmuxx_theme;
+#[path = "notification_controller.rs"]
+mod tui_notifications;
 use command_palette::{CommandPalette, PaletteEvent};
 use egui::{Color32, Pos2, Sense, Vec2, ViewportId};
 use rustty::{
@@ -1301,6 +1303,7 @@ struct App {
     windows: HashMap<WindowId, Host>,
     outliner: Option<outliner_host::OutlinerHost>,
     platform: Option<Platform>,
+    tui_notifications: tui_notifications::Controller,
     consumed_global_keys: HashSet<PhysicalKey>,
     context: egui::Context,
     painter: painter::Painter,
@@ -1539,6 +1542,7 @@ pub fn run() -> Result<()> {
         windows: HashMap::new(),
         outliner: None,
         platform: None,
+        tui_notifications: tui_notifications::Controller::default(),
         consumed_global_keys: HashSet::new(),
         context,
         painter,
@@ -2803,6 +2807,134 @@ impl App {
         self.refresh_drag_views();
     }
 
+    fn notification_scope_pane(&self, scope: u64, preferred: Id) -> Option<Id> {
+        std::iter::once(preferred)
+            .chain(self.panes.keys().copied())
+            .find(|id| {
+                self.panes.get(id).is_some_and(|pane| {
+                    !pane.exited
+                        && self
+                            .workspace
+                            .windows
+                            .iter()
+                            .flat_map(|window| &window.tabs)
+                            .any(|tab| tab.contains(*id))
+                        && pane.session.notification_identity().ok() == Some(scope)
+                })
+            })
+    }
+
+    fn notification_command(&mut self, pane: Id, command: vt::notification::Command) {
+        let Some(scope) = self
+            .panes
+            .get(&pane)
+            .filter(|pane| !pane.exited)
+            .and_then(|pane| pane.session.notification_identity().ok())
+        else {
+            return;
+        };
+        let operations = self.tui_notifications.command(scope, pane, command);
+        self.notification_operations(operations);
+    }
+
+    fn notification_operations(&mut self, operations: Vec<tui_notifications::Operation>) {
+        self.notification_operations_with(operations, |platform, native, message| {
+            let platform = platform.ok_or("desktop notifications are unavailable")?;
+            match native {
+                tui_notifications::Native::Show(token) => {
+                    platform.notify_tui(*token, message.unwrap())
+                }
+                tui_notifications::Native::Close(token) => {
+                    platform.close_tui(*token);
+                    Ok(())
+                }
+                tui_notifications::Native::Query { token, requested } => {
+                    platform.query_tui_alive(*token, requested)
+                }
+            }
+        });
+    }
+
+    fn notification_operations_with(
+        &mut self,
+        operations: Vec<tui_notifications::Operation>,
+        mut native: impl FnMut(
+            Option<&Platform>,
+            &tui_notifications::Native,
+            Option<&vt::notification::Message>,
+        ) -> std::result::Result<(), String>,
+    ) {
+        let mut operations: VecDeque<_> = operations.into();
+        while let Some(operation) = operations.pop_front() {
+            match operation {
+                tui_notifications::Operation::Native(effect) => {
+                    let message = if let tui_notifications::Native::Show(token) = &effect {
+                        let Some(message) = self.tui_notifications.message(*token) else {
+                            continue;
+                        };
+                        Some(message)
+                    } else {
+                        None
+                    };
+                    if let Err(error) = native(self.platform.as_ref(), &effect, message) {
+                        self.errors.push(error);
+                        operations.extend(match effect {
+                            tui_notifications::Native::Show(token) => self
+                                .tui_notifications
+                                .event(token, rustty_app::platform::TuiNotificationEvent::Failed),
+                            tui_notifications::Native::Query { token, .. } => {
+                                self.tui_notifications.query_failed(token)
+                            }
+                            tui_notifications::Native::Close(_) => Vec::new(),
+                        });
+                        self.context.request_repaint();
+                    }
+                }
+                tui_notifications::Operation::Focus { scope, pane } => {
+                    if let Some(pane) = self.notification_scope_pane(scope, pane) {
+                        self.reveal_pane(pane);
+                    }
+                }
+                tui_notifications::Operation::Reply {
+                    scope,
+                    pane,
+                    command,
+                    reply,
+                } => {
+                    if let Some(pane) = self.notification_scope_pane(scope, pane)
+                        && let Err(error) = self.panes[&pane]
+                            .session
+                            .reply_notification(&command, reply)
+                    {
+                        self.errors
+                            .push(format!("Could not reply to notification: {error}"));
+                        self.context.request_repaint();
+                    }
+                }
+            }
+        }
+    }
+
+    fn prune_tui_notifications(&mut self) {
+        if self.tui_notifications.is_empty() {
+            return;
+        }
+        let scopes: HashSet<_> = self
+            .workspace
+            .windows
+            .iter()
+            .flat_map(|window| &window.tabs)
+            .flat_map(Tab::pane_ids)
+            .filter_map(|id| self.panes.get(&id))
+            .filter(|pane| !pane.exited)
+            .filter_map(|pane| pane.session.notification_identity().ok())
+            .collect();
+        let operations = self
+            .tui_notifications
+            .prune(|scope| scopes.contains(&scope));
+        self.notification_operations(operations);
+    }
+
     fn drop_text(&mut self, host: &mut Host, position: Pos2, text: String) {
         if host.modal_input() || host.ui_areas.contains(position) {
             return;
@@ -3357,6 +3489,7 @@ impl App {
         let mut close = false;
         let mut stopped = false;
         let mut clipboard = Vec::new();
+        let mut notifications = Vec::new();
         let focused = self.notification_focused(id, None);
         let config = &self.loaded.config;
         let mut deck_panes = self
@@ -3584,6 +3717,14 @@ impl App {
                         self.errors.push(error);
                     }
                 }
+                SessionEvent::Effect(vt::Effect::DesktopNotification(command))
+                | SessionEvent::DesktopNotificationDelivery(command)
+                    if live && !pane.exited =>
+                {
+                    pane.unseen |=
+                        !focused && matches!(command.action, vt::notification::Action::Show(_));
+                    notifications.push(command);
+                }
                 SessionEvent::Effect(vt::Effect::Bell) => {
                     pane.unseen |= !focused;
                 }
@@ -3662,6 +3803,9 @@ impl App {
         }
         for request in clipboard {
             self.queue_clipboard(id, request);
+        }
+        for command in notifications {
+            self.notification_command(id, command);
         }
         if close {
             self.remember();
@@ -8478,6 +8622,16 @@ impl ApplicationHandler<Event> for App {
                     PlatformEvent::NotificationClicked(pane) => {
                         self.reveal_pane(pane);
                     }
+                    PlatformEvent::TuiNotification { token, event } => {
+                        self.prune_tui_notifications();
+                        let operations = self.tui_notifications.event(token, event);
+                        self.notification_operations(operations);
+                    }
+                    PlatformEvent::TuiNotificationsAlive { token, alive } => {
+                        self.prune_tui_notifications();
+                        let operations = self.tui_notifications.alive(token, &alive);
+                        self.notification_operations(operations);
+                    }
                     PlatformEvent::Tmuxx(command) => {
                         if !self.import_selector {
                             self.native_tmuxx_command(event_loop, command);
@@ -9045,6 +9199,7 @@ impl ApplicationHandler<Event> for App {
         let now = Instant::now();
         self.retry_tmuxx(now);
         self.refresh_drag_views();
+        self.prune_tui_notifications();
         if self.workspace.windows.is_empty() && !self.errors.is_empty() && !self.tmuxx.is_empty() {
             self.add_window(false);
             self.reconcile(event_loop);

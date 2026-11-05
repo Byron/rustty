@@ -228,6 +228,7 @@ impl Host {
     }
     pub(super) fn release_view_state(&mut self, client: u64, pane: Id) {
         self.release_drag(client, pane);
+        self.release_notifications(client, pane);
         if self.view_states.states.remove(&(client, pane)).is_some()
             && let Err(error) = self.apply_view_state(pane)
         {

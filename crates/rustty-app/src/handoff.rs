@@ -24,6 +24,73 @@ pub const MAX_DUMP_BYTES: u64 = 512 * 1024 * 1024;
 const DUMP_EXTENSION: &str = "rustty-state.lz4";
 const METADATA_EXTENSION: &str = "session.json";
 
+/// Bundle-wide notification categories require a lock shared by every app instance.
+#[cfg(target_os = "macos")]
+pub(crate) fn notification_lock() -> io::Result<fs::File> {
+    notification_lock_in(&user_temporary_directory()?.join("rustty-notifications"))
+}
+
+#[cfg(target_os = "macos")]
+fn notification_lock_in(directory: &Path) -> io::Result<fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    private_directory(directory)?;
+    let path = directory.join("categories.lock");
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&path)
+    {
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error),
+    }
+    // Keep one inode permanently: unlinking a lock file permits simultaneous owners.
+    let file = open_private_file(&path, 0)?;
+    file.lock()?;
+    Ok(file)
+}
+
+#[cfg(all(test, target_os = "macos"))]
+#[test]
+fn notification_lock_is_private_and_held_until_async_completion() {
+    use std::{
+        os::unix::fs::PermissionsExt,
+        sync::{Arc, Mutex, mpsc},
+        thread,
+    };
+    let directory =
+        std::env::temp_dir().join(format!("rustty-notification-lock-test-{}", unique_id()));
+    let completion = Arc::new(Mutex::new(Some(notification_lock_in(&directory).unwrap())));
+    assert!(
+        open_private_file(&directory.join("categories.lock"), 0)
+            .unwrap()
+            .try_lock()
+            .is_err()
+    );
+    let (ready, wait) = mpsc::channel();
+    let next_directory = directory.clone();
+    let queued_close = thread::spawn(move || {
+        let _lock = notification_lock_in(&next_directory).unwrap();
+        ready.send(()).unwrap();
+    });
+    assert!(
+        wait.recv_timeout(Duration::from_millis(30)).is_err(),
+        "close must wait for the in-flight post completion"
+    );
+    completion.lock().unwrap().take();
+    wait.recv_timeout(Duration::from_secs(2)).unwrap();
+    queued_close.join().unwrap();
+    let path = directory.join("categories.lock");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    assert!(
+        notification_lock_in(&directory).is_err(),
+        "shared lock must reject non-private files"
+    );
+    fs::remove_file(path).unwrap();
+    fs::remove_dir(directory).unwrap();
+}
+
 /// Keep successful exports for the external editor, which may open them asynchronously.
 pub fn open_text(
     data: &[u8],

@@ -40,6 +40,14 @@ pub enum DragResult {
 
 pub type DragHandler = Arc<dyn Fn(DragEvent) -> DragResult + Send + Sync>;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TuiNotificationEvent {
+    Activated { button: u8 },
+    Closed,
+    Untracked,
+    Failed,
+}
+
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]

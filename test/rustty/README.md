@@ -815,13 +815,22 @@ unverified.
 OSC 99 has 108 differential cases, including three allocating-capture
 boundaries and four snapshot continuations. The native parser recognizes Kitty
 notification commands, but `TerminalStream` leaves the callback unimplemented.
-Rust matches that no-op behavior: Kitty notifications do not notify or reply,
-even for queries, multipart messages and closing requests. OSC 9 notifications in
+Bare Rust VT defaults to that no-op behavior, including queries, multipart
+messages and closing requests. OSC 9 notifications in
 the same cases confirm that the notification callback is active. Valid and
 malformed parameters, safe/unsafe UTF-8, both terminators, cancellation, direct
 reset and continuation are covered without claiming broader parser completion.
 The cases live in `osc_strings.unsupported_allocating_requests`; large boundaries
 remain in `allocating_requests` so filtering precedes payload construction.
+
+App sessions and native tmuxx opt into OSC 99 with `notification_capabilities`.
+Rust tests cover the supported title/body/button subset, bounded streaming
+base64, reset and overflow handling, validated callback replies, and discovery
+before DA1. Native tests use fake permission/history/callback boundaries, while
+the hidden two-pane smoke uses a fake notification sink. Owner tests cover GUI
+election, surviving views, replacement, process exit and callback backpressure;
+snapshots carry no live notifications. This opt-in behavior extends Ghostty's
+unimplemented callback and is not substituted into its differential cases.
 
 OSC 66 width handling extends Ghostty's unimplemented callback, so its former
 terminal no-op cases are replaced by Rust VT tests and the native text-span

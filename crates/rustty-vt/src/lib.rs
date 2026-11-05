@@ -15,6 +15,7 @@ pub mod glyph;
 pub mod graphics;
 pub mod input;
 pub mod modes;
+pub mod notification;
 mod packed;
 mod page;
 mod page_layout;

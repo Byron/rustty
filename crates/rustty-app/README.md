@@ -57,6 +57,31 @@ and the hierarchy to panels with agents in any state. Matching panels appear
 without expanding their ancestors; switching the filter off restores the normal
 view with its expansion unchanged. Panel search also respects this filter.
 
+## TUI desktop notifications
+
+Rustty supports Kitty OSC 99 notifications on macOS and Windows, including
+multipart titles and bodies, up to three action buttons, silent notifications,
+replacement by identifier, explicit close, and live-notification queries.
+Clicks can focus the originating pane and report the selected action to its
+application. Identifiers are scoped to the terminal session, so independent
+panes can use the same identifier. Notifications without identifiers stay
+independent. Existing OSC 9/777 and agent alerts keep their own lifetimes.
+
+Local sessions and native tmuxx route callbacks to the original owner once;
+another surviving view of that owner can receive them. Closing the last view,
+replacing its process, or disconnecting invalidates old callbacks. Native tmuxx
+peers negotiate this support without changing the protocol version. Standard
+OS notification permissions and the platform setup below still apply.
+
+Messages are bounded to 64 KiB of decoded text, with 128 live notifications and
+32 pending live queries per app. Icons, notification filters, urgency and
+application-controlled expiry are not implemented. The OSC 99 support query
+reports the implemented subset. A simple notification needs only:
+
+```sh
+printf '\033]99;;Build finished\033\\'
+```
+
 ## Windows 11 x64
 
 Install Rust 1.95 or later and the Visual Studio C++ build tools/Windows SDK.
@@ -663,6 +688,12 @@ accepted-format filtering, UTF-16 conversion and rejected-drop handling through
 a hidden native window and a private pasteboard. The app smoke can run just the
 two-pane OSC 72 handshake with `RUSTTY_SMOKE_DND=1` and the smoke environment
 below; it checks pane crossings, acceptance, stale targets and owner-held data.
+
+`RUSTTY_SMOKE_NOTIFICATIONS=1` exercises OSC 99 across two panes using a fake
+native notification sink, including buttons, replacement, callback scope,
+close/alive queries and failures. It does not post notifications or request OS
+permission. Separate native tests cover request construction, callback routing,
+category registration, and cleanup.
 
 The opt-in native smoke check starts disposable `/bin/sh` sessions, checks input,
 four split panes, tabs, quadrant focus and zoom, URI directory reports, restoration,

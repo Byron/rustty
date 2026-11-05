@@ -18,7 +18,7 @@ pub use agent::AgentStatus;
 mod capture;
 mod capture_raw;
 pub use capture::CaptureOptions;
-pub use rustty_vt::dnd;
+pub use rustty_vt::{dnd, notification};
 
 /// Rustty extensions to C tmux's generated format registry.
 pub const PROGRAM_STATUS_FORMATS: &[&str] = &[
@@ -57,7 +57,12 @@ impl Input {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum HostAction {
     Bell,
-    Notification { title: Vec<u8>, body: Vec<u8> },
+    Notification {
+        title: Vec<u8>,
+        body: Vec<u8>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kitty: Option<notification::Command>,
+    },
     ClipboardRead(clipboard::Read),
     ClipboardWrite(clipboard::Write),
 }
@@ -66,6 +71,7 @@ pub enum HostAction {
 pub enum HostResponse {
     Read(clipboard::ReadResult),
     Write(clipboard::WriteResult),
+    Notification(notification::Reply),
 }
 
 impl HostAction {
@@ -73,6 +79,16 @@ impl HostAction {
         match self {
             Self::ClipboardRead(_) => Some(HostResponse::Read(clipboard::ReadResult::Denied)),
             Self::ClipboardWrite(_) => Some(HostResponse::Write(clipboard::WriteResult::Denied)),
+            Self::Notification { kitty: Some(_), .. } => {
+                Some(HostResponse::Notification(notification::Reply::Failed))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn desktop_notification(&self) -> Option<&notification::Command> {
+        match self {
+            Self::Notification { kitty, .. } => kitty.as_ref(),
             _ => None,
         }
     }
@@ -298,6 +314,10 @@ impl<S> Snapshot<S> {
         self.agent_status.validate().map_err(io::Error::other)?;
         inner.agent_status_events = true;
         inner.program_status_events = true;
+        inner.notification_capabilities = Some(notification::Capabilities {
+            buttons: true,
+            close_events: true,
+        });
         inner.shell_command_events = true;
         inner.linefeed_mode_events = true;
         inner.generation = self.generation;
@@ -628,6 +648,10 @@ impl Terminal {
         inner.shell_command_events = true;
         inner.agent_status_events = true;
         inner.program_status_events = true;
+        inner.notification_capabilities = Some(notification::Capabilities {
+            buttons: true,
+            close_events: true,
+        });
         inner.linefeed_mode_events = true;
         inner.tmux_clipboard = true;
         inner.tmux_graphics = true;
@@ -668,6 +692,16 @@ impl Terminal {
             }
             (HostAction::ClipboardWrite(request), HostResponse::Write(result)) => {
                 Ok(self.inner.reply_clipboard_write(request, result))
+            }
+            (
+                HostAction::Notification {
+                    kitty: Some(command),
+                    ..
+                },
+                HostResponse::Notification(reply),
+            ) => {
+                let bytes = command.reply(&reply).map_err(io::Error::other)?;
+                Ok((!bytes.is_empty()).then_some(bytes))
             }
             _ => Err(io::Error::other("host response does not match request")),
         }
