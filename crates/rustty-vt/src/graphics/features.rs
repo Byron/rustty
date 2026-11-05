@@ -49,8 +49,8 @@ impl Command {
             b'T' | b'p' => match key {
                 b'p' | b'x' | b'y' | b'w' | b'h' | b'X' | b'Y' | b'c' | b'r' | b'z' | b'P'
                 | b'Q' | b'H' | b'V' => true,
-                b'C' => value == 1,
-                // Placeholder rendering and usage hints are not advertised here.
+                b'C' | b'U' => value == 1,
+                // N usage hints are not implemented.
                 _ => false,
             },
             b'f' => match key {

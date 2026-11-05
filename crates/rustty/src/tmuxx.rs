@@ -2656,6 +2656,77 @@ mod focus_tests {
     }
 
     #[test]
+    fn native_views_preserve_unicode_placeholders_across_snapshots_and_reopen() {
+        use rustty_vt::graphics::{PlacementId, unicode};
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);
+        owner.feed(b"\x1b_Ga=T,i=42,p=9,U=1,c=2,r=1,f=32,s=1,v=1,q=2;AQID/w==\x1b\\");
+        owner.feed("\x1b[38;5;42m\u{10eeee}\u{305}\u{305}\u{10eeee}\x1b[0m".as_bytes());
+        let checkpoint = |owner: &tmuxx_terminal::Terminal| {
+            let mut state = state();
+            state["panes"][0]["terminal"] =
+                serde_json::to_value(owner.checkpoint_snapshot()).unwrap();
+            state
+        };
+        let check = |view: &Session, moved: bool| {
+            let terminal = view.terminal().unwrap();
+            let screen = terminal.screen();
+            let target = terminal.graphics().placeholder_target(42, 0).unwrap();
+            assert!(target.virtual_placement);
+            assert_eq!(target.placement_id, PlacementId::External(9));
+            assert_eq!((target.columns, target.rows), (2, 1));
+            assert_eq!(
+                terminal.graphics().images[&42].pixels.as_slice(),
+                [1, 2, 3, 255]
+            );
+            let row = if moved { 1 } else { 0 };
+            assert_eq!(
+                unicode::placements(screen, screen.row(row)).collect::<Vec<_>>(),
+                [unicode::Placement {
+                    image_id: 42,
+                    placement_id: if moved { 9 } else { 0 },
+                    col: 0,
+                    image_col: 0,
+                    image_row: 0,
+                    width: 2,
+                }]
+            );
+            if moved {
+                assert_eq!(unicode::placements(screen, screen.row(0)).count(), 0);
+            }
+        };
+        snapshot(&connection, 1, checkpoint(&owner));
+        let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        for view in [&first, &second] {
+            check(view, false);
+        }
+        // A TUI moves placeholder text and selects an explicit placement ID.
+        let moved = "\x1b[1;1H\x1b[2K\x1b[2;1H\x1b[38;5;42;58;5;9m\u{10eeee}\u{305}\u{305}\u{10eeee}\x1b[0m";
+        owner.feed(moved.as_bytes());
+        apply(
+            &connection.shared,
+            ServerMessage::PaneOutput {
+                sequence: 2,
+                pane_id: 7,
+                data: moved.as_bytes().to_vec(),
+            },
+        )
+        .unwrap();
+        for view in [&first, &second] {
+            check(view, true);
+        }
+        snapshot(&connection, 3, checkpoint(&owner));
+        for view in [&first, &second] {
+            check(view, true);
+        }
+        drop(first);
+        let reopened = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        check(&reopened, true);
+        assert!(connection.errors().is_empty());
+    }
+
+    #[test]
     fn native_cwd_survives_attach_live_output_snapshot_and_reopen() {
         {
             let (connection, _requests) = Connection::base(Arc::new(|| {}), true);

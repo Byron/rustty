@@ -391,6 +391,146 @@ fn indexed_prepared_frames_recolor_and_replay_with_straight_alpha() {
 
 #[test]
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+fn unicode_placeholder_frames_clip_animate_restore_and_replay() {
+    use rustty_render::{RenderOptions, RowCache};
+    use rustty_vt::{Terminal, graphics::unicode::PLACEHOLDER};
+
+    let mut prepare = rustty_render::Renderer::new(Default::default()).unwrap();
+    let cell = prepare.metrics();
+    let size = [3 * cell.cell_width, 2 * cell.cell_height];
+    let options = RenderOptions {
+        size,
+        padding: [0.0; 2],
+        cursor_visible: false,
+        background_opacity: 0.0,
+        ..Default::default()
+    };
+    let mut terminal = Terminal::new(3, 2, 0);
+    terminal.feed(b"\x1b_Ga=T,f=32,s=1,v=1,i=1,p=1,U=1,c=1,r=1,C=1;/wAAgA==\x1b\\");
+    // A green/blue child is cropped to its blue pixel and placed one cell to
+    // the right of the virtual parent, matching placeholder_requests.py's
+    // cropped/relative placement cases.
+    terminal.feed(
+        b"\x1b_Ga=T,f=32,s=2,v=1,i=2,p=2,P=1,Q=1,H=1,c=1,r=1,x=1,w=1,h=1,C=1;AP8A/wAA//8=\x1b\\",
+    );
+    terminal.feed(format!("\x1b[38;5;1m\x1b[58;5;1m{PLACEHOLDER}\u{305}\u{305}").as_bytes());
+    let mut rows = RowCache::default();
+    let capture =
+        |prepare: &mut rustty_render::Renderer, terminal: &Terminal, rows: &mut RowCache| {
+            let key = terminal.screen().render_key();
+            let snapshot = terminal.screen().snapshot_viewport();
+            prepare
+                .prepare_cached(&snapshot, key, &options, rows)
+                .unwrap()
+        };
+    let before = capture(&mut prepare, &terminal, &mut rows);
+    assert_eq!(
+        before
+            .quads
+            .iter()
+            .filter(|q| q.paint == Paint::Color)
+            .count(),
+        2
+    );
+    assert!(!before.quads.iter().any(|q| q.paint == Paint::Mask));
+
+    // Text rows do not change when the image clock advances. Cached row
+    // preparation must still choose the newly displayed image frame.
+    terminal
+        .feed(b"\x1b_Ga=f,i=1,f=32,s=1,v=1,z=10;AP8A/w==\x1b\\\x1b_Ga=a,i=1,r=1,z=10,s=3\x1b\\");
+    assert_eq!(terminal.tick_graphics(0), Some(10));
+    assert_eq!(terminal.tick_graphics(10), Some(20));
+    let after = capture(&mut prepare, &terminal, &mut rows);
+    let bytes = rustty_vt::snapshot::encode_to_vec(&terminal).unwrap();
+    let restored = rustty_vt::snapshot::decode(bytes.as_slice(), Default::default()).unwrap();
+    let restored = capture(&mut prepare, &restored, &mut rows);
+
+    let left = cell.cell_width / 2;
+    let mut clipped = Frame::empty(size);
+    clipped
+        .append_clipped(
+            &before,
+            [0.0; 2],
+            [
+                left as f32,
+                0.0,
+                cell.cell_width as f32,
+                cell.cell_height as f32,
+            ],
+        )
+        .unwrap();
+    prepare.retain_images(std::iter::empty());
+
+    let mut renderer = Renderer::default();
+    let mut delta = TexturesDelta::default();
+    let draw = |renderer: &mut Renderer, frame: Frame, delta: &mut TexturesDelta| {
+        render(
+            renderer,
+            size,
+            1.0,
+            &[callback(
+                frame,
+                1,
+                rect(0.0, 0.0, size[0] as f32, size[1] as f32),
+                Rect::EVERYTHING,
+            )],
+            delta,
+        )
+    };
+    let original = draw(&mut renderer, before.clone(), &mut delta);
+    let center = [cell.cell_width as usize / 2, cell.cell_height as usize / 2];
+    assert_eq!(
+        pixel(&original, size[0] as usize, center[0], center[1]),
+        [128, 0, 0, 128]
+    );
+    assert_eq!(
+        pixel(
+            &original,
+            size[0] as usize,
+            cell.cell_width as usize + center[0],
+            center[1]
+        ),
+        [0, 0, 255, 255]
+    );
+    renderer.free_window(1);
+    let animated = draw(&mut renderer, after, &mut delta);
+    assert_eq!(
+        pixel(&animated, size[0] as usize, center[0], center[1]),
+        [0, 255, 0, 255]
+    );
+    assert_eq!(
+        pixel(
+            &animated,
+            size[0] as usize,
+            cell.cell_width as usize + center[0],
+            center[1]
+        ),
+        [0, 0, 255, 255]
+    );
+    renderer.free_window(1);
+    assert_eq!(draw(&mut renderer, restored, &mut delta), animated);
+    renderer.free_window(1);
+    let clipped = draw(&mut renderer, clipped, &mut delta);
+    for y in 0..size[1] {
+        for x in 0..size[0] {
+            let expected = if x >= left && x < left + cell.cell_width && y < cell.cell_height {
+                pixel(&original, size[0] as usize, x as usize, y as usize)
+            } else {
+                [0; 4]
+            };
+            assert_eq!(
+                pixel(&clipped, size[0] as usize, x as usize, y as usize),
+                expected,
+                "clipped placeholder pixel ({x}, {y})"
+            );
+        }
+    }
+    renderer.free_window(1);
+    assert_eq!(draw(&mut renderer, before, &mut delta), original);
+}
+
+#[test]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn explicit_width_prepared_text_clips_before_the_neighboring_cell() {
     let mut prepare = rustty_render::Renderer::new(Default::default()).unwrap();
     let metrics = prepare.metrics();

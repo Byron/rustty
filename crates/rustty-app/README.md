@@ -574,6 +574,13 @@ uses colors from transmission time; older peers cannot resume an interrupted
 indexed upload. Both retained buffers count toward the existing graphics quota,
 so the smaller transmitted payload does not imply lower retained memory use.
 
+Kitty Unicode placeholders let TUIs position image fragments using text cells,
+so images follow text scrolling and layout changes. Rustty renders virtual
+placements, cropped fragments, relative children and animated images through
+the shared GPU/CPU renderer, and preserves them across native tmuxx reconnects.
+Graphics feature queries advertise `U=1` for transmit-and-display and placement
+actions when graphics are enabled. Image usage hints (`N`) remain unsupported.
+
 Kitty OSC 66 supports explicit text widths from one to seven cells. A TUI can
 reserve an exact number of cells for Unicode text without depending on the
 terminal's character-width tables. Each explicit payload is one selection and rendering
@@ -629,6 +636,9 @@ for a closing pane. It writes `row-cache-result.json` and captures the panes.
 `RUSTTY_SMOKE_INDEXED=1` checks indexed-image colors and alpha in two panes,
 including palette changes without retransmission. It writes
 `indexed-graphics-result.json` and captures the images before and after recoloring.
+It also checks cropped Unicode placeholders, relative children, viewport clipping,
+snapshot restoration and RGBA animation, writing `placeholder-graphics-result.json`
+and `placeholder-graphics{,-updated}.png`.
 `RUSTTY_SMOKE_WIDTH=1` checks explicit widths, tail selection and link hints,
 search, accessibility, physical IME placement, cursor phases, and cached frames.
 It writes `explicit-width-result.json`, `explicit-width.png`, and

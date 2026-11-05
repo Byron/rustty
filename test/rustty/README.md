@@ -218,6 +218,13 @@ rectangles and overhanging fragments retain their full destination area by
 sampling clamped edge texels in the image atlas. Zero cell sizes, overflowing
 pixel products and full viewport-edge behavior remain incomplete.
 
+Rustty advertises placeholder rendering as `U=1` in Kitty feature queries for
+`e=T` and `e=p` when graphics are enabled. Queries leave images, pending uploads
+and terminal state untouched; unsupported values and image usage hints (`N`)
+are omitted. Focused renderer and native app checks cover clipped/cropped
+fragments, relative children, animation and snapshot restoration; native tmuxx
+tests retain virtual targets and placeholder text across view reconnects.
+
 `--protocols --case protocol/graphics/placements/relative/` covers ordinary
 parent references and chains with 64 fixtures (192 delivery comparisons).
 Cases compare explicit/fallback parent choice, missing images versus placements,

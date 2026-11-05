@@ -41,8 +41,12 @@ fn transmit(terminal: &mut vt::Terminal, id: u32, format: u8, row: u8, bytes: &[
 }
 
 fn pixel(frame: &Frame, quad: &rustty_render::Quad, column: usize) -> [u8; 4] {
-    let u = quad.uv[0] + (column as f32 + 0.5) / 10.0 * (quad.uv[2] - quad.uv[0]);
-    let v = (quad.uv[1] + quad.uv[3]) / 2.0;
+    image_pixel(frame, quad, [(column as f32 + 0.5) / 10.0, 0.5])
+}
+
+fn image_pixel(frame: &Frame, quad: &rustty_render::Quad, point: [f32; 2]) -> [u8; 4] {
+    let u = quad.uv[0] + point[0] * (quad.uv[2] - quad.uv[0]);
+    let v = quad.uv[1] + point[1] * (quad.uv[3] - quad.uv[1]);
     for upload in frame.atlas_uploads.iter().rev() {
         if upload.page != quad.atlas {
             continue;
@@ -281,6 +285,7 @@ pub(super) fn check(app: &mut App, event_loop: &ActiveEventLoop, directory: &Pat
         eprintln!(
             "Native indexed graphics smoke: shared sources, all special colors, f16 alpha, OSC and theme updates passed"
         );
+        check_placeholders(app, event_loop, &mut host, directory, panes)?;
         Ok(())
     })();
     for (id, terminal) in saved {
@@ -290,4 +295,189 @@ pub(super) fn check(app: &mut App, event_loop: &ActiveEventLoop, directory: &Pat
     host.focused = focused;
     app.windows.insert(window, host);
     result
+}
+
+fn check_placeholders(
+    app: &mut App,
+    event_loop: &ActiveEventLoop,
+    host: &mut Host,
+    directory: &Path,
+    panes: [Id; 2],
+) -> Result<()> {
+    let [first, second] = panes;
+    let metrics = host.fonts.metrics();
+    let [cw, ch] = [metrics.cell_width, metrics.cell_height];
+    let bands = |colors: &[[u8; 4]], height: u32| {
+        (0..height)
+            .flat_map(|_| {
+                colors
+                    .iter()
+                    .flat_map(|color| (0..cw).flat_map(move |_| *color))
+            })
+            .collect::<Vec<_>>()
+    };
+    let base = [
+        [230, 60, 50, 255],
+        [40, 210, 100, 255],
+        [65, 110, 240, 255],
+        [240, 210, 40, 255],
+    ];
+    let next = [
+        [220, 50, 190, 255],
+        [40, 210, 230, 255],
+        [235, 235, 240, 255],
+        [230, 130, 45, 255],
+    ];
+    let orange = [240, 100, 35, 255];
+    let blue = [30, 55, 150, 255];
+    let bytes = |data: Vec<u8>| base64::engine::general_purpose::STANDARD.encode(data);
+    let (cols, rows) = {
+        let terminal = app.panes[&first].session.terminal()?;
+        (terminal.cols, terminal.rows)
+    };
+    let mut fixture = vt::Terminal::new(cols, rows, 100);
+    fixture.feed(b"\x1b[?25l\x1b[HUnicode placeholders: fragments + clipped relative child");
+    fixture.feed(
+        format!(
+            "\x1b_Ga=t,i=1,f=32,s={},v={},q=2;{}\x1b\\\x1b_Ga=p,i=1,p=1,U=1,c=4,r=2,q=2\x1b\\",
+            4 * cw,
+            2 * ch,
+            bytes(bands(&base, 2 * ch))
+        )
+        .as_bytes(),
+    );
+    fixture.feed(
+        format!(
+            "\x1b_Ga=f,i=1,f=32,s={},v={},z=50,q=2;{}\x1b\\\x1b_Ga=a,i=1,c=1,s=1,q=2\x1b\\",
+            4 * cw,
+            2 * ch,
+            bytes(bands(&next, 2 * ch))
+        )
+        .as_bytes(),
+    );
+    fixture.feed(
+        format!(
+            "\x1b_Ga=t,i=2,f=32,s={},v={},q=2;{}\x1b\\",
+            5 * cw,
+            ch,
+            bytes(bands(&[blue, orange, orange, orange, blue], ch))
+        )
+        .as_bytes(),
+    );
+    let placeholder = vt::graphics::unicode::PLACEHOLDER;
+    fixture.feed(format!("\x1b[38;5;1m\x1b[4;3H{placeholder}\u{305}\u{30d}{placeholder}\x1b[5;3H{placeholder}\u{30d}\u{30d}{placeholder}\x1b[0m").as_bytes());
+    let snapshot = vt::snapshot::encode_to_vec(&fixture)?;
+    for id in panes {
+        let mut terminal = app.panes[&id].session.terminal()?;
+        let mut restored =
+            vt::snapshot::decode_exact(std::io::Cursor::new(&snapshot), Default::default())?;
+        restored.resize(terminal.cols, terminal.rows);
+        restored.feed(
+            format!(
+                "\x1b_Ga=p,i=2,p=2,P=1,Q=1,H={},V=1,c=3,r=1,x={},w={},h={},C=1,q=2\x1b\\",
+                restored.cols - 4,
+                cw,
+                3 * cw,
+                ch
+            )
+            .as_bytes(),
+        );
+        *terminal = restored;
+    }
+    app.loaded.config.unfocused_split_opacity = 1.0;
+    app.draw(event_loop, host)?;
+    let assert_frame = |host: &Host, id: Id, expected: [[u8; 4]; 4]| {
+        let pane = &host.prepared[&id];
+        let images: Vec<_> = pane
+            .frame
+            .quads
+            .iter()
+            .filter(|quad| quad.paint == rustty_render::Paint::Color)
+            .collect();
+        assert_eq!(
+            images.len(),
+            3,
+            "two placeholder fragments plus one relative child"
+        );
+        for (row, quad) in images[..2].iter().enumerate() {
+            assert_eq!(
+                quad.rect,
+                [
+                    pane.key.options.padding[0] + 2.0 * cw as f32,
+                    pane.key.options.padding[1] + (3 + row) as f32 * ch as f32,
+                    2.0 * cw as f32,
+                    ch as f32
+                ]
+            );
+            assert_eq!(image_pixel(&pane.frame, quad, [0.25, 0.5]), expected[1]);
+            assert_eq!(image_pixel(&pane.frame, quad, [0.75, 0.5]), expected[2]);
+        }
+        let child = images[2];
+        assert_eq!(image_pixel(&pane.frame, child, [0.5, 0.5]), orange);
+        assert_eq!(
+            child.rect,
+            [
+                pane.key.options.padding[0]
+                    + (pane.screen.rows().next().unwrap().cells.len() - 2) as f32 * cw as f32,
+                pane.key.options.padding[1] + 4.0 * ch as f32,
+                2.0 * cw as f32,
+                ch as f32
+            ]
+        );
+    };
+    for id in panes {
+        assert_frame(host, id, base);
+    }
+    capture_window(
+        app,
+        event_loop,
+        host,
+        &directory.join("placeholder-graphics.png"),
+    )?;
+    let sibling = host.prepared[&second].frame.clone();
+    app.panes[&first]
+        .session
+        .terminal()?
+        .feed(b"\x1b_Ga=a,i=1,c=2,s=1,q=2\x1b\\");
+    app.draw(event_loop, host)?;
+    assert_frame(host, first, next);
+    assert_frame(host, second, base);
+    assert!(
+        Arc::ptr_eq(&sibling, &host.prepared[&second].frame),
+        "animation in one pane must retain the sibling frame"
+    );
+    let capture = directory.join("placeholder-graphics-updated.png");
+    capture_window(app, event_loop, host, &capture)?;
+    let pixels = image::open(capture)?.into_rgba8();
+    for (id, expected) in [(first, next), (second, base)] {
+        let pane = &host.prepared[&id];
+        let quad = pane
+            .frame
+            .quads
+            .iter()
+            .find(|quad| quad.paint == rustty_render::Paint::Color)
+            .unwrap();
+        for (fraction, color) in [(0.25, expected[1]), (0.75, expected[2])] {
+            let x = pane.key.rect.left() * pane.key.scale + quad.rect[0] + fraction * quad.rect[2];
+            let y = pane.key.rect.top() * pane.key.scale + quad.rect[1] + 0.5 * quad.rect[3];
+            let pixel = pixels.get_pixel(x as u32, y as u32).0;
+            assert!(
+                pixel
+                    .into_iter()
+                    .zip(color)
+                    .all(|(actual, expected)| actual.abs_diff(expected) <= 2),
+                "native placeholder pixel: {pixel:?} != {color:?}"
+            );
+        }
+    }
+    fs::write(
+        directory.join("placeholder-graphics-result.json"),
+        serde_json::to_vec_pretty(
+            &serde_json::json!({"passed":true,"panes":2,"checks":["placeholder-source-fragments","cropped-relative-child","viewport-edge-clipping","snapshot-restore","animation-frame-update","unchanged-sibling-frame","native-png-pixels"],"captures":["placeholder-graphics.png","placeholder-graphics-updated.png"]}),
+        )?,
+    )?;
+    eprintln!(
+        "Native placeholder graphics smoke: seven geometry, restore, animation and pixel checks passed"
+    );
+    Ok(())
 }
