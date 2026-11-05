@@ -80,7 +80,7 @@ def main():
                 assert report["case"] == case
                 assert report["sample_frames"] == len(report["samples"]) == 50
                 assert report["warmup_frames"] == 50
-                settings = {key: report.get(key) for key in ["font", "font_size_points", "size_pixels", "terminal_size", "scale_factor", "columns"]}
+                settings = {key: report.get(key) for key in ["font", "font_size_points", "size_pixels", "terminal_size", "scale_factor", "columns", "detached_viewport"]}
                 if control is None:
                     control = settings
                 assert settings == control, (case, direction, variant, settings, control)

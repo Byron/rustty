@@ -5953,3 +5953,78 @@ order twice. The baseline is `6fc409f7`; viewport checksums and complete snapsho
 CRCs match. The probe recompresses before its existing cold-row and whole-history
 measurements. These numbers measure isolated cold viewport access; they do not
 measure GUI latency, GPU work, or RSS. The regression also passes on Rust 1.95.0.
+
+## Desktop row preparation cache (2026-11-05)
+
+The renderer reuses unchanged visible rows using the live screen identity and
+native row revisions, even when the app supplies a new detached viewport snapshot.
+Each pane owns its cache. Selection, cursor phases, palette/font changes and atlas
+eviction invalidate the affected geometry; images and IME preedit remain fresh.
+Rows enter the geometry cache after their key repeats, limiting copying and
+allocation when a TUI rewrites every row. Prior row sizes also reserve frame buffers.
+
+The frozen baseline is `c1bdd1145`. Both preparation probes capture a detached
+viewport before each preparation, outside the feed/preparation timers; this is the
+only baseline harness adaptation. Both use Rust 1.95.0, release thin LTO, one
+codegen unit, Menlo 13 pt, a 120×40 terminal and a 1200×850 pixel frame on macOS
+arm64. Each case runs before/after and then after/before in fresh processes, with
+50 warmup and 50 measured frames per process. The table pools 100 samples per
+variant; allocation counts and requested bytes cover preparation only.
+
+| Workload | Before µs | After µs | After / before | Allocations, before → after | Requested bytes, before → after |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `cached_redraw` | 108.480 | 6.333 | 0.058× | 28 → 6 | 396,712 → 258,016 |
+| `status_update` | 109.334 | 8.625 | 0.079× | 28 → 6 | 396,712 → 258,016 |
+| `scroll_ascii` | 115.625 | 14.875 | 0.129× | 31 → 8 | 694,552 → 325,536 |
+| `scroll_styled` | 71.980 | 10.208 | 0.142× | 35 → 8 | 529,136 → 216,352 |
+| `mixed_unicode` | 111.625 | 13.167 | 0.118× | 28 → 7 | 396,712 → 261,280 |
+| `alternate_repaint` | 110.396 | 117.875 | 1.068× | 28 → 6 | 396,712 → 258,016 |
+| `resize_reflow` | 109.062 | 120.896 | 1.109× | 28 → 16 | 396,712 → 392,864 |
+
+Partial updates and scrolling reduce preparation time by 86–92%; complete
+repaints and resize preparations cost 7.5 and 11.8 µs more respectively. The cache
+retains geometry for visible rows; requested bytes describe allocation traffic,
+not retained heap or RSS. `cached_redraw` forces preparation of unchanged input
+in this probe; the desktop already reuses its entire frame in that situation.
+
+The native offscreen replay uses the same seven workloads and reversed order,
+with a 1200×850 pixel window, scale factor 2, a 74×27 terminal, and Metal on an
+Apple M4 Max. These are individual process medians for snapshot/frame preparation
+and GPU submission, excluding GPU completion and visible presentation:
+
+| Workload | Forward before ms | Forward after ms | Reverse before ms | Reverse after ms |
+| --- | ---: | ---: | ---: | ---: |
+| `cached_redraw` | 0.740 | 0.664 | 0.691 | 0.734 |
+| `status_update` | 0.838 | 1.215 | 1.114 | 1.057 |
+| `scroll_ascii` | 1.734 | 1.165 | 1.749 | 1.207 |
+| `scroll_styled` | 1.230 | 1.159 | 1.424 | 1.060 |
+| `mixed_unicode` | 1.601 | 1.027 | 1.602 | 1.191 |
+| `alternate_repaint` | 1.380 | 1.647 | 1.493 | 1.534 |
+| `resize_reflow` | 1.433 | 1.274 | 1.270 | 1.222 |
+
+Scrolling and Unicode updates improve in both orders. Complete repainting costs
+0.267/0.041 ms more in this replay; the retained tradeoff favors partial updates.
+Unchanged-frame and status controls vary in direction, so this run does not
+establish an app-level gain for those cases. The unchanged terminal-feed control
+also varies: full-repaint medians are 159→174 µs forward and 167→170 µs reverse.
+The replay inserts a minimum 50 ms pause between frames; its intervals are not
+interactive frame rates. These results do not measure key-to-pixel latency.
+
+Correctness checks compare every frame field against uncached preparation using
+the same atlas, including fresh snapshots, independent panes, scrolling, selection,
+cursor/text blink, preedit, graphics, font replacement, and atlas-capacity retry.
+The hidden native smoke also exercises a closing pane after its session disappears.
+
+Build frozen binaries from separate baseline and candidate checkouts with the same
+profile and adapted baseline harness, then run comparisons serially:
+
+```sh
+cargo +1.95.0 build --locked --offline --release -p rustty-render --example prepare_frames
+cargo +1.95.0 build --locked --offline --release -p rustty-app --bin rustty
+python3 test/rustty/frame_compare.py --kind prepare \
+  --before /tmp/before-prepare_frames --after /tmp/after-prepare_frames \
+  --output /tmp/row-prepare-comparison
+python3 test/rustty/frame_compare.py --kind app --offscreen \
+  --before /tmp/before-rustty --after /tmp/after-rustty \
+  --output /tmp/row-app-comparison
+```

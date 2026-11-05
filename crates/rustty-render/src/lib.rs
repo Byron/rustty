@@ -10,7 +10,7 @@ use std::{
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod prepare;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-pub use prepare::{Preedit, RenderOptions, Renderer};
+pub use prepare::{Preedit, RenderOptions, Renderer, RowCache};
 
 /// Maximum atlas storage for terminal glyphs, independent of Kitty images.
 pub const MAX_GLYPH_ATLAS_BYTES: usize = 64 * 1024 * 1024;

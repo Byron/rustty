@@ -565,6 +565,9 @@ checking Find handoff, selection, key releases, IME, and stale-target cancellati
 `RUSTTY_SMOKE_OUTPUT=1` checks command-output, selection, and scrollback actions
 with an injected editor opener and writes `output-actions-result.json`. It verifies
 export contents and cleanup without opening an editor or changing the clipboard.
+`RUSTTY_SMOKE_ROWS=1` compares two native panes with uncached frame preparation,
+including detached snapshots, selection, cursor phases, preedit, and atlas recovery
+for a closing pane. It writes `row-cache-result.json` and captures the panes.
 
 The macOS session import regression runs five hidden debug instances in sequence
 with isolated configuration, disposable `/bin/sh` shells, and state. Each

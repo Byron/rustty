@@ -446,6 +446,7 @@ impl PaneRenderKey {
 struct PreparedPane {
     key: PaneRenderKey,
     frame: Arc<Frame>,
+    rows: rustty_render::RowCache,
     dim: Option<rustty_render::Color>,
     // Accessibility may first be requested while synchronized output holds this frame.
     screen: vt::Screen,
@@ -754,9 +755,10 @@ impl PreparedPane {
         key: PaneRenderKey,
         screen: vt::Screen,
         fonts: &mut rustty_render::Renderer,
+        mut rows: rustty_render::RowCache,
     ) -> std::result::Result<Self, rustty_render::RenderError> {
         let metrics = fonts.metrics();
-        let frame = fonts.prepare(&screen, &key.options)?;
+        let frame = fonts.prepare_cached(&screen, key.view, &key.options, &mut rows)?;
         let origin = [key.rect.left(), key.rect.top()];
         let padding = key.options.padding;
         let [x, y, width, height] = frame.ime_cursor.unwrap_or([
@@ -776,6 +778,7 @@ impl PreparedPane {
         Ok(Self {
             key,
             frame: Arc::new(frame),
+            rows,
             dim: None,
             screen,
             cell,
@@ -6217,7 +6220,7 @@ impl App {
                                 let Some(prepared) = host.prepared.get_mut(&id) else { continue; };
                                 let dim = prepared.dim;
                                 if prepared.frame.generation != host.fonts.generation() {
-                                    match host.fonts.prepare(&prepared.screen, &prepared.key.options) {
+                                    match host.fonts.prepare_cached(&prepared.screen, prepared.key.view, &prepared.key.options, &mut prepared.rows) {
                                         Ok(frame) => {
                                             prepared.frame = Arc::new(frame);
                                             host.pane_prepares += 1;
@@ -6389,7 +6392,10 @@ impl App {
                                         continue;
                                     }
                                 };
-                                match PreparedPane::new(key, snapshot, &mut host.fonts) {
+                                let rows = host.prepared.get_mut(&id)
+                                    .map(|prepared| std::mem::take(&mut prepared.rows))
+                                    .unwrap_or_default();
+                                match PreparedPane::new(key, snapshot, &mut host.fonts, rows) {
                                     Ok(prepared) => {
                                         host.prepared.insert(id, prepared);
                                         host.pane_prepares += 1;
@@ -11489,6 +11495,7 @@ mod tests {
             key(&terminal),
             terminal.screen().snapshot_viewport(),
             &mut fonts,
+            Default::default(),
         )
         .unwrap();
         assert!(
@@ -11534,9 +11541,13 @@ mod tests {
         let moved = rect.translate(Vec2::new(30.0, 0.0));
         let moved_key = PaneRenderKey::new(&terminal, options.clone(), moved, 1.0);
         assert!(!prepared.matches(&moved_key, &fonts));
-        let moved_pane =
-            PreparedPane::new(moved_key, terminal.screen().snapshot_viewport(), &mut fonts)
-                .unwrap();
+        let moved_pane = PreparedPane::new(
+            moved_key,
+            terminal.screen().snapshot_viewport(),
+            &mut fonts,
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(
             moved_pane.ime_rect,
             prepared.ime_rect.translate(Vec2::new(30.0, 0.0))
@@ -11547,6 +11558,7 @@ mod tests {
             key(&terminal),
             terminal.screen().snapshot_viewport(),
             &mut fonts,
+            Default::default(),
         )
         .unwrap();
         fonts.clear_cache();
@@ -11561,6 +11573,7 @@ mod tests {
             key(&terminal),
             terminal.screen().snapshot_viewport(),
             &mut fonts,
+            Default::default(),
         )
         .unwrap();
         assert_eq!(terminal.tick_graphics(125), Some(150));
@@ -11638,6 +11651,7 @@ mod tests {
                 key(&terminal, true),
                 terminal.screen().snapshot_viewport(),
                 &mut fonts,
+                Default::default(),
             )
             .unwrap();
             assert!(prepared.matches(&key(&terminal, false), &fonts));
@@ -11648,6 +11662,7 @@ mod tests {
             key(&terminal, true),
             terminal.screen().snapshot_viewport(),
             &mut fonts,
+            Default::default(),
         )
         .unwrap();
         assert!(!prepared.matches(&key(&terminal, false), &fonts));
@@ -11658,6 +11673,7 @@ mod tests {
             key(&terminal, true),
             terminal.screen().snapshot_viewport(),
             &mut fonts,
+            Default::default(),
         )
         .unwrap();
         assert!(prepared.screen.cursor.visible);
@@ -11668,6 +11684,7 @@ mod tests {
             key(&terminal, true),
             terminal.screen().snapshot_viewport(),
             &mut fonts,
+            Default::default(),
         )
         .unwrap();
         // New blinking text must use the current phase even if the previous
@@ -11675,8 +11692,13 @@ mod tests {
         terminal.feed(b"\x1b[5mblink\x1b[0m");
         let hidden = key(&terminal, false);
         assert!(!prepared.matches(&hidden, &fonts));
-        let mut prepared =
-            PreparedPane::new(hidden, terminal.screen().snapshot_viewport(), &mut fonts).unwrap();
+        let mut prepared = PreparedPane::new(
+            hidden,
+            terminal.screen().snapshot_viewport(),
+            &mut fonts,
+            Default::default(),
+        )
+        .unwrap();
         assert!(prepared.frame.blinking_text);
         assert!(prepared.matches(&key(&terminal, false), &fonts));
         assert!(!prepared.matches(&key(&terminal, true), &fonts));
@@ -11684,6 +11706,7 @@ mod tests {
             key(&terminal, true),
             terminal.screen().snapshot_viewport(),
             &mut fonts,
+            Default::default(),
         )
         .unwrap();
         assert_ne!(prepared.frame.quads, shown.frame.quads);
@@ -11708,8 +11731,13 @@ mod tests {
             egui::Rect::from_min_size(Pos2::new(10.0, 20.0), Vec2::new(200.0, 80.0)),
             2.0,
         );
-        let mut prepared =
-            PreparedPane::new(key, terminal.screen().snapshot_viewport(), &mut fonts).unwrap();
+        let mut prepared = PreparedPane::new(
+            key,
+            terminal.screen().snapshot_viewport(),
+            &mut fonts,
+            Default::default(),
+        )
+        .unwrap();
         assert!(prepared.text.is_none());
         let frame = Arc::clone(&prepared.frame);
 

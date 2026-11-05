@@ -79,6 +79,7 @@ fn main() {
             cursor_visible: false,
             ..Default::default()
         };
+        let mut row_cache = rustty_render::RowCache::default();
         let mut samples = Vec::with_capacity(workload::SAMPLES);
         for frame in 0..workload::WARMUP + workload::SAMPLES {
             COUNTS.set(Some([0, 0]));
@@ -86,9 +87,14 @@ fn main() {
             workload::advance(&mut terminal, case, &input, frame, size);
             let terminal_ns = start.elapsed().as_nanos() as u64;
             let terminal_allocations = COUNTS.replace(None).unwrap();
+            // The app prepares detached viewport snapshots; exclude capture from both timers.
+            let source = terminal.screen().render_key();
+            let snapshot = terminal.screen().snapshot_viewport();
             COUNTS.set(Some([0, 0]));
             let start = Instant::now();
-            let prepared = renderer.prepare(terminal.screen(), &options).unwrap();
+            let prepared = renderer
+                .prepare_cached(&snapshot, source, &options, &mut row_cache)
+                .unwrap();
             let prepare_ns = start.elapsed().as_nanos() as u64;
             let prepare_allocations = COUNTS.replace(None).unwrap();
             black_box(prepared);
@@ -106,6 +112,7 @@ fn main() {
         results.push(serde_json::json!({
             "case": case, "font": "Menlo", "font_size_points": 13,
             "size_pixels": options.size, "terminal_size": size,
+            "detached_viewport": true,
             "warmup_frames": workload::WARMUP, "sample_frames": workload::SAMPLES,
             "columns": ["terminal_ns", "prepare_ns", "terminal_allocations", "terminal_requested_bytes", "prepare_allocations", "prepare_requested_bytes"],
             "statistics": {

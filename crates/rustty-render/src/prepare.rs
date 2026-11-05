@@ -6,6 +6,7 @@ use rustty_font::{
     BitmapFormat, FontConfig, FontError, FontId, FontMetrics, FontStyle, FontSystem, GlyphBitmap,
     ShapedGlyph, sprite,
 };
+use rustty_vt::render::{CursorKey, RowKey, ViewKey};
 use rustty_vt::screen::{Color as TerminalColor, CursorShape, RowView, Screen, Style, Underline};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -119,6 +120,60 @@ struct RowScratch {
     anchors: Vec<Option<f32>>,
 }
 
+struct CachedRow {
+    key: RowKey,
+    cursor: Option<(CursorKey, bool)>,
+    blink_visible: bool,
+    background: Vec<Quad>,
+    foreground: Vec<Quad>,
+    quad_counts: [usize; 2],
+    valid: bool,
+    blinking_text: bool,
+    cursor_bounds: Option<[f32; 4]>,
+    used: bool,
+}
+
+/// Caller-owned geometry for one pane. Pass its live view key when rendering
+/// detached viewport snapshots, whose storage identity changes on each capture.
+#[derive(Default)]
+pub struct RowCache {
+    view: Option<ViewKey>,
+    options: Option<RenderOptions>,
+    generation: u64,
+    rows: HashMap<u64, CachedRow>,
+    scratch: RowScratch,
+    #[cfg(test)]
+    prepared_rows: usize,
+}
+
+impl RowCache {
+    /// Discard row geometry without changing the renderer's font atlas.
+    pub fn clear(&mut self) {
+        self.rows.clear();
+        self.view = None;
+        self.options = None;
+    }
+
+    fn begin(&mut self, view: ViewKey, options: &RenderOptions, generation: u64) {
+        let mut settings = options.clone();
+        // These affect individual rows or the separately prepared IME overlay.
+        settings.blink_visible = true;
+        settings.preedit = None;
+        if self.generation != generation
+            || self.view.is_none_or(|old| !old.same_row_layout(&view))
+            || self.options.as_ref() != Some(&settings)
+        {
+            self.rows.clear();
+        }
+        self.view = Some(view);
+        self.options = Some(settings);
+        self.generation = generation;
+        for row in self.rows.values_mut() {
+            row.used = false;
+        }
+    }
+}
+
 /// Builds frames on the host thread. Frame values themselves contain no native
 /// handles and can be sent to another thread or retained by a UI paint callback.
 pub struct Renderer {
@@ -186,15 +241,39 @@ impl Renderer {
         screen: &Screen,
         options: &RenderOptions,
     ) -> Result<Frame, RenderError> {
-        match self.prepare_once(screen, options, false) {
+        match self.prepare_once(screen, options, false, None) {
             Err(RenderError::AtlasCapacity) => {
                 // Rebuild the entire visible frame after eviction; a mid-frame
                 // reset would invalidate the atlas coordinates of earlier quads.
                 self.clear_cache();
-                self.prepare_once(screen, options, true)
+                self.prepare_once(screen, options, true, None)
             }
             result => result,
         }
+    }
+
+    /// Reuse unchanged visible rows while preparing graphics and preedit anew.
+    /// `live_view` identifies the source, not the detached `screen` snapshot.
+    pub fn prepare_cached(
+        &mut self,
+        screen: &Screen,
+        live_view: ViewKey,
+        options: &RenderOptions,
+        cache: &mut RowCache,
+    ) -> Result<Frame, RenderError> {
+        cache.begin(live_view, options, self.generation);
+        let result = match self.prepare_once(screen, options, false, Some(&mut *cache)) {
+            Err(RenderError::AtlasCapacity) => {
+                self.clear_cache();
+                cache.begin(live_view, options, self.generation);
+                self.prepare_once(screen, options, true, Some(&mut *cache))
+            }
+            result => result,
+        };
+        if result.is_err() {
+            cache.clear();
+        }
+        result
     }
 
     fn prepare_once(
@@ -202,28 +281,53 @@ impl Renderer {
         screen: &Screen,
         options: &RenderOptions,
         omit_excess_images: bool,
+        mut cache: Option<&mut RowCache>,
     ) -> Result<Frame, RenderError> {
         let metrics = self.metrics();
         let mut frame = Frame::empty(options.size);
         frame.generation = self.generation;
+        let [below_background, below_text, above_text] =
+            self.prepare_graphics(screen, options, omit_excess_images)?;
+        let (background_capacity, foreground_capacity) = cache
+            .as_deref()
+            .map(|cache| {
+                cache
+                    .rows
+                    .values()
+                    .fold((0, 0), |(background, foreground), row| {
+                        (
+                            background + row.quad_counts[0],
+                            foreground + row.quad_counts[1],
+                        )
+                    })
+            })
+            .unwrap_or_default();
+        frame.quads.reserve(
+            1 + background_capacity
+                + foreground_capacity
+                + below_background.len()
+                + below_text.len()
+                + above_text.len(),
+        );
         frame.quads.push(Quad::solid(
             [0.0, 0.0, options.size[0] as f32, options.size[1] as f32],
             Color::rgb(options.background).opacity(options.background_opacity),
         ));
-        let [below_background, below_text, above_text] =
-            self.prepare_graphics(screen, options, omit_excess_images)?;
         frame.quads.extend(below_background);
         let mut foreground = Frame::empty(options.size);
-        // ponytail: reuse scratch within the frame; retain it across frames
-        // if these remaining allocations become measurable.
-        let mut scratch = RowScratch::default();
+        foreground.quads.reserve(foreground_capacity);
+        let mut scratch = cache
+            .as_deref_mut()
+            .map(|cache| std::mem::take(&mut cache.scratch))
+            .unwrap_or_default();
         let view = screen.render_view();
         let cursor_view = view.cursor();
         for (row_index, rendered) in view.rows().enumerate() {
+            let row_key = rendered.key();
             let row = rendered.row;
             let selection = rendered.selection;
-            let top = options.padding[1] + row_index as f32 * metrics.cell_height as f32;
-            if top >= options.size[1] as f32 {
+            let row_top = options.padding[1] + row_index as f32 * metrics.cell_height as f32;
+            if row_top >= options.size[1] as f32 {
                 break;
             }
             let cursor_row = cursor_view.is_some_and(|cursor| cursor.y == row_index)
@@ -233,7 +337,43 @@ impl Renderer {
                 && screen.viewport_offset == 0;
             let cursor =
                 cursor_row && (!options.focused || !screen.cursor.blink || options.blink_visible);
+            let cursor_key = cursor_row.then(|| (cursor_view.unwrap().key(), cursor));
+            let mut cache_row = false;
+            if let Some(cached) = cache
+                .as_deref_mut()
+                .and_then(|cache| cache.rows.get_mut(&row.id))
+                .filter(|cached| {
+                    // Rewritten rows avoid a second geometry copy until their key repeats.
+                    cache_row = cached.key == row_key;
+                    cached.valid
+                        && cache_row
+                        && cached.cursor == cursor_key
+                        && (!cached.blinking_text || cached.blink_visible == options.blink_visible)
+                })
+            {
+                cached.used = true;
+                for (quads, stored) in [
+                    (&mut frame.quads, &cached.background),
+                    (&mut foreground.quads, &cached.foreground),
+                ] {
+                    quads.extend(stored.iter().cloned().map(|mut quad| {
+                        quad.rect[1] += row_top;
+                        quad
+                    }));
+                }
+                frame.blinking_text |= cached.blinking_text;
+                if let Some(mut bounds) = cached.cursor_bounds {
+                    bounds[1] += row_top;
+                    frame.cursor_row_bounds = Some(bounds);
+                }
+                continue;
+            }
+            // Both paths position row-local geometry identically, including after scrolling.
+            let top = 0.0;
+            let background_start = frame.quads.len();
             let foreground_start = foreground.quads.len();
+            let mut blinking_text = false;
+            let mut cursor_bounds = None;
             let visible_cols = ((options.size[0] as f32 - options.padding[0]).max(0.0)
                 / metrics.cell_width as f32)
                 .ceil() as usize;
@@ -264,7 +404,7 @@ impl Renderer {
             scratch.paints.clear();
             scratch.paints.reserve(paint_cols);
             for (col, cell) in row.cells().iter().take(paint_cols).enumerate() {
-                frame.blinking_text |= row.style(col).blink
+                blinking_text |= row.style(col).blink
                     && !row.style(col).invisible
                     && cell.width() != 0
                     && (row.style(col).underline != Underline::None
@@ -384,7 +524,57 @@ impl Renderer {
                     right = right.max(x + w);
                     bottom = bottom.max(y + h);
                 }
-                frame.cursor_row_bounds = Some([left, upper, right - left, bottom - upper]);
+                cursor_bounds = Some([left, upper, right - left, bottom - upper]);
+            }
+            if let Some(cache) = cache.as_deref_mut() {
+                #[cfg(test)]
+                {
+                    cache.prepared_rows += 1;
+                }
+                let cached = cache.rows.entry(row.id).or_insert_with(|| CachedRow {
+                    key: row_key,
+                    cursor: cursor_key,
+                    blink_visible: options.blink_visible,
+                    background: Vec::new(),
+                    foreground: Vec::new(),
+                    quad_counts: [0; 2],
+                    valid: false,
+                    blinking_text,
+                    cursor_bounds,
+                    used: true,
+                });
+                cached.key = row_key;
+                cached.cursor = cursor_key;
+                cached.blink_visible = options.blink_visible;
+                cached.quad_counts = [
+                    frame.quads.len() - background_start,
+                    foreground.quads.len() - foreground_start,
+                ];
+                cached.valid = cache_row;
+                if cache_row {
+                    cached.background.clear();
+                    cached
+                        .background
+                        .extend_from_slice(&frame.quads[background_start..]);
+                    cached.foreground.clear();
+                    cached
+                        .foreground
+                        .extend_from_slice(&foreground.quads[foreground_start..]);
+                }
+                cached.blinking_text = blinking_text;
+                cached.cursor_bounds = cursor_bounds;
+                cached.used = true;
+            }
+            for quad in frame.quads[background_start..]
+                .iter_mut()
+                .chain(&mut foreground.quads[foreground_start..])
+            {
+                quad.rect[1] += row_top;
+            }
+            frame.blinking_text |= blinking_text;
+            if let Some(mut bounds) = cursor_bounds {
+                bounds[1] += row_top;
+                frame.cursor_row_bounds = Some(bounds);
             }
         }
         frame.quads.extend(below_text);
@@ -398,6 +588,10 @@ impl Renderer {
             .filter(|upload| !self.pages[&upload.page].image || image_pages.contains(&upload.page))
             .cloned()
             .collect();
+        if let Some(cache) = cache {
+            cache.scratch = scratch;
+            cache.rows.retain(|_, row| row.used);
+        }
         Ok(frame)
     }
 
@@ -782,6 +976,284 @@ fn decorations(
 mod tests {
     use super::*;
     use rustty_vt::{GridPoint, Selection, Terminal};
+
+    fn cached_matches_rebuild(
+        renderer: &mut Renderer,
+        terminal: &Terminal,
+        options: &RenderOptions,
+        cache: &mut RowCache,
+    ) -> Frame {
+        let source = terminal.screen().render_key();
+        let screen = terminal.screen().snapshot_viewport();
+        assert_ne!(source.identity, screen.render_identity());
+        let cached = renderer
+            .prepare_cached(&screen, source, options, cache)
+            .unwrap();
+        // Keep the atlas intact: UVs, upload histories and every quad must agree exactly.
+        let rebuilt = renderer.prepare(&screen, options).unwrap();
+        assert_eq!(cached.size, rebuilt.size);
+        assert_eq!(cached.generation, rebuilt.generation);
+        assert_eq!(cached.quads, rebuilt.quads);
+        assert_eq!(cached.atlas_uploads, rebuilt.atlas_uploads);
+        assert_eq!(cached.ime_cursor, rebuilt.ime_cursor);
+        assert_eq!(cached.cursor_row_bounds, rebuilt.cursor_row_bounds);
+        assert_eq!(cached.blinking_text, rebuilt.blinking_text);
+        cached
+    }
+
+    #[test]
+    fn cached_rows_follow_edits_selection_settings_sources_and_atlas_resets() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let mut terminal = Terminal::new(32, 4, 100);
+        terminal.feed("first ffi 界\r\nsecond e\u{301}\r\nthird\r\nfourth".as_bytes());
+        let mut options = RenderOptions {
+            cursor_visible: false,
+            ..Default::default()
+        };
+        let mut cache = RowCache::default();
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 4);
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 8);
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(
+            cache.prepared_rows, 8,
+            "new snapshot identity must still reuse rows"
+        );
+
+        terminal.screen_mut().set_cell_text(1, 3, "X");
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 9);
+        let mut style = terminal.screen().row(2).style(0);
+        style.foreground = TerminalColor::Indexed(1);
+        terminal.screen_mut().set_cell_style(2, 0, style);
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 11);
+        terminal.screen_mut().selection = Some(Selection {
+            start: GridPoint {
+                row: terminal.screen().row(0).id,
+                col: 1,
+            },
+            end: GridPoint {
+                row: terminal.screen().row(1).id,
+                col: 8,
+            },
+            rectangular: false,
+        });
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 14);
+        options.palette[1] = [12, 34, 56];
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 18);
+        options.search_highlights.push(SearchHighlight {
+            row: terminal.screen().row(3).id,
+            columns: 2..=4,
+            selected: true,
+        });
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 22);
+        terminal = terminal.clone();
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 26);
+        renderer.clear_cache();
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 30);
+        let previous_generation = renderer.generation();
+        renderer = Renderer::new(FontConfig::default()).unwrap();
+        assert_ne!(renderer.generation(), previous_generation);
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 34);
+        terminal.resize(24, 5);
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 39);
+        assert_eq!(cache.rows.len(), 5);
+    }
+
+    #[test]
+    fn cached_rows_scroll_and_keep_two_panes_with_overlapping_row_ids_independent() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let mut first = Terminal::new(32, 4, 100);
+        let mut second = Terminal::new(32, 4, 100);
+        for index in 0..12 {
+            first.feed(format!("\x1b[4:3mfirst {index} 界\x1b[m\r\n").as_bytes());
+            second.feed(format!("\x1b[44msecond {index} ffi\x1b[m\r\n").as_bytes());
+        }
+        assert_eq!(first.screen().row(0).id, second.screen().row(0).id);
+        let options = RenderOptions {
+            cursor_visible: false,
+            padding: [3.25, 5.5],
+            ..Default::default()
+        };
+        let mut caches = [RowCache::default(), RowCache::default()];
+        for _ in 0..3 {
+            cached_matches_rebuild(&mut renderer, &first, &options, &mut caches[0]);
+            cached_matches_rebuild(&mut renderer, &second, &options, &mut caches[1]);
+        }
+        assert_eq!([caches[0].prepared_rows, caches[1].prepared_rows], [8, 8]);
+        for (delta, expected) in [(1isize, 1), (2, 3), (-1, 2), (-2, 3)] {
+            let before = caches[0].prepared_rows;
+            first.screen_mut().scroll_viewport(delta);
+            cached_matches_rebuild(&mut renderer, &first, &options, &mut caches[0]);
+            assert_eq!(caches[0].prepared_rows - before, expected);
+            assert_eq!(
+                caches[0].rows.len(),
+                4,
+                "old viewport rows must be released"
+            );
+            cached_matches_rebuild(&mut renderer, &second, &options, &mut caches[1]);
+            assert_eq!(caches[1].prepared_rows, 8);
+        }
+    }
+
+    #[test]
+    fn cached_rows_track_cursor_and_text_blink_with_fresh_preedit_and_graphics() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let mut terminal = Terminal::new(32, 4, 100);
+        terminal.feed(b"first ffi\r\n\x1b[5;4mblinking\x1b[m\r\nthird\r\nfourth\x1b[H");
+        terminal.screen_mut().cursor.blink = true;
+        let mut options = RenderOptions::default();
+        let mut cache = RowCache::default();
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 4);
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 8);
+        terminal.screen_mut().cursor.col = 3;
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 9);
+        terminal.screen_mut().cursor.row = 2;
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(
+            cache.prepared_rows, 11,
+            "rebuild both old and new cursor rows"
+        );
+        options.blink_visible = false;
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(
+            cache.prepared_rows, 13,
+            "only cursor and blinking text changed"
+        );
+        options.blink_visible = true;
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 15);
+        options.preedit = Some(Preedit {
+            text: "日本".into(),
+            selection: Some((0, 6)),
+        });
+        let frame = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert!(frame.ime_cursor.is_some());
+        assert_eq!(cache.prepared_rows, 16, "preedit hides the terminal cursor");
+        options.preedit.as_mut().unwrap().text.push('語');
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(
+            cache.prepared_rows, 16,
+            "preedit text is prepared separately"
+        );
+        options.preedit = None;
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 17);
+        options.focused = false;
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        options.cursor_visible = false;
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        let plain = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        let before = cache.prepared_rows;
+        terminal.feed(b"\x1b_Ga=T,f=32,s=1,v=1,i=1,C=1,z=-1;/wAA/w==\x1b\\");
+        let graphics = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, before);
+        assert_ne!(plain.quads, graphics.quads);
+        terminal.feed(b"\x1b_Ga=d,d=A\x1b\\");
+        let deleted = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, before);
+        assert_eq!(plain.quads, deleted.quads);
+    }
+
+    #[test]
+    fn cached_rows_rebuild_after_atlas_capacity_retry() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let mut terminal = Terminal::new(16, 2, 0);
+        terminal.feed(b"first\r\nsecond");
+        let options = RenderOptions {
+            cursor_visible: false,
+            ..Default::default()
+        };
+        let mut cache = RowCache::default();
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        let before = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 4);
+        // Exhaust atlas metadata without allocating a 64 MiB test image.
+        for page in renderer.pages.values_mut() {
+            page.size = 4096;
+            page.x = page.size;
+            page.y = page.size;
+            page.row_height = page.size;
+        }
+        terminal.screen_mut().set_cell_text(1, 0, "Z");
+        let after = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_ne!(before.generation, after.generation);
+        assert_eq!(
+            cache.prepared_rows, 6,
+            "retry must rebuild the earlier cached row too"
+        );
+    }
+
+    #[test]
+    fn cached_rows_admit_geometry_after_repaint_and_resize_settle() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let mut terminal = Terminal::new(32, 4, 0);
+        terminal.feed(b"\x1b[?1049h");
+        let options = RenderOptions {
+            cursor_visible: false,
+            ..Default::default()
+        };
+        let mut cache = RowCache::default();
+        for text in ["first", "other", "third"] {
+            for row in 0..4 {
+                terminal.screen_mut().set_cell_text(row, 0, text);
+            }
+            cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+            assert!(cache.rows.values().all(|row| !row.valid));
+            assert!(cache.rows.values().all(|row| row.background.capacity() == 0
+                && row.foreground.capacity() == 0
+                && row.quad_counts[1] > 0));
+        }
+        assert_eq!(cache.prepared_rows, 12);
+
+        // Stable rows become reusable while a repeatedly changed status row stays uncached.
+        terminal.screen_mut().set_cell_text(0, 0, "-");
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 16);
+        assert_eq!(cache.rows.values().filter(|row| row.valid).count(), 3);
+        terminal.screen_mut().set_cell_text(0, 0, "+");
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 17);
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 18);
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 18);
+        assert!(cache.rows.values().all(|row| row.valid));
+
+        for row in 0..4 {
+            terminal.screen_mut().set_cell_text(row, 0, "repaint");
+        }
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 22);
+        assert!(
+            cache
+                .rows
+                .values()
+                .all(|row| !row.valid && row.foreground.capacity() > 0)
+        );
+        terminal.resize(24, 5);
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 27);
+        assert_eq!(cache.rows.len(), 5);
+        assert!(cache.rows.values().all(|row| !row.valid));
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 32);
+        assert!(cache.rows.values().all(|row| row.valid));
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 32);
+    }
 
     #[test]
     fn blank_tail_paint_matches_explicit_spaces() {

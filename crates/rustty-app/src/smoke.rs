@@ -6,6 +6,8 @@ use std::fs;
 mod hints_smoke;
 #[path = "output_smoke.rs"]
 mod output_smoke;
+#[path = "rows_smoke.rs"]
+mod rows_smoke;
 #[path = "../../../test/rustty/frame_workloads.rs"]
 mod workload;
 
@@ -216,6 +218,7 @@ impl Smoke {
         let deck_only = std::env::var("RUSTTY_SMOKE_DECK").as_deref() == Ok("only");
         let hints_only = std::env::var_os("RUSTTY_SMOKE_HINTS").is_some();
         let output_only = std::env::var_os("RUSTTY_SMOKE_OUTPUT").is_some();
+        let rows_only = std::env::var_os("RUSTTY_SMOKE_ROWS").is_some();
         let outliner = std::env::var_os("RUSTTY_SMOKE_OUTLINER").is_some();
         if timing || cursor_benchmark {
             let renderer = loaded.config.renderer;
@@ -235,6 +238,7 @@ impl Smoke {
             || deck_only
             || hints_only
             || output_only
+            || rows_only
             || outliner
         {
             config::Command::Direct(vec!["/bin/sleep".into(), "120".into()])
@@ -256,7 +260,7 @@ impl Smoke {
                     )
                     .join("Git/bin/bash.exe")
                 });
-            if timing || deck_only || hints_only || output_only || outliner {
+            if timing || deck_only || hints_only || output_only || rows_only || outliner {
                 config::Command::Direct(vec![
                     shell.to_string_lossy().into_owned(),
                     "--noprofile".into(),
@@ -387,6 +391,10 @@ impl Smoke {
         }
         if std::env::var_os("RUSTTY_SMOKE_OUTPUT").is_some() {
             output_smoke::check(app, &self.directory)?;
+            return Ok(true);
+        }
+        if std::env::var_os("RUSTTY_SMOKE_ROWS").is_some() {
+            rows_smoke::check(app, event_loop, &self.directory)?;
             return Ok(true);
         }
         if self.interactive_deck {
