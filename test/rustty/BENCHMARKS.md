@@ -105,6 +105,25 @@ against the saved medians, sample counts and executable hashes.
 
 ## Before and after
 
+For a bounded Rustty/Ghostty comparison, build the binaries first and use
+[bench_compare.py](bench_compare.py) with their executable paths:
+
+```sh
+python3 test/rustty/bench_compare.py \
+  --simd /path/to/rustty-primitives --ghostty /path/to/vt-primitives \
+  --output /tmp/rustty-ghostty-comparison
+```
+
+The runner measures serially in both engine orders, with 20 samples per order,
+0.2 seconds of warmup, a 0.5-second measurement target, and 10,000 bootstrap
+resamples. It limits each process to 30 wall-clock seconds and the comparison
+to ten minutes, including setup and analysis; `--timeout` and `--max-time`
+override these limits. On timeout it kills the process group, including native
+helpers, and retains completed workloads for resuming with the same command.
+Use repeatable `--case` filters for a focused follow-up. These short runs can
+identify large gaps; check both orders and confidence intervals before claiming
+small differences. Criterion's measurement target alone does not bound runtime.
+
 Keep the harness, input, compiler flags, and machine the same across revisions.
 Build both revisions before measuring, then run them **serially** with other
 builds and benchmarks stopped. Criterion supplies warmup, sampling, confidence
