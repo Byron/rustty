@@ -46,7 +46,7 @@ pub use page_layout::PageCapacity;
 pub use page_list::PageAllocationInfo;
 pub use rustty_parser::{Boundaries, BoundaryStop, StringEnd, StringIntroducer, StringKind};
 pub use screen::{
-    Cell, Color, Cursor, CursorShape, GridPoint, HyperlinkData, HyperlinkId, Row, RowView, Screen,
+    Cell, CellSpan, Color, Cursor, CursorShape, GridPoint, HyperlinkData, HyperlinkId, Row, RowView, Screen,
     ScrollbackLimits, Selection, SemanticContent, Style, TrackedPoint, Underline, ViewMetadata,
 };
 pub use terminal::{Effect, EffectHandler, Margins, Terminal, default_palette};

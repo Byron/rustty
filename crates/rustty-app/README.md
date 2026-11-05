@@ -549,6 +549,18 @@ uses colors from transmission time; older peers cannot resume an interrupted
 indexed upload. Both retained buffers count toward the existing graphics quota,
 so the smaller transmitted payload does not imply lower retained memory use.
 
+Kitty OSC 66 supports explicit text widths from one to seven cells. A TUI can
+reserve an exact number of cells for Unicode text without depending on the
+terminal's character-width tables. Each explicit payload is one selection and rendering
+unit; text that exceeds its reserved space is clipped. Copying preserves the
+complete payload, and VT exports preserve its explicit width. A span survives
+scrollback, wrapping, and reconnects, and edits that split it remove it whole.
+
+This implements the width part of the protocol. Scale and fractional alignment
+are ignored; `w=0` or an omitted width prints ordinary text. The CPR width probe
+advances two cells and the scale probe advances one. Older snapshot readers
+display a replacement character and padding in place of explicit spans.
+
 For CLI compatibility, sessions advertise `TERM_PROGRAM=ghostty` and the
 bundled `TERM=xterm-ghostty`; XTVersion replies also identify as `ghostty`,
 with Rustty's package version. An existing shell can enable Cargo progress
@@ -583,6 +595,10 @@ for a closing pane. It writes `row-cache-result.json` and captures the panes.
 `RUSTTY_SMOKE_INDEXED=1` checks indexed-image colors and alpha in two panes,
 including palette changes without retransmission. It writes
 `indexed-graphics-result.json` and captures the images before and after recoloring.
+`RUSTTY_SMOKE_WIDTH=1` checks explicit widths, tail selection and link hints,
+search, accessibility, physical IME placement, cursor phases, and cached frames.
+It writes `explicit-width-result.json`, `explicit-width.png`, and
+`explicit-width-hints.png` without changing the native clipboard or opening links.
 
 The macOS session import regression runs five hidden debug instances in sequence
 with isolated configuration, disposable `/bin/sh` shells, and state. Each

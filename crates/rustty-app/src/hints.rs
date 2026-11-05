@@ -107,13 +107,14 @@ impl Hints {
                 let end = positions[&target.link.end.row];
                 let bounds = (start..=end)
                     .map(|y| {
-                        let left = if y == start { target.link.start.col } else { 0 };
+                        let left = if y == start {
+                            rows[y].cell_span(target.link.start.col).start
+                        } else {
+                            0
+                        };
                         let right = if y == end {
-                            target.link.end.col
-                                + rows[y]
-                                    .cells
-                                    .get(target.link.end.col)
-                                    .map_or(1, |cell| usize::from(cell.width().max(1)))
+                            let span = rows[y].cell_span(target.link.end.col);
+                            span.start + usize::from(span.width)
                         } else {
                             rows[y].cells.len()
                         };
@@ -283,6 +284,29 @@ mod tests {
         let labels: std::collections::HashSet<_> =
             hints.entries.iter().map(|entry| &entry.label).collect();
         assert_eq!(labels.len(), hints.entries.len());
+    }
+    #[test]
+    fn explicit_span_bounds_and_metadata_changes_follow_the_live_source() {
+        let mut terminal = vt::Terminal::new(20, 3, 0);
+        terminal.feed(b"\x1b]8;;https://example.com\x07\x1b]66;w=7;open link\x07\x1b]8;;\x07");
+        let targets = vt::search::LinkMatcher::default().viewport_hints(terminal.screen());
+        let hints = Hints::new(
+            1,
+            &terminal,
+            targets,
+            Rect::from_min_size(Pos2::ZERO, Vec2::new(200.0, 60.0)),
+            Vec2::new(10.0, 20.0),
+            PathBuf::new(),
+            false,
+        )
+        .unwrap();
+        assert_eq!(hints.entries.len(), 1);
+        assert_eq!(
+            hints.entries[0].bounds,
+            [Rect::from_min_size(Pos2::ZERO, Vec2::new(70.0, 20.0))]
+        );
+        terminal.feed(b"\x1b[H\x1b]66;w=3;open link\x07");
+        assert!(!hints.source.matches(&terminal));
     }
     #[test]
     fn source_rejects_mutations_replacements_and_scrolling_but_preserves_selection() {

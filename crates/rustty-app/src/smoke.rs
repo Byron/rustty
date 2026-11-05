@@ -10,6 +10,8 @@ mod indexed_smoke;
 mod output_smoke;
 #[path = "rows_smoke.rs"]
 mod rows_smoke;
+#[path = "width_smoke.rs"]
+mod width_smoke;
 #[path = "../../../test/rustty/frame_workloads.rs"]
 mod workload;
 
@@ -222,6 +224,7 @@ impl Smoke {
         let output_only = std::env::var_os("RUSTTY_SMOKE_OUTPUT").is_some();
         let rows_only = std::env::var_os("RUSTTY_SMOKE_ROWS").is_some();
         let indexed_only = std::env::var_os("RUSTTY_SMOKE_INDEXED").is_some();
+        let width_only = std::env::var_os("RUSTTY_SMOKE_WIDTH").is_some();
         let outliner = std::env::var_os("RUSTTY_SMOKE_OUTLINER").is_some();
         if timing || cursor_benchmark {
             let renderer = loaded.config.renderer;
@@ -243,6 +246,7 @@ impl Smoke {
             || output_only
             || rows_only
             || indexed_only
+            || width_only
             || outliner
         {
             config::Command::Direct(vec!["/bin/sleep".into(), "120".into()])
@@ -270,6 +274,7 @@ impl Smoke {
                 || output_only
                 || rows_only
                 || indexed_only
+                || width_only
                 || outliner
             {
                 config::Command::Direct(vec![
@@ -410,6 +415,10 @@ impl Smoke {
         }
         if std::env::var_os("RUSTTY_SMOKE_INDEXED").is_some() {
             indexed_smoke::check(app, event_loop, &self.directory)?;
+            return Ok(true);
+        }
+        if std::env::var_os("RUSTTY_SMOKE_WIDTH").is_some() {
+            width_smoke::check(app, event_loop, &self.directory)?;
             return Ok(true);
         }
         if self.interactive_deck {

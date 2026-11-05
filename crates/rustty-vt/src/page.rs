@@ -47,6 +47,25 @@ pub(crate) struct CellCopy {
     pub link: Option<Arc<HyperlinkData>>,
     pub link_id: u16,
     pub text: Option<(Arc<str>, u8)>,
+    pub span: Option<SpanPart>,
+}
+
+pub(crate) const MAX_SPAN_BYTES: usize = 4096;
+
+pub(crate) fn valid_span_text(text: &str) -> bool {
+    !text.is_empty()
+        && text.len() <= MAX_SPAN_BYTES
+        && !text
+            .chars()
+            .any(|cp| cp <= '\u{1f}' || ('\u{7f}'..='\u{9f}').contains(&cp))
+}
+
+/// Each physical part carries its owner so cell moves can repair split spans.
+#[derive(Clone, Debug)]
+pub(crate) struct SpanPart {
+    pub text: Arc<str>,
+    pub width: u8,
+    pub offset: u8,
 }
 
 impl CellCopy {
@@ -57,6 +76,7 @@ impl CellCopy {
             link: None,
             link_id: 0,
             text: None,
+            span: None,
         }
     }
 }
@@ -110,6 +130,15 @@ pub(crate) struct Page {
     #[serde(skip)]
     pub grapheme_map: SlotMap<GraphemeAllocation>,
     #[serde(skip)]
+    pub span_map: SlotMap<SpanPart>,
+    // Count references within this page, including temporarily split copies.
+    #[serde(skip)]
+    span_sources: HashMap<usize, (usize, usize)>,
+    #[serde(skip)]
+    span_bytes: usize,
+    #[serde(skip)]
+    span_row_counts: Vec<u16>,
+    #[serde(skip)]
     pub link_map: SlotMap<u16>,
     // Legacy JSON can give equal native links different display strings or
     // omit their ID. Preserve those uncommon host values outside live words.
@@ -118,7 +147,7 @@ pub(crate) struct Page {
     #[serde(skip)]
     override_bytes: usize,
     #[serde(skip)]
-    map_bytes: [usize; 3],
+    map_bytes: [usize; 5],
     #[serde(skip)]
     owned_bytes: usize,
 }
@@ -167,10 +196,14 @@ impl Page {
                 vec![0; usize::from(capacity.rows)]
             },
             grapheme_map: SlotMap::default(),
+            span_map: SlotMap::default(),
+            span_sources: HashMap::new(),
+            span_bytes: 0,
+            span_row_counts: Vec::new(),
             link_map: SlotMap::default(),
             link_overrides: SlotMap::default(),
             override_bytes: 0,
-            map_bytes: [0; 3],
+            map_bytes: [0; 5],
             owned_bytes: 0,
         };
         page.refresh_charge();
@@ -221,6 +254,8 @@ impl Page {
         self.map_bytes[0] = self.map_bytes[0].max(map_bytes(&self.grapheme_map));
         self.map_bytes[1] = self.map_bytes[1].max(map_bytes(&self.link_map));
         self.map_bytes[2] = self.map_bytes[2].max(map_bytes(&self.link_overrides));
+        self.map_bytes[3] = self.map_bytes[3].max(map_bytes(&self.span_map));
+        self.map_bytes[4] = self.map_bytes[4].max(map_bytes(&self.span_sources));
         self.owned_bytes = size_of::<Self>()
             + self.headers.capacity() * size_of::<RowHeader>()
             + self.row_ids.capacity() * size_of::<u64>()
@@ -229,6 +264,8 @@ impl Page {
             + self.links.storage_bytes()
             + self.graphemes.storage_bytes()
             + self.override_bytes
+            + self.span_bytes
+            + self.span_row_counts.capacity() * size_of::<u16>()
             + self.map_bytes.iter().sum::<usize>();
     }
 
@@ -319,6 +356,118 @@ impl Page {
             text: self
                 .grapheme(slot)
                 .map(|allocation| (self.graphemes.text_arc(allocation), allocation.len)),
+            span: self.span_map.get(&(slot as u32)).cloned(),
+        }
+    }
+
+    pub fn set_span_part(&mut self, row: usize, col: usize, part: SpanPart) {
+        let slot = self.slot(row, col);
+        self.remove_span_part(slot);
+        let key = part.text.as_ptr() as usize;
+        let entry = self.span_sources.entry(key).or_insert_with(|| {
+            let bytes =
+                (part.text.len() + 2 * size_of::<usize>()).next_multiple_of(size_of::<usize>());
+            self.span_bytes += bytes;
+            (0, bytes)
+        });
+        entry.0 += 1;
+        if self.span_row_counts.is_empty() {
+            self.span_row_counts
+                .resize(usize::from(self.capacity.rows), 0);
+        }
+        self.span_row_counts[slot / usize::from(self.capacity.cols)] += 1;
+        self.span_map.insert(slot as u32, part);
+        self.headers[row].set(RowHeader::TEXT_SPANS, true);
+        self.mark_row(row);
+    }
+
+    pub fn restore_span(
+        &mut self,
+        row: usize,
+        col: usize,
+        width: u8,
+        text: Arc<str>,
+    ) -> Result<(), &'static str> {
+        if row >= usize::from(self.rows)
+            || !(1..=7).contains(&width)
+            || col
+                .checked_add(usize::from(width))
+                .is_none_or(|end| end > usize::from(self.columns))
+            || !valid_span_text(&text)
+        {
+            return Err("invalid text span");
+        }
+        let start = self.slot(row, col);
+        if (start..start + usize::from(width)).any(|slot| {
+            self.span_map.contains_key(&(slot as u32))
+                || self.cells[slot].width() != 1
+                || self.cells[slot].spacer_head()
+        }) {
+            return Err("overlapping text span");
+        }
+        for offset in 0..width {
+            self.set_span_part(
+                row,
+                col + usize::from(offset),
+                SpanPart {
+                    text: text.clone(),
+                    width,
+                    offset,
+                },
+            );
+        }
+        self.refresh_charge();
+        Ok(())
+    }
+
+    fn remove_span_part(&mut self, slot: usize) {
+        if let Some(part) = self.span_map.remove(&(slot as u32)) {
+            self.span_row_counts[slot / usize::from(self.capacity.cols)] -= 1;
+            let key = part.text.as_ptr() as usize;
+            let entry = self
+                .span_sources
+                .get_mut(&key)
+                .expect("span source is retained");
+            entry.0 -= 1;
+            if entry.0 == 0 {
+                self.span_bytes -= entry.1;
+                self.span_sources.remove(&key);
+            }
+        }
+    }
+
+    /// Erase spans intersected by a write, including parts outside its bounds.
+    pub fn erase_spans_for_write(
+        &mut self,
+        row: usize,
+        start: usize,
+        end: usize,
+        background: Color,
+    ) {
+        if !self.headers[row].has(RowHeader::TEXT_SPANS) {
+            return;
+        }
+        let offset = self.slot(row, 0);
+        let mut changed = false;
+        for col in start..end.min(usize::from(self.columns)) {
+            if let Some(part) = self.span_map.get(&((offset + col) as u32)) {
+                changed = true;
+                let first = col.saturating_sub(usize::from(part.offset));
+                let last = (first + usize::from(part.width)).min(usize::from(self.columns));
+                for x in first..last {
+                    self.clear_cell(offset + x, background);
+                    // A colored blank stores its background in the codepoint union.
+                    if first < start && background == Color::Default {
+                        self.cells[offset + x].set_codepoint(Some(' '));
+                    }
+                }
+                self.mark_row(row);
+            }
+        }
+        if changed {
+            let count = self.span_row_counts[offset / usize::from(self.capacity.cols)];
+            self.headers[row].set(RowHeader::TEXT_SPANS, count != 0);
+            self.refresh_charge();
         }
     }
 
@@ -366,6 +515,7 @@ impl Page {
     }
 
     pub fn clear_cell(&mut self, slot: usize, background: Color) {
+        self.remove_span_part(slot);
         let cell = self.cells[slot];
         self.styles.release(cell.style_id());
         if cell.has_hyperlink() {
@@ -405,7 +555,8 @@ impl Page {
 
     pub fn reset_row(&mut self, row: usize, id: u64, background: Color) {
         let start = self.slot(row, 0);
-        let released_payload = self.headers[row].has(RowHeader::GRAPHEME | RowHeader::HYPERLINK);
+        let released_payload = self.headers[row]
+            .has(RowHeader::GRAPHEME | RowHeader::HYPERLINK | RowHeader::TEXT_SPANS);
         if self.headers[row].has(RowHeader::MANAGED) {
             for slot in start..start + usize::from(self.columns) {
                 self.clear_cell(slot, background);
@@ -500,6 +651,10 @@ impl Page {
         self.link_overrides.clear();
         self.override_bytes = 0;
         self.grapheme_map.clear();
+        self.span_map.clear();
+        self.span_sources.clear();
+        self.span_bytes = 0;
+        self.span_row_counts.clear();
         self.capacity = capacity;
         self.columns = capacity.cols;
         self.rows = 0;
@@ -516,33 +671,55 @@ impl Page {
         background: Color,
         protected: bool,
     ) {
-        let cells = self.row_cells(row);
-        if start >= cells.len() || start >= end {
+        let view = self.row(row);
+        if start >= view.cells.len() || start >= end {
             return;
         }
-        end = end.min(cells.len());
-        if cells[start].width() == 0 && start > 0 {
-            start -= 1;
-        }
-        if end < cells.len() && cells[end - 1].width() == 2 {
-            end += 1;
-        }
+        end = end.min(view.cells.len());
+        start = view.cell_span(start).start;
+        let last = view.cell_span(end - 1);
+        end = (last.start + usize::from(last.width)).min(view.cells.len());
         let offset = self.slot(row, 0);
         let mut released_payload = false;
+        let mut repair = self.headers[row].has(RowHeader::TEXT_SPANS);
         for slot in offset + start..offset + end {
             if !protected || !self.cells[slot].protected() {
-                released_payload |=
-                    self.cells[slot].has_grapheme() || self.cells[slot].has_hyperlink();
+                repair |= self.cells[slot].spacer_head();
+                released_payload |= self.cells[slot].has_grapheme()
+                    || self.cells[slot].has_hyperlink()
+                    || self.span_map.contains_key(&(slot as u32));
                 self.clear_cell(slot, background);
             }
         }
         self.mark_row(row);
+        if repair {
+            self.repair_wide(row, background);
+        }
         if released_payload {
             self.refresh_charge();
         }
     }
 
     fn swap_cells(&mut self, a: usize, b: usize) {
+        let left = self.span_map.remove(&(a as u32));
+        let right = self.span_map.remove(&(b as u32));
+        if left.is_some() != right.is_some() {
+            let a_row = a / usize::from(self.capacity.cols);
+            let b_row = b / usize::from(self.capacity.cols);
+            if left.is_some() {
+                self.span_row_counts[a_row] -= 1;
+                self.span_row_counts[b_row] += 1;
+            } else {
+                self.span_row_counts[b_row] -= 1;
+                self.span_row_counts[a_row] += 1;
+            }
+        }
+        if let Some(value) = left {
+            self.span_map.insert(b as u32, value);
+        }
+        if let Some(value) = right {
+            self.span_map.insert(a as u32, value);
+        }
         let swap = |map: &mut SlotMap<_>| {
             let left = map.remove(&(a as u32));
             let right = map.remove(&(b as u32));
@@ -618,10 +795,41 @@ impl Page {
     pub fn repair_wide(&mut self, row: usize, background: Color) {
         let start = self.slot(row, 0);
         let len = usize::from(self.columns);
+        let gap_start = if self.headers[row].has(RowHeader::WRAPPED) {
+            self.row_cells(row)
+                .iter()
+                .rposition(|c| !c.spacer_head())
+                .map_or(0, |x| x + 1)
+        } else {
+            len
+        };
+        let mut has_spans = false;
         for col in 0..len {
             let cell = self.cells[start + col];
-            if cell.spacer_head() && col + 1 != len {
+            if cell.spacer_head() && col < gap_start {
                 self.cells[start + col].set_spacer_head(false);
+            }
+            if let Some(part) = self.span_map.get(&((start + col) as u32)) {
+                let offset = usize::from(part.offset);
+                let width = usize::from(part.width);
+                let valid = (1..=7).contains(&width)
+                    && offset < width
+                    && col >= offset
+                    && col - offset + width <= len
+                    && (0..width).all(|i| {
+                        self.span_map
+                            .get(&((start + col - offset + i) as u32))
+                            .is_some_and(|p| {
+                                usize::from(p.offset) == i
+                                    && p.width == part.width
+                                    && Arc::ptr_eq(&p.text, &part.text)
+                            })
+                    });
+                if !valid {
+                    self.clear_cell(start + col, background);
+                } else {
+                    has_spans = true;
+                }
             }
             if cell.width() == 0 && (col == 0 || self.cells[start + col - 1].width() != 2)
                 || cell.width() == 2 && (col + 1 == len || self.cells[start + col + 1].width() != 0)
@@ -629,6 +837,7 @@ impl Page {
                 self.clear_cell(start + col, background);
             }
         }
+        self.headers[row].set(RowHeader::TEXT_SPANS, has_spans);
         self.mark_row(row);
     }
 
@@ -745,9 +954,91 @@ impl Page {
         self.links = links;
         self.grapheme_map = grapheme_map;
         self.link_map = link_map;
-        self.map_bytes = [0, 0, self.map_bytes[2]];
+        self.map_bytes = [
+            0,
+            0,
+            self.map_bytes[2],
+            self.map_bytes[3],
+            self.map_bytes[4],
+        ];
         self.layout_generation = self.layout_generation.wrapping_add(1);
         self.refresh_charge();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod text_span_tests {
+    use super::*;
+
+    #[test]
+    fn text_span_sources_are_charged_once_and_released_with_their_last_part() {
+        let mut page = Page::new(
+            PageCapacity {
+                cols: 10,
+                rows: 2,
+                ..PageCapacity::STANDARD
+            },
+            2,
+            0,
+        );
+        let source: Arc<str> = Arc::from("x".repeat(MAX_SPAN_BYTES));
+        let initial = page.storage_bytes();
+        page.restore_span(0, 1, 7, source.clone()).unwrap();
+        page.restore_span(1, 1, 7, source.clone()).unwrap();
+        assert_eq!(page.span_bytes, MAX_SPAN_BYTES + 2 * size_of::<usize>());
+        assert_eq!(page.span_sources.len(), 1);
+        assert_eq!(page.span_map.len(), 14);
+        assert!(page.storage_bytes() > initial + MAX_SPAN_BYTES);
+        let clone = page.clone();
+        page.erase(0, 3, 4, Color::Default, false);
+        assert_eq!(page.span_sources.len(), 1);
+        assert_eq!(page.span_map.len(), 7);
+        assert!(!page.headers[0].has(RowHeader::TEXT_SPANS));
+        page.reset_row(1, 5, Color::Default);
+        assert_eq!(page.span_bytes, 0);
+        assert!(page.span_sources.is_empty());
+        assert!(page.span_map.is_empty());
+        assert_eq!(clone.row(0).text(1).as_str(), &*source);
+        assert!(clone.headers[0].has(RowHeader::TEXT_SPANS));
+        page.restore_span(0, 0, 1, Arc::from("a")).unwrap();
+        assert_eq!(page.span_bytes, 3 * size_of::<usize>());
+    }
+
+    #[test]
+    fn text_span_metadata_survives_row_rotation_moves_and_resource_rebuilds() {
+        let mut page = Page::new(
+            PageCapacity {
+                cols: 10,
+                rows: 3,
+                ..PageCapacity::STANDARD
+            },
+            3,
+            0,
+        );
+        page.restore_span(0, 2, 3, Arc::from("content")).unwrap();
+        let revision = page.row(0).revision();
+        page.rotate_rows(0..3, true);
+        assert_eq!(page.row(2).text(2).as_str(), "content");
+        let source = page.slot(2, 2);
+        let destination = page.slot(1, 2);
+        page.move_cells(source, destination, 3, Color::Default);
+        page.repair_wide(2, Color::Default);
+        page.repair_wide(1, Color::Default);
+        page.rebuild(Some(PageResource::Graphemes)).unwrap();
+        assert_eq!(page.row(1).text(2).as_str(), "content");
+        assert!(page.headers[1].has(RowHeader::TEXT_SPANS));
+        assert!(!page.headers[2].has(RowHeader::TEXT_SPANS));
+        assert_ne!(page.row(1).revision(), revision);
+        assert_eq!(
+            page.span_row_counts
+                .iter()
+                .map(|&n| usize::from(n))
+                .sum::<usize>(),
+            3
+        );
+        page.erase_spans_for_write(1, 3, 4, Color::Default);
+        assert_eq!(page.span_bytes, 0);
+        assert!(!page.headers[1].has(RowHeader::TEXT_SPANS));
     }
 }

@@ -30,6 +30,8 @@ const POINTER_SHAPES: u16 = 0x8001;
 const SAVED_MOUSE: u16 = 0x8002;
 const ATTRIBUTE_EXTENT: u16 = 0x8003;
 const PROGRAM_STATUS: u16 = 0x8004;
+const TEXT_SPANS: u16 = 0x8007;
+const TEXT_SPAN_CHUNK_BYTES: usize = 1024 * 1024;
 // Covers 256 maximum-length reports even with JSON string escaping.
 const MAX_PROGRAM_STATUS_BYTES: usize = 2 * 1024 * 1024;
 
@@ -401,6 +403,43 @@ fn encoding_capacity(
     }
 }
 
+fn encode_text_spans(out: &mut impl Write, rows: &[Row<'_>]) -> io::Result<()> {
+    if !rows.iter().any(|row| row.has_text_spans) {
+        return Ok(());
+    }
+    let mut data = vec![1, 0];
+    for (y, row) in rows.iter().enumerate() {
+        if !row.has_text_spans {
+            continue;
+        }
+        for col in 0..row.cells.len() {
+            let span = row.cell_span(col);
+            if !span.explicit || span.start != col {
+                continue;
+            }
+            let text = row.text(col);
+            if !crate::page::valid_span_text(&text) {
+                return Err(invalid("invalid text span source"));
+            }
+            if data.len() + 7 + text.len() > TEXT_SPAN_CHUNK_BYTES {
+                record(out, TEXT_SPANS, &data)?;
+                data.clear();
+                data.extend_from_slice(&[1, 0]);
+            }
+            u16_bytes(&mut data, y)?;
+            u16_bytes(&mut data, col)?;
+            data.push(span.width);
+            u16_bytes(&mut data, text.len())?;
+            data.extend_from_slice(text.as_bytes());
+        }
+    }
+    if data.len() > 2 {
+        data[1] = 1;
+        record(out, TEXT_SPANS, &data)?;
+    }
+    Ok(())
+}
+
 fn encode_page(rows: &[Row<'_>], page: &Page) -> io::Result<Vec<u8>> {
     let capacity = page.capacity;
     let columns = page.columns;
@@ -429,7 +468,12 @@ fn encode_page(rows: &[Row<'_>], page: &Page) -> io::Result<Vec<u8>> {
         let mut words = Vec::with_capacity(usize::from(columns));
         for (col, cell) in row.cells.iter().enumerate() {
             if cell.has_grapheme() {
-                let tail: Vec<_> = row.text(col).chars().skip(1).map(u32::from).collect();
+                let tail: Vec<_> = row
+                    .fallback_text(col)
+                    .chars()
+                    .skip(1)
+                    .map(u32::from)
+                    .collect();
                 if !tail.is_empty() {
                     suffixes.push((row_index, col, tail));
                 }
@@ -562,6 +606,7 @@ fn encode_inner(
             for page in screen.pages.pages.iter().skip(active_page) {
                 let end = start + usize::from(page.rows);
                 record(destination, 3, &encode_page(&rows[start..end], page)?)?;
+                encode_text_spans(destination, &rows[start..end])?;
                 start = end;
             }
             if let Some(plan) = &plans[key] {
@@ -596,6 +641,7 @@ fn encode_inner(
             record(destination, 4, &header)?;
             for (index, (page, start, end)) in history_pages.into_iter().enumerate().rev() {
                 record(destination, 3, &encode_page(&rows[start..end], page)?)?;
+                encode_text_spans(destination, &rows[start..end])?;
                 if let Some(plan) = &mut plans[key] {
                     plan.page(destination, index)?;
                 }
@@ -628,6 +674,8 @@ pub struct DecodeOptions {
     /// Bounds incoming replay bytes; the restored parser keeps its normal limit.
     pub max_continuation_bytes: usize,
     pub max_cells: usize,
+    /// Maximum explicit-width UTF-8 source bytes across all decoded pages.
+    pub max_text_span_bytes: usize,
     /// Maximum decoded RGBA, indexed source, and animation storage per screen.
     pub max_graphics_bytes: usize,
 }
@@ -638,6 +686,7 @@ impl Default for DecodeOptions {
             max_record_bytes: 8 * 1024 * 1024,
             max_continuation_bytes: 8 * 1024 * 1024,
             max_cells: 1024 * 1024,
+            max_text_span_bytes: 64 * 1024 * 1024,
             max_graphics_bytes: 320_000_000,
         }
     }
@@ -832,6 +881,7 @@ pub struct Decoder<R> {
     history_remaining: usize,
     sequence: Option<Sequence>,
     cells: usize,
+    text_span_bytes: usize,
     header: Option<([u8; 10], usize)>,
     images: [kitty::Targets; 2],
 }
@@ -850,6 +900,7 @@ impl<R: Read> Decoder<R> {
             history_remaining: 0,
             sequence: None,
             cells: 0,
+            text_span_bytes: 0,
             header: None,
             images: Default::default(),
         }
@@ -874,6 +925,8 @@ impl<R: Read> Decoder<R> {
                     .min(kitty::INDEXED_CHUNK_BYTES + kitty::INDEXED_HEADER_BYTES)
             } else if tag == PROGRAM_STATUS {
                 self.options.max_record_bytes.min(MAX_PROGRAM_STATUS_BYTES)
+            } else if tag == TEXT_SPANS {
+                self.options.max_record_bytes.min(TEXT_SPAN_CHUNK_BYTES)
             } else {
                 self.options.max_record_bytes
             };
@@ -887,6 +940,7 @@ impl<R: Read> Decoder<R> {
                         | SAVED_MOUSE
                         | ATTRIBUTE_EXTENT
                         | PROGRAM_STATUS
+                        | TEXT_SPANS
                         | kitty::INDEXED
                         | kitty::INDEXED_PAYLOAD
                 )
@@ -1291,7 +1345,51 @@ impl<R: Read> Decoder<R> {
 
     fn page(&mut self) -> io::Result<DecodedPage> {
         let payload = self.record(3)?;
-        self.decode_page(&payload)
+        let mut page = self.decode_page(&payload)?;
+        self.text_spans(&mut page)?;
+        Ok(page)
+    }
+    fn text_spans(&mut self, page: &mut Page) -> io::Result<()> {
+        if self.peek_tag()? != TEXT_SPANS {
+            return Ok(());
+        }
+        loop {
+            let payload = self.record(TEXT_SPANS)?;
+            let mut r = Slice::new(&payload);
+            if r.u8()? != 1 {
+                return Err(invalid("invalid text span version"));
+            }
+            let last = r.u8()?;
+            if last > 1 || r.offset == payload.len() {
+                return Err(invalid("invalid text span chunk"));
+            }
+            while r.offset < payload.len() {
+                let row = usize::from(r.u16()?);
+                let col = usize::from(r.u16()?);
+                let width = r.u8()?;
+                let bytes = usize::from(r.u16()?);
+                let text = std::str::from_utf8(r.take(bytes)?).map_err(invalid)?;
+                if !crate::page::valid_span_text(text) {
+                    return Err(invalid("invalid text span source"));
+                }
+                self.text_span_bytes = self
+                    .text_span_bytes
+                    .checked_add(bytes)
+                    .filter(|&n| n <= self.options.max_text_span_bytes)
+                    .ok_or_else(|| invalid("text spans exceed allocation policy"))?;
+                page.restore_span(row, col, width, Arc::from(text))
+                    .map_err(invalid)?;
+            }
+            if last == 1 {
+                if self.peek_tag()? == TEXT_SPANS {
+                    return Err(invalid("text spans follow final chunk"));
+                }
+                return Ok(());
+            }
+            if self.peek_tag()? != TEXT_SPANS {
+                return Err(invalid("incomplete text span chunks"));
+            }
+        }
     }
     fn decode_page(&mut self, payload: &[u8]) -> io::Result<DecodedPage> {
         let mut r = Slice::new(payload);
@@ -1397,6 +1495,14 @@ impl<R: Read> Decoder<R> {
                 result.mark_cell(y, cell);
             }
             let cells = result.row_cells_mut(y);
+            let gap_start = if flags & 1 != 0 {
+                cells
+                    .iter()
+                    .rposition(|c| !c.spacer_head())
+                    .map_or(0, |x| x + 1)
+            } else {
+                cols
+            };
             for x in 0..cols {
                 if x > 0 && cells[x - 1].width() == 2 && cells[x].width() != 0 {
                     cells[x - 1].set_width(1);
@@ -1406,7 +1512,7 @@ impl<R: Read> Decoder<R> {
                 {
                     cells[x].set_width(1);
                 }
-                if cells[x].spacer_head() && (x + 1 != cols || flags & 1 == 0) {
+                if cells[x].spacer_head() && x < gap_start {
                     cells[x].set_spacer_head(false);
                 }
             }
@@ -1523,6 +1629,14 @@ impl<R: Read> Decoder<R> {
                 && sequence.remaining > 0
             {
                 let payload = self.record(3)?;
+                // Even discarded history must validate and account for optional sources.
+                let decoded = if self.peek_tag()? == TEXT_SPANS {
+                    let mut page = self.decode_page(&payload)?;
+                    self.text_spans(&mut page)?;
+                    Some(page)
+                } else {
+                    None
+                };
                 sequence.remaining -= 1;
                 let target = if sequence.key == 0 {
                     Some(&mut t.primary)
@@ -1536,7 +1650,11 @@ impl<R: Read> Decoder<R> {
                     && let Some(screen) = target
                         .filter(|s| Some(s.metadata.identity) == self.identities[sequence.key])
                 {
-                    let mut page = self.decode_page(&payload)?;
+                    let mut page = if let Some(page) = decoded {
+                        page
+                    } else {
+                        self.decode_page(&payload)?
+                    };
                     let bytes = page.storage_bytes();
                     let allocation_bytes = page
                         .capacity
@@ -1560,6 +1678,7 @@ impl<R: Read> Decoder<R> {
                         }
                         image_page = Some((page.columns, page.row_ids[..count].to_vec()));
                         screen.pages.prepend_page(page);
+                        t.generation = t.generation.wrapping_add(1);
                     }
                 }
 

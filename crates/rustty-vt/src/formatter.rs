@@ -582,8 +582,8 @@ fn screen_extra(out: &mut Vec<u8>, screen: &Screen, options: Options<'_>, extra:
     let cursor = &screen.cursor;
     if extra.cursor {
         let wrapped = cursor.pending_wrap && cursor.col == screen.columns - 1;
-        let col = if wrapped && screen.row(cursor.row).cells[cursor.col].width() == 0 {
-            cursor.col - 1
+        let col = if wrapped {
+            screen.row(cursor.row).cell_span(cursor.col).start
         } else {
             cursor.col
         };
@@ -714,9 +714,7 @@ fn format_page(
             if row.cells[left].spacer_head() {
                 continue;
             }
-            if row.cells[left].width() == 0 {
-                left -= 1;
-            }
+            left = row.cell_span(left).start;
         }
         let cells = &row.cells[left..right];
         if cells.iter().all(|cell| {
@@ -762,16 +760,18 @@ fn format_page(
         let mut cells = cells.iter().enumerate().peekable();
         while let Some((index, cell)) = cells.next() {
             let point = [(left + index) as u32, y as u32];
-            if cell.width() == 0 || cell.spacer_head() {
+            let span = row.cell_span(left + index);
+            if cell.width() == 0 || span.start != left + index || cell.spacer_head() {
                 continue;
             }
-            let blank = if options.emit == Format::Plain {
-                cell.codepoint().is_none() || (options.trim && cell.codepoint() == Some(' '))
-            } else {
-                cell.codepoint().is_none()
-                    && cell.width() == 1
-                    && row.style(left + index) == Style::default()
-            };
+            let blank = !span.explicit
+                && if options.emit == Format::Plain {
+                    cell.codepoint().is_none() || (options.trim && cell.codepoint() == Some(' '))
+                } else {
+                    cell.codepoint().is_none()
+                        && cell.width() == 1
+                        && row.style(left + index) == Style::default()
+                };
             if blank {
                 blank_cells += 1;
                 continue;
@@ -839,6 +839,20 @@ fn format_page(
                     }
                 }
             }
+            if span.explicit {
+                match options.emit {
+                    Format::Plain => {}
+                    Format::Vt => out.bytes.extend_from_slice(
+                        format!("\x1b]66;w={};", span.width).as_bytes(),
+                    ),
+                    Format::Html => out.bytes.extend_from_slice(
+                        format!(
+                            "<span style=\"display: inline-block; width: {}ch; overflow: hidden; vertical-align: bottom;\">",
+                            span.width
+                        ).as_bytes(),
+                    ),
+                }
+            }
             if options.emit == Format::Vt
                 && let Some(background) = cell.background()
             {
@@ -875,6 +889,13 @@ fn format_page(
             } else {
                 out.bytes
                     .extend_from_slice(screen.cell_text(row, left + index).as_bytes());
+            }
+            if span.explicit {
+                out.bytes.extend_from_slice(match options.emit {
+                    Format::Plain => b"",
+                    Format::Vt => b"\x1b\\",
+                    Format::Html => b"</span>",
+                });
             }
             out.map_to(point);
         }

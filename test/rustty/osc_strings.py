@@ -203,7 +203,10 @@ def requests():
 
 
 def unsupported_allocating_requests():
-    """OSC 66/99 parse natively, but their TerminalStream callbacks are unimplemented."""
+    """OSC 99 has no terminal callback in either implementation.
+
+    OSC 66 width handling extends Ghostty; its semantics have Rust/native tests.
+    """
     observe = {"op": "observe"}
     covers = ["terminal.cells", "terminal.cursor", "effects.host", "effects.pty"]
 
@@ -220,9 +223,6 @@ def unsupported_allocating_requests():
                 b"\x80", b"\xc2\x80", b"\xc0\xaf", b"\xed\xa0\x80", b"\xf4\x90\x80\x80",
                 b"\xe2\x82", b"raw\xff"]
     bodies = {
-        66: [b"", b"missing-separator", b";", b"s=2;size", b"s=7:w=7:n=15:d=15:v=2:h=2;size",
-             b"s=0:w=8:n=16:d=-1:v=3:h=3;defaults", b"s=2:s=3:s=0;duplicate",
-             b"x=1:s:long=2:=2:s==2:s=2=3;malformed"],
         99: [b"", b"missing-separator", b";", b"e=1;dGV4dA==", b"e=1;not base64!",
              b"e=0:e=1;first", b"e=1:e=0;first", b"e=x:e=1;invalid-first",
              b"i=stable:d=0:p=title;part", b"i=stable:d=1:p=body;body",
@@ -232,13 +232,13 @@ def unsupported_allocating_requests():
     bodies[99] += [b"p=" + payload + b";data"
                    for payload in (b"alive", b"body", b"buttons", b"close", b"icon", b"?", b"title", b"query", b"unknown")]
     seed = b"\x1b]2;before\x07\x1b[31;1mA"
-    for number in (66, 99):
+    for number in (99,):
         for index, body in enumerate(bodies[number] + [b";" + p for p in payloads]):
             for end in (b"\x07", b"\x1b\\"):
                 yield case(number, f"body/{index}/{end.hex()}",
                            [seed, observe, osc(number, body, end), observe, b"B", observe,
                             osc(9, b"control notification")])
-        for metadata, limit in ((b"", 4096),) if number == 66 else ((b"", 2048), (b"e=1", 4096)):
+        for metadata, limit in ((b"", 2048), (b"e=1", 4096)):
             for extra in (-1, 0, 1):
                 for end in (b"\x07", b"\x1b\\"):
                     body = metadata + b";" + b"x" * (limit + extra)

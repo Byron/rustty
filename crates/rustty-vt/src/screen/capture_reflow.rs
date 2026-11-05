@@ -37,10 +37,20 @@ impl Screen {
                         .map(|col| {
                             row.cells
                                 .get(col)
-                                .map_or(1, |cell| match row.style(col).tmux_tab {
-                                    -1 => 0,
-                                    width if width > 0 => width as u8,
-                                    _ => cell.width(),
+                                .map_or(1, |cell| match row.cell_span(col) {
+                                    _ if cell.spacer_head() => 0,
+                                    span if span.explicit => {
+                                        if span.start == col {
+                                            span.width
+                                        } else {
+                                            0
+                                        }
+                                    }
+                                    _ => match row.style(col).tmux_tab {
+                                        -1 => 0,
+                                        width if width > 0 => width as u8,
+                                        _ => cell.width(),
+                                    },
                                 })
                         })
                         .collect(),

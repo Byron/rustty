@@ -1,6 +1,6 @@
 //! Selection queries over physical rows, including retained history.
 
-use crate::{Cell, GridPoint, Row, Screen, Selection, SemanticContent, packed::Wide};
+use crate::{Cell, GridPoint, Row, Screen, Selection, SemanticContent};
 
 pub const DEFAULT_WORD_BOUNDARIES: &[char] = &[
     '\0', ' ', '\t', '\'', '"', '│', '`', '|', ':', ';', ',', '(', ')', '[', ']', '{', '}', '<',
@@ -221,13 +221,13 @@ impl Screen {
             let end_limit = end.0;
             // Native cellIterator bounds the final row, not the final column.
             // Keep that behavior when semantic boundaries fall within a row.
-            while codepoint(grid.cell(start)).is_none_or(|c| whitespace.contains(&c)) {
+            while grid.whitespace(start, whitespace) {
                 start = grid.next(start)?;
                 if start.0 > end_limit {
                     return None;
                 }
             }
-            while codepoint(grid.cell(end)).is_none_or(|c| whitespace.contains(&c)) {
+            while grid.whitespace(end, whitespace) {
                 end = grid.previous(end)?;
                 if end.0 < start_limit {
                     return None;
@@ -239,18 +239,30 @@ impl Screen {
 
     /// Select all written content, excluding surrounding NUL, space, and tab.
     pub fn select_all(&self) -> Option<Selection> {
-        let written =
-            |cell: &Cell| codepoint(cell).is_some_and(|c| !DEFAULT_LINE_WHITESPACE.contains(&c));
+        let written = |row: Row<'_>, col: usize| {
+            let span = row.cell_span(col);
+            if span.explicit {
+                span.start == col
+                    && row
+                        .text(col)
+                        .chars()
+                        .any(|c| !DEFAULT_LINE_WHITESPACE.contains(&c))
+            } else {
+                codepoint(&row.cells[col]).is_some_and(|c| !DEFAULT_LINE_WHITESPACE.contains(&c))
+            }
+        };
         let start = self.all_rows().find_map(|row| {
             row.cells
                 .iter()
-                .position(written)
+                .enumerate()
+                .position(|(col, _)| written(row, col))
                 .map(|col| GridPoint { row: row.id, col })
         })?;
         let end = self.all_rows().rev().find_map(|row| {
             row.cells
                 .iter()
-                .rposition(written)
+                .enumerate()
+                .rposition(|(col, _)| written(row, col))
                 .map(|col| GridPoint { row: row.id, col })
         })?;
         Some(Selection {
@@ -374,13 +386,21 @@ impl Grid<'_> {
     }
 
     fn selection(&self, start: Position, end: Position) -> Selection {
-        let point = |(y, col)| GridPoint {
-            row: self.row(y).id,
-            col,
+        let point = |(y, col), end| {
+            let row = self.row(y);
+            let span = row.cell_span(col);
+            GridPoint {
+                row: row.id,
+                col: if span.explicit {
+                    span.start + if end { usize::from(span.width) - 1 } else { 0 }
+                } else {
+                    col
+                },
+            }
         };
         Selection {
-            start: point(start),
-            end: point(end),
+            start: point(start, false),
+            end: point(end, true),
             rectangular: false,
         }
     }
@@ -411,18 +431,33 @@ impl Grid<'_> {
     }
 
     fn word_codepoint(&self, point: Position) -> Option<char> {
-        let owner = match self.cell(point).wide() {
-            Wide::Narrow | Wide::Wide => point,
-            Wide::SpacerTail => (point.0, point.1.checked_sub(1)?),
-            Wide::SpacerHead => {
-                let next = (point.0 + 1, 0);
-                if next.0 >= self.len() || self.cell(next).wide() != Wide::Wide {
-                    return None;
-                }
-                next
+        let row = self.row(point.0);
+        let owner = if row.cells[point.1].spacer_head() {
+            let next = (point.0 + 1, 0);
+            if next.0 >= self.len() || self.row(next.0).cell_span(0).width < 2 {
+                return None;
             }
+            next
+        } else {
+            (point.0, row.cell_span(point.1).start)
         };
-        codepoint(self.cell(owner))
+        self.row(owner.0)
+            .text(owner.1)
+            .chars()
+            .next()
+            .filter(|&c| c != '\0')
+    }
+
+    fn whitespace(&self, point: Position, whitespace: &[char]) -> bool {
+        let row = self.row(point.0);
+        let span = row.cell_span(point.1);
+        if span.explicit {
+            row.text(span.start)
+                .chars()
+                .all(|c| whitespace.contains(&c))
+        } else {
+            codepoint(self.cell(point)).is_none_or(|c| whitespace.contains(&c))
+        }
     }
 }
 

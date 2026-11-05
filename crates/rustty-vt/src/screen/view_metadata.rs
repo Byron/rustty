@@ -162,8 +162,10 @@ impl Screen {
             previous = Some((absolute, end));
             if tab != 0 {
                 let row = self.physical_row(absolute);
-                if row.cells[start..end].iter().any(|cell| {
+                if (start..end).any(|col| {
+                    let cell = row.cells[col];
                     cell.width() != 1
+                        || row.cell_span(col).explicit
                         || cell.has_grapheme()
                         || !matches!(cell.codepoint(), None | Some(' '))
                 }) {

@@ -79,7 +79,7 @@
     {
       "id": "parser.events",
       "status": "partial",
-      "remaining": "Validated title/PWD, color, notification and clipboard semantics plus fixed capture/prefix cases are compared. Native OSC 66/99 deliberately unimplemented terminal callbacks are verified as no-ops across payload/capture boundaries, malformed input and continuation. Direct OSC parser corpus and 176 focused fixtures pass 648 comparisons of terminal state and host effects, preserving all selector/payload bytes, missing terminators, embedded controls, capture boundaries and pending CSI continuation. Typed metadata for ignored commands, remaining OSC commands, streaming capture allocation and complete malformed contexts remain."
+      "remaining": "Validated title/PWD, color, notification and clipboard semantics plus fixed capture/prefix cases are compared. Native OSC 99 deliberately unimplemented terminal callbacks are verified as no-ops across payload/capture boundaries, malformed input and continuation. OSC 66 width-only spans extend the reference and have Rust VT and native desktop coverage; scale remains unsupported. Invalid-metadata OSC 66 capture boundaries remain differential cases. Direct OSC parser corpus and 176 focused fixtures pass 648 comparisons of terminal state and host effects, preserving all selector/payload bytes, missing terminators, embedded controls, capture boundaries and pending CSI continuation. Typed metadata for ignored commands, remaining OSC commands, streaming capture allocation and complete malformed contexts remain."
     },
     {
       "id": "terminal.modes",

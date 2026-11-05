@@ -1675,6 +1675,34 @@ impl Terminal {
         } else {
             self.margins.right
         };
+        // Explicit-width strings remain atomic when ordinary combining input follows.
+        if cp as u32 > 127 {
+            let row = self.screen().cursor_row();
+            let previous = if pending_wrap {
+                Some(col)
+            } else {
+                col.checked_sub(1)
+            };
+            if let Some(previous) = previous {
+                let span = row.cell_span(previous);
+                if span.explicit {
+                    let last = row.text(span.start).chars().next_back();
+                    let joined = self.modes.dec(2027)
+                        && last.is_some_and(|last| {
+                            !unicode::grapheme_break_properties(
+                                properties(last).grapheme,
+                                prop.grapheme,
+                                &mut self.grapheme_state,
+                            )
+                        });
+                    if prop.width == 0 || joined {
+                        let _ = self.screen_mut().append_grapheme(span.start, cp);
+                        self.changed();
+                        return;
+                    }
+                }
+            }
+        }
         if self.tmux_graphics && self.tmux_combine(cp, prop.width, right) {
             return;
         }
@@ -3379,6 +3407,93 @@ impl Terminal {
         }
     }
 
+    fn osc_text_width(&mut self, data: &[u8]) {
+        let Some(split) = data.iter().position(|&b| b == b';') else {
+            return;
+        };
+        let Ok(text) = std::str::from_utf8(&data[split + 1..]) else {
+            return;
+        };
+        if self.status_display || !crate::page::valid_span_text(text) {
+            return;
+        }
+        let mut width = 0;
+        for field in data[..split].split(|&b| b == b':') {
+            if field.is_empty() && split == 0 {
+                continue;
+            }
+            let [key, b'=', digits @ ..] = field else {
+                return;
+            };
+            if digits.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
+                return;
+            }
+            let Ok(value) = std::str::from_utf8(digits).unwrap().parse::<u8>() else {
+                return;
+            };
+            let valid = match key {
+                b'w' => {
+                    width = value;
+                    value <= 7
+                }
+                b's' => (1..=7).contains(&value),
+                b'n' | b'd' => value <= 15,
+                b'v' | b'h' => value <= 2,
+                _ => false,
+            };
+            if !valid {
+                return;
+            }
+        }
+        // Ignoring scale still prints ordinary text; the CPR scale probe advances one cell.
+        if width == 0 {
+            for cp in text.chars() {
+                self.print(cp);
+            }
+            return;
+        }
+        let col = self.screen().cursor.col;
+        let (left, right) = if col > self.margins.right {
+            (0, usize::from(self.cols) - 1)
+        } else {
+            (self.margins.left, self.margins.right)
+        };
+        if usize::from(width) > right + 1 - left {
+            return;
+        }
+        self.ensure_row_cells(self.screen().cursor.row, usize::from(self.cols));
+        if self.screen().cursor.pending_wrap && self.modes.dec(7) {
+            self.print_wrap();
+        }
+        let col = self.screen().cursor.col;
+        if col + usize::from(width) > right + 1 {
+            if self.modes.dec(7) {
+                for x in col..=right {
+                    self.screen_mut().cursor.col = x;
+                    self.put_cell(
+                        None,
+                        1,
+                        right + 1 == usize::from(self.cols),
+                        self.screen().cursor_location(),
+                    );
+                }
+                self.print_wrap();
+            } else {
+                self.screen_mut().cursor.col = right + 1 - usize::from(width);
+            }
+        }
+        if self.modes.get(false, 4) {
+            self.insert_blanks(usize::from(width));
+        }
+        self.screen_mut()
+            .write_cursor_span(std::sync::Arc::from(text), width);
+        let end = self.screen().cursor.col + usize::from(width);
+        self.screen_mut().cursor.col = end.min(right);
+        self.screen_mut().cursor.pending_wrap = end > right;
+        self.grapheme_state = 0;
+        self.changed();
+    }
+
     fn osc(
         &mut self,
         data: &[u8],
@@ -3428,6 +3543,7 @@ impl Terminal {
             _ => {}
         }
         match number {
+            66 => self.osc_text_width(data),
             7501 => self.osc_program_status(data, bell, effects),
             0 | 2 => {
                 // The stream validates the full title before the host handler
@@ -3746,7 +3862,13 @@ impl Terminal {
             let mut text = String::new();
             let mut scanned = 0;
             for row in screen.all_rows().skip_while(|row| row.id != start.row) {
-                let from = if row.id == start.row { start.col } else { 0 };
+                let from = if row.id == start.row && start.col < row.cells.len() {
+                    row.cell_span(start.col).start
+                } else if row.id == start.row {
+                    start.col
+                } else {
+                    0
+                };
                 let to = if row.id == end {
                     screen.cursor.col + usize::from(screen.cursor.pending_wrap)
                 } else {
@@ -3759,7 +3881,8 @@ impl Terminal {
                 }
                 for col in from..to {
                     if row.cells[col].semantic() == SemanticContent::Input
-                        && row.cells[col].width() != 0
+                        && row.cell_span(col).start == col
+                        && !row.cells[col].spacer_head()
                     {
                         if row.cells[col].codepoint().is_none() {
                             text.push(' ');

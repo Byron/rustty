@@ -372,7 +372,7 @@ impl Screen {
         let mut out = String::new();
         for (y, row) in rows.iter().enumerate().take(last + 1).skip(first) {
             let used = copy_length(*row);
-            let from = if y == first || rectangular {
+            let mut from = if y == first || rectangular {
                 start.col
             } else {
                 0
@@ -386,8 +386,14 @@ impl Screen {
                 continue;
             }
             let to = to.min(used);
+            if from < row.cells.len() && row.cell_span(from).explicit {
+                from = row.cell_span(from).start;
+            }
             for x in from.min(used)..to {
-                if row.cells[x].width() == 0 {
+                if row.cells[x].width() == 0
+                    || row.cell_span(x).start != x
+                    || row.cells[x].spacer_head()
+                {
                     continue;
                 }
                 if row.cells[x].codepoint().is_none() {
@@ -454,7 +460,12 @@ fn copy_length(row: crate::Row<'_>) -> usize {
     } else {
         row.cells
             .iter()
-            .rposition(|c| c.codepoint().is_some_and(|cp| cp != ' ') || c.width() == 0)
+            .enumerate()
+            .rposition(|(col, c)| {
+                row.cell_span(col).explicit
+                    || c.codepoint().is_some_and(|cp| cp != ' ')
+                    || c.width() == 0
+            })
             .map_or(0, |x| x + 1)
     }
 }

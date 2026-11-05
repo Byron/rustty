@@ -50,6 +50,7 @@ impl Screen {
             let mut style = row.style(col);
             style.underline_color = Color::Default;
             row.cells[col].width() != 1
+                || row.cell_span(col).explicit
                 || row.cells[col].has_grapheme()
                 || !matches!(row.cells[col].codepoint(), None | Some(' '))
                 || style.tmux_tab != 0

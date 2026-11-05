@@ -1974,6 +1974,63 @@ mod focus_tests {
         .unwrap();
     }
     #[test]
+    fn native_views_preserve_explicit_text_spans_across_reconnect() {
+        let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
+        let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);
+        owner.feed(b"ab\x1b]66;w=7;alpha beta\x1b\\Z");
+        let checkpoint = |owner: &tmuxx_terminal::Terminal| {
+            let mut state = state();
+            state["panes"][0]["terminal"] =
+                serde_json::to_value(owner.checkpoint_snapshot()).unwrap();
+            state
+        };
+        let check = |view: &Session, second: bool| {
+            let terminal = view.terminal().unwrap();
+            let row = terminal.screen().row(0);
+            for col in 2..9 {
+                let span = row.cell_span(col);
+                assert!(span.explicit);
+                assert_eq!((span.start, span.width), (2, 7));
+            }
+            assert_eq!(row.text(2).as_str(), "alpha beta");
+            assert_eq!(row.text(9).as_str(), "Z");
+            if second {
+                let row = terminal.screen().row(1);
+                assert_eq!(row.text(0).as_str(), "second span");
+                assert_eq!(row.cell_span(2).width, 3);
+            }
+        };
+        snapshot(&connection, 1, checkpoint(&owner));
+        let first = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        let second = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        for view in [&first, &second] {
+            check(view, false);
+        }
+        let data = b"\r\n\x1b]66;w=3;second span\x1b\\";
+        owner.feed(data);
+        apply(
+            &connection.shared,
+            ServerMessage::PaneOutput {
+                sequence: 2,
+                pane_id: 7,
+                data: data.to_vec(),
+            },
+        )
+        .unwrap();
+        for view in [&first, &second] {
+            check(view, true);
+        }
+        snapshot(&connection, 3, checkpoint(&owner));
+        for view in [&first, &second] {
+            check(view, true);
+        }
+        drop(first);
+        let reopened = Session::attach_tmuxx(&connection, 7, Arc::new(|| {})).unwrap();
+        check(&reopened, true);
+        assert!(connection.errors().is_empty());
+    }
+
+    #[test]
     fn native_views_preserve_indexed_images_and_pending_uploads_across_reconnect() {
         let (connection, _requests) = Connection::base(Arc::new(|| {}), true);
         let mut owner = tmuxx_terminal::Terminal::new(10, 4, 10);

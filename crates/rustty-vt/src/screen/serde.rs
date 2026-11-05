@@ -77,6 +77,20 @@ impl Serialize for RowsRef<'_> {
                     semantic: row.semantic,
                     dirty: row.dirty,
                     cells: CellsRef(row, self.compact),
+                    spans: (0..if row.has_text_spans {
+                        row.cells.len()
+                    } else {
+                        0
+                    })
+                        .filter_map(|col| {
+                            let span = row.cell_span(col);
+                            (span.explicit && span.start == col).then(|| SpanRef {
+                                col,
+                                width: span.width,
+                                text: row.text(col),
+                            })
+                        })
+                        .collect(),
                 }),
         )
     }
@@ -89,6 +103,15 @@ struct RowRef<'a> {
     semantic: SemanticContent,
     dirty: bool,
     cells: CellsRef<'a>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    spans: Vec<SpanRef<'a>>,
+}
+#[derive(Serialize)]
+struct SpanRef<'a> {
+    col: usize,
+    width: u8,
+    #[serde(serialize_with = "serialize_text")]
+    text: CellText<'a>,
 }
 struct CellsRef<'a>(RowView<'a>, bool);
 impl Serialize for CellsRef<'_> {
@@ -106,7 +129,7 @@ impl Serialize for CellsRef<'_> {
                 // Graphemes and links live outside the packed cell, in its page.
                 while end < cells.len()
                     && cells[start] == cells[end]
-                    && *self.0.text(start) == *self.0.text(end)
+                    && *self.0.fallback_text(start) == *self.0.fallback_text(end)
                     && self.0.hyperlink(start) == self.0.hyperlink(end)
                 {
                     end += 1;
@@ -128,7 +151,7 @@ impl Serialize for CellsRef<'_> {
 impl<'a> CellsRef<'a> {
     fn cell(&self, col: usize, cell: &Cell) -> CellRef<'a> {
         CellRef {
-            text: self.0.text(col),
+            text: self.0.fallback_text(col),
             width: cell.width(),
             style: self.0.style(col),
             hyperlink: self.0.hyperlink(col),
@@ -204,6 +227,14 @@ struct RowWire {
     semantic: SemanticContent,
     dirty: bool,
     cells: CellsWire,
+    #[serde(default)]
+    spans: Vec<SpanWire>,
+}
+#[derive(Deserialize)]
+struct SpanWire {
+    col: usize,
+    width: u8,
+    text: String,
 }
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -347,6 +378,7 @@ impl<'de> Deserialize<'de> for Screen {
                     link: wire.hyperlink,
                     link_id: 0,
                     text: (suffix > 0).then(|| (Arc::from(wire.text), suffix as u8)),
+                    span: None,
                 };
                 for _ in 0..count {
                     screen
@@ -365,6 +397,10 @@ impl<'de> Deserialize<'de> for Screen {
             header.set(RowHeader::CONTINUATION, row.wrap_continuation);
             header.set_semantic(row.semantic);
             header.set(RowHeader::DIRTY, row.dirty);
+            for span in row.spans {
+                page.restore_span(relative, span.col, span.width, Arc::from(span.text))
+                    .map_err(D::Error::custom)?;
+            }
         }
         screen.sync_cursor_resources();
         Ok(screen)

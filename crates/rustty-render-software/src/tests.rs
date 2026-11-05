@@ -390,6 +390,74 @@ fn indexed_prepared_frames_recolor_and_replay_with_straight_alpha() {
 }
 
 #[test]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn explicit_width_prepared_text_clips_before_the_neighboring_cell() {
+    let mut prepare = rustty_render::Renderer::new(Default::default()).unwrap();
+    let metrics = prepare.metrics();
+    let size = [metrics.cell_width * 4, metrics.cell_height];
+    let options = rustty_render::RenderOptions {
+        size,
+        padding: [0.0; 2],
+        cursor_visible: false,
+        ..Default::default()
+    };
+    let mut terminal = rustty_vt::Terminal::new(4, 1, 0);
+    terminal.feed("\x1b]66;w=1;界\x07\x1b[31mZ".as_bytes());
+    let actual = prepare
+        .prepare_cached(
+            &terminal.screen().snapshot_viewport(),
+            terminal.screen().render_key(),
+            &options,
+            &mut rustty_render::RowCache::default(),
+        )
+        .unwrap();
+
+    let mut natural = rustty_vt::Terminal::new(4, 1, 0);
+    natural.feed("界".as_bytes());
+    let natural = prepare.prepare(natural.screen(), &options).unwrap();
+    let mut neighbor = rustty_vt::Terminal::new(4, 1, 0);
+    neighbor.feed(b"\x1b[1;2H\x1b[31mZ");
+    let neighbor = prepare.prepare(neighbor.screen(), &options).unwrap();
+    let cell = metrics.cell_width as f32;
+    let height = metrics.cell_height as f32;
+    let mut expected = Frame::empty(size);
+    expected
+        .append_clipped(&natural, [0.0; 2], [0.0, 0.0, cell, height])
+        .unwrap();
+    expected
+        .append_clipped(&neighbor, [0.0; 2], [cell, 0.0, 3.0 * cell, height])
+        .unwrap();
+    let mut renderer = Renderer::default();
+    let mut delta = TexturesDelta::default();
+    let mut images = Vec::new();
+    for frame in [actual, expected] {
+        images.push(render(
+            &mut renderer,
+            size,
+            1.0,
+            &[callback(
+                frame,
+                1,
+                rect(0.0, 0.0, size[0] as f32, height),
+                Rect::EVERYTHING,
+            )],
+            &mut delta,
+        ));
+        renderer.free_window(1);
+    }
+    assert_eq!(images[0], images[1]);
+    assert!(
+        (0..size[1] as usize).any(|y| {
+            (metrics.cell_width as usize..size[0] as usize).any(|x| {
+                let [r, g, b, _] = pixel(&images[0], size[0] as usize, x, y);
+                r > g && r > b
+            })
+        }),
+        "the neighboring red glyph must remain visible"
+    );
+}
+
+#[test]
 fn terminal_masks_colors_srgb_filtering_and_callback_viewport_match_wgsl() {
     let mut renderer = Renderer::default();
     let mut delta = TexturesDelta::default();

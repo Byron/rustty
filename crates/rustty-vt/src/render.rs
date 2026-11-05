@@ -89,7 +89,7 @@ impl<'a> RenderCursor<'a> {
     /// unwritten cells return one space. No allocation or frame capture.
     pub fn text(&self) -> Option<CellText<'a>> {
         let cell = self.row.cells.get(self.x)?;
-        if cell.width() == 0 || cell.spacer_head() {
+        if cell.width() == 0 || self.row.cell_span(self.x).start != self.x || cell.spacer_head() {
             return None;
         }
         let text = self.row.text(self.x);
@@ -206,12 +206,9 @@ impl<'a> RenderView<'a> {
                         },
                     )
                 };
-                if left > 0 && row.cells[left].width() == 0 {
-                    left -= 1;
-                }
-                if row.cells[right].width() == 2 && right < last {
-                    right += 1;
-                }
+                left = row.cell_span(left).start;
+                let span = row.cell_span(right);
+                right = (span.start + usize::from(span.width) - 1).min(last);
                 Some(left..=right)
             });
             RenderRow { row, selection }

@@ -342,6 +342,13 @@ impl Renderer {
             let cursor =
                 cursor_row && (!options.focused || !screen.cursor.blink || options.blink_visible);
             let cursor_key = cursor_row.then(|| (cursor_view.unwrap().key(), cursor));
+            let cursor_span = row
+                .cells()
+                .get(screen.cursor.col)
+                .map(|_| row.cell_span(screen.cursor.col))
+                .filter(|span| span.explicit);
+            let cursor_col = cursor_span.map_or(screen.cursor.col, |span| span.start);
+            let cursor_width = cursor_span.map_or(1, |span| usize::from(span.width));
             let mut cache_row = false;
             if let Some(cached) = cache
                 .as_deref_mut()
@@ -408,9 +415,11 @@ impl Renderer {
             scratch.paints.clear();
             scratch.paints.reserve(paint_cols);
             for (col, cell) in row.cells().iter().take(paint_cols).enumerate() {
+                let span = row.cell_span(col);
                 blinking_text |= row.style(col).blink
                     && !row.style(col).invisible
-                    && cell.width() != 0
+                    && span.start == col
+                    && !cell.spacer_head()
                     && (row.style(col).underline != Underline::None
                         || row.style(col).strikethrough
                         || row.style(col).overline
@@ -426,12 +435,7 @@ impl Renderer {
                     bg = options.selection_background;
                     fg = options.selection_foreground.unwrap_or(fg);
                 }
-                // A wide glyph's trailing cell shares its leading cell's highlight.
-                let search_col = if cell.width() == 0 {
-                    col.saturating_sub(1)
-                } else {
-                    col
-                };
+                let search_col = span.start;
                 let search = scratch.search.get(search_col).copied().flatten();
                 if let Some(selected) = search {
                     bg = if selected {
@@ -444,7 +448,7 @@ impl Renderer {
                 let block_cursor = cursor
                     && options.focused
                     && screen.cursor.shape == CursorShape::Block
-                    && col == screen.cursor.col;
+                    && (cursor_col..cursor_col + cursor_width).contains(&col);
                 if block_cursor {
                     bg = options.cursor_color;
                     fg = options.cursor_text;
@@ -467,11 +471,12 @@ impl Renderer {
             self.row_text(row, &mut scratch, top, options, &mut foreground)?;
             let paints = &scratch.paints;
             for (col, cell) in row.cells().iter().take(text_cols).enumerate() {
-                if cell.width() == 0 {
+                let span = row.cell_span(col);
+                if span.start != col || cell.spacer_head() {
                     continue;
                 }
                 let x = options.padding[0] + col as f32 * metrics.cell_width as f32;
-                let width = f32::from(cell.width()) * metrics.cell_width as f32;
+                let width = f32::from(span.width) * metrics.cell_width as f32;
                 let line_color = if row.style(col).underline_color == TerminalColor::Default {
                     paints[col]
                 } else {
@@ -493,8 +498,8 @@ impl Renderer {
                 }
             }
             if cursor && !(options.focused && screen.cursor.shape == CursorShape::Block) {
-                let x = options.padding[0] + screen.cursor.col as f32 * metrics.cell_width as f32;
-                let w = metrics.cell_width as f32;
+                let x = options.padding[0] + cursor_col as f32 * metrics.cell_width as f32;
+                let w = cursor_width as f32 * metrics.cell_width as f32;
                 let h = metrics.cell_height as f32;
                 let color = Color::rgb(options.cursor_color);
                 if !options.focused || screen.cursor.shape == CursorShape::HollowBlock {
@@ -515,10 +520,9 @@ impl Renderer {
                 }
             }
             if cursor_row {
-                let mut left =
-                    options.padding[0] + screen.cursor.col as f32 * metrics.cell_width as f32;
+                let mut left = options.padding[0] + cursor_col as f32 * metrics.cell_width as f32;
                 let mut upper = top;
-                let mut right = left + metrics.cell_width as f32;
+                let mut right = left + cursor_width as f32 * metrics.cell_width as f32;
                 let mut bottom = top + metrics.cell_height as f32;
                 // Cursor recoloring can reshape ligatures beyond its cell.
                 for quad in &foreground.quads[foreground_start..] {
@@ -624,7 +628,9 @@ impl Renderer {
         let mut col = 0;
         while col < paints.len() {
             let cell = &row.cells()[col];
-            if cell.width() == 0
+            let span = row.cell_span(col);
+            if span.start != col
+                || cell.spacer_head()
                 || row.style(col).invisible
                 || row.style(col).blink && !options.blink_visible
                 || cell.codepoint() == Some(graphics::PLACEHOLDER)
@@ -634,7 +640,9 @@ impl Renderer {
             }
             let style = row.style(col);
             let color = paints[col];
-            if let Some(cp) = self.sprite_codepoint(&row.text(col)) {
+            if !span.explicit
+                && let Some(cp) = self.sprite_codepoint(&row.text(col))
+            {
                 let cached = self.sprite(cp, cell.width())?;
                 frame.quads.push(Quad {
                     rect: [
@@ -653,9 +661,26 @@ impl Renderer {
             }
             text.clear();
             sources.clear();
-            while col < paints.len()
+            let clip = if span.explicit {
+                sources.push((0, col));
+                text.push_str(&row.text(col));
+                col += usize::from(span.width);
+                let left = options.padding[0] + span.start as f32 * metrics.cell_width as f32;
+                Some([
+                    left,
+                    top,
+                    left + f32::from(span.width) * metrics.cell_width as f32,
+                    top + metrics.cell_height as f32,
+                ])
+            } else {
+                None
+            };
+            while clip.is_none()
+                && col < paints.len()
                 && row.style(col) == style
                 && paints[col] == color
+                && !row.cell_span(col).explicit
+                && !row.cells()[col].spacer_head()
                 && self.sprite_codepoint(&row.text(col)).is_none()
                 && row.cells()[col].codepoint() != Some(graphics::PLACEHOLDER)
             {
@@ -684,7 +709,7 @@ impl Renderer {
             };
             // Source indices are dense within this run, including wide cells.
             anchors.clear();
-            anchors.resize(sources.len(), None);
+            anchors.resize(sources.len(), clip.map(|_| 0.0));
             for glyph in glyphs.iter() {
                 if glyph.advance > 0.0 {
                     anchors[source(glyph)].get_or_insert(glyph.x);
@@ -703,7 +728,7 @@ impl Renderer {
                     - anchor
                     + cached.bearing[0] as f32;
                 let y = top + metrics.baseline - glyph.y - cached.bearing[1] as f32;
-                frame.quads.push(Quad {
+                let quad = Quad {
                     rect: [x, y, cached.size[0] as f32, cached.size[1] as f32],
                     uv: cached.uv,
                     color,
@@ -713,7 +738,12 @@ impl Renderer {
                         Paint::Mask
                     },
                     atlas: cached.atlas,
-                });
+                };
+                if let Some(clip) = clip {
+                    frame.quads.extend(quad.clipped([0.0; 2], clip));
+                } else {
+                    frame.quads.push(quad);
+                }
             }
         }
         Ok(())
@@ -1263,6 +1293,231 @@ mod tests {
         assert!(cache.rows.values().all(|row| row.valid));
         cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
         assert_eq!(cache.prepared_rows, 32);
+    }
+
+    #[test]
+    fn explicit_width_runs_keep_native_shaping_and_clip_before_the_next_cell() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let options = RenderOptions {
+            padding: [0.0; 2],
+            cursor_visible: false,
+            ..Default::default()
+        };
+        for (text, width) in [
+            ("ffi", 3),
+            ("e\u{301}", 1),
+            ("אבג", 3),
+            ("العربية", 4),
+            ("👩🏽‍💻", 2),
+            ("  X", 3),
+            ("abcdef", 1),
+            ("─", 7),
+        ] {
+            let mut terminal = Terminal::new(20, 2, 0);
+            terminal.feed(format!("\x1b]66;w={width};{text}\x07\x1b[31mZ").as_bytes());
+            assert_eq!(terminal.screen().row(0).text(0).as_str(), text);
+            let frame = cached_matches_rebuild(
+                &mut renderer,
+                &terminal,
+                &options,
+                &mut RowCache::default(),
+            );
+            let metrics = renderer.metrics();
+            let mut natural = Frame::empty(options.size);
+            natural.generation = renderer.generation();
+            // Native run positions are the oracle, including RTL order and combining offsets.
+            for glyph in renderer.fonts.shape(text, FontStyle::Regular).unwrap() {
+                let cached = renderer.glyph(&glyph).unwrap();
+                if cached.size.contains(&0) {
+                    continue;
+                }
+                natural.quads.push(Quad {
+                    rect: [
+                        glyph.x + cached.bearing[0] as f32,
+                        metrics.baseline - glyph.y - cached.bearing[1] as f32,
+                        cached.size[0] as f32,
+                        cached.size[1] as f32,
+                    ],
+                    uv: cached.uv,
+                    color: Color::rgb(options.foreground),
+                    paint: if cached.color {
+                        Paint::Color
+                    } else {
+                        Paint::Mask
+                    },
+                    atlas: cached.atlas,
+                });
+            }
+            let mut expected = Frame::empty(options.size);
+            expected
+                .append_clipped(
+                    &natural,
+                    [0.0; 2],
+                    [
+                        0.0,
+                        0.0,
+                        width as f32 * metrics.cell_width as f32,
+                        metrics.cell_height as f32,
+                    ],
+                )
+                .unwrap();
+            let actual: Vec<_> = frame
+                .quads
+                .iter()
+                .filter(|q| q.paint != Paint::Solid && q.color == Color::rgb(options.foreground))
+                .cloned()
+                .collect();
+            assert_eq!(
+                actual, expected.quads,
+                "explicit text {text:?}, width {width}"
+            );
+
+            let mut neighbor = Terminal::new(20, 2, 0);
+            neighbor.feed(format!("\x1b[1;{}H\x1b[31mZ", width + 1).as_bytes());
+            let reference = renderer.prepare(neighbor.screen(), &options).unwrap();
+            let red = |frame: &Frame| {
+                frame
+                    .quads
+                    .iter()
+                    .filter(|q| q.paint == Paint::Mask && q.color == Color::rgb(options.palette[1]))
+                    .cloned()
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(red(&frame), red(&reference), "neighbor after {text:?}");
+        }
+    }
+
+    #[test]
+    fn explicit_width_cursors_selection_search_and_decorations_cover_the_span() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let mut terminal = Terminal::new(16, 2, 0);
+        terminal.feed(b"L\x1b[4m\x1b]66;w=3;ffi\x07\x1b[mR");
+        let mut options = RenderOptions {
+            cursor_visible: false,
+            ..Default::default()
+        };
+        let mut cache = RowCache::default();
+        let plain = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        let cell = renderer.metrics().cell_width as f32;
+        assert_eq!(
+            plain
+                .quads
+                .iter()
+                .filter(|q| q.paint == Paint::Solid
+                    && q.color == Color::rgb(options.foreground)
+                    && q.rect[2] == 3.0 * cell)
+                .count(),
+            1
+        );
+        options.cursor_visible = true;
+        for focused in [false, true] {
+            options.focused = focused;
+            for shape in [
+                CursorShape::Block,
+                CursorShape::Bar,
+                CursorShape::Underline,
+                CursorShape::HollowBlock,
+            ] {
+                terminal.screen_mut().cursor.shape = shape;
+                let mut owner = None;
+                for col in 1..4 {
+                    terminal.screen_mut().cursor.col = col;
+                    let frame =
+                        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+                    assert_eq!(terminal.screen().cursor.col, col);
+                    if let Some(previous) = &owner {
+                        assert_eq!(
+                            &frame.quads, previous,
+                            "cursor at span column {col}, {shape:?}"
+                        );
+                    } else {
+                        owner = Some(frame.quads);
+                    }
+                }
+            }
+        }
+        options.cursor_visible = false;
+        let row = terminal.screen().row(0).id;
+        terminal.screen_mut().selection = Some(Selection {
+            start: GridPoint { row, col: 2 },
+            end: GridPoint { row, col: 2 },
+            rectangular: false,
+        });
+        let selected = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        let backgrounds = |frame: &Frame, color| {
+            frame
+                .quads
+                .iter()
+                .filter(|q| q.paint == Paint::Solid && q.color == Color::rgb(color))
+                .map(|q| q.rect)
+                .collect::<Vec<_>>()
+        };
+        let expected = (1..4)
+            .map(|col| {
+                [
+                    options.padding[0] + col as f32 * cell,
+                    options.padding[1],
+                    cell,
+                    renderer.metrics().cell_height as f32,
+                ]
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            backgrounds(&selected, options.selection_background),
+            expected
+        );
+        terminal.screen_mut().selection = None;
+        options.search_highlights.push(SearchHighlight {
+            row,
+            columns: 1..=1,
+            selected: true,
+        });
+        let searched = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(backgrounds(&searched, [242, 165, 126]), expected);
+    }
+
+    #[test]
+    fn explicit_width_metadata_invalidates_cached_rows_with_identical_fallback_cells() {
+        let mut renderer = Renderer::new(FontConfig::default()).unwrap();
+        let mut terminal = Terminal::new(16, 2, 0);
+        terminal.feed(b"\x1b]66;w=1;MMMM\x07");
+        let options = RenderOptions {
+            cursor_visible: false,
+            ..Default::default()
+        };
+        let mut cache = RowCache::default();
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        let before = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        let fallback = terminal.screen().row(0).cells[0].bits();
+        let revision = terminal.screen().row(0).revision();
+        terminal.feed(b"\r\x1b]66;w=1;iiii\x07");
+        assert_eq!(terminal.screen().row(0).cells[0].bits(), fallback);
+        assert_ne!(terminal.screen().row(0).revision(), revision);
+        let changed = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_ne!(before.quads, changed.quads);
+        assert_eq!(cache.prepared_rows, 5);
+        terminal.feed(b"\r\x1b]66;w=2;iiii\x07");
+        let widened = cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_ne!(changed.quads, widened.quads);
+        assert_eq!(cache.prepared_rows, 6);
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        cached_matches_rebuild(&mut renderer, &terminal, &options, &mut cache);
+        assert_eq!(cache.prepared_rows, 7);
+    }
+
+    #[test]
+    fn explicit_width_clipping_adjusts_texture_coordinates() {
+        let quad = Quad {
+            rect: [-1.0, -2.0, 8.0, 12.0],
+            uv: [0.125, 0.25, 0.625, 0.75],
+            color: Color::rgb([255; 3]),
+            paint: Paint::Mask,
+            atlas: 3,
+        };
+        let clipped = quad.clipped([0.0; 2], [1.0, 1.0, 5.0, 7.0]).unwrap();
+        assert_eq!(clipped.rect, [1.0, 1.0, 4.0, 6.0]);
+        assert_eq!(clipped.uv, [0.25, 0.375, 0.5, 0.625]);
+        assert!(quad.clipped([0.0; 2], [8.0, 1.0, 12.0, 7.0]).is_none());
     }
 
     #[test]

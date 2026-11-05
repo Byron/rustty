@@ -381,7 +381,8 @@ impl Screen {
                     }
                     let mut wide_tail = None;
                     let bulk_copy = wanted.is_empty()
-                        && !source_page.headers[source_row].has(RowHeader::PLACEHOLDER);
+                        && !source_page.headers[source_row]
+                            .has(RowHeader::PLACEHOLDER | RowHeader::TEXT_SPANS);
                     let mut cells = old.cells.iter().take(used).enumerate();
                     while let Some((old_col, cell)) = cells.next() {
                         if cell.width() == 0 {
@@ -404,19 +405,43 @@ impl Screen {
                             );
                             continue;
                         }
-                        let tab = old.style(old_col).tmux_tab.max(0) as usize;
-                        let width = if tab != 0 {
+                        let span = old.cell_span(old_col);
+                        let tab = if span.explicit {
+                            0
+                        } else {
+                            old.style(old_col).tmux_tab.max(0) as usize
+                        };
+                        let width = if span.explicit {
+                            usize::from(span.width)
+                        } else if tab != 0 {
                             tab
                         } else {
                             usize::from(cell.width()).min(cols)
                         };
+                        if span.explicit && width > cols {
+                            for offset in 0..width {
+                                record(
+                                    old_col + offset,
+                                    GridPoint {
+                                        row: line.id,
+                                        col: x.min(cols - 1),
+                                    },
+                                );
+                            }
+                            if width > 1 {
+                                cells.nth(width - 2);
+                            }
+                            continue;
+                        }
                         let mut spacer = None;
                         if x + width > cols {
-                            if tab == 0 && width == 2 && x < cols {
+                            if tab == 0 && (width == 2 || span.explicit) && x < cols {
                                 let (index, row) = self.pages.locate_from_end(0);
                                 let page = &mut self.pages.pages[index];
-                                let slot = page.slot(row, x);
-                                page.cells[slot].set_spacer_head(true);
+                                for gap in x..cols {
+                                    let slot = page.slot(row, gap);
+                                    page.cells[slot].set_spacer_head(true);
+                                }
                                 spacer = Some(GridPoint {
                                     row: line.id,
                                     col: x,
@@ -436,6 +461,30 @@ impl Screen {
                                 &mut spare,
                                 &mut exposed_rows,
                             );
+                        }
+                        if span.explicit {
+                            let mut parts = Vec::with_capacity(width);
+                            for offset in 0..width {
+                                record(
+                                    old_col + offset,
+                                    GridPoint {
+                                        row: line.id,
+                                        col: x + offset,
+                                    },
+                                );
+                                let mut copy = old.copy_cell(old_col + offset);
+                                parts.push(copy.span.take().unwrap());
+                                let _ = self.install_cell(output.len(), x + offset, copy, true);
+                            }
+                            let (index, row) = self.pages.locate_from_end(0);
+                            for (offset, part) in parts.into_iter().enumerate() {
+                                self.pages.pages[index].set_span_part(row, x + offset, part);
+                            }
+                            if width > 1 {
+                                cells.nth(width - 2);
+                            }
+                            x += width;
+                            continue;
                         }
                         if tab != 0 {
                             for offset in 0..tab {

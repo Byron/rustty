@@ -233,7 +233,8 @@ impl RowHeader {
     pub const HYPERLINK: u64 = 1 << 36;
     pub const PLACEHOLDER: u64 = 1 << 39;
     pub const DIRTY: u64 = 1 << 40;
-    pub const MANAGED: u64 = Self::GRAPHEME | Self::STYLED | Self::HYPERLINK;
+    pub const TEXT_SPANS: u64 = 1 << 41;
+    pub const MANAGED: u64 = Self::GRAPHEME | Self::STYLED | Self::HYPERLINK | Self::TEXT_SPANS;
 
     #[inline]
     pub fn new(offset: u32) -> Self {

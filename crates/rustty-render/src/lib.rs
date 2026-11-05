@@ -112,6 +112,33 @@ impl Quad {
             atlas: 0,
         }
     }
+
+    /// Translate, then clip to left/top/right/bottom bounds while preserving UVs.
+    pub(crate) fn clipped(&self, origin: [f32; 2], bounds: [f32; 4]) -> Option<Self> {
+        let [x, y, w, h] = self.rect;
+        if w <= 0.0 || h <= 0.0 {
+            return None;
+        }
+        let x = x + origin[0];
+        let y = y + origin[1];
+        let left = x.max(bounds[0]);
+        let top = y.max(bounds[1]);
+        let right = (x + w).min(bounds[2]);
+        let bottom = (y + h).min(bounds[3]);
+        if left >= right || top >= bottom {
+            return None;
+        }
+        let [u0, v0, u1, v1] = self.uv;
+        let mut clipped = self.clone();
+        clipped.rect = [left, top, right - left, bottom - top];
+        clipped.uv = [
+            u0 + (u1 - u0) * (left - x) / w,
+            v0 + (v1 - v0) * (top - y) / h,
+            u0 + (u1 - u0) * (right - x) / w,
+            v0 + (v1 - v0) * (bottom - y) / h,
+        ];
+        Some(clipped)
+    }
 }
 
 /// An immutable atlas update. Frames retain all updates required to reproduce
@@ -193,31 +220,13 @@ impl Frame {
         let clip_top = clip[1].max(0.0);
         let clip_right = (clip[0] + clip[2]).min(self.size[0] as f32);
         let clip_bottom = (clip[1] + clip[3]).min(self.size[1] as f32);
-        for quad in &other.quads {
-            let [x, y, w, h] = quad.rect;
-            if w <= 0.0 || h <= 0.0 {
-                continue;
-            }
-            let x = x + origin[0];
-            let y = y + origin[1];
-            let left = x.max(clip_left);
-            let top = y.max(clip_top);
-            let right = (x + w).min(clip_right);
-            let bottom = (y + h).min(clip_bottom);
-            if left >= right || top >= bottom {
-                continue;
-            }
-            let [u0, v0, u1, v1] = quad.uv;
-            let mut clipped = quad.clone();
-            clipped.rect = [left, top, right - left, bottom - top];
-            clipped.uv = [
-                u0 + (u1 - u0) * (left - x) / w,
-                v0 + (v1 - v0) * (top - y) / h,
-                u0 + (u1 - u0) * (right - x) / w,
-                v0 + (v1 - v0) * (bottom - y) / h,
-            ];
-            self.quads.push(clipped);
-        }
+        let bounds = [clip_left, clip_top, clip_right, clip_bottom];
+        self.quads.extend(
+            other
+                .quads
+                .iter()
+                .filter_map(|quad| quad.clipped(origin, bounds)),
+        );
         self.generation = other.generation;
         self.atlas_uploads = uploads;
         self.blinking_text |= other.blinking_text;

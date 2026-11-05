@@ -188,14 +188,9 @@ pub fn selection_press(
     links: &mut vt::search::LinkMatcher,
     mut press: vt::selection_gesture::Press<'_>,
 ) -> Option<vt::Selection> {
-    let cell = terminal
-        .screen()
-        .row_by_id(press.point.row)?
-        .cells
-        .get(press.point.col)?;
-    if cell.width() == 0 && press.point.col > 0 {
-        press.point.col -= 1;
-    }
+    let row = terminal.screen().row_by_id(press.point.row)?;
+    row.cells.get(press.point.col)?;
+    press.point.col = row.cell_span(press.point.col).start;
     let point = press.point;
     let selection = gesture.press(terminal, press);
     if gesture.click_count() == 2
@@ -1471,6 +1466,13 @@ mod tests {
                 "click here你",
             ),
             (60, "word你 tail", 0, 5, "word你"),
+            (
+                60,
+                "\x1b]8;;https://example.org\x07\x1b]66;w=7;open link\x07\x1b]8;;\x07 tail",
+                0,
+                6,
+                "open link",
+            ),
         ] {
             let mut terminal = vt::Terminal::new(cols, 6, 100);
             terminal.feed(text.as_bytes());

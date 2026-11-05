@@ -801,23 +801,29 @@ continuation budgets remain independently bounded. Case filtering precedes
 large-payload construction. Allocator failures and peak allocation are still
 unverified.
 
-OSC 66/99 have 183 cases (549 comparisons), including six allocating-capture
-boundaries and eight snapshot continuations. The native parser recognizes text
-sizing and Kitty notification commands, but `TerminalStream` explicitly leaves
-both callbacks unimplemented. Rust matches that no-op behavior: text sizing does
-not print or alter cells, and Kitty notifications do not notify or reply, even
-for queries, multipart messages and closing requests. OSC 9 notifications in
+OSC 99 has 108 differential cases, including three allocating-capture
+boundaries and four snapshot continuations. The native parser recognizes Kitty
+notification commands, but `TerminalStream` leaves the callback unimplemented.
+Rust matches that no-op behavior: Kitty notifications do not notify or reply,
+even for queries, multipart messages and closing requests. OSC 9 notifications in
 the same cases confirm that the notification callback is active. Valid and
 malformed parameters, safe/unsafe UTF-8, both terminators, cancellation, direct
 reset and continuation are covered without claiming broader parser completion.
 The cases live in `osc_strings.unsupported_allocating_requests`; large boundaries
 remain in `allocating_requests` so filtering precedes payload construction.
 
-The six large cases fill metadata and keep the payload short. Native OSC 66
+OSC 66 width handling extends Ghostty's unimplemented callback, so its former
+terminal no-op cases are replaced by Rust VT tests and the native text-span
+smoke. These cover atomic widths, whole-payload copying and search, wrapping,
+edits, rendering, and snapshot continuation. Font scaling is not implemented.
+The direct OSC parser corpus remains independent of these terminal semantics.
+
+Six large capture cases still fill invalid metadata and keep the payload short.
+Native OSC 66
 reserves a trailing NUL, accepting at most 8,388,607 captured input bytes; OSC 99
 accepts 8,388,608 without a NUL. Their independent payload limits are 4096 bytes
 for OSC 66, and 2048 plain or 4096 encoded bytes for OSC 99. Accepted and rejected
-commands both produce no terminal effect, so these differential terminal cases
+commands with this invalid metadata produce no terminal effect, so these differential terminal cases
 do not by themselves verify typed parser admission, metadata utility APIs or
 peak capture allocations.
 

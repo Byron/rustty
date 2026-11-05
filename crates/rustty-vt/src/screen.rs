@@ -332,11 +332,20 @@ pub struct RowView<'a> {
     pub semantic: SemanticContent,
     pub dirty: bool,
     has_placeholders: bool,
+    pub(crate) has_text_spans: bool,
     pub(crate) page: &'a Page,
     pub(crate) offset: usize,
 }
 
 pub type Row<'a> = RowView<'a>;
+
+/// The indivisible text occupying a physical cell, including ordinary wide glyphs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CellSpan {
+    pub start: usize,
+    pub width: u8,
+    pub explicit: bool,
+}
 
 fn tmux_expand(current: usize, requested: usize, width: usize) -> usize {
     if requested <= current {
@@ -451,6 +460,7 @@ impl<'a> RowView<'a> {
             semantic: header.semantic(),
             dirty: header.has(RowHeader::DIRTY),
             has_placeholders: header.has(RowHeader::PLACEHOLDER),
+            has_text_spans: header.has(RowHeader::TEXT_SPANS),
             page,
             offset: header.offset(),
         }
@@ -484,6 +494,39 @@ impl<'a> RowView<'a> {
     }
     #[inline]
     pub fn text(self, col: usize) -> CellText<'a> {
+        if self.has_text_spans
+            && let Some(part) = self.page.span_map.get(&((self.offset + col) as u32))
+        {
+            return CellText(CellTextStorage::Grapheme(if part.offset == 0 {
+                &part.text
+            } else {
+                ""
+            }));
+        }
+        self.fallback_text(col)
+    }
+    /// Resolve the complete text span containing an in-bounds physical column.
+    #[inline]
+    pub fn cell_span(self, col: usize) -> CellSpan {
+        let cell = self.cells[col];
+        if self.has_text_spans
+            && let Some(part) = self.page.span_map.get(&((self.offset + col) as u32))
+        {
+            return CellSpan {
+                start: col - usize::from(part.offset),
+                width: part.width,
+                explicit: true,
+            };
+        }
+        let start = col.saturating_sub(usize::from(cell.width() == 0));
+        CellSpan {
+            start,
+            width: self.cells[start].width().max(1),
+            explicit: false,
+        }
+    }
+    #[inline]
+    pub(crate) fn fallback_text(self, col: usize) -> CellText<'a> {
         let cell = self.cells[col];
         let codepoint = cell.codepoint();
         if cell.has_grapheme() && codepoint.is_some() {
@@ -516,10 +559,15 @@ impl<'a> RowView<'a> {
             .iter()
             .enumerate()
             .rposition(|(col, c)| {
-                c.bits() != 0
-                    && (c.codepoint().is_some()
-                        || c.width() == 0
-                        || self.style(col).background != Color::Default)
+                self.has_text_spans
+                    && self
+                        .page
+                        .span_map
+                        .contains_key(&((self.offset + col) as u32))
+                    || c.bits() != 0
+                        && (c.codepoint().is_some()
+                            || c.width() == 0
+                            || self.style(col).background != Color::Default)
             })
             .map_or(0, |i| i + 1)
     }
@@ -938,17 +986,21 @@ impl Screen {
     pub fn row_text<'a>(&self, row: impl Into<Row<'a>>) -> String {
         let row = row.into();
         let mut result = String::new();
+        let mut keep = 0;
         for (col, cell) in row.cells.iter().enumerate() {
-            if cell.width() == 0 || cell.spacer_head() {
+            if row.cell_span(col).start != col || cell.spacer_head() {
                 continue;
             }
-            if cell.codepoint().is_none() {
+            if cell.codepoint().is_none() && !row.cell_span(col).explicit {
                 result.push(' ');
             } else {
                 result.push_str(&row.text(col));
             }
+            if row.cell_span(col).explicit {
+                keep = result.len();
+            }
         }
-        result.truncate(result.trim_end_matches(' ').len());
+        result.truncate(keep.max(result.trim_end_matches(' ').len()));
         result
     }
     pub fn viewport(&self) -> impl Iterator<Item = Row<'_>> {
@@ -1164,6 +1216,8 @@ impl Screen {
         let suffix = chars.count();
         assert!(suffix <= 64, "cell grapheme is too long");
         let style = self.row(y).style(col);
+        let (index, row) = self.locate(self.history_len() + y);
+        self.pages.pages[index].erase_spans_for_write(row, col, col + 1, style.background);
         self.clear_grapheme(y, col);
         self.cell_mut(y, col).set_codepoint(cp);
         self.set_cell_style(y, col, style);
@@ -1282,6 +1336,7 @@ impl Screen {
             for col in 0..current.cells.len() {
                 if source.style(col).tmux_tab != 0
                     && (source.cells[col].width() != 1
+                        || source.cell_span(col).explicit
                         || source.cells[col].has_grapheme()
                         || !matches!(source.cells[col].codepoint(), None | Some(' ')))
                 {
@@ -1397,8 +1452,10 @@ impl Screen {
         let slot = page.slot(row, col);
         let payload_changed = page.cells[slot].has_grapheme()
             || page.cells[slot].has_hyperlink()
+            || page.span_map.contains_key(&(slot as u32))
             || copy.text.is_some()
-            || copy.link.is_some();
+            || copy.link.is_some()
+            || copy.span.is_some();
         page.clear_cell(slot, Color::Default);
         let mut result = Ok(());
         let mut cell = copy.cell;
@@ -1476,6 +1533,10 @@ impl Screen {
                 result = Err(SetFull::OutOfMemory);
             }
         }
+        if let Some(part) = copy.span {
+            let (index, row) = location;
+            self.pages.pages[index].set_span_part(row, col, part);
+        }
         if payload_changed && !reflow {
             self.pages.pages[location.0].refresh_charge();
         }
@@ -1483,7 +1544,39 @@ impl Screen {
     }
 
     pub(crate) fn append_grapheme(&mut self, col: usize, cp: char) -> Result<(), SetFull> {
+        if self.cursor_row().cell_span(col).explicit {
+            return self.append_span_text(col, &[cp]);
+        }
         self.append_graphemes(col, [cp])
+    }
+
+    fn append_span_text(&mut self, col: usize, codepoints: &[char]) -> Result<(), SetFull> {
+        let (index, row) = self.cursor_location();
+        let view = self.pages.pages[index].row(row);
+        let span = view.cell_span(col);
+        let mut text = view.text(span.start).to_string();
+        if text.len() + codepoints.iter().map(|cp| cp.len_utf8()).sum::<usize>()
+            > crate::page::MAX_SPAN_BYTES
+        {
+            return Err(SetFull::OutOfMemory);
+        }
+        text.extend(codepoints.iter().copied());
+        let text: Arc<str> = Arc::from(text);
+        let page = &mut self.pages.pages[index];
+        for offset in 0..span.width {
+            page.set_span_part(
+                row,
+                span.start + usize::from(offset),
+                crate::page::SpanPart {
+                    text: text.clone(),
+                    width: span.width,
+                    offset,
+                },
+            );
+        }
+        page.refresh_charge();
+        self.tmux_note_rendition(self.cursor.row, true);
+        Ok(())
     }
 
     /// Join a ZWJ and its following scalar with one immutable payload. Both
@@ -1551,6 +1644,9 @@ impl Screen {
         col: usize,
         codepoints: [char; N],
     ) -> Result<(), SetFull> {
+        if self.cursor_row().cell_span(col).explicit {
+            return self.append_span_text(col, &codepoints);
+        }
         self.tmux_note_rendition(self.cursor.row, true);
         let mut location = self.cursor_location();
         let page = &mut self.pages.pages[location.0];
@@ -1652,6 +1748,70 @@ impl Screen {
         page.mark_cell(row, cell);
     }
 
+    pub(crate) fn write_cursor_span(&mut self, text: Arc<str>, width: u8) {
+        let col = self.cursor.col;
+        let old = self.cursor_row().cell_span(col);
+        if old.start == 0 && (old.explicit || old.width == 2) && old.width != width {
+            self.clear_previous_wrap_gap(self.cursor.row);
+        }
+        let (index, row) = self.cursor_location();
+        let background = self.cursor.style.background;
+        self.pages.pages[index].erase_spans_for_write(
+            row,
+            col,
+            col + usize::from(width),
+            background,
+        );
+        self.pages.pages[index].erase(row, col, col + usize::from(width), background, false);
+        for offset in 0..width {
+            self.cursor.col = col + usize::from(offset);
+            self.write_cursor_cell(
+                Some(if offset == 0 { '\u{fffd}' } else { ' ' }),
+                1,
+                false,
+                self.cursor_location(),
+            );
+        }
+        self.cursor.col = col;
+        let (index, row) = self.cursor_location();
+        let page = &mut self.pages.pages[index];
+        for offset in 0..width {
+            page.set_span_part(
+                row,
+                col + usize::from(offset),
+                crate::page::SpanPart {
+                    text: text.clone(),
+                    width,
+                    offset,
+                },
+            );
+        }
+        page.refresh_charge();
+    }
+
+    fn clear_previous_wrap_gap(&mut self, y: usize) {
+        let Some(previous) = (self.history_len() + y).checked_sub(1) else {
+            return;
+        };
+        let view = self.physical_row(previous);
+        if !view.wrapped || !view.cells.last().is_some_and(|c| c.spacer_head()) {
+            return;
+        }
+        let start = view
+            .cells
+            .iter()
+            .rposition(|c| !c.spacer_head())
+            .map_or(0, |x| x + 1);
+        let end = view.cells.len();
+        let (index, row) = self.locate(previous);
+        let page = &mut self.pages.pages[index];
+        for col in start..end {
+            let slot = page.slot(row, col);
+            page.cells[slot].set_spacer_head(false);
+        }
+        page.mark_row(row);
+    }
+
     pub(crate) fn write_cursor_cell(
         &mut self,
         codepoint: Option<char>,
@@ -1685,6 +1845,16 @@ impl Screen {
         };
         let y = self.cursor.row;
         let col = self.cursor.col;
+        let old_span = self.pages.pages[index].row(row).cell_span(col);
+        if old_span.explicit && old_span.start == 0 && old_span.width != width {
+            self.clear_previous_wrap_gap(y);
+        }
+        self.pages.pages[index].erase_spans_for_write(
+            row,
+            col,
+            col + usize::from(width),
+            self.cursor.style.background,
+        );
         let page = &self.pages.pages[index];
         let offset = page.slot(row, 0);
         let columns = usize::from(page.columns);
@@ -1698,7 +1868,12 @@ impl Screen {
         }
         let template = self.cursor_template(codepoint, width, spacer_head);
         let page = &mut self.pages.pages[index];
-        if width == 1 && old_width == 1 && !old.has_grapheme() && !old.has_hyperlink() {
+        if width == 1
+            && old_width == 1
+            && !old.has_grapheme()
+            && !old.has_hyperlink()
+            && !old.spacer_head()
+        {
             page.replace_simple_styles(old.style_id(), template.style_id(), 1);
             page.cells[offset + col] = template;
             page.mark_cell(row, template);
@@ -1742,6 +1917,10 @@ impl Screen {
         if released_payload {
             page.refresh_charge();
         }
+        // A write can break a suffix of wrap padding without changing the row's wrap flag.
+        if old.spacer_head() && !spacer_head {
+            page.repair_wide(row, self.cursor.style.background);
+        }
         if self.cursor.hyperlink.is_some() {
             self.set_cell_cursor_hyperlink(col);
             if width == 2 && col + 1 < columns {
@@ -1762,6 +1941,9 @@ impl Screen {
         let (index, row) = self.sync_cursor_resources();
         let template = self.cursor_template(None, 1, false);
         let page = &mut self.pages.pages[index];
+        if page.headers[row].has(RowHeader::TEXT_SPANS) {
+            return 0;
+        }
         let offset = page.slot(row, self.cursor.col);
         let len = bytes.len().min(usize::from(page.columns) - self.cursor.col);
         let old = page.cells[offset];
@@ -1829,6 +2011,9 @@ impl Screen {
         }
         let (index, row) = self.cursor_location();
         let page = &self.pages.pages[index];
+        if page.headers[row].has(RowHeader::TEXT_SPANS) {
+            return 0;
+        }
         // The scalar fallback extends partial-reflow rows before any write.
         if usize::from(page.columns) <= right || self.cursor_link.is_some() {
             return 0;
@@ -1948,14 +2133,19 @@ impl Screen {
         let (index, row) = self.locate(absolute);
         let page = &mut self.pages.pages[index];
         let offset = page.slot(row, 0);
-        let released_payload = page.headers[row].has(RowHeader::GRAPHEME | RowHeader::HYPERLINK);
+        let released_payload = page.headers[row]
+            .has(RowHeader::GRAPHEME | RowHeader::HYPERLINK | RowHeader::TEXT_SPANS);
         for slot in offset..offset + count {
             page.clear_cell(slot, Color::Default);
         }
         if released_payload {
             page.refresh_charge();
         }
+        let mut spans = Vec::new();
         for (col, mut cell) in copy.cells.into_iter().take(count).enumerate() {
+            if let Some(part) = cell.span.take() {
+                spans.push((col, part));
+            }
             if col + 1 == source_width && width > source_width {
                 cell.cell.set_spacer_head(false);
             }
@@ -1963,13 +2153,17 @@ impl Screen {
         }
         let (index, row) = self.locate(absolute);
         let page = &mut self.pages.pages[index];
+        for (col, part) in spans {
+            page.set_span_part(row, col, part);
+        }
         page.row_ids[row] = copy.id;
         if complete {
             page.headers[row].set(RowHeader::WRAPPED, copy.wrapped);
             page.headers[row].set(RowHeader::CONTINUATION, copy.wrap_continuation);
         }
         page.headers[row].set_semantic(copy.semantic);
-        page.mark_row(row);
+        page.repair_wide(row, Color::Default);
+        page.refresh_charge();
     }
 
     /// Move rows in page-sized segments. Only a boundary row copies cells.
@@ -2132,6 +2326,7 @@ impl Screen {
                 page.mark_cell(dr, page.cells[slot]);
             }
             page.mark_row(sr);
+            page.repair_wide(sr, background);
             page.repair_wide(dr, background);
             page.refresh_charge();
         } else {
@@ -2145,11 +2340,19 @@ impl Screen {
                     }
                 })
                 .collect();
-            for (i, cell) in copies.into_iter().enumerate() {
+            let mut spans = Vec::new();
+            for (i, mut cell) in copies.into_iter().enumerate() {
+                if let Some(part) = cell.span.take() {
+                    spans.push((start + i, part));
+                }
                 let _ = self.install_cell(destination_absolute, start + i, cell, false);
             }
             let (index, row) = self.locate(destination_absolute);
+            for (col, part) in spans {
+                self.pages.pages[index].set_span_part(row, col, part);
+            }
             self.pages.pages[index].repair_wide(row, background);
+            self.pages.pages[index].refresh_charge();
         }
         self.tmux_capture_background(source_absolute, start, end, background);
     }
@@ -2185,6 +2388,12 @@ impl Screen {
         right: usize,
         right_edge: bool,
     ) {
+        let repair_spans = self.row(y).has_text_spans
+            || self
+                .row(y)
+                .cells
+                .last()
+                .is_some_and(|cell| cell.spacer_head());
         if left == 0 && right_edge {
             self.row_header_mut(y)
                 .set(RowHeader::WRAPPED | RowHeader::CONTINUATION, false);
@@ -2194,6 +2403,18 @@ impl Screen {
             self.cell_mut(y, last).set_spacer_head(false);
         }
         for boundary in [left, right + 1] {
+            if boundary < self.row(y).cells.len() {
+                let span = self.row(y).cell_span(boundary);
+                if span.explicit && span.start < boundary {
+                    self.erase_row_cells(
+                        y,
+                        span.start,
+                        span.start + usize::from(span.width),
+                        self.cursor.style.background,
+                        false,
+                    );
+                }
+            }
             if boundary > 0
                 && self
                     .row(y)
@@ -2209,6 +2430,11 @@ impl Screen {
             }
         }
         self.row_header_mut(y).set(RowHeader::DIRTY, true);
+        let (index, row) = self.locate(self.history_len() + y);
+        if repair_spans {
+            self.pages.pages[index].repair_wide(row, self.cursor.style.background);
+            self.pages.pages[index].refresh_charge();
+        }
     }
 
     pub(crate) fn cursor_reset_wrap(&mut self) {
@@ -2224,7 +2450,13 @@ impl Screen {
         }
         let columns = self.row(y).cells.len();
         if self.row(y).cells[columns - 1].spacer_head() {
-            self.erase_row_cells(y, columns - 1, columns, self.cursor.style.background, false);
+            let start = self
+                .row(y)
+                .cells
+                .iter()
+                .rposition(|c| !c.spacer_head())
+                .map_or(0, |x| x + 1);
+            self.erase_row_cells(y, start, columns, self.cursor.style.background, false);
         }
     }
 
@@ -2237,6 +2469,16 @@ impl Screen {
                 self.erase_row_cells(y, cols - 1, cols, background, false);
             }
             return;
+        }
+        let span = self.row(y).cell_span(col);
+        if span.explicit && span.start < col {
+            self.erase_row_cells(
+                y,
+                span.start,
+                span.start + usize::from(span.width),
+                background,
+                false,
+            );
         }
         if col <= 1 && self.row(y).cells[0].width() == 2 {
             let absolute = self.history_len() + y;

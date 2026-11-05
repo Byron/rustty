@@ -7724,9 +7724,7 @@ impl App {
             if row.cells.get(col)?.spacer_head() {
                 return None;
             }
-            if row.cells[col].width() == 0 && col > 0 {
-                col -= 1;
-            }
+            col = row.cell_span(col).start;
             let point = vt::GridPoint { row: row.id, col };
             let key = (
                 id,
@@ -8146,13 +8144,14 @@ fn link_bounds(
     };
     (start..=end)
         .map(|index| {
-            let left = if index == start { link.start.col } else { 0 };
+            let left = if index == start {
+                rows[index].cell_span(link.start.col).start
+            } else {
+                0
+            };
             let right = if index == end {
-                link.end.col
-                    + rows[index]
-                        .cells
-                        .get(link.end.col)
-                        .map_or(1, |cell| usize::from(cell.width().max(1)))
+                let span = rows[index].cell_span(link.end.col);
+                span.start + usize::from(span.width)
             } else {
                 rows[index].cells.len()
             };
@@ -10638,6 +10637,14 @@ mod tests {
         assert_eq!(
             link_bounds(terminal.screen(), &link, origin, cell),
             [egui::Rect::from_min_size(origin, Vec2::new(28.0, 16.0))],
+        );
+        terminal.feed(
+            b"\x1b[2J\x1b[H\x1b]8;;https://target.example\x07\x1b]66;w=7;open link\x07\x1b]8;;\x07",
+        );
+        let link = matcher.links(terminal.screen()).pop().unwrap();
+        assert_eq!(
+            link_bounds(terminal.screen(), &link, origin, cell),
+            [egui::Rect::from_min_size(origin, Vec2::new(49.0, 16.0))],
         );
     }
 
@@ -13311,7 +13318,15 @@ mod tests {
         let mut fonts = rustty_render::Renderer::new(font_config(&Config::default(), 2.0)).unwrap();
         let mut terminal = vt::Terminal::new(12, 3, 0);
         terminal.feed(b"top row\r\n\x1b[3moffice AV\x1b[0m\r\nbottom row\x1b[2;3H");
-        for shape in [1, 3, 5] {
+        for (shape, explicit) in [1, 3, 5]
+            .into_iter()
+            .flat_map(|shape| [(shape, false), (shape, true)])
+        {
+            terminal.feed(if explicit {
+                b"\x1b[2;1H\x1b[2K\x1b]66;w=7;office AV\x07\x1b[2;3H"
+            } else {
+                b"\x1b[2;1H\x1b[2K\x1b[3moffice AV\x1b[0m\x1b[2;3H"
+            });
             terminal.feed(format!("\x1b[{shape} q").as_bytes());
             let mut candidate = |blink_visible| {
                 let options = RenderOptions {

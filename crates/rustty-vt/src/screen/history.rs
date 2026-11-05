@@ -69,18 +69,31 @@ impl Screen {
             }
             let destination = self.history_len() + margins.top;
             let source_id = incoming.id;
+            let mut spans = Vec::new();
             for col in margins.left..=margins.right {
                 let copy = incoming.cells.get(col).filter(|copy| {
                     !(col == margins.left && copy.cell.width() == 0
                         || col == margins.right && copy.cell.width() == 2)
+                        && copy.span.as_ref().is_none_or(|part| {
+                            let start = col.saturating_sub(usize::from(part.offset));
+                            start >= margins.left
+                                && start + usize::from(part.width) <= margins.right + 1
+                        })
                 });
-                let copy = copy
+                let mut copy = copy
                     .cloned()
                     .unwrap_or_else(|| CellCopy::plain(Cell::blank(background)));
+                if let Some(part) = copy.span.take() {
+                    spans.push((col, part));
+                }
                 let _ = self.install_cell(destination, col, copy, false);
             }
             let (index, row) = self.locate(destination);
+            for (col, part) in spans {
+                self.pages.pages[index].set_span_part(row, col, part);
+            }
             self.pages.pages[index].repair_wide(row, background);
+            self.pages.pages[index].refresh_charge();
             self.tmux_capture_write(margins.top, margins.right + 1);
             let destination_id = self.row(margins.top).id;
             for point in self.grid_points_mut() {

@@ -257,9 +257,10 @@ impl Link {
         point: GridPoint,
     ) -> bool {
         let position = |point: GridPoint| {
-            rows.clone()
-                .position(|row| row.id == point.row)
-                .map(|row| (row, point.col))
+            rows.clone().enumerate().find_map(|(index, row)| {
+                (row.id == point.row && point.col < row.cells.len())
+                    .then(|| (index, row.cell_span(point.col).start))
+            })
         };
         match (position(self.start), position(self.end), position(point)) {
             (Some(start), Some(end), Some(point)) => start <= point && point <= end,
@@ -281,7 +282,7 @@ fn logical_lines<'a>(rows: impl Iterator<Item = Row<'a>>) -> Vec<Line> {
             row.used()
         };
         for (col, cell) in row.cells.iter().enumerate().take(used) {
-            if cell.width() == 0 || cell.spacer_head() {
+            if cell.width() == 0 || row.cell_span(col).start != col || cell.spacer_head() {
                 continue;
             }
             let start = line.text.len();
@@ -344,10 +345,11 @@ fn literal_text(screen: &Screen, rows: &[Row<'_>]) -> Line {
             blank_cells = 0;
         }
         for (col, cell) in row.cells.iter().enumerate() {
-            if cell.width() == 0 || cell.spacer_head() {
+            let span = row.cell_span(col);
+            if cell.width() == 0 || span.start != col || cell.spacer_head() {
                 continue;
             }
-            if cell.codepoint().is_none() || cell.codepoint() == Some(' ') {
+            if !span.explicit && (cell.codepoint().is_none() || cell.codepoint() == Some(' ')) {
                 blank_cells += 1;
                 continue;
             }
@@ -674,7 +676,8 @@ impl LinkMatcher {
                 hint.link.end.col,
             )
         });
-        hints.dedup();
+        // Multiple targets inside one atomic span share a label position.
+        hints.dedup_by(|a, b| a.link.start == b.link.start && a.link.end == b.link.end);
         hints
     }
 
