@@ -253,3 +253,9 @@ Unlike the small-history throughput cases above, these measurements expose the
 cold-access cost of compressing persistent owners. The `owner-history` example
 and paired runner preserve raw samples, maxima, exact compiler/revision and
 corpus information. No rendered or visible latency is claimed.
+
+The [continuation report](LINUX-2026-11-05.md) links the complete implementation
+and validation. In particular, [shared-owner pressure](OWNER_PRESSURE.md)
+checks every retained row ID/text through recovery and reconnect at 100k
+history. It retains the native three-burst failure at the existing 10 s write
+timeout and the large synchronous snapshot latency maxima.

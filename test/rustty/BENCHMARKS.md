@@ -5969,3 +5969,14 @@ At 250k rows, ASCII falls 1576.12 → 548.47 ms and Unicode 1117.76 → 365.37 m
 Both variants restore identical historical cells and recompress to the same
 owned size. The report retains raw cold/warm samples, provenance and 94 passing
 focused tests; these core API timings make no renderer, PTY or RSS claim.
+
+## 2026-11-05 — Capture only the requested rows
+
+The [capture report](CAPTURE_RANGES.md) records three adjacent pairs at 20k and
+100k styled Unicode rows with Rust 1.95.0. At 100k rows, cold visible capture
+falls from 6.961 ms to 4.58 µs, with no unrelated history restored; four cold
+historical rows fall from 6.941 ms to 16.54 µs. Full cold controls change by
++0.51% at 100k and +1.25% at 20k. A prior lazy-formatting trial regressed full
+capture by 7–10% and was rejected. The report retains raw results, validation
+and C-reference limits. The [continuation report](LINUX-2026-11-05.md) indexes
+all related commits, measurements and remaining limitations.
