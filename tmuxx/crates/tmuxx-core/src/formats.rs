@@ -116,12 +116,7 @@ impl Engine {
                     return Ok(b"0".to_vec());
                 };
                 let flags = modifier.get(2..).unwrap_or_default();
-                let screen = pane.terminal.snapshot();
-                let screen = if screen.alternate_active {
-                    screen.alternate.as_ref().unwrap_or(&screen.primary)
-                } else {
-                    &screen.primary
-                };
+                let screen = pane.terminal.active_screen();
                 let mut found = None;
                 for row in 0..screen.height() {
                     let text = screen.row_text(screen.row(row));

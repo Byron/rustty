@@ -697,6 +697,11 @@ impl Terminal {
         (cursor.col, cursor.row)
     }
 
+    /// Borrow the selected screen without cloning or encoding terminal history.
+    pub fn active_screen(&self) -> &Screen {
+        self.inner.screen()
+    }
+
     pub fn title(&self) -> &[u8] {
         self.inner.title_bytes()
     }
@@ -892,6 +897,30 @@ impl Terminal {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn active_screen_text_keeps_cold_history_and_ignores_viewport_scroll() {
+        let mut terminal = Terminal::new(80, 4, 4000);
+        terminal.feed(&b"archive-only\r\n".repeat(2000));
+        terminal.feed("\x1b[H\x1b[2Jactive界 e\u{301}\r\nsecond".as_bytes());
+        terminal.inner.screen_mut().viewport_offset = 20;
+        let resident = terminal.inner.primary_screen().owned_bytes();
+        terminal.inner.set_scrollback_compression(true);
+        while terminal.inner.compress_scrollback_step() {}
+        let owned = terminal.inner.primary_screen().owned_bytes();
+        assert!(owned < resident);
+        let screen = terminal.active_screen();
+        assert!(screen.row_text(screen.row(0)).starts_with("active界 e\u{301}"));
+        assert!(screen.row_text(screen.row(1)).starts_with("second"));
+        assert_eq!(terminal.inner.primary_screen().owned_bytes(), owned);
+
+        terminal.feed(b"\x1b[?1049h\x1b[HALTERNATE");
+        while terminal.inner.compress_scrollback_step() {}
+        let owned = terminal.inner.primary_screen().owned_bytes();
+        let screen = terminal.active_screen();
+        assert!(screen.row_text(screen.row(0)).starts_with("ALTERNATE"));
+        assert_eq!(terminal.inner.primary_screen().owned_bytes(), owned);
+    }
+
     #[test]
     fn native_snapshots_restore_beyond_the_generic_history_cell_limit() {
         for rows in [8_000, 8_300] {

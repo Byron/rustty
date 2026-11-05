@@ -14,3 +14,7 @@ tmuxx-terminal = { path = "../tmuxx-terminal" }
 tmuxx-protocol = { workspace = true, features = ["native"] }
 serde.workspace = true
 serde_json.workspace = true
+
+[[example]]
+name = "content-format-bench"
+path = "../../../test/rustty/content-format.rs"
