@@ -1,0 +1,19 @@
+[package]
+name = "native-style-probe"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[[bin]]
+name = "native-style-probe"
+path = "../restore.rs"
+
+[dependencies]
+tmuxx-terminal = { path = "../../../../../tmuxx/crates/tmuxx-terminal" }
+rustty-vt = { path = "../../../../../crates/rustty-vt" }
+serde_json = "1.0"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

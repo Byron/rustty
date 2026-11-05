@@ -165,6 +165,8 @@ impl Screen {
             return Err("invalid cursor ANSI metadata");
         }
         let mut previous = None;
+        let mut page_index = 0;
+        let mut page_start = 0;
         for &(absolute, start, count, ansi, tab) in &source.cell_runs {
             let end = start
                 .checked_add(count)
@@ -184,7 +186,11 @@ impl Screen {
             }
             previous = Some((absolute, end));
             if tab != 0 {
-                let row = self.physical_row(absolute);
+                while absolute >= page_start + usize::from(self.pages.pages[page_index].rows) {
+                    page_start += usize::from(self.pages.pages[page_index].rows);
+                    page_index += 1;
+                }
+                let row = self.pages.pages[page_index].row(absolute - page_start);
                 if (start..end).any(|col| {
                     let cell = row.cells[col];
                     cell.width() != 1
@@ -218,12 +224,21 @@ impl Screen {
         self.tmux_capture_known = source.tmux_capture_known;
         self.tmux_row_times.clone_from(&source.tmux_row_times);
         self.tmux_row_flags.clone_from(&source.tmux_row_flags);
+        let mut page_start = 0;
+        let mut location = (0, 0);
         for &(absolute, start, count, ansi, tab) in &source.cell_runs {
+            while absolute >= page_start + usize::from(self.pages.pages[location.0].rows) {
+                page_start += usize::from(self.pages.pages[location.0].rows);
+                location.0 += 1;
+            }
+            location.1 = absolute - page_start;
             for col in start..start + count {
-                let mut style = self.physical_row(absolute).style(col);
+                let mut style = self.pages.pages[location.0].row(location.1).style(col);
                 style.tmux_ansi = ansi;
                 style.tmux_tab = tab;
-                self.set_absolute_cell_style(absolute, col, style);
+                self.set_located_cell_style(absolute, &mut location, col, style);
+                // Resource growth can split this page and relocate the row.
+                page_start = absolute - location.1;
             }
         }
         self.cursor.style.tmux_ansi = source.cursor_ansi;
@@ -434,6 +449,22 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn tab_metadata_rejects_explicit_width_spaces_after_page_navigation() {
+        let mut terminal = Terminal::new(80, 3, 10_000);
+        terminal.feed(&b"\r\n".repeat(5_000));
+        terminal.feed(b"\x1b]66;w=1; \x1b\\");
+        let screen = terminal.screen();
+        assert!(screen.pages.pages.len() > 3);
+        assert!(screen.row(screen.cursor.row).cell_span(0).explicit);
+        let mut metadata = screen.view_metadata();
+        metadata.cell_runs = vec![(screen.history_len() + screen.cursor.row, 0, 1, 0, 1)];
+        assert_eq!(
+            terminal.restore_view_metadata(&metadata, None),
+            Err("invalid tab cell metadata")
+        );
     }
 
     #[test]
