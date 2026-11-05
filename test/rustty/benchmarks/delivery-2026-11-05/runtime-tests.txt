@@ -1,0 +1,75 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s
+     Running unittests src/lib.rs (target/debug/deps/tmuxx_runtime-39c3f4c6894a0c0e)
+
+running 68 tests
+test control::tests::queued_age_pauses_even_while_delivery_channel_is_full ... ok
+test control::tests::pause_follows_reply_and_resume_does_not_replay_suppressed_output ... ok
+test control::tests::redundant_on_and_continue_preserve_queued_output ... ok
+test control::tests::subscriptions_report_initial_changes_and_each_link_index ... ok
+test defaults::tests::editor_precedence_uses_basename_and_preserves_empty_visual ... ok
+test control::tests::control_guards_keep_zero_request_id_completion_separate ... ok
+test delivery::tests::native_closing_cancels_unstarted_commands_and_rejects_late_requests ... ok
+test delivery::tests::abandoned_closing_client_releases_its_final_barrier ... ok
+test reports::tests::reports_follow_c_osc_framing_and_x11_channel_conversion ... ok
+test control::tests::byte_overflow_and_default_age_disconnect_explicitly ... ok
+test messages::tests::diagnostic_bounds_count_escaped_bytes_and_mark_truncation ... ok
+test control::tests::detach_drains_existing_output_before_closing_and_bounds_stalled_peers ... ok
+test delivery::tests::closing_latest_size_owner_falls_back_among_multiple_survivors ... ok
+test delivery::tests::rejected_recovery_snapshot_closes_without_resuming_delta_stream ... ok
+test delivery::tests::closing_transport_releases_host_election_focus_and_size_authority ... ok
+test process::tests::pipe_overflow_closes_pipe_without_losing_or_duplicating_terminal_output ... ok
+test scheduler::source_admission_tests::prepared_environment_rejects_malformed_values_atomically_and_keeps_ordering ... ok
+test delivery::tests::critical_backlog_and_final_barriers_share_finite_budgets ... ok
+test scheduler::file_stdin_tests::buffer_stdin_preserves_every_byte_and_repeated_reads_keep_callback_order ... ok
+test control::tests::flags_and_sizes_follow_c_numeric_prefix_and_precedence ... ok
+test scheduler::file_stdin_tests::source_stdin_runs_prefix_once_and_resumes_only_on_owned_eof ... ok
+test delivery::tests::full_snapshot_queue_retries_after_ack_without_resuming_skipped_deltas ... ok
+test server_status::tests::idle_stop_checks_connections_arriving_after_idle_status ... ok
+test scheduler::source_admission_tests::startup_parse_errors_remain_in_messages_after_configuration_finishes ... ok
+test server_status::tests::status_delivery_uses_bounded_control_queue ... ok
+test server_status::tests::subscribed_and_control_work_connections_stay_counted ... ok
+test server_status::tests::queued_work_revokes_management_role_before_watch_runs ... ok
+test server_status::tests::status_reports_startup_paths_in_owner_directory_and_order ... ok
+test server_status::tests::status_is_opt_in_deduplicated_and_excludes_observers_and_internal_clients ... ok
+test process::tests::stdin_chunks_enforce_ownership_and_resume_only_after_eof ... ok
+test server_status::tests::management_observer_does_not_prevent_exit_empty ... ok
+test tests::host_environment_rejects_non_utf8_without_panicking ... ok
+test scheduler::file_stdin_tests::stdin_overflow_drains_bounded_bytes_and_disconnect_discards_uncommitted_source ... ok
+test tests::local_client_alone_owns_disconnect_and_late_sender_fails ... ok
+test delivery::tests::remain_on_exit_uses_latest_snapshot_without_a_final_barrier ... ok
+test tests::local_client_timed_receive_accounts_bytes_and_acknowledges_snapshots ... ok
+test tests::native_framing_is_bounded_before_allocation ... ok
+test view_state::tests::multiple_views_aggregate_focus_and_prefer_focused_theme ... ok
+test delivery::tests::two_final_barriers_wait_for_snapshot_ack_and_precede_close ... ok
+test snapshots::one_large_snapshot_does_not_consume_the_slow_output_budget ... ok
+test snapshots::image_changes_refresh_native_graphs_including_other_pane_evictions ... ok
+test server_status::tests::source_reload_applies_files_in_order_keeps_sessions_and_reports_failures ... ok
+test view_state::tests::program_status_each_real_view_focus_requires_full_metadata ... ok
+test snapshots::pane_removal_notifies_other_views_when_requester_gets_a_snapshot ... ok
+test tests::local_client_sender_unblocks_when_owner_stops ... ok
+test snapshots::image_snapshots_stream_atomically_and_rejection_preserves_the_live_owner ... ok
+test tests::local_client_sender_waits_for_capacity_without_losing_or_reordering_requests ... ok
+test windows_shell::tests::executable_resolution_uses_absolute_paths_and_skips_relative_search_directories ... ok
+test windows_shell::tests::explicit_profile_command_overrides_fragments ... ok
+test windows_shell::tests::jsonc_preserves_string_comments_and_rejects_broken_input ... ok
+test windows_shell::tests::sparse_git_profile_resolves_fragment_without_importing_other_settings ... ok
+test windows_shell::tests::unresolved_dynamic_profile_is_an_error_not_a_guessed_shell ... ok
+test windows_shell::tests::windows_commandline_quotes_and_environment ... ok
+test watchdog::tests::linux_broker_malformed_spawn_header_cleans_registered_children ... ok
+test watchdog::tests::linux_embedded_host_process_kill_cleans_owned_panes ... ok
+test delivery::tests::lagging_view_recovers_current_checkpoint_and_keeps_critical_order ... ok
+test watchdog::tests::linux_broker_preserves_pty_output_bytes ... ok
+test snapshots::process_directory_changes_send_only_negotiated_light_metadata_updates ... ok
+test unix_ipc::tests::silent_fifo_eof_closes_control_reader_and_restores_shared_flags ... ok
+test watchdog::tests::linux_broker_exec_failure_and_descriptor_rejection_leave_no_children ... ok
+test watchdog::tests::linux_watchdog_rejects_stale_identities_and_failed_registrations ... ok
+test watchdog::tests::linux_broker_lost_spawn_reply_cleans_nested_orphans_before_exit ... ok
+test snapshots::focus_updates_do_not_transfer_scrollback_and_other_mutations_still_refresh ... ok
+test view_state::tests::program_status_input_queue_rejection_retains_all_synchronized_records ... ok
+test snapshots::checkpoint_snapshots_keep_log_history_and_agent_state_without_duplicate_cells ... ok
+test watchdog::tests::linux_owner_pidfd_cleans_panes_despite_inherited_socket ... ok
+test snapshots::failed_split_then_narrow_split_keeps_snapshots_reconnectable ... ok
+test snapshots::native_byte_backlog_recovers_without_blocking_healthy_client ... ok
+
+test result: ok. 68 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.81s
+

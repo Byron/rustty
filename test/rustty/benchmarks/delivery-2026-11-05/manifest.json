@@ -1,0 +1,38 @@
+{
+  "baseline_revision": "247ad8119a670c6c7c7967cb298437f494809fb6",
+  "compiler": "Rust 1.95.0; release thin LTO/codegen-units=1; default AArch64 CPU flags; --locked --offline",
+  "machine": "Linux 7.0.0-1019-azure ARM Neoverse-N2, 16 cores; no affinity pinning",
+  "binaries": {
+    "before": "2d2b55363b058be172c4b58c1807a2b2bc454d514a64e8627b778219f0d7b275",
+    "after": "3e05c61fdc34c2e6e36926f91679e81432706278d82c73230f55fcd60355ac1b"
+  },
+  "harness_sha256": "208f182a51e4b7b6e8f1db605114f6693d2d6609b3d6679b4fdc2cefc4a57702",
+  "commands": {
+    "build": "cargo +1.95.0 build --locked --offline --release -p rustty --features sessions --example pty-bench",
+    "paced": "/usr/bin/time -v BINARY NEW_OUTPUT_DIRECTORY [embedded|native]",
+    "unpaced": "/usr/bin/time -v BINARY NEW_OUTPUT_DIRECTORY [embedded|native] unpaced"
+  },
+  "conditions": "ABBA per path; builds and other CPU-heavy work stopped; outside syscall-restricting sandbox. Baseline unpaced fails; candidate unpaced completes by bounded snapshot catch-up, not guaranteed replay of every byte.",
+  "validation": "68 runtime library and 40 Rustty Connection tests; all 8 paced and both candidate unpaced runs complete expected DSR/title checks. Shared-owner workload: all 4 candidate blocked peers recover terminal text; baseline peers disconnect. Both revisions fail the separate 100,000-row probe due to the pre-existing cumulative decoder cell limit.",
+  "measured_sources": {
+    "crates/rustty/src/tmuxx.rs": "85a3c1d399fd13757199e7b96cc05a428399c573d4cec72599e053b2b82270c9",
+    "tmuxx/crates/tmuxx-runtime/src/delivery.rs": "d28bf849301e313ee5f0c58c9899e63b43c52a07d740725e000b43609525a1f7",
+    "tmuxx/crates/tmuxx-runtime/src/lib.rs": "034a3b49d747e945eaafa178450161c51f35f4cc9bdbb369eb5b0e3153568754",
+    "tmuxx/crates/tmuxx-runtime/src/lifecycle.rs": "e2430269d8fd05b08737f2b515586f72911e8254d9d78d2d76de78829f5d019d",
+    "tmuxx/crates/tmuxx-runtime/src/client_commands.rs": "888ad3712d5bcd5abe005851a2ef1f57efca96d71015fd7ed49209321677d2d9",
+    "tmuxx/crates/tmuxx-runtime/src/scheduler.rs": "caf8e7e7a40adf35e9cd9229742b1472b362609cb7b919ebf42c21a5b28b8df6",
+    "tmuxx/crates/tmuxx-runtime/src/snapshots.rs": "1bc59230922d9ba1399f449c797694b9441ceb73b932c8a6fac223d3cf2edac1"
+  },
+  "final_sources": {
+    "crates/rustty/src/tmuxx.rs": "85a3c1d399fd13757199e7b96cc05a428399c573d4cec72599e053b2b82270c9",
+    "tmuxx/crates/tmuxx-runtime/src/delivery.rs": "2ad712f9e5d9f5c7f56bec511fa7ed0f78e1b58f6d328aab835ea1a71e142a7e",
+    "tmuxx/crates/tmuxx-runtime/src/lib.rs": "034a3b49d747e945eaafa178450161c51f35f4cc9bdbb369eb5b0e3153568754",
+    "tmuxx/crates/tmuxx-runtime/src/lifecycle.rs": "e2430269d8fd05b08737f2b515586f72911e8254d9d78d2d76de78829f5d019d",
+    "tmuxx/crates/tmuxx-runtime/src/client_commands.rs": "888ad3712d5bcd5abe005851a2ef1f57efca96d71015fd7ed49209321677d2d9",
+    "tmuxx/crates/tmuxx-runtime/src/scheduler.rs": "caf8e7e7a40adf35e9cd9229742b1472b362609cb7b919ebf42c21a5b28b8df6",
+    "tmuxx/crates/tmuxx-runtime/src/snapshots.rs": "1bc59230922d9ba1399f449c797694b9441ceb73b932c8a6fac223d3cf2edac1",
+    "tmuxx/crates/tmuxx-runtime/src/sizes.rs": "74502c40587b2f0778082861f88c226c6e6018227a25153cacb0039f711097c4"
+  },
+  "measured_patch_sha256": "c0dfa62e2038bbde89c4796a3537e2d84c5935bc5c12009dac780cbab6774e82",
+  "final_correction": "The final code additionally repairs latest-size fallback when a closing client remains solely to drain final messages. This lifecycle transition was not exercised in the timed active workload. Exact measured production patch and source hashes are retained."
+}

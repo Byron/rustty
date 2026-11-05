@@ -264,6 +264,6 @@ impl Host {
                 },
             );
         }
-        self.disconnect(id);
+        self.disconnect_after_native_delivery(id);
     }
 }

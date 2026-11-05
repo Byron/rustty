@@ -22,6 +22,7 @@ use tmuxx_protocol::native::{
 mod client_commands;
 mod control;
 mod defaults;
+mod delivery;
 mod drag;
 mod files;
 mod format_jobs;
@@ -1114,6 +1115,8 @@ struct Host {
     snapshot_limit: u64,
     snapshots_pending: BTreeSet<u64>,
     snapshots_requested: BTreeSet<u64>,
+    native_delivery: BTreeMap<u64, delivery::Pending>,
+    native_recovery_cursor: u64,
     checking_sessions: bool,
     wait_pane_target: Option<Id>,
     pane_waiters: BTreeMap<u64, (Id, bool)>,
@@ -1214,6 +1217,8 @@ impl Host {
                 .min(tmuxx_protocol::native::MAX_SNAPSHOT_BYTES),
             snapshots_pending: BTreeSet::new(),
             snapshots_requested: BTreeSet::new(),
+            native_delivery: BTreeMap::new(),
+            native_recovery_cursor: 0,
             checking_sessions: false,
             wait_pane_target: None,
             pane_waiters: BTreeMap::new(),
@@ -1300,6 +1305,7 @@ impl Host {
             self.expire_host();
             self.reap_pipes();
             self.control_tick();
+            self.flush_native();
             self.hook_monitor_tick();
             self.check_window_names();
             self.start_format_jobs();
@@ -1504,29 +1510,15 @@ impl Host {
     }
     fn send(&mut self, id: u64, message: ServerMessage) {
         if self.clients.get(&id).is_some_and(|client| client.control) {
+            if matches!(message, ServerMessage::Snapshot { .. }) {
+                self.snapshots_pending.insert(id);
+            }
             self.send_control(id, message);
             return;
         }
-        if let Some(c) = self.clients.get(&id) {
-            let bytes = control::message_bytes(&message);
-            if c.delivery_bytes
-                .load(Ordering::Acquire)
-                .saturating_add(bytes)
-                > 64 * 1024 * 1024
-            {
-                self.disconnect(id);
-                return;
-            }
-            c.delivery_bytes.fetch_add(bytes, Ordering::AcqRel);
-            match c.tx.try_send(message) {
-                Ok(()) => {}
-                Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => {
-                    c.delivery_bytes.fetch_sub(bytes, Ordering::AcqRel);
-                    self.disconnect(id);
-                }
-            }
-        }
+        self.send_native(id, message);
     }
+
     fn broadcast(&mut self, message: ServerMessage) {
         let ids: Vec<_> = self
             .clients
@@ -1546,6 +1538,12 @@ impl Host {
             self.snapshots_requested.insert(id);
             return;
         }
+        if self.defer_native_snapshot(id) {
+            return;
+        }
+        self.snapshot_now(id);
+    }
+    fn snapshot_now(&mut self, id: u64) -> bool {
         let state = self.engine.native_snapshot();
         if let Err(error) = tmuxx_protocol::native::snapshot_bytes(&state, self.snapshot_limit) {
             self.send(
@@ -1556,9 +1554,8 @@ impl Host {
                     error: error.to_string(),
                 },
             );
-            return;
+            return false;
         }
-        self.snapshots_pending.insert(id);
         self.send(
             id,
             ServerMessage::Snapshot {
@@ -1567,6 +1564,7 @@ impl Host {
                 state,
             },
         );
+        self.snapshots_pending.contains(&id)
     }
     fn execute(
         &mut self,
@@ -1666,6 +1664,7 @@ impl Host {
             let before = self.hook_snapshot();
             self.processes.remove(&pane);
             self.close_pipe(pane);
+            self.final_native_barrier(pane, status);
             let out = self.engine.exited_with_signal(pane, status, signal);
             self.prune_drags();
             self.reconcile_destroyed_sessions(policies, None);

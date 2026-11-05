@@ -140,7 +140,11 @@ impl Host {
         self.size_activity
             .retain(|client, _| self.clients.contains_key(client));
         for (window, latest) in &mut self.latest_clients {
-            if !self.clients.contains_key(latest)
+            if (!self.clients.contains_key(latest)
+                || self
+                    .native_delivery
+                    .get(latest)
+                    .is_some_and(delivery::Pending::is_closing))
                 && let Some((id, _)) = self
                     .clients
                     .iter()

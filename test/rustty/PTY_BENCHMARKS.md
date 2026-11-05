@@ -234,3 +234,11 @@ and timed receive accounting/ACK behavior. All 71 Linux Rustty tmuxx tests pass
 idle/busy worker release, borrowed size-client shutdown, compression, status,
 selection and reconnect behavior. Formatting and diff checks pass. No wire
 version or configuration changes are needed.
+
+### Follow-up subscriber recovery, 2026-11-05
+
+The previously recorded unpaced subscriber failure is fixed by bounded snapshot
+catch-up in the follow-up change. [Delivery recovery measurements](DELIVERY_RECOVERY.md)
+record current paired PTY results, pressure tests, resource bounds and the
+distinction between authoritative state recovery and replay of every output byte.
+Earlier failure artifacts above remain the historical baseline.

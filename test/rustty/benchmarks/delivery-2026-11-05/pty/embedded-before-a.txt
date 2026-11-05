@@ -1,0 +1,27 @@
+measuring embedded
+embedded: input-to-parsed-title p50=104.8us p99=195.1us
+  bulk_ascii MiB/s: [72.54, 71.54, 72.05]
+  bulk_styled_mixed MiB/s: [11.36, 11.33, 11.33]
+	Command being timed: "/tmp/rustty-overload-before-bin /tmp/rustty-overload-pty-20261105/embedded-before-a embedded"
+	User time (seconds): 7.99
+	System time (seconds): 0.51
+	Percent of CPU this job got: 134%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:06.34
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 26824
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 1655
+	Voluntary context switches: 50071
+	Involuntary context switches: 24
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 0
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

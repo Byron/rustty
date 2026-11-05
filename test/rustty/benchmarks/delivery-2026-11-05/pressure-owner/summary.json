@@ -1,0 +1,262 @@
+[
+  {
+    "case": "after-embedded-1",
+    "user_s": 7.0,
+    "system_s": 0.61,
+    "rss_kib": 68448.0,
+    "recovery": {
+      "complete": true,
+      "equal_text": true,
+      "resume_to_final_ns": 88749254
+    },
+    "reconnect_equal": true,
+    "samples": 1564,
+    "burst_median_ms": 2130.16091,
+    "command_ns": {
+      "median_us": 182.27,
+      "p99_us": 1731.176,
+      "max_us": 1766.841,
+      "idle_median_us": 142.345
+    },
+    "echo_view_ns": {
+      "median_us": 2903.6705,
+      "p99_us": 3297.923,
+      "max_us": 3492.097,
+      "idle_median_us": 149.429
+    },
+    "recovery_command": {
+      "median_us": 127.8885,
+      "p99_us": 160.733,
+      "max_us": 1602.628
+    }
+  },
+  {
+    "case": "after-embedded-2",
+    "user_s": 6.55,
+    "system_s": 0.72,
+    "rss_kib": 69172.0,
+    "recovery": {
+      "complete": true,
+      "equal_text": true,
+      "resume_to_final_ns": 81301486
+    },
+    "reconnect_equal": true,
+    "samples": 2179,
+    "burst_median_ms": 2130.722196,
+    "command_ns": {
+      "median_us": 167.845,
+      "p99_us": 1531.042,
+      "max_us": 1603.252,
+      "idle_median_us": 139.0285
+    },
+    "echo_view_ns": {
+      "median_us": 1305.459,
+      "p99_us": 3208.536,
+      "max_us": 3437.792,
+      "idle_median_us": 148.8205
+    },
+    "recovery_command": {
+      "median_us": 121.452,
+      "p99_us": 154.389,
+      "max_us": 531.394
+    }
+  },
+  {
+    "case": "after-native-1",
+    "user_s": 10.65,
+    "system_s": 0.64,
+    "rss_kib": 75912.0,
+    "recovery": {
+      "complete": true,
+      "equal_text": true,
+      "resume_to_final_ns": 181476423
+    },
+    "reconnect_equal": true,
+    "samples": 1545,
+    "burst_median_ms": 2134.867375,
+    "command_ns": {
+      "median_us": 1667.055,
+      "p99_us": 1926.23,
+      "max_us": 2013.985,
+      "idle_median_us": 148.353
+    },
+    "echo_view_ns": {
+      "median_us": 1424.126,
+      "p99_us": 1922.551,
+      "max_us": 3598.99,
+      "idle_median_us": 153.017
+    },
+    "recovery_command": {
+      "median_us": 132.7965,
+      "p99_us": 154.589,
+      "max_us": 1627.206
+    }
+  },
+  {
+    "case": "after-native-100k",
+    "user_s": 6.54,
+    "system_s": 0.29,
+    "rss_kib": 609524.0,
+    "complete": false,
+    "error": "broken pipe"
+  },
+  {
+    "case": "after-native-2",
+    "user_s": 10.35,
+    "system_s": 0.66,
+    "rss_kib": 76712.0,
+    "recovery": {
+      "complete": true,
+      "equal_text": true,
+      "resume_to_final_ns": 191056428
+    },
+    "reconnect_equal": true,
+    "samples": 1546,
+    "burst_median_ms": 2135.423617,
+    "command_ns": {
+      "median_us": 1570.8515,
+      "p99_us": 1886.214,
+      "max_us": 1955.928,
+      "idle_median_us": 156.549
+    },
+    "echo_view_ns": {
+      "median_us": 1560.003,
+      "p99_us": 2922.4,
+      "max_us": 3844.31,
+      "idle_median_us": 157.177
+    },
+    "recovery_command": {
+      "median_us": 127.204,
+      "p99_us": 164.333,
+      "max_us": 1721.888
+    }
+  },
+  {
+    "case": "before-embedded-0",
+    "user_s": 6.98,
+    "system_s": 0.62,
+    "rss_kib": 61784.0,
+    "recovery": {
+      "complete": false,
+      "error": "[\"tmuxx disconnected\"]"
+    },
+    "reconnect_equal": true,
+    "samples": 1610,
+    "burst_median_ms": 2131.066233,
+    "command_ns": {
+      "median_us": 171.4775,
+      "p99_us": 1706.183,
+      "max_us": 1796.834,
+      "idle_median_us": 154.745
+    },
+    "echo_view_ns": {
+      "median_us": 2909.846,
+      "p99_us": 3275.178,
+      "max_us": 3451.432,
+      "idle_median_us": 157.817
+    },
+    "recovery_command": {
+      "median_us": 125.34,
+      "p99_us": 175.477,
+      "max_us": 220.951
+    }
+  },
+  {
+    "case": "before-embedded-3",
+    "user_s": 7.05,
+    "system_s": 0.56,
+    "rss_kib": 63248.0,
+    "recovery": {
+      "complete": false,
+      "error": "[\"tmuxx disconnected\"]"
+    },
+    "reconnect_equal": true,
+    "samples": 1601,
+    "burst_median_ms": 2128.938893,
+    "command_ns": {
+      "median_us": 295.322,
+      "p99_us": 1742.69,
+      "max_us": 1782.107,
+      "idle_median_us": 141.0645
+    },
+    "echo_view_ns": {
+      "median_us": 2487.299,
+      "p99_us": 3324.975,
+      "max_us": 3478.94,
+      "idle_median_us": 151.6135
+    },
+    "recovery_command": {
+      "median_us": 124.676,
+      "p99_us": 143.989,
+      "max_us": 169.277
+    }
+  },
+  {
+    "case": "before-native-0",
+    "user_s": 10.34,
+    "system_s": 0.55,
+    "rss_kib": 67312.0,
+    "recovery": {
+      "complete": false,
+      "error": "[\"tmuxx disconnected\"]"
+    },
+    "reconnect_equal": true,
+    "samples": 1546,
+    "burst_median_ms": 2133.374866,
+    "command_ns": {
+      "median_us": 1721.452,
+      "p99_us": 1929.823,
+      "max_us": 2015.875,
+      "idle_median_us": 143.3925
+    },
+    "echo_view_ns": {
+      "median_us": 1353.704,
+      "p99_us": 2593.692,
+      "max_us": 3437.569,
+      "idle_median_us": 154.609
+    },
+    "recovery_command": {
+      "median_us": 132.18,
+      "p99_us": 156.949,
+      "max_us": 163.333
+    }
+  },
+  {
+    "case": "before-native-100k",
+    "user_s": 5.89,
+    "system_s": 0.27,
+    "rss_kib": 495276.0,
+    "complete": false,
+    "error": "broken pipe"
+  },
+  {
+    "case": "before-native-3",
+    "user_s": 9.75,
+    "system_s": 0.62,
+    "rss_kib": 68256.0,
+    "recovery": {
+      "complete": false,
+      "error": "[\"tmuxx disconnected\"]"
+    },
+    "reconnect_equal": true,
+    "samples": 1546,
+    "burst_median_ms": 2129.964993,
+    "command_ns": {
+      "median_us": 1269.4175,
+      "p99_us": 1814.684,
+      "max_us": 1935.847,
+      "idle_median_us": 135.7045
+    },
+    "echo_view_ns": {
+      "median_us": 1689.331,
+      "p99_us": 3423.616,
+      "max_us": 3634.423,
+      "idle_median_us": 145.601
+    },
+    "recovery_command": {
+      "median_us": 128.876,
+      "p99_us": 158.885,
+      "max_us": 221.567
+    }
+  }
+]

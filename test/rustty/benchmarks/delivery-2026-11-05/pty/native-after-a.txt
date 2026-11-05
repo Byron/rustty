@@ -1,0 +1,27 @@
+measuring native
+native: input-to-parsed-title p50=138.1us p99=177.8us
+  bulk_ascii MiB/s: [69.66, 69.89, 69.71]
+  bulk_styled_mixed MiB/s: [11.38, 11.37, 11.37]
+	Command being timed: "/tmp/rustty-overload-after-bin /tmp/rustty-overload-pty-20261105/native-after-a native"
+	User time (seconds): 8.03
+	System time (seconds): 0.61
+	Percent of CPU this job got: 135%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:06.37
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 29512
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 2296
+	Voluntary context switches: 73280
+	Involuntary context switches: 11
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 0
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
