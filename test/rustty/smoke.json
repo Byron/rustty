@@ -1190,5 +1190,77 @@
       "terminal.cells",
       "terminal.cursor"
     ]
+  },
+  {
+    "request": {
+      "id": "upstream-2026-11/wide-after-wrap",
+      "cols": 5,
+      "rows": 3,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b3f3639681b5b313b32731b5b313b34482020f09f87a658"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.write",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "upstream-2026-11/narrow-after-wrap",
+      "cols": 5,
+      "rows": 3,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b3f3639681b5b313b32731b5b313b354841424344"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.write",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "upstream-2026-11/wide-direct-wrap",
+      "cols": 5,
+      "rows": 3,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b3f3639681b5b313b32731b5b313b3548f09f87a6"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.write",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "upstream-2026-11/wide-grapheme-wrap",
+      "cols": 5,
+      "rows": 3,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b3f3639681b5b313b32731b5b3f32303237681b5b313b3548e2989defb88f"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.write",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
   }
 ]

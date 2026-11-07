@@ -1539,12 +1539,6 @@ impl Terminal {
             let col = self.screen().cursor.col.min(usize::from(self.cols) - 1);
             self.screen_mut().cursor.col = col;
             if self.screen().cursor.pending_wrap {
-                // A cursor beyond the margin uses its old right limit for one print.
-                if col > self.margins.right {
-                    self.print(char::from(bytes[0]));
-                    bytes = &bytes[1..];
-                    continue;
-                }
                 self.print_wrap();
                 location = self.screen().cursor_location();
             }
@@ -1705,7 +1699,7 @@ impl Terminal {
         self.screen_mut().cursor.col = col;
         let cursor = &self.screen().cursor;
         let (col, pending_wrap) = (cursor.col, cursor.pending_wrap);
-        let right = if col > self.margins.right {
+        let mut right = if col > self.margins.right {
             self.cols as usize - 1
         } else {
             self.margins.right
@@ -1831,6 +1825,7 @@ impl Terminal {
         self.previous_char = Some(cp);
         if pending_wrap && self.modes.dec(7) {
             self.print_wrap();
+            right = self.margins.right;
             location = self.screen().cursor_location();
         }
         if self.modes.get(false, 4)
@@ -1848,6 +1843,7 @@ impl Terminal {
                 }
                 self.put_cell(None, 1, right == self.cols as usize - 1, location);
                 self.print_wrap();
+                right = self.margins.right;
                 location = self.screen().cursor_location();
             }
             self.put_cell(Some(charset.map(cp)), width, false, location);
@@ -1914,7 +1910,7 @@ impl Terminal {
         mut col: usize,
         cp: char,
         width: u8,
-        right: usize,
+        mut right: usize,
         cell: Cell,
         grapheme_len: u8,
     ) {
@@ -1937,6 +1933,7 @@ impl Terminal {
                 self.screen().cursor_location(),
             );
             self.print_wrap();
+            right = self.margins.right;
             col = self.screen().cursor.col;
             self.put_cell(
                 cell.codepoint(),

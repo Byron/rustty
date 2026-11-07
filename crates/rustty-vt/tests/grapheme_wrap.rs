@@ -1,6 +1,37 @@
 use rustty_vt::Terminal;
 
 #[test]
+fn printing_beyond_right_margin_uses_margin_after_each_kind_of_wrap() {
+    for bytewise in [false, true] {
+        for (text, expected) in [
+            ("\x1b[1;4H  🇦", "🇦"),
+            ("\x1b[1;5H🇦", "🇦"),
+            ("\x1b[?2027h\x1b[1;5H☝\u{fe0f}", "☝\u{fe0f}"),
+            ("\x1b[1;5HABC", "BC"),
+        ] {
+            let mut t = Terminal::new(5, 3, 0);
+            t.feed(b"\x1b[?69h\x1b[1;2s");
+            for part in text
+                .as_bytes()
+                .chunks(if bytewise { 1 } else { text.len() })
+            {
+                t.feed(part);
+            }
+            assert_eq!(
+                (t.screen().cursor.row, t.screen().cursor.col),
+                (1, 1),
+                "{text:?}"
+            );
+            assert!(t.screen().cursor.pending_wrap, "{text:?}");
+            assert_eq!(t.screen().row_text(t.screen().row(1)), expected);
+            t.feed(b"X");
+            assert_eq!((t.screen().cursor.row, t.screen().cursor.col), (2, 1));
+            assert_eq!(t.screen().row_text(t.screen().row(2)), "X");
+        }
+    }
+}
+
+#[test]
 fn widening_grapheme_below_scroll_region_keeps_its_suffix() {
     let mut terminal = Terminal::new(3, 3, 100);
     terminal.feed("\x1b[?2027h\x1b[1;2r\x1b[3;3H❤\u{200d}👍".as_bytes());
