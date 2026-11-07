@@ -73,6 +73,134 @@ fn native_style_hash_matches_canonical_packed_fields() {
     }
 }
 
+#[test]
+fn sgr_admits_only_the_final_style_and_preserves_live_cells() {
+    let mut terminal = Terminal::new(80, 2, 0);
+    terminal.feed(b"\x1b[1mA");
+    let mut expected = terminal.clone();
+    let final_style = Style {
+        bold: true,
+        italic: true,
+        foreground: Color::Indexed(100),
+        ..Style::default()
+    };
+    expected.screen_mut().set_cursor_style(final_style);
+    terminal.feed(b"\x1b[0;1;3;38;5;100m");
+    assert_eq!(terminal.screen().cursor.style, final_style);
+    assert_eq!(
+        serde_json::to_value(&terminal.screen().pages.pages[0].styles).unwrap(),
+        serde_json::to_value(&expected.screen().pages.pages[0].styles).unwrap()
+    );
+    assert!(terminal.screen().row(0).style(0).bold);
+    assert!(!terminal.screen().row(0).style(0).italic);
+    assert_references(terminal.screen());
+}
+
+#[test]
+fn sgr_final_style_reuse_and_reset_do_not_admit_intermediate_styles() {
+    let mut terminal = Terminal::new(80, 2, 0);
+    terminal.feed(b"\x1b[1;3;38;5;100mA");
+    let resources = serde_json::to_value(&terminal.screen().pages.pages[0].styles).unwrap();
+    let cursor_style = terminal.screen().cursor_style;
+    terminal.feed(b"\x1b[0;1;3;38;5;100m");
+    assert_eq!(terminal.screen().cursor_style, cursor_style);
+    assert_eq!(
+        serde_json::to_value(&terminal.screen().pages.pages[0].styles).unwrap(),
+        resources
+    );
+    terminal.feed(b"\x1b[1;0m");
+    assert_eq!(terminal.screen().cursor.style, Style::default());
+    assert_eq!(terminal.screen().pages.pages[0].styles.count(), 1);
+    assert_references(terminal.screen());
+    terminal.feed(b"\x1b[1m\x1b[m");
+    assert_eq!(terminal.screen().cursor.style, Style::default());
+    assert_references(terminal.screen());
+}
+
+#[test]
+fn sgr_reset_does_not_grow_for_a_discarded_style() {
+    let mut terminal = Terminal::new(80, 2, 0);
+    for n in 0..103 {
+        terminal.feed(format!("\x1b[38;2;{n};0;0mX").as_bytes());
+    }
+    let capacity = terminal.screen().pages.pages[0].capacity;
+    terminal.feed(b"\x1b[38;2;103;0;0;0m");
+    assert_eq!(terminal.screen().pages.pages[0].capacity, capacity);
+    assert_eq!(terminal.screen().cursor.style, Style::default());
+    assert_references(terminal.screen());
+}
+
+#[test]
+fn sgr_failed_final_admission_restores_the_presequence_style() {
+    let mut terminal = Terminal::new(40, 1, 0);
+    let mut page = Page::new(
+        PageCapacity {
+            cols: 40,
+            rows: 1,
+            styles: u16::MAX,
+            ..PageCapacity::STANDARD
+        },
+        1,
+        terminal.screen().pages.pages[0].serial,
+    );
+    let old = Style {
+        bold: true,
+        ..Style::default()
+    };
+    // Keep both possible rollback styles alive before filling the table.
+    for (col, style) in [
+        (32, old),
+        (
+            33,
+            Style {
+                italic: true,
+                ..old
+            },
+        ),
+    ] {
+        let id = page.styles.acquire(style).unwrap();
+        page.cells[col].set_codepoint(Some('X'));
+        page.cells[col].set_style_id(id);
+        page.mark_cell(0, page.cells[col]);
+    }
+    // Fill the maximum-length hash cluster in a single, unsplittable row.
+    let collisions = [
+        97795, 118582, 164550, 254900, 321583, 367968, 443452, 457628, 535831, 781909, 817288,
+        914690, 922417, 970906, 983939, 1027736, 1110977, 1170502, 1216979, 1229111, 1341195,
+        1370554, 1432025, 1553241, 1587295, 1687962, 1702168, 1746933, 1780009, 1914231, 1971215,
+        2285208,
+    ];
+    for (col, value) in collisions.into_iter().enumerate() {
+        let style = Style {
+            foreground: Color::Rgb(value as u8, (value >> 8) as u8, (value >> 16) as u8),
+            ..Style::default()
+        };
+        assert_eq!(style.native_hash() & 65535, 0);
+        let id = page.styles.acquire(style).unwrap();
+        page.cells[col].set_codepoint(Some('X'));
+        page.cells[col].set_style_id(id);
+        page.mark_cell(0, page.cells[col]);
+    }
+    terminal.screen_mut().pages.pages[0] = page;
+    terminal.screen_mut().pages.pages[0].refresh_charge();
+    terminal.screen_mut().set_cursor_style(old);
+    assert_eq!(terminal.screen().cursor.style, old);
+    let failed = Style {
+        italic: true,
+        foreground: Color::Rgb(250, 66, 0),
+        ..old
+    };
+    assert_eq!(failed.native_hash() & 65535, 0);
+    terminal.feed(b"\x1b[3;38;2;250;66;0m");
+    assert_eq!(terminal.screen().cursor.style, old);
+    assert_eq!(terminal.screen().pages.pages[0].styles.count(), 34);
+    assert_references(terminal.screen());
+    terminal.feed(b"\x1b[3m");
+    assert!(terminal.screen().cursor.style.bold);
+    assert!(terminal.screen().cursor.style.italic);
+    assert_references(terminal.screen());
+}
+
 fn assert_references(screen: &Screen) {
     let mut expected = HashMap::<(u64, u16), usize>::new();
     for page in &screen.pages.pages {

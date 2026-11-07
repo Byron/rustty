@@ -16,6 +16,9 @@ mod charset;
 #[path = "../../../test/rustty/resource-churn-bench.rs"]
 mod resource_churn;
 
+#[path = "../../../test/rustty/stream-file-bench.rs"]
+mod stream_file;
+
 const COLS: u16 = 128;
 const ROWS: u16 = 32;
 const PATTERNS: [(&str, &str); 4] = [
@@ -1244,6 +1247,7 @@ criterion_group!(
     content_history_reflow,
     captured_scrollback_reflow,
     memory_capped_streams,
+    stream_file::benchmarks,
     resource_churn::resources,
     charset::charsets,
     kitty::placements,

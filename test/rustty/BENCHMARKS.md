@@ -249,6 +249,41 @@ Allocator instrumentation is excluded from timing. The separate
 no allocations. Chinese text alone does not exercise the grapheme allocator;
 the combining and emoji cases do.
 
+### Shared generated files
+
+`stream-file` loads the same byte file in both engines and feeds resident
+64-KiB chunks. File reads, terminal/parser setup, a full reset before every
+feed, and visible-output checks are outside the timer. The native
+`ghostty-bench +terminal-stream` command includes file reads, so its timings
+have a different boundary. These are terminal primitives, not UI latency.
+
+Create a JSON config with `data` naming a nonempty file of at most 128 MiB:
+
+```json
+{"name":"styled-4","data":"/tmp/styled.vt","cols":120,"rows":80,"scrollback_bytes":10000,"grapheme_width":"legacy"}
+```
+
+`grapheme_width` accepts `legacy` or `unicode`; the default survives resets.
+`scrollback_bytes` is a byte budget, including the native minimum page floor;
+use `0`, `10000`, or `50000000` to compare the upstream stream workloads.
+The inherited `ghostty-gen +styled` supports `--sgr-attrs=1` through `4`;
+its `+erase`, `+hyperlink`, and `+utf8` inputs use this same consumer.
+
+```sh
+cargo +1.95.0 build --release --locked --offline -p rustty-vt --example stream-file
+zig build vt-primitives test-vt-primitives -Demit-lib-vt=true -Demit-macos-app=false -Doptimize=ReleaseFast
+target/release/examples/stream-file /tmp/stream.json 30
+zig-out/bin/vt-primitives stream_file /tmp/stream.json 30
+RUSTTY_STREAM_CONFIG=/tmp/stream.json GHOSTTY_PRIMITIVES_BIN=zig-out/bin/vt-primitives \
+  cargo +1.95.0 bench --locked --offline -p rustty-vt --bench primitives -- stream_file
+```
+
+The checksum covers visible text, style, widths, row wrapping, hyperlinks,
+and cursor position/style/pending wrap. The parity suite separately checks retained history,
+resource IDs, and implicit hyperlink identities. `page_bytes` is the current
+native page charge; `owned_bytes` is Rust's page-storage estimate, excluding
+allocator metadata. Neither reports peak allocation or process RSS.
+
 ### Supplemental chunked input
 
 The six Rust-only `rustty/chunked_feed_mixed` and

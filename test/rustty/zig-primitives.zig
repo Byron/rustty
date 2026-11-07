@@ -6,7 +6,7 @@ const vt = @import("ghostty-vt");
 
 pub const std_options: std.Options = .{ .log_level = .err };
 
-const Operation = enum { width, print, scalar, read, clone, reflow, feed, stream, stream_styled, reflow_history_styled, reflow_scrollback, reflow_history_content, kitty_place, kitty_cells };
+const Operation = enum { width, print, scalar, read, clone, reflow, feed, stream, stream_styled, reflow_history_styled, reflow_scrollback, reflow_history_content, kitty_place, kitty_cells, stream_file };
 const cols = 128;
 const rows = 32;
 const history_lines = 1024;
@@ -403,7 +403,7 @@ fn step(
             try terminal.resize(terminal.gpa(), .{ .cols = cols / 2, .rows = rows });
             try terminal.resize(terminal.gpa(), .{ .cols = cols, .rows = rows });
         },
-        .reflow_history_content, .kitty_place, .kitty_cells => unreachable,
+        .reflow_history_content, .kitty_place, .kitty_cells, .stream_file => unreachable,
     }
     std.mem.doNotOptimizeAway(terminal);
     return 0;
@@ -418,6 +418,7 @@ pub fn main(init: std.process.Init) !void {
     if (iterations == 0) return error.InvalidIterations;
     const bytes = try std.Io.Dir.cwd().readFileAlloc(init.io, args[2], alloc, .limited(128 * 1024 * 1024));
     defer alloc.free(bytes);
+    if (op == .stream_file) return @import("zig-stream-file-bench.zig").run(init, bytes, iterations);
     if (op == .reflow_history_content) return contentBenchmark(init, bytes, iterations);
     if (op == .kitty_place or op == .kitty_cells) return @import("zig-kitty-bench.zig").run(init, bytes, iterations);
     const cps = if (parsed(op)) try alloc.alloc(u21, 0) else try decode(alloc, bytes);
@@ -493,7 +494,7 @@ pub fn main(init: std.process.Init) !void {
         .units_per_iteration = switch (op) {
             .width, .print => cps.len,
             .scalar, .read, .clone => cols * rows,
-            .reflow, .reflow_history_content, .kitty_place, .kitty_cells => 1,
+            .reflow, .reflow_history_content, .kitty_place, .kitty_cells, .stream_file => 1,
             .reflow_history_styled => styled_records,
             .reflow_scrollback => 1,
             .feed, .stream, .stream_styled => bytes.len,
@@ -570,4 +571,8 @@ test "long-history content checks mixed clusters links and anchors at odd widths
         try terminal.resize(alloc, .{ .cols = cols, .rows = rows });
         try std.testing.expectEqual(checksum, try checkContent(&terminal, config, wide_layout, cols, pins));
     }
+}
+
+test {
+    _ = @import("zig-stream-file-bench.zig");
 }

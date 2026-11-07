@@ -3137,7 +3137,7 @@ impl Terminal {
             self.ensure_row_cells(y, end);
             for x in start..end {
                 let old = self.screen().row(y).style(x);
-                let mut style = apply_sgr(old, attributes, separators, tmux, |style| style);
+                let mut style = apply_sgr(old, attributes, separators, tmux);
                 // Retained HT spelling describes the text, not its rendition.
                 style.tmux_tab = old.tmux_tab;
                 if style != old {
@@ -4373,23 +4373,15 @@ pub fn default_palette() -> Vec<[u8; 3]> {
 }
 
 fn sgr(screen: &mut Screen, params: &[u16], separators: u32, tmux: bool) {
-    apply_sgr(screen.cursor.style, params, separators, tmux, |style| {
-        screen.set_cursor_style(style);
-        screen.cursor.style
-    });
+    let style = apply_sgr(screen.cursor.style, params, separators, tmux);
+    screen.set_cursor_style(style);
 }
 
-/// Keep cursor style admission at each attribute boundary; region edits need
-/// the same transformations without borrowing or changing the cursor's pen.
-fn apply_sgr(
-    mut style: Style,
-    params: &[u16],
-    separators: u32,
-    tmux: bool,
-    mut admit: impl FnMut(Style) -> Style,
-) -> Style {
+/// Transform the whole sequence before admitting its final style. Region edits
+/// use the same transformations without borrowing or changing the cursor's pen.
+fn apply_sgr(mut style: Style, params: &[u16], separators: u32, tmux: bool) -> Style {
     if params.is_empty() {
-        return admit(Style::default());
+        return Style::default();
     }
     let is_colon = |index: usize| separators & (1 << index) != 0;
     let colon_count = |start: usize| {
@@ -4524,7 +4516,6 @@ fn apply_sgr(
             }
             _ => {}
         }
-        style = admit(style);
     }
     style
 }

@@ -48,6 +48,11 @@ name = "allocations"
 path = "../../test/rustty/allocations.rs"
 
 [[example]]
+name = "stream-file"
+path = "../../test/rustty/rust-stream-file.rs"
+test = true
+
+[[example]]
 name = "scrollback-compression"
 path = "../../test/rustty/scrollback-compression.rs"
 
