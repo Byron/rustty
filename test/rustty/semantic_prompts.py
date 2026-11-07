@@ -113,4 +113,38 @@ def requests():
                                    {'op':'observe'},{'op':'write','data':(b'\x1b['+erase).hex()},{'op':'observe'}]}
             fixtures.append({'request':request,'covers':['terminal.cells','terminal.cursor']})
 
+    # ED2's prompt fast path must retain input-only and copied cursor state.
+    output = b'out\r\n' * 3
+    prompt = output + packet(b'P') + b'prompt' + packet(b'C')
+    clear = b'\x1b[H\x1b[2J'
+    ed_cases = [
+        ('plain-control', output + b'input\r\nmore', 8),
+        ('input-only', output + packet(b'B') + b'input\r\nmore', 8),
+        ('output-cursor', prompt, 8),
+        ('soft-reset', prompt + b'\x1b[!p', 8),
+        ('ris-control', prompt + b'\x1bcplain\r\noutput', 8),
+        ('recycled-prompt', b'hello\x1b[2H' + packet(b'P') + b'p' + packet(b'C')
+         + b'\x1b[2;3r\x1b[3H\n\x1b[r', 3),
+    ]
+    for mode in [47, 1047, 1049]:
+        ed_cases.append((f'alternate-input/{mode}', output + f'\x1b[?{mode}h'.encode()
+                         + packet(b'B') + f'\x1b[?{mode}l'.encode() + b'input\r\nmore', 8))
+    for name, initial, rows in ed_cases:
+        request = {'id': 'protocol/semantic/ed2-gate/' + name, 'cols': 10, 'rows': rows,
+                   'observe_semantic': True,
+                   'operations': [{'op': 'write', 'data': initial.hex()}, {'op': 'observe'},
+                                  {'op': 'write', 'data': clear.hex()}, {'op': 'observe'}]}
+        fixtures.append({'request': request, 'covers': ['terminal.cells', 'terminal.cursor']})
+    for name, initial, tail in [
+        ('input-cursor', output + packet(b'B') + b'input', b'\r\nmore' + clear),
+        ('prompt-row', prompt, clear),
+    ]:
+        request = {'id': 'protocol/semantic/ed2-gate/snapshot/' + name, 'kind': 'snapshot',
+                   'cols': 10, 'rows': 8, 'observe_semantic': True,
+                   'operations': [{'op': 'write', 'data': initial.hex()}],
+                   'after': [{'op': 'write', 'data': tail.hex()}]}
+        fixtures.append({'request': request, 'covers': ['terminal.cells', 'terminal.cursor',
+                                                      'snapshot.cross-decode']})
+
+
     yield from ((fixture["request"], fixture["covers"]) for fixture in fixtures)

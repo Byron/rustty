@@ -201,7 +201,103 @@ fn sgr_failed_final_admission_restores_the_presequence_style() {
     assert_references(terminal.screen());
 }
 
+#[test]
+fn semantic_prompt_seen_survives_copies_and_derives_from_restored_state() {
+    for input in [
+        b"\x1b]133;B\x07input".as_slice(),
+        b"\x1b]133;P\x07prompt\x1b]133;C\x07",
+    ] {
+        let mut terminal = Terminal::new(10, 4, 100);
+        assert!(!terminal.screen().semantic_prompt_seen);
+        terminal.feed(input);
+        assert!(terminal.screen().semantic_prompt_seen);
+        assert!(terminal.clone().screen().semantic_prompt_seen);
+        assert!(terminal.screen().snapshot_viewport().semantic_prompt_seen);
+
+        let json = serde_json::to_value(terminal.screen()).unwrap();
+        assert!(json.get("semantic_prompt_seen").is_none());
+        let restored: Screen = serde_json::from_value(json).unwrap();
+        assert!(restored.semantic_prompt_seen);
+        let bytes = snapshot::encode_to_vec(&terminal).unwrap();
+        let restored = snapshot::decode(bytes.as_slice(), Default::default()).unwrap();
+        assert!(restored.screen().semantic_prompt_seen);
+
+        terminal.feed(b"\x1b]133;C\x07\x1b[!p\x1b[2J\x1b[3J");
+        assert!(terminal.screen().semantic_prompt_seen);
+        terminal.feed(b"\x1bc");
+        assert!(!terminal.screen().semantic_prompt_seen);
+    }
+
+    // Legacy checkpoints can contain prompt cells without a prompt row header.
+    let mut terminal = Terminal::new(10, 4, 100);
+    terminal.screen_mut().cursor.semantic = SemanticContent::Prompt;
+    terminal.feed(b"x");
+    terminal.screen_mut().cursor.semantic = SemanticContent::Output;
+    assert_eq!(terminal.screen().row(0).semantic, SemanticContent::Output);
+    let bytes = snapshot::encode_to_vec(&terminal).unwrap();
+    let restored = snapshot::decode(bytes.as_slice(), Default::default()).unwrap();
+    assert!(restored.screen().semantic_prompt_seen);
+}
+
+#[test]
+fn accepted_streaming_history_updates_semantic_prompt_seen_after_reset() {
+    let mut source = Terminal::new(10, 2, 100);
+    source.screen_mut().pages = PageList::default();
+    for index in 0..3 {
+        let mut page = Page::new(
+            PageCapacity {
+                cols: 10,
+                rows: 2,
+                ..PageCapacity::STANDARD
+            },
+            2,
+            0,
+        );
+        for row in 0..2 {
+            page.row_ids[row] = (index * 2 + row) as u64;
+        }
+        if index == 0 {
+            page.headers[0].set_semantic(SemanticContent::Prompt);
+        }
+        source.screen_mut().pages.push(page);
+    }
+    source.screen_mut().next_row = 6;
+    source.screen_mut().semantic_prompt_seen = true;
+    let bytes = snapshot::encode_to_vec(&source).unwrap();
+    for reset in [false, true] {
+        let mut decoder = snapshot::Decoder::new(bytes.as_slice(), Default::default());
+        let mut restored = decoder.ready().unwrap();
+        assert!(!restored.screen().semantic_prompt_seen);
+        if reset {
+            restored.reset_from_host();
+        }
+        assert_eq!(
+            decoder.next_history(&mut restored).unwrap().unwrap().rows,
+            2
+        );
+        assert!(!restored.screen().semantic_prompt_seen);
+        assert_eq!(
+            decoder.next_history(&mut restored).unwrap().unwrap().rows,
+            2
+        );
+        assert!(restored.screen().semantic_prompt_seen);
+        assert!(decoder.next_history(&mut restored).unwrap().is_none());
+    }
+
+    let mut decoder = snapshot::Decoder::new(bytes.as_slice(), Default::default());
+    let mut restored = decoder.ready().unwrap();
+    restored.screen_mut().metadata.identity = restored.screen().metadata.identity.wrapping_add(1);
+    while decoder.next_history(&mut restored).unwrap().is_some() {}
+    assert!(!restored.screen().semantic_prompt_seen);
+}
+
 fn assert_references(screen: &Screen) {
+    assert!(
+        screen.semantic_prompt_seen
+            || screen
+                .all_rows()
+                .all(|row| row.semantic == SemanticContent::Output)
+    );
     let mut expected = HashMap::<(u64, u16), usize>::new();
     for page in &screen.pages.pages {
         let mut slots = HashSet::new();

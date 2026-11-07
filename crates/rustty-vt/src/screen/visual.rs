@@ -36,6 +36,7 @@ impl Screen {
         source.end_hyperlink();
         let mut result = Self::new(self.columns, self.height, ScrollbackLimits::default());
         result.pages = source.pages;
+        result.semantic_prompt_seen = source.semantic_prompt_seen;
         result.next_row = source.next_row;
         result.viewport_pin = None;
         result.graphics = Graphics::from_view_snapshot_with_limit(
@@ -48,6 +49,7 @@ impl Screen {
             let mut part = Self::new(self.columns, usize::from(page.rows), Default::default());
             part.pages = PageList::default();
             part.pages.push(page);
+            part.semantic_prompt_seen = result.semantic_prompt_seen;
             for absolute in 0..part.all_rows().len() {
                 let row = part.physical_row(absolute);
                 let styles: Vec<_> = (0..row.cells.len())
@@ -125,6 +127,7 @@ impl Screen {
 
     /// Append another screen without interpreting its cells as terminal input.
     pub(crate) fn append_visual(&mut self, mut source: Self) -> io::Result<()> {
+        self.semantic_prompt_seen |= source.semantic_prompt_seen;
         let mut image_ids = HashMap::new();
         let mut used: HashSet<_> = self.graphics.images.keys().copied().collect();
         for id in source.graphics.images.keys().copied() {

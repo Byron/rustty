@@ -18,7 +18,7 @@ use crate::{
         GraphemeAdmission, GraphemeAllocation, HyperlinkAdmission, HyperlinkFull, SetFull,
         StyleAdmission,
     },
-    screen::{Color, HyperlinkData, RowView, Style},
+    screen::{Color, HyperlinkData, RowView, SemanticContent, Style},
 };
 
 #[derive(Clone, Copy)]
@@ -285,6 +285,18 @@ impl Page {
         self.mark_row(row);
         let start = self.slot(row, 0);
         &mut self.cells[start..start + usize::from(self.columns)]
+    }
+
+    /// Restored prompt cells also count conservatively, like native snapshots.
+    pub(crate) fn has_semantic_prompt(&self) -> bool {
+        (0..usize::from(self.rows)).any(|row| {
+            let row = self.row(row);
+            row.semantic != SemanticContent::Output
+                || row
+                    .cells
+                    .iter()
+                    .any(|cell| cell.semantic() == SemanticContent::Prompt)
+        })
     }
 
     #[inline]

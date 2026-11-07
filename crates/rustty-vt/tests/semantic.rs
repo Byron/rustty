@@ -173,3 +173,150 @@ fn complete_display_erasure_scrolls_a_bottom_prompt_into_history() {
             && row.cells.iter().all(|cell| cell.codepoint().is_none())
     }));
 }
+
+fn output_before_prompt() -> Terminal {
+    let mut terminal = Terminal::new(10, 8, 100);
+    terminal.feed(b"out\r\nout\r\nout\r\n");
+    terminal
+}
+
+fn assert_ed2_history(terminal: &mut Terminal, expected: &[&str]) {
+    terminal.feed(b"\x1b[H\x1b[2J");
+    let screen = terminal.screen();
+    let history: Vec<_> = screen.history().map(|row| screen.row_text(row)).collect();
+    assert_eq!(history, expected);
+    assert!(screen.rows().all(|row| {
+        row.semantic == SemanticContent::Output
+            && !row.wrapped
+            && !row.wrap_continuation
+            && row.cells.iter().all(|cell| cell.codepoint().is_none())
+    }));
+}
+
+#[test]
+fn complete_display_erasure_scrolls_input_without_a_prompt_marker() {
+    for semantic in [false, true] {
+        let mut terminal = output_before_prompt();
+        if semantic {
+            terminal.feed(b"\x1b]133;B\x07");
+        }
+        terminal.feed(b"input\r\nmore");
+        assert_ed2_history(
+            &mut terminal,
+            if semantic {
+                &["out", "out", "out", "input", "more"]
+            } else {
+                &[]
+            },
+        );
+    }
+}
+
+#[test]
+fn complete_display_erasure_follows_input_copied_from_alternate_screen() {
+    for mode in [47, 1047, 1049] {
+        let mut terminal = output_before_prompt();
+        terminal.feed(format!("\x1b[?{mode}h\x1b]133;B\x07\x1b[?{mode}l").as_bytes());
+        terminal.feed(b"input\r\nmore");
+        assert_ed2_history(
+            &mut terminal,
+            if mode == 1049 {
+                &[]
+            } else {
+                &["out", "out", "out", "input", "more"]
+            },
+        );
+    }
+}
+
+#[test]
+fn complete_display_erasure_tracks_rows_from_public_cursor_semantics() {
+    for (semantic, text, expected) in [
+        (
+            SemanticContent::Input,
+            b"input\r\nmore".as_slice(),
+            ["input", "more"],
+        ),
+        (
+            SemanticContent::Prompt,
+            b"0123456789X".as_slice(),
+            ["0123456789", "X"],
+        ),
+    ] {
+        let mut terminal = output_before_prompt();
+        terminal.screen_mut().cursor.semantic = semantic;
+        terminal.feed(text);
+        terminal.screen_mut().cursor.semantic = SemanticContent::Output;
+        assert_ed2_history(
+            &mut terminal,
+            &["out", "out", "out", expected[0], expected[1]],
+        );
+    }
+}
+
+#[test]
+fn complete_display_erasure_keeps_prompt_history_across_soft_reset_only() {
+    let mut terminal = output_before_prompt();
+    terminal.feed(b"\x1b]133;P\x07prompt\x1b]133;C\x07\x1b[!p");
+    assert_eq!(terminal.screen().cursor.semantic, SemanticContent::Output);
+    assert_ed2_history(&mut terminal, &["out", "out", "out", "prompt"]);
+
+    terminal.feed(b"\x1bcplain\r\noutput");
+    assert_ed2_history(&mut terminal, &[]);
+}
+
+#[test]
+fn complete_display_erasure_restores_an_input_cursor_before_its_first_linefeed() {
+    let mut source = output_before_prompt();
+    source.feed(b"\x1b]133;B\x07input");
+    assert!(
+        source
+            .screen()
+            .rows()
+            .all(|row| row.semantic == SemanticContent::Output)
+    );
+    let bytes = snapshot::encode_to_vec(&source).unwrap();
+    let binary = snapshot::decode(bytes.as_slice(), Default::default()).unwrap();
+    let mut json = Terminal::new(10, 8, 100);
+    *json.screen_mut() =
+        serde_json::from_value(serde_json::to_value(source.screen()).unwrap()).unwrap();
+    for mut restored in [binary, json] {
+        assert_eq!(restored.screen().cursor.semantic, SemanticContent::Input);
+        restored.feed(b"\r\nmore");
+        assert_ed2_history(&mut restored, &["out", "out", "out", "input", "more"]);
+    }
+}
+
+#[test]
+fn complete_display_erasure_retains_imported_prompt_rows_with_output_cursor() {
+    let mut source = output_before_prompt();
+    source.feed(b"\x1b]133;P\x07prompt\x1b]133;C\x07");
+    let bytes = snapshot::encode_to_vec(&source).unwrap();
+    let binary = snapshot::decode(bytes.as_slice(), Default::default()).unwrap();
+    let mut json = Terminal::new(10, 8, 100);
+    *json.screen_mut() =
+        serde_json::from_value(serde_json::to_value(source.screen()).unwrap()).unwrap();
+    let mut visual = Terminal::new(10, 8, 100);
+    rustty_vt::visual::VisualSnapshot::capture(&source)
+        .unwrap()
+        .restore_into(&mut visual)
+        .unwrap();
+    for mut restored in [source.clone(), binary, json] {
+        assert_eq!(restored.screen().cursor.semantic, SemanticContent::Output);
+        assert_ed2_history(&mut restored, &["out", "out", "out", "prompt"]);
+    }
+    // Visual restore resolves default backgrounds to RGB, preserving even its blank rows.
+    assert_eq!(visual.screen().cursor.semantic, SemanticContent::Output);
+    assert_ed2_history(
+        &mut visual,
+        &["out", "out", "out", "prompt", "", "", "", ""],
+    );
+}
+
+#[test]
+fn complete_display_erasure_ignores_a_discarded_prompt_row() {
+    let mut terminal = Terminal::new(10, 3, 100);
+    terminal.feed(b"hello\x1b[2H\x1b]133;P\x07p\x1b]133;C\x07\x1b[2;3r\x1b[3H\n\x1b[r");
+    assert_eq!(terminal.screen().cursor.semantic, SemanticContent::Output);
+    assert_ed2_history(&mut terminal, &[]);
+}

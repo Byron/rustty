@@ -84,6 +84,7 @@ impl Terminal {
                 let flags = markers.prompt.map_or(0, |p| p.1) | if secondary { 2 } else { 1 };
                 markers.prompt = Some((col, flags));
                 screen.cursor.semantic = SemanticContent::Prompt;
+                screen.semantic_prompt_seen = true;
                 if action != b'P' {
                     effects.push(Effect::ShellPrompt);
                 }
@@ -91,6 +92,7 @@ impl Terminal {
             b'B' | b'I' => {
                 markers.command = Some(col);
                 screen.cursor.semantic = SemanticContent::Input;
+                screen.semantic_prompt_seen = true;
             }
             b'C' => {
                 markers.start = Some(col);

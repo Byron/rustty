@@ -410,6 +410,7 @@ impl<'de> Deserialize<'de> for Screen {
                     .map_err(D::Error::custom)?;
             }
         }
+        screen.restore_semantic_prompt_seen();
         screen.sync_cursor_resources();
         Ok(screen)
     }

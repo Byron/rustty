@@ -1988,6 +1988,7 @@ impl Terminal {
         screen.cursor.semantic = semantic;
         screen.metadata.cursor_clear_eol = clear_eol;
         if semantic == SemanticContent::Prompt {
+            screen.semantic_prompt_seen = true;
             screen
                 .row_header_mut(screen.cursor.row)
                 .set_semantic(SemanticContent::Input);
@@ -2151,6 +2152,7 @@ impl Terminal {
         self.screen_mut().cursor.pending_wrap = false;
         let screen = self.screen_mut();
         if screen.cursor.semantic != SemanticContent::Output {
+            screen.semantic_prompt_seen = true;
             if screen.metadata.cursor_clear_eol {
                 screen.cursor.semantic = SemanticContent::Output;
                 screen.metadata.cursor_clear_eol = false;
@@ -2631,6 +2633,7 @@ impl Terminal {
             2 => {
                 if !self.tmux_graphics
                     && !self.alternate_active
+                    && self.screen().semantic_prompt_seen
                     && self
                         .screen()
                         .rows()
@@ -2988,6 +2991,8 @@ impl Terminal {
         // alternate cursor's appearance. Legacy modes copy in both directions.
         if mode != 1049 || enabled {
             self.screen_mut().cursor = old_cursor;
+            self.screen_mut().semantic_prompt_seen |=
+                self.screen().cursor.semantic != SemanticContent::Output;
             self.screen_mut().metadata.cursor_clear_eol = clear_eol;
             self.screen_mut().metadata.hyperlink_implicit_id = hyperlink_implicit_id;
             self.end_hyperlink();
@@ -3938,6 +3943,7 @@ impl Terminal {
     fn semantic_prompt(&mut self, continuation: bool) {
         let screen = self.screen_mut();
         screen.cursor.semantic = SemanticContent::Prompt;
+        screen.semantic_prompt_seen = true;
         screen.metadata.cursor_clear_eol = false;
         screen
             .row_header_mut(screen.cursor.row)
@@ -4023,6 +4029,7 @@ impl Terminal {
             b'B' | b'I' => {
                 let screen = self.screen_mut();
                 screen.cursor.semantic = SemanticContent::Input;
+                screen.semantic_prompt_seen = true;
                 screen.metadata.cursor_clear_eol = action == b'I';
             }
             b'C' | b'D' => {

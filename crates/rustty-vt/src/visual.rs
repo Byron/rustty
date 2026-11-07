@@ -67,6 +67,7 @@ impl VisualSnapshot {
         // even a validated extreme counter cannot overflow during new output.
         let mut fresh = Terminal::with_limits(terminal.cols, terminal.rows, Default::default());
         fresh.primary.pages = terminal.primary.pages;
+        fresh.primary.semantic_prompt_seen = terminal.primary.semantic_prompt_seen;
         fresh.primary.graphics = terminal.primary.graphics;
         fresh.primary.viewport_pin = None;
         fresh.primary.cursor.row = usize::from(fresh.rows) - 1;
@@ -91,10 +92,12 @@ impl VisualSnapshot {
             Default::default(),
         );
         screen.pages = restored.primary.pages;
+        screen.semantic_prompt_seen = restored.primary.semantic_prompt_seen;
         screen.next_row = restored.primary.next_row;
         screen.viewport_pin = None;
         screen.graphics = restored.primary.graphics;
         screen.cursor = terminal.primary.cursor.clone();
+        screen.semantic_prompt_seen |= screen.cursor.semantic != crate::SemanticContent::Output;
         screen.cursor.row = usize::from(terminal.rows) - 1;
         screen.cursor.col = 0;
         screen.sync_cursor_resources();

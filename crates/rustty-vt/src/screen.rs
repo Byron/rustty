@@ -868,6 +868,9 @@ pub struct Screen {
     pub(crate) tmux_current_time: u64,
     #[serde(skip)]
     pub(crate) metadata: crate::snapshot::ScreenMetadata,
+    /// Sticky until reset: false means no prompt row can require ED2 scrolling.
+    #[serde(skip)]
+    pub(crate) semantic_prompt_seen: bool,
     #[serde(default)]
     pub(crate) pointer_shapes: crate::input::PointerShapes,
     #[serde(
@@ -985,6 +988,7 @@ impl Screen {
         }
         Self {
             metadata: crate::snapshot::ScreenMetadata::default(),
+            semantic_prompt_seen: false,
             pointer_shapes: Default::default(),
             extra_cursors: Default::default(),
             graphics: crate::graphics::Graphics::default(),
@@ -1019,6 +1023,11 @@ impl Screen {
 
     pub fn height(&self) -> usize {
         self.height
+    }
+
+    pub(crate) fn restore_semantic_prompt_seen(&mut self) {
+        self.semantic_prompt_seen |= self.cursor.semantic != SemanticContent::Output
+            || self.pages.pages.iter().any(Page::has_semantic_prompt);
     }
     pub fn extra_cursors(&self) -> &crate::extra_cursors::State {
         &self.extra_cursors
@@ -1135,6 +1144,7 @@ impl Screen {
             tmux_current_time: self.tmux_current_time,
             tmux_shell: self.tmux_shell.clone(),
             metadata: self.metadata.clone(),
+            semantic_prompt_seen: self.semantic_prompt_seen,
             pointer_shapes: self.pointer_shapes.clone(),
             extra_cursors: self.extra_cursors.clone(),
             graphics: self.graphics.snapshot(self),
@@ -2225,6 +2235,7 @@ impl Screen {
     }
 
     fn install_row(&mut self, absolute: usize, copy: RowCopy, limit: usize) {
+        self.semantic_prompt_seen |= copy.semantic != SemanticContent::Output;
         let width = self.physical_row(absolute).cells.len();
         let count = width.min(copy.cells.len()).min(limit);
         let complete = count == width;

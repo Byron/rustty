@@ -1366,6 +1366,7 @@ impl<R: Read> Decoder<R> {
         screen.next_row = next_id;
         screen.height = usize::from(rows);
         screen.pages = pages;
+        screen.restore_semantic_prompt_seen();
         let cursor_cols = usize::from(cols).min(screen.row(screen.cursor.row).cells.len());
         screen.cursor.col = x.min(cursor_cols - 1);
         screen.cursor.pending_wrap = flags & 1 != 0 && screen.cursor.col == cursor_cols - 1;
@@ -1757,6 +1758,7 @@ impl<R: Read> Decoder<R> {
                             *id = screen.next_row_id();
                         }
                         image_page = Some((page.columns, page.row_ids[..count].to_vec()));
+                        screen.semantic_prompt_seen |= page.has_semantic_prompt();
                         screen.pages.prepend_page(page);
                         t.generation = t.generation.wrapping_add(1);
                     }
