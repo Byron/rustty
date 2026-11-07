@@ -911,8 +911,8 @@ fn observeScreen(alloc: Allocator, screen: *vt.Screen) !Screen {
             if (pin.grapheme(cell)) |extra| try cps.appendSlice(alloc, extra);
             var style = pin.style(cell);
             switch (cell.content_tag) {
-                .bg_color_palette => style.bg_color = .{ .palette = cell.content.color_palette.data },
-                .bg_color_rgb => style.bg_color = .{ .rgb = .{ .r = cell.content.color_rgb.r, .g = cell.content.color_rgb.g, .b = cell.content.color_rgb.b } },
+                .bg_color_palette => style.bg_color = .palette(cell.content.color_palette.data),
+                .bg_color_rgb => style.bg_color = .rgb(.{ .r = cell.content.color_rgb.r, .g = cell.content.color_rgb.g, .b = cell.content.color_rgb.b }),
                 else => {},
             }
             const page = pin.node.page();
@@ -987,7 +987,7 @@ fn observeStyle(alloc: Allocator, s: vt.Style) !Style {
     };
 }
 fn observeColor(alloc: Allocator, color: vt.Style.Color) !Color {
-    return switch (color) {
+    return switch (color.value()) {
         .none => .{},
         .palette => |v| .{ .kind = "indexed", .value = try alloc.dupe(u16, &.{v}) },
         .rgb => |v| .{ .kind = "rgb", .value = try alloc.dupe(u16, &.{ v.r, v.g, v.b }) },

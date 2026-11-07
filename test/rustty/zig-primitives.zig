@@ -32,7 +32,7 @@ fn historyChecksum(screen: *const vt.Screen) u64 {
                 for (pin.grapheme(cell).?) |cp| sum +%= cp;
             }
             const style = pin.style(cell);
-            const color: u64 = switch (style.fg_color) {
+            const color: u64 = switch (style.fg_color.value()) {
                 .none => 0,
                 .palette => |value| @as(u64, value) + 1,
                 .rgb => |value| 257 + (@as(u64, value.r) << 16) + (@as(u64, value.g) << 8) + value.b,
@@ -62,7 +62,7 @@ fn checkStyledHistory(terminal: *const vt.Terminal, records: usize, columns: usi
             }
             if (cell.codepoint() != "abcdefgh"[col % 8]) return error.InvalidText;
             const style = pin.style(cell);
-            const color: u64 = switch (style.fg_color) {
+            const color: u64 = switch (style.fg_color.value()) {
                 .palette => |value| value,
                 else => return error.InvalidStyle,
             };
@@ -186,7 +186,7 @@ fn checkContent(terminal: *const vt.Terminal, config: ContentConfig, layout: []c
         if (header.wrap != (populated and part + 1 < record_rows) or header.wrap_continuation != (populated and part != 0)) return error.InvalidWrap;
         var style: vt.Style = .{};
         if (config.styled and populated) {
-            style.fg_color = .{ .palette = @intCast(1 + record % 4) };
+            style.fg_color = .palette(@intCast(1 + record % 4));
             style.flags.bold = record % 2 == 0;
         }
         var id_buffer: [24]u8 = undefined;
@@ -315,7 +315,7 @@ fn streamChecksum(screen: *const vt.Screen) u64 {
             }
             if (cell.codepoint() != 0) {
                 const style = pin.style(cell);
-                const color: u64 = switch (style.fg_color) {
+                const color: u64 = switch (style.fg_color.value()) {
                     .none => 0,
                     .palette => |index| @as(u64, index) + 1,
                     .rgb => unreachable,
