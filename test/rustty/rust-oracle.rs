@@ -87,6 +87,7 @@ struct Request {
     observe_semantic: bool,
     observe_graphics: bool,
     observe_graphics_placements: bool,
+    graphics_max_bytes: Option<usize>,
     dnd_events: bool,
     color_inputs: Vec<String>,
     page_layout: Option<page_layout_adapter::Request>,
@@ -113,6 +114,7 @@ impl Default for Request {
             observe_semantic: false,
             observe_graphics: false,
             observe_graphics_placements: false,
+            graphics_max_bytes: None,
             dnd_events: true,
             color_inputs: Vec::new(),
             page_layout: None,
@@ -689,6 +691,9 @@ fn execute(request: &Request) -> Result<Value, &'static str> {
     }
     dimensions(request.cols, request.rows)?;
     let mut terminal = Terminal::new(request.cols, request.rows, usize::MAX);
+    if let Some(limit) = request.graphics_max_bytes {
+        terminal.set_graphics_limit(limit);
+    }
     terminal.clipboard_write_limit = request.clipboard_write_limit;
     if request.kind == "input" {
         terminal.set_pixel_size(u32::from(request.cols) * 8, u32::from(request.rows) * 16);

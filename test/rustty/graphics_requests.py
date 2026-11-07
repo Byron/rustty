@@ -137,6 +137,18 @@ def requests():
     yield animation("number/transmission-tick", [numbered + control(b"s=3"), 0,
                     newest, 20, lookup])
 
+    for animate_newer in (False, True):
+        older = (raw(b"i=9,a=T,C=1") + raw(b"a=f,i=9,z=20")
+                 + b"\x1b_Ga=a,i=9,r=1,z=20,s=3\x1b\\")
+        newer = raw(b"i=1,a=T,C=1")
+        if animate_newer:
+            newer += raw(b"a=f,i=1,z=20") + control(b"r=1,z=20,s=3")
+        request, covers = animation(f"eviction/transmission/{animate_newer}",
+                                   [older, newer, 0, 20, raw(b"i=3,a=T,C=1")])
+        request.update(graphics_max_bytes=16 if animate_newer else 12,
+                       observe_graphics_placements=True)
+        yield request, covers
+
     for alternate in (False, True):
         for state in (1, 2, 3):
             for gaps in ((50,), (0,), (50, 50), (0, 40), (40, 0), (0, 0), (40, 0, 50), (0, 40, 0), (40, 0, 0)):

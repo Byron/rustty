@@ -858,7 +858,7 @@ impl Graphics {
                 .images
                 .values()
                 .filter(|i| i.id != exclude)
-                .min_by_key(|i| i.generation)
+                .min_by_key(|i| (i.identity, i.id))
                 .map(|i| i.id)
             else {
                 return Err("ENOMEM: out of memory");
@@ -2442,6 +2442,34 @@ mod tests {
             )]
         );
         assert_eq!(terminal.graphics().images.len(), 2);
+    }
+
+    #[test]
+    fn eviction_uses_transmission_age_after_animation_ticks() {
+        for animate_newer in [false, true] {
+            for lower_limit in [false, true] {
+                let mut t = Terminal::new(8, 4, 0);
+                t.set_graphics_limit(if animate_newer { 16 } else { 12 });
+                for id in [9, 1] {
+                    t.feed(format!("\x1b_Ga=T,i={id},f=32,s=1,v=1,C=1;AQID/w==\x1b\\").as_bytes());
+                    if id == 9 || animate_newer {
+                        t.feed(format!("\x1b_Ga=f,i={id},f=32,s=1,v=1,z=50;BAUG/w==\x1b\\\x1b_Ga=a,i={id},r=1,z=50,s=3\x1b\\").as_bytes());
+                    }
+                }
+                t.tick_graphics(0);
+                t.tick_graphics(50);
+                assert_eq!(t.graphics().images[&9].current_frame, 1);
+                if lower_limit {
+                    t.set_graphics_limit(if animate_newer { 8 } else { 4 });
+                } else {
+                    t.feed(b"\x1b_Ga=T,i=3,f=32,s=1,v=1,C=1;BwgJ/w==\x1b\\");
+                }
+                assert!(!t.graphics().images.contains_key(&9));
+                assert!(t.graphics().images.contains_key(&1));
+                assert_eq!(t.graphics().images.contains_key(&3), !lower_limit);
+                assert!(t.graphics().placements.iter().all(|p| p.image_id != 9));
+            }
+        }
     }
 
     #[test]

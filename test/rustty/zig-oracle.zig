@@ -101,6 +101,7 @@ const Request = struct {
     observe_semantic: bool = false,
     observe_graphics: bool = false,
     observe_graphics_placements: bool = false,
+    graphics_max_bytes: ?usize = null,
     graphics_shared_memory: bool = false,
     dnd_events: bool = true,
     color_inputs: []const []const u8 = &.{},
@@ -555,6 +556,7 @@ fn execute(alloc: Allocator, io: std.Io, request: Request) !Response {
         },
     });
     defer t.deinit(alloc);
+    if (request.graphics_max_bytes) |limit| t.setKittyGraphicsSizeLimit(alloc, limit);
     if (!observe_terminal) {
         t.width_px = @as(u32, request.cols) * 8;
         t.height_px = @as(u32, request.rows) * 16;
