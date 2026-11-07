@@ -1667,6 +1667,9 @@ impl<R: Read> Decoder<R> {
             result.links.release(id);
         }
         result.graphemes = graphemes;
+        for row in 0..usize::from(result.rows) {
+            result.restore_blank(row);
+        }
         result.refresh_charge();
         Ok(result)
     }

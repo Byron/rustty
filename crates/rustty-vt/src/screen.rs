@@ -361,6 +361,7 @@ pub struct RowView<'a> {
     pub wrap_continuation: bool,
     pub semantic: SemanticContent,
     pub dirty: bool,
+    pub(crate) blank: bool,
     has_placeholders: bool,
     pub(crate) has_text_spans: bool,
     pub(crate) page: &'a Page,
@@ -524,6 +525,7 @@ impl<'a> RowView<'a> {
             wrap_continuation: header.has(RowHeader::CONTINUATION),
             semantic: header.semantic(),
             dirty: header.has(RowHeader::DIRTY),
+            blank: header.has(RowHeader::BLANK),
             has_placeholders: header.has(RowHeader::PLACEHOLDER),
             has_text_spans: header.has(RowHeader::TEXT_SPANS),
             page,
@@ -620,6 +622,9 @@ impl<'a> RowView<'a> {
         self.page.copy_cell(self.offset + col)
     }
     pub(crate) fn used(self) -> usize {
+        if self.blank {
+            return 0;
+        }
         self.cells
             .iter()
             .enumerate()
@@ -1191,7 +1196,7 @@ impl Screen {
     pub(crate) fn row_header_mut(&mut self, y: usize) -> &mut RowHeader {
         let (index, row) = self.pages.locate_from_end(self.height - 1 - y);
         let page = &mut self.pages.pages[index];
-        page.mark_row(row);
+        page.mark_dirty(row);
         &mut page.headers[row]
     }
     pub(crate) fn cell_mut(&mut self, y: usize, col: usize) -> &mut Cell {
@@ -2060,10 +2065,14 @@ impl Screen {
         {
             return 0;
         }
-        let count = printing::destination_narrow(
-            &page.cells[offset..offset + len],
-            old.bits() & printing::DEST_MASK,
-        );
+        let count = if page.headers[row].has(RowHeader::BLANK) {
+            len
+        } else {
+            printing::destination_narrow(
+                &page.cells[offset..offset + len],
+                old.bits() & printing::DEST_MASK,
+            )
+        };
         page.replace_simple_styles(old.style_id(), template.style_id(), count);
         let cells = &mut page.cells[offset..offset + count];
         let bytes = &bytes[..count];
@@ -2160,7 +2169,9 @@ impl Screen {
         if old.has_grapheme() || old.has_hyperlink() || page.style(offset).tmux_tab != 0 {
             return 0;
         }
-        let count = if old.width() == 1 {
+        let count = if page.headers[row].has(RowHeader::BLANK) {
+            len
+        } else if old.width() == 1 {
             printing::destination_narrow(cells, old.bits() & printing::DEST_MASK)
                 / usize::from(width)
         } else if width == 2

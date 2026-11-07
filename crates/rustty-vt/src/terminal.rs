@@ -2639,7 +2639,7 @@ impl Terminal {
                         .rows()
                         .rfind(|row| {
                             row.semantic != SemanticContent::Output
-                                || row.cells.iter().any(|cell| cell.codepoint().is_some())
+                                || !row.blank && Cell::has_text_any(row.cells)
                         })
                         .is_some_and(|row| row.semantic != SemanticContent::Output)
                 {
@@ -2680,7 +2680,10 @@ impl Terminal {
         for y in start..end {
             self.screen_mut()
                 .erase_row_cells(y, 0, usize::MAX, cursor.style.background, protected);
-            if !protected {
+            let row = self.screen().row(y);
+            if !protected
+                && (row.wrapped || row.wrap_continuation || row.semantic != SemanticContent::Output)
+            {
                 let header = self.screen_mut().row_header_mut(y);
                 header.set(RowHeader::WRAPPED | RowHeader::CONTINUATION, false);
                 header.set_semantic(SemanticContent::Output);
@@ -2702,12 +2705,12 @@ impl Terminal {
             .rows()
             .enumerate()
             .filter(|(_, row)| {
-                row.cells.iter().take(cols).enumerate().any(|(col, cell)| {
-                    cell.codepoint().is_some()
-                        || cell.width() != 1
-                        || cell.spacer_head()
-                        || row.style(col).background != Color::Default
-                })
+                let cells = &row.cells[..cols.min(row.cells.len())];
+                !row.blank
+                    && (!Cell::is_empty_all(cells)
+                        || cells.iter().enumerate().any(|(col, cell)| {
+                            cell.style_id() != 0 && row.style(col).background != Color::Default
+                        }))
             })
             .map(|(row, _)| row + 1)
             .next_back()

@@ -447,6 +447,7 @@ impl Screen {
                                     let slot = page.slot(row, gap);
                                     page.cells[slot].set_spacer_head(true);
                                 }
+                                page.mark_row(row);
                                 spacer = Some(GridPoint {
                                     row: line.id,
                                     col: x,
@@ -803,7 +804,7 @@ impl Screen {
                         .0
                         .values()
                         .any(|p| p.is_some_and(|p| p.row == r.id))
-                    && r.cells.iter().all(|c| c.codepoint().is_none())
+                    && (r.blank || !Cell::has_text_any(r.cells))
             })
         {
             self.pages.truncate(self.pages.total_rows() - 1);

@@ -31,6 +31,7 @@ pub enum Wide {
 
 impl Cell {
     pub(crate) const CONTENT_MASK: u64 = (1 << 26) - 1;
+    const CODEPOINT_MASK: u64 = ((1 << 21) - 1) << 2;
     pub(crate) const STYLE_MASK: u64 = 0xffff << 26;
     pub(crate) const WIDE_MASK: u64 = 3 << 42;
     pub(crate) const HYPERLINK_MASK: u64 = 1 << 45;
@@ -137,6 +138,33 @@ impl Cell {
         self.codepoint().is_none() && self.width() != 0
     }
 
+    /// Check text in groups; background colors can share the codepoint bits.
+    pub(crate) fn has_text_any(cells: &[Self]) -> bool {
+        let (groups, tail) = cells.as_chunks::<8>();
+        for group in groups {
+            let bits = group.iter().fold(0, |bits, cell| bits | cell.0);
+            if bits & Self::CODEPOINT_MASK == 0 {
+                continue;
+            }
+            if bits & 2 == 0 || group.iter().any(|cell| cell.codepoint().is_some()) {
+                return true;
+            }
+        }
+        tail.iter().any(|cell| cell.codepoint().is_some())
+    }
+
+    /// Native display emptiness excludes text, inline backgrounds, and wide states.
+    pub(crate) fn is_empty_all(cells: &[Self]) -> bool {
+        const MASK: u64 = 2 | Cell::CODEPOINT_MASK | Cell::WIDE_MASK;
+        let (groups, tail) = cells.as_chunks::<8>();
+        for group in groups {
+            if group.iter().fold(0, |bits, cell| bits | cell.0) & MASK != 0 {
+                return false;
+            }
+        }
+        tail.iter().fold(0, |bits, cell| bits | cell.0) & MASK == 0
+    }
+
     #[inline]
     pub(crate) fn blank(background: Color) -> Self {
         let mut cell = Self::default();
@@ -217,8 +245,8 @@ impl Cell {
     }
 }
 
-/// Offsets are cell slots in the page's typed allocation. The remaining bits
-/// have Ghostty's row layout; logical row identity is stored beside the header.
+/// Offsets are cell slots in the page's typed allocation. Remaining bits hold
+/// row metadata and private hints; logical row identity lives beside the header.
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(transparent)]
 pub(crate) struct RowHeader(u64);
@@ -234,11 +262,12 @@ impl RowHeader {
     pub const PLACEHOLDER: u64 = 1 << 39;
     pub const DIRTY: u64 = 1 << 40;
     pub const TEXT_SPANS: u64 = 1 << 41;
+    pub const BLANK: u64 = 1 << 42;
     pub const MANAGED: u64 = Self::GRAPHEME | Self::STYLED | Self::HYPERLINK | Self::TEXT_SPANS;
 
     #[inline]
     pub fn new(offset: u32) -> Self {
-        Self(u64::from(offset) | Self::DIRTY)
+        Self(u64::from(offset) | Self::DIRTY | Self::BLANK)
     }
 
     #[inline]
@@ -277,7 +306,12 @@ impl RowHeader {
 
     #[inline]
     pub fn reset(&mut self) {
-        *self = Self::new(self.offset() as u32);
+        self.0 = u64::from(self.offset() as u32) | Self::DIRTY;
+    }
+
+    #[inline]
+    pub fn mark_written(&mut self) {
+        self.0 = (self.0 | Self::DIRTY) & !Self::BLANK;
     }
 }
 
@@ -371,3 +405,7 @@ mod tests {
         assert_eq!(row.semantic(), SemanticContent::Output);
     }
 }
+
+#[cfg(test)]
+#[path = "packed_blank_tests.rs"]
+mod blank_tests;

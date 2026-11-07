@@ -303,6 +303,8 @@ fn assert_references(screen: &Screen) {
         let mut slots = HashSet::new();
         for row in 0..usize::from(page.rows) {
             let view = page.row(row);
+            assert!(!view.blank || view.cells.iter().all(|cell| cell.bits() == 0));
+            assert!(!view.blank || !page.headers[row].has(RowHeader::MANAGED));
             assert!(slots.insert(page.headers[row].offset()));
             for (col, cell) in view.cells.iter().enumerate() {
                 assert_eq!(cell.bits() >> 48, 0);
@@ -1324,6 +1326,7 @@ fn native_metadata_sparse_tabs_validate_forward_across_pages() {
     let page = &mut screen.pages.pages[index];
     let slot = page.slot(row, 2);
     page.cells[slot].set_codepoint(Some('x'));
+    page.mark_cell(row, page.cells[slot]);
     let before = serde_json::to_value(screen.view_metadata()).unwrap();
     assert_eq!(
         terminal.restore_view_metadata(&metadata, None),
@@ -1396,3 +1399,6 @@ fn grouped_style_comparison_matches_derived_equality() {
         }
     }
 }
+
+#[path = "blank_tests.rs"]
+mod blank_tests;

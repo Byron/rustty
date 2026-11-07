@@ -373,6 +373,13 @@ impl Page {
         })
     }
 
+    /// Decoders establish the hint only after all cells and resources are restored.
+    pub(crate) fn restore_blank(&mut self, row: usize) {
+        let blank = !self.headers[row].has(RowHeader::MANAGED)
+            && self.row_cells(row).iter().all(|cell| cell.bits() == 0);
+        self.headers[row].set(RowHeader::BLANK, blank);
+    }
+
     #[inline]
     pub fn row(&self, row: usize) -> RowView<'_> {
         RowView::new(self, row)
@@ -577,6 +584,12 @@ impl Page {
 
     #[inline]
     pub fn mark_row(&mut self, row: usize) {
+        self.headers[row].mark_written();
+        self.refresh_row_revision(row);
+    }
+
+    #[inline]
+    pub fn mark_dirty(&mut self, row: usize) {
         self.headers[row].set(RowHeader::DIRTY, true);
         self.refresh_row_revision(row);
     }
@@ -643,7 +656,9 @@ impl Page {
         let start = self.slot(row, 0);
         let released_payload = self.headers[row]
             .has(RowHeader::GRAPHEME | RowHeader::HYPERLINK | RowHeader::TEXT_SPANS);
-        if self.headers[row].has(RowHeader::MANAGED) {
+        if background == Color::Default && self.headers[row].has(RowHeader::BLANK) {
+            // Fresh and already cleared rows need only their metadata reset.
+        } else if self.headers[row].has(RowHeader::MANAGED) {
             for slot in start..start + usize::from(self.columns) {
                 self.clear_cell(slot, background);
             }
@@ -651,8 +666,9 @@ impl Page {
             self.row_cells_mut(row).fill(Cell::blank(background));
         }
         self.headers[row].reset();
+        self.headers[row].set(RowHeader::BLANK, background == Color::Default);
         self.row_ids[row] = id;
-        self.mark_row(row);
+        self.mark_dirty(row);
         if released_payload {
             self.refresh_charge();
         }
@@ -757,6 +773,9 @@ impl Page {
         background: Color,
         protected: bool,
     ) {
+        if background == Color::Default && self.headers[row].has(RowHeader::BLANK) {
+            return;
+        }
         let view = self.row(row);
         if start >= view.cells.len() || start >= end {
             return;
@@ -780,6 +799,10 @@ impl Page {
         self.mark_row(row);
         if repair {
             self.repair_wide(row, background);
+        }
+        if !protected && start == 0 && end == usize::from(self.columns) {
+            self.headers[row].set(RowHeader::MANAGED | RowHeader::PLACEHOLDER, false);
+            self.headers[row].set(RowHeader::BLANK, background == Color::Default);
         }
         if released_payload {
             self.refresh_charge();

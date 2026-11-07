@@ -409,6 +409,7 @@ impl<'de> Deserialize<'de> for Screen {
                 page.restore_span(relative, span.col, span.width, Arc::from(span.text))
                     .map_err(D::Error::custom)?;
             }
+            page.restore_blank(relative);
         }
         screen.restore_semantic_prompt_seen();
         screen.sync_cursor_resources();
