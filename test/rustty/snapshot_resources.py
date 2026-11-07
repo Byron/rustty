@@ -13,15 +13,11 @@ def _style_value(number, channel=0, flags=0):
 
 
 def _style_hash(value):
-    # terminal/style.zig: PackedStyle tags precede all three 24-bit values;
-    # fold its two u64 halves and apply Zig's std.hash.int(u64).
-    packed = int.from_bytes(value[12:14], "little") << 96
-    for channel in range(3):
-        color = value[channel * 4:channel * 4 + 4]
-        packed |= color[0] << (channel * 8)
-        packed |= int.from_bytes(color[1:], "little") << (24 + channel * 24)
+    # terminal/style.zig: canonical colors and attributes occupy 128 bits.
+    # Mix the high half before folding to keep color channels distinct.
+    packed = int.from_bytes(value, "little")
     mask = (1 << 64) - 1
-    folded = (packed & mask) ^ (packed >> 64)
+    folded = (packed & mask) ^ (((packed >> 64) * 0x9e3779b97f4a7c15) & mask)
     for shift in (32, 29, 32):
         folded = ((folded ^ (folded >> shift)) * 0xbea225f9eb34556d) & mask
     return folded ^ (folded >> 29)

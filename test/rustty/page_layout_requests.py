@@ -12,8 +12,8 @@ def requests():
     for columns in (1, 2, 3, 7, 8, 15, 16, 17, 79, 80, 81, 127, 128, 129,
                     214, 215, 216, 255, 256, 257, 511, 512, 513, 1023, 1024,
                     1025, 4095, 4096, 16383, 16384, 32767, 32768,
-                    47917, 47918, 47919, 47920, 65534, 65535):
-        # 47918/47919 straddle the macOS ARM standard page's one-row limit.
+                    47917, 47918, 47919, 47920, 47969, 47970, 47971, 47972, 65534, 65535):
+        # 47970/47971 straddle the macOS ARM standard page's one-row limit.
         # Other hosts still compare their own native boundary behavior.
         yield case(f"initial/{columns}", columns=columns)
 

@@ -44,26 +44,26 @@
     "sha256": "e7099da39511f6311ce300ed83815d4d3b28b257d8fd32f55e66a102be1da7d5"
   },
   "page-layout": {
-    "bytes": 5219,
-    "cases": 338,
-    "commit": "24237b4c5be8d9b7fdff0fd7d4216952026fb939",
-    "comparisons": 338,
+    "bytes": 5240,
+    "cases": 342,
+    "commit": "dbfbbc932f37e90d4cc3eb7c990890c82c84f665",
+    "comparisons": 342,
     "oracles": {
-      "rust": "814731c2f758b98d6b29f7456cd23b33093c98f6f1472a25f9f872779d8811b0",
-      "zig": "e051d30b4820e90634fc953b6a11ce1a295a3a9b0dec6c35458749e76e7fcafc"
+      "rust": "ccc542a662e350f3bab902779bb2c2e721f80e55a18d3ed9834123c5387007e8",
+      "zig": "207c9e9b176ce9af981606c928be483dfe867c0a8e02a2a7702c2969b59166f3"
     },
-    "sha256": "b7dcca38c31521b8d0c8cdeb284dc22185c2c05454608effe5ed47fbd4985ed1"
+    "sha256": "a8c3efce27c404524ea678e44155a75527e8486880611926c088a6525e04043c"
   },
   "pages": {
-    "bytes": 173506,
+    "bytes": 173536,
     "cases": 687,
-    "commit": "24237b4c5be8d9b7fdff0fd7d4216952026fb939",
+    "commit": "dbfbbc932f37e90d4cc3eb7c990890c82c84f665",
     "comparisons": 2061,
     "oracles": {
-      "rust": "814731c2f758b98d6b29f7456cd23b33093c98f6f1472a25f9f872779d8811b0",
-      "zig": "e051d30b4820e90634fc953b6a11ce1a295a3a9b0dec6c35458749e76e7fcafc"
+      "rust": "ccc542a662e350f3bab902779bb2c2e721f80e55a18d3ed9834123c5387007e8",
+      "zig": "207c9e9b176ce9af981606c928be483dfe867c0a8e02a2a7702c2969b59166f3"
     },
-    "sha256": "bd0a3a606bd3212ddf1d53240dcb33d771e7fc0263705c138a4410c82894b28f"
+    "sha256": "805866b89dc8050590081bcba4fe10d754ea36e1e1f76df368c8f6f70149e46b"
   },
   "parser": {
     "bytes": 614097,
@@ -88,26 +88,26 @@
     "sha256": "ced9e2c593a6ff8a721120123dbf273773c5a779563426915343770ef7ef55bf"
   },
   "snapshot-wire": {
-    "bytes": 89838,
+    "bytes": 89763,
     "cases": 2183,
-    "commit": "24237b4c5be8d9b7fdff0fd7d4216952026fb939",
+    "commit": "dbfbbc932f37e90d4cc3eb7c990890c82c84f665",
     "comparisons": 3703,
     "oracles": {
-      "rust": "814731c2f758b98d6b29f7456cd23b33093c98f6f1472a25f9f872779d8811b0",
-      "zig": "e051d30b4820e90634fc953b6a11ce1a295a3a9b0dec6c35458749e76e7fcafc"
+      "rust": "ccc542a662e350f3bab902779bb2c2e721f80e55a18d3ed9834123c5387007e8",
+      "zig": "207c9e9b176ce9af981606c928be483dfe867c0a8e02a2a7702c2969b59166f3"
     },
-    "sha256": "dbe1652045a99b5bfd7584f3eaddf5f46acd2d2b8bfd4cf8b1f20d75d1277ab1"
+    "sha256": "c38e428dbb6329adcfbf252b44324e11deb2b3eee157a7c4c8f9db23b93d29f7"
   },
   "snapshots": {
-    "bytes": 4093,
+    "bytes": 4095,
     "cases": 112,
-    "commit": "24237b4c5be8d9b7fdff0fd7d4216952026fb939",
+    "commit": "dbfbbc932f37e90d4cc3eb7c990890c82c84f665",
     "comparisons": 336,
     "oracles": {
-      "rust": "814731c2f758b98d6b29f7456cd23b33093c98f6f1472a25f9f872779d8811b0",
-      "zig": "e051d30b4820e90634fc953b6a11ce1a295a3a9b0dec6c35458749e76e7fcafc"
+      "rust": "ccc542a662e350f3bab902779bb2c2e721f80e55a18d3ed9834123c5387007e8",
+      "zig": "207c9e9b176ce9af981606c928be483dfe867c0a8e02a2a7702c2969b59166f3"
     },
-    "sha256": "7c293abe64bc370d0c14f9576218664de596a93e94f0b4856e4f05c85c8ae4c2"
+    "sha256": "bfed58253683b5c1a0edee9ac776b37ba5c6f0048b7f33c891971506d07174ea"
   },
   "thorough": {
     "bytes": 13384,

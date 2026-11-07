@@ -1,6 +1,78 @@
 use super::*;
 use crate::{PageCapacity, Terminal, snapshot};
 
+#[test]
+fn native_style_hash_matches_canonical_packed_fields() {
+    let styles = [
+        Style::default(),
+        Style {
+            foreground: Color::Indexed(1),
+            ..Style::default()
+        },
+        Style {
+            background: Color::Indexed(1),
+            ..Style::default()
+        },
+        Style {
+            underline_color: Color::Indexed(1),
+            ..Style::default()
+        },
+        Style {
+            foreground: Color::Rgb(1, 2, 3),
+            ..Style::default()
+        },
+        Style {
+            underline_color: Color::Rgb(1, 2, 3),
+            ..Style::default()
+        },
+        Style {
+            bold: true,
+            ..Style::default()
+        },
+        Style {
+            underline: Underline::Single,
+            ..Style::default()
+        },
+        Style {
+            foreground: Color::Indexed(1),
+            underline_color: Color::Indexed(1),
+            ..Style::default()
+        },
+        Style {
+            background: Color::Indexed(0),
+            bold: true,
+            ..Style::default()
+        },
+    ];
+    // Native Style.Color interleaves each tag and payload; high bits are mixed
+    // before std.hash.int so equal colors in separate fields do not cancel.
+    let expected = [
+        0,
+        0xe5b3b5c21362c068,
+        0xc4d0cb56ccd931d3,
+        0xf28cce942be0bdd5,
+        0xcf1156a48989182e,
+        0x006d70dffb15e91c,
+        0xb4730cd0dff25402,
+        0x702bb49bff2b70c5,
+        0x35782ea3f1d79535,
+        0x6e98760dfcc8993b,
+    ];
+    for (i, style) in styles.iter().enumerate() {
+        assert_eq!(style.native_hash(), expected[i], "{style:?}");
+        for other in &styles[i + 1..] {
+            assert_ne!(style.native_hash(), other.native_hash());
+        }
+        let retained = Style {
+            tmux_ansi: 3,
+            tmux_tab: 2,
+            ..*style
+        };
+        assert_eq!(retained.native_hash(), style.native_hash());
+        assert_ne!(retained, *style);
+    }
+}
+
 fn assert_references(screen: &Screen) {
     let mut expected = HashMap::<(u64, u16), usize>::new();
     for page in &screen.pages.pages {

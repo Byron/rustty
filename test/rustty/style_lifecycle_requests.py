@@ -176,10 +176,10 @@ def requests(reference):
     # These RGB values share native bucket zero at the largest STYLE table.
     # Thirty-two entries reach PSL 31; another style must split the page
     # because its requested u16 capacity can no longer grow.
-    collision_numbers = [40521, 60313, 137613, 204934, 392876, 566350, 651702, 662230,
-                         690678, 752396, 771872, 831708, 836697, 919978, 931563, 1051952,
-                         1124614, 1148777, 1218954, 1238356, 1265694, 1332573, 1366442, 1418328,
-                         1470358, 1541153, 1608217, 1621308, 1873474, 2032694, 2045509, 2128999]
+    collision_numbers = [97795, 118582, 164550, 254900, 321583, 367968, 443452, 457628,
+                         535831, 781909, 817288, 914690, 922417, 970906, 983939, 1027736,
+                         1110977, 1170502, 1216979, 1229111, 1341195, 1370554, 1432025, 1553241,
+                         1587295, 1687962, 1702168, 1746933, 1780009, 1914231, 1971215, 2285208]
     collision_values = [_style_value(number) for number in collision_numbers]
     assert all(_style_hash(value) & 65535 == 0 for value in collision_values)
     entries = list(enumerate(collision_values, 1))

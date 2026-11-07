@@ -18,10 +18,10 @@ pub(crate) const CELL_ALIGNMENT: usize = if cfg!(target_arch = "aarch64") {
 };
 pub(crate) const ROW_SIZE: usize = 8;
 pub(crate) const CELL_SIZE: usize = 8;
-pub(crate) const STYLE_ITEM_SIZE: usize = 36;
-pub(crate) const STYLE_ITEM_ALIGNMENT: usize = 4;
+pub(crate) const STYLE_ITEM_SIZE: usize = 32;
+pub(crate) const STYLE_ITEM_ALIGNMENT: usize = 16;
 pub(crate) const HYPERLINK_ITEM_SIZE: usize = 48;
-pub(crate) const METADATA_ALIGNMENT: usize = 8;
+pub(crate) const METADATA_ALIGNMENT: usize = 16;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum LayoutError {
@@ -92,7 +92,8 @@ impl PageCapacity {
             return Err(LayoutError::InvalidDimensions);
         }
         let original = self.layout()?;
-        let available = original.total_size - self.metadata()?.total_size;
+        let available =
+            (original.total_size - self.metadata()?.total_size) & !(METADATA_ALIGNMENT - 1);
         let row_bytes = add(ROW_SIZE, mul(CELL_SIZE, usize::from(cols))?)?;
         let mut rows = (available / row_bytes).min(usize::from(u16::MAX)) as u16;
         while rows > 0 {
@@ -157,7 +158,7 @@ impl PageCapacity {
             STYLE_ITEM_ALIGNMENT,
         )?;
         let grapheme_alloc_layout = bitmap_layout(self.grapheme_bytes as usize, 16)?;
-        let grapheme_alloc_start = align(styles_layout.total_size, METADATA_ALIGNMENT)?;
+        let grapheme_alloc_start = align(styles_layout.total_size, 8)?;
         let grapheme_count = power_of_two((self.grapheme_bytes as usize).div_ceil(16))?;
         let grapheme_map_layout = map_layout(grapheme_count, 16, 8, 100)?;
         let grapheme_map_start = align(
@@ -379,10 +380,10 @@ mod tests {
     #[test]
     fn native_standard_resource_layout() {
         let metadata = PageCapacity::STANDARD.metadata().unwrap();
-        assert_eq!(metadata.total_size, 26124);
+        assert_eq!(metadata.total_size, 25708);
         assert_eq!(metadata.styles_layout.cap, 104);
         assert_eq!(metadata.styles_layout.table_cap, 128);
-        assert_eq!(metadata.styles_layout.total_size, 4000);
+        assert_eq!(metadata.styles_layout.total_size, 3584);
         assert_eq!(metadata.grapheme_alloc_layout.bitmap_count, 8);
         assert_eq!(metadata.grapheme_alloc_layout.total_size, 8256);
         assert_eq!(metadata.grapheme_map_layout.capacity, 512);
@@ -394,20 +395,40 @@ mod tests {
         assert_eq!(metadata.hyperlink_map_layout.total_size, 900);
     }
 
+    #[test]
+    fn packed_style_layout_keeps_member_alignment_distinct() {
+        let capacity = PageCapacity {
+            cols: 1,
+            rows: 1,
+            styles: 1,
+            ..PageCapacity::default()
+        };
+        let metadata = capacity.metadata().unwrap();
+        assert_eq!(
+            (STYLE_ITEM_SIZE, STYLE_ITEM_ALIGNMENT, METADATA_ALIGNMENT),
+            (32, 16, 16)
+        );
+        assert_eq!(metadata.styles_layout.items_start, 16);
+        assert_eq!(metadata.grapheme_alloc_start, 16);
+        assert_eq!(metadata.grapheme_map_start, 1048);
+        assert_eq!(metadata.hyperlink_set_start, 4456);
+        assert_eq!(metadata.hyperlink_map_start, 4608);
+    }
+
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn macos_arm64_initial_capacity_matches_native_observation() {
         let capacity = PageCapacity::initial(80).unwrap();
-        assert_eq!(capacity.rows, 591);
-        assert_eq!(PageCapacity::initial(215).unwrap().rows, 221);
+        assert_eq!(capacity.rows, 592);
+        assert_eq!(PageCapacity::initial(215).unwrap().rows, 222);
         let layout = capacity.layout().unwrap();
-        assert_eq!(layout.rows_size, 4728);
+        assert_eq!(layout.rows_size, 4736);
         assert_eq!(layout.cells_start, 4736);
-        assert_eq!(layout.cells_size, 378240);
-        assert_eq!(layout.styles_start, 382976);
+        assert_eq!(layout.cells_size, 378880);
+        assert_eq!(layout.styles_start, 383616);
         assert_eq!(layout.total_size, 409600);
-        assert_eq!(PageCapacity::initial(47918).unwrap().rows, 1);
-        assert_eq!(PageCapacity::initial(47919).unwrap().rows, 215);
+        assert_eq!(PageCapacity::initial(47970).unwrap().rows, 1);
+        assert_eq!(PageCapacity::initial(47971).unwrap().rows, 215);
     }
 
     #[test]

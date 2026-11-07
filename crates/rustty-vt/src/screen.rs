@@ -224,8 +224,7 @@ impl Style {
                     u128::from(r) | (u128::from(g) << 8) | (u128::from(b) << 16),
                 ),
             };
-            packed |= tag << (i * 8);
-            packed |= data << (24 + i * 24);
+            packed |= (tag | (data << 8)) << (i * 32);
         }
         let underline = match self.underline {
             Underline::None => 0u128,
@@ -252,7 +251,7 @@ impl Style {
             flags |= u128::from(set) << bit;
         }
         packed |= flags << 96;
-        let mut hash = packed as u64 ^ (packed >> 64) as u64;
+        let mut hash = packed as u64 ^ ((packed >> 64) as u64).wrapping_mul(0x9e3779b97f4a7c15);
         // Zig std.hash.int(u64).
         const MULTIPLIER: u64 = 0xbea225f9eb34556d;
         hash = (hash ^ (hash >> 32)).wrapping_mul(MULTIPLIER);
