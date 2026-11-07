@@ -1118,5 +1118,77 @@
       "terminal.resize",
       "terminal.cursor"
     ]
+  },
+  {
+    "request": {
+      "id": "upstream-2026-11/decic",
+      "cols": 10,
+      "rows": 4,
+      "operations": [
+        {
+          "op": "write",
+          "data": "6162636465666768696a0d0a6b6c6d6e6f70717273740d0a75767778797a414243440d0a45464748494a4b4c4d4e1b5b3f3639681b5b333b38731b5b323b34721b5b333b34481b5b32277d"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.write",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "upstream-2026-11/decdc",
+      "cols": 10,
+      "rows": 4,
+      "operations": [
+        {
+          "op": "write",
+          "data": "6162636465666768696a0d0a6b6c6d6e6f70717273740d0a75767778797a414243440d0a45464748494a4b4c4d4e1b5b3f3639681b5b333b38731b5b323b34721b5b333b34481b5b32277e"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.write",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "upstream-2026-11/decbi",
+      "cols": 10,
+      "rows": 4,
+      "operations": [
+        {
+          "op": "write",
+          "data": "6162636465666768696a0d0a6b6c6d6e6f70717273740d0a75767778797a414243440d0a45464748494a4b4c4d4e1b5b3f3639681b5b333b38731b5b323b34721b5b333b33481b36"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.write",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "upstream-2026-11/decfi",
+      "cols": 10,
+      "rows": 4,
+      "operations": [
+        {
+          "op": "write",
+          "data": "6162636465666768696a0d0a6b6c6d6e6f70717273740d0a75767778797a414243440d0a45464748494a4b4c4d4e1b5b3f3639681b5b333b38731b5b323b34721b5b333b38481b39"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.write",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
   }
 ]

@@ -2514,6 +2514,53 @@ impl Terminal {
         self.changed();
     }
 
+    fn shift_columns(&mut self, count: usize, insert: bool) {
+        let (col, row) = (self.screen().cursor.col, self.screen().cursor.row);
+        let m = self.margins;
+        if col < m.left || col > m.right || row < m.top || row > m.bottom {
+            return;
+        }
+        for y in m.top..=m.bottom {
+            self.ensure_row_cells(y, col + 1);
+            self.screen_mut().cursor.row = y;
+            self.screen_mut().sync_cursor_resources();
+            if insert {
+                self.insert_blanks(count);
+            } else {
+                self.delete_chars(count);
+            }
+        }
+        self.screen_mut().cursor.row = row;
+        self.changed();
+    }
+
+    fn horizontal_index(&mut self, forward: bool) {
+        self.screen_mut().cursor.pending_wrap = false;
+        let col = self.screen().cursor.col;
+        let margin = if forward {
+            self.margins.right
+        } else {
+            self.margins.left
+        };
+        if col == margin {
+            // Forward index removes the leftmost column, not the cursor's column.
+            if forward {
+                self.screen_mut().cursor.col = self.margins.left;
+            }
+            self.shift_columns(1, !forward);
+            self.screen_mut().cursor.col = col;
+        } else {
+            let next = if forward {
+                (col + 1).min(usize::from(self.cols) - 1)
+            } else {
+                col.saturating_sub(1)
+            };
+            self.ensure_row_cells(self.screen().cursor.row, next + 1);
+            self.screen_mut().cursor.col = next;
+        }
+        self.changed();
+    }
+
     pub fn erase_line(&mut self, mode: u16, protected: bool) {
         let cursor = self.screen().cursor.clone();
         let id = self.screen().row(cursor.row).id;
@@ -2960,6 +3007,8 @@ impl Terminal {
 
     fn esc(&mut self, intermediates: &[u8], final_byte: u8, effects: &mut Vec<Effect>) {
         match (intermediates, final_byte) {
+            ([], b'6') => self.horizontal_index(false),
+            ([], b'9') => self.horizontal_index(true),
             ([], b'7') => self.save_cursor(),
             ([], b'8') => self.restore_cursor(),
             ([], b'D') => self.index(),
@@ -3532,6 +3581,9 @@ impl Terminal {
             }
             ([b'='], b'u') => {
                 self.screen_mut().kitty_keyboard.set((n & 31) as u8, second);
+            }
+            ([b'\''], b'}' | b'~') if p.len() <= 1 => {
+                self.shift_columns(count, byte == b'}');
             }
             ([b'$'], b'}') => self.status_display = n == 1,
             ([b'$'], b'~') => {}
