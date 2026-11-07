@@ -19,6 +19,9 @@ use std::{
 
 const PAGE_SIZE: u32 = 1024;
 const MAX_SHAPED_BYTES: usize = 4 * 1024 * 1024;
+const RENDER_TEXT: u8 = 0;
+const FIND_RUNS: u8 = 1;
+const SHAPE_RUNS: u8 = 2;
 static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 #[path = "graphics.rs"]
@@ -590,7 +593,7 @@ impl Renderer {
                 scratch.paints.push(fg);
             }
             scratch.paints.truncate(text_cols);
-            self.row_text(row, &mut scratch, top, options, &mut foreground)?;
+            self.row_text::<RENDER_TEXT>(row, &mut scratch, top, options, &mut foreground)?;
             let paints = &scratch.paints;
             for (col, cell) in row.cells().iter().take(text_cols).enumerate() {
                 let span = row.cell_span(col);
@@ -759,15 +762,16 @@ impl Renderer {
         Ok(frame)
     }
 
-    fn row_text(
+    fn row_text<const MODE: u8>(
         &mut self,
         row: RowView<'_>,
         scratch: &mut RowScratch,
         top: f32,
         options: &RenderOptions,
         frame: &mut Frame,
-    ) -> Result<(), RenderError> {
+    ) -> Result<usize, RenderError> {
         let metrics = self.metrics();
+        let mut work = 0;
         let RowScratch {
             paints,
             text,
@@ -799,6 +803,12 @@ impl Renderer {
                 && !split_colors
                 && let Some(cp) = self.sprite_codepoint(&row.text(col))
             {
+                if MODE != RENDER_TEXT {
+                    std::hint::black_box((cp, cell.width()));
+                    work += 1;
+                    col += 1;
+                    continue;
+                }
                 let cached = self.sprite(cp, cell.width())?;
                 frame.quads.push(Quad {
                     rect: [
@@ -859,7 +869,20 @@ impl Renderer {
                 (false, true) => FontStyle::Italic,
                 (true, true) => FontStyle::BoldItalic,
             };
-            let glyphs = self.shape(text, font_style)?;
+            if MODE == FIND_RUNS {
+                std::hint::black_box((text.as_str(), font_style, sources.as_slice(), clip));
+                work += 1;
+                continue;
+            }
+            let glyphs = if MODE == SHAPE_RUNS {
+                self.shape::<false>(text, font_style)?
+            } else {
+                self.shape::<true>(text, font_style)?
+            };
+            if MODE == SHAPE_RUNS {
+                work += std::hint::black_box(glyphs.as_ref()).len();
+                continue;
+            }
             let source = |g: &ShapedGlyph| {
                 sources
                     .partition_point(|(byte, _)| *byte <= g.cluster)
@@ -927,18 +950,22 @@ impl Renderer {
                 }
             }
         }
-        Ok(())
+        Ok(work)
     }
 
-    fn shape(&mut self, text: &str, style: FontStyle) -> Result<Arc<[ShapedGlyph]>, FontError> {
-        if let Some(glyphs) = self.shaped[style as usize].get(text) {
+    fn shape<const CACHE: bool>(
+        &mut self,
+        text: &str,
+        style: FontStyle,
+    ) -> Result<Arc<[ShapedGlyph]>, FontError> {
+        if CACHE && let Some(glyphs) = self.shaped[style as usize].get(text) {
             return Ok(glyphs.clone());
         }
         let glyphs: Arc<[ShapedGlyph]> = self.fonts.shape(text, style)?.into();
         let bytes = text.len()
             + std::mem::size_of_val(&*glyphs)
             + std::mem::size_of::<(String, Arc<[ShapedGlyph]>)>();
-        if bytes <= MAX_SHAPED_BYTES {
+        if CACHE && bytes <= MAX_SHAPED_BYTES {
             // ponytail: clear the bounded run cache on overflow; use LRU eviction
             // if a working set larger than 4 MiB makes repeated eviction measurable.
             if self.shaped_bytes + bytes > MAX_SHAPED_BYTES {
@@ -2180,7 +2207,7 @@ mod tests {
         };
         let mut frame = Frame::empty(options.size);
         renderer
-            .row_text(
+            .row_text::<RENDER_TEXT>(
                 terminal.screen().row(0),
                 &mut scratch,
                 0.0,
@@ -2216,7 +2243,7 @@ mod tests {
         }
         let mut repeated = Frame::empty(options.size);
         renderer
-            .row_text(
+            .row_text::<RENDER_TEXT>(
                 terminal.screen().row(0),
                 &mut scratch,
                 0.0,
@@ -2492,12 +2519,12 @@ mod tests {
             renderer.prepare(terminal.screen(), &options).unwrap().quads,
             updated.quads
         );
-        let regular = renderer.shape("style", FontStyle::Regular).unwrap();
-        let bold = renderer.shape("style", FontStyle::Bold).unwrap();
+        let regular = renderer.shape::<true>("style", FontStyle::Regular).unwrap();
+        let bold = renderer.shape::<true>("style", FontStyle::Bold).unwrap();
         assert!(!Arc::ptr_eq(&regular, &bold));
         // Exercise eviction without allocating a huge CoreText run in a unit test.
         renderer.shaped_bytes = MAX_SHAPED_BYTES;
-        renderer.shape("new", FontStyle::Regular).unwrap();
+        renderer.shape::<true>("new", FontStyle::Regular).unwrap();
         assert!(renderer.shaped_bytes < MAX_SHAPED_BYTES);
         assert_eq!(renderer.shaped.iter().map(HashMap::len).sum::<usize>(), 1);
     }
@@ -2705,3 +2732,7 @@ mod tests {
         assert!(mapped.sprites.contains_key(&('█', 1)));
     }
 }
+
+#[cfg(test)]
+#[path = "../../../test/rustty/shaper_rows.rs"]
+mod shaper_rows;
