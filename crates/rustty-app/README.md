@@ -57,6 +57,11 @@ and the hierarchy to panels with agents in any state. Matching panels appear
 without expanding their ancestors; switching the filter off restores the normal
 view with its expansion unchanged. Panel search also respects this filter.
 
+Hover a tab to browse its quads and panels in an outliner inside the same window.
+Expand a quad with its disclosure arrow; click an entry to switch to it and zoom in.
+Pins appear in the list, with pinned panels and branches containing pins first.
+Move away or press Escape to dismiss the view.
+
 ## TUI desktop notifications
 
 Rustty supports Kitty OSC 99 notifications on macOS and Windows, including
@@ -551,8 +556,9 @@ waiting-for-input titles. The outliner shows the same counts on panels and sums
 them through every quad, tab, and window row, including collapsed branches. Zero
 counts are hidden. Programs reporting Kitty OSC 7501 status also appear in these
 counts and on Stream Deck. Waiting, failed, and completed programs mark their
-tabs and outliner rows for attention; hovering a tab, panel label, or outliner
-row shows the reported application, title, message, and progress. Reported
+tabs and outliner rows for attention; hovering a panel label or outliner row
+(including the tab hover view) shows the reported application, title, message,
+and progress. Reported
 percentages use the existing progress bar. Explicit OSC 777 agent reports take
 precedence. Native tmuxx attachment and reconnect restore the owner's current
 status. Completed/failed results remain visible in retained exited panes until

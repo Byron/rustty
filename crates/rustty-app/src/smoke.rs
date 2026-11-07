@@ -140,6 +140,8 @@ impl Smoke {
             "outliner.png",
             "outliner-collapsed.png",
             "outliner-agents.png",
+            "outliner-tab-hover.png",
+            "outliner-tab-hover-panels.png",
             "outliner-terminal.png",
             "outliner-quad.png",
             "outliner-quad-terminal.png",
@@ -6542,6 +6544,138 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         assert!(app.tab_label(tab).0.ends_with(&format!("▶ {count}")));
     }
     app.refresh_directory_labels();
+    let index = app.index(window).unwrap();
+    let saved_window = app.workspace.windows[index].clone();
+    let saved_pins = std::mem::replace(&mut app.workspace.pinned_panes, vec![right, second_last]);
+    let saved_input = host.egui.egui_input_mut().clone();
+    let saved_mouse = host.mouse;
+    let hover_check = (|| -> Result<()> {
+        let first_state = &saved_window.tabs[0];
+        let pinned_quad = first_state.root.quadrant(right).unwrap();
+        let other_quad = first_state.root.quadrant(first).unwrap();
+        for (tab, target, other, zoom, capture) in [
+            (
+                first_tab,
+                Target::Quad {
+                    tab: first_tab,
+                    node: pinned_quad,
+                },
+                Target::Quad {
+                    tab: first_tab,
+                    node: other_quad,
+                },
+                pinned_quad,
+                "outliner-tab-hover.png",
+            ),
+            (
+                second_tab,
+                Target::Pane {
+                    tab: second_tab,
+                    pane: second_last,
+                },
+                Target::Pane {
+                    tab: second_tab,
+                    pane: second,
+                },
+                second_last,
+                "outliner-tab-hover-panels.png",
+            ),
+        ] {
+            host.egui.egui_input_mut().focused = true;
+            host.egui
+                .egui_input_mut()
+                .events
+                .push(egui::Event::PointerGone);
+            app.draw(event_loop, &mut host)?;
+            let anchor = app
+                .context
+                .viewport_for(host.viewport, |state| {
+                    state
+                        .prev_pass
+                        .widgets
+                        .layers()
+                        .flat_map(|(_, widgets)| widgets)
+                        .find(|widget| {
+                            widget.parent_id == egui::Id::new(("tab", window, tab))
+                                && widget.sense.senses_click()
+                        })
+                        .map(|widget| widget.interact_rect.center())
+                })
+                .ok_or("missing tab hover anchor")?;
+            host.mouse = anchor;
+            host.egui
+                .egui_input_mut()
+                .events
+                .push(egui::Event::PointerMoved(anchor));
+            app.draw(event_loop, &mut host)?;
+            std::thread::sleep(Duration::from_millis(300));
+            app.draw(event_loop, &mut host)?;
+            std::thread::sleep(Duration::from_millis(200));
+            app.draw(event_loop, &mut host)?;
+            capture_window(app, event_loop, &mut host, &directory.join(capture))?;
+            if !host.popup_open || app.outliner.is_some() {
+                return Err("tab hover did not open an in-window popup".into());
+            }
+            let row_bounds = |target| {
+                app.context.viewport_for(host.viewport, |state| {
+                    state
+                        .prev_pass
+                        .widgets
+                        .layers()
+                        .flat_map(|(_, widgets)| widgets)
+                        .find(|widget| {
+                            widget.id == widget.parent_id.with(("tab-outline-row", target))
+                        })
+                        .map(|widget| widget.interact_rect)
+                })
+            };
+            let pinned = row_bounds(target).ok_or("missing pinned tab hover row")?;
+            let other = row_bounds(other).ok_or("missing ordinary tab hover row")?;
+            if pinned.top() >= other.top() {
+                return Err("tab hover did not put pinned entries or their quads first".into());
+            }
+            let point = pinned.center();
+            host.mouse = point;
+            for event in [
+                egui::Event::PointerMoved(point),
+                egui::Event::PointerButton {
+                    pos: point,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::PointerButton {
+                    pos: point,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ] {
+                host.egui.egui_input_mut().events.push(event);
+                app.draw(event_loop, &mut host)?;
+            }
+            let selected = app.tab(window).unwrap();
+            if selected.id != tab || selected.zoom != Some(zoom) || host.popup_open {
+                return Err(
+                    "clicking a tab hover row did not switch tabs, zoom, and close the popup"
+                        .into(),
+                );
+            }
+        }
+        Ok(())
+    })();
+    app.workspace.windows[index] = saved_window;
+    app.workspace.pinned_panes = saved_pins;
+    host.egui
+        .egui_input_mut()
+        .events
+        .push(egui::Event::PointerGone);
+    let restore = app.draw(event_loop, &mut host);
+    host.zoom_animation.finish();
+    *host.egui.egui_input_mut() = saved_input;
+    host.mouse = saved_mouse;
+    hover_check?;
+    restore?;
     app.windows.insert(key, host);
     let action = |app: &mut App, action| {
         let mut host = app.windows.remove(&key).unwrap();
@@ -7562,8 +7696,8 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
             "native_search_focus_checked": native_focus_available,
             "native_minimization_checked": native_focus_available,
             "background": app.background_smoke,
-            "checks": ["outliner-native-window", "outliner-hierarchy", "outliner-working-counts", "outliner-disclosure", "outliner-agent-filter", "outliner-navigation", "outliner-zoom", "outliner-single-tab-bar", "outliner-narrow-tab-bar", "outliner-pins", "outliner-pin-drag", "outliner-search", "outliner-search-navigation", "outliner-terminal-input", "outliner-quick-terminal", "outliner-close"],
-            "captures": ["outliner.png", "outliner-collapsed.png", "outliner-agents.png", "outliner-terminal.png", "outliner-quad.png", "outliner-quad-terminal.png", "outliner-nested.png", "outliner-nested-terminal.png", "outliner-pane.png", "outliner-pane-terminal.png", "outliner-narrow-terminal.png", "outliner-pinned.png", "outliner-pinned-terminal.png", "outliner-search.png", "outliner-search-empty.png", "outliner-search-navigation.png", "outliner-windows.png", "outliner-other-window.png", "outliner-quick.png", "outliner-flat.png"]
+            "checks": ["outliner-native-window", "outliner-hierarchy", "outliner-working-counts", "outliner-disclosure", "outliner-agent-filter", "outliner-navigation", "outliner-zoom", "outliner-single-tab-bar", "outliner-narrow-tab-bar", "outliner-tab-hover", "outliner-tab-hover-pins", "outliner-tab-hover-zoom", "outliner-pins", "outliner-pin-drag", "outliner-search", "outliner-search-navigation", "outliner-terminal-input", "outliner-quick-terminal", "outliner-close"],
+            "captures": ["outliner.png", "outliner-collapsed.png", "outliner-agents.png", "outliner-tab-hover.png", "outliner-tab-hover-panels.png", "outliner-terminal.png", "outliner-quad.png", "outliner-quad-terminal.png", "outliner-nested.png", "outliner-nested-terminal.png", "outliner-pane.png", "outliner-pane-terminal.png", "outliner-narrow-terminal.png", "outliner-pinned.png", "outliner-pinned-terminal.png", "outliner-search.png", "outliner-search-empty.png", "outliner-search-navigation.png", "outliner-windows.png", "outliner-other-window.png", "outliner-quick.png", "outliner-flat.png"]
         }))?,
     )?;
     eprintln!("Native Outliner smoke passed: {}", directory.display());

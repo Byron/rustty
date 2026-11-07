@@ -5,6 +5,8 @@ use crate::{
     workspace::Id,
 };
 use egui::{Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
+
+pub mod hover;
 use std::ops::Range;
 
 const ROW_HEIGHT: f32 = 30.0;
@@ -239,6 +241,156 @@ fn header(ui: &mut egui::Ui, pinned: bool, agents_only: &mut bool) -> bool {
         });
     });
     changed
+}
+
+/// A tab's children, with pinned panels kept inside their hierarchy.
+pub fn tab_contents(
+    ui: &mut egui::Ui,
+    rows: &[Row],
+    pinned_panes: &[Id],
+    platform_accent: [u8; 3],
+) -> Option<Target> {
+    let rows = crate::outliner::pinned_first(rows, pinned_panes);
+    let pinned: std::collections::HashSet<_> = pinned_paths(&rows, pinned_panes)
+        .into_iter()
+        .flatten()
+        .map(|row| row.target)
+        .collect();
+    let expansion_id = ui.id().with("tab-outline-expansion");
+    let mut expansion = ui
+        .data(|data| data.get_temp::<Expansion>(expansion_id))
+        .unwrap_or_default();
+    expansion.sync(&rows);
+    let mut selected = None;
+    egui::ScrollArea::vertical()
+        .max_height(ui.available_height())
+        .min_scrolled_height(0.0)
+        .auto_shrink([false, true])
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            for index in expansion.visible(&rows) {
+                let row = &rows[index];
+                let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), ROW_HEIGHT));
+                let left =
+                    rect.left() + (row.depth as f32 * INDENT).min((rect.width() - 100.0).max(0.0));
+                let branch = has_children(&rows, index);
+                let selection_rect = if branch {
+                    Rect::from_min_max(
+                        Pos2::new((left + INDENT).min(rect.right()), rect.top()),
+                        rect.max,
+                    )
+                } else {
+                    rect
+                };
+                let response = ui.interact(
+                    selection_rect,
+                    ui.id().with(("tab-outline-row", row.target)),
+                    Sense::click(),
+                );
+                let accent = TabAccent::new(row.color, platform_accent);
+                let foreground = if row.focused {
+                    rgb(accent.foreground)
+                } else {
+                    ui.visuals().text_color()
+                };
+                let fill = if row.focused {
+                    rgb(accent.background)
+                } else if response.hovered() || response.has_focus() {
+                    ui.visuals().widgets.hovered.bg_fill
+                } else if row.ancestor {
+                    rgb(accent.background).gamma_multiply(0.15)
+                } else {
+                    Color32::TRANSPARENT
+                };
+                ui.painter().rect_filled(rect, 4, fill);
+                if response.has_focus() {
+                    ui.painter().rect_stroke(
+                        rect.shrink(0.5),
+                        4,
+                        Stroke::new(1.0, foreground),
+                        egui::StrokeKind::Inside,
+                    );
+                }
+                if branch {
+                    let bounds = Rect::from_center_size(
+                        Pos2::new(left + INDENT / 2.0, rect.center().y),
+                        Vec2::splat(INDENT),
+                    );
+                    let disclosure =
+                        ui.interact(bounds, response.id.with("disclosure"), Sense::click());
+                    let open = expansion.is_open(row.target);
+                    egui::collapsing_header::paint_default_icon(
+                        ui,
+                        f32::from(open),
+                        &disclosure.clone().with_new_rect(bounds.shrink(4.0)),
+                    );
+                    disclosure.widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::Button,
+                            ui.is_enabled(),
+                            format!(
+                                "{} {}",
+                                if open { "Collapse" } else { "Expand" },
+                                description(row)
+                            ),
+                        )
+                    });
+                    ui.ctx()
+                        .accesskit_node_builder(disclosure.id, |node| node.set_expanded(open));
+                    if disclosure.clicked() {
+                        expansion.toggle(&rows, index, ui.input(|input| input.modifiers.shift));
+                        ui.ctx().request_repaint();
+                    }
+                }
+                let icon = Rect::from_min_size(
+                    Pos2::new(left + INDENT + 3.0, rect.center().y - ICON_SIZE / 2.0),
+                    Vec2::splat(ICON_SIZE),
+                );
+                paint_icon(ui.painter(), icon, row, foreground);
+                let mut label =
+                    Rect::from_min_max(Pos2::new(icon.right() + 7.0, rect.top()), rect.max);
+                let is_pinned = pinned.contains(&row.target);
+                if is_pinned {
+                    paint_pin(
+                        ui.painter(),
+                        Rect::from_center_size(
+                            Pos2::new(label.right() - 11.0, rect.center().y),
+                            Vec2::splat(14.0),
+                        ),
+                        foreground,
+                    );
+                    label.max.x -= 22.0;
+                }
+                label = paint_working(ui.painter(), label, row.working, foreground);
+                label.min.x = label.min.x.min(label.max.x);
+                paint_label(ui, &row.label, label, label.left(), foreground, &[]);
+                let mut description = description(row);
+                if is_pinned {
+                    description.push_str(if branch {
+                        " · Contains pinned panels"
+                    } else {
+                        " · Pinned"
+                    });
+                }
+                response.widget_info(|| {
+                    egui::WidgetInfo::selected(
+                        egui::WidgetType::SelectableLabel,
+                        ui.is_enabled(),
+                        row.focused,
+                        &description,
+                    )
+                });
+                if response.clicked() {
+                    response.surrender_focus();
+                    selected = Some(row.target);
+                }
+                response.on_hover_text(description);
+            }
+        });
+    if !ui.is_sizing_pass() {
+        ui.data_mut(|data| data.insert_temp(expansion_id, expansion));
+    }
+    selected
 }
 
 pub fn contents(
@@ -1437,6 +1589,140 @@ fn rgb([r, g, b]: [u8; 3]) -> Color32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tab_contents_promotes_pinned_branches_and_selects_their_children() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let mut rows = rows()[2..].to_vec();
+        for row in &mut rows {
+            row.depth -= 2;
+        }
+        let mut other = rows[1].clone();
+        other.target = Target::Pane { tab: 1, pane: 4 };
+        other.label = "Unpinned".into();
+        other.depth = 0;
+        other.focused = false;
+        rows.insert(0, other);
+        let draw = |events| {
+            let mut selected = None;
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(320.0, 240.0))),
+                    focused: true,
+                    events,
+                    ..Default::default()
+                },
+                |root| {
+                    egui::CentralPanel::default().show(root, |ui| {
+                        selected = tab_contents(ui, &rows, &[3], [210, 110, 70]);
+                    });
+                },
+            );
+            output.textures_delta.clear();
+            (output, selected)
+        };
+        let click = |point| {
+            let mut selected = None;
+            for pressed in [true, false] {
+                let (_, target) = draw(vec![
+                    egui::Event::PointerMoved(point),
+                    egui::Event::PointerButton {
+                        pos: point,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ]);
+                selected = target.or(selected);
+            }
+            selected
+        };
+        draw(Vec::new());
+        let (output, _) = draw(Vec::new());
+        let pinned_group = format!("{} · Contains pinned panels", description(&rows[1]));
+        assert!(
+            node(&output, &pinned_group).unwrap().bounds().unwrap().y0
+                < node(&output, &description(&rows[0]))
+                    .unwrap()
+                    .bounds()
+                    .unwrap()
+                    .y0
+        );
+        assert!(node(&output, &format!("{} · Pinned", description(&rows[2]))).is_none());
+        let disclosure = node(&output, &format!("Expand {}", description(&rows[1])))
+            .unwrap()
+            .bounds()
+            .unwrap();
+        assert_eq!(
+            click(Pos2::new(
+                (disclosure.x0 + disclosure.x1) as f32 / 2.0,
+                (disclosure.y0 + disclosure.y1) as f32 / 2.0
+            )),
+            None
+        );
+        let (output, _) = draw(Vec::new());
+        assert!(node(&output, &pinned_group).is_some());
+        let panel = node(&output, &format!("{} · Pinned", description(&rows[2])))
+            .unwrap()
+            .bounds()
+            .unwrap();
+        assert_eq!(
+            click(Pos2::new(
+                (panel.x0 + panel.x1) as f32 / 2.0,
+                (panel.y0 + panel.y1) as f32 / 2.0
+            )),
+            Some(rows[2].target)
+        );
+        assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Text(text) if text.galley.text() == "Rustty")));
+    }
+
+    #[test]
+    fn tab_contents_keeps_deep_rows_reachable_in_narrow_windows() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let template = rows()[2].clone();
+        let rows: Vec<_> = (0..12)
+            .map(|depth| Row {
+                target: Target::Quad {
+                    tab: 1,
+                    node: depth as Id + 10,
+                },
+                depth,
+                label: format!("Quad {depth}"),
+                ..template.clone()
+            })
+            .collect();
+        let mut expansion = Expansion::default();
+        expansion.sync(&rows);
+        expansion.toggle(&rows, 0, true);
+        for _ in 0..2 {
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(160.0, 600.0))),
+                    ..Default::default()
+                },
+                |root| {
+                    egui::CentralPanel::default().show(root, |ui| {
+                        ui.data_mut(|data| {
+                            data.insert_temp(
+                                ui.id().with("tab-outline-expansion"),
+                                expansion.clone(),
+                            )
+                        });
+                        tab_contents(ui, &rows, &[], [210, 110, 70]);
+                    });
+                },
+            );
+            output.textures_delta.clear();
+            for row in &rows {
+                let bounds = node(&output, &description(row)).unwrap().bounds().unwrap();
+                assert!(bounds.x1 - bounds.x0 >= 80.0, "{bounds:?}");
+                assert!(bounds.x0 >= 0.0 && bounds.x1 <= 160.0, "{bounds:?}");
+            }
+        }
+    }
 
     #[test]
     fn quad_icons_match_panel_geometry_without_fills_or_an_extra_square() {

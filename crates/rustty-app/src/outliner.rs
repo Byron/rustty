@@ -226,6 +226,37 @@ pub fn pinned_paths(rows: &[Row], pins: &[Id]) -> Vec<Vec<Row>> {
     pins.iter().filter_map(|pane| paths.remove(pane)).collect()
 }
 
+/// Promote pinned siblings and their ancestors without separating their subtrees.
+pub fn pinned_first(rows: &[Row], pins: &[Id]) -> Vec<Row> {
+    fn append(rows: &[Row], pinned: &HashSet<Target>, output: &mut Vec<Row>) {
+        let mut siblings = Vec::new();
+        let mut remaining = rows;
+        while let Some(row) = remaining.first() {
+            let end = remaining[1..]
+                .iter()
+                .position(|next| next.depth <= row.depth)
+                .map_or(remaining.len(), |index| index + 1);
+            let (subtree, rest) = remaining.split_at(end);
+            siblings.push(subtree);
+            remaining = rest;
+        }
+        siblings.sort_by_key(|subtree| !pinned.contains(&subtree[0].target));
+        for subtree in siblings {
+            output.push(subtree[0].clone());
+            append(&subtree[1..], pinned, output);
+        }
+    }
+
+    let pinned = pinned_paths(rows, pins)
+        .into_iter()
+        .flatten()
+        .map(|row| row.target)
+        .collect();
+    let mut output = Vec::with_capacity(rows.len());
+    append(rows, &pinned, &mut output);
+    output
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct SearchResult {
     pub path: Vec<Row>,
@@ -345,7 +376,7 @@ pub fn breadcrumb(tab: &Tab, labels: &HashMap<Id, String>) -> Vec<Row> {
         .collect()
 }
 
-fn tab_rows(tab: &Tab, labels: &HashMap<Id, String>, depth: usize, active: bool) -> Vec<Row> {
+pub fn tab_rows(tab: &Tab, labels: &HashMap<Id, String>, depth: usize, active: bool) -> Vec<Row> {
     if tab.quad_roots.contains(&tab.root.id) {
         let mut rows = vec![quad_row(tab, labels, &tab.root, Rect::UNIT, depth, active)];
         rows.extend(tree_rows(tab, &tab.root, labels, depth + 1, active));
@@ -498,6 +529,53 @@ pub fn select(window: &mut WindowState, target: Target) -> Option<Id> {
     select_in_window(window, target, true)
 }
 
+/// Enter a panel or quad from a tab preview, even when it already contains focus.
+pub fn select_zoomed(window: &mut WindowState, target: Target) -> Option<Id> {
+    let id = match target {
+        Target::Pane { tab, .. } | Target::Quad { tab, .. } => tab,
+        Target::Window(_) | Target::Tab(_) => return None,
+    };
+    let index = window.tabs.iter().position(|tab| tab.id == id)?;
+    let tab = &mut window.tabs[index];
+    let (pane, zoom) = match target {
+        Target::Pane { pane, .. } => {
+            if !tab.contains(pane) {
+                return None;
+            }
+            (pane, pane)
+        }
+        Target::Quad { .. } => {
+            let node = target_node(tab, target)?;
+            let pane = if node.contains(tab.focused) {
+                tab.focused
+            } else {
+                *node.panes().first()?
+            };
+            (pane, node.id)
+        }
+        Target::Window(_) | Target::Tab(_) => unreachable!(),
+    };
+    // A refused focus call is indistinguishable from success for the current pane.
+    if tab.modal_pane().is_some_and(|modal| modal != pane)
+        || tab
+            .server_view
+            .as_ref()
+            .is_some_and(|view| !view.iter().any(|rect| rect.pane == pane))
+    {
+        return None;
+    }
+    tab.focus(pane);
+    if tab.focused != pane {
+        return None;
+    }
+    if matches!(target, Target::Quad { .. }) {
+        tab.quadrant_zoom = Some(zoom);
+    }
+    tab.zoom = Some(zoom);
+    window.active_tab = index;
+    Some(pane)
+}
+
 pub fn target_window(workspace: &Workspace, target: Target) -> Option<Id> {
     workspace.windows.iter().find_map(|window| {
         match target {
@@ -626,6 +704,175 @@ mod tests {
         tab.split(9, 10, Direction::Right, "/tmp".into());
         window
     }
+
+    #[test]
+    fn tab_rows_keep_only_the_hovered_tabs_panel_and_quad_hierarchy() {
+        let labels = HashMap::new();
+        let mut window = window();
+        let single = tab_rows(&window.tabs[0], &labels, 0, false);
+        assert_eq!(single.len(), 1);
+        assert_eq!(single[0].target, Target::Pane { tab: 1, pane: 2 });
+        assert_eq!(single[0].depth, 0);
+        assert!(!single[0].focused);
+
+        window = quads();
+        let legacy = tab_rows(&window.tabs[0], &labels, 0, true);
+        assert_eq!(legacy, rows(&window, &labels, &HashMap::new()));
+        assert_eq!(legacy[0].target, Target::Quad { tab: 1, node: 10 });
+        window.tabs.push(Tab::new(21, 22, "/tmp".into()));
+        assert_eq!(tab_rows(&window.tabs[0], &labels, 0, true), legacy);
+
+        let tab = &mut window.tabs[0];
+        tab.quad_roots.extend([tab.root.id, 2]);
+        tab.focus(2);
+        let nested = tab_rows(tab, &labels, 0, true);
+        let path: Vec<_> = nested
+            .iter()
+            .filter(|row| row.ancestor || row.focused)
+            .map(|row| (row.target, row.depth))
+            .collect();
+        assert_eq!(
+            path,
+            [
+                (
+                    Target::Quad {
+                        tab: 1,
+                        node: tab.root.id
+                    },
+                    0
+                ),
+                (Target::Quad { tab: 1, node: 10 }, 1),
+                (Target::Quad { tab: 1, node: 2 }, 2),
+                (Target::Pane { tab: 1, pane: 2 }, 3),
+            ]
+        );
+        let offset = tab_rows(tab, &labels, 3, false);
+        for (row, original) in offset.iter().zip(&nested) {
+            assert_eq!(row.depth, original.depth + 3);
+            assert!(!row.focused && !row.ancestor);
+        }
+    }
+
+    #[test]
+    fn tab_preview_zoom_enters_current_panels_and_legacy_or_nested_quads() {
+        let mut window = quads();
+        for (target, pane, quad) in [
+            (Target::Pane { tab: 1, pane: 9 }, 9, None),
+            (Target::Quad { tab: 1, node: 10 }, 9, Some(10)),
+            (Target::Pane { tab: 1, pane: 2 }, 2, Some(10)),
+            (Target::Quad { tab: 1, node: 5 }, 5, Some(5)),
+        ] {
+            assert_eq!(select_zoomed(&mut window, target), Some(pane));
+            let zoom = match target {
+                Target::Pane { pane, .. } => pane,
+                Target::Quad { node, .. } => node,
+                _ => unreachable!(),
+            };
+            let tab = &window.tabs[0];
+            assert_eq!(
+                (tab.focused, tab.zoom, tab.quadrant_zoom),
+                (pane, Some(zoom), quad)
+            );
+        }
+        window.tabs[0].quad_roots.insert(2);
+        assert_eq!(
+            select_zoomed(&mut window, Target::Quad { tab: 1, node: 2 }),
+            Some(2)
+        );
+        assert_eq!(window.tabs[0].quadrant_zoom, Some(2));
+        assert_eq!(window.tabs[0].zoom, Some(2));
+
+        window.tabs.push(Tab::new(21, 22, "/tmp".into()));
+        assert_eq!(
+            select_zoomed(&mut window, Target::Pane { tab: 21, pane: 22 }),
+            Some(22)
+        );
+        assert_eq!(window.active_tab, 1);
+        assert_eq!(window.tabs[1].zoom, Some(22));
+        for target in [
+            Target::Pane { tab: 1, pane: 999 },
+            Target::Quad { tab: 1, node: 4 },
+            Target::Pane { tab: 999, pane: 2 },
+            Target::Tab(1),
+            Target::Window(100),
+        ] {
+            assert_eq!(select_zoomed(&mut window, target), None);
+            assert_eq!(window.active_tab, 1);
+            assert_eq!(window.tabs[1].zoom, Some(22));
+        }
+    }
+
+    #[test]
+    fn tab_preview_zoom_honors_modal_and_server_focus_and_can_zoom_overlays() {
+        use crate::workspace::{Overlay, PaneRect, SavedPane};
+
+        let mut window = quads();
+        window.tabs.push(Tab::new(21, 22, "/tmp".into()));
+        window.active_tab = 1;
+        let tab = &mut window.tabs[0];
+        tab.panes.insert(50, SavedPane::default());
+        tab.overlays.push(Overlay {
+            pane: 50,
+            x: 5,
+            y: 7,
+            cols: 30,
+            rows: 10,
+            z: 0,
+            modal: true,
+            capture_keys: false,
+            close_click: false,
+            close_cancel: false,
+        });
+        for target in [
+            Target::Pane { tab: 1, pane: 9 },
+            Target::Quad { tab: 1, node: 5 },
+        ] {
+            assert_eq!(select_zoomed(&mut window, target), None);
+            assert_eq!(window.active_tab, 1);
+            assert_eq!(window.tabs[0].focused, 9);
+            assert_eq!(window.tabs[0].zoom, None);
+        }
+        assert_eq!(
+            select_zoomed(&mut window, Target::Pane { tab: 1, pane: 50 }),
+            Some(50)
+        );
+        assert_eq!(window.active_tab, 0);
+        assert_eq!(window.tabs[0].zoom, Some(50));
+        assert_eq!(window.tabs[0].visible_panes(false), [50]);
+        assert_eq!(
+            window.tabs[0].layout(Rect::UNIT, false, 0.0),
+            [(50, Rect::UNIT)]
+        );
+
+        window.active_tab = 1;
+        let tab = &mut window.tabs[0];
+        tab.overlays[0].modal = false;
+        tab.server_view = Some(vec![PaneRect {
+            pane: 2,
+            x: 0,
+            y: 0,
+            cols: 80,
+            rows: 24,
+            reserved_top: 0,
+            reserved_bottom: 0,
+        }]);
+        for target in [
+            Target::Pane { tab: 1, pane: 50 },
+            Target::Quad { tab: 1, node: 5 },
+        ] {
+            assert_eq!(select_zoomed(&mut window, target), None);
+            assert_eq!(window.active_tab, 1);
+            assert_eq!(window.tabs[0].focused, 50);
+            assert_eq!(window.tabs[0].zoom, Some(50));
+        }
+        assert_eq!(
+            select_zoomed(&mut window, Target::Pane { tab: 1, pane: 2 }),
+            Some(2)
+        );
+        assert_eq!(window.active_tab, 0);
+        assert_eq!(window.tabs[0].zoom, Some(2));
+    }
+
     #[test]
     fn nested_quad_roots_extend_breadcrumbs_pin_paths_and_ancestor_selection() {
         let mut window = quads();
@@ -1356,6 +1603,40 @@ mod tests {
         );
         assert!(paths[1].last().unwrap().focused);
         assert!(!paths[0].last().unwrap().focused);
+    }
+
+    #[test]
+    fn pinned_first_stably_promotes_nested_sibling_subtrees_and_inline_panels() {
+        let template = tab_rows(&window().tabs[0], &HashMap::new(), 0, true).remove(0);
+        let rows: Vec<_> = [
+            (Target::Pane { tab: 1, pane: 9 }, 0),
+            (Target::Quad { tab: 1, node: 10 }, 0),
+            (Target::Pane { tab: 1, pane: 2 }, 1),
+            (Target::Quad { tab: 1, node: 20 }, 1),
+            (Target::Pane { tab: 1, pane: 3 }, 2),
+            (Target::Pane { tab: 1, pane: 4 }, 2),
+            (Target::Pane { tab: 1, pane: 5 }, 1),
+            (Target::Pane { tab: 1, pane: 6 }, 0),
+            (Target::Quad { tab: 1, node: 30 }, 0),
+            (Target::Pane { tab: 1, pane: 7 }, 1),
+            (Target::Pane { tab: 1, pane: 8 }, 1),
+        ]
+        .into_iter()
+        .map(|(target, depth)| Row {
+            target,
+            depth,
+            ..template.clone()
+        })
+        .collect();
+        let ordered = pinned_first(&rows, &[8, 4, 6, 999, 4]);
+        assert_eq!(
+            ordered,
+            [1, 3, 5, 4, 2, 6, 7, 8, 10, 9, 0].map(|index| rows[index].clone())
+        );
+        assert_eq!(pinned_first(&rows, &[]), rows);
+        assert_eq!(pinned_first(&rows, &[999]), rows);
+        assert_eq!(pinned_first(&ordered, &[8, 4, 6]), ordered);
+        assert!(pinned_first(&[], &[4]).is_empty());
     }
 
     #[test]

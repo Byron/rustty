@@ -3228,7 +3228,7 @@ impl App {
         }
         self.changed();
     }
-    fn select_outline(&mut self, host: &mut Host, target: outliner::Target) {
+    fn select_outline(&mut self, host: &mut Host, target: outliner::Target, zoom: bool) {
         let previous = self.focused(host.id);
         let Some(index) = self.index(host.id) else {
             return;
@@ -3237,7 +3237,13 @@ impl App {
         host.search_rects.clear();
         host.focus_text_input = false;
         host.unfocus_text_input = true;
-        if let Some(pane) = outliner::select(&mut self.workspace.windows[index], target) {
+        let window = &mut self.workspace.windows[index];
+        let selected = if zoom {
+            outliner::select_zoomed(window, target)
+        } else {
+            outliner::select(window, target)
+        };
+        if let Some(pane) = selected {
             if let Some(previous) = previous.and_then(|id| self.panes.get_mut(&id)) {
                 previous.reset_selection_gesture();
             }
@@ -3364,10 +3370,14 @@ impl App {
                 })
                 .collect(),
         );
-        outliner::count_working(&mut rows, |id| {
+        self.annotate_outline_rows(&mut rows);
+        rows
+    }
+    fn annotate_outline_rows(&self, rows: &mut [outliner::Row]) {
+        outliner::count_working(rows, |id| {
             self.panes.get(&id).is_some_and(Pane::reported_active)
         });
-        for row in &mut rows {
+        for row in rows {
             row.has_agent = matches!(row.target, outliner::Target::Pane { pane, .. }
                 if self.panes.get(&pane).is_some_and(Pane::has_agent));
             if let outliner::Target::Pane { pane, .. } = row.target
@@ -3378,7 +3388,6 @@ impl App {
                 row.program_status = Some((state, tooltip.to_owned()));
             }
         }
-        rows
     }
     fn draw_outliner(
         &mut self,
@@ -4834,7 +4843,7 @@ impl App {
                 };
                 let target = outliner::Target::Pane { tab, pane };
                 if window == host.id {
-                    self.select_outline(host, target);
+                    self.select_outline(host, target, false);
                     let quick = self.workspace.windows[self.index(window).unwrap()].quick;
                     self.reveal_host(host, quick);
                     self.active = Some(window);
@@ -6447,6 +6456,7 @@ impl App {
         let mut layout_command = None;
         let mut tab_selection = None;
         let mut outline_selection = None;
+        let mut tab_outline_selection = None;
         let mut presentation_changed = false;
         let mut retry_pane = None;
         let mut render_error = None;
@@ -6598,7 +6608,7 @@ impl App {
                                                     ..ui.visuals().widgets.inactive.corner_radius
                                                 });
                                             }
-                                            let button = button.atom_ui(ui);
+                                            let button = ui.scope_builder(egui::UiBuilder::new().id(egui::Id::new(("tab", host.id, tab.id))), |ui| button.atom_ui(ui)).inner;
                                             if let Some(rect) = button.rect(icon_id) {
                                                 paint_zoom_icon(ui.painter(), rect, tab, foreground);
                                             }
@@ -6641,13 +6651,13 @@ impl App {
                                                 tab_selection = Some(index);
                                                 commands.push(Action::CloseTab);
                                             }
-                                            let status = tab.pane_ids().into_iter()
-                                                .filter_map(|id| self.panes.get(&id)?.program_tooltip())
-                                                .collect::<Vec<_>>().join("\n\n");
-                                            if !status.is_empty() {
-                                                response.on_hover_text(status);
-                                            } else if let Some(zoom) = zoom_label(tab) {
-                                                response.on_hover_text(zoom);
+                                            if !host.modal_input() || host.popup_open {
+                                                let target = outliner_ui::hover::show(&response, |ui| {
+                                                    let mut rows = outliner::tab_rows(tab, &self.directory_labels, 0, selected);
+                                                    self.annotate_outline_rows(&mut rows);
+                                                    outliner_ui::tab_contents(ui, &rows, &self.workspace.pinned_panes, platform_accent)
+                                                });
+                                                tab_outline_selection = target.or(tab_outline_selection);
                                             }
                                         }
                                     });
@@ -6675,6 +6685,7 @@ impl App {
                 }
             }
             // Cache this viewport's popup state for native events between frames.
+            outliner_ui::hover::finish_frame(ctx);
             host.popup_open = egui::Popup::is_any_open(ctx);
             if host.ui_input() {
                 self.cancel_selection_drag(host);
@@ -7780,6 +7791,7 @@ impl App {
             host.messages_focused = host.messages_open && messages_input(ctx);
         });
         context.set_theme(previous_theme);
+        host.popup_open = egui::Popup::is_any_open(&context);
         host.ui_areas.capture(&context);
         if presentation_changed {
             self.changed();
@@ -7801,7 +7813,10 @@ impl App {
             host.repaint();
         }
         if let Some(target) = outline_selection {
-            self.select_outline(host, target);
+            self.select_outline(host, target, false);
+        }
+        if let Some(target) = tab_outline_selection {
+            self.select_outline(host, target, true);
         }
         if let Some(id) = retry_pane {
             self.failed_panes.remove(&id);
@@ -9351,6 +9366,24 @@ impl ApplicationHandler<Event> for App {
         } else {
             false
         };
+        // A passive preview must not swallow typing or inhibit quick-window autohide.
+        let dismiss_preview = match &event {
+            WindowEvent::Focused(false) => true,
+            WindowEvent::KeyboardInput {
+                event,
+                is_synthetic: false,
+                ..
+            } => {
+                event.state == ElementState::Pressed
+                    && key_dismisses_tab_outline(&event.logical_key)
+            }
+            WindowEvent::Ime(Ime::Preedit(text, _) | Ime::Commit(text)) => !text.is_empty(),
+            _ => false,
+        };
+        if dismiss_preview && outliner_ui::hover::dismiss(&self.context, host.viewport) {
+            host.popup_open = false;
+            host.repaint();
+        }
         let egui_event_start = host.egui.egui_input_mut().events.len();
         let response = host.egui.on_window_event(&host.window, &event);
         let egui_event_end = host.egui.egui_input_mut().events.len();
@@ -10423,6 +10456,20 @@ fn paint_window_controls_background(
     (selected, bounds)
 }
 
+fn key_dismisses_tab_outline(key: &winit::keyboard::Key) -> bool {
+    use winit::keyboard::{Key, NamedKey};
+    !matches!(
+        key,
+        Key::Named(
+            NamedKey::Escape
+                | NamedKey::Shift
+                | NamedKey::Control
+                | NamedKey::Alt
+                | NamedKey::Super
+        )
+    )
+}
+
 fn centered_tab_strip_rect(window: egui::Rect, available: egui::Rect, width: f32) -> egui::Rect {
     let width = width.min(available.width().max(0.0));
     let left = (window.center().x - width * 0.5).clamp(
@@ -10778,6 +10825,27 @@ fn paint_progress(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn typing_dismisses_tab_previews_but_escape_stays_with_the_popup() {
+        use winit::keyboard::{Key, NamedKey};
+        for key in [
+            Key::Character("a".into()),
+            Key::Named(NamedKey::Enter),
+            Key::Named(NamedKey::ArrowLeft),
+        ] {
+            assert!(key_dismisses_tab_outline(&key));
+        }
+        for key in [
+            NamedKey::Escape,
+            NamedKey::Shift,
+            NamedKey::Control,
+            NamedKey::Alt,
+            NamedKey::Super,
+        ] {
+            assert!(!key_dismisses_tab_outline(&Key::Named(key)));
+        }
+    }
 
     #[test]
     fn indexed_colors_preserve_fixed_and_cell_derived_settings() {
