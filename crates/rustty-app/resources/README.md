@@ -32,11 +32,12 @@ Resource provenance:
   Source: <https://github.com/microsoft/terminal>; the runtime preserves VT
   byte ordering required by application-controlled synchronized redraws.
 - `themes/` is the unmodified Ghostty-format export of iTerm2-Color-Schemes
-  release `release-20261019-151001-86a776d`, as pinned in `build.zig.zon`.
-  Source archive: <https://deps.files.ghostty.org/ghostty-themes-release-20261019-151001-86a776d.tgz>.
-  Verified Zig package hash: `N-V-__8AAJ3vBQAq1fLMh5J8uWLkeDLS6WAdR2x5KcrmEyz6`.
+  release `release-20261026-153024-27cbbb5`, as pinned in `build.zig.zon`.
+  Source archive: <https://deps.files.ghostty.org/ghostty-themes-release-20261026-153024-27cbbb5.tgz>.
+  Archive SHA-256: `38bb80d98456677bad9a78a76e83a1e4851e88900aec93af74c6251ca32b78a0`.
+  Verified Zig package hash: `N-V-__8AAIs9BgCF_swp81fS2tAWIJytW8NCUa6EbSOygPE3`.
   Its MIT license is retained in `iTerm2-Color-Schemes-LICENSE.txt`, fetched from
-  <https://github.com/mbadolato/iTerm2-Color-Schemes/blob/86a776d/LICENSE>.
+  <https://github.com/mbadolato/iTerm2-Color-Schemes/blob/27cbbb5/LICENSE>.
 - `ghostty.terminfo` is a source snapshot of `src/terminfo/ghostty.zig`, last
   changed in `69b9abf09ebad2b11a6850a28271676f6bfeb108`, encoded as documented by
   `src/terminfo/Source.zig`. It retains the `xterm-ghostty` name for protocol
