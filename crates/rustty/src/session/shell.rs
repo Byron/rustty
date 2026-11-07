@@ -161,14 +161,17 @@ impl ShellInfo {
         }
         let (value, authority) = if let Some(uri) = report.strip_prefix("file://") {
             let (host, path) = uri.split_once('/')?;
-            (percent_decode(&format!("/{path}"))?, Some(host))
+            (
+                percent_decode(&format!("/{path}"))?,
+                Some(percent_decode(host)?),
+            )
         } else if let Some(uri) = report.strip_prefix("kitty-shell-cwd://") {
             let (_, path) = uri.split_once('/')?;
             (format!("/{path}"), None)
         } else {
             (report.to_owned(), None)
         };
-        if value.contains('\0') {
+        if value.contains('\0') || authority.as_ref().is_some_and(|host| host.contains('\0')) {
             return None;
         }
         if remote {
@@ -195,7 +198,7 @@ impl ShellInfo {
             // file:///C:/... is an absolute Windows path after removing its URI slash.
             if authority.is_some() && value.as_bytes().get(2) == Some(&b':') {
                 value.remove(0);
-            } else if let Some(host) = authority
+            } else if let Some(host) = authority.as_deref()
                 && !host.is_empty()
                 && !host.eq_ignore_ascii_case("localhost")
                 && !std::env::var("COMPUTERNAME").is_ok_and(|name| name.eq_ignore_ascii_case(host))
@@ -339,6 +342,38 @@ fn percent_decode(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_cwd_authorities_accept_unusual_hosts_and_decode_uri_escapes() {
+        let shell = ShellInfo::new(vec!["cmd.exe".into()], "test".into());
+        for (host, decoded) in [
+            ("host name", "host name"),
+            ("host%20name", "host name"),
+            ("host's", "host's"),
+            ("host%27s", "host's"),
+            ("host_name", "host_name"),
+            ("h%C3%B6st", "höst"),
+            ("12:34:56:78:90:aa", "12:34:56:78:90:aa"),
+        ] {
+            let report = format!("file://{host}/share/one%20two");
+            let expected = if cfg!(windows) {
+                PathBuf::from(format!(r"\\{decoded}\share\one two"))
+            } else {
+                PathBuf::from("/share/one two")
+            };
+            assert_eq!(shell.decode_directory(&report, false), Some(expected));
+            assert_eq!(
+                shell.decode_directory(&report, true),
+                Some(PathBuf::from("/share/one two"))
+            );
+        }
+        for host in ["host%", "host%0", "host%xx", "host%00", "host%ff"] {
+            let report = format!("file://{host}/share");
+            assert_eq!(shell.decode_directory(&report, false), None);
+            assert_eq!(shell.decode_directory(&report, true), None);
+        }
+    }
+
     #[test]
     fn explicit_argv_never_uses_terminal_defaults() {
         let shell = resolve_shell(Some(&Command::Direct(vec![

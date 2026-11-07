@@ -25,7 +25,8 @@ pub(super) fn reported_path(bytes: &[u8], hostname: Option<&str>) -> Option<Stri
         .strip_prefix("file://")
         .or_else(|| report.strip_prefix("kitty-shell-cwd://"));
     let value = if let Some(uri) = uri {
-        let (host, path) = uri.split_once('/')?;
+        let (host, path) = uri.split_at(uri.find('/')?);
+        let host = percent_decode(host)?;
         let host = host.trim_end_matches('.');
         // A nested SSH shell can report a directory on a different host.
         if !host.is_empty()
@@ -43,18 +44,11 @@ pub(super) fn reported_path(bytes: &[u8], hostname: Option<&str>) -> Option<Stri
         {
             return None;
         }
-        let mut decoded = vec![b'/'];
-        let mut input = path.bytes();
-        while let Some(byte) = input.next() {
-            decoded.push(if file_uri && byte == b'%' {
-                let high = char::from(input.next()?).to_digit(16)?;
-                let low = char::from(input.next()?).to_digit(16)?;
-                (high * 16 + low) as u8
-            } else {
-                byte
-            });
+        if file_uri {
+            percent_decode(path)?
+        } else {
+            path.to_owned()
         }
-        String::from_utf8(decoded).ok()?
     } else {
         report.to_owned()
     };
@@ -71,10 +65,62 @@ pub(super) fn reported_path(bytes: &[u8], hostname: Option<&str>) -> Option<Stri
     (!value.contains('\0') && std::path::Path::new(&value).is_absolute()).then_some(value)
 }
 
+fn percent_decode(value: &str) -> Option<String> {
+    let mut decoded = Vec::with_capacity(value.len());
+    let mut input = value.bytes();
+    while let Some(byte) = input.next() {
+        decoded.push(if byte == b'%' {
+            let high = char::from(input.next()?).to_digit(16)?;
+            let low = char::from(input.next()?).to_digit(16)?;
+            (high * 16 + low) as u8
+        } else {
+            byte
+        });
+    }
+    let decoded = String::from_utf8(decoded).ok()?;
+    (!decoded.contains('\0')).then_some(decoded)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{ClientContext, Engine, Outcome};
     use tmuxx_command::Command;
+
+    #[test]
+    fn reported_uri_authorities_decode_before_local_host_matching() {
+        let path = if cfg!(windows) { "/C:/work" } else { "/work" };
+        let expected = if cfg!(windows) { "C:/work" } else { "/work" };
+        for (host, local) in [
+            ("host name", "host name"),
+            ("host%20name", "host name"),
+            ("host's", "host's"),
+            ("host%27s", "host's"),
+            ("host_name", "host_name"),
+            ("h%C3%B6st", "höst"),
+            ("höst", "höst"),
+            ("12:34:56:78:90:aa", "12:34:56:78:90:aa"),
+            ("HOST%2Eexample%2E", "host.example"),
+        ] {
+            for scheme in ["file", "kitty-shell-cwd"] {
+                let report = format!("{scheme}://{host}{path}");
+                assert_eq!(
+                    super::reported_path(report.as_bytes(), Some(local)),
+                    Some(expected.into()),
+                    "{report}"
+                );
+                assert_eq!(super::reported_path(report.as_bytes(), Some("other")), None);
+            }
+        }
+        for host in ["host%", "host%0", "host%xx", "host%00", "host%ff"] {
+            for scheme in ["file", "kitty-shell-cwd"] {
+                assert_eq!(
+                    super::reported_path(format!("{scheme}://{host}{path}").as_bytes(), Some(host)),
+                    None,
+                    "{scheme}://{host}"
+                );
+            }
+        }
+    }
 
     fn run(
         engine: &mut Engine,
