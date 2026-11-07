@@ -611,12 +611,13 @@ impl Graphics {
 }
 
 impl Graphics {
-    /// Resolve a Unicode placeholder's optional application-supplied placement ID.
+    /// Resolve a Unicode placeholder's optional ID to a virtual placement.
     pub fn placeholder_target(&self, image_id: u32, placement_id: u32) -> Option<&Placement> {
         if placement_id != 0 {
             return self
                 .placements
-                .get((image_id, PlacementId::External(placement_id)));
+                .get((image_id, PlacementId::External(placement_id)))
+                .filter(|p| p.virtual_placement);
         }
         self.placements
             .iter()

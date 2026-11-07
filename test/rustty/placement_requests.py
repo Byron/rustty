@@ -22,6 +22,12 @@ def case(name, operations, cell=(8, 16)):
 
 def requests():
     observe = {"op": "observe"}
+    request, covers = case("cursor/shrink-erases-old-row", [
+        {"op": "grid", "grid": {"action": "limits", "bytes": 0}},
+        b"\x1b[6;1Hx\x1b[1;1H", {"op": "resize", "cols": 12, "rows": 3},
+        upload(1, 1), command(b"a=p,i=1,p=1,c=1,r=1,C=1")], cell=None)
+    request.update(kind="input", rows=6)
+    yield request, covers + ["terminal.resize", "terminal.cursor"]
     sizes = [b"", b"c=2", b"r=2", b"c=3,r=2", b"c=4294967295", b"r=4294967295",
              b"c=4294967295,r=4294967295"]
     for width, height in ((1, 1), (4, 3), (17, 19)):

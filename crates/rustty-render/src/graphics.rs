@@ -2046,7 +2046,7 @@ mod tests {
             .filter(|p| p.image == 1 && p.placement == PlacementId::External(5))
             .count()
         };
-        assert_eq!(count(&terminal), 2); // Ordinary placement plus its explicit placeholder.
+        assert_eq!(count(&terminal), 1); // The placeholder cannot duplicate a pinned placement.
         terminal.feed(b"\x1b_Ga=d,d=i,i=1,p=3\x1b\\\x1b_Ga=d,d=i,i=1,p=9\x1b\\");
         assert_eq!(count(&terminal), 1); // No virtuals remain to enable placeholder rendering.
     }

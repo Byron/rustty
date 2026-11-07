@@ -9,6 +9,47 @@ fn place(terminal: &mut Terminal, options: &str) {
 }
 
 #[test]
+fn placeholders_only_resolve_virtual_placements_even_with_an_exact_id() {
+    let mut t = Terminal::new(12, 6, 0);
+    t.feed(b"\x1b_Ga=t,i=1,f=32,s=1,v=1,q=2;AQID/w==\x1b\\");
+    place(&mut t, "i=1,p=9,U=1");
+    place(&mut t, "i=1,p=3");
+    place(&mut t, "i=1,p=2,P=1,Q=9");
+    assert!(t.graphics().placeholder_target(1, 3).is_none());
+    assert!(t.graphics().placeholder_target(1, 2).is_none());
+    assert_eq!(
+        t.graphics().placeholder_target(1, 0).unwrap().placement_id,
+        PlacementId::External(9)
+    );
+    assert!(
+        t.graphics()
+            .placeholder_target(1, 9)
+            .unwrap()
+            .virtual_placement
+    );
+}
+
+#[test]
+fn placing_after_no_history_shrink_uses_the_live_cursor_row() {
+    let mut t = Terminal::new(12, 6, 0);
+    let erased_row = t.screen().row(0).id;
+    t.feed(b"\x1b[6;1Hx\x1b[1;1H");
+    t.resize(12, 3);
+    let live_row = t.screen().row(t.screen().cursor.row).id;
+    assert_ne!(erased_row, live_row);
+    t.feed(b"\x1b_Ga=t,i=1,f=32,s=1,v=1,q=2;AQID/w==\x1b\\");
+    place(&mut t, "i=1,p=1");
+    let p = t
+        .graphics()
+        .placements
+        .get((1, PlacementId::External(1)))
+        .unwrap();
+    assert_eq!(p.row, live_row);
+    assert_eq!(p.col, t.screen().cursor.col);
+    assert_eq!(t.screen().cursor.row, 0);
+}
+
+#[test]
 fn erased_history_removes_fixed_roots_and_descendants_only() {
     for history_limit in [0, 100] {
         let mut terminal = Terminal::new(10, 3, history_limit);
