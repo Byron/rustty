@@ -72,6 +72,12 @@ def requests():
             export(scope, content=content, **{scope + "_extra":
                 screen_extra(SCREEN_FLAGS) if scope == "screen" else terminal_extra(TERMINAL_FLAGS, SCREEN_FLAGS)})
             for scope, content in itertools.product(("screen", "terminal"), ("all", "none"))]], cols=4)
+    for index, data in enumerate((b"\x1b[?69h\x1b[;2s00",
+                                  "\x1b[?69h\x1b[3;6s\x1b[1;5H😀".encode(),
+                                  b"\x1b[?69h\x1b[3;6s\x1b[1;20Hx")):
+        yield case(f"pending-wrap-margin-{index}", [data,
+                   export("terminal", terminal_extra=terminal_extra(TERMINAL_FLAGS, SCREEN_FLAGS),
+                          format_map=True)], cols=20)
     for gl, gr in itertools.product((b"", b"\x0e", b"\x1bn", b"\x1bo"), (b"", b"\x1b~", b"\x1b}", b"\x1b|")):
         yield case(f"charsets/{gl.hex()}/{gr.hex()}", [b"\x1b(0\x1b)A\x1b*B\x1b+0" + gl + gr,
                     export("screen", content="none", screen_extra=screen_extra(["charsets"])), b"\x1bc",

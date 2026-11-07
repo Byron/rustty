@@ -307,7 +307,13 @@ impl<'a> ScreenFormatter<'a> {
             )?,
         };
         if self.options.emit == Format::Vt {
-            screen_extra(&mut out.bytes, self.screen, self.options, self.extra);
+            screen_extra(
+                &mut out.bytes,
+                self.screen,
+                self.options,
+                self.extra,
+                self.screen.columns - 1,
+            );
             out.map_last();
         }
         Some(())
@@ -412,6 +418,14 @@ impl<'a> TerminalFormatter<'a> {
                 terminal.screen(),
                 self.options,
                 self.extra.screen,
+                if self.extra.modes
+                    && self.extra.scrolling_region
+                    && terminal.screen().cursor.col <= terminal.margins.right
+                {
+                    terminal.margins.right
+                } else {
+                    terminal.screen().columns - 1
+                },
             );
             if self.extra.screen.cursor && !terminal.metadata.cursor_is_default {
                 let cursor = &terminal.screen().cursor;
@@ -578,13 +592,19 @@ fn palette(out: &mut Vec<u8>, terminal: &Terminal, emit: Format) {
     }
 }
 
-fn screen_extra(out: &mut Vec<u8>, screen: &Screen, options: Options<'_>, extra: ScreenExtra) {
+fn screen_extra(
+    out: &mut Vec<u8>,
+    screen: &Screen,
+    options: Options<'_>,
+    extra: ScreenExtra,
+    wrap_column: usize,
+) {
     let cursor = &screen.cursor;
     if extra.cursor {
         if !screen.extra_cursors().is_default() {
             screen.extra_cursors().write_replay(out);
         }
-        let wrapped = cursor.pending_wrap && cursor.col == screen.columns - 1;
+        let wrapped = cursor.pending_wrap && cursor.col == wrap_column;
         let col = if wrapped {
             screen.row(cursor.row).cell_span(cursor.col).start
         } else {

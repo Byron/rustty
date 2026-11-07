@@ -195,6 +195,62 @@ fn full_vt_export_restores_pending_wrap_before_the_active_cursor_attributes() {
 }
 
 #[test]
+fn terminal_export_replays_pending_wrap_at_restored_horizontal_margins() {
+    for stream in [
+        "\x1b[?69h\x1b[;2s00",
+        "\x1b[?69h\x1b[3;6s\x1b[1;5H😀",
+        "\x1b[?69h\x1b[3;6s\x1b[1;20Hx",
+    ] {
+        let mut source = Terminal::new(20, 4, 0);
+        source.feed(stream.as_bytes());
+        assert!(source.screen().cursor.pending_wrap);
+        let mut formatter = source.formatter(Format::Vt);
+        formatter.extra = TerminalExtra::ALL;
+        let mut replayed = Terminal::new(20, 4, 0);
+        replayed.feed(&formatter.format().unwrap());
+        assert_eq!(
+            source.screen().cursor,
+            replayed.screen().cursor,
+            "{stream:?}"
+        );
+        source.feed(b"X");
+        replayed.feed(b"X");
+        let lines = |t: &Terminal| {
+            t.screen()
+                .rows()
+                .map(|row| t.screen().row_text(row))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(lines(&source), lines(&replayed), "{stream:?}");
+        assert_eq!(source.screen().cursor, replayed.screen().cursor);
+    }
+}
+
+#[test]
+fn export_without_restored_margins_does_not_reprint_the_margin_cell() {
+    let mut source = Terminal::new(20, 4, 0);
+    source.feed(b"\x1b[?69h\x1b[;2s00");
+    for (modes, scrolling_region) in [(false, false), (false, true), (true, false)] {
+        let mut formatter = source.formatter(Format::Vt);
+        formatter.extra = TerminalExtra {
+            modes,
+            scrolling_region,
+            ..TerminalExtra::ALL
+        };
+        let mut replayed = Terminal::new(20, 4, 0);
+        replayed.feed(&formatter.format().unwrap());
+        assert!(!replayed.screen().cursor.pending_wrap);
+        assert_eq!(replayed.screen().cursor.col, 1);
+    }
+    let mut formatter = source.screen().formatter(Format::Vt);
+    formatter.extra = rustty_vt::formatter::ScreenExtra::ALL;
+    let mut replayed = Terminal::new(20, 4, 0);
+    replayed.feed(&formatter.format().unwrap());
+    assert!(!replayed.screen().cursor.pending_wrap);
+    assert_eq!(replayed.screen().cursor.col, 1);
+}
+
+#[test]
 fn state_only_vt_export_restores_terminal_settings_without_printing_content() {
     let mut terminal = Terminal::new(8, 4, 100);
     terminal.feed(b"text\x1b[?1h\x1b[?7l\x1b[?69h\x1b[2;7s\x1b[2;3r\x1b[3g\x1b[2G\x1bH\x1b[6G\x1bH\x1b[>4;2m\x1b]7;file://host/\xffpath\x07\x1b[2;4H");
