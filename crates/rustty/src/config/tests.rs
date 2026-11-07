@@ -4,6 +4,39 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
 #[test]
+fn direct_commands_skip_repeated_spaces_and_keep_literal_tabs() {
+    let home = TestHome::new();
+    home.own(
+        "command = direct:  printf   one\tword  two  \ninitial-command = direct:  echo   ready  \n",
+    );
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(
+        loaded.config.command,
+        Some(Command::Direct(args(&["printf", "one\tword", "two"])))
+    );
+    assert_eq!(
+        loaded.config.initial_command,
+        Some(Command::Direct(args(&["echo", "ready"])))
+    );
+    assert_eq!(
+        Command::parse(" shell:  printf   one\tword ").unwrap(),
+        Command::Shell("printf   one\tword".into())
+    );
+    for invalid in [
+        "",
+        " ",
+        "direct:",
+        "direct: \t",
+        "shell:",
+        "shell: \t",
+        "direct: a\0b",
+    ] {
+        assert!(Command::parse(invalid).is_err(), "{invalid:?}");
+    }
+}
+
+#[test]
 fn command_finish_exclusions_match_programs_without_guessing_from_arguments() {
     let config = Config::default();
     for command in [

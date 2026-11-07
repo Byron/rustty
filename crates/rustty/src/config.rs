@@ -219,7 +219,13 @@ impl Command {
                 return Err("direct command is empty");
             }
             // Ghostty's direct form deliberately splits on spaces without shell expansion.
-            Ok(Self::Direct(value.split(' ').map(str::to_owned).collect()))
+            Ok(Self::Direct(
+                value
+                    .split(' ')
+                    .filter(|arg| !arg.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+            ))
         } else {
             let value = value.strip_prefix("shell:").unwrap_or(value).trim();
             if value.is_empty() {
