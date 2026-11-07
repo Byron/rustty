@@ -1622,6 +1622,8 @@ impl Terminal {
             if len == 0 {
                 break;
             }
+            // Skip mixed-row admission for entire narrow, wide or combining blocks.
+            let mixed_widths = properties[..len].iter().fold(0, |bits, p| bits | p) & 3 == 3;
             let mut offset = 0;
             while offset < len {
                 let mut state = self.grapheme_state;
@@ -1630,6 +1632,7 @@ impl Terminal {
                     &properties[offset..len],
                     right,
                     graphemes,
+                    mixed_widths,
                     &mut state,
                 );
                 if count != 0 {

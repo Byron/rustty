@@ -424,3 +424,55 @@ fn apc_batches_preserve_pixels_glyph_limits_and_unfinished_payloads() {
         }
     }
 }
+
+#[test]
+fn mixed_width_handoffs_and_decode_boundaries_match_scalar_printing() {
+    let mut texts = vec![
+        "abcd中 二".to_owned(),
+        "中二a三".to_owned(),
+        "中 中".to_owned(),
+        "a☝🏻b".to_owned(),
+        " 中ःb".to_owned(),
+        "a\u{600}中b".to_owned(),
+        "中二👍🏻三".to_owned(),
+        "aабःb".to_owned(),
+        "中 ©\u{200d}🙂a".to_owned(),
+    ];
+    for length in [3, 4, 5, 31, 32, 33] {
+        texts.push(format!("中 {} a界", "語".repeat(length)));
+    }
+    for length in [255, 256, 257] {
+        texts.push("中 a".chars().cycle().take(length).collect());
+    }
+    for graphemes in [false, true] {
+        for text in &texts {
+            let mut base = Terminal::new(73, 5, 100);
+            base.feed(if graphemes {
+                b"\x1b[?2027h"
+            } else {
+                b"\x1b[?2027l"
+            });
+            base.feed(b"\x1b[1;31;44m\x1b[1\"q\x1b]133;P\x07");
+            let mut expected = base.clone();
+            for cp in text.chars() {
+                expected.print(cp);
+            }
+            for handler in [false, true] {
+                for chunk in [usize::MAX, 7, 255] {
+                    let mut actual = base.clone();
+                    assert!(deliver(&mut actual, text.as_bytes(), chunk, handler).is_empty());
+                    let context = format!(
+                        "mixed={text:?}, 2027={graphemes}, chunk={chunk}, handler={handler}"
+                    );
+                    same_state(&actual, &expected, &context);
+                    let mut repeated = expected.clone();
+                    assert_eq!(
+                        actual.feed(b"\x1b[2b\x1b[6n"),
+                        repeated.feed(b"\x1b[2b\x1b[6n")
+                    );
+                    same_state(&actual, &repeated, &context);
+                }
+            }
+        }
+    }
+}

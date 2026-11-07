@@ -13,9 +13,9 @@ def requests(reference):
     def cluster(length=1, base="a"):
         return base + "\u0301" * length
 
-    def case(name, cols, rows, operations):
+    def case(name, cols, rows, operations, **options):
         return ({"id": "pages/graphemes/" + name, "kind": "input", "cols": cols,
-                 "rows": rows, "operations": [pages, *operations]},
+                 "rows": rows, "operations": [pages, *operations], **options},
                 ["terminal.pages", "terminal.cells"])
 
     for cols, rows in ((80, 24), (1024, 2), (1024, 46)):
@@ -146,3 +146,58 @@ def requests(reference):
                         write("\x1b[?69l\x1b[r\x1b[H" + cluster(5) * 17), pages,
                         {"op": "observe"}, {"op": "snapshot"},
                     ])
+
+    # Mixed-width rows exercise joins, overwrite barriers and page-local pen IDs.
+    simple = [
+        ("wide-space-edge", 4, "", "中 中"),
+        ("one-column", 1, "", "中 a語"),
+        ("two-columns", 2, "", "中 a語"),
+        ("three-columns", 3, "", "中 a語"),
+        ("pending-narrow-wide", 4, "", "abcd中 二"),
+        ("pending-wide-narrow", 4, "", "中二a三"),
+        ("skin-tone", 5, "x", "a☝🏻b"),
+        ("spacing-mark", 5, "x", " 中ःb"),
+        ("prepend", 5, "x", "a\u0600中b"),
+        ("regional-pair", 5, "x", "a🇦🇧b"),
+        ("join-inside-wide", 12, "", "中二👍🏻三"),
+        ("join-inside-narrow", 12, "", "aабःb"),
+        ("placeholder", 9, "", "中 a\U0010eeee\u0301語 b"),
+        ("latin1-control", 9, "", "中é\u00adÿ語\u0085a"),
+        ("latin1-grapheme", 9, "", "中 ©\u200d🙂a"),
+        ("overwrite-barriers", 9,
+         "\x1b[31m界a\u0301\x1b]8;id=old;old\x1b\\x\x1b]8;;\x1b\\"
+         "\x1b[0m界Q\x1b[H\x1b[1;44m\x1b[1\"q\x1b]133;P\x07",
+         "中 a語 b界 c"),
+    ]
+    for length in (3, 4, 5, 31, 32, 33):
+        simple.append((f"homogeneous-return/{length}", 120, "", "中 " + "語" * length + " a界"))
+    for length in (255, 256, 257):
+        simple.append((f"decode-boundary/{length}", 73, "", ("中 a" * 86)[:length]))
+    for graphemes in (False, True):
+        mode = f"\x1b[?2027{'h' if graphemes else 'l'}"
+        for name, cols, setup, body in simple:
+            yield case(f"mixed-batch/{name}/{int(graphemes)}", cols, 5, [
+                write(mode + setup), write(body), {"op": "observe"}, {"op": "pages"},
+                write("\x1b[2b"), {"op": "observe"},
+            ], observe_semantic=True, kind="snapshot", after=[write("\x1b[2b\x1b[6n")])
+
+    # Exactly the upstream stale-style shape: prior page has three unrelated
+    # styles, the pen is bold, and the printable slice itself triggers a wrap.
+    layout = reference.request({"id": "mixed-batch/capacity", "kind": "page_layout",
+                                "page_layout": {"columns": 200}})
+    if not layout["ok"]:
+        raise RuntimeError("mixed batching native capacity query failed")
+    rows = layout["page_layout"]["layout"]["capacity"]["rows"]
+    if rows < 3:
+        raise RuntimeError("mixed batching source page is smaller than its active rows")
+    styles = "\x1b[3my\x1b[0m\x1b[2my\x1b[0m\x1b[4my\x1b[0m\x1b[1m"
+    body = "".join(" " if i % 3 == 2 else chr(0x4E00 + i % 512) for i in range(807))
+    for limit in (10_000, 50_000_000):
+        for graphemes in (False, True):
+            mode = f"\x1b[?2027{'h' if graphemes else 'l'}"
+            yield case(f"mixed-batch/style-page-crossing/{limit}/{int(graphemes)}", 200, 3, [
+                {"op": "grid", "grid": {"action": "limits", "bytes": limit}},
+                write(mode + styles + "\x1b[3;1H" + "\n" * (rows - 3)),
+                {"op": "pages"}, write(body), {"op": "pages"}, {"op": "observe"},
+                write("\x1b[2b"), {"op": "observe"},
+            ], observe_semantic=True, kind="snapshot", after=[write("\x1b[2b\x1b[6n")])

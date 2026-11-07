@@ -3,6 +3,105 @@ use crate::packed::Cell;
 
 pub(crate) const DEST_MASK: u64 = 3 | Cell::STYLE_MASK | Cell::WIDE_MASK | Cell::HYPERLINK_MASK;
 
+/// Hand sparse width changes back to SIMD before scalar work outweighs batching.
+pub(crate) const HOMOGENEOUS_MAX: usize = 4;
+
+/// Progress within one mixed-width row. No page IDs or borrows survive a wrap.
+pub(crate) struct MixedRun {
+    pub codepoints: usize,
+    pub cells: usize,
+    pub default_styles: u16,
+    pub state: u8,
+    same_width: usize,
+}
+
+impl MixedRun {
+    pub fn new(state: u8) -> Self {
+        Self {
+            codepoints: 0,
+            cells: 0,
+            default_styles: 0,
+            state,
+            same_width: 0,
+        }
+    }
+
+    /// Returns true only when the next eligible scalar needs destination restyling.
+    /// The caller has checked the leading grapheme boundary and owns the style.
+    #[inline(never)]
+    pub fn fill(
+        &mut self,
+        cells: &mut [Cell],
+        codepoints: &[char],
+        properties: &[u32],
+        template: Cell,
+        graphemes: bool,
+    ) -> bool {
+        use crate::unicode;
+        let expected = template.bits() & Cell::STYLE_MASK;
+        let mut tail = template;
+        tail.set_width(0);
+        while self.codepoints < codepoints.len() {
+            let p = self.codepoints;
+            let cp = codepoints[p];
+            let width = (properties[p] & 3) as usize;
+            if !(1..=2).contains(&width)
+                || cp < '\u{10}'
+                || cp == crate::graphics::unicode::PLACEHOLDER
+            {
+                return false;
+            }
+            // Test a join before the row boundary. The fallback can still attach
+            // a combining scalar to the last cell when pending_wrap is set.
+            let mut next_state = self.state;
+            if graphemes && p != 0 && cp as u32 > 255 {
+                let previous = if codepoints[p - 1] as u32 <= 255 {
+                    unicode::properties(codepoints[p - 1]).grapheme
+                } else {
+                    ((properties[p - 1] >> 3) & 31) as u8
+                };
+                if !unicode::grapheme_break_properties(
+                    previous,
+                    ((properties[p] >> 3) & 31) as u8,
+                    &mut next_state,
+                ) {
+                    return false;
+                }
+            }
+            if self.cells + width > cells.len() {
+                return false;
+            }
+            let first = self.cells;
+            let last = first + width - 1;
+            let a = cells[first].bits() & DEST_MASK;
+            let b = cells[last].bits() & DEST_MASK;
+            if (a != expected && a != 0) || (b != expected && b != 0) {
+                return true;
+            }
+            if expected != 0 {
+                self.default_styles += u16::from(a == 0) + u16::from(width == 2 && b == 0);
+            }
+            // A narrow scalar overwrites its temporary tail in the same slot.
+            cells[last] = tail;
+            let mut head = template;
+            head.set_width(width as u8);
+            cells[first] = Cell::from_bits(head.bits() | (u64::from(cp) << 2));
+            self.codepoints += 1;
+            self.cells += width;
+            self.state = next_state;
+            self.same_width = if p != 0 && properties[p - 1] & 3 == width as u32 {
+                self.same_width + 1
+            } else {
+                1
+            };
+            if self.same_width >= HOMOGENEOUS_MAX {
+                return false;
+            }
+        }
+        false
+    }
+}
+
 #[cfg(not(all(
     target_arch = "aarch64",
     target_feature = "neon",

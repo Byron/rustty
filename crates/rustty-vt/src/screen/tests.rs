@@ -1402,3 +1402,79 @@ fn grouped_style_comparison_matches_derived_equality() {
 
 #[path = "blank_tests.rs"]
 mod blank_tests;
+
+#[test]
+fn mixed_row_writer_crosses_width_changes_and_restyles_exact_cells() {
+    for graphemes in [false, true] {
+        let mut terminal = Terminal::new(32, 3, 100);
+        terminal.feed(b"\x1b[31mold\x1b[32mrun\x1b[0m\r\x1b[1m");
+        let input: Vec<_> = "界 a語b".chars().collect();
+        let properties: Vec<_> = input
+            .iter()
+            .copied()
+            .map(crate::unicode::print_properties)
+            .collect();
+        let mut state = 0;
+        assert_eq!(
+            terminal.screen_mut().write_cursor_codepoints(
+                &input,
+                &properties,
+                31,
+                graphemes,
+                true,
+                &mut state,
+            ),
+            input.len()
+        );
+        let row = terminal.screen().row(0);
+        assert_eq!(terminal.screen().cursor.col, 7);
+        assert_eq!(row.cells[0].codepoint(), Some('界'));
+        assert_eq!(row.cells[1].width(), 0);
+        assert_eq!(row.cells[4].codepoint(), Some('語'));
+        assert_eq!(row.cells[5].width(), 0);
+        assert!((0..7).all(|col| row.style(col).bold));
+        assert_references(terminal.screen());
+    }
+}
+
+#[test]
+fn mixed_batches_reacquire_styles_after_crossing_a_page() {
+    for bytes in [10_000, 50_000_000] {
+        let mut terminal = Terminal::with_limits(
+            200,
+            3,
+            ScrollbackLimits {
+                lines: None,
+                bytes: Some(bytes),
+            },
+        );
+        terminal.feed(b"\x1b[3my\x1b[0m\x1b[2my\x1b[0m\x1b[4my\x1b[0m\x1b[1m\x1b[3;1H");
+        let page_rows = usize::from(terminal.screen().pages.pages[0].capacity.rows);
+        terminal.feed(&vec![b'\n'; page_rows - 3]);
+        let old_page = terminal.screen().cursor_style.unwrap().0;
+        let text: String = "界 語".chars().cycle().take(807).collect();
+        let mut scalar = terminal.clone();
+        for cp in text.chars() {
+            scalar.print(cp);
+        }
+        terminal.feed(text.as_bytes());
+        assert_ne!(terminal.screen().cursor_style.unwrap().0, old_page);
+        assert_eq!(
+            snapshot::encode_to_vec(&terminal).unwrap(),
+            snapshot::encode_to_vec(&scalar).unwrap()
+        );
+        for row in terminal.screen().rows() {
+            for (col, cell) in row.cells.iter().enumerate() {
+                if cell.codepoint().is_some() {
+                    assert!(row.style(col).bold);
+                }
+            }
+        }
+        assert_references(terminal.screen());
+        assert_references(scalar.screen());
+        let detached = terminal.screen().snapshot_viewport();
+        terminal.resize(97, 3);
+        assert_references(terminal.screen());
+        assert_references(&detached);
+    }
+}

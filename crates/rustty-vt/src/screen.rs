@@ -2110,6 +2110,7 @@ impl Screen {
         properties: &[u32],
         right: usize,
         graphemes: bool,
+        mixed_widths: bool,
         state: &mut u8,
     ) -> usize {
         use crate::{printing, unicode};
@@ -2123,8 +2124,9 @@ impl Screen {
         if width == 0 {
             return 0;
         }
+        let available = right + 1 - self.cursor.col;
         let len = printing::printable_prefix(properties, width, graphemes)
-            .min((right + 1 - self.cursor.col) / usize::from(width));
+            .min(available / usize::from(width));
         if len == 0 {
             return 0;
         }
@@ -2164,59 +2166,85 @@ impl Screen {
                 return 0;
             }
         }
-        let cells = &page.cells[offset..offset + len * usize::from(width)];
-        let old = cells[0];
-        if old.has_grapheme() || old.has_hyperlink() || page.style(offset).tmux_tab != 0 {
-            return 0;
-        }
-        let count = if page.headers[row].has(RowHeader::BLANK) {
-            len
-        } else if old.width() == 1 {
-            printing::destination_narrow(cells, old.bits() & printing::DEST_MASK)
-                / usize::from(width)
-        } else if width == 2
-            && old.width() == 2
-            && cells[1].width() == 0
-            && cells[1].style_id() == old.style_id()
-            && !cells[1].has_grapheme()
-            && !cells[1].has_hyperlink()
-        {
-            printing::destination_wide(
-                cells,
-                [
-                    old.bits() & printing::DEST_MASK,
-                    cells[1].bits() & printing::DEST_MASK,
-                ],
-            ) / 2
+        // XOR 3 recognizes a transition between printable widths 1 and 2.
+        let mixed = mixed_widths
+            && len < printing::HOMOGENEOUS_MAX
+            && properties
+                .get(len)
+                .is_some_and(|p| (p & 3) ^ u32::from(width) == 3)
+            && len * usize::from(width) < available
+            && self.cursor.style.tmux_tab == 0;
+        let (count, slots, mut marked) = if mixed {
+            let result = self.write_cursor_mixed_codepoints(
+                codepoints,
+                properties,
+                (index, row),
+                available,
+                graphemes,
+                next_state,
+            );
+            next_state = result.2;
+            (result.0, result.1, self.cursor_template(None, 1, false))
         } else {
-            0
+            let page = &self.pages.pages[index];
+            let cells = &page.cells[offset..offset + len * usize::from(width)];
+            let old = cells[0];
+            if old.has_grapheme() || old.has_hyperlink() || page.style(offset).tmux_tab != 0 {
+                return 0;
+            }
+            let count = if page.headers[row].has(RowHeader::BLANK) {
+                len
+            } else if old.width() == 1 {
+                printing::destination_narrow(cells, old.bits() & printing::DEST_MASK)
+                    / usize::from(width)
+            } else if width == 2
+                && old.width() == 2
+                && cells[1].width() == 0
+                && cells[1].style_id() == old.style_id()
+                && !cells[1].has_grapheme()
+                && !cells[1].has_hyperlink()
+            {
+                printing::destination_wide(
+                    cells,
+                    [
+                        old.bits() & printing::DEST_MASK,
+                        cells[1].bits() & printing::DEST_MASK,
+                    ],
+                ) / 2
+            } else {
+                0
+            };
+            if count == 0 {
+                return 0;
+            }
+            // Once the leading boundary is checked, neighboring input characters
+            // in this run have ordinary grapheme classes. Latin-1 skips segmentation.
+            if graphemes
+                && (1..=4).contains(&next_state)
+                && codepoints[1..count].iter().any(|&cp| cp as u32 > 255)
+            {
+                next_state = 0;
+            }
+            let head = self.cursor_template(None, width, false);
+            let tail = self.cursor_template(None, 0, false);
+            let page = &mut self.pages.pages[index];
+            let slots = count * usize::from(width);
+            page.replace_simple_styles(old.style_id(), head.style_id(), slots);
+            let cells = &mut page.cells[offset..offset + slots];
+            if width == 1 {
+                printing::store_narrow(cells, &codepoints[..count], head);
+            } else {
+                printing::store_wide(cells, &codepoints[..count], head, tail);
+            }
+            (count, slots, head)
         };
         if count == 0 {
             return 0;
         }
-        // Once the leading boundary is checked, neighboring input characters
-        // in this run have ordinary grapheme classes. Latin-1 skips segmentation.
-        if graphemes
-            && (1..=4).contains(&next_state)
-            && codepoints[1..count].iter().any(|&cp| cp as u32 > 255)
-        {
-            next_state = 0;
-        }
-        let head = self.cursor_template(None, width, false);
-        let tail = self.cursor_template(None, 0, false);
-        let page = &mut self.pages.pages[index];
-        let slots = count * usize::from(width);
-        page.replace_simple_styles(old.style_id(), head.style_id(), slots);
-        let cells = &mut page.cells[offset..offset + slots];
-        if width == 1 {
-            printing::store_narrow(cells, &codepoints[..count], head);
-        } else {
-            printing::store_wide(cells, &codepoints[..count], head, tail);
-        }
-        let mut marked = head;
         if codepoints[..count].contains(&crate::graphics::unicode::PLACEHOLDER) {
             marked.set_codepoint(Some(crate::graphics::unicode::PLACEHOLDER));
         }
+        let page = &mut self.pages.pages[index];
         page.mark_cell(row, marked);
         self.graphics
             .overwrite_sixel(page.row_ids[row], self.cursor.col, self.cursor.col + slots);
@@ -2234,6 +2262,51 @@ impl Screen {
         self.cursor.col = col.min(right);
         self.cursor.pending_wrap = col > right;
         count
+    }
+
+    // Keep mixed-only restyling out of the common uniform and scalar fallback paths.
+    #[inline(never)]
+    fn write_cursor_mixed_codepoints(
+        &mut self,
+        codepoints: &[char],
+        properties: &[u32],
+        location: (usize, usize),
+        available: usize,
+        graphemes: bool,
+        state: u8,
+    ) -> (usize, usize, u8) {
+        use crate::printing;
+        let (index, row) = location;
+        let narrow = self.cursor_template(None, 1, false);
+        let page = &mut self.pages.pages[index];
+        let offset = page.slot(row, self.cursor.col);
+        let mut run = printing::MixedRun::new(state);
+        while run.fill(
+            &mut page.cells[offset..offset + available],
+            codepoints,
+            properties,
+            narrow,
+            graphemes,
+        ) {
+            // Restyle only the already classified next scalar. Wide cells,
+            // graphemes, links, background tags and tmux tabs need scalar cleanup.
+            let width = (properties[run.codepoints] & 3) as usize;
+            let start = offset + run.cells;
+            let end = start + width;
+            if (start..end).any(|slot| {
+                page.cells[slot].bits() & (printing::DEST_MASK & !Cell::STYLE_MASK) != 0
+                    || page.style(slot).tmux_tab != 0
+            }) {
+                break;
+            }
+            for slot in start..end {
+                page.replace_simple_styles(page.cells[slot].style_id(), narrow.style_id(), 1);
+                page.cells[slot].set_style_id(narrow.style_id());
+            }
+        }
+        page.styles
+            .retain_many(narrow.style_id(), run.default_styles);
+        (run.codepoints, run.cells, run.state)
     }
 
     pub(crate) fn next_row_id(&mut self) -> u64 {
