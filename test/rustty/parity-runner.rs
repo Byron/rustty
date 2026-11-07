@@ -711,9 +711,10 @@ impl Runner {
             ("zig", &comparison.values[0]),
             ("rust", &comparison.values[1]),
         ] {
-            let mut file = File::create(path.join(format!("{name}.json")))?;
+            let mut file = io::BufWriter::new(File::create(path.join(format!("{name}.json")))?);
             serde_json::to_writer_pretty(&mut file, value)?;
             writeln!(file)?;
+            file.flush()?;
         }
         fs::write(path.join("difference.txt"), format!("{reason}\n"))?;
         Ok(path
